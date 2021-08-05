@@ -30,7 +30,7 @@ use s2n_quic_core::{
     },
     packet::number::PacketNumberSpace,
     stream::{ops, StreamId, StreamType},
-    time::Timestamp,
+    time::{timer, Timestamp},
     transport::{self, parameters::InitialFlowControlLimits},
     varint::VarInt,
 };
@@ -612,14 +612,6 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         );
     }
 
-    /// Returns all timers for the component
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        core::iter::empty()
-            .chain(self.inner.stream_controller.timers())
-            .chain(self.inner.outgoing_connection_flow_controller.timers())
-            .chain(self.inner.streams.timers())
-    }
-
     /// Called when the connection timer expires
     pub fn on_timeout(&mut self, now: Timestamp) {
         self.inner.stream_controller.on_timeout(now);
@@ -947,6 +939,18 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             api_call_context,
             |stream| stream.poll_request(request, context),
         )
+    }
+}
+
+impl<S: StreamTrait> timer::Provider for AbstractStreamManager<S> {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.inner.stream_controller.timers(query)?;
+        self.inner
+            .outgoing_connection_flow_controller
+            .timers(query)?;
+        self.inner.streams.timers(query)?;
+        Ok(())
     }
 }
 

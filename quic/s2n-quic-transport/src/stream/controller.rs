@@ -17,7 +17,7 @@ use s2n_quic_core::{
     packet::number::PacketNumber,
     stream,
     stream::{StreamId, StreamType},
-    time::Timestamp,
+    time::{timer, Timestamp},
     transport,
     transport::parameters::InitialFlowControlLimits,
     varint::VarInt,
@@ -191,13 +191,6 @@ impl Controller {
         Ok(())
     }
 
-    /// Returns all timers for the component
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        core::iter::empty()
-            .chain(self.bidi_controller.timers())
-            .chain(self.uni_controller.timers())
-    }
-
     /// Called when the connection timer expires
     pub fn on_timeout(&mut self, now: Timestamp) {
         self.bidi_controller.on_timeout(now);
@@ -212,6 +205,15 @@ impl Controller {
             }
             StreamType::Unidirectional => StreamDirection::Incoming,
         }
+    }
+}
+
+impl timer::Provider for Controller {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.bidi_controller.timers(query)?;
+        self.uni_controller.timers(query)?;
+        Ok(())
     }
 }
 
@@ -264,11 +266,6 @@ impl ControllerPair {
     }
 
     #[inline]
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.outgoing.timers()
-    }
-
-    #[inline]
     pub fn on_timeout(&mut self, now: Timestamp) {
         self.outgoing.on_timeout(now);
     }
@@ -285,6 +282,14 @@ impl ControllerPair {
     pub fn close(&mut self) {
         self.outgoing.close();
         self.incoming.close();
+    }
+}
+
+impl timer::Provider for ControllerPair {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.outgoing.timers(query)?;
+        Ok(())
     }
 }
 
@@ -426,11 +431,6 @@ impl OutgoingController {
     }
 
     #[inline]
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.streams_blocked_sync.timers()
-    }
-
-    #[inline]
     pub fn on_timeout(&mut self, now: Timestamp) {
         self.streams_blocked_sync.on_timeout(now);
     }
@@ -486,6 +486,14 @@ impl OutgoingController {
                 the local_initiated_concurrent_stream_limit"
             );
         }
+    }
+}
+
+impl timer::Provider for OutgoingController {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.streams_blocked_sync.timers(query)?;
+        Ok(())
     }
 }
 

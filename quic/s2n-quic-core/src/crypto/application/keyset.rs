@@ -10,7 +10,7 @@ use crate::{
         short::{CleartextShort, EncryptedShort},
         KeyPhase,
     },
-    time::{Timer, Timestamp},
+    time::{timer, Timer, Timestamp},
     transport,
 };
 use s2n_codec::EncoderBuffer;
@@ -250,10 +250,6 @@ impl<K: OneRttKey> KeySet<K> {
         Ok(r)
     }
 
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.key_derivation_timer.iter()
-    }
-
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
         if self
             .key_derivation_timer
@@ -289,6 +285,14 @@ impl<K: OneRttKey> KeySet<K> {
 
     fn decryption_error_count(&self) -> u64 {
         self.packet_decryption_failures
+    }
+}
+
+impl<K> timer::Provider for KeySet<K> {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.key_derivation_timer.timers(query)?;
+        Ok(())
     }
 }
 

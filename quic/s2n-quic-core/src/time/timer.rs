@@ -76,6 +76,115 @@ impl Iterator for Iter {
     }
 }
 
+pub struct QueryBreak;
+
+pub type Result<T = (), E = QueryBreak> = core::result::Result<T, E>;
+
+pub trait Provider {
+    fn timers<Q: Query>(&self, query: &mut Q) -> Result;
+
+    #[inline]
+    fn next_expiration(&self) -> Option<Timestamp> {
+        let mut timeout: Option<Timestamp> = None;
+        let _ = self.timers(&mut timeout);
+        timeout
+    }
+
+    #[inline]
+    fn armed_timer_count(&self) -> usize {
+        let mut count = ArmedCount::default();
+        let _ = self.timers(&mut count);
+        count.0
+    }
+
+    #[inline]
+    fn for_each_timer<F: FnMut(&Timer) -> Result>(&self, f: F) {
+        let mut for_each = ForEach(f);
+        let _ = self.timers(&mut for_each);
+    }
+}
+
+impl Provider for Timer {
+    #[inline]
+    fn timers<Q: Query>(&self, query: &mut Q) -> Result {
+        query.on_timer(self)
+    }
+}
+
+impl<T: Provider> Provider for &T {
+    #[inline]
+    fn timers<Q: Query>(&self, query: &mut Q) -> Result {
+        (**self).timers(query)
+    }
+}
+
+impl<T: Provider> Provider for &mut T {
+    #[inline]
+    fn timers<Q: Query>(&self, query: &mut Q) -> Result {
+        (**self).timers(query)
+    }
+}
+
+impl<A: Provider, B: Provider> Provider for (A, B) {
+    #[inline]
+    fn timers<Q: Query>(&self, query: &mut Q) -> Result {
+        self.0.timers(query)?;
+        self.1.timers(query)?;
+        Ok(())
+    }
+}
+
+impl<T: Provider> Provider for Option<T> {
+    #[inline]
+    fn timers<Q: Query>(&self, query: &mut Q) -> Result {
+        if let Some(t) = self.as_ref() {
+            t.timers(query)?;
+        }
+        Ok(())
+    }
+}
+
+pub trait Query {
+    fn on_timer(&mut self, timer: &Timer) -> Result;
+}
+
+impl Query for Option<Timestamp> {
+    #[inline]
+    fn on_timer(&mut self, timer: &Timer) -> Result {
+        match (self, timer.expiration) {
+            (Some(a), Some(b)) => *a = (*a).min(b),
+            (Some(_), None) => {}
+            (a, b) => *a = b,
+        }
+        Ok(())
+    }
+}
+
+/// Counts all of the armed timers
+#[derive(Debug, Default)]
+pub struct ArmedCount(pub usize);
+
+impl Query for ArmedCount {
+    #[inline]
+    fn on_timer(&mut self, timer: &Timer) -> Result {
+        if timer.is_armed() {
+            self.0 += 1;
+        }
+        Ok(())
+    }
+}
+
+/// Iterates over each timer in the provider and calls a function
+#[derive(Debug, Default)]
+pub struct ForEach<F: FnMut(&Timer) -> Result>(F);
+
+impl<F: FnMut(&Timer) -> Result> Query for ForEach<F> {
+    #[inline]
+    fn on_timer(&mut self, timer: &Timer) -> Result {
+        (self.0)(timer)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

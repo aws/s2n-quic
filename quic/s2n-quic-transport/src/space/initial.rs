@@ -27,7 +27,7 @@ use s2n_quic_core::{
             PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow, SlidingWindowError,
         },
     },
-    time::Timestamp,
+    time::{timer, Timestamp},
     transport,
 };
 
@@ -221,13 +221,6 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             .update_pto_timer(path, timestamp, is_handshake_confirmed);
     }
 
-    /// Returns all of the component timers
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        core::iter::empty()
-            .chain(self.ack_manager.timers())
-            .chain(self.recovery_manager.timers())
-    }
-
     /// Called when the connection timer expired
     pub fn on_timeout<Pub: event::Publisher>(
         &mut self,
@@ -302,6 +295,16 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         }
 
         Ok(packet.decrypt(&self.key)?)
+    }
+}
+
+impl<Config: endpoint::Config> timer::Provider for InitialSpace<Config> {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.ack_manager.timers(query)?;
+        self.recovery_manager.timers(query)?;
+
+        Ok(())
     }
 }
 

@@ -14,7 +14,7 @@ use core::{cell::RefCell, ops::Deref};
 use intrusive_collections::{
     intrusive_adapter, KeyAdapter, LinkedList, LinkedListLink, RBTree, RBTreeLink,
 };
-use s2n_quic_core::{stream::StreamId, time::Timestamp};
+use s2n_quic_core::{stream::StreamId, time::timer};
 
 // Intrusive list adapter for managing the list of `done` streams
 intrusive_adapter!(DoneStreamsAdapter<S> = Rc<StreamNode<S>>: StreamNode<S> {
@@ -590,18 +590,20 @@ impl<S: StreamTrait> StreamContainer<S> {
             self.finalize_done_streams(controller);
         }
     }
+}
 
-    /// Returns all timers for the component
-    ///
-    /// Only the next expiring timer (if any) is iterated over
-    /// to avoid use of the explicit `'_` lifetime bound.
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.interest_lists
+impl<S: StreamTrait> timer::Provider for StreamContainer<S> {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        // TODO denormalize this into a single value
+        for stream in self
+            .interest_lists
             .waiting_for_stream_flow_control_credits
             .iter()
-            .flat_map(|stream| stream.inner.borrow().timer())
-            .min()
-            .into_iter()
+        {
+            stream.inner.borrow().timers(query)?;
+        }
+        Ok(())
     }
 }
 

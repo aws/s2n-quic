@@ -1,24 +1,24 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::{
+    connection::{
+        connection_id_mapper::ConnectionIdMapperState, local_id_registry::LocalIdStatus::*,
+        InternalConnectionId,
+    },
+    contexts::WriteContext,
+    timer::VirtualTimer,
+    transmission,
+};
 use alloc::rc::Rc;
 use core::{cell::RefCell, convert::TryInto};
-use smallvec::SmallVec;
-
 use s2n_quic_core::{
     ack, connection, frame,
     packet::number::PacketNumber,
     stateless_reset,
-    time::{Duration, Timer, Timestamp},
+    time::{timer, Duration, Timer, Timestamp},
 };
-
-use crate::{
-    connection::{connection_id_mapper::ConnectionIdMapperState, InternalConnectionId},
-    contexts::WriteContext,
-    transmission,
-};
-
-use crate::{connection::local_id_registry::LocalIdStatus::*, timer::VirtualTimer};
+use smallvec::SmallVec;
 
 /// The amount of ConnectionIds we can register without dynamic memory allocation
 const NR_STATIC_REGISTRABLE_IDS: usize = 5;
@@ -444,12 +444,6 @@ impl LocalIdRegistry {
         }
     }
 
-    /// Gets the timers for the registration
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.check_timer_integrity();
-        self.expiration_timer.iter()
-    }
-
     /// Handles timeouts on the registration
     ///
     /// `timestamp` passes the current time.
@@ -610,6 +604,16 @@ impl LocalIdRegistry {
     }
 }
 
+impl timer::Provider for LocalIdRegistry {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.check_timer_integrity();
+        self.expiration_timer.timers(query)?;
+
+        Ok(())
+    }
+}
+
 impl transmission::interest::Provider for LocalIdRegistry {
     #[inline]
     fn transmission_interest<Q: transmission::interest::Query>(
@@ -643,6 +647,7 @@ mod tests {
         packet::number::PacketNumberRange,
         random,
         stateless_reset::token::testing::*,
+        time::timer::Provider as _,
         varint::VarInt,
     };
 
@@ -1340,7 +1345,7 @@ mod tests {
         reg1.set_active_connection_id_limit(3);
 
         // No timer set for the handshake connection ID
-        assert_eq!(0, reg1.timers().count());
+        assert_eq!(0, reg1.armed_timer_count());
 
         let now = s2n_quic_platform::time::now();
         let expiration = now + Duration::from_secs(60);
@@ -1350,8 +1355,8 @@ mod tests {
             .is_ok());
 
         // Expiration timer is armed based on retire time
-        assert_eq!(1, reg1.timers().count());
-        assert_eq!(Some(expiration - EXPIRATION_BUFFER), reg1.timers().next());
+        assert_eq!(1, reg1.armed_timer_count());
+        assert_eq!(Some(expiration - EXPIRATION_BUFFER), reg1.next_expiration());
 
         reg1.get_connection_id_info_mut(&ext_id_1)
             .unwrap()
@@ -1359,7 +1364,7 @@ mod tests {
         reg1.update_timers();
 
         // Expiration timer is armed based on removal time
-        assert_eq!(1, reg1.timers().count());
+        assert_eq!(1, reg1.armed_timer_count());
         assert_eq!(
             Some(now + EXPIRATION_BUFFER),
             reg1.expiration_timer.iter().next()
@@ -1371,14 +1376,14 @@ mod tests {
         reg1.update_timers();
 
         // Expiration timer is armed based on removal time
-        assert_eq!(1, reg1.timers().count());
-        assert_eq!(Some(now + EXPIRATION_BUFFER), reg1.timers().next());
+        assert_eq!(1, reg1.armed_timer_count());
+        assert_eq!(Some(now + EXPIRATION_BUFFER), reg1.next_expiration());
 
         // Unregister CIDs 1 and 2 (sequence numbers 0 and 1)
         reg1.unregister_expired_ids(now + Duration::from_secs(120));
 
         // No more timers are set
-        assert_eq!(0, reg1.timers().count());
+        assert_eq!(0, reg1.armed_timer_count());
     }
 
     #[test]
@@ -1393,7 +1398,7 @@ mod tests {
         let now = s2n_quic_platform::time::now();
 
         // No timer set for the handshake connection ID
-        assert_eq!(0, reg1.timers().count());
+        assert_eq!(0, reg1.armed_timer_count());
 
         reg1.retire_handshake_connection_id(now);
 

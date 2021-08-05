@@ -5,7 +5,7 @@ use crate::{contexts::WriteContext, transmission};
 use s2n_quic_core::{
     ct::ConstantTimeEq,
     frame,
-    time::{Duration, Timer, Timestamp},
+    time::{timer, Duration, Timer, Timestamp},
 };
 
 pub type Data = [u8; frame::path_challenge::DATA_LEN];
@@ -80,10 +80,6 @@ impl Challenge {
         }
     }
 
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.abandon_timer.iter()
-    }
-
     /// When a PATH_CHALLENGE is transmitted this handles any internal state operations.
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         match self.state {
@@ -139,6 +135,14 @@ impl Challenge {
         } else {
             false
         }
+    }
+}
+
+impl timer::Provider for Challenge {
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.abandon_timer.timers(query)?;
+
+        Ok(())
     }
 }
 

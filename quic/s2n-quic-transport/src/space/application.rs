@@ -34,7 +34,7 @@ use s2n_quic_core::{
         short::{CleartextShort, ProtectedShort, Short, SpinBit},
     },
     recovery::RttEstimator,
-    time::Timestamp,
+    time::{timer, Timestamp},
     transport,
 };
 
@@ -303,15 +303,6 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             .update_pto_timer(path, timestamp, true)
     }
 
-    /// Returns all of the component timers
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        core::iter::empty()
-            .chain(self.ack_manager.timers())
-            .chain(self.recovery_manager.timers())
-            .chain(self.key_set.timers())
-            .chain(self.stream_manager.timers())
-    }
-
     /// Called when the connection timer expired
     pub fn on_timeout<Pub: event::Publisher>(
         &mut self,
@@ -419,6 +410,18 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         }
 
         decrypted.map(|x| x.0)
+    }
+}
+
+impl<Config: endpoint::Config> timer::Provider for ApplicationSpace<Config> {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.ack_manager.timers(query)?;
+        self.recovery_manager.timers(query)?;
+        self.key_set.timers(query)?;
+        self.stream_manager.timers(query)?;
+
+        Ok(())
     }
 }
 

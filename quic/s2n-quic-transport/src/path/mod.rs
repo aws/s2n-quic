@@ -11,7 +11,10 @@ pub use manager::*;
 
 /// re-export core
 pub use s2n_quic_core::path::*;
-use s2n_quic_core::{frame, time::Timestamp};
+use s2n_quic_core::{
+    frame,
+    time::{timer, Timestamp},
+};
 
 use crate::{
     connection,
@@ -145,13 +148,6 @@ impl<CC: CongestionController> Path<CC> {
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
         self.challenge.on_timeout(timestamp);
         self.mtu_controller.on_timeout(timestamp);
-    }
-
-    #[inline]
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        core::iter::empty()
-            .chain(self.challenge.timers())
-            .chain(self.mtu_controller.timers())
     }
 
     /// Only PATH_CHALLENGE and PATH_RESPONSE frames should be transmitted here.
@@ -384,6 +380,15 @@ impl<CC: CongestionController> Path<CC> {
                 };
             }
         }
+    }
+}
+
+impl<CC: CongestionController> timer::Provider for Path<CC> {
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.challenge.timers(query)?;
+        self.mtu_controller.timers(query)?;
+
+        Ok(())
     }
 }
 

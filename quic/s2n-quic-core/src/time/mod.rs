@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod clock;
-mod timer;
+pub mod timer;
 mod timestamp;
 
 pub use clock::*;
 pub use core::time::Duration;
-pub use timer::*;
+pub use timer::Timer;
 pub use timestamp::*;

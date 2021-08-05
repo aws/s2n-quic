@@ -18,7 +18,7 @@ use s2n_quic_core::{
     ack, endpoint,
     frame::{stream::StreamRef, MaxStreamData, ResetStream, StopSending, StreamDataBlocked},
     stream::{ops, StreamId},
-    time::Timestamp,
+    time::{timer, Timestamp},
     transport,
     varint::VarInt,
 };
@@ -45,7 +45,7 @@ pub struct StreamConfig {
 }
 
 /// A trait which represents an internally used `Stream`
-pub trait StreamTrait: StreamInterestProvider {
+pub trait StreamTrait: StreamInterestProvider + timer::Provider {
     /// Creates a new `Stream` instance with the given configuration
     fn new(config: StreamConfig) -> Self;
 
@@ -103,9 +103,6 @@ pub trait StreamTrait: StreamInterestProvider {
     /// Updates the period at which `STREAM_DATA_BLOCKED` frames are sent to the peer
     /// if the application is blocked by peer limits.
     fn update_blocked_sync_period(&mut self, blocked_sync_period: Duration);
-
-    /// Returns the timer for the component
-    fn timer(&self) -> Option<Timestamp>;
 
     /// Called when the connection timer expires
     fn on_timeout(&mut self, now: Timestamp);
@@ -253,11 +250,6 @@ impl StreamTrait for StreamImpl {
     }
 
     #[inline]
-    fn timer(&self) -> Option<Timestamp> {
-        self.send_stream.timers().min()
-    }
-
-    #[inline]
     fn on_timeout(&mut self, now: Timestamp) {
         self.send_stream.on_timeout(now)
     }
@@ -297,6 +289,14 @@ impl StreamTrait for StreamImpl {
         contract.validate_response(request, result.as_ref(), context);
 
         result
+    }
+}
+
+impl timer::Provider for StreamImpl {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.send_stream.timers(query)?;
+        Ok(())
     }
 }
 

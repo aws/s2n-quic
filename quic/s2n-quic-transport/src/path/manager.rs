@@ -16,7 +16,7 @@ use s2n_quic_core::{
     random,
     recovery::{congestion_controller, RttEstimator},
     stateless_reset,
-    time::Timestamp,
+    time::{timer, Timestamp},
     transport,
 };
 use smallvec::SmallVec;
@@ -353,11 +353,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         self[path_id].set_challenge(challenge);
     }
 
-    #[inline]
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
-        self.paths.iter().flat_map(|p| p.timers())
-    }
-
     /// Writes any frames the path manager wishes to transmit to the given context
     #[inline]
     pub fn on_transmit<W: transmission::WriteContext>(&mut self, context: &mut W) {
@@ -577,6 +572,16 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             .map(|path| path.transmission_constraint())
             .min()
             .unwrap_or(transmission::Constraint::None)
+    }
+}
+
+impl<CCE: congestion_controller::Endpoint> timer::Provider for Manager<CCE> {
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        for path in self.paths.iter() {
+            path.timers(query)?;
+        }
+
+        Ok(())
     }
 }
 

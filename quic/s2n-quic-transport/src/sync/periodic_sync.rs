@@ -6,11 +6,14 @@
 use crate::{
     contexts::{OnTransmitError, WriteContext},
     sync::{DeliveryState, InFlightDelivery, InflightPacketInfo, ValueToFrameWriter},
-    timer::VirtualTimer,
     transmission,
 };
 use core::time::Duration;
-use s2n_quic_core::{ack, stream::StreamId, time::Timestamp};
+use s2n_quic_core::{
+    ack,
+    stream::StreamId,
+    time::{timer, Timer, Timestamp},
+};
 
 // The default period for synchronizing the value. This value is only used prior to a more
 // precise value calculated based on idle timeout and current RTT estimates and provided
@@ -27,7 +30,7 @@ pub const DEFAULT_SYNC_PERIOD: Duration = Duration::from_secs(10);
 pub struct PeriodicSync<T, S> {
     latest_value: T,
     sync_period: Duration,
-    delivery_timer: VirtualTimer,
+    delivery_timer: Timer,
     delivery: DeliveryState<T>,
     writer: S,
     delivered: bool,
@@ -42,7 +45,7 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
         Self {
             latest_value: T::default(),
             sync_period: DEFAULT_SYNC_PERIOD,
-            delivery_timer: VirtualTimer::default(),
+            delivery_timer: Timer::default(),
             delivery: DeliveryState::NotRequested,
             writer: S::default(),
             delivered: false,
@@ -82,11 +85,6 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
         if self.delivery_timer.poll_expiration(now).is_ready() {
             self.delivery = DeliveryState::Requested(self.latest_value);
         }
-    }
-
-    /// Returns the timer for a scheduled delivery
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.delivery_timer.iter()
     }
 
     /// Stop synchronizing the value to the peer
@@ -164,6 +162,14 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
     #[inline]
     pub fn has_delivered(&self) -> bool {
         self.delivered
+    }
+}
+
+impl<T, S> timer::Provider for PeriodicSync<T, S> {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.delivery_timer.timers(query)?;
+        Ok(())
     }
 }
 

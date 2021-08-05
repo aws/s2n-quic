@@ -14,7 +14,7 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     recovery::{CongestionController, RttEstimator, K_GRANULARITY},
-    time::Timestamp,
+    time::{timer, Timestamp},
     transport,
     varint::VarInt,
 };
@@ -93,21 +93,6 @@ impl Manager {
             time_of_last_ack_eliciting_packet: None,
             ecn_ce_counter: VarInt::default(),
         }
-    }
-
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-        //# The PTO timer MUST NOT be set if a timer is set for time threshold
-        //# loss detection; see Section 6.1.2.  A timer that is set for time
-        //# threshold loss detection will expire earlier than the PTO timer in
-        //# most cases and is less likely to spuriously retransmit data.
-
-        let is_loss_timer_armed = self.loss_timer.is_armed();
-
-        core::iter::empty()
-            .chain(self.pto.timers())
-            .filter(move |_| !is_loss_timer_armed)
-            .chain(self.loss_timer.iter())
     }
 
     pub fn on_timeout<CC: CongestionController, Ctx: Context<CC>, Pub: event::Publisher>(
@@ -856,6 +841,25 @@ impl Manager {
     }
 }
 
+impl timer::Provider for Manager {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //# The PTO timer MUST NOT be set if a timer is set for time threshold
+        //# loss detection; see Section 6.1.2.  A timer that is set for time
+        //# threshold loss detection will expire earlier than the PTO timer in
+        //# most cases and is less likely to spuriously retransmit data.
+
+        if self.loss_timer.is_armed() {
+            self.loss_timer.timers(query)?;
+        } else {
+            self.pto.timers(query)?;
+        }
+
+        Ok(())
+    }
+}
+
 pub trait Context<CC: CongestionController> {
     const ENDPOINT_TYPE: endpoint::Type;
 
@@ -923,11 +927,6 @@ impl Pto {
             max_ack_delay,
             ..Self::default()
         }
-    }
-
-    /// Returns an iterator containing the probe timeout timestamp
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.timer.iter()
     }
 
     /// Called when a timeout has occurred. Returns true if the PTO timer had expired.
@@ -1028,6 +1027,14 @@ impl Pto {
     }
 }
 
+impl timer::Provider for Pto {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.timer.timers(query)?;
+        Ok(())
+    }
+}
+
 impl transmission::interest::Provider for Pto {
     #[inline]
     fn transmission_interest<Q: transmission::interest::Query>(
@@ -1069,7 +1076,7 @@ mod test {
             },
             DEFAULT_INITIAL_RTT,
         },
-        time::{Clock, NoopClock},
+        time::{timer::Provider as _, Clock, NoopClock},
         varint::VarInt,
     };
     use std::{collections::HashSet, net::SocketAddr};
@@ -3135,24 +3142,24 @@ mod test {
         let pto_time = s2n_quic_platform::time::now() + Duration::from_secs(10);
 
         // No timer is set
-        assert_eq!(manager.timers().count(), 0);
+        assert_eq!(manager.armed_timer_count(), 0);
 
         // Loss timer is armed
         manager.loss_timer.set(loss_time);
-        assert_eq!(manager.timers().count(), 1);
-        assert_eq!(manager.timers().next(), Some(loss_time));
+        assert_eq!(manager.armed_timer_count(), 1);
+        assert_eq!(manager.next_expiration(), Some(loss_time));
 
         // PTO timer is armed
         manager.loss_timer.cancel();
         manager.pto.timer.set(pto_time);
-        assert_eq!(manager.timers().count(), 1);
-        assert_eq!(manager.timers().next(), Some(pto_time));
+        assert_eq!(manager.armed_timer_count(), 1);
+        assert_eq!(manager.next_expiration(), Some(pto_time));
 
         // Both timers are armed, only loss time is returned
         manager.loss_timer.set(loss_time);
         manager.pto.timer.set(pto_time);
-        assert_eq!(manager.timers().count(), 1);
-        assert_eq!(manager.timers().next(), Some(loss_time));
+        assert_eq!(manager.armed_timer_count(), 1);
+        assert_eq!(manager.next_expiration(), Some(loss_time));
     }
 
     #[test]

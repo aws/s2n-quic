@@ -13,7 +13,7 @@ use s2n_quic_core::{
     frame::{DataBlocked, MaxData},
     packet::number::PacketNumber,
     stream::StreamId,
-    time::Timestamp,
+    time::{timer, Timestamp},
     varint::VarInt,
 };
 
@@ -192,14 +192,17 @@ impl OutgoingConnectionFlowController {
         }
     }
 
-    /// Returns all timers for the component
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.inner.borrow().data_blocked_sync.timers()
-    }
-
     /// Called when the connection timer expires
     pub fn on_timeout(&mut self, now: Timestamp) {
         self.inner.borrow_mut().data_blocked_sync.on_timeout(now)
+    }
+}
+
+impl timer::Provider for OutgoingConnectionFlowController {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.inner.borrow().data_blocked_sync.timers(query)?;
+        Ok(())
     }
 }
 
