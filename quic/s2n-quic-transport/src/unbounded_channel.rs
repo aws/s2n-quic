@@ -60,10 +60,19 @@ fn close<T>(state: &Arc<Mutex<Option<ChannelState<T>>>>) -> Option<Waker> {
 
 impl<T> Sender<T> {
     /// Send `item` via the channel.
-    pub fn send(&mut self, item: T) -> Result<(), Error> {
+    pub fn send(&mut self, item: T) -> Result<(), (T, Error)> {
         let waker = {
-            let guard = &mut *self.state.lock().map_err(|_| Error)?;
-            let guard = guard.as_mut().ok_or(Error)?;
+            let mut guard = if let Ok(guard) = self.state.lock() {
+                guard
+            } else {
+                return Err((item, Error));
+            };
+            let guard = &mut *guard;
+            let guard = if let Some(guard) = guard.as_mut() {
+                guard
+            } else {
+                return Err((item, Error));
+            };
             guard.queue.push_back(item);
             guard.waker.take()
         };
@@ -212,6 +221,6 @@ mod tests {
         let (mut sender, receiver) = channel();
         drop(receiver);
 
-        assert_eq!(Err(Error), sender.send(1));
+        assert_eq!(Err((1, Error)), sender.send(1));
     }
 }

@@ -381,6 +381,11 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 impl<Config: endpoint::Config> timer::Provider for PacketSpaceManager<Config> {
     #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //# When ack-eliciting packets in multiple packet number spaces are in
+        //# flight, the timer MUST be set to the earlier value of the Initial and
+        //# Handshake packet number spaces.
+
         if let Some(space) = self.application.as_ref() {
             space.timers(query)?;
         }

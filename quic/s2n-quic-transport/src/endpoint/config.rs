@@ -15,6 +15,8 @@ pub trait Config: 'static + Send + Sized + core::fmt::Debug {
     type CongestionControllerEndpoint: congestion_controller::Endpoint;
     /// The connections type
     type Connection: connection::Trait<Config = Self>;
+    /// The type of lock that synchronizes connection state between threads
+    type ConnectionLock: connection::Lock<Self::Connection>;
     /// The connection ID format
     type ConnectionIdFormat: connection::id::Format;
     /// The stateless reset token generator

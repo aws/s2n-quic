@@ -55,7 +55,7 @@ pub struct Endpoint<Cfg: Config> {
     /// Configuration parameters for the endpoint
     config: Cfg,
     /// Contains all active connections
-    connections: ConnectionContainer<Cfg::Connection>,
+    connections: ConnectionContainer<Cfg::Connection, Cfg::ConnectionLock>,
     /// Creates internal IDs for new connections
     connection_id_generator: InternalConnectionIdGenerator,
     /// Maps from external to internal connection IDs
@@ -114,36 +114,34 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
 
         let mut now: Option<Timestamp> = None;
 
-        self.connections
-            .iterate_transmission_list(|connection, shared_state| {
-                let timestamp = match now {
-                    Some(now) => now,
-                    _ => {
-                        let time = clock.get_time();
-                        now = Some(time);
-                        time
-                    }
-                };
-
-                let mut publisher = event::PublisherSubscriber::new(
-                    event::builders::Meta {
-                        endpoint_type: Cfg::ENDPOINT_TYPE,
-                        group_id: connection.internal_connection_id().into(),
-                        timestamp,
-                    },
-                    Some(connection.quic_version()),
-                    endpoint_context.event_subscriber,
-                );
-
-                transmit_result =
-                    connection.on_transmit(shared_state, queue, timestamp, &mut publisher);
-                if transmit_result.is_err() {
-                    // If one connection fails, return
-                    ConnectionContainerIterationResult::BreakAndInsertAtBack
-                } else {
-                    ConnectionContainerIterationResult::Continue
+        self.connections.iterate_transmission_list(|connection| {
+            let timestamp = match now {
+                Some(now) => now,
+                _ => {
+                    let time = clock.get_time();
+                    now = Some(time);
+                    time
                 }
-            });
+            };
+
+            let mut publisher = event::PublisherSubscriber::new(
+                event::builders::Meta {
+                    endpoint_type: Cfg::ENDPOINT_TYPE,
+                    group_id: connection.internal_connection_id().into(),
+                    timestamp,
+                },
+                Some(connection.quic_version()),
+                endpoint_context.event_subscriber,
+            );
+
+            transmit_result = connection.on_transmit(queue, timestamp, &mut publisher);
+            if transmit_result.is_err() {
+                // If one connection fails, return
+                ConnectionContainerIterationResult::BreakAndInsertAtBack
+            } else {
+                ConnectionContainerIterationResult::Continue
+            }
+        });
 
         if transmit_result.is_ok() {
             self.version_negotiator.on_transmit(queue);
@@ -170,38 +168,36 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         let mut now: Option<Timestamp> = None;
 
         for internal_id in self.dequeued_wakeups.drain(..) {
-            self.connections
-                .with_connection(internal_id, |conn, mut shared_state| {
-                    let timestamp = match now {
-                        Some(now) => now,
-                        _ => {
-                            let time = clock.get_time();
-                            now = Some(time);
-                            time
-                        }
-                    };
-
-                    let mut publisher = event::PublisherSubscriber::new(
-                        event::builders::Meta {
-                            endpoint_type: Cfg::ENDPOINT_TYPE,
-                            group_id: conn.internal_connection_id().into(),
-                            timestamp,
-                        },
-                        Some(conn.quic_version()),
-                        endpoint_context.event_subscriber,
-                    );
-
-                    if let Err(error) = conn.on_wakeup(shared_state.as_deref_mut(), timestamp) {
-                        conn.close(
-                            shared_state,
-                            error,
-                            endpoint_context.connection_close_formatter,
-                            close_packet_buffer,
-                            timestamp,
-                            &mut publisher,
-                        );
+            self.connections.with_connection(internal_id, |conn| {
+                let timestamp = match now {
+                    Some(now) => now,
+                    _ => {
+                        let time = clock.get_time();
+                        now = Some(time);
+                        time
                     }
-                });
+                };
+
+                let mut publisher = event::PublisherSubscriber::new(
+                    event::builders::Meta {
+                        endpoint_type: Cfg::ENDPOINT_TYPE,
+                        group_id: conn.internal_connection_id().into(),
+                        timestamp,
+                    },
+                    Some(conn.quic_version()),
+                    endpoint_context.event_subscriber,
+                );
+
+                if let Err(error) = conn.on_wakeup(timestamp) {
+                    conn.close(
+                        error,
+                        endpoint_context.connection_close_formatter,
+                        close_packet_buffer,
+                        timestamp,
+                        &mut publisher,
+                    );
+                }
+            });
         }
 
         if nr_wakeups > 0 {
@@ -397,101 +393,60 @@ impl<Cfg: Config> Endpoint<Cfg> {
             let mut check_for_stateless_reset = false;
             let max_mtu = self.max_mtu;
 
-            let _ = self
-                .connections
-                .with_connection(internal_id, |conn, mut shared_state| {
-                    // The path `Id` needs to be passed around instead of the path to get around `&mut self` and
-                    // `&mut self.path_manager` being borrowed at the same time
-                    let path_id = conn
-                        .on_datagram_received(
-                            shared_state.as_deref_mut(),
-                            datagram,
-                            endpoint_context.congestion_controller,
-                            endpoint_context.random_generator,
-                            max_mtu,
-                        )
-                        .map_err(|_| {
-                            // TODO https://github.com/awslabs/s2n-quic/issues/669
-                            // We are ignoring all errors here which seems like a bad
-                            // practice. If we truly want to ignor all error, lets change the
-                            // signature of on_datagram_received to not return a Result.
-                            // Otherwise we should introduce an Error code that signifies
-                            // it should be silently ignored.
+            let _ = self.connections.with_connection(internal_id, |conn| {
+                // The path `Id` needs to be passed around instead of the path to get around `&mut self` and
+                // `&mut self.path_manager` being borrowed at the same time
+                let path_id = conn
+                    .on_datagram_received(
+                        datagram,
+                        endpoint_context.congestion_controller,
+                        endpoint_context.random_generator,
+                        max_mtu,
+                    )
+                    .map_err(|_| {
+                        // TODO https://github.com/awslabs/s2n-quic/issues/669
+                        // We are ignoring all errors here which seems like a bad
+                        // practice. If we truly want to ignor all error, lets change the
+                        // signature of on_datagram_received to not return a Result.
+                        // Otherwise we should introduce an Error code that signifies
+                        // it should be silently ignored.
 
-                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-                            //# If the peer
-                            //# violates this requirement, the endpoint MUST either drop the incoming
-                            //# packets on that path without generating a stateless reset or proceed
-                            //# with path validation and allow the peer to migrate.  Generating a
-                            //# stateless reset or closing the connection would allow third parties
-                            //# in the network to cause connections to close by spoofing or otherwise
-                            //# manipulating observed traffic.
-                        })?;
+                        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+                        //# If the peer
+                        //# violates this requirement, the endpoint MUST either drop the incoming
+                        //# packets on that path without generating a stateless reset or proceed
+                        //# with path validation and allow the peer to migrate.  Generating a
+                        //# stateless reset or closing the connection would allow third parties
+                        //# in the network to cause connections to close by spoofing or otherwise
+                        //# manipulating observed traffic.
+                    })?;
 
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.1
-                    //# An endpoint
-                    //# that is closing is not required to process any received frame.
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.1
+                //# An endpoint
+                //# that is closing is not required to process any received frame.
 
-                    // only process packets if we are open
-                    if let Some(shared_state) = shared_state {
-                        let mut publisher = event::PublisherSubscriber::new(
-                            event::builders::Meta {
-                                endpoint_type: Cfg::ENDPOINT_TYPE,
-                                group_id: conn.internal_connection_id().into(),
-                                timestamp,
-                            },
-                            Some(conn.quic_version()),
-                            endpoint_context.event_subscriber,
-                        );
-                        if let Err(err) = conn.handle_packet(
-                            shared_state,
-                            datagram,
-                            path_id,
-                            packet,
-                            &mut publisher,
-                            endpoint_context.random_generator,
-                        ) {
-                            match err {
-                                ProcessingError::DuplicatePacket => {
-                                    // We discard duplicate packets
-                                }
-                                ProcessingError::ConnectionError(err) => {
-                                    conn.close(
-                                        Some(shared_state),
-                                        err,
-                                        endpoint_context.connection_close_formatter,
-                                        close_packet_buffer,
-                                        datagram.timestamp,
-                                        &mut publisher,
-                                    );
-                                    return Err(());
-                                }
-                                ProcessingError::CryptoError(_) => {
-                                    // CryptoErrors returned as a result of a packet failing decryption
-                                    // will be silently discarded, but are a potential indication of a
-                                    // stateless reset from the peer
-
-                                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
-                                    //# Endpoints MAY skip this check if any packet from a datagram is
-                                    //# successfully processed.  However, the comparison MUST be performed
-                                    //# when the first packet in an incoming datagram either cannot be
-                                    //# associated with a connection, or cannot be decrypted.
-                                    check_for_stateless_reset = true;
-                                }
-                            }
+                let mut publisher = event::PublisherSubscriber::new(
+                    event::builders::Meta {
+                        endpoint_type: Cfg::ENDPOINT_TYPE,
+                        group_id: conn.internal_connection_id().into(),
+                        timestamp,
+                    },
+                    Some(conn.quic_version()),
+                    endpoint_context.event_subscriber,
+                );
+                if let Err(err) = conn.handle_packet(
+                    datagram,
+                    path_id,
+                    packet,
+                    &mut publisher,
+                    endpoint_context.random_generator,
+                ) {
+                    match err {
+                        ProcessingError::DuplicatePacket => {
+                            // We discard duplicate packets
                         }
-
-                        if let Err(err) = conn.handle_remaining_packets(
-                            shared_state,
-                            datagram,
-                            path_id,
-                            endpoint_context.connection_id_format,
-                            remaining,
-                            &mut publisher,
-                            endpoint_context.random_generator,
-                        ) {
+                        ProcessingError::ConnectionError(err) => {
                             conn.close(
-                                Some(shared_state),
                                 err,
                                 endpoint_context.connection_close_formatter,
                                 close_packet_buffer,
@@ -500,10 +455,41 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             );
                             return Err(());
                         }
-                    }
+                        ProcessingError::CryptoError(_) => {
+                            // CryptoErrors returned as a result of a packet failing decryption
+                            // will be silently discarded, but are a potential indication of a
+                            // stateless reset from the peer
 
-                    Ok(())
-                });
+                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
+                            //# Endpoints MAY skip this check if any packet from a datagram is
+                            //# successfully processed.  However, the comparison MUST be performed
+                            //# when the first packet in an incoming datagram either cannot be
+                            //# associated with a connection, or cannot be decrypted.
+                            check_for_stateless_reset = true;
+                        }
+                    }
+                }
+
+                if let Err(err) = conn.handle_remaining_packets(
+                    datagram,
+                    path_id,
+                    endpoint_context.connection_id_format,
+                    remaining,
+                    &mut publisher,
+                    endpoint_context.random_generator,
+                ) {
+                    conn.close(
+                        err,
+                        endpoint_context.connection_close_formatter,
+                        close_packet_buffer,
+                        datagram.timestamp,
+                        &mut publisher,
+                    );
+                    return Err(());
+                }
+
+                Ok(())
+            });
 
             if check_for_stateless_reset {
                 self.close_on_matching_stateless_reset(payload, timestamp);
@@ -695,26 +681,24 @@ impl<Cfg: Config> Endpoint<Cfg> {
         //# If the last 16 bytes of the datagram are identical in value to a
         //# Stateless Reset Token, the endpoint MUST enter the draining period
         //# and not send any further packets on this connection.
-        self.connections
-            .with_connection(internal_id, |conn, shared_state| {
-                let mut publisher = event::PublisherSubscriber::new(
-                    event::builders::Meta {
-                        endpoint_type: Cfg::ENDPOINT_TYPE,
-                        group_id: conn.internal_connection_id().into(),
-                        timestamp,
-                    },
-                    Some(conn.quic_version()),
-                    endpoint_context.event_subscriber,
-                );
-                conn.close(
-                    shared_state,
-                    connection::Error::StatelessReset,
-                    endpoint_context.connection_close_formatter,
-                    close_packet_buffer,
+        self.connections.with_connection(internal_id, |conn| {
+            let mut publisher = event::PublisherSubscriber::new(
+                event::builders::Meta {
+                    endpoint_type: Cfg::ENDPOINT_TYPE,
+                    group_id: conn.internal_connection_id().into(),
                     timestamp,
-                    &mut publisher,
-                );
-            });
+                },
+                Some(conn.quic_version()),
+                endpoint_context.event_subscriber,
+            );
+            conn.close(
+                connection::Error::StatelessReset,
+                endpoint_context.connection_close_formatter,
+                close_packet_buffer,
+                timestamp,
+                &mut publisher,
+            );
+        });
 
         Some(internal_id)
     }
@@ -724,38 +708,31 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let close_packet_buffer = &mut self.close_packet_buffer;
         let endpoint_context = self.config.context();
 
-        self.connections
-            .iterate_timeout_list(timestamp, |conn, mut shared_state| {
-                let mut publisher = event::PublisherSubscriber::new(
-                    event::builders::Meta {
-                        endpoint_type: Cfg::ENDPOINT_TYPE,
-                        group_id: conn.internal_connection_id().into(),
-                        timestamp,
-                    },
-                    Some(conn.quic_version()),
-                    endpoint_context.event_subscriber,
-                );
+        self.connections.iterate_timeout_list(timestamp, |conn| {
+            let mut publisher = event::PublisherSubscriber::new(
+                event::builders::Meta {
+                    endpoint_type: Cfg::ENDPOINT_TYPE,
+                    group_id: conn.internal_connection_id().into(),
+                    timestamp,
+                },
+                Some(conn.quic_version()),
+                endpoint_context.event_subscriber,
+            );
 
-                if let Err(error) = conn.on_timeout(
-                    shared_state.as_deref_mut(),
-                    connection_id_mapper,
+            if let Err(error) = conn.on_timeout(connection_id_mapper, timestamp, &mut publisher) {
+                conn.close(
+                    error,
+                    endpoint_context.connection_close_formatter,
+                    close_packet_buffer,
                     timestamp,
                     &mut publisher,
-                ) {
-                    conn.close(
-                        shared_state,
-                        error,
-                        endpoint_context.connection_close_formatter,
-                        close_packet_buffer,
-                        timestamp,
-                        &mut publisher,
-                    );
-                }
-            });
+                );
+            }
+        });
 
         // allow connections to generate a new connection id
         self.connections
-            .iterate_new_connection_id_list(|connection, _shared_state| {
+            .iterate_new_connection_id_list(|connection| {
                 let result = connection.on_new_connection_id(
                     endpoint_context.connection_id_format,
                     endpoint_context.stateless_reset_token_generator,
@@ -784,6 +761,7 @@ pub mod testing {
         type CongestionControllerEndpoint = crate::recovery::testing::Endpoint;
         type TLSEndpoint = s2n_quic_core::crypto::tls::testing::Endpoint;
         type Connection = connection::Implementation<Self>;
+        type ConnectionLock = std::sync::Mutex<Self::Connection>;
         type EndpointLimits = Limits;
         type ConnectionIdFormat = connection::id::testing::Format;
         type StatelessResetTokenGenerator = stateless_reset::token::testing::Generator;
@@ -808,6 +786,7 @@ pub mod testing {
         type CongestionControllerEndpoint = crate::recovery::testing::Endpoint;
         type TLSEndpoint = s2n_quic_core::crypto::tls::testing::Endpoint;
         type Connection = connection::Implementation<Self>;
+        type ConnectionLock = std::sync::Mutex<Self::Connection>;
         type EndpointLimits = Limits;
         type ConnectionIdFormat = connection::id::testing::Format;
         type StatelessResetTokenGenerator = stateless_reset::token::testing::Generator;

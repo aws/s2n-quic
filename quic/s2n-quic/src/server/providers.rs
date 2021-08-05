@@ -211,6 +211,8 @@ impl<
     type StatelessResetTokenGenerator = StatelessResetToken;
     type RandomGenerator = Random;
     type Connection = connection::Implementation<Self>;
+    // TODO allow users to specify another lock type
+    type ConnectionLock = std::sync::Mutex<Self::Connection>;
     type CongestionControllerEndpoint = CongestionController;
     type EndpointLimits = EndpointLimits;
     type EventSubscriber = Event;

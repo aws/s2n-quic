@@ -18,7 +18,7 @@ use s2n_quic_core::{application, stream::StreamType};
 #[derive(Clone)]
 pub struct Connection {
     /// The shared state, which contains the connections actual state
-    shared_state: ConnectionApi,
+    pub(super) api: ConnectionApi,
 }
 
 impl fmt::Debug for Connection {
@@ -32,13 +32,13 @@ impl Drop for Connection {
     fn drop(&mut self) {
         // If the connection wasn't closed before, close it now to make sure
         // all Streams terminate.
-        self.shared_state.close_connection(None);
+        self.api.close_connection(None);
     }
 }
 
 impl Connection {
     pub(crate) fn new(shared_state: ConnectionApi) -> Self {
-        Self { shared_state }
+        Self { api: shared_state }
     }
 
     /// Accepts an incoming [`Stream`]
@@ -57,8 +57,7 @@ impl Connection {
         stream_type: Option<StreamType>,
         context: &Context,
     ) -> Poll<Result<Option<Stream>, connection::Error>> {
-        self.shared_state
-            .poll_accept(&self.shared_state, stream_type, context)
+        self.api.poll_accept(&self.api, stream_type, context)
     }
 
     pub fn poll_open_stream(
@@ -66,30 +65,29 @@ impl Connection {
         stream_type: StreamType,
         context: &Context,
     ) -> Poll<Result<Stream, connection::Error>> {
-        self.shared_state
-            .poll_open_stream(&self.shared_state, stream_type, context)
+        self.api.poll_open_stream(&self.api, stream_type, context)
     }
 
     /// Closes the Connection with the provided error code
     ///
     /// This will immediatly terminate all outstanding streams.
     pub fn close(&self, error_code: application::Error) {
-        self.shared_state.close_connection(Some(error_code));
+        self.api.close_connection(Some(error_code));
     }
 
-    pub fn sni(&self) -> Option<Bytes> {
-        self.shared_state.sni()
+    pub fn sni(&self) -> Result<Option<Bytes>, connection::Error> {
+        self.api.sni()
     }
 
-    pub fn alpn(&self) -> Bytes {
-        self.shared_state.alpn()
+    pub fn alpn(&self) -> Result<Bytes, connection::Error> {
+        self.api.alpn()
     }
 
     pub fn id(&self) -> u64 {
-        self.shared_state.id()
+        self.api.id()
     }
 
     pub fn ping(&self) -> Result<(), connection::Error> {
-        self.shared_state.ping()
+        self.api.ping()
     }
 }

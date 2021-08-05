@@ -3,7 +3,10 @@
 
 //! This module contains the implementation of QUIC `Connections` and their management
 
-use crate::{endpoint, path::MaxMtu, recovery::congestion_controller};
+use crate::{
+    endpoint, path::MaxMtu, recovery::congestion_controller, space::PacketSpaceManager,
+    wakeup_queue::WakeupHandle,
+};
 use s2n_quic_core::{connection, inet::SocketAddress, time::Timestamp};
 
 mod api;
@@ -20,7 +23,6 @@ pub(crate) mod finalization;
 mod internal_connection_id;
 pub(crate) mod local_id_registry;
 pub(crate) mod peer_id_registry;
-mod shared_state;
 pub(crate) mod transmission;
 
 pub(crate) use api_provider::{ConnectionApi, ConnectionApiProvider};
@@ -32,11 +34,11 @@ pub(crate) use connection_trait::ConnectionTrait as Trait;
 pub(crate) use internal_connection_id::{InternalConnectionId, InternalConnectionIdGenerator};
 pub(crate) use local_id_registry::LocalIdRegistry;
 pub(crate) use peer_id_registry::PeerIdRegistry;
-pub(crate) use shared_state::{SharedConnectionState, SynchronizedSharedConnectionState};
 pub(crate) use transmission::{ConnectionTransmission, ConnectionTransmissionContext};
 
 pub use api::Connection;
 pub use connection_impl::ConnectionImpl as Implementation;
+pub use connection_trait::Lock;
 /// re-export core
 pub use s2n_quic_core::connection::*;
 
@@ -55,6 +57,12 @@ pub struct Parameters<Cfg: endpoint::Config> {
     pub local_connection_id: LocalId,
     /// The peers socket address
     pub peer_socket_address: SocketAddress,
+    /// The space manager created for the connection
+    pub space_manager: PacketSpaceManager<Cfg>,
+    /// A struct which triggers a wakeup for the given connection
+    ///
+    /// This should be called from the application task
+    pub wakeup_handle: WakeupHandle<InternalConnectionId>,
     /// The initial congestion controller for the connection
     pub congestion_controller: <Cfg::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController,
     /// The time the connection is being created

@@ -7,15 +7,16 @@ use crate::{
     connection::{
         self, connection_interests::ConnectionInterests, id::ConnectionInfo,
         internal_connection_id::InternalConnectionId, local_id_registry::LocalIdRegistrationError,
-        shared_state::SharedConnectionState, ConnectionIdMapper,
-        Parameters as ConnectionParameters, ProcessingError,
+        ConnectionIdMapper, Parameters as ConnectionParameters, ProcessingError,
     },
     contexts::ConnectionOnTransmitError,
-    endpoint, path,
+    endpoint, path, stream,
 };
+use bytes::Bytes;
+use core::task::{Context, Poll};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    event,
+    application, event,
     inet::DatagramInfo,
     io::tx,
     packet::{
@@ -53,7 +54,6 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
     fn close<'sub>(
         &mut self,
-        shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         error: connection::Error,
         close_formatter: &<Self::Config as endpoint::Config>::ConnectionCloseFormatter,
         packet_buffer: &mut endpoint::PacketBuffer,
@@ -84,7 +84,6 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     /// Queries the connection for outgoing packets
     fn on_transmit<'sub, Tx: tx::Queue>(
         &mut self,
-        shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         queue: &mut Tx,
         timestamp: Timestamp,
         publisher: &mut event::PublisherSubscriber<
@@ -98,25 +97,19 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     /// `timestamp` passes the current time.
     fn on_timeout<Pub: event::Publisher>(
         &mut self,
-        shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
         publisher: &mut Pub,
     ) -> Result<(), connection::Error>;
 
     /// Handles all external wakeups on the [`Connection`].
-    fn on_wakeup(
-        &mut self,
-        shared_state: Option<&mut SharedConnectionState<Self::Config>>,
-        timestamp: Timestamp,
-    ) -> Result<(), connection::Error>;
+    fn on_wakeup(&mut self, timestamp: Timestamp) -> Result<(), connection::Error>;
 
     // Packet handling
 
     /// Is called when an initial packet had been received
     fn handle_initial_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedInitial,
@@ -127,7 +120,6 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     /// Is called when an unprotected initial packet had been received
     fn handle_cleartext_initial_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: CleartextInitial,
@@ -138,7 +130,6 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     /// Is called when a handshake packet had been received
     fn handle_handshake_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedHandshake,
@@ -149,7 +140,6 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     /// Is called when a short packet had been received
     fn handle_short_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedShort,
@@ -160,7 +150,6 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     /// Is called when a version negotiation packet had been received
     fn handle_version_negotiation_packet(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedVersionNegotiation,
@@ -169,7 +158,6 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     /// Is called when a zero rtt packet had been received
     fn handle_zero_rtt_packet(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedZeroRtt,
@@ -178,7 +166,6 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     /// Is called when a retry packet had been received
     fn handle_retry_packet(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedRetry,
@@ -187,7 +174,6 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     /// Notifies a connection it has received a datagram from a peer
     fn on_datagram_received(
         &mut self,
-        shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
@@ -195,10 +181,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     ) -> Result<path::Id, connection::Error>;
 
     /// Returns the Connections interests
-    fn interests(
-        &self,
-        shared_state: Option<&SharedConnectionState<Self::Config>>,
-    ) -> ConnectionInterests;
+    fn interests(&self) -> ConnectionInterests;
 
     /// Returns the QUIC version selected for the current connection
     fn quic_version(&self) -> u32;
@@ -206,7 +189,6 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     /// Handles reception of a single QUIC packet
     fn handle_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedPacket,
@@ -230,39 +212,22 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         // independently.
 
         match packet {
-            ProtectedPacket::Short(packet) => self.handle_short_packet(
-                shared_state,
-                datagram,
-                path_id,
-                packet,
-                publisher,
-                random_generator,
-            ),
+            ProtectedPacket::Short(packet) => {
+                self.handle_short_packet(datagram, path_id, packet, publisher, random_generator)
+            }
             ProtectedPacket::VersionNegotiation(packet) => {
-                self.handle_version_negotiation_packet(shared_state, datagram, path_id, packet)
+                self.handle_version_negotiation_packet(datagram, path_id, packet)
             }
-            ProtectedPacket::Initial(packet) => self.handle_initial_packet(
-                shared_state,
-                datagram,
-                path_id,
-                packet,
-                publisher,
-                random_generator,
-            ),
+            ProtectedPacket::Initial(packet) => {
+                self.handle_initial_packet(datagram, path_id, packet, publisher, random_generator)
+            }
             ProtectedPacket::ZeroRtt(packet) => {
-                self.handle_zero_rtt_packet(shared_state, datagram, path_id, packet)
+                self.handle_zero_rtt_packet(datagram, path_id, packet)
             }
-            ProtectedPacket::Handshake(packet) => self.handle_handshake_packet(
-                shared_state,
-                datagram,
-                path_id,
-                packet,
-                publisher,
-                random_generator,
-            ),
-            ProtectedPacket::Retry(packet) => {
-                self.handle_retry_packet(shared_state, datagram, path_id, packet)
+            ProtectedPacket::Handshake(packet) => {
+                self.handle_handshake_packet(datagram, path_id, packet, publisher, random_generator)
             }
+            ProtectedPacket::Retry(packet) => self.handle_retry_packet(datagram, path_id, packet),
         }
     }
 
@@ -275,7 +240,6 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         Rnd: random::Generator,
     >(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         connection_id_validator: &Validator,
@@ -302,14 +266,8 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                     break;
                 }
 
-                let result = self.handle_packet(
-                    shared_state,
-                    datagram,
-                    path_id,
-                    packet,
-                    publisher,
-                    random_generator,
-                );
+                let result =
+                    self.handle_packet(datagram, path_id, packet, publisher, random_generator);
 
                 if let Err(ProcessingError::ConnectionError(err)) = result {
                     // CryptoErrors returned as a result of a packet failing decryption will be
@@ -336,5 +294,67 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         }
 
         Ok(())
+    }
+
+    fn poll_stream_request(
+        &mut self,
+        stream_id: stream::StreamId,
+        request: &mut stream::ops::Request,
+        context: Option<&Context>,
+    ) -> Result<stream::ops::Response, stream::StreamError>;
+
+    fn poll_accept_stream(
+        &mut self,
+        stream_type: Option<stream::StreamType>,
+        context: &Context,
+    ) -> Poll<Result<Option<stream::StreamId>, connection::Error>>;
+
+    fn poll_open_stream(
+        &mut self,
+        stream_type: stream::StreamType,
+        context: &Context,
+    ) -> Poll<Result<stream::StreamId, connection::Error>>;
+
+    fn application_close(&mut self, error: Option<application::Error>);
+
+    fn sni(&self) -> Option<Bytes>;
+
+    fn alpn(&self) -> Bytes;
+
+    fn ping(&mut self) -> Result<(), connection::Error>;
+}
+
+/// A lock that synchronizes connection state between the QUIC endpoint thread and application
+pub trait Lock<T>: 'static + Send + Sync {
+    type Error;
+
+    /// Creates a connection lock
+    fn new(value: T) -> Self;
+
+    /// Obtains a read-only reference to the inner connection
+    fn read<F: FnOnce(&T) -> R, R>(&self, f: F) -> Result<R, Self::Error>;
+
+    /// Obtains a mutable reference to the inner connection
+    fn write<F: FnOnce(&mut T) -> R, R>(&self, f: F) -> Result<R, Self::Error>;
+}
+
+#[cfg(feature = "std")]
+impl<T: 'static + Send> Lock<T> for std::sync::Mutex<T> {
+    type Error = ();
+
+    fn new(value: T) -> Self {
+        std::sync::Mutex::new(value)
+    }
+
+    fn read<F: FnOnce(&T) -> R, R>(&self, f: F) -> Result<R, Self::Error> {
+        let lock = self.lock().map_err(|_| ())?;
+        let result = f(&*lock);
+        Ok(result)
+    }
+
+    fn write<F: FnOnce(&mut T) -> R, R>(&self, f: F) -> Result<R, Self::Error> {
+        let mut lock = self.lock().map_err(|_| ())?;
+        let result = f(&mut *lock);
+        Ok(result)
     }
 }
