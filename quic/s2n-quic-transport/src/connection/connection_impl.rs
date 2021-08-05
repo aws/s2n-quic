@@ -704,7 +704,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             (&self, &shared_state).for_each_timer(|timer| {
                 assert!(
                     !timer.is_expired(timestamp),
-                    "timer has not been reset on timeout"
+                    "timer has not been reset on timeout; now: {}, timer: {:?}",
+                    timestamp,
+                    timer,
                 );
                 Ok(())
             });
