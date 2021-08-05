@@ -624,7 +624,7 @@ impl Manager {
             let lost_send_time = now.checked_sub(time_threshold);
 
             let time_threshold_exceeded = lost_send_time.map_or(false, |lost_send_time| {
-                unacked_sent_info.time_sent <= lost_send_time
+                unacked_sent_info.time_sent.has_elapsed(lost_send_time)
             });
 
             let packet_number_threshold_exceeded = largest_acked_packet
@@ -692,6 +692,13 @@ impl Manager {
                 //# be declared lost, then a timer SHOULD be set for the remaining time.
                 self.loss_timer
                     .set(unacked_sent_info.time_sent + time_threshold);
+                debug_assert!(
+                    !self.loss_timer.is_expired(now),
+                    "loss timer was not armed in the future; now: {}, threshold: {:?}\nmanager: {:#?}",
+                    now,
+                    time_threshold,
+                    self
+                );
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
                 //# The PTO timer MUST NOT be set if a timer is set for time threshold
@@ -3395,6 +3402,39 @@ mod test {
         //# least the local timer granularity, as indicated by the kGranularity
         //# constant.
         assert!(Manager::calculate_loss_time_threshold(&rtt_estimator) >= K_GRANULARITY);
+    }
+
+    #[test]
+    fn packet_declared_lost_less_than_1_ms_from_loss_threshold() {
+        let space = PacketNumberSpace::ApplicationData;
+        let mut manager = Manager::new(space, Duration::from_millis(100));
+        let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+        let mut context = MockContext::new(&mut path_manager);
+        let sent_time = s2n_quic_platform::time::now() + Duration::from_secs(10);
+        let outcome = transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: 100,
+            packet_number: space.new_packet_number(VarInt::from_u8(1)),
+        };
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(1)),
+            outcome,
+            sent_time,
+            &mut context,
+        );
+        manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(2)));
+
+        let loss_time_threshold =
+            Manager::calculate_loss_time_threshold(&context.path().rtt_estimator);
+
+        manager.detect_and_remove_lost_packets(
+            sent_time + loss_time_threshold - Duration::from_micros(999),
+            &mut context,
+            &mut Publisher,
+        );
+
+        assert_eq!(1, context.on_packet_loss_count);
     }
 
     fn helper_generate_multi_path_manager(
