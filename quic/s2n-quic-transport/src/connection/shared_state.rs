@@ -244,6 +244,7 @@ impl<EndpointConfig: endpoint::Config> ConnectionApiProvider
 }
 
 impl<Config: endpoint::Config> timer::Provider for SharedConnectionState<Config> {
+    #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
         self.space_manager.timers(query)?;
 

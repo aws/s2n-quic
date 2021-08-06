@@ -139,6 +139,7 @@ impl Challenge {
 }
 
 impl timer::Provider for Challenge {
+    #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
         self.abandon_timer.timers(query)?;
 

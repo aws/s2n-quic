@@ -384,6 +384,7 @@ impl<CC: CongestionController> Path<CC> {
 }
 
 impl<CC: CongestionController> timer::Provider for Path<CC> {
+    #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
         self.challenge.timers(query)?;
         self.mtu_controller.timers(query)?;

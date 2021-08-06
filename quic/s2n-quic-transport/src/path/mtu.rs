@@ -389,6 +389,7 @@ impl Controller {
 }
 
 impl timer::Provider for Controller {
+    #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
         self.pmtu_raise_timer.timers(query)?;
 

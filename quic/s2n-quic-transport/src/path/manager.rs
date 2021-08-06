@@ -576,6 +576,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 }
 
 impl<CCE: congestion_controller::Endpoint> timer::Provider for Manager<CCE> {
+    #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
         for path in self.paths.iter() {
             path.timers(query)?;

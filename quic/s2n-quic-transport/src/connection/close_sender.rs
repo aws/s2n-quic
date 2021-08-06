@@ -73,6 +73,7 @@ impl CloseSender {
 }
 
 impl timer::Provider for CloseSender {
+    #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
         self.state.timers(query)?;
 

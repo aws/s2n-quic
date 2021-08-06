@@ -367,6 +367,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 }
 
 impl<Config: endpoint::Config> timer::Provider for PacketSpaceManager<Config> {
+    #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
         if let Some(space) = self.application.as_ref() {
             space.timers(query)?;
