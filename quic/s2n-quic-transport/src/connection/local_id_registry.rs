@@ -549,8 +549,9 @@ impl LocalIdRegistry {
     /// Validate that the current expiration timer is based on the next status change time
     fn check_timer_integrity(&self) {
         if cfg!(debug_assertions) {
+            use timer::Provider;
             assert_eq!(
-                self.expiration_timer.iter().next(),
+                self.expiration_timer.next_expiration(),
                 self.next_status_change_time()
             );
         }
@@ -1367,7 +1368,7 @@ mod tests {
         assert_eq!(1, reg1.armed_timer_count());
         assert_eq!(
             Some(now + EXPIRATION_BUFFER),
-            reg1.expiration_timer.iter().next()
+            reg1.expiration_timer.next_expiration()
         );
 
         reg1.get_connection_id_info_mut(&ext_id_2)
@@ -1408,7 +1409,7 @@ mod tests {
         // Handshake connection ID has an expiration set based on now
         assert_eq!(
             Some(now + EXPIRATION_BUFFER),
-            reg1.expiration_timer.iter().next()
+            reg1.expiration_timer.next_expiration()
         );
         assert!(reg1.get_connection_id_info(&ext_id_1).is_some());
 
@@ -1431,7 +1432,7 @@ mod tests {
         // Expiration timer is set based on the retirement time of ID 2
         assert_eq!(
             Some(expiration_2 - EXPIRATION_BUFFER),
-            reg1.expiration_timer.iter().next()
+            reg1.expiration_timer.next_expiration()
         );
 
         reg1.on_timeout(expiration_2 - EXPIRATION_BUFFER);
@@ -1442,7 +1443,7 @@ mod tests {
             reg1.get_connection_id_info(&ext_id_2).unwrap().status
         );
         // Expiration timer is set to the expiration time of ID 2
-        assert_eq!(Some(expiration_2), reg1.expiration_timer.iter().next());
+        assert_eq!(Some(expiration_2), reg1.expiration_timer.next_expiration());
 
         reg1.on_timeout(expiration_2);
 
@@ -1451,7 +1452,7 @@ mod tests {
         // Expiration timer is set to the retirement time of ID 3
         assert_eq!(
             Some(expiration_3 - EXPIRATION_BUFFER),
-            reg1.expiration_timer.iter().next()
+            reg1.expiration_timer.next_expiration()
         );
     }
 

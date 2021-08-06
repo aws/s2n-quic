@@ -760,7 +760,7 @@ mod test {
         assert_eq!(State::SearchComplete, controller.state);
         assert_eq!(
             Some(now + BLACK_HOLE_COOL_OFF_DURATION),
-            controller.pmtu_raise_timer.iter().next()
+            controller.pmtu_raise_timer.next_expiration()
         );
     }
 

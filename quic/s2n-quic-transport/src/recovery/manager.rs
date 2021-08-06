@@ -1109,7 +1109,7 @@ mod test {
 
         assert!(manager.pto.timer.is_armed());
         assert_eq!(
-            manager.pto.timer.iter().next(),
+            manager.pto.timer.next_expiration(),
             Some(now + Duration::from_millis(999))
         );
     }
@@ -1190,7 +1190,7 @@ mod test {
                 }
 
                 assert!(manager.pto.timer.is_armed());
-                assert_eq!(Some(expected_pto), manager.pto.timer.iter().next());
+                assert_eq!(Some(expected_pto), manager.pto.timer.next_expiration());
 
                 expected_bytes_in_flight += outcome.bytes_sent;
             } else {
@@ -1302,7 +1302,7 @@ mod test {
         //# packet is sent
         let expected_pto = time_sent + expected_pto_duration;
         assert!(manager.pto.timer.is_armed());
-        assert_eq!(Some(expected_pto), manager.pto.timer.iter().next());
+        assert_eq!(Some(expected_pto), manager.pto.timer.next_expiration());
 
         // Setup 2:
         // send 2nd packet on path 2nd path
@@ -1340,7 +1340,7 @@ mod test {
         //# packet is sent
         let expected_pto = time_sent + expected_pto_duration;
         assert!(manager.pto.timer.is_armed());
-        assert_eq!(Some(expected_pto), manager.pto.timer.iter().next());
+        assert_eq!(Some(expected_pto), manager.pto.timer.next_expiration());
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.7
@@ -2193,7 +2193,10 @@ mod test {
         //# If packets sent prior to the largest acknowledged packet cannot yet
         //# be declared lost, then a timer SHOULD be set for the remaining time.
         assert!(manager.loss_timer.is_armed());
-        assert_eq!(Some(expected_loss_time), manager.loss_timer.iter().next());
+        assert_eq!(
+            Some(expected_loss_time),
+            manager.loss_timer.next_expiration()
+        );
     }
 
     #[test]
@@ -2949,7 +2952,7 @@ mod test {
         // PTO = (2000 + max(4*1000, 1) + 10) * 2 = 12020
         assert!(manager.pto.timer.is_armed());
         assert_eq!(
-            manager.pto.timer.iter().next().unwrap(),
+            manager.pto.timer.next_expiration().unwrap(),
             expected_pto_base_timestamp + Duration::from_millis(12020)
         );
     }
@@ -3020,7 +3023,7 @@ mod test {
             .update(now, path.rtt_estimator.pto_period(path.pto_backoff, space));
 
         assert!(manager.pto.timer.is_armed());
-        assert!(manager.pto.timer.iter().next().unwrap() >= now + K_GRANULARITY);
+        assert!(manager.pto.timer.next_expiration().unwrap() >= now + K_GRANULARITY);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
