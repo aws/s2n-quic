@@ -611,7 +611,7 @@ mod tests {
         },
         time::{Clock, Timestamp},
     };
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, net::SocketAddr};
 
     struct TestEndpoint {
         addr: SocketAddress,
@@ -621,7 +621,7 @@ mod tests {
 
     impl TestEndpoint {
         fn new(addr: SocketAddress) -> Self {
-            let messages = (0..1000).map(|id| (id, None)).collect();
+            let messages = (1000..2000).map(|id| (id, None)).collect();
             Self {
                 addr,
                 messages,
@@ -643,8 +643,10 @@ mod tests {
                         continue
                     }
                     _ => {
-                        let payload = id.to_be_bytes();
-                        let msg = (self.addr, payload);
+                        let payload1 = id.to_be_bytes();
+                        let mut payload = [0; 1024];
+                        payload[..4].copy_from_slice(&payload1[..]);
+                        let msg = (self.addr, Vec::from(&payload[..]));
                         if queue.push(msg).is_ok() {
                             *tx_time = Some(now);
                         } else {
@@ -663,10 +665,10 @@ mod tests {
             let len = entries.len();
             for entry in entries {
                 let payload: &[u8] = entry.payload_mut();
-                if payload.len() != 4 {
+                if payload.len() != 1024 {
                     panic!("invalid payload {:?}", payload);
                 }
-                let id = payload.try_into().unwrap();
+                let id = payload[..4].try_into().unwrap();
                 let id = u32::from_be_bytes(id);
                 self.messages.remove(&id);
             }
@@ -703,7 +705,13 @@ mod tests {
     ) -> io::Result<()> {
         let rx_socket = bind(receive_addr)?;
         let rx_socket: std::net::UdpSocket = rx_socket.into();
-        let addr = rx_socket.local_addr()?;
+        let mut addr = rx_socket.local_addr()?;
+
+        if let std::net::IpAddr::V6(v6) = addr.ip() {
+            if let Some(a) = v6.to_ipv4() {
+                addr = SocketAddr::new(std::net::IpAddr::V4(a), addr.port());
+            }
+        }
 
         let mut io_builder = Io::builder().with_rx_socket(rx_socket)?;
 

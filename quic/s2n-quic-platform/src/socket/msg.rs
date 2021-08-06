@@ -85,8 +85,9 @@ impl<B: Buffer> Queue<B> {
                     }
                 }
                 Err(err) => {
-                    entries.finish(count);
-                    return Err(err);
+                    panic!("Got transmit error {:?} when trying to send {:?}", err, entry);
+                    // entries.finish(count);
+                    // return Err(err);
                 }
             }
         }
