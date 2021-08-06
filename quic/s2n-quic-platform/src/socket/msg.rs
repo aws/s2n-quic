@@ -62,12 +62,12 @@ impl<B: Buffer> Queue<B> {
                 Err(err) if count > 0 && err.kind() == io::ErrorKind::WouldBlock => {
                     break;
                 }
+                Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+                    entries.finish(count);
+                    return Err(err);
+                }
                 Err(err) if err.kind() == io::ErrorKind::Interrupted => {
                     break;
-                }
-                Err(err) if err.kind() == io::ErrorKind::PermissionDenied => {
-                    // just drop the packets on permission errors - most likely a firewall issue
-                    count += 1;
                 }
                 // check to see if we need to disable GSO
                 #[cfg(target_os = "linux")]
@@ -84,9 +84,15 @@ impl<B: Buffer> Queue<B> {
                         return Err(err);
                     }
                 }
-                Err(err) => {
-                    entries.finish(count);
-                    return Err(err);
+                Err(_) => {
+                    // Ignore other transmission errors
+                    // - Permissions issues are observed in case of unsuitable iptable
+                    //   rules. Those can be changed while the application is running.
+                    // - Network unreachable errors can be observed for certain
+                    //   destination addresses.
+                    //
+                    // TODO: This error should potentially be logged - but in a debounced fashion
+                    count += 1;
                 }
             }
         }
