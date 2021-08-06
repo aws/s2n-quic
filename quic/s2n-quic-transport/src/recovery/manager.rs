@@ -620,12 +620,12 @@ impl Manager {
             let path = &context.path_by_id(unacked_path_id);
             // Calculate how long we wait until a packet is declared lost
             let time_threshold = Self::calculate_loss_time_threshold(&path.rtt_estimator);
-            // Packets sent before this time are deemed lost.
-            let lost_send_time = now.checked_sub(time_threshold);
+            // Calculate at what time this particular packet is considered lost based on the
+            // current path `time_threshold`
+            let packet_lost_time = unacked_sent_info.time_sent + time_threshold;
 
-            let time_threshold_exceeded = lost_send_time.map_or(false, |lost_send_time| {
-                unacked_sent_info.time_sent.has_elapsed(lost_send_time)
-            });
+            // If the `packet_lost_time` exceeds the current time, it's lost
+            let time_threshold_exceeded = packet_lost_time.has_elapsed(now);
 
             let packet_number_threshold_exceeded = largest_acked_packet
                 .checked_distance(unacked_packet_number)
@@ -690,8 +690,7 @@ impl Manager {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
                 //# If packets sent prior to the largest acknowledged packet cannot yet
                 //# be declared lost, then a timer SHOULD be set for the remaining time.
-                self.loss_timer
-                    .set(unacked_sent_info.time_sent + time_threshold);
+                self.loss_timer.set(packet_lost_time);
                 debug_assert!(
                     !self.loss_timer.is_expired(now),
                     "loss timer was not armed in the future; now: {}, threshold: {:?}\nmanager: {:#?}",
