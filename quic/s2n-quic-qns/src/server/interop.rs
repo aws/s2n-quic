@@ -21,7 +21,7 @@ use std::{
 };
 use structopt::StructOpt;
 use tokio::spawn;
-use tracing::info;
+use tracing::debug;
 
 #[derive(Debug, StructOpt)]
 pub struct Interop {
