@@ -247,7 +247,7 @@ pub struct EventSubscriber;
 
 impl Subscriber for EventSubscriber {
     fn on_active_path_updated(&mut self, meta: &common::Meta, event: &events::ActivePathUpdated) {
-        info!(group_id = meta.group_id, "{:?}", event);
+        debug!(group_id = meta.group_id, "{:?}", event);
     }
 }
 
