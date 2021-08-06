@@ -3,6 +3,7 @@
 
 use crate::packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace};
 use alloc::{boxed::Box, vec::Vec};
+use core::fmt;
 
 /// A data structure for tracking packets that are pending acknowledgement
 ///
@@ -39,7 +40,7 @@ use alloc::{boxed::Box, vec::Vec};
 /// start = PN(1)
 /// end = PN(3)
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Map<V> {
     /// The stored values for each packet number
     values: Box<[Option<V>]>,
@@ -51,6 +52,12 @@ pub struct Map<V> {
     ///
     /// This field will be set to the `packets.len()` if the map is empty
     index: usize,
+}
+
+impl<V: fmt::Debug> fmt::Debug for Map<V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map().entries(self.iter()).finish()
+    }
 }
 
 /// Start with 8 sent packets at a time

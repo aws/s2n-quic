@@ -1,24 +1,24 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::{
+    connection::{
+        connection_id_mapper::ConnectionIdMapperState, local_id_registry::LocalIdStatus::*,
+        InternalConnectionId,
+    },
+    contexts::WriteContext,
+    timer::VirtualTimer,
+    transmission,
+};
 use alloc::rc::Rc;
 use core::{cell::RefCell, convert::TryInto};
-use smallvec::SmallVec;
-
 use s2n_quic_core::{
     ack, connection, frame,
     packet::number::PacketNumber,
     stateless_reset,
-    time::{Duration, Timer, Timestamp},
+    time::{timer, Duration, Timer, Timestamp},
 };
-
-use crate::{
-    connection::{connection_id_mapper::ConnectionIdMapperState, InternalConnectionId},
-    contexts::WriteContext,
-    transmission,
-};
-
-use crate::{connection::local_id_registry::LocalIdStatus::*, timer::VirtualTimer};
+use smallvec::SmallVec;
 
 /// The amount of ConnectionIds we can register without dynamic memory allocation
 const NR_STATIC_REGISTRABLE_IDS: usize = 5;
@@ -105,9 +105,9 @@ impl LocalIdInfo {
     // Returns true if the connection ID should be moved to PendingRemoval
     fn is_retire_ready(&self, timestamp: Timestamp) -> bool {
         !self.is_retired()
-            && self
-                .retirement_time
-                .map_or(false, |retirement_time| retirement_time <= timestamp)
+            && self.retirement_time.map_or(false, |retirement_time| {
+                retirement_time.has_elapsed(timestamp)
+            })
     }
 
     // Returns true if the connection ID has been retired and is pending removal
@@ -121,7 +121,7 @@ impl LocalIdInfo {
     // Returns true if the connection ID should no longer be used
     fn is_expired(&self, timestamp: Timestamp) -> bool {
         self.removal_time()
-            .map_or(false, |removal_time| removal_time <= timestamp)
+            .map_or(false, |removal_time| removal_time.has_elapsed(timestamp))
     }
 
     // The time this connection ID should be removed
@@ -444,12 +444,6 @@ impl LocalIdRegistry {
         }
     }
 
-    /// Gets the timers for the registration
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.check_timer_integrity();
-        self.expiration_timer.iter()
-    }
-
     /// Handles timeouts on the registration
     ///
     /// `timestamp` passes the current time.
@@ -555,8 +549,9 @@ impl LocalIdRegistry {
     /// Validate that the current expiration timer is based on the next status change time
     fn check_timer_integrity(&self) {
         if cfg!(debug_assertions) {
+            use timer::Provider;
             assert_eq!(
-                self.expiration_timer.iter().next(),
+                self.expiration_timer.next_expiration(),
                 self.next_status_change_time()
             );
         }
@@ -610,6 +605,16 @@ impl LocalIdRegistry {
     }
 }
 
+impl timer::Provider for LocalIdRegistry {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.check_timer_integrity();
+        self.expiration_timer.timers(query)?;
+
+        Ok(())
+    }
+}
+
 impl transmission::interest::Provider for LocalIdRegistry {
     #[inline]
     fn transmission_interest<Q: transmission::interest::Query>(
@@ -643,6 +648,7 @@ mod tests {
         packet::number::PacketNumberRange,
         random,
         stateless_reset::token::testing::*,
+        time::timer::Provider as _,
         varint::VarInt,
     };
 
@@ -1340,7 +1346,7 @@ mod tests {
         reg1.set_active_connection_id_limit(3);
 
         // No timer set for the handshake connection ID
-        assert_eq!(0, reg1.timers().count());
+        assert_eq!(0, reg1.armed_timer_count());
 
         let now = s2n_quic_platform::time::now();
         let expiration = now + Duration::from_secs(60);
@@ -1350,8 +1356,8 @@ mod tests {
             .is_ok());
 
         // Expiration timer is armed based on retire time
-        assert_eq!(1, reg1.timers().count());
-        assert_eq!(Some(expiration - EXPIRATION_BUFFER), reg1.timers().next());
+        assert_eq!(1, reg1.armed_timer_count());
+        assert_eq!(Some(expiration - EXPIRATION_BUFFER), reg1.next_expiration());
 
         reg1.get_connection_id_info_mut(&ext_id_1)
             .unwrap()
@@ -1359,10 +1365,10 @@ mod tests {
         reg1.update_timers();
 
         // Expiration timer is armed based on removal time
-        assert_eq!(1, reg1.timers().count());
+        assert_eq!(1, reg1.armed_timer_count());
         assert_eq!(
             Some(now + EXPIRATION_BUFFER),
-            reg1.expiration_timer.iter().next()
+            reg1.expiration_timer.next_expiration()
         );
 
         reg1.get_connection_id_info_mut(&ext_id_2)
@@ -1371,14 +1377,14 @@ mod tests {
         reg1.update_timers();
 
         // Expiration timer is armed based on removal time
-        assert_eq!(1, reg1.timers().count());
-        assert_eq!(Some(now + EXPIRATION_BUFFER), reg1.timers().next());
+        assert_eq!(1, reg1.armed_timer_count());
+        assert_eq!(Some(now + EXPIRATION_BUFFER), reg1.next_expiration());
 
         // Unregister CIDs 1 and 2 (sequence numbers 0 and 1)
         reg1.unregister_expired_ids(now + Duration::from_secs(120));
 
         // No more timers are set
-        assert_eq!(0, reg1.timers().count());
+        assert_eq!(0, reg1.armed_timer_count());
     }
 
     #[test]
@@ -1393,7 +1399,7 @@ mod tests {
         let now = s2n_quic_platform::time::now();
 
         // No timer set for the handshake connection ID
-        assert_eq!(0, reg1.timers().count());
+        assert_eq!(0, reg1.armed_timer_count());
 
         reg1.retire_handshake_connection_id(now);
 
@@ -1403,7 +1409,7 @@ mod tests {
         // Handshake connection ID has an expiration set based on now
         assert_eq!(
             Some(now + EXPIRATION_BUFFER),
-            reg1.expiration_timer.iter().next()
+            reg1.expiration_timer.next_expiration()
         );
         assert!(reg1.get_connection_id_info(&ext_id_1).is_some());
 
@@ -1426,7 +1432,7 @@ mod tests {
         // Expiration timer is set based on the retirement time of ID 2
         assert_eq!(
             Some(expiration_2 - EXPIRATION_BUFFER),
-            reg1.expiration_timer.iter().next()
+            reg1.expiration_timer.next_expiration()
         );
 
         reg1.on_timeout(expiration_2 - EXPIRATION_BUFFER);
@@ -1437,7 +1443,7 @@ mod tests {
             reg1.get_connection_id_info(&ext_id_2).unwrap().status
         );
         // Expiration timer is set to the expiration time of ID 2
-        assert_eq!(Some(expiration_2), reg1.expiration_timer.iter().next());
+        assert_eq!(Some(expiration_2), reg1.expiration_timer.next_expiration());
 
         reg1.on_timeout(expiration_2);
 
@@ -1446,7 +1452,7 @@ mod tests {
         // Expiration timer is set to the retirement time of ID 3
         assert_eq!(
             Some(expiration_3 - EXPIRATION_BUFFER),
-            reg1.expiration_timer.iter().next()
+            reg1.expiration_timer.next_expiration()
         );
     }
 

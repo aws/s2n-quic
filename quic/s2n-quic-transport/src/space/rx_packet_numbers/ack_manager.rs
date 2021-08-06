@@ -18,7 +18,7 @@ use s2n_quic_core::{
     frame::{Ack, Ping},
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
-    time::Timestamp,
+    time::{timer, Timestamp},
     varint::VarInt,
 };
 
@@ -289,13 +289,6 @@ impl AckManager {
         }
     }
 
-    /// Returns all of the component timers
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        // NOTE: ack_elicitation_timer is not actively polled
-
-        self.ack_delay_timer.iter()
-    }
-
     /// Called when the connection timer expired
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
         // NOTE: ack_elicitation_timer is not actively polled
@@ -318,6 +311,17 @@ impl AckManager {
             .map(|prev| now.saturating_duration_since(prev))
             .unwrap_or_default();
         self.ack_settings.encode_ack_delay(ack_delay)
+    }
+}
+
+impl timer::Provider for AckManager {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        // NOTE: ack_elicitation_timer is not actively polled
+
+        self.ack_delay_timer.timers(query)?;
+
+        Ok(())
     }
 }
 

@@ -16,7 +16,7 @@ use s2n_quic_core::{
     packet::number::PacketNumber,
     path::{IPV4_MIN_HEADER_LEN, IPV6_MIN_HEADER_LEN, UDP_HEADER_LEN},
     recovery::CongestionController,
-    time::Timestamp,
+    time::{timer, Timestamp},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -163,11 +163,6 @@ impl Controller {
         //       move directly to SearchComplete and arm the PMTU raise timer.
         //       Otherwise, start searching for a larger PMTU immediately
         self.request_new_search(None);
-    }
-
-    /// Returns all timers for the component
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.pmtu_raise_timer.iter()
     }
 
     /// Called when the connection timer expires
@@ -393,6 +388,15 @@ impl Controller {
     }
 }
 
+impl timer::Provider for Controller {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.pmtu_raise_timer.timers(query)?;
+
+        Ok(())
+    }
+}
+
 impl transmission::interest::Provider for Controller {
     #[inline]
     fn transmission_interest<Q: transmission::interest::Query>(
@@ -425,7 +429,8 @@ mod test {
     use crate::contexts::testing::{MockWriteContext, OutgoingFrameBuffer};
     use s2n_quic_core::{
         endpoint, frame::Frame, packet::number::PacketNumberSpace,
-        recovery::congestion_controller::testing::mock::CongestionController, varint::VarInt,
+        recovery::congestion_controller::testing::mock::CongestionController,
+        time::timer::Provider as _, varint::VarInt,
     };
     use s2n_quic_platform::time::now;
     use std::{convert::TryInto, net::SocketAddr};
@@ -558,7 +563,7 @@ mod test {
         assert!(controller.pmtu_raise_timer.is_armed());
         assert_eq!(
             Some(now + PMTU_RAISE_TIMER_DURATION),
-            controller.timers().next()
+            controller.next_expiration()
         );
 
         // Enough time passes that its time to try raising the PMTU again
@@ -755,7 +760,7 @@ mod test {
         assert_eq!(State::SearchComplete, controller.state);
         assert_eq!(
             Some(now + BLACK_HOLE_COOL_OFF_DURATION),
-            controller.pmtu_raise_timer.iter().next()
+            controller.pmtu_raise_timer.next_expiration()
         );
     }
 

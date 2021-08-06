@@ -17,6 +17,7 @@ use core::task::{Context, Poll};
 use s2n_quic_core::{
     application,
     stream::{ops, StreamId, StreamType},
+    time::timer,
     transport,
 };
 use std::sync::{Mutex, MutexGuard};
@@ -237,6 +238,15 @@ impl<EndpointConfig: endpoint::Config> ConnectionApiProvider
 
         // Notify the connection it needs to send a packet
         shared_state.wakeup_handle.wakeup();
+
+        Ok(())
+    }
+}
+
+impl<Config: endpoint::Config> timer::Provider for SharedConnectionState<Config> {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.space_manager.timers(query)?;
 
         Ok(())
     }

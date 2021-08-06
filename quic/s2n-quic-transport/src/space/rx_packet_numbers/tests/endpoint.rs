@@ -12,7 +12,7 @@ use s2n_quic_core::{
     frame::{ack_elicitation::AckElicitation, Ack, Frame, Ping},
     inet::DatagramInfo,
     packet::number::PacketNumberSpace,
-    time::Timestamp,
+    time::{timer::Provider as _, Timestamp},
 };
 
 #[derive(Clone, Debug, TypeGenerator)]
@@ -88,7 +88,7 @@ impl Endpoint {
     }
 
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.ack_manager.timers()
+        self.ack_manager.next_expiration().into_iter()
     }
 
     fn transmit(&mut self, ack_elicitation: AckElicitation) -> Option<Packet> {

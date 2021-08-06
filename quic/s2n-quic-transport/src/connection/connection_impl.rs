@@ -37,7 +37,7 @@ use s2n_quic_core::{
     },
     path::MaxMtu,
     random, stateless_reset,
-    time::Timestamp,
+    time::{timer, Timestamp},
 };
 
 /// Possible states for handing over a connection from the endpoint to the
@@ -653,7 +653,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     /// `timestamp` passes the current time.
     fn on_timeout<Pub: event::Publisher>(
         &mut self,
-        shared_state: Option<&mut SharedConnectionState<Self::Config>>,
+        mut shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
         publisher: &mut Pub,
@@ -677,7 +677,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         self.path_manager.on_timeout(timestamp)?;
         self.local_id_registry.on_timeout(timestamp);
 
-        if let Some(shared_state) = shared_state {
+        if let Some(shared_state) = shared_state.as_mut() {
             shared_state.space_manager.on_timeout(
                 &mut self.local_id_registry,
                 &mut self.path_manager,
@@ -695,6 +695,26 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             return Err(connection::Error::IdleTimerExpired);
         }
 
+        // TODO: enable this check once all of the component timers are fixed
+        /*
+        if cfg!(debug_assertions) {
+            use timer::Provider;
+
+            // make sure that all of the components have been updated and no longer expire
+            // with the current timestamp
+
+            (&self, &shared_state).for_each_timer(|timer| {
+                assert!(
+                    !timer.is_expired(timestamp),
+                    "timer has not been reset on timeout; now: {}, timer: {:?}",
+                    timestamp,
+                    timer,
+                );
+                Ok(())
+            });
+        }
+        */
+
         Ok(())
     }
 
@@ -705,19 +725,15 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         &mut self,
         shared_state: Option<&mut SharedConnectionState<Self::Config>>,
     ) {
+        use timer::Provider;
+
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# When ack-eliciting packets in multiple packet number spaces are in
         //# flight, the timer MUST be set to the earlier value of the Initial and
         //# Handshake packet number spaces.
 
         // find the earliest armed timer
-        let earliest = core::iter::empty()
-            .chain(self.timers.iter())
-            .chain(self.close_sender.timers())
-            .chain(shared_state.iter().flat_map(|s| s.space_manager.timers()))
-            .chain(self.local_id_registry.timers())
-            .chain(self.path_manager.timers())
-            .min();
+        let earliest = (&self, &shared_state).next_expiration();
 
         self.timer_entry.update(earliest);
     }
@@ -1191,6 +1207,24 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         }
 
         interests
+    }
+}
+
+impl<Config: endpoint::Config> timer::Provider for ConnectionImpl<Config> {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //# When ack-eliciting packets in multiple packet number spaces are in
+        //# flight, the timer MUST be set to the earlier value of the Initial and
+        //# Handshake packet number spaces.
+
+        // find the earliest armed timer
+        self.timers.timers(query)?;
+        self.close_sender.timers(query)?;
+        self.local_id_registry.timers(query)?;
+        self.path_manager.timers(query)?;
+
+        Ok(())
     }
 }
 

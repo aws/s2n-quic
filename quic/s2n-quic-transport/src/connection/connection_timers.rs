@@ -3,11 +3,8 @@
 
 //! Manages all timers inside a Connection
 
-use crate::{
-    connection::InternalConnectionId,
-    timer::{TimerEntry, VirtualTimer},
-};
-use s2n_quic_core::time::Timestamp;
+use crate::{connection::InternalConnectionId, timer::TimerEntry};
+use s2n_quic_core::time::{timer, Timer};
 
 /// Holds a timer entry for a single connection
 ///
@@ -19,7 +16,7 @@ pub type ConnectionTimerEntry = TimerEntry<InternalConnectionId>;
 #[derive(Debug, Default)]
 pub struct ConnectionTimers {
     /// The timer which is used to check peer idle times
-    pub peer_idle_timer: VirtualTimer,
+    pub peer_idle_timer: Timer,
     /// Stores if sending an ack-eliciting packet will rearm the idle timer
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.1
     //# An endpoint also restarts its
@@ -29,23 +26,26 @@ pub struct ConnectionTimers {
     pub reset_peer_idle_timer_on_send: bool,
     /// The timer which is used to send packets to the peer before the idle
     /// timeout expires
-    pub local_idle_timer: VirtualTimer,
+    pub local_idle_timer: Timer,
     /// The timer for removing an initial id mapping
-    pub initial_id_expiration_timer: VirtualTimer,
+    pub initial_id_expiration_timer: Timer,
 }
 
 impl ConnectionTimers {
-    /// Returns an iterator of the currently armed timer timestamps
-    pub fn iter(&self) -> impl Iterator<Item = Timestamp> {
-        core::iter::empty()
-            .chain(self.local_idle_timer.iter())
-            .chain(self.peer_idle_timer.iter())
-            .chain(self.initial_id_expiration_timer.iter())
-    }
-
     pub fn cancel(&mut self) {
         self.peer_idle_timer.cancel();
         self.local_idle_timer.cancel();
         self.initial_id_expiration_timer.cancel();
+    }
+}
+
+impl timer::Provider for ConnectionTimers {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.local_idle_timer.timers(query)?;
+        self.peer_idle_timer.timers(query)?;
+        self.initial_id_expiration_timer.timers(query)?;
+
+        Ok(())
     }
 }

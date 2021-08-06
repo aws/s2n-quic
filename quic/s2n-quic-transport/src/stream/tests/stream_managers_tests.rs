@@ -40,7 +40,10 @@ use s2n_quic_core::{
     },
     packet::number::{PacketNumberRange, PacketNumberSpace},
     stream::{ops, StreamId, StreamType},
-    time::Timestamp,
+    time::{
+        timer::{self, Provider as _},
+        Timestamp,
+    },
     transport::{
         parameters::{InitialFlowControlLimits, InitialStreamLimits, MaxIdleTimeout},
         Error as TransportError,
@@ -248,10 +251,6 @@ impl StreamTrait for MockStream {
         self.update_blocked_sync_period_count += 1;
     }
 
-    fn timer(&self) -> Option<Timestamp> {
-        None
-    }
-
     fn on_timeout(&mut self, _now: Timestamp) {
         self.on_timeout_count += 1;
     }
@@ -335,6 +334,12 @@ impl StreamTrait for MockStream {
         }
 
         Ok(response)
+    }
+}
+
+impl timer::Provider for MockStream {
+    fn timers<Q: timer::Query>(&self, _query: &mut Q) -> timer::Result {
+        Ok(())
     }
 }
 
@@ -872,7 +877,7 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
         let expected_next_stream_blocked_time = write_context.current_time + DEFAULT_SYNC_PERIOD;
         assert_eq!(
             Some(expected_next_stream_blocked_time),
-            manager.timers().next()
+            manager.next_expiration()
         );
 
         manager.on_timeout(expected_next_stream_blocked_time);
@@ -1007,7 +1012,7 @@ where
     let expected_next_blocked_time = write_context.current_time
         + MaxIdleTimeout::RECOMMENDED.as_duration().unwrap()
         - rtt_estimator.smoothed_rtt();
-    assert_eq!(Some(expected_next_blocked_time), manager.timers().next());
+    assert_eq!(Some(expected_next_blocked_time), manager.next_expiration());
 }
 
 fn assert_blocked_frame_based_on_pto<F>(mut block_func: F)
@@ -1047,7 +1052,7 @@ where
 
     assert_eq!(
         Some(write_context.current_time + expected_blocked_sync_period),
-        manager.timers().next()
+        manager.next_expiration()
     );
 }
 
@@ -1143,7 +1148,7 @@ fn send_data_blocked_frame_when_blocked_by_connection_flow_limits() {
     let expected_next_data_blocked_time = write_context.current_time + DEFAULT_SYNC_PERIOD;
     assert_eq!(
         Some(expected_next_data_blocked_time),
-        manager.timers().next()
+        manager.next_expiration()
     );
 
     manager.on_timeout(expected_next_data_blocked_time);

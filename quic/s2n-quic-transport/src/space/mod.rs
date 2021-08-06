@@ -25,7 +25,7 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
     random,
-    time::Timestamp,
+    time::{timer, Timestamp},
     transport,
 };
 
@@ -182,16 +182,6 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         }
 
         Ok(())
-    }
-
-    /// Returns all of the component timers
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
-        // the spaces are `Option`s and can be iterated over, either returning
-        // the value or `None`.
-        core::iter::empty()
-            .chain(self.initial.iter().flat_map(|space| space.timers()))
-            .chain(self.handshake.iter().flat_map(|space| space.timers()))
-            .chain(self.application.iter().flat_map(|space| space.timers()))
     }
 
     /// Called when the connection timer expired
@@ -373,6 +363,22 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
             buffer
         })
+    }
+}
+
+impl<Config: endpoint::Config> timer::Provider for PacketSpaceManager<Config> {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        if let Some(space) = self.application.as_ref() {
+            space.timers(query)?;
+        }
+        if let Some(space) = self.handshake.as_ref() {
+            space.timers(query)?;
+        }
+        if let Some(space) = self.initial.as_ref() {
+            space.timers(query)?;
+        }
+        Ok(())
     }
 }
 

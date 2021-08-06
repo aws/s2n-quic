@@ -27,7 +27,7 @@ use s2n_quic_core::{
     frame::{MaxStreamData, ResetStream, StopSending, StreamDataBlocked},
     packet::number::PacketNumber,
     stream::{ops, StreamId},
-    time::Timestamp,
+    time::{timer, Timestamp},
     transport,
     varint::VarInt,
 };
@@ -324,14 +324,17 @@ impl StreamFlowController {
         }
     }
 
-    /// Returns all timers for the component
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.stream_data_blocked_sync.timers()
-    }
-
     /// Called when the connection timer expires
     pub fn on_timeout(&mut self, now: Timestamp) {
         self.stream_data_blocked_sync.on_timeout(now)
+    }
+}
+
+impl timer::Provider for StreamFlowController {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.stream_data_blocked_sync.timers(query)?;
+        Ok(())
     }
 }
 
@@ -674,11 +677,6 @@ impl SendStream {
             .update_blocked_sync_period(blocked_sync_period)
     }
 
-    /// Returns all timers for the component
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.data_sender.flow_controller().timers()
-    }
-
     /// Called when the connection timer expires
     pub fn on_timeout(&mut self, now: Timestamp) {
         self.data_sender.flow_controller_mut().on_timeout(now)
@@ -979,6 +977,14 @@ impl SendStream {
         };
 
         InitResetResult::ResetInitiated
+    }
+}
+
+impl timer::Provider for SendStream {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.data_sender.flow_controller().timers(query)?;
+        Ok(())
     }
 }
 

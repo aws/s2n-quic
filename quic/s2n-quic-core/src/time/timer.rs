@@ -57,22 +57,131 @@ impl Timer {
             Poll::Pending
         }
     }
+}
 
-    /// Iterates over the contained timers
+/// Returned when a `Query` wants to end a timer query
+#[derive(Clone, Copy, Debug, Default)]
+pub struct QueryBreak;
+
+/// The return type of a `timers` call
+pub type Result<T = (), E = QueryBreak> = core::result::Result<T, E>;
+
+/// A trait for a components that owns at least one timer
+pub trait Provider {
+    /// Notifies the query of any timers owned by the provider
+    ///
+    /// The provider should also delegate to subcomponents that own timers as well.
+    fn timers<Q: Query>(&self, query: &mut Q) -> Result;
+
+    /// Returns the next `Timestamp` at which the earliest timer is armed in the provider
     #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = Timestamp> {
-        Iter(self.expiration)
+    fn next_expiration(&self) -> Option<Timestamp> {
+        let mut timeout: Option<Timestamp> = None;
+        let _ = self.timers(&mut timeout);
+        timeout
+    }
+
+    /// Counts the number of armed timers in the provider
+    #[inline]
+    fn armed_timer_count(&self) -> usize {
+        let mut count = ArmedCount::default();
+        let _ = self.timers(&mut count);
+        count.0
+    }
+
+    /// Iterates over each timer in the provider and calls the provided function
+    #[inline]
+    fn for_each_timer<F: FnMut(&Timer) -> Result>(&self, f: F) {
+        let mut for_each = ForEach(f);
+        let _ = self.timers(&mut for_each);
     }
 }
 
-pub struct Iter(Option<Timestamp>);
-
-impl Iterator for Iter {
-    type Item = Timestamp;
-
+impl Provider for Timer {
     #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.take()
+    fn timers<Q: Query>(&self, query: &mut Q) -> Result {
+        query.on_timer(self)
+    }
+}
+
+impl<T: Provider> Provider for &T {
+    #[inline]
+    fn timers<Q: Query>(&self, query: &mut Q) -> Result {
+        (**self).timers(query)
+    }
+}
+
+impl<T: Provider> Provider for &mut T {
+    #[inline]
+    fn timers<Q: Query>(&self, query: &mut Q) -> Result {
+        (**self).timers(query)
+    }
+}
+
+/// Implement Provider for a 2-element tuple to make it easy to do joins
+impl<A: Provider, B: Provider> Provider for (A, B) {
+    #[inline]
+    fn timers<Q: Query>(&self, query: &mut Q) -> Result {
+        self.0.timers(query)?;
+        self.1.timers(query)?;
+        Ok(())
+    }
+}
+
+impl<T: Provider> Provider for Option<T> {
+    #[inline]
+    fn timers<Q: Query>(&self, query: &mut Q) -> Result {
+        if let Some(t) = self.as_ref() {
+            t.timers(query)?;
+        }
+        Ok(())
+    }
+}
+
+/// A query to be executed against a provider
+pub trait Query {
+    /// Called for each timer owned by the provider
+    fn on_timer(&mut self, timer: &Timer) -> Result;
+}
+
+/// Implement Query for `Option<Timestamp>` to make it easy to get the earliest armed timestamp
+impl Query for Option<Timestamp> {
+    #[inline]
+    fn on_timer(&mut self, timer: &Timer) -> Result {
+        match (self, timer.expiration) {
+            // Take the minimum of the two timers
+            (Some(a), Some(b)) => *a = (*a).min(b),
+            // We don't have a time yet so just assign the expiration of the other
+            (a @ None, b) => *a = b,
+            // do nothing for everything else
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
+/// Counts all of the armed timers
+#[derive(Debug, Default)]
+pub struct ArmedCount(pub usize);
+
+impl Query for ArmedCount {
+    #[inline]
+    fn on_timer(&mut self, timer: &Timer) -> Result {
+        if timer.is_armed() {
+            self.0 += 1;
+        }
+        Ok(())
+    }
+}
+
+/// Iterates over each timer in the provider and calls a function
+#[derive(Debug, Default)]
+pub struct ForEach<F: FnMut(&Timer) -> Result>(F);
+
+impl<F: FnMut(&Timer) -> Result> Query for ForEach<F> {
+    #[inline]
+    fn on_timer(&mut self, timer: &Timer) -> Result {
+        (self.0)(timer)
     }
 }
 

@@ -13,7 +13,7 @@ use s2n_quic_core::{
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
     recovery::CongestionController,
-    time::{Timer, Timestamp},
+    time::{timer, Timer, Timestamp},
 };
 
 #[derive(Debug, Default)]
@@ -34,10 +34,6 @@ impl CloseSender {
             close_timer,
             limiter: Limiter::default(),
         };
-    }
-
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.state.timers()
     }
 
     pub fn on_timeout(&mut self, now: Timestamp) -> Poll<()> {
@@ -73,6 +69,15 @@ impl CloseSender {
                 "transmission should only be called when close sender has transmission interest"
             )
         }
+    }
+}
+
+impl timer::Provider for CloseSender {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.state.timers(query)?;
+
+        Ok(())
     }
 }
 
@@ -182,21 +187,6 @@ impl Default for State {
 }
 
 impl State {
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        if let Self::Closing {
-            close_timer,
-            limiter,
-            ..
-        } = self
-        {
-            Some(close_timer.iter().chain(limiter.timers()))
-        } else {
-            None
-        }
-        .into_iter()
-        .flatten()
-    }
-
     pub fn on_timeout(&mut self, now: Timestamp) -> Poll<()> {
         match self {
             Self::Idle => Poll::Pending,
@@ -225,6 +215,23 @@ impl State {
         if let Self::Closing { limiter, .. } = self {
             limiter.on_datagram_received(rtt, now);
         }
+    }
+}
+
+impl timer::Provider for State {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        if let Self::Closing {
+            close_timer,
+            limiter,
+            ..
+        } = self
+        {
+            close_timer.timers(query)?;
+            limiter.timers(query)?;
+        };
+
+        Ok(())
     }
 }
 
@@ -257,10 +264,6 @@ impl Default for Limiter {
 }
 
 impl Limiter {
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.debounce.iter()
-    }
-
     pub fn on_timeout(&mut self, now: Timestamp) -> Poll<()> {
         self.debounce.poll_expiration(now)
     }
@@ -280,6 +283,15 @@ impl Limiter {
     }
 }
 
+impl timer::Provider for Limiter {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.debounce.timers(query)?;
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,7 +299,7 @@ mod tests {
     use s2n_quic_core::{
         io::tx::Message as _,
         path::MINIMUM_MTU,
-        time::{testing::Clock, Clock as _},
+        time::{testing::Clock, timer::Provider as _, Clock as _},
     };
 
     static PACKET: Bytes = Bytes::from_static(b"CLOSE");
@@ -330,12 +342,10 @@ mod tests {
 
                 for (gap, packet_size) in events {
                     // get the next timer event
-                    let gap = sender
-                        .timers()
-                        .map(|t| t - clock.get_time())
-                        .chain(Some(*gap))
-                        .min()
-                        .unwrap();
+                    let mut gap = *gap;
+                    if let Some(expiration) = sender.next_expiration() {
+                        gap = gap.min(expiration - clock.get_time());
+                    }
                     clock.inc_by(gap);
 
                     // notify that we've received an incoming packet
