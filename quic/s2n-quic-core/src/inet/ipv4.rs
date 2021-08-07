@@ -10,7 +10,7 @@ use s2n_codec::zerocopy::U16;
 
 //= https://tools.ietf.org/rfc/rfc791.txt#2.3
 //# Addresses are fixed length of four octets (32 bits).
-pub const IPV4_LEN: usize = 32 / 8;
+const IPV4_LEN: usize = 32 / 8;
 
 define_inet_type!(
     pub struct IpV4Address {
