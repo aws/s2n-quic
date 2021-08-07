@@ -3,7 +3,7 @@
 
 //! Defines the QUIC connection ID
 
-use crate::{inet::SocketAddress, transport};
+use crate::{event, inet::SocketAddress, transport};
 use core::{
     convert::{TryFrom, TryInto},
     time::Duration,
@@ -95,6 +95,15 @@ macro_rules! id {
                 Self {
                     bytes: result,
                     len: MAX_LEN as u8,
+                }
+            }
+        }
+
+        impl AsEvent for $type {
+            fn as_event(&self) -> event::common::ConnectionId {
+                event::common::ConnectionId {
+                    bytes: self.as_bytes(),
+                    len: self.len(),
                 }
             }
         }
@@ -192,6 +201,10 @@ impl TryFrom<LocalId> for InitialId {
     fn try_from(value: LocalId) -> Result<Self, Self::Error> {
         value.as_bytes().try_into()
     }
+}
+
+pub trait AsEvent {
+    fn as_event(&self) -> event::common::ConnectionId;
 }
 
 #[derive(Debug, PartialEq)]

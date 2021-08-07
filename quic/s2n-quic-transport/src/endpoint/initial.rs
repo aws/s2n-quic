@@ -4,7 +4,7 @@
 use crate::{
     connection::{
         self,
-        id::{ConnectionInfo, Generator as _},
+        id::{AsEvent as _, ConnectionInfo, Generator as _},
         limits::{ConnectionInfo as LimitsInfo, Limiter as _},
         SynchronizedSharedConnectionState, Trait as _,
     },
@@ -260,8 +260,8 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         ));
 
         publisher.on_connection_started(event::builders::ConnectionStarted {
-            local_cid: &connection_parameters.local_connection_id,
-            remote_cid: &connection_parameters.peer_connection_id,
+            local_cid: connection_parameters.local_connection_id.as_event(),
+            remote_cid: connection_parameters.peer_connection_id.as_event(),
             remote_addr: connection_parameters.peer_socket_address.as_event(),
         });
 

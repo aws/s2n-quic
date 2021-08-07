@@ -1,11 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    connection::{LocalId, PeerId},
-    endpoint,
-    packet::number::PacketNumberSpace,
-};
+use crate::{endpoint, packet::number::PacketNumberSpace};
 use core::time::Duration;
 use paste::paste;
 
@@ -65,7 +61,11 @@ common!(
         pub version: Option<u32>,
     }
 
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
+    struct ConnectionId<'a> {
+        pub bytes: &'a [u8],
+        pub len: usize,
+    }
+
     enum SocketAddress<'a> {
         IpV4 { ip: &'a [u8], port: u16 },
         IpV6 { ip: &'a [u8], port: u16 },
@@ -203,10 +203,10 @@ events!(
         // to include this field.
         // pub packet_header: common::PacketHeader,
         pub local_addr: common::SocketAddress<'a>,
-        pub local_cid: &'a PeerId,
+        pub local_cid: common::ConnectionId<'a>,
         pub local_path_id: u64,
         pub remote_addr: common::SocketAddress<'a>,
-        pub remote_cid: &'a PeerId,
+        pub remote_cid: common::ConnectionId<'a>,
         pub remote_path_id: u64,
     }
 
@@ -239,7 +239,7 @@ events!(
         pub packet_header: common::PacketHeader,
         pub path_id: u64,
         pub local_addr: common::SocketAddress<'a>,
-        pub local_cid: &'a PeerId,
+        pub local_cid: common::ConnectionId<'a>,
         pub bytes_lost: u16,
         pub is_mtu_probe: bool,
     }
@@ -272,8 +272,8 @@ events!(
     struct ConnectionStarted<'a> {
         // TODO uncomment once we record the local SocketAddress
         // pub local_addr: common::SocketAddress<'a>,
-        pub local_cid: &'a LocalId,
+        pub local_cid: common::ConnectionId<'a>,
         pub remote_addr: common::SocketAddress<'a>,
-        pub remote_cid: &'a PeerId,
+        pub remote_cid: common::ConnectionId<'a>,
     }
 );

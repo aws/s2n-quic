@@ -10,6 +10,7 @@ use crate::{
 };
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
+    connection::id::AsEvent as _,
     endpoint, event, frame,
     inet::{ip::AsEvent as _, DatagramInfo},
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
@@ -779,7 +780,7 @@ impl Manager {
                 .into(),
                 path_id: current_path_id.as_u8() as u64,
                 local_addr: path.peer_socket_address.as_event(),
-                local_cid: &path.peer_connection_id,
+                local_cid: path.peer_connection_id.as_event(),
                 bytes_lost: sent_info.sent_bytes,
                 is_mtu_probe,
             });

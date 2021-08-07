@@ -9,7 +9,9 @@ use crate::{
     transmission,
 };
 use s2n_quic_core::{
-    ack, connection, event, frame,
+    ack, connection,
+    connection::id::AsEvent as _,
+    event, frame,
     inet::{ip::AsEvent as _, DatagramInfo, SocketAddress},
     packet::number::PacketNumberSpace,
     path::MaxMtu,
@@ -87,9 +89,9 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
         publisher.on_active_path_updated(event::builders::ActivePathUpdated {
             local_addr: self.active_path().peer_socket_address.as_event(),
-            local_cid: &self.active_path().peer_connection_id,
+            local_cid: self.active_path().peer_connection_id.as_event(),
             local_path_id: self.active as u64,
-            remote_cid: &self[path_id].peer_connection_id,
+            remote_cid: self[path_id].peer_connection_id.as_event(),
             remote_addr: self[path_id].peer_socket_address.as_event(),
             remote_path_id: new_path_idx as u64,
         });
