@@ -4,7 +4,6 @@
 use crate::{
     connection::{LocalId, PeerId},
     endpoint,
-    inet::{ipv4::IPV4_LEN, ipv6::IPV6_LEN, SocketAddress},
     packet::number::PacketNumberSpace,
 };
 use core::time::Duration;
@@ -203,10 +202,10 @@ events!(
         // TODO: many events seem to require PacketHeader. Make it more ergonomic
         // to include this field.
         // pub packet_header: common::PacketHeader,
-        pub src_addr: &'a SocketAddress,
+        pub src_addr: common::SocketAddress<'a>,
         pub src_cid: &'a PeerId,
         pub src_path_id: u64,
-        pub dst_addr: &'a SocketAddress,
+        pub dst_addr: common::SocketAddress<'a>,
         pub dst_cid: &'a PeerId,
         pub dst_path_id: u64,
     }
@@ -239,7 +238,7 @@ events!(
     struct PacketLost<'a> {
         pub packet_header: common::PacketHeader,
         pub path_id: u64,
-        pub src_addr: &'a SocketAddress,
+        pub src_addr: common::SocketAddress<'a>,
         pub src_cid: &'a PeerId,
         pub bytes_lost: u16,
         pub is_mtu_probe: bool,

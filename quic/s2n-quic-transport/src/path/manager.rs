@@ -10,7 +10,7 @@ use crate::{
 };
 use s2n_quic_core::{
     ack, connection, event, frame,
-    inet::{DatagramInfo, SocketAddress},
+    inet::{ip::AsEvent as _, DatagramInfo, SocketAddress},
     packet::number::PacketNumberSpace,
     path::MaxMtu,
     random,
@@ -86,11 +86,11 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         self[path_id].peer_connection_id = use_peer_connection_id;
 
         publisher.on_active_path_updated(event::builders::ActivePathUpdated {
-            src_addr: &self.active_path().peer_socket_address,
+            src_addr: self.active_path().peer_socket_address.as_event(),
             src_cid: &self.active_path().peer_connection_id,
             src_path_id: self.active as u64,
             dst_cid: &self[path_id].peer_connection_id,
-            dst_addr: &self[path_id].peer_socket_address,
+            dst_addr: self[path_id].peer_socket_address.as_event(),
             dst_path_id: new_path_idx as u64,
         });
 
