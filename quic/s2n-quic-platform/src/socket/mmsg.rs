@@ -83,11 +83,9 @@ impl<B: Buffer> Queue<B> {
                 entries.cancel(0);
                 Ok(0)
             }
-            Err(err) if err.kind() == io::ErrorKind::PermissionDenied => {
-                // just drop the packets on permission errors - most likely a firewall issue
-                let count = vlen as usize;
-                entries.finish(count);
-                Ok(count)
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+                entries.cancel(0);
+                Err(err)
             }
             // check to see if we need to disable GSO
             #[cfg(target_os = "linux")]
@@ -104,9 +102,22 @@ impl<B: Buffer> Queue<B> {
                     Err(err)
                 }
             }
-            Err(err) => {
-                entries.cancel(0);
-                Err(err)
+            Err(_) => {
+                // Ignore other transmission errors
+                // - Permissions issues are observed in case of unsuitable iptable
+                //   rules. Those can be changed while the application is running.
+                // - Network unreachable errors can be observed for certain
+                //   destination addresses.
+                //
+                // TODO: This error should potentially be logged - but in a debounced fashion
+
+                // According to the ERRORS section in https://man7.org/linux/man-pages/man2/sendmmsg.2.html
+                // an error will only be returned if no message could be transmitted
+                // at all. Therefore we treat the first message as having caused
+                // the error and drop it, and will retry additional messages later.
+                let count = 1;
+                entries.finish(count);
+                Ok(count)
             }
         }
     }
