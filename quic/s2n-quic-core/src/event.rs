@@ -63,7 +63,7 @@ common!(
 
     struct ConnectionId<'a> {
         pub bytes: &'a [u8],
-        pub len: usize,
+        pub len: u8,
     }
 
     enum SocketAddress<'a> {

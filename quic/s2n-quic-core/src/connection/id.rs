@@ -103,7 +103,7 @@ macro_rules! id {
             fn as_event(&self) -> event::common::ConnectionId {
                 event::common::ConnectionId {
                     bytes: self.as_bytes(),
-                    len: self.len(),
+                    len: self.len,
                 }
             }
         }
