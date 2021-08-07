@@ -202,12 +202,12 @@ events!(
         // TODO: many events seem to require PacketHeader. Make it more ergonomic
         // to include this field.
         // pub packet_header: common::PacketHeader,
-        pub src_addr: common::SocketAddress<'a>,
-        pub src_cid: &'a PeerId,
-        pub src_path_id: u64,
-        pub dst_addr: common::SocketAddress<'a>,
-        pub dst_cid: &'a PeerId,
-        pub dst_path_id: u64,
+        pub local_addr: common::SocketAddress<'a>,
+        pub local_cid: &'a PeerId,
+        pub local_path_id: u64,
+        pub remote_addr: common::SocketAddress<'a>,
+        pub remote_cid: &'a PeerId,
+        pub remote_path_id: u64,
     }
 
     #[name = "transport:frame_sent"]
@@ -238,8 +238,8 @@ events!(
     struct PacketLost<'a> {
         pub packet_header: common::PacketHeader,
         pub path_id: u64,
-        pub src_addr: common::SocketAddress<'a>,
-        pub src_cid: &'a PeerId,
+        pub local_addr: common::SocketAddress<'a>,
+        pub local_cid: &'a PeerId,
         pub bytes_lost: u16,
         pub is_mtu_probe: bool,
     }
@@ -271,9 +271,9 @@ events!(
     /// Connection started
     struct ConnectionStarted<'a> {
         // TODO uncomment once we record the local SocketAddress
-        // pub src_addr: common::SocketAddress<'a>,
-        pub src_cid: &'a LocalId,
-        pub dst_addr: common::SocketAddress<'a>,
-        pub dst_cid: &'a PeerId,
+        // pub local_addr: common::SocketAddress<'a>,
+        pub local_cid: &'a LocalId,
+        pub remote_addr: common::SocketAddress<'a>,
+        pub remote_cid: &'a PeerId,
     }
 );

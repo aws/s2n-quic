@@ -260,9 +260,9 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         ));
 
         publisher.on_connection_started(event::builders::ConnectionStarted {
-            src_cid: &connection_parameters.local_connection_id,
-            dst_cid: &connection_parameters.peer_connection_id,
-            dst_addr: connection_parameters.peer_socket_address.as_event(),
+            local_cid: &connection_parameters.local_connection_id,
+            remote_cid: &connection_parameters.peer_connection_id,
+            remote_addr: connection_parameters.peer_socket_address.as_event(),
         });
 
         let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters);

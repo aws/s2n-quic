@@ -778,8 +778,8 @@ impl Manager {
                 }
                 .into(),
                 path_id: current_path_id.as_u8() as u64,
-                src_addr: path.peer_socket_address.as_event(),
-                src_cid: &path.peer_connection_id,
+                local_addr: path.peer_socket_address.as_event(),
+                local_cid: &path.peer_connection_id,
                 bytes_lost: sent_info.sent_bytes,
                 is_mtu_probe,
             });
