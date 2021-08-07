@@ -66,6 +66,12 @@ common!(
         pub version: Option<u32>,
     }
 
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
+    enum SocketAddress {
+        IpV4(u8),
+        IpV6(u8),
+    }
+
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.7
     enum Frame {
         #[non_exhaustive]

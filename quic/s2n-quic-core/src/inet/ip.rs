@@ -155,6 +155,16 @@ impl<'a> SocketAddressRef<'a> {
     }
 }
 
+trait AsEvent {
+    fn as_event() -> event::common::SocketAddress;
+}
+
+// impl AsEvent for SocketAddress {
+//     fn as_event() -> SocketAddress {
+
+//     }
+// }
+
 #[cfg(any(test, feature = "std"))]
 mod std_conversion {
     use super::*;
