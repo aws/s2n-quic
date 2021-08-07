@@ -7,7 +7,7 @@ use s2n_codec::zerocopy::U16;
 
 //= https://tools.ietf.org/rfc/rfc2373.txt#2.0
 //# IPv6 addresses are 128-bit identifiers for interfaces and sets of interfaces.
-const IPV6_LEN: usize = 128 / 8;
+pub const IPV6_LEN: usize = 128 / 8;
 
 define_inet_type!(
     pub struct IpV6Address {

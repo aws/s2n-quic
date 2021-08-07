@@ -19,7 +19,7 @@ use s2n_quic_core::{
     crypto::{tls, tls::Endpoint as TLSEndpoint, CryptoSuite, InitialKey},
     event,
     event::Publisher as _,
-    inet::DatagramInfo,
+    inet::{ip::AsEvent as _, DatagramInfo},
     packet::initial::ProtectedInitial,
     stateless_reset::token::Generator as _,
     transport::{self, parameters::ServerTransportParameters},
@@ -262,7 +262,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         publisher.on_connection_started(event::builders::ConnectionStarted {
             src_cid: &connection_parameters.local_connection_id,
             dst_cid: &connection_parameters.peer_connection_id,
-            dst_addr: &connection_parameters.peer_socket_address,
+            dst_addr: connection_parameters.peer_socket_address.as_event(),
         });
 
         let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters);

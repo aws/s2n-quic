@@ -1,10 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::inet::{
-    ipv4::{IpV4Address, SocketAddressV4},
-    ipv6::{IpV6Address, SocketAddressV6},
-    unspecified::Unspecified,
+use crate::{
+    event,
+    inet::{
+        ipv4::{IpV4Address, SocketAddressV4},
+        ipv6::{IpV6Address, SocketAddressV6},
+        unspecified::Unspecified,
+    },
 };
 use core::fmt;
 
@@ -155,15 +158,24 @@ impl<'a> SocketAddressRef<'a> {
     }
 }
 
-trait AsEvent {
-    fn as_event() -> event::common::SocketAddress;
+pub trait AsEvent {
+    fn as_event(&self) -> event::common::SocketAddress;
 }
 
-// impl AsEvent for SocketAddress {
-//     fn as_event() -> SocketAddress {
-
-//     }
-// }
+impl AsEvent for SocketAddress {
+    fn as_event(&self) -> event::common::SocketAddress {
+        match self {
+            Self::IpV4(addr) => event::common::SocketAddress::IpV4 {
+                ip: &addr.ip.octets,
+                port: addr.port.into(),
+            },
+            Self::IpV6(addr) => event::common::SocketAddress::IpV6 {
+                ip: &addr.ip.octets,
+                port: addr.port.into(),
+            },
+        }
+    }
+}
 
 #[cfg(any(test, feature = "std"))]
 mod std_conversion {

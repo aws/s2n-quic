@@ -4,7 +4,7 @@
 use crate::{
     connection::{LocalId, PeerId},
     endpoint,
-    inet::SocketAddress,
+    inet::{ipv4::IPV4_LEN, ipv6::IPV6_LEN, SocketAddress},
     packet::number::PacketNumberSpace,
 };
 use core::time::Duration;
@@ -67,9 +67,9 @@ common!(
     }
 
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
-    enum SocketAddress {
-        IpV4(u8),
-        IpV6(u8),
+    enum SocketAddress<'a> {
+        IpV4 { ip: &'a [u8], port: u16 },
+        IpV6 { ip: &'a [u8], port: u16 },
     }
 
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.7
@@ -272,9 +272,9 @@ events!(
     /// Connection started
     struct ConnectionStarted<'a> {
         // TODO uncomment once we record the local SocketAddress
-        // pub src_addr: &'a SocketAddress,
+        // pub src_addr: common::SocketAddress<'a>,
         pub src_cid: &'a LocalId,
-        pub dst_addr: &'a SocketAddress,
+        pub dst_addr: common::SocketAddress<'a>,
         pub dst_cid: &'a PeerId,
     }
 );

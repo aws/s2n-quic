@@ -186,7 +186,7 @@ macro_rules! events {
 macro_rules! common {
     ($(
         $(#[$struct_attrs:meta])*
-        struct $name:ident $(<$lt:lifetime>)? {
+        struct $name:ident $(<$struct_lt:lifetime>)? {
             $(
                 $(#[$struct_field_attrs:meta])?
                 pub $struct_field_name:ident : $struct_field_type:ty,
@@ -195,9 +195,10 @@ macro_rules! common {
     )*
     $(
         $(#[$enum_attrs:meta])*
-        enum $enum_name:ident {
+        enum $enum_name:ident $(<$enum_lt:lifetime>)? {
             $(
-                $(#[$enum_attr:meta])? $enum_variant: ident
+                $(#[$enum_attr:meta])?
+                $enum_variant: ident
                     $({
                         $( $enum_field:ident: $enum_field_type:ty ),*
                         $(,)?
@@ -229,7 +230,7 @@ macro_rules! common {
                 $(#[$struct_attrs])*
                 #[non_exhaustive]
                 #[derive(Clone, Debug)]
-                pub struct $name $(<$lt>)? {
+                pub struct $name $(<$struct_lt>)? {
                     $(
                         $(#[$struct_field_attrs])?
                         pub $struct_field_name : $struct_field_type,
@@ -241,7 +242,7 @@ macro_rules! common {
                 $(#[$enum_attrs])*
                 #[non_exhaustive]
                 #[derive(Copy, Clone, Debug)]
-                pub enum $enum_name {
+                pub enum $enum_name $(<$enum_lt>)? {
                 $(
                     $(#[$enum_attr])? $enum_variant
                         $({
@@ -279,13 +280,13 @@ macro_rules! common {
                 // Builders are an implementation detail and allow us to create
                 // `non_exhaustive` Events outside this crate.
                 #[derive(Clone, Debug)]
-                pub struct $name $(<$lt>)? {
+                pub struct $name $(<$struct_lt>)? {
                     $( pub $struct_field_name : $struct_field_type, )*
                 }
 
                 #[doc(hidden)]
-                impl $(<$lt>)? From<$name $(<$lt>)?> for common::$name $(<$lt>)? {
-                    fn from(builder: $name $(<$lt>)?) -> Self {
+                impl $(<$struct_lt>)? From<$name $(<$struct_lt>)?> for common::$name $(<$struct_lt>)? {
+                    fn from(builder: $name $(<$struct_lt>)?) -> Self {
                         Self {
                             $(
                                 $struct_field_name: builder.$struct_field_name,
