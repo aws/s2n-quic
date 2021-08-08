@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::packet::number::PacketNumber;
+use crate::{event, packet::number::PacketNumber};
 use core::mem;
 
 #[derive(Default, Debug)]
@@ -18,6 +18,19 @@ pub struct SlidingWindow {
 pub enum SlidingWindowError {
     Duplicate,
     TooOld,
+}
+
+pub trait AsEvent {
+    fn as_event(&self) -> event::common::DuplicatePacketError;
+}
+
+impl AsEvent for SlidingWindowError {
+    fn as_event(&self) -> event::common::DuplicatePacketError {
+        match self {
+            SlidingWindowError::TooOld => event::common::DuplicatePacketError::TooOld,
+            SlidingWindowError::Duplicate => event::common::DuplicatePacketError::Duplicate,
+        }
+    }
 }
 
 /// 128-bit wide window allowing for 128 packets, plus the highest

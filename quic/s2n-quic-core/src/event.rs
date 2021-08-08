@@ -70,6 +70,21 @@ common!(
         IpV6 { ip: &'a [u8; 16], port: u16 },
     }
 
+    enum DuplicatePacketError {
+        #[non_exhaustive]
+        /// The packet number was already received and is a duplicate.
+        Duplicate,
+
+        #[non_exhaustive]
+        /// The received packet number was outside the range of tracked packet numbers.
+        ///
+        /// This can happen when packets are heavily delayed or reordered. Currently, the maximum
+        /// amount of reordering is limited to 128 packets. For example, if packet number `142`
+        /// is received, the allowed range would be limited to `14-142`. If an endpoint received
+        /// packet `< 14`, it would trigger this event.
+        TooOld,
+    }
+
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.7
     enum Frame {
         #[non_exhaustive]
@@ -284,5 +299,13 @@ events!(
     /// Connection closed
     struct ConnectionClosed {
         pub error: connection::Error,
+    }
+
+    #[name = "transport:duplicate_packet"]
+    /// Duplicate packet received
+    struct DuplicatePacket {
+        pub packet_header: common::PacketHeader,
+        pub path_id: u64,
+        pub error: common::DuplicatePacketError,
     }
 );

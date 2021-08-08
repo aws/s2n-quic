@@ -197,7 +197,7 @@ macro_rules! common {
         $(#[$enum_attrs:meta])*
         enum $enum_name:ident $(<$enum_lt:lifetime>)? {
             $(
-                $(#[$enum_attr:meta])?
+                $(#[$enum_attr:meta])*
                 $enum_variant: ident
                     $({
                         $( $enum_field:ident: $enum_field_type:ty ),*
@@ -245,7 +245,8 @@ macro_rules! common {
                 #[derive(Copy, Clone, Debug)]
                 pub enum $enum_name $(<$enum_lt>)? {
                 $(
-                    $(#[$enum_attr])? $enum_variant
+                    $(#[$enum_attr])*
+                    $enum_variant
                         $({
                             $( $enum_field: $enum_field_type ),*
                         })?

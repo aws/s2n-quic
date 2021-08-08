@@ -24,7 +24,8 @@ use s2n_quic_core::{
         encoding::{PacketEncoder, PacketEncodingError},
         handshake::{CleartextHandshake, Handshake, ProtectedHandshake},
         number::{
-            PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow, SlidingWindowError,
+            AsEvent as _, PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow,
+            SlidingWindowError,
         },
     },
     time::{timer, Timestamp},
@@ -80,15 +81,38 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
     }
 
     /// Returns true if the packet number has already been processed
-    pub fn is_duplicate(&self, packet_number: PacketNumber) -> bool {
+    pub fn is_duplicate<Pub: event::Publisher>(
+        &self,
+        packet_number: PacketNumber,
+        path_id: path::Id,
+        publisher: &mut Pub,
+    ) -> bool {
         match self.processed_packet_numbers.check(packet_number) {
             Ok(()) => false,
-            Err(SlidingWindowError::Duplicate) => {
-                // TODO: emit duplicate metric
+            Err(err @ SlidingWindowError::Duplicate) => {
+                publisher.on_duplicate_packet(event::builders::DuplicatePacket {
+                    packet_header: event::builders::PacketHeader {
+                        packet_type: packet_number.space().into(),
+                        packet_number: packet_number.as_u64(),
+                        version: publisher.quic_version(),
+                    }
+                    .into(),
+                    path_id: path_id.as_u8() as u64,
+                    error: err.as_event(),
+                });
                 true
             }
-            Err(SlidingWindowError::TooOld) => {
-                // TODO: emit too old metric
+            Err(err @ SlidingWindowError::TooOld) => {
+                publisher.on_duplicate_packet(event::builders::DuplicatePacket {
+                    packet_header: event::builders::PacketHeader {
+                        packet_type: packet_number.space().into(),
+                        packet_number: packet_number.as_u64(),
+                        version: publisher.quic_version(),
+                    }
+                    .into(),
+                    path_id: path_id.as_u8() as u64,
+                    error: err.as_event(),
+                });
                 true
             }
         }
@@ -291,14 +315,16 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
     }
 
     /// Validate packets in the Handshake packet space
-    pub fn validate_and_decrypt_packet<'a>(
+    pub fn validate_and_decrypt_packet<'a, Pub: event::Publisher>(
         &self,
         protected: ProtectedHandshake<'a>,
+        path_id: path::Id,
+        publisher: &mut Pub,
     ) -> Result<CleartextHandshake<'a>, ProcessingError> {
         let packet_number_decoder = self.packet_number_decoder();
         let packet = protected.unprotect(&self.header_key, packet_number_decoder)?;
 
-        if self.is_duplicate(packet.packet_number) {
+        if self.is_duplicate(packet.packet_number, path_id, publisher) {
             return Err(ProcessingError::DuplicatePacket);
         }
 
