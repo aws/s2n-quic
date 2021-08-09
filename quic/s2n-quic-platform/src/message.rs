@@ -27,7 +27,7 @@ pub trait Message {
     fn ecn(&self) -> ExplicitCongestionNotification;
 
     /// Sets the ECN values for the message
-    fn set_ecn(&mut self, _ecn: ExplicitCongestionNotification);
+    fn set_ecn(&mut self, ecn: ExplicitCongestionNotification, remote_address: &SocketAddress);
 
     /// Returns the `SocketAddress` for the message
     fn remote_address(&self) -> Option<SocketAddress>;

@@ -62,6 +62,7 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
 
     for cmsg in cmsg_iter {
         match (cmsg.cmsg_type, cmsg.cmsg_level) {
+            // Linux uses IP_TOS, FreeBSD uses IP_RECVTOS
             (libc::IPPROTO_IP, libc::IP_TOS) | (libc::IPPROTO_IP, libc::IP_RECVTOS) => unsafe {
                 result.ecn = ExplicitCongestionNotification::new(decode_value::<u8>(cmsg));
             },

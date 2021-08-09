@@ -26,7 +26,7 @@ impl MessageTrait for Message {
         ExplicitCongestionNotification::default()
     }
 
-    fn set_ecn(&mut self, _ecn: ExplicitCongestionNotification) {
+    fn set_ecn(&mut self, _ecn: ExplicitCongestionNotification, _remote_address: &SocketAddress) {
         // the std UDP socket doesn't provide a method to set ECN
     }
 

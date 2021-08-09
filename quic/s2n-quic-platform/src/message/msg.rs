@@ -74,8 +74,30 @@ impl MessageTrait for msghdr {
     }
 
     #[inline]
-    fn set_ecn(&mut self, _ecn: ExplicitCongestionNotification) {
-        // TODO support ecn
+    fn set_ecn(&mut self, ecn: ExplicitCongestionNotification, remote_address: &SocketAddress) {
+        let cmsg = unsafe {
+            // Safety: the msg_control buffer should always be allocated to MAX_CMSG_LEN
+            core::slice::from_raw_parts_mut(self.msg_control as *mut u8, MAX_CMSG_LEN)
+        };
+        let remaining = &mut cmsg[(self.msg_controllen as usize)..];
+        let ecn = ecn as libc::c_int;
+
+        let len = match remote_address {
+            SocketAddress::IpV4(_) => {
+                // FreeBSD uses an unsigned_char for IP_TOS
+                // see https://svnweb.freebsd.org/base/stable/8/sys/netinet/ip_input.c?view=markup&pathrev=247944#l1716
+                #[cfg(target_os = "freebsd")]
+                let ecn = ecn as libc::c_uchar;
+
+                cmsg::encode(remaining, libc::IPPROTO_IP, libc::IP_TOS, ecn)
+            }
+            SocketAddress::IpV6(_) => {
+                cmsg::encode(remaining, libc::IPPROTO_IPV6, libc::IPV6_TCLASS, ecn)
+            }
+        };
+
+        // add the values as a usize to make sure we work cross-platform
+        self.msg_controllen = (len + self.msg_controllen as usize) as _;
     }
 
     fn remote_address(&self) -> Option<SocketAddress> {
