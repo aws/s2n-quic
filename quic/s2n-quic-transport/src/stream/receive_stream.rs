@@ -79,7 +79,7 @@ pub(super) enum ReceiveStreamState {
 }
 
 /// Writes the `MAX_STREAM_DATA` frames based on the streams flow control window.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(super) struct MaxStreamDataToFrameWriter {}
 
 impl ValueToFrameWriter<VarInt> for MaxStreamDataToFrameWriter {
@@ -97,7 +97,7 @@ impl ValueToFrameWriter<VarInt> for MaxStreamDataToFrameWriter {
 }
 
 /// Writes `STOP_SENDING` frames basd on `ApplicationErrorCode`s
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(super) struct StopSendingToFrameWriter {}
 
 impl ValueToFrameWriter<application::Error> for StopSendingToFrameWriter {
@@ -117,6 +117,7 @@ impl ValueToFrameWriter<application::Error> for StopSendingToFrameWriter {
 /// A composite flow controller for receiving data.
 /// The flow controller manages the Streams individual window as well as the
 /// connection flow control window.
+#[derive(Debug)]
 pub(super) struct ReceiveStreamFlowController {
     /// The connection flow controller
     pub(super) connection_flow_controller: IncomingConnectionFlowController,
@@ -278,6 +279,7 @@ impl ReceiveStreamFlowController {
 }
 
 /// The read half of a stream
+#[derive(Debug)]
 pub struct ReceiveStream {
     /// The current state of the stream
     pub(super) state: ReceiveStreamState,

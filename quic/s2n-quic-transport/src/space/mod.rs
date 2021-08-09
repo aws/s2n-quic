@@ -6,6 +6,7 @@ use crate::{
     recovery::congestion_controller, space::rx_packet_numbers::AckManager, transmission,
 };
 use bytes::Bytes;
+use core::fmt;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     ack,
@@ -54,6 +55,17 @@ pub struct PacketSpaceManager<Config: endpoint::Config> {
     zero_rtt_crypto:
         Option<Box<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRttKey>>,
     handshake_status: HandshakeStatus,
+}
+
+impl<Config: endpoint::Config> fmt::Debug for PacketSpaceManager<Config> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PacketSpaceManager")
+            .field("initial", &self.initial)
+            .field("handshake", &self.handshake)
+            .field("application", &self.application)
+            .field("handshake_status", &self.handshake_status)
+            .finish()
+    }
 }
 
 macro_rules! packet_space_api {

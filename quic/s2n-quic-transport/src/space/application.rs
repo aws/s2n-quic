@@ -14,7 +14,7 @@ use crate::{
     transmission,
 };
 use bytes::Bytes;
-use core::{convert::TryInto, marker::PhantomData};
+use core::{convert::TryInto, fmt, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{application::KeySet, tls, CryptoSuite},
@@ -72,6 +72,21 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     ping: flag::Ping,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager,
+}
+
+impl<Config: endpoint::Config> fmt::Debug for ApplicationSpace<Config> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ApplicationSpace")
+            .field("ack_manager", &self.ack_manager)
+            .field("alpn", &self.alpn)
+            .field("ping", &self.ping)
+            .field("processed_packet_numbers", &self.processed_packet_numbers)
+            .field("recovery_manager", &self.recovery_manager)
+            .field("sni", &self.sni)
+            .field("stream_manager", &self.stream_manager)
+            .field("tx_packet_numbers", &self.tx_packet_numbers)
+            .finish()
+    }
 }
 
 impl<Config: endpoint::Config> ApplicationSpace<Config> {

@@ -101,7 +101,7 @@ pub struct OutgoingResetData {
 }
 
 /// Writes the `RESET` frames based on the streams flow control window.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct ResetStreamToFrameWriter {}
 
 impl ValueToFrameWriter<OutgoingResetData> for ResetStreamToFrameWriter {
@@ -442,6 +442,7 @@ impl ValueToFrameWriter<VarInt> for StreamDataBlockedToFrameWriter {
 }
 
 /// The sending half of a stream
+#[derive(Debug)]
 pub struct SendStream {
     /// The current state of the stream
     pub(super) state: SendStreamState,

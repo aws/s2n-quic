@@ -10,6 +10,7 @@ use core::task::{Context, Waker};
 use std::sync::Mutex;
 
 /// The shared state of the [`WakeupQueue`].
+#[derive(Debug)]
 struct QueueState<T> {
     /// The IDs of connections which have been woken
     woken_connections: VecDeque<T>,
@@ -73,6 +74,7 @@ impl<T: Copy> QueueState<T> {
 /// Each component is identified by a handle of type `T`.
 ///
 /// A single thread is expected to deque the handles of blocked components and to inform those.
+#[derive(Debug)]
 pub struct WakeupQueue<T> {
     state: Arc<Mutex<QueueState<T>>>,
 }
@@ -110,6 +112,7 @@ impl<T: Copy> WakeupQueue<T> {
 /// A handle which refers to a wakeup queue. The handles allows to notify the
 /// queue that a wakeup is required, and that after the wakeup the owner of the handle
 /// wants to be notified.
+#[derive(Debug)]
 pub struct WakeupHandle<T> {
     /// The queue this handle is referring to
     queue: Arc<Mutex<QueueState<T>>>,

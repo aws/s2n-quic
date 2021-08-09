@@ -45,7 +45,7 @@ pub struct StreamConfig {
 }
 
 /// A trait which represents an internally used `Stream`
-pub trait StreamTrait: StreamInterestProvider + timer::Provider {
+pub trait StreamTrait: StreamInterestProvider + timer::Provider + core::fmt::Debug {
     /// Creates a new `Stream` instance with the given configuration
     fn new(config: StreamConfig) -> Self;
 
@@ -128,6 +128,7 @@ pub trait StreamTrait: StreamInterestProvider + timer::Provider {
 
 /// The implementation of a `Stream`.
 /// This is mostly a facade over the reading and writing half of the `Stream`.
+#[derive(Debug)]
 pub struct StreamImpl {
     /// The stream ID
     pub(super) stream_id: StreamId,
