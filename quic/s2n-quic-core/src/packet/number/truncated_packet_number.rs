@@ -49,6 +49,7 @@ impl TruncatedPacketNumber {
     /// `TruncatedPacketNumber` values should be created either
     /// by using a `PacketNumberLen` to decode a buffer, or truncating
     /// a `PacketNumber`.
+    #[inline]
     pub(crate) fn new<Value: Into<TruncatedPacketNumberValue>>(
         value: Value,
         space: PacketNumberSpace,
@@ -60,6 +61,7 @@ impl TruncatedPacketNumber {
     }
 
     /// Internal function to decode a `TruncatedPacketNumber` with a given size.
+    #[inline]
     pub(crate) fn decode<'a, Value: Into<TruncatedPacketNumberValue> + DecoderValue<'a>>(
         buffer: DecoderBuffer<'a>,
         space: PacketNumberSpace,
@@ -83,6 +85,7 @@ impl TruncatedPacketNumber {
 }
 
 impl EncoderValue for TruncatedPacketNumber {
+    #[inline]
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         buffer.encode(&self.value)
     }
@@ -122,6 +125,7 @@ impl TruncatedPacketNumberValue {
 }
 
 impl EncoderValue for TruncatedPacketNumberValue {
+    #[inline]
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         match self {
             Self::U8(value) => buffer.encode(value),
@@ -133,24 +137,28 @@ impl EncoderValue for TruncatedPacketNumberValue {
 }
 
 impl From<u8> for TruncatedPacketNumberValue {
+    #[inline]
     fn from(value: u8) -> Self {
         Self::U8(value)
     }
 }
 
 impl From<u16> for TruncatedPacketNumberValue {
+    #[inline]
     fn from(value: u16) -> Self {
         Self::U16(value)
     }
 }
 
 impl From<u24> for TruncatedPacketNumberValue {
+    #[inline]
     fn from(value: u24) -> Self {
         Self::U24(value)
     }
 }
 
 impl From<u32> for TruncatedPacketNumberValue {
+    #[inline]
     fn from(value: u32) -> Self {
         Self::U32(value)
     }
