@@ -37,8 +37,8 @@ impl MessageTrait for mmsghdr {
     }
 
     #[inline]
-    fn set_ecn(&mut self, ecn: ExplicitCongestionNotification) {
-        self.msg_hdr.set_ecn(ecn)
+    fn set_ecn(&mut self, ecn: ExplicitCongestionNotification, remote_address: &SocketAddress) {
+        self.msg_hdr.set_ecn(ecn, remote_address)
     }
 
     #[inline]

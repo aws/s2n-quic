@@ -12,8 +12,12 @@ macro_rules! impl_message_delegate {
                 $crate::message::Message::ecn(&self.$field)
             }
 
-            fn set_ecn(&mut self, ecn: ExplicitCongestionNotification) {
-                $crate::message::Message::set_ecn(&mut self.$field, ecn)
+            fn set_ecn(
+                &mut self,
+                ecn: ExplicitCongestionNotification,
+                remote_address: &SocketAddress,
+            ) {
+                $crate::message::Message::set_ecn(&mut self.$field, ecn, remote_address)
             }
 
             fn remote_address(&self) -> Option<SocketAddress> {

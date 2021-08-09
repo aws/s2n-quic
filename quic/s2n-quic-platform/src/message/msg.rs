@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{features, message::Message as MessageTrait};
+use crate::message::{cmsg, cmsg::Encoder, Message as MessageTrait};
 use alloc::vec::Vec;
 use core::{
     fmt,
@@ -32,12 +32,6 @@ impl fmt::Debug for Message {
     }
 }
 
-/// The maximum number of bytes allocated for cmsg data
-///
-/// This should be enough for UDP_SEGMENT + IP_TOS + IP_PKTINFO. It may need to be increased
-/// to allow for future control messages.
-const MAX_CMSG_LEN: usize = 128;
-
 impl Message {
     fn new(
         iovec: *mut iovec,
@@ -66,13 +60,25 @@ impl MessageTrait for msghdr {
 
     #[inline]
     fn ecn(&self) -> ExplicitCongestionNotification {
-        // TODO support ecn
-        ExplicitCongestionNotification::default()
+        let ancillary_data = cmsg::decode(self);
+        ancillary_data.ecn
     }
 
     #[inline]
-    fn set_ecn(&mut self, _ecn: ExplicitCongestionNotification) {
-        // TODO support ecn
+    fn set_ecn(&mut self, ecn: ExplicitCongestionNotification, remote_address: &SocketAddress) {
+        let ecn = ecn as libc::c_int;
+
+        match remote_address {
+            SocketAddress::IpV4(_) => {
+                // FreeBSD uses an unsigned_char for IP_TOS
+                // see https://svnweb.freebsd.org/base/stable/8/sys/netinet/ip_input.c?view=markup&pathrev=247944#l1716
+                #[cfg(target_os = "freebsd")]
+                let ecn = ecn as libc::c_uchar;
+
+                self.encode_cmsg(libc::IPPROTO_IP, libc::IP_TOS, ecn)
+            }
+            SocketAddress::IpV6(_) => self.encode_cmsg(libc::IPPROTO_IPV6, libc::IPV6_TCLASS, ecn),
+        };
     }
 
     fn remote_address(&self) -> Option<SocketAddress> {
@@ -132,16 +138,11 @@ impl MessageTrait for msghdr {
         (*self.msg_iov).iov_len = payload_len;
     }
 
+    #[cfg(target_os = "linux")]
     #[inline]
     fn set_segment_size(&mut self, size: usize) {
-        let cmsg = unsafe {
-            // Safety: the msg_control buffer should always be allocated to MAX_CMSG_LEN
-            core::slice::from_raw_parts_mut(self.msg_control as *mut u8, MAX_CMSG_LEN)
-        };
-        let remaining = &mut cmsg[(self.msg_controllen as usize)..];
-        let len = features::Gso::set(remaining, size);
-        // add the values as a usize to make sure we work cross-platform
-        self.msg_controllen = (len + self.msg_controllen as usize) as _;
+        type SegmentType = u16;
+        self.encode_cmsg(libc::SOL_UDP, libc::UDP_SEGMENT, size as SegmentType);
     }
 
     #[inline]
@@ -155,7 +156,7 @@ impl MessageTrait for msghdr {
         if cfg!(debug_assertions) && self.msg_controllen == 0 {
             // make sure nothing was written to the control message if it was set to 0
             assert!(
-                core::slice::from_raw_parts_mut(self.msg_control as *mut u8, MAX_CMSG_LEN)
+                core::slice::from_raw_parts_mut(self.msg_control as *mut u8, cmsg::MAX_LEN)
                     .iter()
                     .all(|v| *v == 0)
             )
@@ -275,7 +276,7 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
         let mut payloads = Pin::new(payloads);
         let mut iovecs = Pin::new(vec![unsafe { zeroed() }; capacity].into_boxed_slice());
         let mut msg_names = Pin::new(vec![unsafe { zeroed() }; capacity].into_boxed_slice());
-        let mut cmsgs = Pin::new(vec![0u8; capacity * MAX_CMSG_LEN].into_boxed_slice());
+        let mut cmsgs = Pin::new(vec![0u8; capacity * cmsg::MAX_LEN].into_boxed_slice());
 
         // double message capacity to enable contiguous access
         let mut messages = Vec::with_capacity(capacity * 2);
@@ -286,7 +287,7 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
         for index in 0..capacity {
             let (payload, remaining) = payload_buf.split_at_mut(mtu * max_gso);
             payload_buf = remaining;
-            let (cmsg, remaining) = cmsg_buf.split_at_mut(MAX_CMSG_LEN);
+            let (cmsg, remaining) = cmsg_buf.split_at_mut(cmsg::MAX_LEN);
             cmsg_buf = remaining;
 
             let mut iovec = unsafe { zeroed::<iovec>() };

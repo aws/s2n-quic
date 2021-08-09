@@ -10,6 +10,9 @@ pub mod mmsg;
 #[cfg(s2n_quic_platform_socket_msg)]
 pub mod msg;
 
+#[cfg(any(s2n_quic_platform_socket_msg, s2n_quic_platform_socket_mmsg))]
+pub mod cmsg;
+
 pub mod queue;
 pub mod simple;
 
@@ -24,7 +27,7 @@ pub trait Message {
     fn ecn(&self) -> ExplicitCongestionNotification;
 
     /// Sets the ECN values for the message
-    fn set_ecn(&mut self, _ecn: ExplicitCongestionNotification);
+    fn set_ecn(&mut self, ecn: ExplicitCongestionNotification, remote_address: &SocketAddress);
 
     /// Returns the `SocketAddress` for the message
     fn remote_address(&self) -> Option<SocketAddress>;
@@ -65,7 +68,9 @@ pub trait Message {
     }
 
     /// Sets the segment size for the message payload
-    fn set_segment_size(&mut self, size: usize);
+    fn set_segment_size(&mut self, _size: usize) {
+        panic!("cannot use GSO on the current platform");
+    }
 
     /// Resets the message for future use
     ///

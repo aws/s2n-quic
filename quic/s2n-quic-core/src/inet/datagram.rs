@@ -16,3 +16,9 @@ pub struct DatagramInfo {
     pub ecn: ExplicitCongestionNotification,
     pub destination_connection_id: connection::LocalId,
 }
+
+/// Additional metadata for a datagram sent/received over the network
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct AncillaryData {
+    pub ecn: ExplicitCongestionNotification,
+}

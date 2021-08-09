@@ -26,7 +26,7 @@ impl MessageTrait for Message {
         ExplicitCongestionNotification::default()
     }
 
-    fn set_ecn(&mut self, _ecn: ExplicitCongestionNotification) {
+    fn set_ecn(&mut self, _ecn: ExplicitCongestionNotification, _remote_address: &SocketAddress) {
         // the std UDP socket doesn't provide a method to set ECN
     }
 
@@ -50,10 +50,6 @@ impl MessageTrait for Message {
 
     unsafe fn set_payload_len(&mut self, len: usize) {
         self.payload_len = len;
-    }
-
-    fn set_segment_size(&mut self, _size: usize) {
-        panic!("segments are not supported in simple messages");
     }
 
     unsafe fn reset(&mut self, mtu: usize) {
