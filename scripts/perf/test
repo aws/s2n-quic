@@ -20,7 +20,7 @@ OUT=target/perf/results
 mkdir -p $OUT
 chmod 766 $OUT
 
-perf record \
+RUST_BACKTRACE=1 perf record \
   --output $TMP/$FILE.perf \
   --call-graph dwarf \
   --event cycles \

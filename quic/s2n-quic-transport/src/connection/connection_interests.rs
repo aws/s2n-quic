@@ -3,6 +3,8 @@
 
 //! A collection of a all the interactions a `Connection` is interested in
 
+use s2n_quic_core::time::Timestamp;
+
 /// A collection of a all the interactions a `Connection` is interested in
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct ConnectionInterests {
@@ -19,6 +21,8 @@ pub struct ConnectionInterests {
     pub transmission: bool,
     /// Is `true` if a `Connection` needs a new connection id
     pub new_connection_id: bool,
+    /// Is `Some(Timestamp)` if the connection needs to be woken up at the specified time
+    pub timeout: Option<Timestamp>,
 }
 
 impl ConnectionInterests {
@@ -40,6 +44,12 @@ impl ConnectionInterests {
             accept: self.accept || other.accept,
             transmission: self.transmission || other.transmission,
             new_connection_id: self.new_connection_id || other.new_connection_id,
+            timeout: match (self.timeout, other.timeout) {
+                (Some(a), Some(b)) => Some(a.min(b)),
+                (Some(a), None) => Some(a),
+                (None, Some(b)) => Some(b),
+                (None, None) => None,
+            },
         }
     }
 }
@@ -64,6 +74,7 @@ impl core::ops::AddAssign for ConnectionInterests {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::time::Duration;
 
     #[test]
     fn test_merge_connection_interests() {
@@ -73,22 +84,27 @@ mod tests {
             finalization: true,
             closing: true,
             new_connection_id: false,
+            timeout: None,
         };
 
+        let b_time = unsafe { Timestamp::from_duration(Duration::from_secs(123)) };
         let b = ConnectionInterests {
             transmission: true,
             accept: false,
             finalization: false,
             closing: false,
             new_connection_id: true,
+            timeout: Some(b_time),
         };
 
+        let c_time = unsafe { Timestamp::from_duration(Duration::from_secs(456)) };
         let c = ConnectionInterests {
             transmission: false,
             accept: false,
             finalization: true,
             closing: true,
             new_connection_id: false,
+            timeout: Some(c_time),
         };
 
         assert_eq!(
@@ -98,6 +114,7 @@ mod tests {
                 finalization: false,
                 closing: false,
                 new_connection_id: true,
+                timeout: Some(b_time),
             },
             a + b
         );
@@ -109,6 +126,7 @@ mod tests {
                 finalization: true,
                 closing: true,
                 new_connection_id: false,
+                timeout: Some(c_time),
             },
             a + c
         );
@@ -120,6 +138,7 @@ mod tests {
                 finalization: false,
                 closing: false,
                 new_connection_id: true,
+                timeout: Some(b_time),
             },
             b + c
         );

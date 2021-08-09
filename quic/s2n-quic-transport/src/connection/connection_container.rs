@@ -6,37 +6,46 @@
 
 use crate::{
     connection::{
-        Connection, ConnectionInterests, InternalConnectionId, SharedConnectionState,
+        self, Connection, ConnectionInterests, InternalConnectionId, SharedConnectionState,
         SynchronizedSharedConnectionState, Trait as ConnectionTrait,
     },
     unbounded_channel,
 };
-use alloc::{rc::Rc, sync::Arc};
-use core::{cell::RefCell, ops::Deref};
+use alloc::sync::Arc;
+use core::{
+    cell::{Cell, RefCell},
+    ops::Deref,
+};
 use intrusive_collections::{
     intrusive_adapter, KeyAdapter, LinkedList, LinkedListLink, RBTree, RBTreeLink,
 };
+use s2n_quic_core::{recovery::K_GRANULARITY, time::Timestamp};
 
 // Intrusive list adapter for managing the list of `done` connections
-intrusive_adapter!(DoneConnectionsAdapter<C> = Rc<ConnectionNode<C>>: ConnectionNode<C> {
+intrusive_adapter!(DoneConnectionsAdapter<C> = Arc<ConnectionNode<C>>: ConnectionNode<C> {
     done_connections_link: LinkedListLink
-} where C: ConnectionTrait);
+} where C: connection::Trait);
 
 // Intrusive list adapter for managing the list of
 // `waiting_for_transmission` connections
-intrusive_adapter!(WaitingForTransmissionAdapter<C> = Rc<ConnectionNode<C>>: ConnectionNode<C> {
+intrusive_adapter!(WaitingForTransmissionAdapter<C> = Arc<ConnectionNode<C>>: ConnectionNode<C> {
     waiting_for_transmission_link: LinkedListLink
-} where C: ConnectionTrait);
+} where C: connection::Trait);
 
 // Intrusive list adapter for managing the list of
 // `waiting_for_connection_id` connections
-intrusive_adapter!(WaitingForConnectionIdAdapter<C> = Rc<ConnectionNode<C>>: ConnectionNode<C> {
+intrusive_adapter!(WaitingForConnectionIdAdapter<C> = Arc<ConnectionNode<C>>: ConnectionNode<C> {
     waiting_for_connection_id_link: LinkedListLink
+} where C: ConnectionTrait);
+
+// Intrusive red black tree adapter for managing a list of `waiting_for_timeout` connections
+intrusive_adapter!(WaitingForTimeoutAdapter<C> = Arc<ConnectionNode<C>>: ConnectionNode<C> {
+    waiting_for_timeout_link: RBTreeLink
 } where C: ConnectionTrait);
 
 // Intrusive red black tree adapter for managing all connections in a tree for
 // lookup by Connection ID
-intrusive_adapter!(ConnectionTreeAdapter<C> = Rc<ConnectionNode<C>>: ConnectionNode<C> {
+intrusive_adapter!(ConnectionTreeAdapter<C> = Arc<ConnectionNode<C>>: ConnectionNode<C> {
     tree_link: RBTreeLink
 } where C: ConnectionTrait);
 
@@ -56,6 +65,10 @@ struct ConnectionNode<C: ConnectionTrait> {
     waiting_for_transmission_link: LinkedListLink,
     /// Allows the Connection to be part of the `waiting_for_connection_id` collection
     waiting_for_connection_id_link: LinkedListLink,
+    /// Allows the Connection to be part of the `waiting_for_timeout` collection
+    waiting_for_timeout_link: RBTreeLink,
+    /// The cached time at which the connection will timeout next
+    timeout: Cell<Option<Timestamp>>,
 }
 
 enum State<C: ConnectionTrait> {
@@ -85,6 +98,46 @@ impl<C: ConnectionTrait> ConnectionNode<C> {
             done_connections_link: LinkedListLink::new(),
             waiting_for_transmission_link: LinkedListLink::new(),
             waiting_for_connection_id_link: LinkedListLink::new(),
+            waiting_for_timeout_link: RBTreeLink::new(),
+            timeout: Cell::new(None),
+        }
+    }
+
+    /// Obtains a `Arc<ConnectionNode>` from a `&ConnectionNode`.
+    ///
+    /// This method is only safe to be called if the `ConnectionNode` is known to be
+    /// stored inside a `Arc`.
+    unsafe fn arc_from_ref(&self) -> Arc<Self> {
+        // In order to be able to to get a `Arc` we construct a temporary `Arc`
+        // from it using the `Arc::from_raw` API and clone the `Arc`.
+        // The temporary `Arc` must be released without calling `drop`,
+        // because this would decrement and thereby invalidate the refcount
+        // (which wasn't changed by calling `Arc::from_raw`).
+        let temp_node_ptr: core::mem::ManuallyDrop<Arc<ConnectionNode<C>>> =
+            core::mem::ManuallyDrop::new(Arc::<ConnectionNode<C>>::from_raw(
+                self as *const ConnectionNode<C>,
+            ));
+
+        temp_node_ptr.deref().clone()
+    }
+}
+
+impl<'a, C: connection::Trait> KeyAdapter<'a> for WaitingForTimeoutAdapter<C> {
+    type Key = Timestamp;
+
+    fn get_key(&self, node: &'a ConnectionNode<C>) -> Timestamp {
+        if let Some(timeout) = node.timeout.get() {
+            timeout
+        } else if cfg!(debug_assertions) {
+            panic!("node was queried for timeout but none was set")
+        } else {
+            unsafe {
+                // Safety: this will simply move the connection to the beginning of the queue
+                // to ensure the timeout value is properly updated.
+                //
+                // Assuming everything is tested properly, this should never be reached
+                Timestamp::from_duration(core::time::Duration::from_secs(0))
+            }
         }
     }
 }
@@ -99,25 +152,6 @@ impl<'a, C: ConnectionTrait> KeyAdapter<'a> for ConnectionTreeAdapter<C> {
     }
 }
 
-/// Obtains a `Rc<ConnectionNode>` from a `&ConnectionNode`.
-///
-/// This method is only safe to be called if the `ConnectionNode` is known to be
-/// stored inside a `Rc`.
-unsafe fn connnection_node_rc_from_ref<C: ConnectionTrait>(
-    connection_node: &ConnectionNode<C>,
-) -> Rc<ConnectionNode<C>> {
-    // In order to be able to to get a `Rc` we construct a temporary `Rc`
-    // from it using the `Rc::from_raw` API and clone the `Rc`.
-    // The temporary `Rc` must be released without calling `drop`,
-    // because this would decrement and thereby invalidate the refcount
-    // (which wasn't changed by calling `Rc::from_raw`).
-    let temp_node_ptr: core::mem::ManuallyDrop<Rc<ConnectionNode<C>>> =
-        core::mem::ManuallyDrop::new(Rc::<ConnectionNode<C>>::from_raw(
-            connection_node as *const ConnectionNode<C>,
-        ));
-    temp_node_ptr.deref().clone()
-}
-
 /// Contains all secondary lists of Connections.
 ///
 /// A Connection can be a member in any of those, in addition to being a member of
@@ -129,6 +163,8 @@ struct InterestLists<C: ConnectionTrait> {
     waiting_for_transmission: LinkedList<WaitingForTransmissionAdapter<C>>,
     /// Connections which need a new connection ID
     waiting_for_connection_id: LinkedList<WaitingForConnectionIdAdapter<C>>,
+    /// Connections which are waiting for a timeout to occur
+    waiting_for_timeout: RBTree<WaitingForTimeoutAdapter<C>>,
     /// Inflight handshake count
     handshake_connections: usize,
 }
@@ -139,6 +175,7 @@ impl<C: ConnectionTrait> InterestLists<C> {
             done_connections: LinkedList::new(DoneConnectionsAdapter::new()),
             waiting_for_transmission: LinkedList::new(WaitingForTransmissionAdapter::new()),
             waiting_for_connection_id: LinkedList::new(WaitingForConnectionIdAdapter::new()),
+            waiting_for_timeout: RBTree::new(WaitingForTimeoutAdapter::new()),
             handshake_connections: 0,
         }
     }
@@ -147,7 +184,7 @@ impl<C: ConnectionTrait> InterestLists<C> {
     fn update_interests(
         &mut self,
         accept_queue: &mut unbounded_channel::Sender<Connection>,
-        node: &Rc<ConnectionNode<C>>,
+        node: &Arc<ConnectionNode<C>>,
         interests: ConnectionInterests,
     ) {
         // Note that all comparisons start by checking whether the connection is
@@ -157,37 +194,76 @@ impl<C: ConnectionTrait> InterestLists<C> {
         // an element from a list while it is not actually part of the list
         // is undefined.
 
-        macro_rules! sync_interests {
+        macro_rules! insert_interest {
+            ($list_name:ident, $call:ident) => {
+                // We have to obtain an `Arc<ConnectionNode>` in order to be able to
+                // perform interest updates later on. However the intrusive tree
+                // API only provides us a raw reference.
+                // Safety: We know that all of our ConnectionNode's are stored in
+                // reference counted pointers.
+                let node = unsafe { node.arc_from_ref() };
+
+                self.$list_name.$call(node);
+            };
+        }
+
+        macro_rules! remove_interest {
+            ($list_name:ident) => {
+                // Safety: We know that the node is only ever part of this list.
+                // While elements are in temporary lists, they always get unlinked
+                // from those temporary lists while their interest is updated.
+                let mut cursor = unsafe {
+                    self.$list_name
+                        .cursor_mut_from_ptr(node.deref() as *const ConnectionNode<C>)
+                };
+                cursor.remove();
+            };
+        }
+
+        macro_rules! sync_interests_list {
             ($interest:expr, $link_name:ident, $list_name:ident) => {
                 if $interest != node.$link_name.is_linked() {
                     if $interest {
-                        self.$list_name.push_back(node.clone());
+                        insert_interest!($list_name, push_back);
                     } else {
-                        // Safety: We know that the node is only ever part of this list.
-                        // While elements are in temporary lists, they always get unlinked
-                        // from those temporary lists while their interest is updated.
-                        let mut cursor = unsafe {
-                            self.$list_name
-                                .cursor_mut_from_ptr(node.deref() as *const ConnectionNode<C>)
-                        };
-                        cursor.remove();
+                        remove_interest!($list_name);
                     }
                 }
                 debug_assert_eq!($interest, node.$link_name.is_linked());
             };
         }
 
-        sync_interests!(
+        sync_interests_list!(
             interests.transmission,
             waiting_for_transmission_link,
             waiting_for_transmission
         );
 
-        sync_interests!(
+        sync_interests_list!(
             interests.new_connection_id,
             waiting_for_connection_id_link,
             waiting_for_connection_id
         );
+
+        // Check if the timeout has changed since last time we queried the interests
+        if node.timeout.get() != interests.timeout {
+            // remove the connection if it's currently linked
+            if node.waiting_for_timeout_link.is_linked() {
+                remove_interest!(waiting_for_timeout);
+            }
+            // set the new timeout value
+            node.timeout.set(interests.timeout);
+            // insert the connection if it still has a value
+            if interests.timeout.is_some() {
+                insert_interest!(waiting_for_timeout, insert);
+            }
+        } else {
+            // make sure the timeout value reflects the connection's presense in the timeout list
+            debug_assert_eq!(
+                interests.timeout.is_some(),
+                node.waiting_for_timeout_link.is_linked()
+            );
+        }
 
         // Accepted connections are only automatically pushed into the accepted connections queue.
         if interests.accept {
@@ -266,7 +342,6 @@ macro_rules! iterate_interruptible {
 
                 let result = $func(&mut *mut_connection, shared_state.as_deref_mut());
 
-                mut_connection.update_connection_timer(shared_state.as_deref_mut());
                 let interests = mut_connection.interests(shared_state.as_deref());
                 (result, interests)
             };
@@ -309,21 +384,31 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
         !self.connection_map.is_empty() || self.can_accept()
     }
 
+    pub fn next_expiration(&self) -> Option<Timestamp> {
+        let cursor = self.interest_lists.waiting_for_timeout.front();
+        let node = cursor.get()?;
+        let timeout = node.timeout.get();
+        debug_assert!(
+            timeout.is_some(),
+            "a connection should only be in the timeout list when the timeout field is set"
+        );
+        timeout
+    }
+
     /// Insert a new Connection into the container
     pub fn insert_connection(
         &mut self,
-        mut connection: C,
+        connection: C,
         shared_state: Arc<SynchronizedSharedConnectionState<C::Config>>,
     ) {
         // Even though it likely might have none, it seems like it
         // would be better to avoid future bugs
         let interests = {
             let shared_state = &mut *shared_state.lock();
-            connection.update_connection_timer(Some(shared_state));
             connection.interests(Some(shared_state))
         };
 
-        let new_connection = Rc::new(ConnectionNode::new(connection, shared_state));
+        let new_connection = Arc::new(ConnectionNode::new(connection, shared_state));
 
         // Increment the inflight handshakes counter because we have accepted a new connection
         self.interest_lists.handshake_connections += 1;
@@ -355,7 +440,7 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
     where
         F: FnOnce(&mut C, Option<&mut SharedConnectionState<C::Config>>) -> R,
     {
-        let node_ptr: Rc<ConnectionNode<C>>;
+        let node_ptr: Arc<ConnectionNode<C>>;
         let result: R;
         let interests: ConnectionInterests;
 
@@ -367,12 +452,12 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
         {
             let node = self.connection_map.find(&connection_id).get()?;
 
-            // We have to obtain an `Rc<ConnectionNode>` in order to be able to
+            // We have to obtain an `Arc<ConnectionNode>` in order to be able to
             // perform interest updates later on. However the intrusive tree
             // API only provides us a raw reference.
             // Safety: We know that all of our ConnectionNode's are stored in
-            // `Rc` pointers.
-            node_ptr = unsafe { connnection_node_rc_from_ref(node) };
+            // `Arc` pointers.
+            node_ptr = unsafe { node.arc_from_ref() };
 
             // Lock the shared connection state
             let shared_state = node.shared_state.borrow();
@@ -383,7 +468,6 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
 
             result = func(connection, shared_state.as_deref_mut());
 
-            connection.update_connection_timer(shared_state.as_deref_mut());
             interests = connection.interests(shared_state.as_deref());
         }
 
@@ -430,6 +514,7 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
 
             remove_connection_from_list!(waiting_for_transmission, waiting_for_transmission_link);
             remove_connection_from_list!(waiting_for_connection_id, waiting_for_connection_id_link);
+            remove_connection_from_list!(waiting_for_timeout, waiting_for_timeout_link);
 
             // If the connection is still handshaking then it must have timed out.
             if connection.inner.borrow().is_handshaking() {
@@ -482,6 +567,81 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
             waiting_for_connection_id_link,
             func
         );
+    }
+
+    /// Iterates over all `Connection`s which are waiting for timeouts before the current time
+    /// and executes the given function on each `Connection`
+    pub fn iterate_timeout_list<F>(&mut self, now: Timestamp, mut func: F)
+    where
+        F: FnMut(&mut C, Option<&mut SharedConnectionState<C::Config>>),
+    {
+        loop {
+            let mut cursor = self.interest_lists.waiting_for_timeout.front_mut();
+            let connection = if let Some(connection) = cursor.get() {
+                connection
+            } else {
+                break;
+            };
+
+            match connection.timeout.get() {
+                Some(v) if !v.has_elapsed(now) => break,
+                Some(_) => {}
+                None => {
+                    if cfg!(debug_assertions) {
+                        panic!("connection was inserted without a timeout specified");
+                    }
+
+                    let conn = cursor.remove().unwrap();
+                    conn.timeout.set(None);
+                    continue;
+                }
+            }
+
+            let connection = cursor
+                .remove()
+                .expect("list capacity was already checked in the `while` condition");
+
+            // Note that while we iterate over the intrusive lists here
+            // `Connection` is part of no list anymore, since it also got dropped
+            // from list that is described by the `cursor`.
+            debug_assert!(!connection.waiting_for_timeout_link.is_linked());
+            // also clear the timer to make the state consistent
+            connection.timeout.set(None);
+
+            let mut interests = {
+                // Lock the shared connection state
+                let shared_state = connection.shared_state.borrow();
+                let mut shared_state = shared_state.try_lock();
+
+                // Obtain a mutable reference to `Connection` implementation
+                let connection: &mut C = &mut *connection.inner.borrow_mut();
+
+                func(connection, shared_state.as_deref_mut());
+
+                connection.interests(shared_state.as_deref())
+            };
+
+            if let Some(timeout) = interests.timeout.as_mut() {
+                // make sure the connection isn't try to set a timer in the past
+                if timeout.has_elapsed(now) {
+                    // TODO panic with_debug_assertions once all of the connection components
+                    //      are fixed to return times in the future
+
+                    // fast forward the timer entry to the next granularity otherwise we'll
+                    // endlessly loop here
+                    *timeout = now + K_GRANULARITY;
+
+                    // make sure that the new timeout wouldn't be considered elapsed
+                    debug_assert!(!timeout.has_elapsed(now));
+                }
+            }
+
+            // Update the interests after the interaction and outside of the per-connection Mutex
+            self.interest_lists
+                .update_interests(&mut self.accept_queue, &connection, interests);
+        }
+
+        self.finalize_done_connections();
     }
 }
 

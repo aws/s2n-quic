@@ -9,7 +9,6 @@ use crate::{
         self, ConnectionContainer, ConnectionContainerIterationResult, ConnectionIdMapper,
         InternalConnectionId, InternalConnectionIdGenerator, Trait as _,
     },
-    timer::TimerManager,
     unbounded_channel,
     wakeup_queue::WakeupQueue,
 };
@@ -61,8 +60,6 @@ pub struct Endpoint<Cfg: Config> {
     connection_id_generator: InternalConnectionIdGenerator,
     /// Maps from external to internal connection IDs
     connection_id_mapper: ConnectionIdMapper,
-    /// Manages timers for connections
-    timer_manager: TimerManager<InternalConnectionId>,
     /// Allows to wakeup the endpoint task which might be blocked on waiting for packets
     /// from application tasks (which e.g. enqueued new data to send).
     wakeup_queue: WakeupQueue<InternalConnectionId>,
@@ -215,7 +212,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
     }
 
     fn timeout(&self) -> Option<Timestamp> {
-        self.timer_manager.next_expiration()
+        self.connections.next_expiration()
     }
 
     fn set_max_mtu(&mut self, max_mtu: MaxMtu) {
@@ -237,7 +234,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             connections: ConnectionContainer::new(connection_sender),
             connection_id_generator: InternalConnectionIdGenerator::new(),
             connection_id_mapper,
-            timer_manager: TimerManager::new(),
             wakeup_queue: WakeupQueue::new(),
             dequeued_wakeups: VecDeque::new(),
             version_negotiator: version::Negotiator::default(),
@@ -728,36 +724,34 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let close_packet_buffer = &mut self.close_packet_buffer;
         let endpoint_context = self.config.context();
 
-        for internal_id in self.timer_manager.expirations(timestamp) {
-            self.connections
-                .with_connection(internal_id, |conn, mut shared_state| {
-                    let mut publisher = event::PublisherSubscriber::new(
-                        event::builders::Meta {
-                            endpoint_type: Cfg::ENDPOINT_TYPE,
-                            group_id: conn.internal_connection_id().into(),
-                            timestamp,
-                        },
-                        Some(conn.quic_version()),
-                        endpoint_context.event_subscriber,
-                    );
+        self.connections
+            .iterate_timeout_list(timestamp, |conn, mut shared_state| {
+                let mut publisher = event::PublisherSubscriber::new(
+                    event::builders::Meta {
+                        endpoint_type: Cfg::ENDPOINT_TYPE,
+                        group_id: conn.internal_connection_id().into(),
+                        timestamp,
+                    },
+                    Some(conn.quic_version()),
+                    endpoint_context.event_subscriber,
+                );
 
-                    if let Err(error) = conn.on_timeout(
-                        shared_state.as_deref_mut(),
-                        connection_id_mapper,
+                if let Err(error) = conn.on_timeout(
+                    shared_state.as_deref_mut(),
+                    connection_id_mapper,
+                    timestamp,
+                    &mut publisher,
+                ) {
+                    conn.close(
+                        shared_state,
+                        error,
+                        endpoint_context.connection_close_formatter,
+                        close_packet_buffer,
                         timestamp,
                         &mut publisher,
-                    ) {
-                        conn.close(
-                            shared_state,
-                            error,
-                            endpoint_context.connection_close_formatter,
-                            close_packet_buffer,
-                            timestamp,
-                            &mut publisher,
-                        );
-                    }
-                });
-        }
+                    );
+                }
+            });
 
         // allow connections to generate a new connection id
         self.connections

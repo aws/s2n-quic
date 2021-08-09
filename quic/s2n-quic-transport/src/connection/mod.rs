@@ -27,7 +27,7 @@ pub(crate) use api_provider::{ConnectionApi, ConnectionApiProvider};
 pub(crate) use connection_container::{ConnectionContainer, ConnectionContainerIterationResult};
 pub(crate) use connection_id_mapper::ConnectionIdMapper;
 pub(crate) use connection_interests::ConnectionInterests;
-pub(crate) use connection_timers::{ConnectionTimerEntry, ConnectionTimers};
+pub(crate) use connection_timers::ConnectionTimers;
 pub(crate) use connection_trait::ConnectionTrait as Trait;
 pub(crate) use internal_connection_id::{InternalConnectionId, InternalConnectionIdGenerator};
 pub(crate) use local_id_registry::LocalIdRegistry;
@@ -49,8 +49,6 @@ pub struct Parameters<Cfg: endpoint::Config> {
     pub local_id_registry: LocalIdRegistry,
     /// The peer ID registry which should be utilized by the connection
     pub peer_id_registry: PeerIdRegistry,
-    /// The per-connection timer
-    pub timer: ConnectionTimerEntry,
     /// The last utilized remote Connection ID
     pub peer_connection_id: PeerId,
     /// The last utilized local Connection ID

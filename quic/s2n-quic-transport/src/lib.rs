@@ -14,7 +14,6 @@ mod interval_set;
 mod processed_packet;
 mod space;
 mod sync;
-mod timer;
 mod transmission;
 mod unbounded_channel;
 mod wakeup_queue;

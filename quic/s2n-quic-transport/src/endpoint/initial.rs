@@ -13,7 +13,7 @@ use crate::{
     space::PacketSpaceManager,
 };
 use alloc::sync::Arc;
-use core::{convert::TryInto, time::Duration};
+use core::convert::TryInto;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     crypto::{tls, tls::Endpoint as TLSEndpoint, CryptoSuite, InitialKey},
@@ -141,11 +141,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             stateless_reset_token,
         );
 
-        let timer = self.timer_manager.create_timer(
-            internal_connection_id,
-            datagram.timestamp + Duration::from_secs(3600),
-        ); // TODO: make it so we don't arm for a given time and immediately change it
-
         let wakeup_handle = self
             .wakeup_queue
             .create_wakeup_handle(internal_connection_id);
@@ -220,7 +215,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             internal_connection_id,
             local_id_registry,
             peer_id_registry,
-            timer,
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
             //# A server MUST set the Destination Connection ID it
             //# uses for sending packets based on the first received Initial packet.

@@ -10,9 +10,9 @@ use crate::{
         id::{ConnectionInfo, Interest},
         limits::Limits,
         local_id_registry::LocalIdRegistrationError,
-        ConnectionIdMapper, ConnectionInterests, ConnectionTimerEntry, ConnectionTimers,
-        ConnectionTransmission, ConnectionTransmissionContext, InternalConnectionId,
-        Parameters as ConnectionParameters, ProcessingError, SharedConnectionState,
+        ConnectionIdMapper, ConnectionInterests, ConnectionTimers, ConnectionTransmission,
+        ConnectionTransmissionContext, InternalConnectionId, Parameters as ConnectionParameters,
+        ProcessingError, SharedConnectionState,
     },
     contexts::ConnectionOnTransmitError,
     endpoint, path,
@@ -135,8 +135,6 @@ pub struct ConnectionImpl<Config: endpoint::Config> {
     local_id_registry: connection::LocalIdRegistry,
     /// The timers which are used within the connection
     timers: ConnectionTimers,
-    /// The timer entry in the endpoint timer list
-    timer_entry: ConnectionTimerEntry,
     /// The QUIC protocol version which is used for this particular connection
     quic_version: u32,
     /// Describes whether the connection is known to be accepted by the application
@@ -338,6 +336,23 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
 
         count
     }
+
+    /// The next `Timestamp` at which any of the connection components will expire
+    #[inline]
+    fn next_expiration(
+        &self,
+        shared_state: Option<&SharedConnectionState<Config>>,
+    ) -> Option<Timestamp> {
+        use timer::Provider;
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //# When ack-eliciting packets in multiple packet number spaces are in
+        //# flight, the timer MUST be set to the earlier value of the Initial and
+        //# Handshake packet number spaces.
+
+        // find the earliest armed timer
+        (&self, &shared_state).next_expiration()
+    }
 }
 
 impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
@@ -372,7 +387,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             local_connection_id: parameters.local_connection_id,
             local_id_registry: parameters.local_id_registry,
             timers: Default::default(),
-            timer_entry: parameters.timer,
             quic_version: parameters.quic_version,
             accept_state: AcceptState::Handshaking,
             state: ConnectionState::Handshaking,
@@ -720,26 +734,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         */
 
         Ok(())
-    }
-
-    /// Updates the per-connection timer based on individual component timers.
-    /// This method is used in order to update the connection timer only once
-    /// per interaction with the connection and thereby to batch timer updates.
-    fn update_connection_timer(
-        &mut self,
-        shared_state: Option<&mut SharedConnectionState<Self::Config>>,
-    ) {
-        use timer::Provider;
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-        //# When ack-eliciting packets in multiple packet number spaces are in
-        //# flight, the timer MUST be set to the earlier value of the Initial and
-        //# Handshake packet number spaces.
-
-        // find the earliest armed timer
-        let earliest = (&self, &shared_state).next_expiration();
-
-        self.timer_entry.update(earliest);
     }
 
     /// Handles all external wakeups on the [`Connection`].
@@ -1172,6 +1166,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         self.accept_state = AcceptState::Active;
     }
 
+    #[inline]
     fn interests(
         &self,
         shared_state: Option<&SharedConnectionState<Self::Config>>,
@@ -1179,7 +1174,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         use crate::connection::finalization::Provider as _;
         use transmission::interest::Provider as _;
 
-        let mut interests = ConnectionInterests::default();
+        let mut interests = ConnectionInterests {
+            timeout: self.next_expiration(shared_state),
+            ..Default::default()
+        };
 
         if self.accept_state == AcceptState::HandshakeCompleted {
             interests.accept = true;

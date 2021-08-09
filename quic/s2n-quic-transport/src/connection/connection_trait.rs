@@ -101,14 +101,6 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         publisher: &mut Pub,
     ) -> Result<(), connection::Error>;
 
-    /// Updates the per-connection timer based on individual component timers.
-    /// This method is used in order to update the connection timer only once
-    /// per interaction with the connection and thereby to batch timer updates.
-    fn update_connection_timer(
-        &mut self,
-        shared_state: Option<&mut SharedConnectionState<Self::Config>>,
-    );
-
     /// Handles all external wakeups on the [`Connection`].
     fn on_wakeup(
         &mut self,
