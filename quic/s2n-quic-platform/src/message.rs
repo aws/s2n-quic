@@ -10,6 +10,9 @@ pub mod mmsg;
 #[cfg(s2n_quic_platform_socket_msg)]
 pub mod msg;
 
+#[cfg(any(s2n_quic_platform_socket_msg, s2n_quic_platform_socket_mmsg))]
+pub mod cmsg;
+
 pub mod queue;
 pub mod simple;
 

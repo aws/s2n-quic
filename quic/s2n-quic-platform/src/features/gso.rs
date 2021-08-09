@@ -29,40 +29,16 @@ impl Default for Gso {
 #[cfg(target_os = "linux")]
 impl Gso {
     pub fn set(cmsg: &mut [u8], segment_size: usize) -> usize {
+        use crate::message::cmsg;
         use core::mem::size_of;
         type SegmentType = u16;
 
-        unsafe {
-            let len = libc::CMSG_SPACE(size_of::<SegmentType>() as _) as usize;
-            debug_assert_ne!(len, 0);
-            assert!(
-                cmsg.len() >= len,
-                "out of space in cmsg: needed {}, got {}",
-                len,
-                cmsg.len()
-            );
-
-            // interpret the start of cmsg as a cmsghdr
-            // Safety: the cmsg slice should already be zero-initialized and aligned
-            debug_assert!(cmsg.iter().all(|b| *b == 0));
-            let cmsg = &mut *(&mut cmsg[0] as *mut u8 as *mut libc::cmsghdr);
-
-            // Indicate the type of cmsg
-            cmsg.cmsg_level = libc::SOL_UDP;
-            cmsg.cmsg_type = libc::UDP_SEGMENT;
-
-            // tell the kernel how large our value is
-            cmsg.cmsg_len = libc::CMSG_LEN(size_of::<SegmentType>() as _) as _;
-
-            // Write the actual value in the data space of the cmsg
-            // Safety: we asserted we had enough space in the cmsg buffer above
-            core::ptr::write(
-                libc::CMSG_DATA(cmsg) as *const _ as *mut _,
-                segment_size as SegmentType,
-            );
-
-            len
-        }
+        cmsg::encode(
+            cmsg,
+            libc::SOL_UDP,
+            libc::UDP_SEGMENT,
+            segment_size as SegmentType,
+        )
     }
 
     #[inline]
