@@ -24,7 +24,7 @@ impl<'a> Context<'a> {
     }
 }
 
-pub trait Format: 'static {
+pub trait Format: 'static + Send {
     const TOKEN_LEN: usize;
 
     /// Generate a signed token to be delivered in a NEW_TOKEN frame.

@@ -62,7 +62,7 @@ macro_rules! events {
         ///
         /// Applications can provide a custom implementation of `Subscriber` to perform
         /// logging, metrics recording, etc.
-        pub trait Subscriber: 'static {
+        pub trait Subscriber: 'static + Send {
             $(
                 paste!(
                     $(#[$attrs])*

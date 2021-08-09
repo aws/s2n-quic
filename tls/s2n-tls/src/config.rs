@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::error::Error;
-use alloc::rc::Rc;
+use alloc::sync::Arc;
 use core::convert::TryInto;
 use s2n_tls_sys::*;
 use std::ffi::CString;
@@ -34,7 +34,10 @@ impl Drop for Owned {
 }
 
 #[derive(Clone, Default)]
-pub struct Config(Rc<Owned>);
+pub struct Config(Arc<Owned>);
+
+/// Safety: s2n_config objects can be sent across threads
+unsafe impl Send for Config {}
 
 impl Config {
     pub fn new() -> Self {
@@ -160,7 +163,7 @@ impl Builder {
     }
 
     pub fn build(self) -> Result<Config, Error> {
-        Ok(Config(Rc::new(self.0)))
+        Ok(Config(Arc::new(self.0)))
     }
 
     fn as_mut_ptr(&mut self) -> *mut s2n_config {

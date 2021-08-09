@@ -150,6 +150,10 @@ pub struct ConnectionImpl<Config: endpoint::Config> {
     close_sender: CloseSender,
 }
 
+/// Safety: we use some `Rc<RefCell<T>>` inside of the connection but these values
+/// never leave the API boundary and will be all sent together
+unsafe impl<Config: endpoint::Config> Send for ConnectionImpl<Config> {}
+
 #[cfg(debug_assertions)]
 impl<Config: endpoint::Config> Drop for ConnectionImpl<Config> {
     fn drop(&mut self) {

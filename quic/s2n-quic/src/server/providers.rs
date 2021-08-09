@@ -188,7 +188,7 @@ impl<
         EndpointLimits: s2n_quic_core::endpoint::Limits,
         Event: s2n_quic_core::event::Subscriber,
         Limits: s2n_quic_core::connection::limits::Limiter,
-        Sync: 'static,
+        Sync: 'static + Send,
         Tls: crypto::tls::Endpoint,
         Token: token::Format,
     > endpoint::Config

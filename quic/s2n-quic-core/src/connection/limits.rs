@@ -169,7 +169,7 @@ impl Limits {
 }
 
 /// Creates limits for a given connection
-pub trait Limiter: 'static {
+pub trait Limiter: 'static + Send {
     fn on_connection(&mut self, info: &ConnectionInfo) -> Limits;
 }
 

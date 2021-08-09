@@ -236,10 +236,10 @@ impl<'a> ConnectionInfo<'a> {
 }
 
 /// Format for connection IDs
-pub trait Format: 'static + Validator + Generator {}
+pub trait Format: 'static + Validator + Generator + Send {}
 
 /// Implement Format for all types that implement the required subtraits
-impl<T: 'static + Validator + Generator> Format for T {}
+impl<T: 'static + Validator + Generator + Send> Format for T {}
 
 /// A validator for a connection ID format
 pub trait Validator {

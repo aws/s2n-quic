@@ -8,7 +8,7 @@ pub use crate::{frame::ConnectionClose, inet::SocketAddress};
 ///
 /// Implementations should take care to not leak potentially sensitive information
 /// to peers. This includes removing `reason` fields and making error codes more general.
-pub trait Formatter: 'static {
+pub trait Formatter: 'static + Send {
     /// Formats a transport error for use in 1-RTT (application data) packets
     fn format_transport_error(&self, context: &Context, error: transport::Error)
         -> ConnectionClose;

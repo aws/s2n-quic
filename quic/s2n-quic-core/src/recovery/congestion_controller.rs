@@ -4,7 +4,7 @@
 use crate::{inet::SocketAddress, path::MINIMUM_MTU, recovery::RttEstimator, time::Timestamp};
 use core::fmt::Debug;
 
-pub trait Endpoint: 'static + Debug {
+pub trait Endpoint: 'static + Debug + Send {
     type CongestionController: CongestionController;
 
     fn new_congestion_controller(&mut self, path_info: PathInfo) -> Self::CongestionController;
