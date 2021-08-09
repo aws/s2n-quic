@@ -22,7 +22,7 @@ impl Encoder for libc::msghdr {
 
         unsafe {
             let cmsg =
-                // Safety: the msg_control buffer should always be allocated to MAX_CMSG_LEN
+                // Safety: the msg_control buffer should always be allocated to MAX_LEN
                 core::slice::from_raw_parts_mut(self.msg_control as *mut u8, MAX_LEN);
             let cmsg = &mut cmsg[(self.msg_controllen as usize)..];
 

@@ -60,8 +60,8 @@ impl MessageTrait for msghdr {
 
     #[inline]
     fn ecn(&self) -> ExplicitCongestionNotification {
-        let ancilliary_data = cmsg::decode(self);
-        ancilliary_data.ecn
+        let ancillary_data = cmsg::decode(self);
+        ancillary_data.ecn
     }
 
     #[inline]
