@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{features, message::Message as MessageTrait};
+use crate::{
+    features,
+    message::{cmsg, Message as MessageTrait},
+};
 use alloc::vec::Vec;
 use core::{
     fmt,
@@ -66,8 +69,8 @@ impl MessageTrait for msghdr {
 
     #[inline]
     fn ecn(&self) -> ExplicitCongestionNotification {
-        // TODO support ecn
-        ExplicitCongestionNotification::default()
+        let ancilliary_data = cmsg::decode(&self);
+        ancilliary_data.ecn
     }
 
     #[inline]
