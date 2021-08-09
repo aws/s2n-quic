@@ -9,7 +9,7 @@ use s2n_quic_core::{
 };
 
 /// Configuration paramters for a QUIC endpoint
-pub trait Config: 'static + Sized + core::fmt::Debug {
+pub trait Config: 'static + Send + Sized + core::fmt::Debug {
     /// The type of the TLS endpoint which is utilized
     type TLSEndpoint: tls::Endpoint;
     type CongestionControllerEndpoint: congestion_controller::Endpoint;

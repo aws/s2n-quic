@@ -25,10 +25,6 @@ pub struct Session {
     send_buffer: BytesMut,
 }
 
-/// This is safe to do since the connection is only dealing with
-/// contexts that also implement send.
-unsafe impl Send for Session {}
-
 impl Session {
     pub fn new(endpoint: endpoint::Type, config: Config, params: &[u8]) -> Result<Self, Error> {
         let mut connection = Connection::new(match endpoint {

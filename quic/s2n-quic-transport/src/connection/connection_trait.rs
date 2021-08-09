@@ -33,7 +33,7 @@ use s2n_quic_core::{
 };
 
 /// A trait which represents an internally used `Connection`
-pub trait ConnectionTrait: Sized {
+pub trait ConnectionTrait: 'static + Send + Sized {
     /// Static configuration of a connection
     type Config: endpoint::Config;
 
@@ -118,17 +118,6 @@ pub trait ConnectionTrait: Sized {
 
     // Packet handling
 
-    /// Is called when a handshake packet had been received
-    fn handle_handshake_packet<Pub: event::Publisher, Rnd: random::Generator>(
-        &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
-        datagram: &DatagramInfo,
-        path_id: path::Id,
-        packet: ProtectedHandshake,
-        publisher: &mut Pub,
-        random_generator: &mut Rnd,
-    ) -> Result<(), ProcessingError>;
-
     /// Is called when a initial packet had been received
     fn handle_initial_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
@@ -147,6 +136,17 @@ pub trait ConnectionTrait: Sized {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: CleartextInitial,
+        publisher: &mut Pub,
+        random_generator: &mut Rnd,
+    ) -> Result<(), ProcessingError>;
+
+    /// Is called when a handshake packet had been received
+    fn handle_handshake_packet<Pub: event::Publisher, Rnd: random::Generator>(
+        &mut self,
+        shared_state: &mut SharedConnectionState<Self::Config>,
+        datagram: &DatagramInfo,
+        path_id: path::Id,
+        packet: ProtectedHandshake,
         publisher: &mut Pub,
         random_generator: &mut Rnd,
     ) -> Result<(), ProcessingError>;

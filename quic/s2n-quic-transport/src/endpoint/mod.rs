@@ -78,9 +78,9 @@ pub struct Endpoint<Cfg: Config> {
     max_mtu: MaxMtu,
 }
 
-// Safety: The endpoint is marked as `!Send`, because the struct contains `Rc`s.
-// However those `Rcs` are only referenced by other objects within the `Endpoint`
-// and which also get moved.
+/// Safety: The endpoint is marked as `!Send`, because the struct contains `Rc`s.
+/// However those `Rcs` are only referenced by other objects within the `Endpoint`
+/// and which also get moved.
 unsafe impl<Cfg: Config> Send for Endpoint<Cfg> {}
 
 impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {

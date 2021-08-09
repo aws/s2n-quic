@@ -44,7 +44,7 @@ impl<'a> ConnectionAttempt<'a> {
     }
 }
 
-pub trait Limits: 'static {
+pub trait Limits: 'static + Send {
     /// This trait is used to determine the outcome of connection attempts on an endpoint. The
     /// implementor returns an Outcome based on the ConnectionAttempt, or other information that the
     /// implementor may have.
