@@ -63,12 +63,11 @@ common!(
 
     struct ConnectionId<'a> {
         pub bytes: &'a [u8],
-        pub len: u8,
     }
 
     enum SocketAddress<'a> {
-        IpV4 { ip: &'a [u8], port: u16 },
-        IpV6 { ip: &'a [u8], port: u16 },
+        IpV4 { ip: &'a [u8; 4], port: u16 },
+        IpV6 { ip: &'a [u8; 16], port: u16 },
     }
 
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.7
@@ -280,7 +279,7 @@ events!(
     #[name = "connectivity:connection_closed"]
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.3
     /// Connection closed
-    struct ConnectionClosed<'a> {
-        pub error: &'a connection::Error,
+    struct ConnectionClosed {
+        pub error: connection::Error,
     }
 );
