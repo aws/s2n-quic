@@ -52,10 +52,6 @@ impl MessageTrait for Message {
         self.payload_len = len;
     }
 
-    fn set_segment_size(&mut self, _size: usize) {
-        panic!("segments are not supported in simple messages");
-    }
-
     unsafe fn reset(&mut self, mtu: usize) {
         self.address = Default::default();
         self.set_payload_len(mtu)

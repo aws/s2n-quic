@@ -28,19 +28,6 @@ impl Default for Gso {
 
 #[cfg(target_os = "linux")]
 impl Gso {
-    pub fn set(cmsg: &mut [u8], segment_size: usize) -> usize {
-        use crate::message::cmsg;
-        use core::mem::size_of;
-        type SegmentType = u16;
-
-        cmsg::encode(
-            cmsg,
-            libc::SOL_UDP,
-            libc::UDP_SEGMENT,
-            segment_size as SegmentType,
-        )
-    }
-
     #[inline]
     pub fn max_segments(&self) -> usize {
         self.max_segments.get()
@@ -61,10 +48,6 @@ impl Gso {
 
 #[cfg(not(target_os = "linux"))]
 impl Gso {
-    pub fn set(_cmsg: &mut [u8], _segment_size: usize) -> usize {
-        panic!("cannot use GSO on the current platform")
-    }
-
     #[inline]
     pub fn max_segments(&self) -> usize {
         1

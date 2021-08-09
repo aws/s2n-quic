@@ -2,19 +2,30 @@
 // SPDX-License-Identifier: Apache-2.0
 use s2n_quic_core::inet::{AncillaryData, ExplicitCongestionNotification};
 
-/// Encodes the given value as a control message in the given cmsg buffer.
+/// The maximum number of bytes allocated for cmsg data
 ///
-/// The cmsg slice should be zero-initialized and aligned and contain enough
+/// This should be enough for UDP_SEGMENT + IP_TOS + IP_PKTINFO. It may need to be increased
+/// to allow for future control messages.
+pub const MAX_LEN: usize = 128;
+
+/// Encodes the given value as a control message in the cmsg buffer.
+///
+/// The msghdr.msg_control should be zero-initialized and aligned and contain enough
 /// room for the value to be written.
 pub fn encode<T: Copy + ?Sized>(
-    cmsg: &mut [u8],
+    msghdr: &mut libc::msghdr,
     level: libc::c_int,
     ty: libc::c_int,
     value: T,
-) -> usize {
+) {
     use core::mem::{align_of, size_of};
 
     unsafe {
+        let cmsg =
+            // Safety: the msg_control buffer should always be allocated to MAX_CMSG_LEN
+            core::slice::from_raw_parts_mut(msghdr.msg_control as *mut u8, MAX_LEN);
+        let cmsg = &mut cmsg[(msghdr.msg_controllen as usize)..];
+
         debug_assert!(align_of::<T>() <= align_of::<libc::cmsghdr>());
         // CMSG_SPACE() returns the number of bytes an ancillary element
         // with payload of the passed data length occupies.
@@ -51,7 +62,8 @@ pub fn encode<T: Copy + ?Sized>(
         // from a suitably declared object.
         core::ptr::write(libc::CMSG_DATA(cmsg) as *const _ as *mut _, value);
 
-        len
+        // add the values as a usize to make sure we work cross-platform
+        msghdr.msg_controllen = (len + msghdr.msg_controllen as usize) as _;
     }
 }
 

@@ -68,7 +68,9 @@ pub trait Message {
     }
 
     /// Sets the segment size for the message payload
-    fn set_segment_size(&mut self, size: usize);
+    fn set_segment_size(&mut self, _size: usize) {
+        panic!("cannot use GSO on the current platform");
+    }
 
     /// Resets the message for future use
     ///
