@@ -51,6 +51,7 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
+#[derive(Debug)]
 struct MockStream {
     config: StreamConfig,
     last_reset: Option<ResetStream>,

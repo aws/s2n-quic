@@ -7,7 +7,7 @@ use s2n_quic_core::{frame::HandshakeDone, packet::number::PacketNumber};
 
 pub type Flag = flag::Flag<HandshakeDoneWriter>;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct HandshakeStatus(Flag);
 
 impl HandshakeStatus {
@@ -40,7 +40,7 @@ impl HandshakeStatus {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct HandshakeDoneWriter;
 
 impl flag::Writer for HandshakeDoneWriter {

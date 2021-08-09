@@ -162,7 +162,7 @@ impl<W: Writer> transmission::interest::Provider for Flag<W> {
 
 pub type Ping = Flag<PingWriter>;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct PingWriter;
 
 impl Writer for PingWriter {

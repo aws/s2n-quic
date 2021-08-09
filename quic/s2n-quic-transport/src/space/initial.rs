@@ -13,7 +13,7 @@ use crate::{
     },
     transmission,
 };
-use core::marker::PhantomData;
+use core::{fmt, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{tls, CryptoSuite},
@@ -47,6 +47,17 @@ pub struct InitialSpace<Config: endpoint::Config> {
     pub tx_packet_numbers: TxPacketNumbers,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager,
+}
+
+impl<Config: endpoint::Config> fmt::Debug for InitialSpace<Config> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("InitialSpace")
+            .field("ack_manager", &self.ack_manager)
+            .field("tx_packet_numbers", &self.tx_packet_numbers)
+            .field("processed_packet_numbers", &self.processed_packet_numbers)
+            .field("recovery_manager", &self.recovery_manager)
+            .finish()
+    }
 }
 
 impl<Config: endpoint::Config> InitialSpace<Config> {
