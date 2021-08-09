@@ -110,7 +110,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
 
     // Packet handling
 
-    /// Is called when a initial packet had been received
+    /// Is called when an initial packet had been received
     fn handle_initial_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,

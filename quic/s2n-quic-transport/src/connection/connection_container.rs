@@ -384,6 +384,7 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
         !self.connection_map.is_empty() || self.can_accept()
     }
 
+    /// Returns the next `Timestamp` at which any contained connections will expire
     pub fn next_expiration(&self) -> Option<Timestamp> {
         let cursor = self.interest_lists.waiting_for_timeout.front();
         let node = cursor.get()?;
@@ -622,7 +623,7 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
             };
 
             if let Some(timeout) = interests.timeout.as_mut() {
-                // make sure the connection isn't try to set a timer in the past
+                // make sure the connection isn't trying to set a timer in the past
                 if timeout.has_elapsed(now) {
                     // TODO panic with_debug_assertions once all of the connection components
                     //      are fixed to return times in the future
