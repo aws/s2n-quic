@@ -47,6 +47,7 @@ echo "executing request"
   --download-size "$DOWNLOAD_B" \
   --upload-size "$UPLOAD_B" \
   --insecure \
+  --ip 127.0.0.1 \
   --duration 10 \
   localhost:4433 || stop_server "failed to finish the request"
 

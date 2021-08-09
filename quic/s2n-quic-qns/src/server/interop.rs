@@ -25,6 +25,9 @@ use tracing::info;
 
 #[derive(Debug, StructOpt)]
 pub struct Interop {
+    #[structopt(short, long, default_value = "::")]
+    address: String,
+
     #[structopt(short, long, default_value = "443")]
     port: u16,
 
@@ -186,7 +189,7 @@ impl Interop {
             .build()?;
 
         let server = Server::builder()
-            .with_io(("::", self.port))?
+            .with_io((self.address.as_str(), self.port))?
             .with_tls(tls)?
             .with_endpoint_limits(limits)?
             .with_event(EventProvider)?

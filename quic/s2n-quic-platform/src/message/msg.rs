@@ -89,7 +89,13 @@ impl MessageTrait for msghdr {
                 let sockaddr: &sockaddr_in6 = unsafe { &*(self.msg_name as *const _) };
                 let port = sockaddr.sin6_port.to_be();
                 let addr: IpV6Address = sockaddr.sin6_addr.s6_addr.into();
-                Some(SocketAddressV6::new(addr, port).into())
+
+                // try converting the address to ipv4 if possible
+                if let Some(v4) = addr.try_into_ipv4() {
+                    Some(SocketAddressV4::new(v4, port).into())
+                } else {
+                    Some(SocketAddressV6::new(addr, port).into())
+                }
             }
             _ => None,
         }

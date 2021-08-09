@@ -25,12 +25,14 @@ pub enum IpAddress {
 }
 
 impl From<IpV4Address> for IpAddress {
+    #[inline]
     fn from(ip: IpV4Address) -> Self {
         Self::Ipv4(ip)
     }
 }
 
 impl From<IpV6Address> for IpAddress {
+    #[inline]
     fn from(ip: IpV6Address) -> Self {
         Self::Ipv6(ip)
     }
@@ -43,6 +45,7 @@ pub enum IpAddressRef<'a> {
 }
 
 impl<'a> IpAddressRef<'a> {
+    #[inline]
     pub fn to_owned(self) -> IpAddress {
         match self {
             Self::IPv4(addr) => IpAddress::Ipv4(*addr),
@@ -52,12 +55,14 @@ impl<'a> IpAddressRef<'a> {
 }
 
 impl<'a> From<&'a IpV4Address> for IpAddressRef<'a> {
+    #[inline]
     fn from(ip: &'a IpV4Address) -> Self {
         Self::IPv4(ip)
     }
 }
 
 impl<'a> From<&'a IpV6Address> for IpAddressRef<'a> {
+    #[inline]
     fn from(ip: &'a IpV6Address) -> Self {
         Self::IPv6(ip)
     }
@@ -77,6 +82,7 @@ pub enum SocketAddress {
 }
 
 impl SocketAddress {
+    #[inline]
     pub fn ip(&self) -> IpAddress {
         match self {
             SocketAddress::IpV4(addr) => IpAddress::Ipv4(*addr.ip()),
@@ -84,6 +90,7 @@ impl SocketAddress {
         }
     }
 
+    #[inline]
     pub fn port(&self) -> u16 {
         match self {
             SocketAddress::IpV4(addr) => addr.port(),
@@ -92,10 +99,20 @@ impl SocketAddress {
     }
 
     /// Converts the IP address into a IPv6 mapped address
+    #[inline]
     pub fn to_ipv6_mapped(self) -> SocketAddressV6 {
         match self {
             Self::IpV4(addr) => addr.to_ipv6_mapped(),
             Self::IpV6(addr) => addr,
+        }
+    }
+
+    /// Tries to convert the IP address into an IPv4 if it can
+    #[inline]
+    pub fn try_into_ipv4(self) -> Option<SocketAddressV4> {
+        match self {
+            Self::IpV4(addr) => Some(addr),
+            Self::IpV6(addr) => addr.try_into_ipv4(),
         }
     }
 }

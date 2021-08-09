@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::inet::unspecified::Unspecified;
+use crate::inet::{unspecified::Unspecified, IpV4Address, SocketAddressV4};
 use core::fmt;
 use s2n_codec::zerocopy::U16;
 
@@ -16,6 +16,7 @@ define_inet_type!(
 );
 
 impl IpV6Address {
+    #[inline]
     pub fn segments(&self) -> [u16; 8] {
         let octets = &self.octets;
         [
@@ -28,6 +29,18 @@ impl IpV6Address {
             u16::from_be_bytes([octets[12], octets[13]]),
             u16::from_be_bytes([octets[14], octets[15]]),
         ]
+    }
+
+    /// Tries to convert the IP address into an IPv4 if it can
+    #[inline]
+    pub const fn try_into_ipv4(self) -> Option<IpV4Address> {
+        match self.octets {
+            // Ipv4-Mapped address
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, a, b, c, d] => Some(IpV4Address {
+                octets: [a, b, c, d],
+            }),
+            _ => None,
+        }
     }
 }
 
@@ -72,6 +85,7 @@ impl fmt::Display for IpV6Address {
 }
 
 impl Unspecified for IpV6Address {
+    #[inline]
     fn is_unspecified(&self) -> bool {
         <[u8; IPV6_LEN]>::default().eq(&self.octets)
     }
@@ -91,12 +105,24 @@ impl SocketAddressV6 {
         &self.ip
     }
 
+    #[inline]
     pub fn port(&self) -> u16 {
         self.port.into()
     }
 
+    #[inline]
     pub fn set_port(&mut self, port: u16) {
         self.port.set(port)
+    }
+
+    /// Tries to convert the IP address into an IPv4 if it can
+    #[inline]
+    pub fn try_into_ipv4(self) -> Option<SocketAddressV4> {
+        let ip = self.ip.try_into_ipv4()?;
+        Some(SocketAddressV4 {
+            ip,
+            port: self.port,
+        })
     }
 }
 
