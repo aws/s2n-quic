@@ -50,21 +50,25 @@ macro_rules! id {
             /// If the passed byte array exceeds the maximum allowed length for
             /// Connection IDs (20 bytes in QUIC v1) `None` will be returned.
             /// All other input values are valid.
+            #[inline]
             pub fn try_from_bytes(bytes: &[u8]) -> Option<$type> {
                 Self::try_from(bytes).ok()
             }
 
             /// Returns the Connection ID in byte form
+            #[inline]
             pub fn as_bytes(&self) -> &[u8] {
                 self.as_ref()
             }
 
             /// Returns the length of the connection id
+            #[inline]
             pub const fn len(&self) -> usize {
                 self.len as usize
             }
 
             /// Returns true if this connection ID is zero-length
+            #[inline]
             pub fn is_empty(&self) -> bool {
                 self.len == 0
             }
@@ -100,6 +104,7 @@ macro_rules! id {
         }
 
         impl From<[u8; MAX_LEN]> for $type {
+            #[inline]
             fn from(bytes: [u8; MAX_LEN]) -> Self {
                 Self {
                     bytes,
@@ -111,6 +116,7 @@ macro_rules! id {
         impl TryFrom<&[u8]> for $type {
             type Error = Error;
 
+            #[inline]
             fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
                 let len = slice.len();
                 if !($type::MIN_LEN..=MAX_LEN).contains(&len) {
@@ -126,6 +132,7 @@ macro_rules! id {
         }
 
         impl AsRef<[u8]> for $type {
+            #[inline]
             fn as_ref(&self) -> &[u8] {
                 &self.bytes[0..self.len as usize]
             }
@@ -150,6 +157,7 @@ macro_rules! id {
         );
 
         impl EncoderValue for $type {
+            #[inline]
             fn encode<E: Encoder>(&self, encoder: &mut E) {
                 self.as_ref().encode(encoder)
             }
@@ -189,6 +197,7 @@ id!(InitialId, 8);
 impl TryFrom<LocalId> for InitialId {
     type Error = Error;
 
+    #[inline]
     fn try_from(value: LocalId) -> Result<Self, Self::Error> {
         value.as_bytes().try_into()
     }
@@ -216,6 +225,7 @@ impl core::fmt::Display for Error {
 }
 
 impl From<Error> for transport::Error {
+    #[inline]
     fn from(error: Error) -> Self {
         Self::PROTOCOL_VIOLATION.with_reason(error.message())
     }
@@ -230,6 +240,7 @@ pub struct ConnectionInfo<'a> {
 }
 
 impl<'a> ConnectionInfo<'a> {
+    #[inline]
     pub fn new(remote_address: &'a SocketAddress) -> Self {
         Self { remote_address }
     }
@@ -258,6 +269,7 @@ pub trait Validator {
 }
 
 impl Validator for usize {
+    #[inline]
     fn validate(&self, _connection_info: &ConnectionInfo, buffer: &[u8]) -> Option<usize> {
         if buffer.len() >= *self {
             Some(*self)
@@ -283,6 +295,7 @@ pub trait Generator {
     /// The maximum amount of time each generated connection ID should be
     /// used for. By default there is no maximum, though connection IDs
     /// may be retired due to rotation requirements or peer requests.
+    #[inline]
     fn lifetime(&self) -> Option<core::time::Duration> {
         None
     }
