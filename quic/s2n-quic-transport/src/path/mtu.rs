@@ -4,7 +4,6 @@
 use crate::{
     contexts::WriteContext,
     path::{MaxMtu, MINIMUM_MTU},
-    timer::VirtualTimer,
     transmission,
 };
 use core::time::Duration;
@@ -16,7 +15,7 @@ use s2n_quic_core::{
     packet::number::PacketNumber,
     path::{IPV4_MIN_HEADER_LEN, IPV6_MIN_HEADER_LEN, UDP_HEADER_LEN},
     recovery::CongestionController,
-    time::{timer, Timestamp},
+    time::{timer, Timer, Timestamp},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -115,7 +114,7 @@ pub struct Controller {
     //# The PMTU_RAISE_TIMER is configured to the period a
     //# sender will continue to use the current PLPMTU, after which it
     //# reenters the Search Phase.
-    pmtu_raise_timer: VirtualTimer,
+    pmtu_raise_timer: Timer,
 }
 
 impl Controller {
@@ -149,7 +148,7 @@ impl Controller {
             probe_count: 0,
             black_hole_counter: Default::default(),
             largest_acked_mtu_sized_packet: None,
-            pmtu_raise_timer: VirtualTimer::default(),
+            pmtu_raise_timer: Timer::default(),
         }
     }
 

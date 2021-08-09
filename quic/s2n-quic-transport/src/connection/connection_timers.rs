@@ -3,14 +3,7 @@
 
 //! Manages all timers inside a Connection
 
-use crate::{connection::InternalConnectionId, timer::TimerEntry};
 use s2n_quic_core::time::{timer, Timer};
-
-/// Holds a timer entry for a single connection
-///
-/// On a call to [`update()`] the single per-connection timer
-/// instance will be updated if changed.
-pub type ConnectionTimerEntry = TimerEntry<InternalConnectionId>;
 
 /// Stores connection-level timer state
 #[derive(Debug, Default)]

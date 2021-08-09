@@ -5,7 +5,6 @@ use crate::{
     contexts::WriteContext,
     path::{self, Path},
     recovery::{SentPacketInfo, SentPackets},
-    timer::VirtualTimer,
     transmission,
 };
 use core::{cmp::max, time::Duration};
@@ -14,7 +13,7 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     recovery::{CongestionController, RttEstimator, K_GRANULARITY},
-    time::{timer, Timestamp},
+    time::{timer, Timer, Timestamp},
     transport,
     varint::VarInt,
 };
@@ -46,7 +45,7 @@ pub struct Manager {
     sent_packets: SentPackets,
 
     // Timer set when packets may be declared lost at a time in the future
-    loss_timer: VirtualTimer,
+    loss_timer: Timer,
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2
     //# A Probe Timeout (PTO) triggers sending one or two probe datagrams
@@ -88,7 +87,7 @@ impl Manager {
             max_ack_delay,
             largest_acked_packet: None,
             sent_packets: SentPackets::default(),
-            loss_timer: VirtualTimer::default(),
+            loss_timer: Timer::default(),
             pto: Pto::new(max_ack_delay),
             time_of_last_ack_eliciting_packet: None,
             ecn_ce_counter: VarInt::default(),
@@ -903,7 +902,7 @@ impl transmission::interest::Provider for Manager {
 /// Manages the probe time out calculation and probe packet transmission
 #[derive(Debug, Default)]
 struct Pto {
-    timer: VirtualTimer,
+    timer: Timer,
     state: PtoState,
     max_ack_delay: Duration,
 }

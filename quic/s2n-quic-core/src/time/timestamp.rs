@@ -3,6 +3,7 @@
 
 //! Defines time related datatypes and functions
 
+use crate::recovery::K_GRANULARITY;
 use core::{fmt, num::NonZeroU64, time::Duration};
 
 /// An absolute point in time.
@@ -137,8 +138,8 @@ impl Timestamp {
     pub const fn has_elapsed(self, now: Self) -> bool {
         let mut now = now.0.get();
 
-        // even if the timestamp is less than 1ms in the future, consider it elapsed
-        now += Duration::from_millis(1).as_micros() as u64;
+        // even if the timestamp is less than the timer granularity in the future, consider it elapsed
+        now += K_GRANULARITY.as_micros() as u64;
 
         self.0.get() < now
     }

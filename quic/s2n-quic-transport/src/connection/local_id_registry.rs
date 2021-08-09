@@ -7,7 +7,6 @@ use crate::{
         InternalConnectionId,
     },
     contexts::WriteContext,
-    timer::VirtualTimer,
     transmission,
 };
 use alloc::rc::Rc;
@@ -235,7 +234,7 @@ impl LocalIdRegistry {
             // Initialize to 1 until we know the actual limit
             // from the peer transport parameters
             active_connection_id_limit: 1,
-            expiration_timer: VirtualTimer::default(),
+            expiration_timer: Timer::default(),
         };
 
         // The handshake connection ID will be retired after the handshake has completed

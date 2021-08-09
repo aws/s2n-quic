@@ -9,7 +9,6 @@ use crate::{
         ack_ranges::AckRanges,
         ack_transmission_state::AckTransmissionState,
     },
-    timer::VirtualTimer,
     transmission,
 };
 use s2n_quic_core::{
@@ -18,7 +17,7 @@ use s2n_quic_core::{
     frame::{Ack, Ping},
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
-    time::{timer, Timestamp},
+    time::{timer, Timer, Timestamp},
     varint::VarInt,
 };
 
@@ -41,7 +40,7 @@ use s2n_quic_core::{
 #[derive(Clone, Debug)]
 pub struct AckManager {
     /// Time at which the AckManager will wake and transmit an ACK
-    ack_delay_timer: VirtualTimer,
+    ack_delay_timer: Timer,
 
     /// Used to track the ACK-eliciting transmissions sent from the AckManager
     ack_eliciting_transmissions: AckElicitingTransmissionSet,
@@ -71,7 +70,7 @@ pub struct AckManager {
 impl AckManager {
     pub fn new(packet_space: PacketNumberSpace, ack_settings: ack::Settings) -> Self {
         Self {
-            ack_delay_timer: VirtualTimer::default(),
+            ack_delay_timer: Timer::default(),
             ack_eliciting_transmissions: AckElicitingTransmissionSet::default(),
             ack_settings,
             ack_ranges: AckRanges::new(ack_settings.ack_ranges_limit as usize),
