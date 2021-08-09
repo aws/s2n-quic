@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::message::{cmsg, Message as MessageTrait};
+use crate::message::{cmsg, cmsg::Encoder, Message as MessageTrait};
 use alloc::vec::Vec;
 use core::{
     fmt,
@@ -75,11 +75,9 @@ impl MessageTrait for msghdr {
                 #[cfg(target_os = "freebsd")]
                 let ecn = ecn as libc::c_uchar;
 
-                cmsg::encode(self, libc::IPPROTO_IP, libc::IP_TOS, ecn)
+                self.encode_cmsg(libc::IPPROTO_IP, libc::IP_TOS, ecn)
             }
-            SocketAddress::IpV6(_) => {
-                cmsg::encode(self, libc::IPPROTO_IPV6, libc::IPV6_TCLASS, ecn)
-            }
+            SocketAddress::IpV6(_) => self.encode_cmsg(libc::IPPROTO_IPV6, libc::IPV6_TCLASS, ecn),
         };
     }
 
@@ -144,12 +142,7 @@ impl MessageTrait for msghdr {
     #[inline]
     fn set_segment_size(&mut self, size: usize) {
         type SegmentType = u16;
-        cmsg::encode(
-            self,
-            libc::SOL_UDP,
-            libc::UDP_SEGMENT,
-            _size as SegmentType,
-        );
+        self.encode_cmsg(libc::SOL_UDP, libc::UDP_SEGMENT, size as SegmentType);
     }
 
     #[inline]
