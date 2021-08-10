@@ -12,17 +12,23 @@ use crate::{
         local_id_registry::LocalIdRegistrationError,
         ConnectionIdMapper, ConnectionInterests, ConnectionTimers, ConnectionTransmission,
         ConnectionTransmissionContext, InternalConnectionId, Parameters as ConnectionParameters,
-        ProcessingError, SharedConnectionState,
+        ProcessingError,
     },
-    contexts::ConnectionOnTransmitError,
+    contexts::{ConnectionApiCallContext, ConnectionOnTransmitError},
     endpoint, path,
     recovery::RttEstimator,
-    space::PacketSpace,
-    transmission,
+    space::{PacketSpace, PacketSpaceManager},
+    stream, transmission,
     transmission::interest::Provider,
+    wakeup_queue::WakeupHandle,
 };
-use core::time::Duration;
+use bytes::Bytes;
+use core::{
+    task::{Context, Poll},
+    time::Duration,
+};
 use s2n_quic_core::{
+    application,
     event::{self, common::PacketType, Publisher as _},
     inet::{ip::AsEvent as _, DatagramInfo},
     io::tx,
@@ -38,6 +44,7 @@ use s2n_quic_core::{
     path::MaxMtu,
     random, stateless_reset,
     time::{timer, Timestamp},
+    transport,
 };
 
 /// Possible states for handing over a connection from the endpoint to the
@@ -145,7 +152,16 @@ pub struct ConnectionImpl<Config: endpoint::Config> {
     path_manager: path::Manager<Config::CongestionControllerEndpoint>,
     /// The limits applied to the current connection
     limits: Limits,
+    /// The error set on the connection
+    ///
+    /// This is stored so future calls from the application return the same error
+    error: Result<(), connection::Error>,
+    /// Sends CONNECTION_CLOSE close frames after the connection is closed
     close_sender: CloseSender,
+    /// Manages all of the different packet spaces and their respective components
+    space_manager: PacketSpaceManager<Config>,
+    /// Holds the handle for waking up the endpoint from a application call
+    wakeup_handle: WakeupHandle<InternalConnectionId>,
 }
 
 /// Safety: we use some `Rc<RefCell<T>>` inside of the connection but these values
@@ -161,14 +177,42 @@ impl<Config: endpoint::Config> Drop for ConnectionImpl<Config> {
     }
 }
 
+/// Creates a transmission context for the given connection
+///
+/// This is a macro rather than a function to get around borrowing limitations
+macro_rules! transmission_context {
+    (
+        $self:ident,
+        $outcome:expr,
+        $path_id:expr,
+        $timestamp:expr,
+        $transmission_mode:expr,
+        $publisher:expr,
+        $(,)?
+    ) => {
+        ConnectionTransmissionContext {
+            quic_version: $self.quic_version,
+            timestamp: $timestamp,
+            path_id: $path_id,
+            path_manager: &mut $self.path_manager,
+            source_connection_id: &$self.local_connection_id,
+            local_id_registry: &mut $self.local_id_registry,
+            outcome: $outcome,
+            ecn: Default::default(),
+            min_packet_len: None,
+            transmission_mode: $transmission_mode,
+            publisher: $publisher,
+        }
+    };
+}
+
 impl<Config: endpoint::Config> ConnectionImpl<Config> {
     fn update_crypto_state<Pub: event::Publisher>(
         &mut self,
-        shared_state: &mut SharedConnectionState<Config>,
         datagram: &DatagramInfo,
         publisher: &mut Pub,
     ) -> Result<(), connection::Error> {
-        let space_manager = &mut shared_state.space_manager;
+        let space_manager = &mut self.space_manager;
         space_manager.poll_crypto(
             self.path_manager.active_path(),
             &mut self.local_id_registry,
@@ -252,32 +296,6 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         })
     }
 
-    fn transmission_context<'a, 'sub>(
-        &'a mut self,
-        outcome: &'a mut transmission::Outcome,
-        path_id: path::Id,
-        timestamp: Timestamp,
-        transmission_mode: transmission::Mode,
-        publisher: &'a mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
-    ) -> ConnectionTransmissionContext<'a, 'sub, Config> {
-        // TODO get this from somewhere
-        let ecn = Default::default();
-
-        ConnectionTransmissionContext {
-            quic_version: self.quic_version,
-            timestamp,
-            path_id,
-            path_manager: &mut self.path_manager,
-            source_connection_id: &self.local_connection_id,
-            local_id_registry: &mut self.local_id_registry,
-            outcome,
-            ecn,
-            min_packet_len: None,
-            transmission_mode,
-            publisher,
-        }
-    }
-
     /// Send path validation frames for the non-active path.
     ///
     /// Since non-probing frames can only be sent on the active path, a separate
@@ -285,7 +303,6 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
     /// other paths.
     fn path_validation_only_transmission<'a, 'sub, Tx: tx::Queue>(
         &mut self,
-        shared_state: &mut SharedConnectionState<Config>,
         queue: &mut Tx,
         timestamp: Timestamp,
         outcome: &'a mut transmission::Outcome,
@@ -318,7 +335,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
                             transmission_mode: transmission::Mode::PathValidationOnly,
                             publisher,
                         },
-                        shared_state,
+                        space_manager: &mut self.space_manager,
                     })
                     .is_ok()
             {
@@ -335,23 +352,6 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         }
 
         count
-    }
-
-    /// The next `Timestamp` at which any of the connection components will expire
-    #[inline]
-    fn next_expiration(
-        &self,
-        shared_state: Option<&SharedConnectionState<Config>>,
-    ) -> Option<Timestamp> {
-        use timer::Provider;
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-        //# When ack-eliciting packets in multiple packet number spaces are in
-        //# flight, the timer MUST be set to the earlier value of the Initial and
-        //# Handshake packet number spaces.
-
-        // find the earliest armed timer
-        (&self, &shared_state).next_expiration()
     }
 }
 
@@ -404,7 +404,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             state: ConnectionState::Handshaking,
             path_manager,
             limits: parameters.limits,
+            error: Ok(()),
             close_sender: CloseSender::default(),
+            space_manager: parameters.space_manager,
+            wakeup_handle: parameters.wakeup_handle,
         }
     }
 
@@ -422,7 +425,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
     fn close<'sub>(
         &mut self,
-        shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         error: connection::Error,
         close_formatter: &Config::ConnectionCloseFormatter,
         packet_buffer: &mut endpoint::PacketBuffer,
@@ -438,21 +440,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             ConnectionState::Handshaking | ConnectionState::Active => {}
         }
 
-        let shared_state = if let Some(shared_state) = shared_state {
-            shared_state
-        } else if cfg!(debug_assertions) {
-            panic!("shared state discarded before entering closing state");
-        } else {
-            return;
-        };
-
         // We don't need any timers anymore
         self.timers.cancel();
         // Let the path manager know we're closing
         self.path_manager.on_closing();
         // Update the connection state based on the type of error
         self.state = error.into();
-        shared_state.error = Some(error);
+        self.error = Err(error);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.3
         //# An endpoint that wishes to communicate a fatal
@@ -466,7 +460,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             s2n_quic_core::connection::error::as_frame(error, close_formatter, &close_context)
         {
             let mut outcome = transmission::Outcome::new(PacketNumber::default());
-            let mut context = self.transmission_context(
+            let mut context = transmission_context!(
+                self,
                 &mut outcome,
                 active_path_id,
                 timestamp,
@@ -474,7 +469,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 publisher,
             );
 
-            if let Some(packet) = shared_state.space_manager.on_transmit_close(
+            if let Some(packet) = self.space_manager.on_transmit_close(
                 &early_connection_close,
                 &connection_close,
                 &mut context,
@@ -506,25 +501,21 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# An endpoint's selected connection ID and the QUIC version are
         //# sufficient information to identify packets for a closing connection;
         //# the endpoint MAY discard all other connection state.
-        shared_state.space_manager.discard_initial(
+        self.space_manager.discard_initial(
             self.path_manager.active_path_mut(),
             active_path_id,
             publisher,
         );
-        shared_state.space_manager.discard_handshake(
+        self.space_manager.discard_handshake(
             self.path_manager.active_path_mut(),
             active_path_id,
             publisher,
         );
-        shared_state.space_manager.discard_zero_rtt_crypto();
+        self.space_manager.discard_zero_rtt_crypto();
 
         // We don't discard the application space so the application can
         // be notified and read what happened.
-        //
-        // After the application drops the shared state, it will be freed
-        // then.
-        if let Some((application, _handshake_status)) = shared_state.space_manager.application_mut()
-        {
+        if let Some((application, _handshake_status)) = self.space_manager.application_mut() {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2
             //# A CONNECTION_CLOSE frame
             //# causes all streams to immediately become closed; open streams can be
@@ -572,7 +563,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     /// Queries the connection for outgoing packets
     fn on_transmit<'sub, Tx: tx::Queue>(
         &mut self,
-        shared_state: Option<&mut SharedConnectionState<Config>>,
         queue: &mut Tx,
         timestamp: Timestamp,
         publisher: &mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
@@ -586,80 +576,79 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         match self.state {
             ConnectionState::Handshaking | ConnectionState::Active => {
-                if let Some(shared_state) = shared_state {
-                    let mut outcome = transmission::Outcome::new(PacketNumber::default());
+                let mut outcome = transmission::Outcome::new(PacketNumber::default());
 
-                    while !self.path_manager.active_path().at_amplification_limit()
-                        && queue
-                            .push(ConnectionTransmission {
-                                context: self.transmission_context(
-                                    &mut outcome,
-                                    self.path_manager.active_path_id(),
-                                    timestamp,
-                                    transmission::Mode::Normal,
-                                    publisher,
-                                ),
-                                shared_state,
-                            })
-                            .is_ok()
-                    {
-                        count += 1;
-                        // TODO this is wrong - multiple packets can be sent in the same
-                        // transmission
-                        publisher.on_packet_sent(event::builders::PacketSent {
-                            packet_header: event::builders::PacketHeader {
-                                packet_type: outcome.packet_number.space().into(),
-                                packet_number: outcome.packet_number.as_u64(),
-                                version: Some(self.quic_version),
-                            }
-                            .into(),
-                        });
-                    }
-
-                    if outcome.ack_elicitation.is_ack_eliciting() {
-                        self.on_ack_eliciting_packet_sent(timestamp);
-                    }
-
-                    // Send an MTU probe if necessary
-                    if self
-                        .path_manager
-                        .active_path()
-                        .mtu_controller
-                        .can_transmit(self.path_manager.active_path().transmission_constraint())
-                        && queue
-                            .push(ConnectionTransmission {
-                                context: self.transmission_context(
-                                    &mut outcome,
-                                    self.path_manager.active_path_id(),
-                                    timestamp,
-                                    transmission::Mode::MtuProbing,
-                                    publisher,
-                                ),
-                                shared_state,
-                            })
-                            .is_ok()
-                    {
-                        count += 1;
-                        publisher.on_packet_sent(event::builders::PacketSent {
-                            packet_header: event::builders::PacketHeader {
-                                packet_type: outcome.packet_number.space().into(),
-                                packet_number: outcome.packet_number.as_u64(),
-                                version: Some(self.quic_version),
-                            }
-                            .into(),
-                        });
-                    };
-
-                    // PathValidationOnly handles transmission on non-active paths. Transmission
-                    // on the active path should be handled prior to this.
-                    count += self.path_validation_only_transmission(
-                        shared_state,
-                        queue,
-                        timestamp,
-                        &mut outcome,
-                        publisher,
-                    );
+                while !self.path_manager.active_path().at_amplification_limit()
+                    && queue
+                        .push(ConnectionTransmission {
+                            context: transmission_context!(
+                                self,
+                                &mut outcome,
+                                self.path_manager.active_path_id(),
+                                timestamp,
+                                transmission::Mode::Normal,
+                                publisher,
+                            ),
+                            space_manager: &mut self.space_manager,
+                        })
+                        .is_ok()
+                {
+                    count += 1;
+                    // TODO this is wrong - multiple packets can be sent in the same
+                    // transmission
+                    publisher.on_packet_sent(event::builders::PacketSent {
+                        packet_header: event::builders::PacketHeader {
+                            packet_type: outcome.packet_number.space().into(),
+                            packet_number: outcome.packet_number.as_u64(),
+                            version: Some(self.quic_version),
+                        }
+                        .into(),
+                    });
                 }
+
+                if outcome.ack_elicitation.is_ack_eliciting() {
+                    self.on_ack_eliciting_packet_sent(timestamp);
+                }
+
+                // Send an MTU probe if necessary
+                if self
+                    .path_manager
+                    .active_path()
+                    .mtu_controller
+                    .can_transmit(self.path_manager.active_path().transmission_constraint())
+                    && queue
+                        .push(ConnectionTransmission {
+                            context: transmission_context!(
+                                self,
+                                &mut outcome,
+                                self.path_manager.active_path_id(),
+                                timestamp,
+                                transmission::Mode::MtuProbing,
+                                publisher,
+                            ),
+                            space_manager: &mut self.space_manager,
+                        })
+                        .is_ok()
+                {
+                    count += 1;
+                    publisher.on_packet_sent(event::builders::PacketSent {
+                        packet_header: event::builders::PacketHeader {
+                            packet_type: outcome.packet_number.space().into(),
+                            packet_number: outcome.packet_number.as_u64(),
+                            version: Some(self.quic_version),
+                        }
+                        .into(),
+                    });
+                };
+
+                // PathValidationOnly handles transmission on non-active paths. Transmission
+                // on the active path should be handled prior to this.
+                count += self.path_validation_only_transmission(
+                    queue,
+                    timestamp,
+                    &mut outcome,
+                    publisher,
+                );
             }
             ConnectionState::Closing => {
                 let path = self.path_manager.active_path_mut();
@@ -684,7 +673,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     /// `timestamp` passes the current time.
     fn on_timeout<Pub: event::Publisher>(
         &mut self,
-        mut shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
         publisher: &mut Pub,
@@ -708,14 +696,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         self.path_manager.on_timeout(timestamp)?;
         self.local_id_registry.on_timeout(timestamp);
 
-        if let Some(shared_state) = shared_state.as_mut() {
-            shared_state.space_manager.on_timeout(
-                &mut self.local_id_registry,
-                &mut self.path_manager,
-                timestamp,
-                publisher,
-            );
-        }
+        self.space_manager.on_timeout(
+            &mut self.local_id_registry,
+            &mut self.path_manager,
+            timestamp,
+            publisher,
+        );
 
         if self
             .timers
@@ -750,35 +736,18 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Handles all external wakeups on the [`Connection`].
-    fn on_wakeup(
-        &mut self,
-        shared_state: Option<&mut SharedConnectionState<Self::Config>>,
-        _timestamp: Timestamp,
-    ) -> Result<(), connection::Error> {
-        let mut result = Ok(());
+    fn on_wakeup(&mut self, _timestamp: Timestamp) -> Result<(), connection::Error> {
+        self.wakeup_handle.wakeup_handled();
 
-        // This method is intentionally mostly empty at the moment. The most important thing on a
-        // wakeup is that the connection manager synchronizes the interests of the individual connection.
-        // This will happen automatically through the [`interests()`] call after the [`Connection`]
-        // was accessed. Therefore we do not have to do anything special here.
+        // return an error if the application set one
+        self.error?;
 
-        if let Some(shared_state) = shared_state {
-            // For active connections we have to check if the application requested
-            // to close them
-            if let Some(error) = shared_state.error {
-                result = Err(error);
-            }
-
-            shared_state.wakeup_handle.wakeup_handled();
-        }
-
-        result
+        Ok(())
     }
 
     // Packet handling
     fn on_datagram_received(
         &mut self,
-        shared_state: Option<&mut SharedConnectionState<Config>>,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         random: &mut Config::RandomGenerator,
@@ -795,10 +764,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# packets received from an unvalidated address or limit the cumulative
         //# size of packets it sends to an unvalidated address to three times the
         //# size of packets it receives from that address.
-        let handshake_confirmed = shared_state
-            .as_ref()
-            .map(|s| s.space_manager.is_handshake_confirmed())
-            .unwrap_or(false);
+        let handshake_confirmed = self.space_manager.is_handshake_confirmed();
 
         let (id, unblocked) = self.path_manager.on_datagram_received(
             datagram,
@@ -809,18 +775,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             max_mtu,
         )?;
 
-        if let Some(shared_state) = shared_state {
-            if unblocked {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.6
-                //# When a server is blocked by anti-amplification limits, receiving a
-                //# datagram unblocks it, even if none of the packets in the datagram are
-                //# successfully processed.  In such a case, the PTO timer will need to
-                //# be re-armed.
-                shared_state
-                    .space_manager
-                    .on_amplification_unblocked(&self.path_manager[id], datagram.timestamp);
-            }
-        } else {
+        if matches!(self.state, ConnectionState::Closing) {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.1
             //# An endpoint in the closing
             //# state sends a packet containing a CONNECTION_CLOSE frame in response
@@ -833,6 +788,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 self.close_sender
                     .on_datagram_received(rtt, datagram.timestamp);
             }
+        } else if unblocked {
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.6
+            //# When a server is blocked by anti-amplification limits, receiving a
+            //# datagram unblocks it, even if none of the packets in the datagram are
+            //# successfully processed.  In such a case, the PTO timer will need to
+            //# be re-armed.
+            self.space_manager
+                .on_amplification_unblocked(&self.path_manager[id], datagram.timestamp);
         }
 
         Ok(id)
@@ -841,14 +804,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     /// Is called when a initial packet had been received
     fn handle_initial_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedInitial,
         publisher: &mut Pub,
         random_generator: &mut Rnd,
     ) -> Result<(), ProcessingError> {
-        if let Some((space, _status)) = shared_state.space_manager.initial_mut() {
+        if let Some((space, _status)) = self.space_manager.initial_mut() {
             let packet = space.validate_and_decrypt_packet(packet, path_id, publisher)?;
 
             publisher.on_packet_received(event::builders::PacketReceived {
@@ -861,7 +823,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             });
 
             self.handle_cleartext_initial_packet(
-                shared_state,
                 datagram,
                 path_id,
                 packet,
@@ -876,14 +837,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     /// Is called when an unprotected initial packet had been received
     fn handle_cleartext_initial_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: CleartextInitial,
         publisher: &mut Pub,
         random_generator: &mut Rnd,
     ) -> Result<(), ProcessingError> {
-        if let Some((space, handshake_status)) = shared_state.space_manager.initial_mut() {
+        if let Some((space, handshake_status)) = self.space_manager.initial_mut() {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2
             //= type=TODO
             //= tracking-issue=336
@@ -914,7 +874,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             )?;
 
             // try to move the crypto state machine forward
-            self.update_crypto_state(shared_state, datagram, publisher)?;
+            self.update_crypto_state(datagram, publisher)?;
 
             // notify the connection a packet was processed
             self.on_processed_packet(datagram.timestamp);
@@ -926,7 +886,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     /// Is called when a handshake packet had been received
     fn handle_handshake_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedHandshake,
@@ -946,7 +905,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# receiving a server response, so servers SHOULD ignore any such
         //# packets.
 
-        if let Some((space, handshake_status)) = shared_state.space_manager.handshake_mut() {
+        if let Some((space, handshake_status)) = self.space_manager.handshake_mut() {
             let packet = space.validate_and_decrypt_packet(packet, path_id, publisher)?;
 
             publisher.on_packet_received(event::builders::PacketReceived {
@@ -974,7 +933,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
                 //# a server MUST discard Initial keys when it first
                 //# successfully processes a Handshake packet.
-                shared_state.space_manager.discard_initial(
+                self.space_manager.discard_initial(
                     self.path_manager.active_path_mut(),
                     path_id,
                     publisher,
@@ -988,7 +947,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             }
 
             // try to move the crypto state machine forward
-            self.update_crypto_state(shared_state, datagram, publisher)?;
+            self.update_crypto_state(datagram, publisher)?;
 
             // notify the connection a packet was processed
             self.on_processed_packet(datagram.timestamp);
@@ -1000,7 +959,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     /// Is called when a short packet had been received
     fn handle_short_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedShort,
@@ -1021,7 +979,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# process incoming 1-RTT protected packets before the TLS handshake is
         //# complete.
 
-        if !shared_state.space_manager.is_handshake_complete() {
+        if !self.space_manager.is_handshake_complete() {
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
             //= type=TODO
             //= tracking-issue=320
@@ -1044,7 +1002,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             return Ok(());
         }
 
-        if let Some((space, handshake_status)) = shared_state.space_manager.application_mut() {
+        if let Some((space, handshake_status)) = self.space_manager.application_mut() {
             let packet = space.validate_and_decrypt_packet(
                 packet,
                 datagram,
@@ -1087,7 +1045,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     /// Is called when a version negotiation packet had been received
     fn handle_version_negotiation_packet(
         &mut self,
-        _shared_state: &mut SharedConnectionState<Self::Config>,
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedVersionNegotiation,
@@ -1122,7 +1079,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     /// Is called when a zero rtt packet had been received
     fn handle_zero_rtt_packet(
         &mut self,
-        _shared_state: &mut SharedConnectionState<Self::Config>,
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedZeroRtt,
@@ -1141,7 +1097,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     /// Is called when a retry packet had been received
     fn handle_retry_packet(
         &mut self,
-        _shared_state: &mut SharedConnectionState<Self::Config>,
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedRetry,
@@ -1180,16 +1135,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         self.accept_state = AcceptState::Active;
     }
 
-    #[inline]
-    fn interests(
-        &self,
-        shared_state: Option<&SharedConnectionState<Self::Config>>,
-    ) -> ConnectionInterests {
+    fn interests(&self) -> ConnectionInterests {
         use crate::connection::finalization::Provider as _;
+        use timer::Provider as _;
         use transmission::interest::Provider as _;
 
         let mut interests = ConnectionInterests {
-            timeout: self.next_expiration(shared_state),
+            timeout: self.next_expiration(),
             ..Default::default()
         };
 
@@ -1201,7 +1153,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             ConnectionState::Active | ConnectionState::Handshaking => {
                 let constraint = self.path_manager.transmission_constraint();
 
-                interests.transmission = (self, &shared_state).can_transmit(constraint);
+                interests.transmission = self.can_transmit(constraint);
                 interests.new_connection_id = self.local_id_registry.connection_id_interest()
                     != connection::id::Interest::None;
             }
@@ -1224,46 +1176,126 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         interests
     }
-}
 
-impl<Config: endpoint::Config> timer::Provider for ConnectionImpl<Config> {
-    #[inline]
-    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-        //# When ack-eliciting packets in multiple packet number spaces are in
-        //# flight, the timer MUST be set to the earlier value of the Initial and
-        //# Handshake packet number spaces.
+    // public API methods
 
-        // find the earliest armed timer
-        self.timers.timers(query)?;
-        self.close_sender.timers(query)?;
-        self.local_id_registry.timers(query)?;
-        self.path_manager.timers(query)?;
+    fn poll_stream_request(
+        &mut self,
+        stream_id: stream::StreamId,
+        request: &mut stream::ops::Request,
+        context: Option<&Context>,
+    ) -> Result<stream::ops::Response, stream::StreamError> {
+        self.error?;
+
+        let (space, _) = self
+            .space_manager
+            .application_mut()
+            .ok_or(connection::Error::Unspecified)?;
+
+        let mut api_context = ConnectionApiCallContext::from_wakeup_handle(&mut self.wakeup_handle);
+
+        space
+            .stream_manager
+            .poll_request(stream_id, &mut api_context, request, context)
+    }
+
+    fn poll_accept_stream(
+        &mut self,
+        stream_type: Option<stream::StreamType>,
+        context: &Context,
+    ) -> Poll<Result<Option<stream::StreamId>, connection::Error>> {
+        self.error?;
+
+        let (space, _) = self
+            .space_manager
+            .application_mut()
+            .ok_or(connection::Error::Unspecified)?;
+
+        space.stream_manager.poll_accept(stream_type, context)
+    }
+
+    fn poll_open_stream(
+        &mut self,
+        stream_type: stream::StreamType,
+        context: &Context,
+    ) -> Poll<Result<stream::StreamId, connection::Error>> {
+        self.error?;
+
+        let (space, _) = self
+            .space_manager
+            .application_mut()
+            .ok_or(connection::Error::Unspecified)?;
+
+        space.stream_manager.poll_open(stream_type, context)
+    }
+
+    fn application_close(&mut self, error: Option<application::Error>) {
+        self.error = Err(match error {
+            Some(error) => connection::Error::Application {
+                error,
+                initiator: endpoint::Location::Local,
+            },
+            None => transport::Error::APPLICATION_ERROR.into(),
+        });
+    }
+
+    fn sni(&self) -> Option<Bytes> {
+        // TODO move SNI to connection
+        self.space_manager.application()?.sni.clone()
+    }
+
+    fn alpn(&self) -> Bytes {
+        // TODO move ALPN to connection
+        if let Some(space) = self.space_manager.application() {
+            space.alpn.clone()
+        } else {
+            Bytes::from_static(&[])
+        }
+    }
+
+    fn ping(&mut self) -> Result<(), connection::Error> {
+        self.error?;
+
+        if let Some((space, _)) = self.space_manager.application_mut() {
+            space.ping();
+
+            self.wakeup_handle.wakeup();
+        } else {
+            // applications can't ping until the application space is available
+            // TODO: maybe return a better error message?
+            return Err(connection::Error::Unspecified);
+        }
 
         Ok(())
     }
 }
 
-impl<Config: endpoint::Config> transmission::interest::Provider
-    for (
-        &ConnectionImpl<Config>,
-        &Option<&SharedConnectionState<Config>>,
-    )
-{
+impl<Config: endpoint::Config> timer::Provider for ConnectionImpl<Config> {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        // find the earliest armed timer
+        self.timers.timers(query)?;
+        self.close_sender.timers(query)?;
+        self.local_id_registry.timers(query)?;
+        self.path_manager.timers(query)?;
+        self.space_manager.timers(query)?;
+
+        Ok(())
+    }
+}
+
+impl<Config: endpoint::Config> transmission::interest::Provider for ConnectionImpl<Config> {
     #[inline]
     fn transmission_interest<Q: transmission::interest::Query>(
         &self,
         query: &mut Q,
     ) -> transmission::interest::Result {
-        self.0.path_manager.transmission_interest(query)?;
+        self.path_manager.transmission_interest(query)?;
 
-        if let Some(shared_state) = self.1.as_ref() {
-            shared_state.space_manager.transmission_interest(query)?;
-        }
+        self.space_manager.transmission_interest(query)?;
 
-        self.0.local_id_registry.transmission_interest(query)?;
-        self.0
-            .path_manager
+        self.local_id_registry.transmission_interest(query)?;
+        self.path_manager
             .active_path()
             .mtu_controller
             .transmission_interest(query)?;

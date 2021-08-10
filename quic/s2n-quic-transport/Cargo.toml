@@ -6,6 +6,8 @@ edition = "2018"
 license = "Apache-2.0"
 
 [features]
+default = ["std"]
+std = []
 connection-migration = []
 
 [dependencies]

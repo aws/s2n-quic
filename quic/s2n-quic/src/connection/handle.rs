@@ -140,7 +140,7 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
-        pub fn sni(&self) -> Option<::bytes::Bytes> {
+        pub fn sni(&self) -> $crate::connection::Result<Option<::bytes::Bytes>> {
             self.0.sni()
         }
 
@@ -151,7 +151,7 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
-        pub fn alpn(&self) -> ::bytes::Bytes {
+        pub fn alpn(&self) -> $crate::connection::Result<::bytes::Bytes> {
             self.0.alpn()
         }
 

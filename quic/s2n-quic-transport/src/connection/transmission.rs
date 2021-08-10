@@ -2,12 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    connection::{self, SharedConnectionState},
-    endpoint, path,
-    path::Path,
-    recovery::congestion_controller,
-    transmission,
-    transmission::interest::Provider,
+    connection, endpoint, path, path::Path, recovery::congestion_controller,
+    space::PacketSpaceManager, transmission, transmission::interest::Provider,
 };
 use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
@@ -53,7 +49,7 @@ impl<'a, 'sub, Config: endpoint::Config> ConnectionTransmissionContext<'a, 'sub,
 
 pub struct ConnectionTransmission<'a, 'sub, Config: endpoint::Config> {
     pub context: ConnectionTransmissionContext<'a, 'sub, Config>,
-    pub shared_state: &'a mut SharedConnectionState<Config>,
+    pub space_manager: &'a mut PacketSpaceManager<Config>,
 }
 
 impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, 'sub, Config> {
@@ -89,8 +85,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
     }
 
     fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
-        let shared_state = &mut self.shared_state;
-        let space_manager = &mut shared_state.space_manager;
+        let space_manager = &mut self.space_manager;
 
         let mtu = self
             .context

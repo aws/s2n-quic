@@ -6,13 +6,12 @@ use crate::{
         self,
         id::{ConnectionInfo, Generator as _},
         limits::{ConnectionInfo as LimitsInfo, Limiter as _},
-        SynchronizedSharedConnectionState, Trait as _,
+        Trait as _,
     },
     endpoint,
     recovery::congestion_controller::{self, Endpoint as _},
     space::PacketSpaceManager,
 };
-use alloc::sync::Arc;
 use core::convert::TryInto;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
@@ -211,24 +210,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .congestion_controller
             .new_congestion_controller(path_info);
 
-        let connection_parameters = connection::Parameters {
-            internal_connection_id,
-            local_id_registry,
-            peer_id_registry,
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
-            //# A server MUST set the Destination Connection ID it
-            //# uses for sending packets based on the first received Initial packet.
-            peer_connection_id: source_connection_id,
-            local_connection_id: initial_connection_id,
-            peer_socket_address: datagram.remote_address,
-            congestion_controller,
-            timestamp: datagram.timestamp,
-            quic_version: packet.version,
-            limits,
-            max_mtu: self.max_mtu,
-        };
-
-        let quic_version = connection_parameters.quic_version;
+        let quic_version = packet.version;
         let mut publisher = event::PublisherSubscriber::new(
             event::builders::Meta {
                 endpoint_type: Config::ENDPOINT_TYPE,
@@ -238,6 +220,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             Some(quic_version),
             endpoint_context.event_subscriber,
         );
+
         let space_manager = PacketSpaceManager::new(
             tls_session,
             initial_key,
@@ -246,73 +229,78 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             &mut publisher,
         );
 
-        let shared_state = Arc::new(SynchronizedSharedConnectionState::new(
+        let connection_parameters = connection::Parameters {
+            internal_connection_id,
+            local_id_registry,
+            peer_id_registry,
             space_manager,
             wakeup_handle,
-            internal_connection_id,
-        ));
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
+            //# A server MUST set the Destination Connection ID it
+            //# uses for sending packets based on the first received Initial packet.
+            peer_connection_id: source_connection_id,
+            local_connection_id: initial_connection_id,
+            peer_socket_address: datagram.remote_address,
+            congestion_controller,
+            timestamp: datagram.timestamp,
+            quic_version,
+            limits,
+            max_mtu: self.max_mtu,
+        };
+
         let mut connection =
             <Config as endpoint::Config>::Connection::new(connection_parameters, &mut publisher);
 
-        // The scope is needed in order to lock the shared state only for a certain duration.
-        // It needs to be unlocked when we insert the connection in our map
-        {
-            let locked_shared_state = &mut *shared_state.lock();
+        let path_id = connection.on_datagram_received(
+            datagram,
+            endpoint_context.congestion_controller,
+            endpoint_context.random_generator,
+            self.max_mtu,
+        )?;
 
-            let path_id = connection.on_datagram_received(
-                Some(locked_shared_state),
-                datagram,
-                endpoint_context.congestion_controller,
-                endpoint_context.random_generator,
-                self.max_mtu,
-            )?;
-
-            connection
-                .handle_cleartext_initial_packet(
-                    locked_shared_state,
-                    datagram,
-                    path_id,
-                    packet,
-                    &mut publisher,
-                    endpoint_context.random_generator,
-                )
-                .map_err(|err| {
-                    use connection::ProcessingError;
-                    match err {
-                        ProcessingError::CryptoError(err) => err.into(),
-                        ProcessingError::ConnectionError(err) => err,
-                        // this is the first packet this connection has received
-                        // so getting this error would be incorrect
-                        ProcessingError::DuplicatePacket => {
-                            if cfg!(debug_assertions) {
-                                panic!("got duplicate packet error on first packet");
-                            }
-                            transport::Error::INTERNAL_ERROR.into()
-                        }
-                    }
-                })?;
-
-            connection.handle_remaining_packets(
-                locked_shared_state,
+        connection
+            .handle_cleartext_initial_packet(
                 datagram,
                 path_id,
-                endpoint_context.connection_id_format,
-                remaining,
+                packet,
                 &mut publisher,
                 endpoint_context.random_generator,
-            )?;
+            )
+            .map_err(|err| {
+                use connection::ProcessingError;
+                match err {
+                    ProcessingError::CryptoError(err) => err.into(),
+                    ProcessingError::ConnectionError(err) => err,
+                    // this is the first packet this connection has received
+                    // so getting this error would be incorrect
+                    ProcessingError::DuplicatePacket => {
+                        if cfg!(debug_assertions) {
+                            panic!("got duplicate packet error on first packet");
+                        }
+                        transport::Error::INTERNAL_ERROR.into()
+                    }
+                }
+            })?;
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.3
-            //= type=TODO
-            //= tracking-issue=299
-            //# If the
-            //# ClientHello spans multiple Initial packets, such servers would need
-            //# to buffer the first received fragments, which could consume excessive
-            //# resources if the client's address has not yet been validated.  To
-            //# avoid this, servers MAY use the Retry feature (see Section 8.1 of
-            //# [QUIC-TRANSPORT]) to only buffer partial ClientHello messages from
-            //# clients with a validated address.
-        }
+        connection.handle_remaining_packets(
+            datagram,
+            path_id,
+            endpoint_context.connection_id_format,
+            remaining,
+            &mut publisher,
+            endpoint_context.random_generator,
+        )?;
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.3
+        //= type=TODO
+        //= tracking-issue=299
+        //# If the
+        //# ClientHello spans multiple Initial packets, such servers would need
+        //# to buffer the first received fragments, which could consume excessive
+        //# resources if the client's address has not yet been validated.  To
+        //# avoid this, servers MAY use the Retry feature (see Section 8.1 of
+        //# [QUIC-TRANSPORT]) to only buffer partial ClientHello messages from
+        //# clients with a validated address.
 
         let result = self
             .connection_id_mapper
@@ -328,7 +316,8 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         // Otherwise the connection will automatically get dropped. This
         // will also clean up all state which was already allocated for
         // the connection
-        self.connections.insert_connection(connection, shared_state);
+        self.connections
+            .insert_connection(connection, internal_connection_id);
 
         Ok(())
     }

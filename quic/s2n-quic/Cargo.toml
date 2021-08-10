@@ -23,7 +23,14 @@ protocol-extensions = []
 rand-provider = ["rand", "rand_chacha"]
 rustls = ["s2n-quic-rustls"]
 s2n-tls = ["s2n-quic-tls"]
-std = ["bytes/std", "futures/std", "s2n-quic-core/std", "s2n-quic-platform/std", "thiserror"]
+std = [
+    "bytes/std",
+    "futures/std",
+    "s2n-quic-core/std",
+    "s2n-quic-platform/std",
+    "s2n-quic-transport/std",
+    "thiserror"
+]
 tokio-runtime = ["tokio", "s2n-quic-platform/tokio-runtime"]
 tracing-provider = ["tracing"]
 

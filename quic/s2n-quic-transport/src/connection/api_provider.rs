@@ -45,9 +45,9 @@ pub(crate) trait ConnectionApiProvider: Sync + Send {
 
     fn close_connection(&self, code: Option<application::Error>);
 
-    fn sni(&self) -> Option<Bytes>;
+    fn sni(&self) -> Result<Option<Bytes>, connection::Error>;
 
-    fn alpn(&self) -> Bytes;
+    fn alpn(&self) -> Result<Bytes, connection::Error>;
 
     fn id(&self) -> u64;
 
