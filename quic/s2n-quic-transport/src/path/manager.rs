@@ -88,12 +88,18 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         self[path_id].peer_connection_id = use_peer_connection_id;
 
         publisher.on_active_path_updated(event::builders::ActivePathUpdated {
-            previous_addr: self.active_path().peer_socket_address.as_event(),
-            previous_cid: self.active_path().peer_connection_id.as_event(),
-            previous_path_id: self.active as u64,
-            active_addr: self[path_id].peer_socket_address.as_event(),
-            active_cid: self[path_id].peer_connection_id.as_event(),
-            active_path_id: new_path_idx as u64,
+            previous: event::builders::Path {
+                remote_addr: self.active_path().peer_socket_address.as_event(),
+                remote_cid: self.active_path().peer_connection_id.as_event(),
+                id: new_path_idx as u64,
+            }
+            .into(),
+            active: event::builders::Path {
+                remote_addr: self[path_id].peer_socket_address.as_event(),
+                remote_cid: self[path_id].peer_connection_id.as_event(),
+                id: new_path_idx as u64,
+            }
+            .into(),
         });
 
         if self.active_path().is_validated() {

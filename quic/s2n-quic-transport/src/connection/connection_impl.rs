@@ -7,7 +7,7 @@ use crate::{
     connection::{
         self,
         close_sender::CloseSender,
-        id::{ConnectionInfo, Interest},
+        id::{AsEvent as _, ConnectionInfo, Interest},
         limits::Limits,
         local_id_registry::LocalIdRegistrationError,
         ConnectionIdMapper, ConnectionInterests, ConnectionTimers, ConnectionTransmission,
@@ -24,7 +24,7 @@ use crate::{
 use core::time::Duration;
 use s2n_quic_core::{
     event::{self, common::PacketType, Publisher as _},
-    inet::DatagramInfo,
+    inet::{ip::AsEvent as _, DatagramInfo},
     io::tx,
     packet::{
         handshake::ProtectedHandshake,
@@ -364,7 +364,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Creates a new `Connection` instance with the given configuration
-    fn new(parameters: ConnectionParameters<Self::Config>) -> Self {
+    fn new<Pub: event::Publisher>(
+        parameters: ConnectionParameters<Self::Config>,
+        publisher: &mut Pub,
+    ) -> Self {
         // The path manager always starts with a single path containing the known peer and local
         // connection ids.
         let rtt_estimator = RttEstimator::new(parameters.limits.ack_settings().max_ack_delay);
@@ -381,6 +384,15 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         );
 
         let path_manager = path::Manager::new(initial_path, parameters.peer_id_registry);
+
+        publisher.on_connection_started(event::builders::ConnectionStarted {
+            path: event::builders::Path {
+                remote_addr: parameters.peer_socket_address.as_event(),
+                remote_cid: parameters.peer_connection_id.as_event(),
+                id: path_manager.active_path_id().as_u8() as u64,
+            }
+            .into(),
+        });
 
         Self {
             internal_connection_id: parameters.internal_connection_id,
