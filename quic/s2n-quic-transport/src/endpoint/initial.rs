@@ -4,7 +4,7 @@
 use crate::{
     connection::{
         self,
-        id::{ConnectionInfo, Generator as _},
+        id::{AsEvent as _, ConnectionInfo, Generator as _},
         limits::{ConnectionInfo as LimitsInfo, Limiter as _},
         SynchronizedSharedConnectionState, Trait as _,
     },
@@ -18,7 +18,8 @@ use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     crypto::{tls, tls::Endpoint as TLSEndpoint, CryptoSuite, InitialKey},
     event,
-    inet::DatagramInfo,
+    event::Publisher as _,
+    inet::{ip::AsEvent as _, DatagramInfo},
     packet::initial::ProtectedInitial,
     stateless_reset::token::Generator as _,
     transport::{self, parameters::ServerTransportParameters},
@@ -251,6 +252,11 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             wakeup_handle,
             internal_connection_id,
         ));
+
+        publisher.on_connection_started(event::builders::ConnectionStarted {
+            remote_cid: connection_parameters.peer_connection_id.as_event(),
+            remote_addr: connection_parameters.peer_socket_address.as_event(),
+        });
 
         let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters);
 

@@ -417,6 +417,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         timestamp: Timestamp,
         publisher: &mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
     ) {
+        publisher.on_connection_closed(event::builders::ConnectionClosed { error });
         match self.state {
             ConnectionState::Closing | ConnectionState::Draining | ConnectionState::Finished => {
                 // The connection is already closing

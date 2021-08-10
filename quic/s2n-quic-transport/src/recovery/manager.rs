@@ -9,8 +9,9 @@ use crate::{
 };
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
+    connection::id::AsEvent as _,
     endpoint, event, frame,
-    inet::DatagramInfo,
+    inet::{ip::AsEvent as _, DatagramInfo},
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     recovery::{CongestionController, RttEstimator, K_GRANULARITY},
     time::{timer, Timer, Timestamp},
@@ -777,8 +778,8 @@ impl Manager {
                 }
                 .into(),
                 path_id: current_path_id.as_u8() as u64,
-                src_addr: &path.peer_socket_address,
-                src_cid: &path.peer_connection_id,
+                remote_addr: path.peer_socket_address.as_event(),
+                remote_cid: path.peer_connection_id.as_event(),
                 bytes_lost: sent_info.sent_bytes,
                 is_mtu_probe,
             });
