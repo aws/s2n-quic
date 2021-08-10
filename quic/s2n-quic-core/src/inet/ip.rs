@@ -213,6 +213,21 @@ mod std_conversion {
         }
     }
 
+    impl From<event::common::SocketAddress<'_>> for net::SocketAddr {
+        fn from(address: event::common::SocketAddress) -> Self {
+            match address {
+                event::common::SocketAddress::IpV4 { ip, port } => {
+                    let ip = net::IpAddr::V4(net::Ipv4Addr::from(*ip));
+                    Self::new(ip, port)
+                }
+                event::common::SocketAddress::IpV6 { ip, port } => {
+                    let ip = net::IpAddr::V6(net::Ipv6Addr::from(*ip));
+                    Self::new(ip, port)
+                }
+            }
+        }
+    }
+
     impl<'a> From<SocketAddressRef<'a>> for net::SocketAddr {
         fn from(address: SocketAddressRef<'a>) -> Self {
             match address {
