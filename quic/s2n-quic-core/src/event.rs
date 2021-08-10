@@ -201,12 +201,11 @@ events!(
         // TODO: many events seem to require PacketHeader. Make it more ergonomic
         // to include this field.
         // pub packet_header: common::PacketHeader,
-        // TODO uncomment once we record the local SocketAddress
-        // pub local_addr: common::SocketAddress<'a>,
-        pub local_cid: common::ConnectionId<'a>,
-        pub remote_addr: common::SocketAddress<'a>,
-        pub remote_cid: common::ConnectionId<'a>,
+        pub previous_addr: common::SocketAddress<'a>,
+        pub previous_cid: common::ConnectionId<'a>,
         pub previous_path_id: u64,
+        pub active_addr: common::SocketAddress<'a>,
+        pub active_cid: common::ConnectionId<'a>,
         pub active_path_id: u64,
     }
 
@@ -238,9 +237,9 @@ events!(
     struct PacketLost<'a> {
         pub packet_header: common::PacketHeader,
         pub path_id: u64,
-        // TODO uncomment once we record the local SocketAddress
+        // TODO uncomment once we record the local Address/CID
         // pub local_addr: common::SocketAddress<'a>,
-        pub local_cid: common::ConnectionId<'a>,
+        // pub local_cid: common::ConnectionId<'a>,
         pub remote_addr: common::SocketAddress<'a>,
         pub remote_cid: common::ConnectionId<'a>,
         pub bytes_lost: u16,
@@ -273,9 +272,9 @@ events!(
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.2
     /// Connection started
     struct ConnectionStarted<'a> {
-        // TODO uncomment once we record the local SocketAddress
+        // TODO uncomment once we record the local Address/CID
         // pub local_addr: common::SocketAddress<'a>,
-        pub local_cid: common::ConnectionId<'a>,
+        // pub local_cid: common::ConnectionId<'a>,
         pub remote_addr: common::SocketAddress<'a>,
         pub remote_cid: common::ConnectionId<'a>,
     }

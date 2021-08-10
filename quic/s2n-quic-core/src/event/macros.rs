@@ -222,6 +222,7 @@ macro_rules! common {
             #[derive(Clone, Debug)]
             pub struct Meta {
                 pub endpoint_type: endpoint::Type,
+                // This maps to `InternalConnectionId` and is the stable identifier across CID changes.
                 pub group_id: u64,
                 pub timestamp: Timestamp,
             }
