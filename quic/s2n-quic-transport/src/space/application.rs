@@ -28,10 +28,7 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     packet::{
         encoding::{PacketEncoder, PacketEncodingError},
-        number::{
-            AsEvent as _, PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow,
-            SlidingWindowError,
-        },
+        number::{AsEvent as _, PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow},
         short::{CleartextShort, ProtectedShort, Short, SpinBit},
     },
     recovery::RttEstimator,
@@ -128,34 +125,22 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         path_id: path::Id,
         publisher: &mut Pub,
     ) -> bool {
-        match self.processed_packet_numbers.check(packet_number) {
+        let packet_check = self.processed_packet_numbers.check(packet_number);
+        if let Err(err) = packet_check {
+            publisher.on_duplicate_packet(event::builders::DuplicatePacket {
+                packet_header: event::builders::PacketHeader {
+                    packet_type: packet_number.space().into(),
+                    packet_number: packet_number.as_u64(),
+                    version: publisher.quic_version(),
+                }
+                .into(),
+                path_id: path_id.as_u8() as u64,
+                error: err.as_event(),
+            });
+        }
+        match packet_check {
             Ok(()) => false,
-            Err(err @ SlidingWindowError::Duplicate) => {
-                publisher.on_duplicate_packet(event::builders::DuplicatePacket {
-                    packet_header: event::builders::PacketHeader {
-                        packet_type: packet_number.space().into(),
-                        packet_number: packet_number.as_u64(),
-                        version: publisher.quic_version(),
-                    }
-                    .into(),
-                    path_id: path_id.as_u8() as u64,
-                    error: err.as_event(),
-                });
-                true
-            }
-            Err(err @ SlidingWindowError::TooOld) => {
-                publisher.on_duplicate_packet(event::builders::DuplicatePacket {
-                    packet_header: event::builders::PacketHeader {
-                        packet_type: packet_number.space().into(),
-                        packet_number: packet_number.as_u64(),
-                        version: publisher.quic_version(),
-                    }
-                    .into(),
-                    path_id: path_id.as_u8() as u64,
-                    error: err.as_event(),
-                });
-                true
-            }
+            Err(_) => true,
         }
     }
 
