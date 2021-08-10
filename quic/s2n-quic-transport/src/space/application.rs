@@ -28,9 +28,7 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     packet::{
         encoding::{PacketEncoder, PacketEncodingError},
-        number::{
-            PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow, SlidingWindowError,
-        },
+        number::{AsEvent as _, PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow},
         short::{CleartextShort, ProtectedShort, Short, SpinBit},
     },
     recovery::RttEstimator,
@@ -121,17 +119,28 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     }
 
     /// Returns true if the packet number has already been processed
-    pub fn is_duplicate(&self, _packet_number: PacketNumber) -> bool {
-        match self.processed_packet_numbers.check(_packet_number) {
+    pub fn is_duplicate<Pub: event::Publisher>(
+        &self,
+        packet_number: PacketNumber,
+        path_id: path::Id,
+        publisher: &mut Pub,
+    ) -> bool {
+        let packet_check = self.processed_packet_numbers.check(packet_number);
+        if let Err(err) = packet_check {
+            publisher.on_duplicate_packet(event::builders::DuplicatePacket {
+                packet_header: event::builders::PacketHeader {
+                    packet_type: packet_number.space().into(),
+                    packet_number: packet_number.as_u64(),
+                    version: publisher.quic_version(),
+                }
+                .into(),
+                path_id: path_id.as_u8() as u64,
+                error: err.as_event(),
+            });
+        }
+        match packet_check {
             Ok(()) => false,
-            Err(SlidingWindowError::Duplicate) => {
-                // TODO: emit duplicate metric
-                true
-            }
-            Err(SlidingWindowError::TooOld) => {
-                // TODO: emit too old metric
-                true
-            }
+            Err(_) => true,
         }
     }
 
@@ -385,6 +394,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         protected: ProtectedShort<'a>,
         datagram: &DatagramInfo,
         rtt_estimator: &RttEstimator,
+        path_id: path::Id,
         publisher: &mut Pub,
     ) -> Result<CleartextShort<'a>, ProcessingError> {
         let largest_acked = self.ack_manager.largest_received_packet_number_acked();
@@ -420,7 +430,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
         // We perform decryption prior to checking for duplicate to avoid short-circuiting
         // and maintain constant-time operation.
-        if self.is_duplicate(packet_number) {
+        if self.is_duplicate(packet_number, path_id, publisher) {
             return Err(ProcessingError::DuplicatePacket);
         }
 

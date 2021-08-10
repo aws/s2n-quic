@@ -837,7 +837,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         random_generator: &mut Rnd,
     ) -> Result<(), ProcessingError> {
         if let Some((space, _status)) = shared_state.space_manager.initial_mut() {
-            let packet = space.validate_and_decrypt_packet(packet)?;
+            let packet = space.validate_and_decrypt_packet(packet, path_id, publisher)?;
 
             publisher.on_packet_received(event::builders::PacketReceived {
                 packet_header: event::builders::PacketHeader {
@@ -935,7 +935,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# packets.
 
         if let Some((space, handshake_status)) = shared_state.space_manager.handshake_mut() {
-            let packet = space.validate_and_decrypt_packet(packet)?;
+            let packet = space.validate_and_decrypt_packet(packet, path_id, publisher)?;
 
             publisher.on_packet_received(event::builders::PacketReceived {
                 packet_header: event::builders::PacketHeader {
@@ -1037,6 +1037,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 packet,
                 datagram,
                 &self.path_manager.active_path().rtt_estimator,
+                path_id,
                 publisher,
             )?;
 
