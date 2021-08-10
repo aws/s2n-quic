@@ -17,7 +17,11 @@ use s2n_quic_core::{application, stream::StreamType};
 /// A QUIC connection
 #[derive(Clone)]
 pub struct Connection {
-    /// The shared state, which contains the connections actual state
+    /// The inner connection API implementation
+    ///
+    /// This uses a dynamically-dispatched interface to hide all of the connection's
+    /// generic parameters and allows applications to interact with connections in a
+    /// straightforward manner.
     pub(super) api: ConnectionApi,
 }
 
@@ -37,8 +41,8 @@ impl Drop for Connection {
 }
 
 impl Connection {
-    pub(crate) fn new(shared_state: ConnectionApi) -> Self {
-        Self { api: shared_state }
+    pub(crate) fn new(api: ConnectionApi) -> Self {
+        Self { api }
     }
 
     /// Accepts an incoming [`Stream`]

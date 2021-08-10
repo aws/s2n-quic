@@ -116,7 +116,7 @@ impl<T> Receiver<T> {
                     guard
                 } else {
                     return Poll::Ready(Err(Error));
-                };
+                }
             };
         }
 

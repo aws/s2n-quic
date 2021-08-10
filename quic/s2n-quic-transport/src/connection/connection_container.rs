@@ -75,7 +75,7 @@ struct ConnectionNode<C: connection::Trait, L: connection::Lock<C>> {
 }
 
 impl<C: connection::Trait, L: connection::Lock<C>> ConnectionNode<C, L> {
-    /// Creates a new `ConnectionNode` which wraps the given Connection implementation of type `S`
+    /// Creates a new `ConnectionNode` which wraps the given Connection implementation
     pub fn new(
         connection_impl: L,
         internal_connection_id: InternalConnectionId,
@@ -111,7 +111,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionNode<C, L> {
         temp_node_ptr.deref().clone()
     }
 
-    /// Performs an application API call that returns a connection result
+    /// Performs an application API write call that returns a connection result
     fn api_write_call<F: FnOnce(&mut C) -> Result<R, E>, R, E: From<connection::Error>>(
         &self,
         f: F,
@@ -122,7 +122,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionNode<C, L> {
         }
     }
 
-    /// Performs an application API call that returns a connection result
+    /// Performs an application API read call that returns a connection result
     fn api_read_call<F: FnOnce(&C) -> Result<R, E>, R, E: From<connection::Error>>(
         &self,
         f: F,
@@ -299,12 +299,14 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
 
         macro_rules! insert_interest {
             ($list_name:ident, $call:ident) => {
-                // We have to obtain an `Arc<ConnectionNode>` in order to be able to
-                // perform interest updates later on. However the intrusive tree
-                // API only provides us a raw reference.
-                // Safety: We know that all of our ConnectionNode's are stored in
-                // reference counted pointers.
-                let node = unsafe { node.arc_from_ref() };
+                let node = unsafe {
+                    // We have to obtain an `Arc<ConnectionNode>` in order to be able to
+                    // perform interest updates later on. However the intrusive tree
+                    // API only provides us a raw reference.
+                    // Safety: We know that all of our ConnectionNode's are stored in
+                    // reference counted pointers.
+                    node.arc_from_ref()
+                };
 
                 self.$list_name.$call(node);
             };
@@ -312,10 +314,10 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
 
         macro_rules! remove_interest {
             ($list_name:ident) => {
-                // Safety: We know that the node is only ever part of this list.
-                // While elements are in temporary lists, they always get unlinked
-                // from those temporary lists while their interest is updated.
                 let mut cursor = unsafe {
+                    // Safety: We know that the node is only ever part of this list.
+                    // While elements are in temporary lists, they always get unlinked
+                    // from those temporary lists while their interest is updated.
                     self.$list_name
                         .cursor_mut_from_ptr(node.deref() as *const ConnectionNode<C, L>)
                 };
@@ -379,8 +381,14 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
             // handshake and is being passed to the application to be accepted.
             self.handshake_connections -= 1;
 
-            // turn node into a connection handle
-            let handle = unsafe { node.arc_from_ref() };
+            let handle = unsafe {
+                // We have to obtain an `Arc<ConnectionNode>` in order to be able to
+                // perform interest updates later on. However the intrusive tree
+                // API only provides us a raw reference.
+                // Safety: We know that all of our ConnectionNode's are stored in
+                // reference counted pointers.
+                node.arc_from_ref()
+            };
             let handle = crate::connection::api::Connection::new(handle);
 
             if let Err((handle, _)) = accept_queue.send(handle) {
@@ -407,10 +415,12 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
         macro_rules! remove_connection_from_list {
             ($list_name:ident, $link_name:ident) => {
                 if connection.$link_name.is_linked() {
-                    // Safety: We know that the Connection is part of the list,
-                    // because it is linked, and we never place Connections in
-                    // other lists when `finalize_done_connections` is called.
-                    let mut cursor = unsafe { self.$list_name.cursor_mut_from_ptr(connection_ptr) };
+                    let mut cursor = unsafe {
+                        // Safety: We know that the Connection is part of the list,
+                        // because it is linked, and we never place Connections in
+                        // other lists when `finalize_done_connections` is called.
+                        self.$list_name.cursor_mut_from_ptr(connection_ptr)
+                    };
                     let remove_result = cursor.remove();
                     debug_assert!(remove_result.is_some());
                 }
@@ -786,7 +796,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
 }
 
 /// Return values for iterations over a `Connection` list.
-/// The value intstructs the iterator whether iteration will be continued.
+/// The value instructs the iterator whether iteration will be continued.
 pub enum ConnectionContainerIterationResult {
     /// Continue iteration over the list
     Continue,
@@ -796,486 +806,4 @@ pub enum ConnectionContainerIterationResult {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{
-        connection::{
-            self, connection_interests::ConnectionInterests,
-            internal_connection_id::InternalConnectionId, InternalConnectionIdGenerator,
-            ProcessingError,
-        },
-        endpoint, path, stream,
-    };
-    use bolero::{check, generator::*};
-    use bytes::Bytes;
-    use core::task::{Context, Poll};
-    use s2n_quic_core::{
-        application, event,
-        inet::DatagramInfo,
-        io::tx,
-        packet::{
-            handshake::ProtectedHandshake,
-            initial::{CleartextInitial, ProtectedInitial},
-            retry::ProtectedRetry,
-            short::ProtectedShort,
-            version_negotiation::ProtectedVersionNegotiation,
-            zero_rtt::ProtectedZeroRtt,
-        },
-        path::MaxMtu,
-        random, stateless_reset,
-        time::Timestamp,
-    };
-    use std::sync::Mutex;
-
-    struct TestConnection {
-        is_handshaking: bool,
-        has_been_accepted: bool,
-        is_closed: bool,
-        is_app_closed: bool,
-        interests: ConnectionInterests,
-    }
-
-    impl Default for TestConnection {
-        fn default() -> Self {
-            Self {
-                is_handshaking: true,
-                has_been_accepted: false,
-                is_closed: false,
-                is_app_closed: false,
-                interests: ConnectionInterests::default(),
-            }
-        }
-    }
-
-    impl connection::Trait for TestConnection {
-        type Config = crate::endpoint::testing::Server;
-
-        fn new<Pub: event::Publisher>(
-            _params: connection::Parameters<Self::Config>,
-            _: &mut Pub,
-        ) -> Self {
-            Self::default()
-        }
-
-        fn internal_connection_id(&self) -> InternalConnectionId {
-            todo!()
-        }
-
-        fn is_handshaking(&self) -> bool {
-            self.is_handshaking
-        }
-
-        fn close<'sub>(
-            &mut self,
-            _error: connection::Error,
-            _close_formatter: &<Self::Config as endpoint::Config>::ConnectionCloseFormatter,
-            _packet_buffer: &mut endpoint::PacketBuffer,
-            _timestamp: Timestamp,
-            _publisher: &mut event::PublisherSubscriber<
-                'sub,
-                <Self::Config as endpoint::Config>::EventSubscriber,
-            >,
-        ) {
-            assert!(!self.is_closed);
-            self.is_closed = true;
-        }
-
-        fn mark_as_accepted(&mut self) {
-            assert!(!self.has_been_accepted);
-            self.has_been_accepted = true;
-            self.interests.accept = false;
-        }
-
-        fn on_new_connection_id<
-            ConnectionIdFormat: connection::id::Format,
-            StatelessResetTokenGenerator: stateless_reset::token::Generator,
-        >(
-            &mut self,
-            _connection_id_format: &mut ConnectionIdFormat,
-            _stateless_reset_token_generator: &mut StatelessResetTokenGenerator,
-            _timestamp: Timestamp,
-        ) -> Result<(), connection::local_id_registry::LocalIdRegistrationError> {
-            Ok(())
-        }
-
-        fn on_transmit<'sub, Tx: tx::Queue>(
-            &mut self,
-            _queue: &mut Tx,
-            _timestamp: Timestamp,
-            _publisher: &mut event::PublisherSubscriber<
-                'sub,
-                <Self::Config as endpoint::Config>::EventSubscriber,
-            >,
-        ) -> Result<(), crate::contexts::ConnectionOnTransmitError> {
-            Ok(())
-        }
-
-        fn on_timeout<Pub: event::Publisher>(
-            &mut self,
-            _connection_id_mapper: &mut connection::ConnectionIdMapper,
-            _timestamp: Timestamp,
-            _publisher: &mut Pub,
-        ) -> Result<(), connection::Error> {
-            Ok(())
-        }
-
-        fn on_wakeup(&mut self, _timestamp: Timestamp) -> Result<(), connection::Error> {
-            Ok(())
-        }
-
-        fn handle_initial_packet<Pub: event::Publisher, Rnd: random::Generator>(
-            &mut self,
-            _datagram: &DatagramInfo,
-            _path_id: path::Id,
-            _packet: ProtectedInitial,
-            _publisher: &mut Pub,
-            _random_generator: &mut Rnd,
-        ) -> Result<(), ProcessingError> {
-            Ok(())
-        }
-
-        /// Is called when an unprotected initial packet had been received
-        fn handle_cleartext_initial_packet<Pub: event::Publisher, Rnd: random::Generator>(
-            &mut self,
-            _datagram: &DatagramInfo,
-            _path_id: path::Id,
-            _packet: CleartextInitial,
-            _publisher: &mut Pub,
-            _random_generator: &mut Rnd,
-        ) -> Result<(), ProcessingError> {
-            Ok(())
-        }
-
-        /// Is called when a handshake packet had been received
-        fn handle_handshake_packet<Pub: event::Publisher, Rnd: random::Generator>(
-            &mut self,
-            _datagram: &DatagramInfo,
-            _path_id: path::Id,
-            _packet: ProtectedHandshake,
-            _publisher: &mut Pub,
-            _random_generator: &mut Rnd,
-        ) -> Result<(), ProcessingError> {
-            Ok(())
-        }
-
-        /// Is called when a short packet had been received
-        fn handle_short_packet<Pub: event::Publisher, Rnd: random::Generator>(
-            &mut self,
-            _datagram: &DatagramInfo,
-            _path_id: path::Id,
-            _packet: ProtectedShort,
-            _publisher: &mut Pub,
-            _random_generator: &mut Rnd,
-        ) -> Result<(), ProcessingError> {
-            Ok(())
-        }
-
-        /// Is called when a version negotiation packet had been received
-        fn handle_version_negotiation_packet(
-            &mut self,
-            _datagram: &DatagramInfo,
-            _path_id: path::Id,
-            _packet: ProtectedVersionNegotiation,
-        ) -> Result<(), ProcessingError> {
-            Ok(())
-        }
-
-        /// Is called when a zero rtt packet had been received
-        fn handle_zero_rtt_packet(
-            &mut self,
-            _datagram: &DatagramInfo,
-            _path_id: path::Id,
-            _packet: ProtectedZeroRtt,
-        ) -> Result<(), ProcessingError> {
-            Ok(())
-        }
-
-        /// Is called when a retry packet had been received
-        fn handle_retry_packet(
-            &mut self,
-            _datagram: &DatagramInfo,
-            _path_id: path::Id,
-            _packet: ProtectedRetry,
-        ) -> Result<(), ProcessingError> {
-            Ok(())
-        }
-
-        /// Notifies a connection it has received a datagram from a peer
-        fn on_datagram_received(
-            &mut self,
-            _datagram: &DatagramInfo,
-            _congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
-            _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
-            _max_mtu: MaxMtu,
-        ) -> Result<path::Id, connection::Error> {
-            todo!()
-        }
-
-        /// Returns the Connections interests
-        fn interests(&self) -> ConnectionInterests {
-            self.interests
-        }
-
-        /// Returns the QUIC version selected for the current connection
-        fn quic_version(&self) -> u32 {
-            123
-        }
-
-        fn poll_stream_request(
-            &mut self,
-            _stream_id: stream::StreamId,
-            _request: &mut stream::ops::Request,
-            _context: Option<&Context>,
-        ) -> Result<stream::ops::Response, stream::StreamError> {
-            todo!()
-        }
-
-        fn poll_accept_stream(
-            &mut self,
-            _stream_type: Option<stream::StreamType>,
-            _context: &Context,
-        ) -> Poll<Result<Option<stream::StreamId>, connection::Error>> {
-            todo!()
-        }
-
-        fn poll_open_stream(
-            &mut self,
-            _stream_type: stream::StreamType,
-            _context: &Context,
-        ) -> Poll<Result<stream::StreamId, connection::Error>> {
-            todo!()
-        }
-
-        fn application_close(&mut self, _error: Option<application::Error>) {
-            self.is_app_closed = true;
-        }
-
-        fn sni(&self) -> Option<Bytes> {
-            todo!()
-        }
-
-        fn alpn(&self) -> Bytes {
-            todo!()
-        }
-
-        fn ping(&mut self) -> Result<(), connection::Error> {
-            todo!()
-        }
-    }
-
-    struct TestLock {
-        connection: Mutex<(TestConnection, bool)>,
-    }
-
-    impl TestLock {
-        fn poision(&self) {
-            if let Ok(mut lock) = self.connection.lock() {
-                lock.1 = true;
-            }
-        }
-    }
-
-    impl connection::Lock<TestConnection> for TestLock {
-        type Error = ();
-
-        fn new(connection: TestConnection) -> Self {
-            Self {
-                connection: std::sync::Mutex::new((connection, false)),
-            }
-        }
-
-        fn read<F: FnOnce(&TestConnection) -> R, R>(&self, f: F) -> Result<R, Self::Error> {
-            let lock = self.connection.lock().map_err(|_| ())?;
-            let (conn, is_poisoned) = &*lock;
-            if *is_poisoned {
-                return Err(());
-            }
-            let result = f(conn);
-            Ok(result)
-        }
-
-        fn write<F: FnOnce(&mut TestConnection) -> R, R>(&self, f: F) -> Result<R, Self::Error> {
-            let mut lock = self.connection.lock().map_err(|_| ())?;
-            let (conn, is_poisoned) = &mut *lock;
-            if *is_poisoned {
-                return Err(());
-            }
-            let result = f(conn);
-            Ok(result)
-        }
-    }
-
-    #[derive(Debug, TypeGenerator)]
-    enum Operation {
-        Insert,
-        UpdateInterests {
-            index: usize,
-            finalization: bool,
-            closing: bool,
-            accept: bool,
-            transmission: bool,
-            new_connection_id: bool,
-            timeout: Option<u16>,
-        },
-        CloseApp,
-        Receive,
-        Timeout(u16),
-        Transmit(u16),
-        NewConnId(u16),
-        Finalize,
-        Poison(usize),
-    }
-
-    #[test]
-    fn container_test() {
-        use core::time::Duration;
-
-        check!().with_type::<Vec<Operation>>().for_each(|ops| {
-            let mut id_gen = InternalConnectionIdGenerator::new();
-            let mut connections = vec![];
-            let (sender, receiver) = crate::unbounded_channel::channel();
-            let mut receiver = Some(receiver);
-            let (waker, _wake_count) = futures_test::task::new_count_waker();
-            let mut now = unsafe { Timestamp::from_duration(Duration::from_secs(0)) };
-
-            let mut container: ConnectionContainer<TestConnection, TestLock> =
-                ConnectionContainer::new(sender);
-
-            for op in ops.iter() {
-                match op {
-                    Operation::Insert => {
-                        let id = id_gen.generate_id();
-                        let connection = TestConnection::default();
-                        container.insert_connection(connection, id);
-                        connections.push(id);
-
-                        let mut was_called = false;
-                        container.with_connection(id, |_conn| {
-                            was_called = true;
-                        });
-                        assert!(was_called);
-                    }
-                    Operation::UpdateInterests {
-                        index,
-                        finalization,
-                        closing,
-                        accept,
-                        transmission,
-                        new_connection_id,
-                        timeout,
-                    } => {
-                        if connections.is_empty() {
-                            continue;
-                        }
-                        let index = index % connections.len();
-                        let id = connections[index];
-
-                        let mut was_called = false;
-                        container.with_connection(id, |conn| {
-                            was_called = true;
-
-                            let i = &mut conn.interests;
-                            i.finalization = *finalization;
-                            i.closing = *closing;
-                            if !conn.has_been_accepted {
-                                i.accept = *accept;
-                            }
-                            if *accept {
-                                conn.is_handshaking = false;
-                            }
-                            i.transmission = *transmission;
-                            i.new_connection_id = *new_connection_id;
-                            i.timeout = timeout.map(|ms| now + Duration::from_millis(ms as _));
-                        });
-
-                        if *finalization {
-                            connections.remove(index);
-                        }
-
-                        assert!(was_called);
-                    }
-                    Operation::CloseApp => {
-                        receiver = None;
-                    }
-                    Operation::Receive => {
-                        if let Some(receiver) = receiver.as_mut() {
-                            while let Poll::Ready(Ok(_accepted)) =
-                                receiver.poll_next(&Context::from_waker(&waker))
-                            {
-                                // TODO assert that the accepted connection expressed accept
-                                // interest
-                            }
-                        }
-                    }
-                    Operation::Timeout(ms) => {
-                        now += Duration::from_millis(*ms as _);
-                        container.iterate_timeout_list(now, |conn| {
-                            assert!(
-                                conn.interests.timeout.take().unwrap() <= now,
-                                "connections should only be present when timeout interest is expressed"
-                            );
-                        });
-                    }
-                    Operation::Transmit(count) => {
-                        let mut count = *count;
-                        container.iterate_transmission_list(|conn| {
-                            assert!(conn.interests.transmission);
-
-                            if count == 0 {
-                                ConnectionContainerIterationResult::BreakAndInsertAtBack
-                            } else {
-                                count -= 1;
-                                ConnectionContainerIterationResult::Continue
-                            }
-                        })
-                    }
-                    Operation::NewConnId(count) => {
-                        let mut count = *count;
-                        container.iterate_new_connection_id_list(|conn| {
-                            assert!(conn.interests.new_connection_id);
-
-                            if count == 0 {
-                                ConnectionContainerIterationResult::BreakAndInsertAtBack
-                            } else {
-                                count -= 1;
-                                ConnectionContainerIterationResult::Continue
-                            }
-                        })
-                    }
-                    Operation::Finalize => {
-                        container.finalize_done_connections();
-                    }
-                    Operation::Poison(index) => {
-                        if connections.is_empty() {
-                            continue;
-                        }
-                        let index = index % connections.len();
-                        let id = connections[index];
-
-                        let node = container.connection_map.find(&id).get().unwrap();
-                        node.inner.poision();
-
-                        let mut was_called = false;
-                        container.with_connection(id, |_conn| {
-                            was_called = true;
-                        });
-                        assert!(!was_called);
-                        connections.remove(index);
-                    }
-                }
-            }
-
-            container.finalize_done_connections();
-
-            let mut connections = connections.drain(..);
-            let mut cursor = container.connection_map.front();
-
-            while let Some(conn) = cursor.get() {
-                assert_eq!(conn.internal_connection_id, connections.next().unwrap());
-                cursor.move_next();
-            }
-
-            assert!(connections.next().is_none());
-        });
-    }
-}
+mod tests;
