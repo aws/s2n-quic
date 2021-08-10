@@ -5,8 +5,9 @@ use crate::message::Message as MessageTrait;
 use alloc::vec::Vec;
 use core::pin::Pin;
 use s2n_quic_core::{
-    inet::{ExplicitCongestionNotification, SocketAddress},
+    inet::{datagram, ExplicitCongestionNotification, SocketAddress},
     io::{rx, tx},
+    path,
 };
 
 /// A simple message type that holds an address and payload
@@ -19,7 +20,11 @@ pub struct Message {
     payload_len: usize,
 }
 
+pub type Handle = path::RemoteAddress;
+
 impl MessageTrait for Message {
+    type Handle = Handle;
+
     const SUPPORTS_GSO: bool = false;
 
     fn ecn(&self) -> ExplicitCongestionNotification {
@@ -42,6 +47,10 @@ impl MessageTrait for Message {
         let remote_address = remote_address.to_ipv6_mapped().into();
 
         self.address = remote_address;
+    }
+
+    fn path_handle(&self) -> Option<Self::Handle> {
+        Some(Handle::from(self.address))
     }
 
     fn payload_len(&self) -> usize {
@@ -163,7 +172,12 @@ impl<Payloads: crate::buffer::Buffer> super::Ring for Ring<Payloads> {
 }
 
 impl tx::Entry for Message {
-    fn set<M: tx::Message>(&mut self, mut message: M) -> Result<usize, tx::Error> {
+    type Handle = Handle;
+
+    fn set<M: tx::Message<Handle = Self::Handle>>(
+        &mut self,
+        mut message: M,
+    ) -> Result<usize, tx::Error> {
         let payload = MessageTrait::payload_mut(self);
 
         let len = message.write_payload(payload);
@@ -178,7 +192,10 @@ impl tx::Entry for Message {
             let len = len.min(payload.len());
             self.set_payload_len(len);
         }
-        self.set_remote_address(&message.remote_address());
+
+        let remote_address = message.path_handle().0;
+
+        self.set_remote_address(&remote_address);
 
         Ok(len)
     }
@@ -195,23 +212,16 @@ impl tx::Entry for Message {
 }
 
 impl rx::Entry for Message {
-    #[inline]
-    fn remote_address(&self) -> Option<SocketAddress> {
-        MessageTrait::remote_address(self)
-    }
+    type Handle = Handle;
 
     #[inline]
-    fn ecn(&self) -> ExplicitCongestionNotification {
-        MessageTrait::ecn(self)
-    }
+    fn read(&mut self) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
+        let header = datagram::Header {
+            path: self.path_handle()?,
+            ecn: self.ecn(),
+        };
 
-    #[inline]
-    fn payload(&self) -> &[u8] {
-        MessageTrait::payload(self)
-    }
-
-    #[inline]
-    fn payload_mut(&mut self) -> &mut [u8] {
-        MessageTrait::payload_mut(self)
+        let payload = self.payload_mut();
+        Some((header, payload))
     }
 }

@@ -19,7 +19,7 @@ use s2n_quic_core::{
     connection::id::Generator,
     crypto::{tls, CryptoSuite},
     endpoint::{limits::Outcome, Limits},
-    inet::DatagramInfo,
+    inet::{datagram, DatagramInfo},
     io::{rx, tx},
     packet::{initial::ProtectedInitial, ProtectedPacket},
     stateless_reset::token::LEN as StatelessResetTokenLen,
@@ -43,8 +43,7 @@ use s2n_quic_core::{
     connection::LocalId,
     crypto::tls::Endpoint as _,
     event,
-    inet::{ExplicitCongestionNotification, SocketAddress},
-    path::MaxMtu,
+    path::{Handle as _, MaxMtu},
     stateless_reset::token::Generator as _,
 };
 
@@ -68,8 +67,8 @@ pub struct Endpoint<Cfg: Config> {
     /// [`Endpoint`] interactions.
     dequeued_wakeups: VecDeque<InternalConnectionId>,
     version_negotiator: version::Negotiator<Cfg>,
-    retry_dispatch: retry::Dispatch,
-    stateless_reset_dispatch: stateless_reset::Dispatch,
+    retry_dispatch: retry::Dispatch<Cfg::PathHandle>,
+    stateless_reset_dispatch: stateless_reset::Dispatch<Cfg::PathHandle>,
     close_packet_buffer: packet_buffer::Buffer,
     /// The largest maximum transmission unit (MTU) that can be sent on a path
     max_mtu: MaxMtu,
@@ -81,14 +80,20 @@ pub struct Endpoint<Cfg: Config> {
 unsafe impl<Cfg: Config> Send for Endpoint<Cfg> {}
 
 impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
-    fn receive<Rx: rx::Queue, C: Clock>(&mut self, queue: &mut Rx, clock: &C) {
+    type PathHandle = Cfg::PathHandle;
+
+    fn receive<Rx, C>(&mut self, queue: &mut Rx, clock: &C)
+    where
+        Rx: rx::Queue<Handle = Cfg::PathHandle>,
+        C: Clock,
+    {
         use rx::Entry;
 
         let entries = queue.as_slice_mut();
         let mut now: Option<Timestamp> = None;
 
         for entry in entries.iter_mut() {
-            if let Some(remote_address) = entry.remote_address() {
+            if let Some((header, payload)) = entry.read() {
                 let timestamp = match now {
                     Some(now) => now,
                     _ => {
@@ -98,14 +103,18 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                     }
                 };
 
-                self.receive_datagram(remote_address, entry.ecn(), entry.payload_mut(), timestamp)
+                self.receive_datagram(&header, payload, timestamp)
             }
         }
         let len = entries.len();
         queue.finish(len);
     }
 
-    fn transmit<Tx: tx::Queue, C: Clock>(&mut self, queue: &mut Tx, clock: &C) {
+    fn transmit<Tx, C>(&mut self, queue: &mut Tx, clock: &C)
+    where
+        Tx: tx::Queue<Handle = Self::PathHandle>,
+        C: Clock,
+    {
         self.on_timeout(clock.get_time());
 
         // Iterate over all connections which want to transmit data
@@ -245,16 +254,18 @@ impl<Cfg: Config> Endpoint<Cfg> {
     /// Determine the next step when a peer attempts a connection
     fn connection_allowed(
         &mut self,
-        datagram: &DatagramInfo,
+        header: &datagram::Header<Cfg::PathHandle>,
         packet: &ProtectedInitial,
     ) -> Option<()> {
         if !self.connections.can_accept() {
             return None;
         }
 
+        let remote_address = header.path.remote_address();
+
         let attempt = s2n_quic_core::endpoint::limits::ConnectionAttempt::new(
             self.connections.handshake_connections(),
-            &datagram.remote_address,
+            &remote_address,
         );
 
         let context = self.config.context();
@@ -272,7 +283,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 //# it cooperates with, received the original Initial packet from the
                 //# client.
 
-                let connection_info = ConnectionInfo::new(&datagram.remote_address);
+                let connection_info = ConnectionInfo::new(&remote_address);
 
                 let local_connection_id = context.connection_id_format.generate(&connection_info);
 
@@ -280,9 +291,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     _,
                     <<<Cfg as Config>::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::RetryKey,
                     _,
-                >
-                    (
-                    datagram,
+                >(
+                    header.path,
                     packet,
                     local_connection_id,
                     context.random_generator,
@@ -308,13 +318,14 @@ impl<Cfg: Config> Endpoint<Cfg> {
     /// Ingests a single datagram
     fn receive_datagram(
         &mut self,
-        remote_address: SocketAddress,
-        ecn: ExplicitCongestionNotification,
+        header: &datagram::Header<Cfg::PathHandle>,
         payload: &mut [u8],
         timestamp: Timestamp,
     ) {
         let endpoint_context = self.config.context();
         let close_packet_buffer = &mut self.close_packet_buffer;
+
+        let remote_address = header.path.remote_address();
 
         // Try to decode the first packet in the datagram
         let payload_len = payload.len();
@@ -358,7 +369,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         // length requirements for connection IDs.
         if self
             .version_negotiator
-            .on_packet(remote_address, payload_len, &packet, &mut publisher)
+            .on_packet(&header.path, payload_len, &packet, &mut publisher)
             .is_err()
         {
             return;
@@ -376,9 +387,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         let datagram = &DatagramInfo {
             timestamp,
-            remote_address,
             payload_len,
-            ecn,
+            ecn: header.ecn,
             destination_connection_id,
         };
 
@@ -398,6 +408,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 // `&mut self.path_manager` being borrowed at the same time
                 let path_id = conn
                     .on_datagram_received(
+                        &header.path,
                         datagram,
                         endpoint_context.congestion_controller,
                         endpoint_context.random_generator,
@@ -471,6 +482,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 }
 
                 if let Err(err) = conn.handle_remaining_packets(
+                    &header.path,
                     datagram,
                     path_id,
                     endpoint_context.connection_id_format,
@@ -523,7 +535,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     //# packet; it can only refuse the connection or permit it to proceed.
                     let retry_token_dcid = if !packet.token().is_empty() {
                         let mut context = token::Context::new(
-                            &datagram.remote_address,
+                            &remote_address,
                             &source_connection_id,
                             endpoint_context.random_generator,
                         );
@@ -562,7 +574,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         //# Upon receiving the client's Initial packet, the server can request
                         //# address validation by sending a Retry packet (Section 17.2.5)
                         //# containing a token.
-                        if self.connection_allowed(datagram, &packet).is_none() {
+                        if self.connection_allowed(header, &packet).is_none() {
                             dbg!("Connection not allowed");
                             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.1
                             //# A server MUST NOT send more than one Retry
@@ -573,9 +585,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         None
                     };
 
-                    if let Err(err) =
-                        self.handle_initial_packet(datagram, packet, remaining, retry_token_dcid)
-                    {
+                    if let Err(err) = self.handle_initial_packet(
+                        header,
+                        datagram,
+                        packet,
+                        remaining,
+                        retry_token_dcid,
+                    ) {
                         // TODO send a minimal connection close frame
                         dbg!(err);
                     }
@@ -613,7 +629,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         && Cfg::StatelessResetTokenGenerator::ENABLED
                         && is_short_header_packet
                     {
-                        self.enqueue_stateless_reset(datagram, &destination_connection_id);
+                        self.enqueue_stateless_reset(header, datagram, &destination_connection_id);
                     }
                 }
             }
@@ -630,6 +646,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
     /// Sending the reset was caused through the passed `datagram`.
     fn enqueue_stateless_reset(
         &mut self,
+        header: &datagram::Header<Cfg::PathHandle>,
         datagram: &DatagramInfo,
         destination_connection_id: &LocalId,
     ) {
@@ -645,11 +662,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
         // in a datagram; thus the entire datagram is one packet.
         let triggering_packet_len = datagram.payload_len;
         self.stateless_reset_dispatch.queue(
+            header.path,
             token,
             max_tag_length,
             triggering_packet_len,
             self.config.context().random_generator,
-            datagram,
         );
     }
 
@@ -752,14 +769,16 @@ impl<Cfg: Config> Endpoint<Cfg> {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
-    use s2n_quic_core::{endpoint, event::testing::Subscriber, random, stateless_reset};
+    use s2n_quic_core::{endpoint, event::testing::Subscriber, path, random, stateless_reset};
 
     #[derive(Debug)]
     pub struct Server;
 
     impl Config for Server {
-        type CongestionControllerEndpoint = crate::recovery::testing::Endpoint;
+        type CongestionControllerEndpoint =
+            crate::recovery::congestion_controller::testing::mock::Endpoint;
         type TLSEndpoint = s2n_quic_core::crypto::tls::testing::Endpoint;
+        type PathHandle = path::RemoteAddress;
         type Connection = connection::Implementation<Self>;
         type ConnectionLock = std::sync::Mutex<Self::Connection>;
         type EndpointLimits = Limits;
@@ -783,8 +802,10 @@ pub mod testing {
     pub struct Client;
 
     impl Config for Client {
-        type CongestionControllerEndpoint = crate::recovery::testing::Endpoint;
+        type CongestionControllerEndpoint =
+            crate::recovery::congestion_controller::testing::mock::Endpoint;
         type TLSEndpoint = s2n_quic_core::crypto::tls::testing::Endpoint;
+        type PathHandle = path::RemoteAddress;
         type Connection = connection::Implementation<Self>;
         type ConnectionLock = std::sync::Mutex<Self::Connection>;
         type EndpointLimits = Limits;

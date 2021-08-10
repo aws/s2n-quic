@@ -5,11 +5,13 @@ use crate::{
     buffer::Buffer,
     message::{
         queue,
-        simple::{Message, Ring},
+        simple::{self, Message, Ring},
         Message as _,
     },
 };
 use s2n_quic_core::inet::SocketAddress;
+
+pub use simple::Handle;
 
 pub trait Socket {
     type Error: Error;

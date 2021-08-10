@@ -1,12 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::inet::{ExplicitCongestionNotification, SocketAddress};
+use crate::{inet::ExplicitCongestionNotification, path};
 use core::time::Duration;
 
 /// A structure capable of queueing and transmitting messages
 pub trait Queue {
-    type Entry: Entry;
+    type Entry: Entry<Handle = Self::Handle>;
+    type Handle: path::Handle;
 
     /// Set to true if the queue supports setting ECN markings
     const SUPPORTS_ECN: bool = false;
@@ -21,7 +22,7 @@ pub trait Queue {
     ///
     /// The index of the message is returned to enable further operations to be
     /// performed, e.g. encryption.
-    fn push<M: Message>(&mut self, message: M) -> Result<usize, Error>;
+    fn push<M: Message<Handle = Self::Handle>>(&mut self, message: M) -> Result<usize, Error>;
 
     /// Returns the pending messages as a mutable slice
     fn as_slice_mut(&mut self) -> &mut [Self::Entry];
@@ -54,8 +55,10 @@ pub enum Error {
 
 /// An entry in a Tx queue
 pub trait Entry {
+    type Handle: path::Handle;
+
     /// Sets the message for the given entry
-    fn set<M: Message>(&mut self, message: M) -> Result<usize, Error>;
+    fn set<M: Message<Handle = Self::Handle>>(&mut self, message: M) -> Result<usize, Error>;
 
     /// Returns the transmission payload as a slice of bytes
     fn payload(&self) -> &[u8];
@@ -71,8 +74,10 @@ pub trait Entry {
 /// the actual transmission queue requires. For example, if the transmission
 /// queue cannot set ECN markings, it will not call the [`ecn`] function.
 pub trait Message {
-    /// Returns the target remote address for the message
-    fn remote_address(&mut self) -> SocketAddress;
+    type Handle: path::Handle;
+
+    /// Returns the path handle on which this message should be sent
+    fn path_handle(&self) -> &Self::Handle;
 
     /// Returns the ECN markings for the message
     fn ecn(&mut self) -> ExplicitCongestionNotification;
@@ -92,9 +97,46 @@ pub trait Message {
     fn write_payload(&mut self, buffer: &mut [u8]) -> usize;
 }
 
-impl<Payload: AsRef<[u8]>> Message for (SocketAddress, Payload) {
-    fn remote_address(&mut self) -> SocketAddress {
-        self.0
+impl<Payload: AsRef<[u8]>> Message for (path::RemoteAddress, Payload) {
+    type Handle = path::RemoteAddress;
+
+    fn path_handle(&self) -> &Self::Handle {
+        &self.0
+    }
+
+    fn ecn(&mut self) -> ExplicitCongestionNotification {
+        Default::default()
+    }
+
+    fn delay(&mut self) -> Duration {
+        Default::default()
+    }
+
+    fn ipv6_flow_label(&mut self) -> u32 {
+        0
+    }
+
+    fn can_gso(&self) -> bool {
+        true
+    }
+
+    fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
+        let payload = self.1.as_ref();
+        let len = payload.len();
+        if let Some(buffer) = buffer.get_mut(..len) {
+            buffer.copy_from_slice(payload);
+            len
+        } else {
+            0
+        }
+    }
+}
+
+impl<Payload: AsRef<[u8]>> Message for (path::Tuple, Payload) {
+    type Handle = path::Tuple;
+
+    fn path_handle(&self) -> &Self::Handle {
+        &self.0
     }
 
     fn ecn(&mut self) -> ExplicitCongestionNotification {
@@ -128,16 +170,21 @@ impl<Payload: AsRef<[u8]>> Message for (SocketAddress, Payload) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::inet::SocketAddressV4;
+    use crate::inet::{SocketAddress, SocketAddressV4};
 
     #[test]
     fn message_tuple_test() {
-        let address: SocketAddress = SocketAddressV4::new([127, 0, 0, 1], 80).into();
-        let mut message = (address, [1u8, 2, 3]);
+        let remote_address: SocketAddress = SocketAddressV4::new([127, 0, 0, 1], 80).into();
+        let local_address = remote_address;
+        let tuple = path::Tuple {
+            remote_address,
+            local_address,
+        };
+        let mut message = (tuple, [1u8, 2, 3]);
 
         let mut buffer = [0u8; 10];
 
-        assert_eq!(message.remote_address(), address);
+        assert_eq!(*message.path_handle(), tuple);
         assert_eq!(message.ecn(), Default::default());
         assert_eq!(message.delay(), Default::default());
         assert_eq!(message.ipv6_flow_label(), 0);

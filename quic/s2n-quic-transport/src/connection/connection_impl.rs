@@ -41,7 +41,7 @@ use s2n_quic_core::{
         version_negotiation::ProtectedVersionNegotiation,
         zero_rtt::ProtectedZeroRtt,
     },
-    path::MaxMtu,
+    path::{Handle as _, MaxMtu},
     random, stateless_reset,
     time::{timer, Timestamp},
     transport,
@@ -147,7 +147,7 @@ pub struct ConnectionImpl<Config: endpoint::Config> {
     /// The current state of the connection
     state: ConnectionState,
     /// Manage the paths that the connection could use
-    path_manager: path::Manager<Config::CongestionControllerEndpoint>,
+    path_manager: path::Manager<Config>,
     /// The limits applied to the current connection
     limits: Limits,
     /// The error set on the connection
@@ -298,7 +298,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
     /// Since non-probing frames can only be sent on the active path, a separate
     /// transmission context with Mode::PathValidationOnly is used to send on
     /// other paths.
-    fn path_validation_only_transmission<'a, 'sub, Tx: tx::Queue>(
+    fn path_validation_only_transmission<'a, 'sub, Tx: tx::Queue<Handle = Config::PathHandle>>(
         &mut self,
         queue: &mut Tx,
         timestamp: Timestamp,
@@ -370,7 +370,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         // Assume clients validate the server's address implicitly.
         let peer_validated = Self::Config::ENDPOINT_TYPE.is_server();
         let initial_path = path::Path::new(
-            parameters.peer_socket_address,
+            parameters.path_handle,
             parameters.peer_connection_id,
             parameters.local_connection_id,
             rtt_estimator,
@@ -383,7 +383,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         publisher.on_connection_started(event::builders::ConnectionStarted {
             path: event::builders::Path {
-                remote_addr: parameters.peer_socket_address.as_event(),
+                remote_addr: parameters.path_handle.remote_address().as_event(),
                 remote_cid: parameters.peer_connection_id.as_event(),
                 id: path_manager.active_path_id().as_u8() as u64,
             }
@@ -447,7 +447,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# An endpoint that wishes to communicate a fatal
         //# connection error MUST use a CONNECTION_CLOSE frame if it is able.
 
-        let remote_address = self.path_manager.active_path().peer_socket_address;
+        let remote_address = self.path_manager.active_path().remote_address();
         let close_context = s2n_quic_core::connection::close::Context::new(&remote_address);
         let active_path_id = self.path_manager.active_path_id();
 
@@ -533,8 +533,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     ) -> Result<(), LocalIdRegistrationError> {
         match self.local_id_registry.connection_id_interest() {
             Interest::New(mut count) => {
-                let connection_info =
-                    ConnectionInfo::new(&self.path_manager.active_path().peer_socket_address);
+                let remote_address = self.path_manager.active_path().remote_address();
+                let connection_info = ConnectionInfo::new(&remote_address);
 
                 while count > 0 {
                     let id = connection_id_format.generate(&connection_info);
@@ -556,7 +556,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Queries the connection for outgoing packets
-    fn on_transmit<'sub, Tx: tx::Queue>(
+    fn on_transmit<'sub, Tx: tx::Queue<Handle = Config::PathHandle>>(
         &mut self,
         queue: &mut Tx,
         timestamp: Timestamp,
@@ -743,6 +743,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     // Packet handling
     fn on_datagram_received(
         &mut self,
+        path_handle: &Config::PathHandle,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         random: &mut Config::RandomGenerator,
@@ -762,6 +763,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let handshake_confirmed = self.space_manager.is_handshake_confirmed();
 
         let (id, unblocked) = self.path_manager.on_datagram_received(
+            path_handle,
             datagram,
             &self.limits,
             handshake_confirmed,

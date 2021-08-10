@@ -5,7 +5,7 @@
 
 use crate::{connection, stream};
 use s2n_quic_core::{
-    crypto::tls, endpoint, event, random, recovery::congestion_controller, stateless_reset,
+    crypto::tls, endpoint, event, path, random, recovery::congestion_controller, stateless_reset,
 };
 
 /// Configuration paramters for a QUIC endpoint
@@ -35,6 +35,8 @@ pub trait Config: 'static + Send + Sized + core::fmt::Debug {
     type ConnectionCloseFormatter: connection::close::Formatter;
     /// The event subscriber
     type EventSubscriber: event::Subscriber;
+    /// The type by which paths are identified
+    type PathHandle: path::Handle;
 
     /// The type of the local endpoint
     const ENDPOINT_TYPE: endpoint::Type;

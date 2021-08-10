@@ -10,8 +10,9 @@ use core::{
 };
 use libc::{c_void, iovec, msghdr, sockaddr_in, sockaddr_in6, AF_INET, AF_INET6};
 use s2n_quic_core::{
-    inet::{ExplicitCongestionNotification, IpV4Address, SocketAddress, SocketAddressV4},
+    inet::{datagram, ExplicitCongestionNotification, IpV4Address, SocketAddress, SocketAddressV4},
     io::{rx, tx},
+    path,
 };
 
 #[cfg(feature = "ipv6")]
@@ -19,6 +20,8 @@ use s2n_quic_core::inet::{IpV6Address, SocketAddressV6};
 
 #[repr(transparent)]
 pub struct Message(pub(crate) msghdr);
+
+pub type Handle = path::Tuple;
 
 impl_message_delegate!(Message, 0, msghdr);
 
@@ -56,6 +59,8 @@ impl Message {
 }
 
 impl MessageTrait for msghdr {
+    type Handle = Handle;
+
     const SUPPORTS_GSO: bool = true;
 
     #[inline]
@@ -124,6 +129,19 @@ impl MessageTrait for msghdr {
                 self.msg_namelen = size_of::<sockaddr_in6>() as _;
             }
         }
+    }
+
+    #[inline]
+    fn path_handle(&self) -> Option<Self::Handle> {
+        let remote_address = self.remote_address()?;
+
+        // TODO set local_address
+        let local_address = SocketAddressV4::new([0, 0, 0, 0], 0).into();
+
+        Some(path::Tuple {
+            remote_address,
+            local_address,
+        })
     }
 
     #[inline]
@@ -359,7 +377,12 @@ impl<Payloads: crate::buffer::Buffer> super::Ring for Ring<Payloads> {
 }
 
 impl tx::Entry for Message {
-    fn set<M: tx::Message>(&mut self, mut message: M) -> Result<usize, tx::Error> {
+    type Handle = Handle;
+
+    fn set<M: tx::Message<Handle = Self::Handle>>(
+        &mut self,
+        mut message: M,
+    ) -> Result<usize, tx::Error> {
         let payload = MessageTrait::payload_mut(self);
 
         let len = message.write_payload(payload);
@@ -374,8 +397,12 @@ impl tx::Entry for Message {
             let len = len.min(payload.len());
             self.set_payload_len(len);
         }
-        self.set_remote_address(&message.remote_address());
 
+        let handle = message.path_handle();
+
+        self.set_remote_address(&handle.remote_address);
+
+        // TODO set local_address
         // TODO ecn
 
         Ok(len)
@@ -393,24 +420,16 @@ impl tx::Entry for Message {
 }
 
 impl rx::Entry for Message {
-    #[inline]
-    fn remote_address(&self) -> Option<SocketAddress> {
-        MessageTrait::remote_address(self)
-    }
+    type Handle = Handle;
 
-    #[inline]
-    fn ecn(&self) -> ExplicitCongestionNotification {
-        MessageTrait::ecn(self)
-    }
+    fn read(&mut self) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
+        let header = datagram::Header {
+            path: self.path_handle()?,
+            ecn: self.ecn(),
+        };
 
-    #[inline]
-    fn payload(&self) -> &[u8] {
-        MessageTrait::payload(self)
-    }
-
-    #[inline]
-    fn payload_mut(&mut self) -> &mut [u8] {
-        MessageTrait::payload_mut(self)
+        let payload = self.payload_mut();
+        Some((header, payload))
     }
 }
 

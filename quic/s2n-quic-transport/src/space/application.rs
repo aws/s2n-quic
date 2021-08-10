@@ -7,7 +7,6 @@ use crate::{
     path::Path,
     processed_packet::ProcessedPacket,
     recovery,
-    recovery::congestion_controller,
     space::{rx_packet_numbers::AckManager, HandshakeStatus, PacketSpace, TxPacketNumbers},
     stream::AbstractStreamManager,
     sync::flag,
@@ -69,7 +68,7 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     pub sni: Option<Bytes>,
     ping: flag::Ping,
     processed_packet_numbers: SlidingWindow,
-    recovery_manager: recovery::Manager,
+    recovery_manager: recovery::Manager<Config>,
 }
 
 impl<Config: endpoint::Config> fmt::Debug for ApplicationSpace<Config> {
@@ -290,7 +289,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     /// but is now no longer limited.
     pub fn on_amplification_unblocked(
         &mut self,
-        path: &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+        path: &Path<Config>,
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
     ) {
@@ -311,7 +310,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     /// Signals the handshake is done
     pub fn on_handshake_done(
         &mut self,
-        path: &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+        path: &Path<Config>,
         local_id_registry: &mut connection::LocalIdRegistry,
         timestamp: Timestamp,
     ) {
@@ -330,7 +329,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     /// Called when the connection timer expired
     pub fn on_timeout<Pub: event::Publisher>(
         &mut self,
-        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
+        path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
         timestamp: Timestamp,
@@ -371,8 +370,11 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         handshake_status: &'a mut HandshakeStatus,
         local_id_registry: &'a mut connection::LocalIdRegistry,
         path_id: path::Id,
-        path_manager: &'a mut path::Manager<Config::CongestionControllerEndpoint>,
-    ) -> (&'a mut recovery::Manager, RecoveryContext<'a, Config>) {
+        path_manager: &'a mut path::Manager<Config>,
+    ) -> (
+        &'a mut recovery::Manager<Config>,
+        RecoveryContext<'a, Config>,
+    ) {
         (
             &mut self.recovery_manager,
             RecoveryContext {
@@ -477,32 +479,30 @@ struct RecoveryContext<'a, Config: endpoint::Config> {
     stream_manager: &'a mut AbstractStreamManager<Config::Stream>,
     local_id_registry: &'a mut connection::LocalIdRegistry,
     path_id: path::Id,
-    path_manager: &'a mut path::Manager<Config::CongestionControllerEndpoint>,
+    path_manager: &'a mut path::Manager<Config>,
     tx_packet_numbers: &'a mut TxPacketNumbers,
 }
 
-impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>
-    for RecoveryContext<'a, Config>
-{
+impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext<'a, Config> {
     const ENDPOINT_TYPE: endpoint::Type = Config::ENDPOINT_TYPE;
 
     fn is_handshake_confirmed(&self) -> bool {
         self.handshake_status.is_confirmed()
     }
 
-    fn path(&self) -> &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>{
+    fn path(&self) -> &Path<Config> {
         &self.path_manager[self.path_id]
     }
 
-    fn path_mut(&mut self) -> &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>{
+    fn path_mut(&mut self) -> &mut Path<Config> {
         &mut self.path_manager[self.path_id]
     }
 
-    fn path_by_id(&self, path_id: path::Id) -> &path::Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
+    fn path_by_id(&self, path_id: path::Id) -> &path::Path<Config> {
         &self.path_manager[path_id]
     }
 
-    fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
+    fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<Config> {
         &mut self.path_manager[path_id]
     }
 
@@ -561,7 +561,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         &mut self,
         _frame: CryptoRef,
         _datagram: &DatagramInfo,
-        _path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+        _path: &mut Path<Config>,
     ) -> Result<(), transport::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5
         //# Once the handshake completes, if an endpoint is unable to buffer all
@@ -578,7 +578,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         frame: Ack<A>,
         datagram: &DatagramInfo,
         path_id: path::Id,
-        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
+        path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
         publisher: &mut Pub,
@@ -600,7 +600,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         &mut self,
         _frame: ConnectionClose,
         _datagram: &DatagramInfo,
-        _path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+        _path: &mut Path<Config>,
     ) -> Result<(), transport::Error> {
         Ok(())
     }
@@ -669,7 +669,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         &mut self,
         frame: NewConnectionId,
         _datagram: &DatagramInfo,
-        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
+        path_manager: &mut path::Manager<Config>,
     ) -> Result<(), transport::Error> {
         if path_manager.active_path().peer_connection_id.is_empty() {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
@@ -705,7 +705,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         &mut self,
         frame: RetireConnectionId,
         datagram: &DatagramInfo,
-        path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+        path: &mut Path<Config>,
         local_id_registry: &mut connection::LocalIdRegistry,
     ) -> Result<(), transport::Error> {
         let sequence_number = frame
@@ -740,17 +740,17 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
     fn handle_path_challenge_frame(
         &mut self,
         frame: PathChallenge,
-        datagram: &DatagramInfo,
-        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
+        path_id: path::Id,
+        path_manager: &mut path::Manager<Config>,
     ) -> Result<(), transport::Error> {
-        path_manager.on_path_challenge(&datagram.remote_address, &frame);
+        path_manager.on_path_challenge(path_id, &frame);
         Ok(())
     }
 
     fn handle_path_response_frame(
         &mut self,
         frame: PathResponse,
-        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
+        path_manager: &mut path::Manager<Config>,
     ) -> Result<(), transport::Error> {
         path_manager.on_path_response(&frame);
         Ok(())
@@ -760,7 +760,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         &mut self,
         frame: HandshakeDone,
         datagram: &DatagramInfo,
-        path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+        path: &mut Path<Config>,
         local_id_registry: &mut connection::LocalIdRegistry,
         handshake_status: &mut HandshakeStatus,
     ) -> Result<(), transport::Error> {

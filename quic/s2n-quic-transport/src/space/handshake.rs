@@ -7,7 +7,6 @@ use crate::{
     path::Path,
     processed_packet::ProcessedPacket,
     recovery,
-    recovery::congestion_controller,
     space::{
         rx_packet_numbers::AckManager, CryptoStream, HandshakeStatus, PacketSpace, TxPacketNumbers,
     },
@@ -44,7 +43,7 @@ pub struct HandshakeSpace<Config: endpoint::Config> {
     pub crypto_stream: CryptoStream,
     pub tx_packet_numbers: TxPacketNumbers,
     processed_packet_numbers: SlidingWindow,
-    recovery_manager: recovery::Manager,
+    recovery_manager: recovery::Manager<Config>,
 }
 
 impl<Config: endpoint::Config> fmt::Debug for HandshakeSpace<Config> {
@@ -220,7 +219,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
     /// but is now no longer limited.
     pub fn on_amplification_unblocked(
         &mut self,
-        path: &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+        path: &Path<Config>,
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
     ) {
@@ -243,7 +242,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         &mut self,
         handshake_status: &HandshakeStatus,
         path_id: path::Id,
-        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
+        path_manager: &mut path::Manager<Config>,
         timestamp: Timestamp,
         publisher: &mut Pub,
     ) {
@@ -257,7 +256,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
     /// Called before the Handshake packet space is discarded
     pub fn on_discard<Pub: event::Publisher>(
         &mut self,
-        path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+        path: &mut Path<Config>,
         path_id: path::Id,
         publisher: &mut Pub,
     ) {
@@ -283,8 +282,11 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         &'a mut self,
         handshake_status: &'a HandshakeStatus,
         path_id: path::Id,
-        path_manager: &'a mut path::Manager<Config::CongestionControllerEndpoint>,
-    ) -> (&'a mut recovery::Manager, RecoveryContext<'a, Config>) {
+        path_manager: &'a mut path::Manager<Config>,
+    ) -> (
+        &'a mut recovery::Manager<Config>,
+        RecoveryContext<'a, Config>,
+    ) {
         (
             &mut self.recovery_manager,
             RecoveryContext {
@@ -354,31 +356,29 @@ struct RecoveryContext<'a, Config: endpoint::Config> {
     handshake_status: &'a HandshakeStatus,
     config: PhantomData<Config>,
     path_id: path::Id,
-    path_manager: &'a mut path::Manager<Config::CongestionControllerEndpoint>,
+    path_manager: &'a mut path::Manager<Config>,
 }
 
-impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>
-    for RecoveryContext<'a, Config>
-{
+impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext<'a, Config> {
     const ENDPOINT_TYPE: endpoint::Type = Config::ENDPOINT_TYPE;
 
     fn is_handshake_confirmed(&self) -> bool {
         self.handshake_status.is_confirmed()
     }
 
-    fn path(&self) -> &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>{
+    fn path(&self) -> &Path<Config> {
         &self.path_manager[self.path_id]
     }
 
-    fn path_mut(&mut self) -> &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>{
+    fn path_mut(&mut self) -> &mut Path<Config> {
         &mut self.path_manager[self.path_id]
     }
 
-    fn path_by_id(&self, path_id: path::Id) -> &path::Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
+    fn path_by_id(&self, path_id: path::Id) -> &path::Path<Config> {
         &self.path_manager[path_id]
     }
 
-    fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
+    fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<Config> {
         &mut self.path_manager[path_id]
     }
 
@@ -428,7 +428,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for HandshakeSpace<Config> {
         &mut self,
         frame: CryptoRef,
         _datagram: &DatagramInfo,
-        _path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+        _path: &mut Path<Config>,
     ) -> Result<(), transport::Error> {
         self.crypto_stream.on_crypto_frame(frame)?;
 
@@ -440,7 +440,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for HandshakeSpace<Config> {
         frame: Ack<A>,
         datagram: &DatagramInfo,
         path_id: path::Id,
-        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
+        path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
         _local_id_registry: &mut connection::LocalIdRegistry,
         publisher: &mut Pub,
@@ -456,7 +456,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for HandshakeSpace<Config> {
         &mut self,
         frame: ConnectionClose,
         _datagram: &DatagramInfo,
-        _path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+        _path: &mut Path<Config>,
     ) -> Result<(), transport::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.4
         //# Handshake packets MAY contain

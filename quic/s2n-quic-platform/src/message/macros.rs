@@ -6,6 +6,8 @@
 macro_rules! impl_message_delegate {
     ($name:ident, $field:tt, $field_ty:ty) => {
         impl $crate::message::Message for $name {
+            type Handle = <$field_ty as $crate::message::Message>::Handle;
+
             const SUPPORTS_GSO: bool = <$field_ty as $crate::message::Message>::SUPPORTS_GSO;
 
             fn ecn(&self) -> ExplicitCongestionNotification {
@@ -26,6 +28,10 @@ macro_rules! impl_message_delegate {
 
             fn set_remote_address(&mut self, remote_address: &SocketAddress) {
                 $crate::message::Message::set_remote_address(&mut self.$field, remote_address)
+            }
+
+            fn path_handle(&self) -> Option<Self::Handle> {
+                $crate::message::Message::path_handle(&self.$field)
             }
 
             fn payload_len(&self) -> usize {

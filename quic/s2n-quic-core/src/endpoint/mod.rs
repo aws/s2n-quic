@@ -3,7 +3,7 @@
 
 use crate::{
     io::{rx, tx},
-    path::MaxMtu,
+    path::{self, MaxMtu},
     time::{Clock, Timestamp},
 };
 use core::{
@@ -78,11 +78,19 @@ impl Location {
 
 /// The main interface for a QUIC endpoint
 pub trait Endpoint: 'static + Send + Sized {
+    type PathHandle: path::Handle;
+
     /// Receives and processes datagrams for the Rx queue
-    fn receive<Rx: rx::Queue, C: Clock>(&mut self, rx: &mut Rx, clock: &C);
+    fn receive<Rx, C>(&mut self, rx: &mut Rx, clock: &C)
+    where
+        Rx: rx::Queue<Handle = Self::PathHandle>,
+        C: Clock;
 
     /// Transmits outgoing datagrams into the Tx queue
-    fn transmit<Tx: tx::Queue, C: Clock>(&mut self, tx: &mut Tx, clock: &C);
+    fn transmit<Tx, C>(&mut self, tx: &mut Tx, clock: &C)
+    where
+        Tx: tx::Queue<Handle = Self::PathHandle>,
+        C: Clock;
 
     /// Returns a future which polls for application-space wakeups
     ///

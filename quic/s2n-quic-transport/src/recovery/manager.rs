@@ -3,14 +3,15 @@
 
 use crate::{
     contexts::WriteContext,
+    endpoint,
     path::{self, Path},
     recovery::{SentPacketInfo, SentPackets},
     transmission,
 };
-use core::{cmp::max, time::Duration};
+use core::{cmp::max, marker::PhantomData, time::Duration};
 use s2n_quic_core::{
     connection::id::AsEvent as _,
-    endpoint, event, frame,
+    event, frame,
     inet::{ip::AsEvent as _, DatagramInfo},
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     recovery::{CongestionController, RttEstimator, K_GRANULARITY},
@@ -23,7 +24,7 @@ use smallvec::SmallVec;
 type PacketDetails = (PacketNumber, SentPacketInfo);
 
 #[derive(Debug)]
-pub struct Manager {
+pub struct Manager<Config: endpoint::Config> {
     // The packet space for this recovery manager
     space: PacketNumberSpace,
 
@@ -65,6 +66,8 @@ pub struct Manager {
     //# number space by the peer in an ACK frame.  This value is used to
     //# detect increases in the reported ECN-CE counter.
     ecn_ce_counter: VarInt,
+
+    config: PhantomData<Config>,
 }
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.1
@@ -80,7 +83,7 @@ const K_PACKET_THRESHOLD: u64 = 3;
 // TODO: Determine if there is a more appropriate default
 const ACKED_PACKETS_INITIAL_CAPACITY: usize = 32;
 
-impl Manager {
+impl<Config: endpoint::Config> Manager<Config> {
     /// Constructs a new `recovery::Manager`
     pub fn new(space: PacketNumberSpace, max_ack_delay: Duration) -> Self {
         Self {
@@ -92,10 +95,11 @@ impl Manager {
             pto: Pto::new(max_ack_delay),
             time_of_last_ack_eliciting_packet: None,
             ecn_ce_counter: VarInt::default(),
+            config: PhantomData,
         }
     }
 
-    pub fn on_timeout<CC: CongestionController, Ctx: Context<CC>, Pub: event::Publisher>(
+    pub fn on_timeout<Ctx: Context<Config>, Pub: event::Publisher>(
         &mut self,
         timestamp: Timestamp,
         context: &mut Ctx,
@@ -132,7 +136,7 @@ impl Manager {
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.5
     //# After a packet is sent, information about the packet is stored.
-    pub fn on_packet_sent<CC: CongestionController, Ctx: Context<CC>>(
+    pub fn on_packet_sent<Ctx: Context<Config>>(
         &mut self,
         packet_number: PacketNumber,
         outcome: transmission::Outcome,
@@ -181,9 +185,9 @@ impl Manager {
     }
 
     /// Updates the PTO timer
-    pub fn update_pto_timer<CC: CongestionController>(
+    pub fn update_pto_timer(
         &mut self,
-        path: &Path<CC>,
+        path: &Path<Config>,
         now: Timestamp,
         is_handshake_confirmed: bool,
     ) {
@@ -244,12 +248,7 @@ impl Manager {
     /// Process ACK frame.
     ///
     /// Update congestion controler, timers and meta data around acked packet ranges.
-    pub fn on_ack_frame<
-        A: frame::ack::AckRanges,
-        CC: CongestionController,
-        Ctx: Context<CC>,
-        Pub: event::Publisher,
-    >(
+    pub fn on_ack_frame<A: frame::ack::AckRanges, Ctx: Context<Config>, Pub: event::Publisher>(
         &mut self,
         datagram: &DatagramInfo,
         frame: frame::Ack<A>,
@@ -307,7 +306,7 @@ impl Manager {
     }
 
     // Process ack_range and return largest_newly_acked and if the packet is ack eliciting.
-    fn process_ack_range<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>>(
+    fn process_ack_range<A: frame::ack::AckRanges, Ctx: Context<Config>>(
         &mut self,
         newly_acked_packets: &mut SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
         datagram: &DatagramInfo,
@@ -368,11 +367,7 @@ impl Manager {
         Ok((largest_newly_acked, includes_ack_eliciting))
     }
 
-    fn update_congestion_control<
-        A: frame::ack::AckRanges,
-        CC: CongestionController,
-        Ctx: Context<CC>,
-    >(
+    fn update_congestion_control<A: frame::ack::AckRanges, Ctx: Context<Config>>(
         &mut self,
         largest_newly_acked: PacketDetails,
         largest_acked_packet_number: PacketNumber,
@@ -388,10 +383,7 @@ impl Manager {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
         //# Packets sent on the old path MUST NOT contribute to
         //# congestion control or RTT estimation for the new path.
-        should_update_rtt &= context
-            .path_by_id(largest_newly_acked_info.path_id)
-            .peer_socket_address
-            == datagram.remote_address;
+        should_update_rtt &= context.path_id() == largest_newly_acked_info.path_id;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
         //# To avoid generating multiple RTT samples for a single packet, an ACK
@@ -438,11 +430,7 @@ impl Manager {
         }
     }
 
-    fn process_new_acked_packets<
-        CC: CongestionController,
-        Ctx: Context<CC>,
-        Pub: event::Publisher,
-    >(
+    fn process_new_acked_packets<Ctx: Context<Config>, Pub: event::Publisher>(
         &mut self,
         newly_acked_packets: &SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
         largest_newly_acked_time_sent: Timestamp,
@@ -525,9 +513,9 @@ impl Manager {
     //# When Initial or Handshake keys are discarded, packets sent in that
     //# space no longer count toward bytes in flight.
     /// Clears bytes in flight for sent packets.
-    pub fn on_packet_number_space_discarded<CC: CongestionController, Pub: event::Publisher>(
+    pub fn on_packet_number_space_discarded<Pub: event::Publisher>(
         &mut self,
-        path: &mut Path<CC>,
+        path: &mut Path<Config>,
         path_id: path::Id,
         publisher: &mut Pub,
     ) {
@@ -553,11 +541,7 @@ impl Manager {
     //# DetectAndRemoveLostPackets is called every time an ACK is received or the time threshold
     //# loss detection timer expires. This function operates on the sent_packets for that packet
     //# number space and returns a list of packets newly detected as lost.
-    fn detect_and_remove_lost_packets<
-        CC: CongestionController,
-        Ctx: Context<CC>,
-        Pub: event::Publisher,
-    >(
+    fn detect_and_remove_lost_packets<Ctx: Context<Config>, Pub: event::Publisher>(
         &mut self,
         now: Timestamp,
         context: &mut Ctx,
@@ -581,7 +565,7 @@ impl Manager {
         );
     }
 
-    fn detect_lost_packets<CC: CongestionController, Ctx: Context<CC>>(
+    fn detect_lost_packets<Ctx: Context<Config>>(
         &mut self,
         now: Timestamp,
         context: &mut Ctx,
@@ -720,7 +704,7 @@ impl Manager {
         (max_persistent_congestion_period, sent_packets_to_remove)
     }
 
-    fn remove_lost_packets<CC: CongestionController, Ctx: Context<CC>, Pub: event::Publisher>(
+    fn remove_lost_packets<Ctx: Context<Config>, Pub: event::Publisher>(
         &mut self,
         now: Timestamp,
         max_persistent_congestion_period: Duration,
@@ -778,7 +762,7 @@ impl Manager {
                 }
                 .into(),
                 path: event::builders::Path {
-                    remote_addr: path.peer_socket_address.as_event(),
+                    remote_addr: path.remote_address().as_event(),
                     remote_cid: path.peer_connection_id.as_event(),
                     id: current_path_id.as_u8() as u64,
                 }
@@ -825,11 +809,7 @@ impl Manager {
         max(time_threshold, K_GRANULARITY)
     }
 
-    fn recovery_event<CC: CongestionController>(
-        &self,
-        path_id: u8,
-        path: &Path<CC>,
-    ) -> event::builders::RecoveryMetrics {
+    fn recovery_event(&self, path_id: u8, path: &Path<Config>) -> event::builders::RecoveryMetrics {
         event::builders::RecoveryMetrics {
             path_id: path_id as u64,
             min_rtt: path.rtt_estimator.min_rtt(),
@@ -844,7 +824,7 @@ impl Manager {
     }
 }
 
-impl timer::Provider for Manager {
+impl<Config: endpoint::Config> timer::Provider for Manager<Config> {
     #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
@@ -863,18 +843,18 @@ impl timer::Provider for Manager {
     }
 }
 
-pub trait Context<CC: CongestionController> {
+pub trait Context<Config: endpoint::Config> {
     const ENDPOINT_TYPE: endpoint::Type;
 
     fn is_handshake_confirmed(&self) -> bool;
 
-    fn path(&self) -> &Path<CC>;
+    fn path(&self) -> &Path<Config>;
 
-    fn path_mut(&mut self) -> &mut Path<CC>;
+    fn path_mut(&mut self) -> &mut Path<Config>;
 
-    fn path_by_id(&self, path_id: path::Id) -> &path::Path<CC>;
+    fn path_by_id(&self, path_id: path::Id) -> &path::Path<Config>;
 
-    fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<CC>;
+    fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<Config>;
 
     fn path_id(&self) -> path::Id;
 
@@ -894,7 +874,7 @@ pub trait Context<CC: CongestionController> {
     fn on_rtt_update(&mut self);
 }
 
-impl transmission::interest::Provider for Manager {
+impl<Config: endpoint::Config> transmission::interest::Provider for Manager<Config> {
     fn transmission_interest<Q: transmission::interest::Query>(
         &self,
         query: &mut Q,
@@ -1058,6 +1038,7 @@ mod test {
     use crate::{
         connection::{ConnectionIdMapper, InternalConnectionIdGenerator},
         contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
+        endpoint::{self, testing::Server as Config},
         path::MINIMUM_MTU,
         recovery,
         recovery::manager::PtoState::RequiresTransmission,
@@ -1065,17 +1046,16 @@ mod test {
     };
     use core::{ops::RangeInclusive, time::Duration};
     use s2n_quic_core::{
-        connection, endpoint,
+        connection,
         event::testing::Publisher,
         frame::ack_elicitation::AckElicitation,
         inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
         packet::number::PacketNumberSpace,
-        path::{DEFAULT_MAX_MTU, INITIAL_PTO_BACKOFF},
+        path::{RemoteAddress, DEFAULT_MAX_MTU, INITIAL_PTO_BACKOFF},
         random,
         recovery::{
-            congestion_controller::testing::{
-                mock::{CongestionController as MockCongestionController, Endpoint},
-                unlimited::CongestionController as Unlimited,
+            congestion_controller::testing::mock::{
+                CongestionController as MockCongestionController, Endpoint,
             },
             DEFAULT_INITIAL_RTT,
         },
@@ -1083,6 +1063,10 @@ mod test {
         varint::VarInt,
     };
     use std::{collections::HashSet, net::SocketAddr};
+
+    // alias the manager and paths over the config so we don't have to annotate it everywhere
+    type Manager = super::Manager<Config>;
+    type Path = super::Path<Config>;
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2
     //= type=test
@@ -1101,7 +1085,7 @@ mod test {
             connection::PeerId::TEST_ID,
             connection::LocalId::TEST_ID,
             RttEstimator::new(max_ack_delay),
-            Unlimited::default(),
+            Default::default(),
             false,
             DEFAULT_MAX_MTU,
         );
@@ -1914,9 +1898,15 @@ mod test {
     #[test]
     fn no_rtt_update_when_receiving_packet_on_different_path() {
         let space = PacketNumberSpace::ApplicationData;
-        let mut manager = Manager::new(space, Duration::from_millis(100));
+        let (
+            first_addr,
+            _first_path_id,
+            second_addr,
+            _second_path_id,
+            mut manager,
+            mut path_manager,
+        ) = helper_generate_multi_path_manager(space);
         let packet_bytes = 128;
-        let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
         let mut context = MockContext::new(&mut path_manager);
 
         let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
@@ -1946,15 +1936,17 @@ mod test {
         );
         assert_eq!(manager.sent_packets.iter().count(), 2);
 
+        // clear the cc counts
+        context.path_mut().congestion_controller.on_rtt_update = 0;
+
         // Ack packet 0 on diffent path as it was sent.. expect no rtt update
         let ack_receive_time = time_sent + Duration::from_millis(500);
-        let ipv6_addr = SocketAddress::IpV6(Default::default());
         ack_packets_on_path(
             0..=0,
             ack_receive_time,
             &mut context,
             &mut manager,
-            ipv6_addr,
+            second_addr,
         );
 
         // no rtt estimate because the packet was received on different path
@@ -1971,13 +1963,12 @@ mod test {
 
         // Ack packet 1 on same path as it was sent.. expect rtt update
         let ack_receive_time = time_sent + Duration::from_millis(1500);
-        let ipv4_addr = SocketAddress::IpV4(Default::default());
         ack_packets_on_path(
             1..=1,
             ack_receive_time,
             &mut context,
             &mut manager,
-            ipv4_addr,
+            first_addr,
         );
 
         // rtt estimate because the packet was received on same path
@@ -2979,7 +2970,7 @@ mod test {
             connection::PeerId::TEST_ID,
             connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(10)),
-            Unlimited::default(),
+            Default::default(),
             false,
             DEFAULT_MAX_MTU,
         );
@@ -3007,7 +2998,7 @@ mod test {
             connection::PeerId::TEST_ID,
             connection::LocalId::TEST_ID,
             RttEstimator::new(max_ack_delay),
-            Unlimited::default(),
+            Default::default(),
             false,
             DEFAULT_MAX_MTU,
         );
@@ -3252,13 +3243,19 @@ mod test {
     }
 
     // Helper function that will call on_ack_frame with the given packet numbers
-    fn ack_packets_on_path<CC: CongestionController, Ctx: Context<CC>>(
+    fn ack_packets_on_path(
         range: RangeInclusive<u8>,
         ack_receive_time: Timestamp,
-        context: &mut Ctx,
+        context: &mut MockContext,
         manager: &mut Manager,
-        remote_address: SocketAddress,
+        remote_address: RemoteAddress,
     ) {
+        let (id, _) = context
+            .path_manager
+            .path(&remote_address)
+            .expect("missing path");
+        context.path_id = id;
+
         let acked_packets = PacketNumberRange::new(
             manager
                 .space
@@ -3270,7 +3267,6 @@ mod test {
 
         let datagram = DatagramInfo {
             timestamp: ack_receive_time,
-            remote_address,
             payload_len: 0,
             ecn: Default::default(),
             destination_connection_id: connection::LocalId::TEST_ID,
@@ -3296,19 +3292,14 @@ mod test {
     }
 
     // Helper function that will call on_ack_frame with the given packet numbers
-    fn ack_packets<CC: CongestionController, Ctx: Context<CC>>(
+    fn ack_packets(
         range: RangeInclusive<u8>,
         ack_receive_time: Timestamp,
-        context: &mut Ctx,
+        context: &mut MockContext,
         manager: &mut Manager,
     ) {
-        ack_packets_on_path(
-            range,
-            ack_receive_time,
-            context,
-            manager,
-            Default::default(),
-        )
+        let addr = context.path().handle;
+        ack_packets_on_path(range, ack_receive_time, context, manager, addr)
     }
 
     #[test]
@@ -3452,19 +3443,21 @@ mod test {
     fn helper_generate_multi_path_manager(
         space: PacketNumberSpace,
     ) -> (
-        SocketAddress,
+        RemoteAddress,
         path::Id,
-        SocketAddress,
+        RemoteAddress,
         path::Id,
         Manager,
-        path::Manager<Endpoint>,
+        path::Manager<Config>,
     ) {
         let manager = Manager::new(space, Duration::from_millis(100));
         let clock = NoopClock {};
 
         let first_addr = SocketAddress::IpV4(Default::default());
+        let first_addr = RemoteAddress::from(first_addr);
         let second_addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
         let second_addr = SocketAddress::from(second_addr);
+        let second_addr = RemoteAddress::from(second_addr);
 
         let first_path_id = path::Id::new(0);
         let second_path_id = path::Id::new(1);
@@ -3480,13 +3473,13 @@ mod test {
         {
             let datagram = DatagramInfo {
                 timestamp: clock.get_time(),
-                remote_address: second_addr,
                 payload_len: 0,
                 ecn: ExplicitCongestionNotification::default(),
                 destination_connection_id: connection::LocalId::TEST_ID,
             };
             let _ = path_manager
                 .on_datagram_received(
+                    &second_addr,
                     &datagram,
                     &connection::Limits::default(),
                     true,
@@ -3531,7 +3524,7 @@ mod test {
         )
     }
 
-    fn helper_generate_path_manager(max_ack_delay: Duration) -> path::Manager<Endpoint> {
+    fn helper_generate_path_manager(max_ack_delay: Duration) -> path::Manager<Config> {
         let mut random_generator = random::testing::Generator(123);
 
         let registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
@@ -3561,11 +3554,11 @@ mod test {
         on_rtt_update_count: u8,
         path_id: path::Id,
         lost_packets: HashSet<PacketNumber>,
-        path_manager: &'a mut path::Manager<Endpoint>,
+        path_manager: &'a mut path::Manager<Config>,
     }
 
     impl<'a> MockContext<'a> {
-        pub fn new(path_manager: &'a mut path::Manager<Endpoint>) -> Self {
+        pub fn new(path_manager: &'a mut path::Manager<Config>) -> Self {
             Self {
                 validate_packet_ack_count: 0,
                 on_new_packet_ack_count: 0,
@@ -3583,26 +3576,26 @@ mod test {
         }
     }
 
-    impl<'a> recovery::Context<MockCongestionController> for MockContext<'a> {
-        const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Client;
+    impl<'a> recovery::Context<Config> for MockContext<'a> {
+        const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Server;
 
         fn is_handshake_confirmed(&self) -> bool {
             true
         }
 
-        fn path(&self) -> &Path<MockCongestionController> {
+        fn path(&self) -> &Path {
             &self.path_manager[self.path_id]
         }
 
-        fn path_mut(&mut self) -> &mut Path<MockCongestionController> {
+        fn path_mut(&mut self) -> &mut Path {
             &mut self.path_manager[self.path_id]
         }
 
-        fn path_by_id(&self, path_id: path::Id) -> &Path<MockCongestionController> {
+        fn path_by_id(&self, path_id: path::Id) -> &Path {
             &self.path_manager[path_id]
         }
 
-        fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut Path<MockCongestionController> {
+        fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut Path {
             &mut self.path_manager[path_id]
         }
 

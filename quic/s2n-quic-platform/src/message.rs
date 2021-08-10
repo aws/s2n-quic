@@ -17,10 +17,15 @@ pub mod queue;
 pub mod simple;
 
 use core::ffi::c_void;
-use s2n_quic_core::inet::{ExplicitCongestionNotification, SocketAddress};
+use s2n_quic_core::{
+    inet::{ExplicitCongestionNotification, SocketAddress},
+    path,
+};
 
 /// An abstract message that can be sent and received on a network
 pub trait Message {
+    type Handle: path::Handle;
+
     const SUPPORTS_GSO: bool;
 
     /// Returns the ECN values for the message
@@ -34,6 +39,9 @@ pub trait Message {
 
     /// Sets the `SocketAddress` for the message
     fn set_remote_address(&mut self, remote_address: &SocketAddress);
+
+    /// Returns the path handle for the message
+    fn path_handle(&self) -> Option<Self::Handle>;
 
     /// Returns the length of the payload
     fn payload_len(&self) -> usize;

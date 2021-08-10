@@ -22,6 +22,8 @@ use std::os::unix::io::AsRawFd;
 use std::{convert::TryInto, io, io::ErrorKind};
 use tokio::{net::UdpSocket, runtime::Handle, time::Instant};
 
+pub type PathHandle = socket::Handle;
+
 #[derive(Debug)]
 struct Clock(Instant);
 
@@ -76,7 +78,10 @@ impl Io {
         Ok(Self { builder })
     }
 
-    pub fn start<E: Endpoint>(self, mut endpoint: E) -> io::Result<tokio::task::JoinHandle<()>> {
+    pub fn start<E: Endpoint<PathHandle = PathHandle>>(
+        self,
+        mut endpoint: E,
+    ) -> io::Result<tokio::task::JoinHandle<()>> {
         let Builder {
             handle,
             rx_socket,
@@ -341,7 +346,7 @@ struct Instance<E> {
     endpoint: E,
 }
 
-impl<E: Endpoint> Instance<E> {
+impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
     async fn event_loop(self) -> io::Result<()> {
         let Self {
             clock,
@@ -632,7 +637,13 @@ mod tests {
     }
 
     impl Endpoint for TestEndpoint {
-        fn transmit<Tx: tx::Queue, C: Clock>(&mut self, queue: &mut Tx, clock: &C) {
+        type PathHandle = PathHandle;
+
+        fn transmit<Tx: tx::Queue<Handle = PathHandle>, C: Clock>(
+            &mut self,
+            queue: &mut Tx,
+            clock: &C,
+        ) {
             let now = clock.get_time();
             self.now = Some(now);
 
@@ -645,7 +656,8 @@ mod tests {
                     }
                     _ => {
                         let payload = id.to_be_bytes();
-                        let msg = (self.addr, payload);
+                        let addr = PathHandle::from_remote_address(self.addr);
+                        let msg = (addr, payload);
                         if queue.push(msg).is_ok() {
                             *tx_time = Some(now);
                         } else {
@@ -657,19 +669,24 @@ mod tests {
             }
         }
 
-        fn receive<Rx: rx::Queue, C: Clock>(&mut self, queue: &mut Rx, clock: &C) {
+        fn receive<Rx: rx::Queue<Handle = PathHandle>, C: Clock>(
+            &mut self,
+            queue: &mut Rx,
+            clock: &C,
+        ) {
             let now = clock.get_time();
             self.now = Some(now);
             let entries = queue.as_slice_mut();
             let len = entries.len();
             for entry in entries {
-                let payload: &[u8] = entry.payload_mut();
-                if payload.len() != 4 {
-                    panic!("invalid payload {:?}", payload);
+                if let Some((_header, payload)) = entry.read() {
+                    if payload.len() != 4 {
+                        panic!("invalid payload {:?}", payload);
+                    }
+                    let id = (&payload[..]).try_into().unwrap();
+                    let id = u32::from_be_bytes(id);
+                    self.messages.remove(&id);
                 }
-                let id = payload.try_into().unwrap();
-                let id = u32::from_be_bytes(id);
-                self.messages.remove(&id);
             }
             queue.finish(len);
         }

@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use cfg_if::cfg_if;
-pub use s2n_quic_core::{endpoint::Endpoint, inet};
+pub use s2n_quic_core::{endpoint::Endpoint, inet, path::Handle as PathHandle};
 use std::io;
 
 /// Provides IO support for an endpoint
 pub trait Provider: 'static {
+    type PathHandle: PathHandle;
     type Error: 'static + core::fmt::Display;
 
-    fn start<E: Endpoint>(self, endpoint: E) -> Result<(), Self::Error>;
+    fn start<E: Endpoint<PathHandle = Self::PathHandle>>(
+        self,
+        endpoint: E,
+    ) -> Result<(), Self::Error>;
 }
 
 cfg_if! {

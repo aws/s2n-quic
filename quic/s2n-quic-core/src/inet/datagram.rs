@@ -1,17 +1,19 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    connection,
-    inet::{ExplicitCongestionNotification, SocketAddress},
-    time::Timestamp,
-};
+use crate::{connection, inet::ExplicitCongestionNotification, time::Timestamp};
+
+/// Header information for a datagram sent/received over the network
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Header<Path> {
+    pub path: Path,
+    pub ecn: ExplicitCongestionNotification,
+}
 
 /// Metadata for a datagram sent/received over the network
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DatagramInfo {
     pub timestamp: Timestamp,
-    pub remote_address: SocketAddress,
     pub payload_len: usize,
     pub ecn: ExplicitCongestionNotification,
     pub destination_connection_id: connection::LocalId,

@@ -3,7 +3,7 @@
 
 use crate::{
     connection, endpoint, path, path::Path, processed_packet::ProcessedPacket,
-    recovery::congestion_controller, space::rx_packet_numbers::AckManager, transmission,
+    space::rx_packet_numbers::AckManager, transmission,
 };
 use bytes::Bytes;
 use core::fmt;
@@ -87,9 +87,9 @@ macro_rules! packet_space_api {
         $(
             pub fn $discard<Pub: event::Publisher>(
                 &mut self,
-                path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
-        path_id: path::Id,
-        publisher: &mut Pub,
+                path: &mut Path<Config>,
+                path_id: path::Id,
+                publisher: &mut Pub,
             ) {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2
                 //# When Initial or Handshake keys are discarded, the PTO and loss
@@ -169,7 +169,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
     pub fn poll_crypto<Pub: event::Publisher>(
         &mut self,
-        path: &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+        path: &Path<Config>,
         local_id_registry: &mut connection::LocalIdRegistry,
         limits: &mut Limits,
         now: Timestamp,
@@ -204,7 +204,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     pub fn on_timeout<Pub: event::Publisher>(
         &mut self,
         local_id_registry: &mut connection::LocalIdRegistry,
-        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
+        path_manager: &mut path::Manager<Config>,
         timestamp: Timestamp,
         publisher: &mut Pub,
     ) {
@@ -248,11 +248,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
     /// Signals the connection was previously blocked by anti-amplification limits
     /// but is now no longer limited.
-    pub fn on_amplification_unblocked(
-        &mut self,
-        path: &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
-        timestamp: Timestamp,
-    ) {
+    pub fn on_amplification_unblocked(&mut self, path: &Path<Config>, timestamp: Timestamp) {
         if let Some((space, handshake_status)) = self.initial_mut() {
             space.on_amplification_unblocked(path, timestamp, handshake_status.is_confirmed());
         }
@@ -462,7 +458,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         &mut self,
         frame: CryptoRef,
         datagram: &DatagramInfo,
-        path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+        path: &mut Path<Config>,
     ) -> Result<(), transport::Error>;
 
     #[allow(clippy::too_many_arguments)]
@@ -471,7 +467,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         frame: Ack<A>,
         datagram: &DatagramInfo,
         path_id: path::Id,
-        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
+        path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
         publisher: &mut Pub,
@@ -481,14 +477,14 @@ pub trait PacketSpace<Config: endpoint::Config> {
         &mut self,
         frame: ConnectionClose,
         datagram: &DatagramInfo,
-        path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+        path: &mut Path<Config>,
     ) -> Result<(), transport::Error>;
 
     fn handle_handshake_done_frame(
         &mut self,
         frame: HandshakeDone,
         _datagram: &DatagramInfo,
-        _path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+        _path: &mut Path<Config>,
         _local_id_registry: &mut connection::LocalIdRegistry,
         _handshake_status: &mut HandshakeStatus,
     ) -> Result<(), transport::Error> {
@@ -501,7 +497,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         &mut self,
         frame: RetireConnectionId,
         _datagram: &DatagramInfo,
-        _path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+        _path: &mut Path<Config>,
         _local_id_registry: &mut connection::LocalIdRegistry,
     ) -> Result<(), transport::Error> {
         Err(transport::Error::PROTOCOL_VIOLATION
@@ -513,7 +509,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         &mut self,
         frame: NewConnectionId,
         _datagram: &DatagramInfo,
-        _path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
+        _path_manager: &mut path::Manager<Config>,
     ) -> Result<(), transport::Error> {
         Err(transport::Error::PROTOCOL_VIOLATION
             .with_reason(Self::INVALID_FRAME_ERROR)
@@ -523,7 +519,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
     fn handle_path_response_frame(
         &mut self,
         frame: PathResponse,
-        _path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
+        _path_manager: &mut path::Manager<Config>,
     ) -> Result<(), transport::Error> {
         Err(transport::Error::PROTOCOL_VIOLATION
             .with_reason(Self::INVALID_FRAME_ERROR)
@@ -533,8 +529,8 @@ pub trait PacketSpace<Config: endpoint::Config> {
     fn handle_path_challenge_frame(
         &mut self,
         frame: PathChallenge,
-        _datagram: &DatagramInfo,
-        _path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
+        _path_id: path::Id,
+        _path_manager: &mut path::Manager<Config>,
     ) -> Result<(), transport::Error> {
         Err(transport::Error::PROTOCOL_VIOLATION
             .with_reason(Self::INVALID_FRAME_ERROR)
@@ -565,7 +561,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         mut payload: DecoderBufferMut<'a>,
         datagram: &DatagramInfo,
         path_id: path::Id,
-        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
+        path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
         random_generator: &mut Rnd,
@@ -731,7 +727,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     if path_manager.active_path_id() == path_id {
                         processed_packet.path_challenge_on_active_path = true;
                     }
-                    self.handle_path_challenge_frame(frame, datagram, path_manager)
+                    self.handle_path_challenge_frame(frame, path_id, path_manager)
                         .map_err(on_error)?;
                 }
                 Frame::PathResponse(frame) => {

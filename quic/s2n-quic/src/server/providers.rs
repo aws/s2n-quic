@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use s2n_quic_core::{connection::id::Generator, crypto};
+use core::marker::PhantomData;
+use s2n_quic_core::{connection::id::Generator, crypto, path};
 use s2n_quic_transport::{acceptor::Acceptor, connection, endpoint, stream};
 
 impl_providers_state! {
@@ -109,6 +110,7 @@ impl<
             sync,
             tls,
             token,
+            path_handle: PhantomData,
         };
 
         let (endpoint, acceptor) = endpoint::Endpoint::new(endpoint_config);
@@ -125,6 +127,7 @@ struct EndpointConfig<
     CongestionController,
     ConnectionCloseFormatter,
     ConnectionID,
+    PathHandle,
     StatelessResetToken,
     Random,
     EndpointLimits,
@@ -145,12 +148,14 @@ struct EndpointConfig<
     sync: Sync,
     tls: Tls,
     token: Token,
+    path_handle: PhantomData<PathHandle>,
 }
 
 impl<
         CongestionController: congestion_controller::Endpoint,
         ConnectionCloseFormatter: connection_close_formatter::Formatter,
         ConnectionID: connection::id::Format,
+        PathHandle: path::Handle,
         StatelessResetToken: stateless_reset_token::Generator,
         Random: s2n_quic_core::random::Generator,
         EndpointLimits: s2n_quic_core::endpoint::Limits,
@@ -164,6 +169,7 @@ impl<
         CongestionController,
         ConnectionCloseFormatter,
         ConnectionID,
+        PathHandle,
         StatelessResetToken,
         Random,
         EndpointLimits,
@@ -183,6 +189,7 @@ impl<
         CongestionController: congestion_controller::Endpoint,
         ConnectionCloseFormatter: connection_close_formatter::Formatter,
         ConnectionID: connection::id::Format,
+        PathHandle: path::Handle,
         StatelessResetToken: stateless_reset_token::Generator,
         Random: s2n_quic_core::random::Generator,
         EndpointLimits: s2n_quic_core::endpoint::Limits,
@@ -196,6 +203,7 @@ impl<
         CongestionController,
         ConnectionCloseFormatter,
         ConnectionID,
+        PathHandle,
         StatelessResetToken,
         Random,
         EndpointLimits,
@@ -208,6 +216,7 @@ impl<
 {
     type ConnectionIdFormat = ConnectionID;
     type ConnectionCloseFormatter = ConnectionCloseFormatter;
+    type PathHandle = PathHandle;
     type StatelessResetTokenGenerator = StatelessResetToken;
     type RandomGenerator = Random;
     type Connection = connection::Implementation<Self>;

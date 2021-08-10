@@ -5,6 +5,7 @@
 
 use crate::{
     connection::PeerIdRegistry,
+    endpoint,
     path::{challenge, Path},
     transmission,
 };
@@ -12,11 +13,14 @@ use s2n_quic_core::{
     ack, connection,
     connection::id::AsEvent as _,
     event, frame,
-    inet::{ip::AsEvent as _, DatagramInfo, SocketAddress},
+    inet::{ip::AsEvent as _, DatagramInfo},
     packet::number::PacketNumberSpace,
-    path::MaxMtu,
+    path::{Handle as _, MaxMtu},
     random,
-    recovery::{congestion_controller, RttEstimator},
+    recovery::{
+        congestion_controller::{self, Endpoint as _},
+        RttEstimator,
+    },
     stateless_reset,
     time::{timer, Timestamp},
     transport,
@@ -30,9 +34,9 @@ const MAX_ALLOWED_PATHS: usize = 5;
 /// The PathManager handles paths for a specific connection.
 /// It will handle path validation operations, and track the active path for a connection.
 #[derive(Debug)]
-pub struct Manager<CCE: congestion_controller::Endpoint> {
+pub struct Manager<Config: endpoint::Config> {
     /// Path array
-    paths: SmallVec<[Path<CCE::CongestionController>; MAX_ALLOWED_PATHS]>,
+    paths: SmallVec<[Path<Config>; MAX_ALLOWED_PATHS]>,
 
     /// Registry of `connection::PeerId`s
     peer_id_registry: PeerIdRegistry,
@@ -44,11 +48,8 @@ pub struct Manager<CCE: congestion_controller::Endpoint> {
     last_known_validated_path: Option<u8>,
 }
 
-impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
-    pub fn new(
-        initial_path: Path<CCE::CongestionController>,
-        peer_id_registry: PeerIdRegistry,
-    ) -> Self {
+impl<Config: endpoint::Config> Manager<Config> {
+    pub fn new(initial_path: Path<Config>, peer_id_registry: PeerIdRegistry) -> Self {
         Manager {
             paths: SmallVec::from_elem(initial_path, 1),
             peer_id_registry,
@@ -107,13 +108,13 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
         publisher.on_active_path_updated(event::builders::ActivePathUpdated {
             previous: event::builders::Path {
-                remote_addr: self[prev_path_id].peer_socket_address.as_event(),
+                remote_addr: self[prev_path_id].remote_address().as_event(),
                 remote_cid: self[prev_path_id].peer_connection_id.as_event(),
                 id: prev_path_id.as_u8() as u64,
             }
             .into(),
             active: event::builders::Path {
-                remote_addr: self.active_path().peer_socket_address.as_event(),
+                remote_addr: self.active_path().remote_address().as_event(),
                 remote_cid: self.active_path().peer_connection_id.as_event(),
                 id: new_path_idx as u64,
             }
@@ -125,13 +126,13 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
     /// Return the active path
     #[inline]
-    pub fn active_path(&self) -> &Path<CCE::CongestionController> {
+    pub fn active_path(&self) -> &Path<Config> {
         &self.paths[self.active as usize]
     }
 
     /// Return a mutable reference to the active path
     #[inline]
-    pub fn active_path_mut(&mut self) -> &mut Path<CCE::CongestionController> {
+    pub fn active_path_mut(&mut self) -> &mut Path<Config> {
         &mut self.paths[self.active as usize]
     }
 
@@ -148,33 +149,27 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     //# that address has been seen recently.
     /// Returns the Path for the provided address if the PathManager knows about it
     #[inline]
-    pub fn path(
-        &self,
-        peer_address: &SocketAddress,
-    ) -> Option<(Id, &Path<CCE::CongestionController>)> {
+    pub fn path(&self, handle: &Config::PathHandle) -> Option<(Id, &Path<Config>)> {
         self.paths
             .iter()
             .enumerate()
-            .find(|(_id, path)| *peer_address == path.peer_socket_address)
+            .find(|(_id, path)| path.handle.eq(handle))
             .map(|(id, path)| (Id(id as u8), path))
     }
 
     /// Returns the Path for the provided address if the PathManager knows about it
     #[inline]
-    pub fn path_mut(
-        &mut self,
-        peer_address: &SocketAddress,
-    ) -> Option<(Id, &mut Path<CCE::CongestionController>)> {
+    pub fn path_mut(&mut self, handle: &Config::PathHandle) -> Option<(Id, &mut Path<Config>)> {
         self.paths
             .iter_mut()
             .enumerate()
-            .find(|(_id, path)| *peer_address == path.peer_socket_address)
+            .find(|(_id, path)| path.handle.eq(handle))
             .map(|(id, path)| (Id(id as u8), path))
     }
 
     /// Returns an iterator over all paths pending path_challenge or path_response
     /// transmission.
-    pub fn paths_pending_validation(&mut self) -> PathsPendingValidation<CCE> {
+    pub fn paths_pending_validation(&mut self) -> PathsPendingValidation<Config> {
         PathsPendingValidation::new(self)
     }
 
@@ -182,17 +177,18 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     /// Upon success, returns a `(Id, bool)` containing the path ID and a boolean that is
     /// true if the path had been amplification limited prior to receiving the datagram
     /// and is now no longer amplification limited.
-    #[allow(unused_variables)]
+    #[allow(unused_variables, clippy::too_many_arguments)]
     pub fn on_datagram_received<Rnd: random::Generator>(
         &mut self,
+        path_handle: &Config::PathHandle,
         datagram: &DatagramInfo,
         limits: &connection::Limits,
         handshake_confirmed: bool,
-        congestion_controller_endpoint: &mut CCE,
+        congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         random_generator: &mut Rnd,
         max_mtu: MaxMtu,
     ) -> Result<(Id, bool), transport::Error> {
-        if let Some((id, path)) = self.path_mut(&datagram.remote_address) {
+        if let Some((id, path)) = self.path_mut(path_handle) {
             let unblocked = path.on_bytes_received(datagram.payload_len);
 
             return Ok((id, unblocked));
@@ -219,6 +215,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         // TODO set alpn if available
 
         self.handle_connection_migration(
+            path_handle,
             datagram,
             congestion_controller_endpoint,
             random_generator,
@@ -230,8 +227,9 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     #[allow(unused_variables)]
     fn handle_connection_migration<Rnd: random::Generator>(
         &mut self,
+        path_handle: &Config::PathHandle,
         datagram: &DatagramInfo,
-        congestion_controller_endpoint: &mut CCE,
+        congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         random_generator: &mut Rnd,
         max_mtu: MaxMtu,
     ) -> Result<(Id, bool), transport::Error> {
@@ -268,7 +266,8 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# time measurements to this address, the estimate SHOULD be the default
         //# initial value; see [QUIC-RECOVERY].
         let rtt = RttEstimator::new(self.active_path().rtt_estimator.max_ack_delay());
-        let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
+        let remote_address = path_handle.remote_address();
+        let path_info = congestion_controller::PathInfo::new(&remote_address);
         let cc = congestion_controller_endpoint.new_congestion_controller(path_info);
 
         let peer_connection_id = {
@@ -311,7 +310,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //
         // New paths start in AmplificationLimited state until they are validated.
         let mut path = Path::new(
-            datagram.remote_address,
+            *path_handle,
             peer_connection_id,
             datagram.destination_connection_id,
             rtt,
@@ -388,15 +387,13 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     #[inline]
     pub fn on_path_challenge(
         &mut self,
-        peer_address: &SocketAddress,
+        path: Id,
         challenge: &frame::path_challenge::PathChallenge,
     ) {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
         //# A PATH_RESPONSE frame MUST be sent on the network path where the
         //# PATH_CHALLENGE was received.
-        if let Some((_id, path)) = self.path_mut(peer_address) {
-            path.on_path_challenge(challenge.data)
-        }
+        self[path].on_path_challenge(challenge.data);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.3
@@ -586,7 +583,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 }
 
-impl<CCE: congestion_controller::Endpoint> timer::Provider for Manager<CCE> {
+impl<Config: endpoint::Config> timer::Provider for Manager<Config> {
     #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
         for path in self.paths.iter() {
@@ -602,13 +599,13 @@ impl<CCE: congestion_controller::Endpoint> timer::Provider for Manager<CCE> {
 ///
 /// This abstraction allows for iterating over pending paths while also
 /// having mutable access to the Manager.
-pub struct PathsPendingValidation<'a, CCE: congestion_controller::Endpoint> {
+pub struct PathsPendingValidation<'a, Config: endpoint::Config> {
     index: u8,
-    path_manager: &'a mut Manager<CCE>,
+    path_manager: &'a mut Manager<Config>,
 }
 
-impl<'a, CCE: congestion_controller::Endpoint> PathsPendingValidation<'a, CCE> {
-    pub fn new(path_manager: &'a mut Manager<CCE>) -> Self {
+impl<'a, Config: endpoint::Config> PathsPendingValidation<'a, Config> {
+    pub fn new(path_manager: &'a mut Manager<Config>) -> Self {
         Self {
             index: 0,
             path_manager,
@@ -616,7 +613,7 @@ impl<'a, CCE: congestion_controller::Endpoint> PathsPendingValidation<'a, CCE> {
     }
 
     #[inline]
-    pub fn next_path(&mut self) -> Option<(Id, &mut Manager<CCE>)> {
+    pub fn next_path(&mut self) -> Option<(Id, &mut Manager<Config>)> {
         loop {
             let path = self.path_manager.paths.get(self.index as usize)?;
 
@@ -631,7 +628,7 @@ impl<'a, CCE: congestion_controller::Endpoint> PathsPendingValidation<'a, CCE> {
     }
 }
 
-impl<CCE: congestion_controller::Endpoint> transmission::interest::Provider for Manager<CCE> {
+impl<Config: endpoint::Config> transmission::interest::Provider for Manager<Config> {
     #[inline]
     fn transmission_interest<Q: transmission::interest::Query>(
         &self,
@@ -662,8 +659,8 @@ impl Id {
     }
 }
 
-impl<CCE: congestion_controller::Endpoint> core::ops::Index<Id> for Manager<CCE> {
-    type Output = Path<CCE::CongestionController>;
+impl<Config: endpoint::Config> core::ops::Index<Id> for Manager<Config> {
+    type Output = Path<Config>;
 
     #[inline]
     fn index(&self, id: Id) -> &Self::Output {
@@ -671,7 +668,7 @@ impl<CCE: congestion_controller::Endpoint> core::ops::Index<Id> for Manager<CCE>
     }
 }
 
-impl<CCE: congestion_controller::Endpoint> core::ops::IndexMut<Id> for Manager<CCE> {
+impl<Config: endpoint::Config> core::ops::IndexMut<Id> for Manager<Config> {
     #[inline]
     fn index_mut(&mut self, id: Id) -> &mut Self::Output {
         &mut self.paths[id.0 as usize]
@@ -684,15 +681,16 @@ mod tests {
     use crate::{
         connection::{ConnectionIdMapper, InternalConnectionIdGenerator},
         contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
+        endpoint::{self, testing::Server as Config},
         path::DEFAULT_MAX_MTU,
     };
     use core::time::Duration;
     use s2n_quic_core::{
-        endpoint,
         event::testing::Publisher,
-        inet::{DatagramInfo, ExplicitCongestionNotification},
+        inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
+        path::RemoteAddress,
         random::{self, Generator},
-        recovery::{congestion_controller::testing::unlimited, RttEstimator},
+        recovery::RttEstimator,
         stateless_reset,
         stateless_reset::token::testing::*,
         time::{Clock, NoopClock},
@@ -700,10 +698,7 @@ mod tests {
     use std::net::SocketAddr;
 
     // Helper function to easily create a PathManager
-    fn manager(
-        first_path: Path<unlimited::CongestionController>,
-        stateless_reset_token: Option<stateless_reset::Token>,
-    ) -> Manager<unlimited::Endpoint> {
+    fn manager(first_path: Path, stateless_reset_token: Option<stateless_reset::Token>) -> Manager {
         let mut random_generator = random::testing::Generator(123);
         let peer_id_registry =
             ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
@@ -715,12 +710,15 @@ mod tests {
         Manager::new(first_path, peer_id_registry)
     }
 
+    type Manager = super::Manager<Config>;
+    type Path = super::Path<Config>;
+
     #[test]
     fn get_path_by_address_test() {
         let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let first_local_conn_id = connection::LocalId::TEST_ID;
         let first_path = Path::new(
-            SocketAddress::default(),
+            Default::default(),
             first_conn_id,
             first_local_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
@@ -731,7 +729,7 @@ mod tests {
 
         let second_conn_id = connection::PeerId::try_from_bytes(&[5, 4, 3, 2, 1]).unwrap();
         let second_path = Path::new(
-            SocketAddress::default(),
+            Default::default(),
             second_conn_id,
             first_local_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
@@ -744,7 +742,7 @@ mod tests {
         manager.paths.push(second_path);
         assert_eq!(manager.paths.len(), 2);
 
-        let (_id, matched_path) = manager.path(&SocketAddress::default()).unwrap();
+        let (_id, matched_path) = manager.path(&RemoteAddress::default()).unwrap();
         assert_eq!(
             matched_path.peer_connection_id,
             first_path.peer_connection_id
@@ -761,7 +759,7 @@ mod tests {
         let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let first_local_conn_id = connection::LocalId::TEST_ID;
         let mut first_path = Path::new(
-            SocketAddress::default(),
+            Default::default(),
             first_conn_id,
             first_local_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
@@ -777,7 +775,7 @@ mod tests {
         let expiration = Duration::from_millis(1000);
         let challenge = challenge::Challenge::new(expiration, [0; 8]);
         let mut second_path = Path::new(
-            SocketAddress::default(),
+            Default::default(),
             first_conn_id,
             first_local_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
@@ -1122,7 +1120,7 @@ mod tests {
         let expiration = Duration::from_millis(1000);
         let challenge = challenge::Challenge::new(expiration, [0; 8]);
         let mut first_path = Path::new(
-            SocketAddress::default(),
+            Default::default(),
             connection::PeerId::try_from_bytes(&[1]).unwrap(),
             connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
@@ -1249,7 +1247,7 @@ mod tests {
         // Setup:
         let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
         let first_path = Path::new(
-            SocketAddress::default(),
+            Default::default(),
             first_conn_id,
             connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
@@ -1260,26 +1258,27 @@ mod tests {
         let mut manager = manager(first_path, None);
 
         // verify we have one path
-        assert!(manager.path(&SocketAddress::default()).is_some());
+        assert!(manager.path(&Default::default()).is_some());
         let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
         let new_addr = SocketAddress::from(new_addr);
+        let new_addr = RemoteAddress::from(new_addr);
         assert!(manager.path(&new_addr).is_none());
         assert_eq!(manager.paths.len(), 1);
 
         // Trigger:
         let datagram = DatagramInfo {
             timestamp: NoopClock {}.get_time(),
-            remote_address: new_addr,
             payload_len: 0,
             ecn: ExplicitCongestionNotification::default(),
             destination_connection_id: connection::LocalId::TEST_ID,
         };
         let (path_id, unblocked) = manager
             .on_datagram_received(
+                &new_addr,
                 &datagram,
                 &connection::Limits::default(),
                 true,
-                &mut unlimited::Endpoint::default(),
+                &mut Default::default(),
                 &mut random::testing::Generator(123),
                 DEFAULT_MAX_MTU,
             )
@@ -1307,7 +1306,7 @@ mod tests {
         // Setup:
         let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
         let first_path = Path::new(
-            SocketAddress::default(),
+            Default::default(),
             first_conn_id,
             connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
@@ -1320,22 +1319,23 @@ mod tests {
         // verify we have one path
         let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
         let new_addr = SocketAddress::from(new_addr);
+        let new_addr = RemoteAddress::from(new_addr);
         assert_eq!(manager.paths.len(), 1);
 
         // Trigger:
         let datagram = DatagramInfo {
             timestamp: NoopClock {}.get_time(),
-            remote_address: new_addr,
             payload_len: 0,
             ecn: ExplicitCongestionNotification::default(),
             destination_connection_id: connection::LocalId::TEST_ID,
         };
         let handshake_confirmed = false;
         let on_datagram_result = manager.on_datagram_received(
+            &new_addr,
             &datagram,
             &connection::Limits::default(),
             handshake_confirmed,
-            &mut unlimited::Endpoint::default(),
+            &mut Default::default(),
             &mut random::testing::Generator(123),
             DEFAULT_MAX_MTU,
         );
@@ -1350,7 +1350,7 @@ mod tests {
     fn limit_number_of_connection_migrations() {
         // Setup:
         let first_path = Path::new(
-            SocketAddress::default(),
+            Default::default(),
             connection::PeerId::try_from_bytes(&[1]).unwrap(),
             connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
@@ -1364,18 +1364,19 @@ mod tests {
         for i in 1..std::u8::MAX {
             let new_addr: SocketAddr = format!("127.0.0.1:{}", i).parse().unwrap();
             let new_addr = SocketAddress::from(new_addr);
+            let new_addr = RemoteAddress::from(new_addr);
             let now = NoopClock {}.get_time();
             let datagram = DatagramInfo {
                 timestamp: now,
-                remote_address: new_addr,
                 payload_len: 0,
                 ecn: ExplicitCongestionNotification::default(),
                 destination_connection_id: connection::LocalId::TEST_ID,
             };
 
             let res = manager.handle_connection_migration(
+                &new_addr,
                 &datagram,
-                &mut unlimited::Endpoint::default(),
+                &mut Default::default(),
                 &mut random::testing::Generator(123),
                 DEFAULT_MAX_MTU,
             );
@@ -1392,7 +1393,7 @@ mod tests {
         // Setup:
         let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
         let first_path = Path::new(
-            SocketAddress::default(),
+            Default::default(),
             first_conn_id,
             connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
@@ -1404,10 +1405,10 @@ mod tests {
 
         let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
         let new_addr = SocketAddress::from(new_addr);
+        let new_addr = RemoteAddress::from(new_addr);
         let now = NoopClock {}.get_time();
         let datagram = DatagramInfo {
             timestamp: now,
-            remote_address: new_addr,
             payload_len: 0,
             ecn: ExplicitCongestionNotification::default(),
             destination_connection_id: connection::LocalId::TEST_ID,
@@ -1415,8 +1416,9 @@ mod tests {
 
         let (_path_id, _unblocked) = manager
             .handle_connection_migration(
+                &new_addr,
                 &datagram,
-                &mut unlimited::Endpoint::default(),
+                &mut Default::default(),
                 &mut random::testing::Generator(123),
                 DEFAULT_MAX_MTU,
             )
@@ -1467,7 +1469,7 @@ mod tests {
     fn connection_migration_use_max_ack_delay_from_active_path() {
         // Setup 1:
         let first_path = Path::new(
-            SocketAddress::default(),
+            Default::default(),
             connection::PeerId::try_from_bytes(&[1]).unwrap(),
             connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
@@ -1479,10 +1481,10 @@ mod tests {
 
         let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
         let new_addr = SocketAddress::from(new_addr);
+        let new_addr = RemoteAddress::from(new_addr);
         let now = NoopClock {}.get_time();
         let datagram = DatagramInfo {
             timestamp: now,
-            remote_address: new_addr,
             payload_len: 0,
             ecn: ExplicitCongestionNotification::default(),
             destination_connection_id: connection::LocalId::TEST_ID,
@@ -1491,8 +1493,9 @@ mod tests {
         // Trigger 1:
         let (second_path_id, _unblocked) = manager
             .handle_connection_migration(
+                &new_addr,
                 &datagram,
-                &mut unlimited::Endpoint::default(),
+                &mut Default::default(),
                 &mut random::testing::Generator(123),
                 DEFAULT_MAX_MTU,
             )
@@ -1538,7 +1541,7 @@ mod tests {
     fn connection_migration_new_path_abandon_timer() {
         // Setup 1:
         let first_path = Path::new(
-            SocketAddress::default(),
+            Default::default(),
             connection::PeerId::try_from_bytes(&[1]).unwrap(),
             connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
@@ -1550,10 +1553,10 @@ mod tests {
 
         let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
         let new_addr = SocketAddress::from(new_addr);
+        let new_addr = RemoteAddress::from(new_addr);
         let now = NoopClock {}.get_time();
         let datagram = DatagramInfo {
             timestamp: now,
-            remote_address: new_addr,
             payload_len: 0,
             ecn: ExplicitCongestionNotification::default(),
             destination_connection_id: connection::LocalId::TEST_ID,
@@ -1561,8 +1564,9 @@ mod tests {
 
         let (second_path_id, _unblocked) = manager
             .handle_connection_migration(
+                &new_addr,
                 &datagram,
-                &mut unlimited::Endpoint::default(),
+                &mut Default::default(),
                 &mut random::testing::Generator(123),
                 DEFAULT_MAX_MTU,
             )
@@ -1637,7 +1641,7 @@ mod tests {
     fn stop_using_a_retired_connection_id() {
         let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
         let first_path = Path::new(
-            SocketAddress::default(),
+            Default::default(),
             id_1,
             connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
@@ -1726,7 +1730,7 @@ mod tests {
         let third_path_id = Id(3);
         let third_conn_id = connection::PeerId::try_from_bytes(&[3]).unwrap();
         let mut third_path = Path::new(
-            SocketAddress::default(),
+            Default::default(),
             third_conn_id,
             connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
@@ -1784,7 +1788,7 @@ mod tests {
         let second_path_id = Id(2);
         let local_conn_id = connection::LocalId::TEST_ID;
         let mut zero_path = Path::new(
-            SocketAddress::default(),
+            Default::default(),
             zero_conn_id,
             local_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
@@ -1804,7 +1808,7 @@ mod tests {
         let challenge = challenge::Challenge::new(challenge_expiration, expected_data);
 
         let mut first_path = Path::new(
-            SocketAddress::default(),
+            Default::default(),
             first_conn_id,
             local_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
@@ -1818,7 +1822,7 @@ mod tests {
         let expected_data = [1; 8];
         let challenge = challenge::Challenge::new(challenge_expiration, expected_data);
         let mut second_path = Path::new(
-            SocketAddress::default(),
+            Default::default(),
             second_conn_id,
             local_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
@@ -1903,6 +1907,6 @@ mod tests {
         pub zero_path_id: Id,
         pub first_path_id: Id,
         pub second_path_id: Id,
-        pub manager: Manager<unlimited::Endpoint>,
+        pub manager: Manager,
     }
 }

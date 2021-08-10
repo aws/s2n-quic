@@ -3,18 +3,18 @@
 
 use crate::{
     contexts::WriteContext,
-    recovery,
+    endpoint, recovery,
     space::{rx_packet_numbers::AckManager, CryptoStream},
     transmission,
 };
 use core::ops::RangeInclusive;
 use s2n_quic_core::packet::number::PacketNumberSpace;
 
-pub struct Payload<'a> {
+pub struct Payload<'a, Config: endpoint::Config> {
     pub ack_manager: &'a mut AckManager,
     pub crypto_stream: &'a mut CryptoStream,
     pub packet_number_space: PacketNumberSpace,
-    pub recovery_manager: &'a mut recovery::Manager,
+    pub recovery_manager: &'a mut recovery::Manager<Config>,
 }
 
 /// Rather than creating a packet with a very small CRYPTO frame (under 16 bytes), it would be
@@ -22,7 +22,7 @@ pub struct Payload<'a> {
 /// performance, anyway, since you end up paying for encryption/decryption.
 const MIN_SIZE: usize = 16;
 
-impl<'a> super::Payload for Payload<'a> {
+impl<'a, Config: endpoint::Config> super::Payload for Payload<'a, Config> {
     fn size_hint(&self, range: RangeInclusive<usize>) -> usize {
         (*range.start()).max(MIN_SIZE)
     }
@@ -57,7 +57,7 @@ impl<'a> super::Payload for Payload<'a> {
     }
 }
 
-impl<'a> transmission::interest::Provider for Payload<'a> {
+impl<'a, Config: endpoint::Config> transmission::interest::Provider for Payload<'a, Config> {
     fn transmission_interest<Q: transmission::interest::Query>(
         &self,
         query: &mut Q,

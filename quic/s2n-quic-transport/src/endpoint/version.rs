@@ -3,22 +3,21 @@
 
 use crate::endpoint;
 use alloc::collections::VecDeque;
-use core::{marker::PhantomData, time::Duration};
+use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
     event,
-    inet::{ExplicitCongestionNotification, SocketAddress},
+    inet::ExplicitCongestionNotification,
     io::tx,
     packet,
     packet::ProtectedPacket,
-    path::MINIMUM_MTU,
+    path::{self, MINIMUM_MTU},
 };
 
 #[derive(Debug)]
-pub struct Negotiator<Cfg> {
-    transmissions: VecDeque<Transmission>,
+pub struct Negotiator<Config: endpoint::Config> {
+    transmissions: VecDeque<Transmission<Config::PathHandle>>,
     max_peers: usize,
-    config: PhantomData<Cfg>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -80,13 +79,12 @@ impl<Config: endpoint::Config> Negotiator<Config> {
                 VecDeque::new()
             },
             max_peers,
-            config: PhantomData,
         }
     }
 
     pub fn on_packet<Pub: event::Publisher>(
         &mut self,
-        remote_address: SocketAddress,
+        path: &Config::PathHandle,
         payload_len: usize,
         packet: &ProtectedPacket,
         publisher: &mut Pub,
@@ -156,14 +154,14 @@ impl<Config: endpoint::Config> Negotiator<Config> {
                 //# Servers SHOULD respond with a Version
                 //# Negotiation packet, provided that the datagram is sufficiently long.
                 self.transmissions
-                    .push_back(Transmission::new(remote_address, packet));
+                    .push_back(Transmission::new(*path, packet));
             }
         }
 
         Err(Error)
     }
 
-    pub fn on_transmit<Tx: tx::Queue>(&mut self, queue: &mut Tx) {
+    pub fn on_transmit<Tx: tx::Queue<Handle = Config::PathHandle>>(&mut self, queue: &mut Tx) {
         // clients don't transmit version negotiation packets
         if Config::ENDPOINT_TYPE.is_client() {
             return;
@@ -178,28 +176,26 @@ impl<Config: endpoint::Config> Negotiator<Config> {
     }
 }
 
-struct Transmission {
-    remote_address: SocketAddress,
+struct Transmission<Path: path::Handle> {
+    path: Path,
     // The MINIMUM_MTU size allows for at least 170 supported versions
     packet: [u8; MINIMUM_MTU as usize],
     packet_len: usize,
 }
 
-impl core::fmt::Debug for Transmission {
+impl<Path: path::Handle> core::fmt::Debug for Transmission<Path> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Transmission")
-            .field("remote_address", &self.remote_address)
+            .field("remote_address", &self.path.remote_address())
+            .field("local_address", &self.path.local_address())
             .field("packet_len", &self.packet_len)
             .field("packet", &&self.packet[0..self.packet_len])
             .finish()
     }
 }
 
-impl Transmission {
-    pub fn new(
-        remote_address: SocketAddress,
-        initial_packet: &packet::initial::ProtectedInitial,
-    ) -> Self {
+impl<Path: path::Handle> Transmission<Path> {
+    pub fn new(path: Path, initial_packet: &packet::initial::ProtectedInitial) -> Self {
         let mut packet_buf = [0u8; MINIMUM_MTU as usize];
         let version_packet = packet::version_negotiation::VersionNegotiation::from_initial(
             initial_packet,
@@ -211,23 +207,24 @@ impl Transmission {
         let packet_len = buffer.len();
 
         Self {
-            remote_address,
+            path,
             packet: packet_buf,
             packet_len,
         }
     }
 }
 
-impl AsRef<[u8]> for Transmission {
+impl<Path: path::Handle> AsRef<[u8]> for Transmission<Path> {
     fn as_ref(&self) -> &[u8] {
         &self.packet[..self.packet_len]
     }
 }
 
-impl tx::Message for &Transmission {
-    #[inline]
-    fn remote_address(&mut self) -> SocketAddress {
-        self.remote_address
+impl<Path: path::Handle> tx::Message for &Transmission<Path> {
+    type Handle = Path;
+
+    fn path_handle(&self) -> &Self::Handle {
+        &self.path
     }
 
     #[inline]
@@ -295,7 +292,7 @@ mod tests {
         connection,
         connection::id::ConnectionInfo,
         event::testing::Publisher,
-        inet::DatagramInfo,
+        inet::{DatagramInfo, SocketAddress},
         packet::{
             handshake::Handshake,
             initial::Initial,
@@ -304,6 +301,7 @@ mod tests {
             version_negotiation::VersionNegotiation,
             zero_rtt::ZeroRtt,
         },
+        path::RemoteAddress,
         varint::VarInt,
     };
 
@@ -314,14 +312,16 @@ mod tests {
     // that would be expected had they undergone packet protection.
     const DUMMY_TAG: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
-    fn datagram_info(payload_len: usize) -> DatagramInfo {
-        DatagramInfo {
-            timestamp: s2n_quic_platform::time::now(),
-            remote_address: SocketAddress::default(),
-            payload_len,
-            ecn: Default::default(),
-            destination_connection_id: connection::LocalId::TEST_ID,
-        }
+    fn datagram_info(payload_len: usize) -> (RemoteAddress, DatagramInfo) {
+        (
+            RemoteAddress::from(SocketAddress::default()),
+            DatagramInfo {
+                timestamp: s2n_quic_platform::time::now(),
+                payload_len,
+                ecn: Default::default(),
+                destination_connection_id: connection::LocalId::TEST_ID,
+            },
+        )
     }
 
     macro_rules! on_packet {
@@ -336,19 +336,19 @@ mod tests {
             let remote_address = SocketAddress::default();
             let connection_info = ConnectionInfo::new(&remote_address);
             let (packet, _) = ProtectedPacket::decode(decoder, &connection_info, &3).unwrap();
-            $negotiator.on_packet($remote_address, $payload_len, &packet, &mut Publisher)
+            $negotiator.on_packet(&$remote_address, $payload_len, &packet, &mut Publisher)
         }};
     }
 
     fn on_initial_packet<C: endpoint::Config>(
-        datagram_info: DatagramInfo,
+        datagram_info: (C::PathHandle, DatagramInfo),
         version: u32,
         negotiator: &mut Negotiator<C>,
     ) -> Result<(), Error> {
         on_packet!(
             negotiator,
-            datagram_info.remote_address,
-            datagram_info.payload_len,
+            datagram_info.0,
+            datagram_info.1.payload_len,
             Initial {
                 version,
                 destination_connection_id: &[1u8, 2, 3][..],
@@ -361,7 +361,7 @@ mod tests {
     }
 
     fn on_future_version_initial_packet<C: endpoint::Config>(
-        datagram_info: DatagramInfo,
+        datagram_info: (C::PathHandle, DatagramInfo),
         version: u32,
         negotiator: &mut Negotiator<C>,
     ) -> Result<(), Error> {
@@ -370,8 +370,8 @@ mod tests {
 
         on_packet!(
             negotiator,
-            datagram_info.remote_address,
-            datagram_info.payload_len,
+            datagram_info.0,
+            datagram_info.1.payload_len,
             Initial {
                 version,
                 // Maximum length connection IDs that may be valid in future versions
@@ -385,7 +385,7 @@ mod tests {
     }
 
     fn on_handshake_packet<C: endpoint::Config>(
-        datagram_info: DatagramInfo,
+        datagram_info: (C::PathHandle, DatagramInfo),
         version: u32,
         negotiator: &mut Negotiator<C>,
     ) -> Result<(), Error> {
@@ -394,8 +394,8 @@ mod tests {
 
         on_packet!(
             negotiator,
-            datagram_info.remote_address,
-            datagram_info.payload_len,
+            datagram_info.0,
+            datagram_info.1.payload_len,
             Handshake {
                 version,
                 destination_connection_id: &[1u8, 2, 3][..],
@@ -407,7 +407,7 @@ mod tests {
     }
 
     fn on_zerortt_packet<C: endpoint::Config>(
-        datagram_info: DatagramInfo,
+        datagram_info: (C::PathHandle, DatagramInfo),
         version: u32,
         negotiator: &mut Negotiator<C>,
     ) -> Result<(), Error> {
@@ -416,8 +416,8 @@ mod tests {
 
         on_packet!(
             negotiator,
-            datagram_info.remote_address,
-            datagram_info.payload_len,
+            datagram_info.0,
+            datagram_info.1.payload_len,
             ZeroRtt {
                 version,
                 destination_connection_id: &[1u8, 2, 3][..],
@@ -429,13 +429,13 @@ mod tests {
     }
 
     fn on_version_negotiation_packet<C: endpoint::Config>(
-        datagram_info: DatagramInfo,
+        datagram_info: (C::PathHandle, DatagramInfo),
         negotiator: &mut Negotiator<C>,
     ) -> Result<(), Error> {
         on_packet!(
             negotiator,
-            datagram_info.remote_address,
-            datagram_info.payload_len,
+            datagram_info.0,
+            datagram_info.1.payload_len,
             VersionNegotiation {
                 tag: 0,
                 destination_connection_id: &[1u8, 2, 3][..],
@@ -446,7 +446,7 @@ mod tests {
     }
 
     fn on_short_packet<C: endpoint::Config>(
-        datagram_info: DatagramInfo,
+        datagram_info: (C::PathHandle, DatagramInfo),
         negotiator: &mut Negotiator<C>,
     ) -> Result<(), Error> {
         let mut payload = vec![1u8, 2, 3, 4, 5];
@@ -454,8 +454,8 @@ mod tests {
 
         on_packet!(
             negotiator,
-            datagram_info.remote_address,
-            datagram_info.payload_len,
+            datagram_info.0,
+            datagram_info.1.payload_len,
             Short {
                 destination_connection_id: &[1u8, 2, 3][..],
                 key_phase: Default::default(),
