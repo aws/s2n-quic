@@ -61,6 +61,15 @@ common!(
         pub version: Option<u32>,
     }
 
+    struct Path<'a> {
+        // TODO uncomment once we record the local Address/CID
+        // pub local_addr: common::SocketAddress<'a>,
+        // pub local_cid: common::ConnectionId<'a>,
+        pub remote_addr: common::SocketAddress<'a>,
+        pub remote_cid: common::ConnectionId<'a>,
+        pub id: u64,
+    }
+
     struct ConnectionId<'a> {
         pub bytes: &'a [u8],
     }
@@ -216,12 +225,8 @@ events!(
         // TODO: many events seem to require PacketHeader. Make it more ergonomic
         // to include this field.
         // pub packet_header: common::PacketHeader,
-        pub previous_addr: common::SocketAddress<'a>,
-        pub previous_cid: common::ConnectionId<'a>,
-        pub previous_path_id: u64,
-        pub active_addr: common::SocketAddress<'a>,
-        pub active_cid: common::ConnectionId<'a>,
-        pub active_path_id: u64,
+        pub previous: common::Path<'a>,
+        pub active: common::Path<'a>,
     }
 
     #[name = "transport:frame_sent"]
@@ -251,12 +256,7 @@ events!(
     /// Packet was lost
     struct PacketLost<'a> {
         pub packet_header: common::PacketHeader,
-        pub path_id: u64,
-        // TODO uncomment once we record the local Address/CID
-        // pub local_addr: common::SocketAddress<'a>,
-        // pub local_cid: common::ConnectionId<'a>,
-        pub remote_addr: common::SocketAddress<'a>,
-        pub remote_cid: common::ConnectionId<'a>,
+        pub path: common::Path<'a>,
         pub bytes_lost: u16,
         pub is_mtu_probe: bool,
     }
@@ -287,11 +287,7 @@ events!(
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.2
     /// Connection started
     struct ConnectionStarted<'a> {
-        // TODO uncomment once we record the local Address/CID
-        // pub local_addr: common::SocketAddress<'a>,
-        // pub local_cid: common::ConnectionId<'a>,
-        pub remote_addr: common::SocketAddress<'a>,
-        pub remote_cid: common::ConnectionId<'a>,
+        pub path: common::Path<'a>,
     }
 
     #[name = "connectivity:connection_closed"]

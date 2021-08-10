@@ -66,6 +66,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     ) -> Result<(), transport::Error> {
         debug_assert!(path_id != Id(self.active));
 
+        let prev_path_id = self.active_path_id();
         let new_path_idx = path_id.as_u8();
         // Attempt to consume a new connection id in case it has been retired since the last use.
         let peer_connection_id = self.paths[new_path_idx as usize].peer_connection_id;
@@ -87,15 +88,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         };
         self[path_id].peer_connection_id = use_peer_connection_id;
 
-        publisher.on_active_path_updated(event::builders::ActivePathUpdated {
-            previous_addr: self.active_path().peer_socket_address.as_event(),
-            previous_cid: self.active_path().peer_connection_id.as_event(),
-            previous_path_id: self.active as u64,
-            active_addr: self[path_id].peer_socket_address.as_event(),
-            active_cid: self[path_id].peer_connection_id.as_event(),
-            active_path_id: new_path_idx as u64,
-        });
-
         if self.active_path().is_validated() {
             self.last_known_validated_path = Some(self.active);
         }
@@ -112,6 +104,22 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         }
 
         self.active = new_path_idx;
+
+        publisher.on_active_path_updated(event::builders::ActivePathUpdated {
+            previous: event::builders::Path {
+                remote_addr: self[prev_path_id].peer_socket_address.as_event(),
+                remote_cid: self[prev_path_id].peer_connection_id.as_event(),
+                id: prev_path_id.as_u8() as u64,
+            }
+            .into(),
+            active: event::builders::Path {
+                remote_addr: self.active_path().peer_socket_address.as_event(),
+                remote_cid: self.active_path().peer_connection_id.as_event(),
+                id: new_path_idx as u64,
+            }
+            .into(),
+        });
+
         Ok(())
     }
 

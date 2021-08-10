@@ -777,9 +777,12 @@ impl Manager {
                     version: publisher.quic_version(),
                 }
                 .into(),
-                path_id: current_path_id.as_u8() as u64,
-                remote_addr: path.peer_socket_address.as_event(),
-                remote_cid: path.peer_connection_id.as_event(),
+                path: event::builders::Path {
+                    remote_addr: path.peer_socket_address.as_event(),
+                    remote_cid: path.peer_connection_id.as_event(),
+                    id: current_path_id.as_u8() as u64,
+                }
+                .into(),
                 bytes_lost: sent_info.sent_bytes,
                 is_mtu_probe,
             });

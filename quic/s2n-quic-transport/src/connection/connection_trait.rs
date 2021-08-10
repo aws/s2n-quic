@@ -38,7 +38,10 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     type Config: endpoint::Config;
 
     /// Creates a new `Connection` instance with the given configuration
-    fn new(parameters: ConnectionParameters<Self::Config>) -> Self;
+    fn new<Pub: event::Publisher>(
+        parameters: ConnectionParameters<Self::Config>,
+        publisher: &mut Pub,
+    ) -> Self;
 
     /// Returns the Connections internal ID
     fn internal_connection_id(&self) -> InternalConnectionId;
