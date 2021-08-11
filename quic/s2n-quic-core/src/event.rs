@@ -56,22 +56,22 @@ impl Timestamp {
 common!(
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
     struct PacketHeader {
-        pub packet_type: common::PacketType,
-        pub packet_number: u64,
-        pub version: Option<u32>,
+        packet_type: common::PacketType,
+        packet_number: u64,
+        version: Option<u32>,
     }
 
     struct Path<'a> {
         // TODO uncomment once we record the local Address/CID
         // pub local_addr: common::SocketAddress<'a>,
         // pub local_cid: common::ConnectionId<'a>,
-        pub remote_addr: common::SocketAddress<'a>,
-        pub remote_cid: common::ConnectionId<'a>,
-        pub id: u64,
+        remote_addr: common::SocketAddress<'a>,
+        remote_cid: common::ConnectionId<'a>,
+        id: u64,
     }
 
     struct ConnectionId<'a> {
-        pub bytes: &'a [u8],
+        bytes: &'a [u8],
     }
 
     enum SocketAddress<'a> {
@@ -155,6 +155,15 @@ common!(
         VersionNegotiation,
         StatelessReset,
         Unknown,
+    }
+
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.7
+    #[non_exhaustive]
+    enum ConnectionState {
+        Attempted,
+        HandshakeStarted,
+        HandshakeConfirmed,
+        Closed,
     }
 
     enum KeyType {
@@ -295,6 +304,13 @@ events!(
     /// Connection closed
     struct ConnectionClosed {
         pub error: connection::Error,
+    }
+
+    #[name = "connectivity:connection_state_updated"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.7
+    /// Connection state changed
+    struct ConnectionStateUpdated {
+        pub state: common::ConnectionState,
     }
 
     #[name = "transport:duplicate_packet"]

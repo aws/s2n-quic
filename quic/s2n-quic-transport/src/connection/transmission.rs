@@ -9,6 +9,7 @@ use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
     event,
+    event::Publisher as _,
     frame::ack_elicitation::AckElicitable,
     inet::ExplicitCongestionNotification,
     io::tx,
@@ -236,6 +237,11 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                             self.context.path_id,
                             self.context.publisher,
                         );
+                        self.context.publisher.on_connection_state_updated(
+                            event::builders::ConnectionStateUpdated {
+                                state: event::common::ConnectionState::HandshakeStarted,
+                            },
+                        );
                     }
 
                     encoder
@@ -264,6 +270,11 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
             if space_manager.is_handshake_confirmed() {
                 let path = &mut self.context.path_manager[self.context.path_id];
                 space_manager.discard_handshake(path, self.context.path_id, self.context.publisher);
+                self.context.publisher.on_connection_state_updated(
+                    event::builders::ConnectionStateUpdated {
+                        state: event::common::ConnectionState::HandshakeConfirmed,
+                    },
+                );
             }
 
             encoder

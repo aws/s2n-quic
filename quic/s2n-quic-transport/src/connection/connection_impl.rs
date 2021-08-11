@@ -389,6 +389,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             }
             .into(),
         });
+        publisher.on_connection_state_updated(event::builders::ConnectionStateUpdated {
+            state: event::common::ConnectionState::Attempted,
+        });
 
         Self {
             internal_connection_id: parameters.internal_connection_id,
@@ -427,6 +430,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         publisher: &mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
     ) {
         publisher.on_connection_closed(event::builders::ConnectionClosed { error });
+        publisher.on_connection_state_updated(event::builders::ConnectionStateUpdated {
+            state: event::common::ConnectionState::Closed,
+        });
         match self.state {
             ConnectionState::Closing | ConnectionState::Draining | ConnectionState::Finished => {
                 // The connection is already closing

@@ -189,7 +189,7 @@ macro_rules! common {
         struct $name:ident $(<$struct_lt:lifetime>)? {
             $(
                 $(#[$struct_field_attrs:meta])?
-                pub $struct_field_name:ident : $struct_field_type:ty,
+                $struct_field_name:ident : $struct_field_type:ty,
             )*
         }
     )*
