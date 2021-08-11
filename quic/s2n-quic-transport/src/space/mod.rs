@@ -505,11 +505,12 @@ pub trait PacketSpace<Config: endpoint::Config> {
             .with_frame_type(frame.tag().into()))
     }
 
-    fn handle_new_connection_id_frame(
+    fn handle_new_connection_id_frame<Pub: event::Publisher>(
         &mut self,
         frame: NewConnectionId,
         _datagram: &DatagramInfo,
         _path_manager: &mut path::Manager<Config>,
+        _publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         Err(transport::Error::PROTOCOL_VIOLATION
             .with_reason(Self::INVALID_FRAME_ERROR)
@@ -703,7 +704,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 Frame::NewConnectionId(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_new_connection_id_frame(frame, datagram, path_manager)
+                    self.handle_new_connection_id_frame(frame, datagram, path_manager, publisher)
                         .map_err(on_error)?;
                 }
                 Frame::RetireConnectionId(frame) => {

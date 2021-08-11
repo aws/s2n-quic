@@ -84,7 +84,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             // Insufficient connection ids should not cause the connection to close.
             // Investigate api after this is used.
             self.peer_id_registry
-                .consume_new_id()
+                .consume_new_id(path_id, publisher)
                 .ok_or(transport::Error::INTERNAL_ERROR)?
         };
         self[path_id].peer_connection_id = use_peer_connection_id;
@@ -178,7 +178,7 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// true if the path had been amplification limited prior to receiving the datagram
     /// and is now no longer amplification limited.
     #[allow(unused_variables, clippy::too_many_arguments)]
-    pub fn on_datagram_received<Rnd: random::Generator>(
+    pub fn on_datagram_received<Rnd: random::Generator, Pub: event::Publisher>(
         &mut self,
         path_handle: &Config::PathHandle,
         datagram: &DatagramInfo,
@@ -187,10 +187,10 @@ impl<Config: endpoint::Config> Manager<Config> {
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         random_generator: &mut Rnd,
         max_mtu: MaxMtu,
+        publisher: &mut Pub,
     ) -> Result<(Id, bool), transport::Error> {
         if let Some((id, path)) = self.path_mut(path_handle) {
             let unblocked = path.on_bytes_received(datagram.payload_len);
-
             return Ok((id, unblocked));
         }
 
@@ -220,18 +220,21 @@ impl<Config: endpoint::Config> Manager<Config> {
             congestion_controller_endpoint,
             random_generator,
             max_mtu,
+            publisher,
         )
     }
 
     #[allow(unreachable_code)]
     #[allow(unused_variables)]
-    fn handle_connection_migration<Rnd: random::Generator>(
+    #[allow(clippy::too_many_arguments)]
+    fn handle_connection_migration<Rnd: random::Generator, Pub: event::Publisher>(
         &mut self,
         path_handle: &Config::PathHandle,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         random_generator: &mut Rnd,
         max_mtu: MaxMtu,
+        publisher: &mut Pub,
     ) -> Result<(Id, bool), transport::Error> {
         // Since we are not currently supporting connection migration (whether it was deliberate or
         // not), we will error our at this point to avoid re-using a peer connection ID.
@@ -272,6 +275,13 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         let peer_connection_id = {
             if self.active_path().local_connection_id != datagram.destination_connection_id {
+                publisher.on_connection_id_updated(event::builders::ConnectionIdUpdated {
+                    path_id: new_path_id.as_u8() as u64,
+                    endpoint: event::common::Endpoint::Local,
+                    previous: self.active_path().local_connection_id.as_event(),
+                    current: datagram.destination_connection_id.as_event(),
+                });
+
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
                 //# Similarly, an endpoint MUST NOT reuse a connection ID when sending to
                 //# more than one destination address.
@@ -279,7 +289,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 // Peer has intentionally tried to migrate to this new path because they changed
                 // their destination_connection_id, so we will change our destination_connection_id as well.
                 self.peer_id_registry
-                    .consume_new_id()
+                    .consume_new_id(self.active_path_id(), publisher)
                     // TODO https://github.com/awslabs/s2n-quic/issues/669
                     // Insufficient connection ids should not cause the connection to close.
                     // Investigate if there is a safer way to expose an error here.
@@ -469,12 +479,14 @@ impl<Config: endpoint::Config> Manager<Config> {
     }
 
     /// Called when a NEW_CONNECTION_ID frame is received from the peer
-    pub fn on_new_connection_id(
+    #[allow(clippy::too_many_arguments)]
+    pub fn on_new_connection_id<Pub: event::Publisher>(
         &mut self,
         connection_id: &connection::PeerId,
         sequence_number: u32,
         retire_prior_to: u32,
         stateless_reset_token: &stateless_reset::Token,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         // Retire and register connection ID
         self.peer_id_registry.on_new_connection_id(
@@ -492,10 +504,12 @@ impl<Config: endpoint::Config> Manager<Config> {
         let active_path_connection_id = self.active_path().peer_connection_id;
 
         if !self.peer_id_registry.is_active(&active_path_connection_id) {
-            self.active_path_mut().peer_connection_id =
-                self.peer_id_registry.consume_new_id().expect(
-                    "Since we are only checking the active path and new ID was delivered \
-                    via the NEW_CONNECTION_ID frames, there will always be a new ID available \
+            self.active_path_mut().peer_connection_id = self
+                .peer_id_registry
+                .consume_new_id(self.active_path_id(), publisher)
+                .expect(
+                    "since we are only checking the active path and new id was delivered \
+                    via the new_connection_id frames, there will always be a new id available \
                     to consume if necessary",
                 );
         }
@@ -1278,6 +1292,7 @@ mod tests {
                 &mut Default::default(),
                 &mut random::testing::Generator(123),
                 DEFAULT_MAX_MTU,
+                &mut Publisher,
             )
             .unwrap();
 
@@ -1335,6 +1350,7 @@ mod tests {
             &mut Default::default(),
             &mut random::testing::Generator(123),
             DEFAULT_MAX_MTU,
+            &mut Publisher,
         );
 
         // Expectation:
@@ -1376,6 +1392,7 @@ mod tests {
                 &mut Default::default(),
                 &mut random::testing::Generator(123),
                 DEFAULT_MAX_MTU,
+                &mut Publisher,
             );
             match res {
                 Ok(_) => total_paths += 1,
@@ -1418,6 +1435,7 @@ mod tests {
                 &mut Default::default(),
                 &mut random::testing::Generator(123),
                 DEFAULT_MAX_MTU,
+                &mut Publisher,
             )
             .unwrap();
 
@@ -1495,6 +1513,7 @@ mod tests {
                 &mut Default::default(),
                 &mut random::testing::Generator(123),
                 DEFAULT_MAX_MTU,
+                &mut Publisher,
             )
             .unwrap();
         let first_path_id = Id(0);
@@ -1566,6 +1585,7 @@ mod tests {
                 &mut Default::default(),
                 &mut random::testing::Generator(123),
                 DEFAULT_MAX_MTU,
+                &mut Publisher,
             )
             .unwrap();
         let first_path_id = Id(0);
@@ -1650,7 +1670,7 @@ mod tests {
 
         let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
         assert!(manager
-            .on_new_connection_id(&id_2, 1, 1, &TEST_TOKEN_1)
+            .on_new_connection_id(&id_2, 1, 1, &TEST_TOKEN_1, &mut Publisher)
             .is_ok());
 
         assert_eq!(id_2, manager.paths[0].peer_connection_id);
@@ -1870,7 +1890,10 @@ mod tests {
             assert!(manager[zero_path_id].is_challenge_pending());
         }
 
-        assert!(manager.peer_id_registry.consume_new_id().is_some());
+        assert!(manager
+            .peer_id_registry
+            .consume_new_id(Id(0), &mut Publisher)
+            .is_some());
 
         // assert first_path is active and last_known_validated_path
         assert!(manager.peer_id_registry.is_active(&first_conn_id));
@@ -1905,5 +1928,11 @@ mod tests {
         pub first_path_id: Id,
         pub second_path_id: Id,
         pub manager: Manager,
+    }
+
+    impl Id {
+        pub fn test_id() -> Self {
+            Id::new(0)
+        }
     }
 }

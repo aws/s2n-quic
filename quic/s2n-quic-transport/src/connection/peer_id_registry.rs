@@ -16,12 +16,14 @@ use crate::{
         },
         InternalConnectionId,
     },
+    path,
     transmission::{self, WriteContext},
 };
 use alloc::rc::Rc;
 use core::cell::RefCell;
 use s2n_quic_core::{
-    ack, connection, frame, packet::number::PacketNumber, stateless_reset, transport,
+    ack, connection, connection::id::AsEvent as _, event, frame, packet::number::PacketNumber,
+    stateless_reset, transport,
 };
 use smallvec::SmallVec;
 
@@ -431,7 +433,11 @@ impl PeerIdRegistry {
     /// Tries to consume a new peer_id if one is available.
     ///
     /// Register the stateless reset token once a connection ID is in use.
-    pub fn consume_new_id(&mut self) -> Option<connection::PeerId> {
+    pub fn consume_new_id<Pub: event::Publisher>(
+        &mut self,
+        path_id: path::Id,
+        publisher: &mut Pub,
+    ) -> Option<connection::PeerId> {
         for id_info in self.registered_ids.iter_mut() {
             if id_info.status == New {
                 // Start tracking the stateless reset token
@@ -445,6 +451,13 @@ impl PeerIdRegistry {
                         .stateless_reset_map
                         .insert(token, self.internal_id);
                 }
+
+                publisher.on_connection_id_updated(event::builders::ConnectionIdUpdated {
+                    path_id: path_id.as_u8() as u64,
+                    endpoint: event::common::Endpoint::Remote,
+                    previous: id_info.id.as_event(),
+                    current: id_info.id.as_event(),
+                });
 
                 // Consume the new id
                 id_info.status = InUse;
@@ -577,11 +590,12 @@ pub(crate) mod tests {
             testing::{MockWriteContext, OutgoingFrameBuffer},
             WriteContext,
         },
-        transmission,
+        path, transmission,
         transmission::interest::Provider,
     };
     use s2n_quic_core::{
         connection, endpoint,
+        event::testing::Publisher,
         frame::{new_connection_id::STATELESS_RESET_TOKEN_LEN, Frame, RetireConnectionId},
         packet::number::PacketNumberRange,
         random, stateless_reset,
@@ -1003,7 +1017,10 @@ pub(crate) mod tests {
             .stateless_reset_map
             .remove(&TEST_TOKEN_2)
             .is_none());
-        assert_eq!(Some(id_2), reg.consume_new_id());
+        assert_eq!(
+            Some(id_2),
+            reg.consume_new_id(path::Id::test_id(), &mut Publisher)
+        );
         reg.registered_ids[1].status = InUse;
         // this is an indirect way to test that we inserted a reset token when we consumed id_2
         assert!(reg
@@ -1025,7 +1042,10 @@ pub(crate) mod tests {
             Some(TEST_TOKEN_1),
         );
 
-        assert_eq!(None, reg.consume_new_id());
+        assert_eq!(
+            None,
+            reg.consume_new_id(path::Id::test_id(), &mut Publisher)
+        );
     }
 
     #[test]
