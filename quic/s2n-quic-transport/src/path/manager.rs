@@ -186,22 +186,8 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     pub fn update_local_connection_id(&mut self, packet: &packet::short::CleartextShort<'_>) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
-        //# When an Initial packet is sent by a client that has not previously
-        //# received an Initial or Retry packet from the server, the client
-        //# populates the Destination Connection ID field with an unpredictable
-        //# value.
-        //
-        // The first few Initial packet from the client will contain a random value
-        // for the destination_connection_id so don't overwrite the path's
-        // local_connection_id until after the handshake. Additionally new
-        // ConnectonIds are not issued prior to the handshake.
-        // TODO confirm this is also the correct behavior for the Client; that the
-        // server is not allowed to switch its local connection id prior to completing
-        // the handshake.
-
-        let cid: connection::LocalId =
-            connection::LocalId::try_from_bytes(packet.destination_connection_id()).expect("");
+        let cid = connection::LocalId::try_from_bytes(packet.destination_connection_id())
+            .expect("the packet has been validated so we expect a valid connection id");
         if self.active_path().local_connection_id != cid {
             self.active_path_mut().local_connection_id = cid;
         }
