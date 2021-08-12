@@ -209,7 +209,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             //
             // The first few Initial packet from the client will contain a random value
             // for the destination_connection_id so don't overwrite the path's
-            // local_connection_id until after the handshake. Additonally new
+            // local_connection_id until after the handshake. Additionally new
             // ConnectonIds are not issued prior to the handshake.
             if handshake_confirmed {
                 // TODO confirm this is also the correct behavior for the Client; that the
