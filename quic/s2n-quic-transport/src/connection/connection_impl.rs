@@ -1015,6 +1015,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 publisher,
             )?;
 
+            self.path_manager.update_local_connection_id(&packet);
+
             space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,

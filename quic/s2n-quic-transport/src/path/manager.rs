@@ -13,6 +13,7 @@ use s2n_quic_core::{
     connection::id::AsEvent as _,
     event, frame,
     inet::{ip::AsEvent as _, DatagramInfo, SocketAddress},
+    packet,
     packet::number::PacketNumberSpace,
     path::MaxMtu,
     random,
@@ -184,6 +185,28 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         PathsPendingValidation::new(self)
     }
 
+    pub fn update_local_connection_id(&mut self, packet: &packet::short::CleartextShort<'_>) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
+        //# When an Initial packet is sent by a client that has not previously
+        //# received an Initial or Retry packet from the server, the client
+        //# populates the Destination Connection ID field with an unpredictable
+        //# value.
+        //
+        // The first few Initial packet from the client will contain a random value
+        // for the destination_connection_id so don't overwrite the path's
+        // local_connection_id until after the handshake. Additionally new
+        // ConnectonIds are not issued prior to the handshake.
+        // TODO confirm this is also the correct behavior for the Client; that the
+        // server is not allowed to switch its local connection id prior to completing
+        // the handshake.
+
+        let cid: connection::LocalId =
+            connection::LocalId::try_from_bytes(packet.destination_connection_id()).expect("");
+        if self.active_path().local_connection_id != cid {
+            self.active_path_mut().local_connection_id = cid;
+        }
+    }
+
     /// Called when a datagram is received on a connection
     /// Upon success, returns a `(Id, bool)` containing the path ID and a boolean that is
     /// true if the path had been amplification limited prior to receiving the datagram
@@ -201,22 +224,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         if let Some((id, path)) = self.path_mut(&datagram.remote_address) {
             let unblocked = path.on_bytes_received(datagram.payload_len);
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
-            //# When an Initial packet is sent by a client that has not previously
-            //# received an Initial or Retry packet from the server, the client
-            //# populates the Destination Connection ID field with an unpredictable
-            //# value.
-            //
-            // The first few Initial packet from the client will contain a random value
-            // for the destination_connection_id so don't overwrite the path's
-            // local_connection_id until after the handshake. Additionally new
-            // ConnectonIds are not issued prior to the handshake.
-            if handshake_confirmed {
-                // TODO confirm this is also the correct behavior for the Client; that the
-                // server is not allowed to switch its local connection id prior to completing
-                // the handshake.
-                path.local_connection_id = datagram.destination_connection_id;
-            }
             return Ok((id, unblocked));
         }
 
