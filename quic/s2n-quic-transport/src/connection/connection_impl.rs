@@ -136,8 +136,6 @@ impl From<connection::Error> for ConnectionState {
 pub struct ConnectionImpl<Config: endpoint::Config> {
     /// The [`Connection`]s internal identifier
     internal_connection_id: InternalConnectionId,
-    /// The connection ID to send packets from
-    local_connection_id: connection::LocalId,
     /// The local ID registry which should be utilized by the connection
     local_id_registry: connection::LocalIdRegistry,
     /// The timers which are used within the connection
@@ -187,6 +185,7 @@ macro_rules! transmission_context {
         $path_id:expr,
         $timestamp:expr,
         $transmission_mode:expr,
+        $local_connection_id:expr,
         $publisher:expr,
         $(,)?
     ) => {
@@ -195,7 +194,7 @@ macro_rules! transmission_context {
             timestamp: $timestamp,
             path_id: $path_id,
             path_manager: &mut $self.path_manager,
-            source_connection_id: &$self.local_connection_id,
+            source_connection_id: &$local_connection_id,
             local_id_registry: &mut $self.local_id_registry,
             outcome: $outcome,
             ecn: Default::default(),
@@ -319,6 +318,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
                 continue;
             }
 
+            let local_connection_id = path_manager.active_path_local_cid();
             if !path_manager[path_id].at_amplification_limit()
                 && queue
                     .push(ConnectionTransmission {
@@ -327,7 +327,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
                             timestamp,
                             path_id,
                             path_manager,
-                            source_connection_id: &self.local_connection_id,
+                            source_connection_id: &local_connection_id,
                             local_id_registry: &mut self.local_id_registry,
                             outcome,
                             ecn,
@@ -396,7 +396,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         Self {
             internal_connection_id: parameters.internal_connection_id,
-            local_connection_id: parameters.local_connection_id,
             local_id_registry: parameters.local_id_registry,
             timers: Default::default(),
             quic_version: parameters.quic_version,
@@ -460,12 +459,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             s2n_quic_core::connection::error::as_frame(error, close_formatter, &close_context)
         {
             let mut outcome = transmission::Outcome::new(PacketNumber::default());
+            let local_connection_id = self.path_manager.active_path_local_cid();
             let mut context = transmission_context!(
                 self,
                 &mut outcome,
                 active_path_id,
                 timestamp,
                 transmission::Mode::Normal,
+                local_connection_id,
                 publisher,
             );
 
@@ -577,6 +578,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         match self.state {
             ConnectionState::Handshaking | ConnectionState::Active => {
                 let mut outcome = transmission::Outcome::new(PacketNumber::default());
+                let local_connection_id = self.path_manager.active_path_local_cid();
 
                 while !self.path_manager.active_path().at_amplification_limit()
                     && queue
@@ -587,6 +589,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                                 self.path_manager.active_path_id(),
                                 timestamp,
                                 transmission::Mode::Normal,
+                                local_connection_id,
                                 publisher,
                             ),
                             space_manager: &mut self.space_manager,
@@ -624,6 +627,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                                 self.path_manager.active_path_id(),
                                 timestamp,
                                 transmission::Mode::MtuProbing,
+                                local_connection_id,
                                 publisher,
                             ),
                             space_manager: &mut self.space_manager,

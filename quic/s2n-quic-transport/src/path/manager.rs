@@ -141,6 +141,12 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         Id(self.active)
     }
 
+    /// Return the LocalId for the active path
+    #[inline]
+    pub fn active_path_local_cid(&self) -> connection::LocalId {
+        self.active_path().local_connection_id
+    }
+
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
     //= type=TODO
     //= tracking-issue=714
@@ -194,6 +200,23 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     ) -> Result<(Id, bool), transport::Error> {
         if let Some((id, path)) = self.path_mut(&datagram.remote_address) {
             let unblocked = path.on_bytes_received(datagram.payload_len);
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
+            //# When an Initial packet is sent by a client that has not previously
+            //# received an Initial or Retry packet from the server, the client
+            //# populates the Destination Connection ID field with an unpredictable
+            //# value.
+            //
+            // The first few Initial packet from the client will contain a random value
+            // for the destination_connection_id so don't overwrite the path's
+            // local_connection_id until after the handshake. Additonally new
+            // ConnectonIds are not issued prior to the handshake.
+            if handshake_confirmed {
+                // TODO confirm this is also the correct behavior for the Client; that the
+                // server is not allowed to switch its local connection id prior to completing
+                // the handshake.
+                path.local_connection_id = datagram.destination_connection_id;
+            }
             return Ok((id, unblocked));
         }
 
