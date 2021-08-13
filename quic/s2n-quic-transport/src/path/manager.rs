@@ -142,12 +142,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         Id(self.active)
     }
 
-    /// Return the LocalId for the active path
-    #[inline]
-    pub fn active_path_local_cid(&self) -> connection::LocalId {
-        self.active_path().local_connection_id
-    }
-
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
     //= type=TODO
     //= tracking-issue=714
