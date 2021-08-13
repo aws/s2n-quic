@@ -148,9 +148,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         let packet = Initial {
             version: context.quic_version,
             destination_connection_id,
-            source_connection_id: context.path_manager[context.path_id]
-                .local_connection_id
-                .as_ref(),
+            source_connection_id: context.path_manager[context.path_id].local_connection_id,
             token,
             packet_number,
             payload,
@@ -204,9 +202,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         let packet = Initial {
             version: context.quic_version,
             destination_connection_id,
-            source_connection_id: context.path_manager[context.path_id]
-                .local_connection_id
-                .as_ref(),
+            source_connection_id: context.path_manager[context.path_id].local_connection_id,
             token: &[][..],
             packet_number,
             payload,
