@@ -70,6 +70,9 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     ping: flag::Ping,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager,
+    // FIXME figure out a good place to store the active_connection_id_limit instead of the
+    // application space since its only used to set local_id_registry
+    pub active_connection_id_limit: u64,
 }
 
 impl<Config: endpoint::Config> fmt::Debug for ApplicationSpace<Config> {
@@ -115,6 +118,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 PacketNumberSpace::ApplicationData,
                 max_ack_delay,
             ),
+            active_connection_id_limit: 0,
         }
     }
 
