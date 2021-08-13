@@ -269,9 +269,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 let path = &mut self.context.path_manager[self.context.path_id];
                 space_manager.discard_handshake(path, self.context.path_id, self.context.publisher);
             }
-            // FIXME figure out a good place to store the active_connection_id_limit instead of the
-            // application space since its only used to set local_id_registry
-            if let Some((space, _)) = space_manager.application_mut() {
+            if let Some(space) = space_manager.application() {
                 self.context
                     .local_id_registry
                     .set_active_connection_id_limit(space.active_connection_id_limit);

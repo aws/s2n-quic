@@ -186,13 +186,11 @@ impl<'a, Config: endpoint::Config, Pub: event::Publisher>
             ack_manager,
             sni,
             alpn,
+            peer_parameters.active_connection_id_limit.as_u64(),
         )));
         self.publisher.on_key_update(event::builders::KeyUpdate {
             key_type: event::common::KeyType::OneRtt { generation: 0 },
         });
-
-        self.local_id_registry
-            .set_active_connection_id_limit(peer_parameters.active_connection_id_limit.as_u64());
 
         Ok(())
     }
