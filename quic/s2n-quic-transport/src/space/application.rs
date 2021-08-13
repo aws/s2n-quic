@@ -70,7 +70,6 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     ping: flag::Ping,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager,
-    pub active_connection_id_limit: u64,
 }
 
 impl<Config: endpoint::Config> fmt::Debug for ApplicationSpace<Config> {
@@ -89,7 +88,6 @@ impl<Config: endpoint::Config> fmt::Debug for ApplicationSpace<Config> {
 }
 
 impl<Config: endpoint::Config> ApplicationSpace<Config> {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttKey,
         header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttHeaderKey,
@@ -98,7 +96,6 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         ack_manager: AckManager,
         sni: Option<Bytes>,
         alpn: Bytes,
-        active_connection_id_limit: u64,
     ) -> Self {
         let key_set = KeySet::new(key);
         let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
@@ -118,7 +115,6 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 PacketNumberSpace::ApplicationData,
                 max_ack_delay,
             ),
-            active_connection_id_limit,
         }
     }
 

@@ -269,11 +269,6 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 let path = &mut self.context.path_manager[self.context.path_id];
                 space_manager.discard_handshake(path, self.context.path_id, self.context.publisher);
             }
-            if let Some(space) = space_manager.application() {
-                self.context
-                    .local_id_registry
-                    .set_active_connection_id_limit(space.active_connection_id_limit);
-            };
 
             encoder
         } else {

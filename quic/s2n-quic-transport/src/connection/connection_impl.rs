@@ -1159,7 +1159,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
                 interests.transmission = self.can_transmit(constraint);
                 interests.new_connection_id = self.local_id_registry.connection_id_interest()
-                    != connection::id::Interest::None;
+                    != connection::id::Interest::None
+                    // Don't issue new Connection Ids to the peer until after handshake completion
+                    && self.space_manager.handshake().is_none();
             }
             ConnectionState::Closing => {
                 let constraint = self.path_manager.active_path().transmission_constraint();
