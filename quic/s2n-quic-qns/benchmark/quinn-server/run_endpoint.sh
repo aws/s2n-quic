@@ -36,7 +36,7 @@ fi
 
 if [ "$ROLE" == "server" ]; then
   perf_server \
-  --listen "[::]:443" 2>&1 ${SERVER_CMD} | tee $LOG
+  --listen "[::]:443" ${SERVER_CMD} 2>&1 | tee $LOG
 else
   perf_client  \
   --download-size "$DOWNLOAD_B" \
