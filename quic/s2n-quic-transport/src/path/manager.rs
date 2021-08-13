@@ -179,11 +179,23 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         PathsPendingValidation::new(self)
     }
 
-    pub fn update_local_connection_id(&mut self, packet: &packet::short::CleartextShort<'_>) {
-        let cid = connection::LocalId::try_from_bytes(packet.destination_connection_id())
-            .expect("the packet has been validated so we expect a valid connection id");
-        if self.active_path().local_connection_id != cid {
-            self.active_path_mut().local_connection_id = cid;
+    /// Checks if the peer has started using a different destination Connection Id.
+    ///
+    /// The CleartextShort packet guarantees the packet has been validated
+    /// (authenticated and de-duped).
+    pub fn process_local_connection_id(
+        &mut self,
+        path_id: Id,
+        packet: &packet::short::CleartextShort<'_>,
+        local_connection_id: &connection::LocalId,
+    ) {
+        debug_assert_eq!(
+            packet.destination_connection_id(),
+            local_connection_id.as_ref()
+        );
+
+        if &self[path_id].local_connection_id != local_connection_id {
+            self[path_id].local_connection_id = *local_connection_id;
         }
     }
 
