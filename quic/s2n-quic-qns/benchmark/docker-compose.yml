@@ -78,6 +78,7 @@ services:
       - SSLKEYLOGFILE=/logs/keys.log
       - QLOGDIR=/logs/qlog/
       - VERSION=$VERSION
+      - USE_NEW_RENO=$USE_NEW_RENO
     depends_on:
       - sim
     cap_add:

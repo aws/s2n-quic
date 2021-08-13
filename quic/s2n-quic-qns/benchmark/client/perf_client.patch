@@ -12,27 +12,32 @@ index 494d4996..fe545dd9 100644
  webpki = "0.21"
  structopt = "0.3"
 diff --git a/perf/src/bin/perf_client.rs b/perf/src/bin/perf_client.rs
-index 0b2f6af3..fedd61a1 100644
+index c1b691e1..1c0824b0 100644
 --- a/perf/src/bin/perf_client.rs
 +++ b/perf/src/bin/perf_client.rs
-@@ -7,12 +7,15 @@ use std::{
+@@ -1,18 +1,19 @@
+ use std::{
+     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+-    sync::{Arc, Mutex},
++    sync::Arc,
+     time::{Duration, Instant},
+ };
+ 
  use anyhow::{Context, Result};
  use bytes::Bytes;
  use futures::StreamExt;
 -use hdrhistogram::Histogram;
-+use perf::stats::{Stats, StreamStats};
  use structopt::StructOpt;
  use tokio::sync::Semaphore;
  use tracing::{debug, error, info};
  
  use perf::bind_socket;
-+use std::fs::File;
-+use std::ops::DerefMut;
-+use std::path::{Path, PathBuf};
++use perf::stats::{OpenStreamStats, Stats};
++use std::path::PathBuf;
  
  /// Connects to a QUIC perf server and maintains a specified pattern of requests until interrupted
  #[derive(StructOpt)]
-@@ -42,6 +45,9 @@ struct Opt {
+@@ -42,6 +43,9 @@ struct Opt {
      /// The time to run in seconds
      #[structopt(long, default_value = "60")]
      duration: u64,
@@ -42,7 +47,7 @@ index 0b2f6af3..fedd61a1 100644
      /// Send buffer size in bytes
      #[structopt(long, default_value = "2097152")]
      send_buffer_size: usize,
-@@ -54,6 +60,9 @@ struct Opt {
+@@ -54,6 +58,9 @@ struct Opt {
      /// Whether to print connection statistics
      #[structopt(long)]
      conn_stats: bool,
@@ -52,27 +57,16 @@ index 0b2f6af3..fedd61a1 100644
  }
  
  #[tokio::main(flavor = "current_thread")]
-@@ -67,6 +76,10 @@ async fn main() {
-     }
- }
- 
-+/// Statistics for the currently open streams
-+#[derive(Clone)]
-+struct OpenStreamStats(Arc<Mutex<Vec<Arc<StreamStats>>>>);
-+
- async fn run(opt: Opt) -> Result<()> {
-     let mut host_parts = opt.host.split(':');
-     let host_name = host_parts.next().unwrap();
-@@ -124,7 +137,7 @@ async fn run(opt: Opt) -> Result<()> {
+@@ -124,7 +131,7 @@ async fn run(opt: Opt) -> Result<()> {
          .ciphersuites
          .push(&rustls::ciphersuite::TLS13_CHACHA20_POLY1305_SHA256);
  
 -    let stats = Arc::new(Mutex::new(Stats::default()));
-+    let stream_stats = OpenStreamStats(Arc::new(Mutex::new(vec![])));
++    let stream_stats = OpenStreamStats::default();
  
      let quinn::NewConnection {
          connection,
-@@ -144,14 +157,14 @@ async fn run(opt: Opt) -> Result<()> {
+@@ -144,14 +151,14 @@ async fn run(opt: Opt) -> Result<()> {
              drive_uni(
                  connection.clone(),
                  acceptor,
@@ -89,7 +83,7 @@ index 0b2f6af3..fedd61a1 100644
                  opt.bi_requests,
                  opt.upload_size,
                  opt.download_size
-@@ -159,12 +172,19 @@ async fn run(opt: Opt) -> Result<()> {
+@@ -159,12 +166,18 @@ async fn run(opt: Opt) -> Result<()> {
          )
      };
  
@@ -106,14 +100,13 @@ index 0b2f6af3..fedd61a1 100644
              {
 -                let guard = stats.lock().unwrap();
 -                guard.print();
-+                let mut guard = stream_stats.0.lock().unwrap();
-+                stats.on_interval(start, guard.deref_mut());
++                stats.on_interval(start, &stream_stats);
 +
 +                stats.print();
                  if opt.conn_stats {
                      println!("{:?}\n", connection.stats());
                  }
-@@ -174,12 +194,13 @@ async fn run(opt: Opt) -> Result<()> {
+@@ -174,12 +187,13 @@ async fn run(opt: Opt) -> Result<()> {
  
      tokio::select! {
          _ = drive_fut => {}
@@ -129,18 +122,13 @@ index 0b2f6af3..fedd61a1 100644
              info!("shutting down");
              connection.close(0u32.into(), b"done");
          }
-@@ -187,12 +208,23 @@ async fn run(opt: Opt) -> Result<()> {
+@@ -187,12 +201,18 @@ async fn run(opt: Opt) -> Result<()> {
  
      endpoint.wait_idle().await;
  
 -    // TODO: Print stats
-+    match opt.json {
-+        Some(path) if path == Path::new("-") => stats.print_json(std::io::stdout()),
-+        Some(path) => {
-+            let file = File::create(path)?;
-+            stats.print_json(file)
-+        }
-+        _ => {}
++    if let Some(path) = opt.json {
++        stats.print_json(path.as_path())?;
 +    }
  
      Ok(())
@@ -155,7 +143,7 @@ index 0b2f6af3..fedd61a1 100644
      #[rustfmt::skip]
      let mut bufs = [
          Bytes::new(), Bytes::new(), Bytes::new(), Bytes::new(),
-@@ -204,17 +236,29 @@ async fn drain_stream(mut stream: quinn::RecvStream, stats: &mut RequestStats) -
+@@ -204,17 +224,24 @@ async fn drain_stream(mut stream: quinn::RecvStream, stats: &mut RequestStats) -
          Bytes::new(), Bytes::new(), Bytes::new(), Bytes::new(),
          Bytes::new(), Bytes::new(), Bytes::new(), Bytes::new(),
      ];
@@ -163,12 +151,7 @@ index 0b2f6af3..fedd61a1 100644
 -        if stats.first_byte.is_none() {
 -            stats.first_byte = Some(Instant::now());
 +    let download_start = Instant::now();
-+    let recv_stream_stats = Arc::new(StreamStats::new_receiver(stream.id(), download));
-+    stream_stats
-+        .0
-+        .lock()
-+        .unwrap()
-+        .push(recv_stream_stats.clone());
++    let recv_stream_stats = stream_stats.new_receiver(&stream, download);
 +
 +    let mut first_byte = true;
 +
@@ -192,7 +175,7 @@ index 0b2f6af3..fedd61a1 100644
  
      debug!("response finished on {}", stream.id());
      Ok(())
-@@ -223,7 +267,7 @@ async fn drain_stream(mut stream: quinn::RecvStream, stats: &mut RequestStats) -
+@@ -223,7 +250,7 @@ async fn drain_stream(mut stream: quinn::RecvStream, stats: &mut RequestStats) -
  async fn drive_uni(
      connection: quinn::Connection,
      acceptor: UniAcceptor,
@@ -201,7 +184,7 @@ index 0b2f6af3..fedd61a1 100644
      concurrency: u64,
      upload: u64,
      download: u64,
-@@ -232,23 +276,14 @@ async fn drive_uni(
+@@ -232,23 +259,14 @@ async fn drive_uni(
  
      loop {
          let permit = sem.clone().acquire_owned().await.unwrap();
@@ -227,7 +210,7 @@ index 0b2f6af3..fedd61a1 100644
              }
  
              drop(permit);
-@@ -261,9 +296,9 @@ async fn request_uni(
+@@ -261,9 +279,9 @@ async fn request_uni(
      acceptor: UniAcceptor,
      upload: u64,
      download: u64,
@@ -239,7 +222,7 @@ index 0b2f6af3..fedd61a1 100644
      let recv = {
          let mut guard = acceptor.0.lock().await;
          guard
-@@ -271,7 +306,7 @@ async fn request_uni(
+@@ -271,7 +289,7 @@ async fn request_uni(
              .await
              .ok_or_else(|| anyhow::anyhow!("End of stream"))
      }??;
@@ -248,7 +231,7 @@ index 0b2f6af3..fedd61a1 100644
      Ok(())
  }
  
-@@ -279,10 +314,21 @@ async fn request(
+@@ -279,10 +297,16 @@ async fn request(
      mut send: quinn::SendStream,
      mut upload: u64,
      download: u64,
@@ -263,16 +246,11 @@ index 0b2f6af3..fedd61a1 100644
 +        return Ok(());
 +    }
 +
-+    let send_stream_stats = Arc::new(StreamStats::new_sender(send.id(), upload));
-+    stream_stats
-+        .0
-+        .lock()
-+        .unwrap()
-+        .push(send_stream_stats.clone());
++    let send_stream_stats = stream_stats.new_sender(&send, upload);
  
      const DATA: [u8; 1024 * 1024] = [42; 1024 * 1024];
      while upload > 0 {
-@@ -290,12 +336,11 @@ async fn request(
+@@ -290,12 +314,11 @@ async fn request(
          send.write_chunk(Bytes::from_static(&DATA[..chunk_len as usize]))
              .await
              .context("sending response")?;
@@ -287,7 +265,7 @@ index 0b2f6af3..fedd61a1 100644
  
      debug!("upload finished on {}", send.id());
      Ok(())
-@@ -303,7 +348,7 @@ async fn request(
+@@ -303,7 +326,7 @@ async fn request(
  
  async fn drive_bi(
      connection: quinn::Connection,
@@ -296,7 +274,7 @@ index 0b2f6af3..fedd61a1 100644
      concurrency: u64,
      upload: u64,
      download: u64,
-@@ -312,21 +357,13 @@ async fn drive_bi(
+@@ -312,21 +335,13 @@ async fn drive_bi(
  
      loop {
          let permit = sem.clone().acquire_owned().await.unwrap();
@@ -320,7 +298,7 @@ index 0b2f6af3..fedd61a1 100644
              }
  
              drop(permit);
-@@ -339,10 +376,10 @@ async fn request_bi(
+@@ -339,10 +354,10 @@ async fn request_bi(
      recv: quinn::RecvStream,
      upload: u64,
      download: u64,
@@ -334,7 +312,7 @@ index 0b2f6af3..fedd61a1 100644
      Ok(())
  }
  
-@@ -368,142 +405,3 @@ impl rustls::ServerCertVerifier for SkipServerVerification {
+@@ -368,142 +383,3 @@ impl rustls::ServerCertVerifier for SkipServerVerification {
          Ok(rustls::ServerCertVerified::assertion())
      }
  }
@@ -477,6 +455,45 @@ index 0b2f6af3..fedd61a1 100644
 -fn throughput_bps(duration: Duration, size: u64) -> f64 {
 -    (size as f64) / (duration.as_secs_f64())
 -}
+diff --git a/perf/src/bin/perf_server.rs b/perf/src/bin/perf_server.rs
+index 0f7578b3..1a4dd51f 100644
+--- a/perf/src/bin/perf_server.rs
++++ b/perf/src/bin/perf_server.rs
+@@ -7,6 +7,7 @@ use structopt::StructOpt;
+ use tracing::{debug, error, info};
+ 
+ use perf::bind_socket;
++use quinn::TransportConfig;
+ 
+ #[derive(StructOpt)]
+ #[structopt(name = "server")]
+@@ -29,6 +30,9 @@ struct Opt {
+     /// Whether to print connection statistics
+     #[structopt(long)]
+     conn_stats: bool,
++    /// Use new reno
++    #[structopt(long)]
++    use_new_reno: bool,
+ }
+ 
+ #[tokio::main(flavor = "current_thread")]
+@@ -67,9 +71,16 @@ async fn run(opt: Opt) -> Result<()> {
+     let mut server_config = quinn::ServerConfigBuilder::default();
+     server_config.certificate(cert, key).unwrap();
+     server_config.protocols(&[b"perf"]);
++    server_config.enable_keylog();
+ 
+     let mut server_config = server_config.build();
+ 
++    if opt.use_new_reno {
++        let mut config = TransportConfig::default();
++        config.congestion_controller_factory(Arc::new(quinn::NewRenoConfig::default()));
++        server_config.transport = Arc::new(config);
++    }
++
+     // Configure cipher suites for efficiency
+     let tls_config = Arc::get_mut(&mut server_config.crypto).unwrap();
+     tls_config.ciphersuites.clear();
 diff --git a/perf/src/lib.rs b/perf/src/lib.rs
 index 6feba17c..bba20c88 100644
 --- a/perf/src/lib.rs
@@ -492,15 +509,17 @@ index 6feba17c..bba20c88 100644
      send_buffer_size: usize,
 diff --git a/perf/src/stats.rs b/perf/src/stats.rs
 new file mode 100644
-index 00000000..bb363be5
+index 00000000..4509c778
 --- /dev/null
 +++ b/perf/src/stats.rs
-@@ -0,0 +1,382 @@
+@@ -0,0 +1,408 @@
 +use hdrhistogram::Histogram;
 +use quinn::StreamId;
-+use std::io::Write;
++use std::fs::File;
++use std::io;
++use std::path::Path;
 +use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-+use std::sync::Arc;
++use std::sync::{Arc, Mutex};
 +use std::time::{Duration, Instant, SystemTime};
 +
 +pub struct Stats {
@@ -541,10 +560,11 @@ index 00000000..bb363be5
 +}
 +
 +impl Stats {
-+    pub fn on_interval(&mut self, start: Instant, stream_stats: &mut Vec<Arc<StreamStats>>) {
++    pub fn on_interval(&mut self, start: Instant, stream_stats: &OpenStreamStats) {
 +        let mut interval = Interval::new(start - self.start_instant, self.start_instant.elapsed());
++        let mut guard = stream_stats.0.lock().unwrap();
 +
-+        stream_stats.retain(|stream_stats| {
++        guard.retain(|stream_stats| {
 +            self.record(stream_stats.clone());
 +            interval.record_stream_stats(stream_stats.clone());
 +            // Retain if not finished yet
@@ -616,8 +636,55 @@ index 00000000..bb363be5
 +        println!();
 +    }
 +
-+    pub fn print_json<W: Write>(&self, out: W) {
-+        json::print(&self, out);
++    pub fn print_json(&self, path: &Path) -> io::Result<()> {
++        match path {
++            path if path == Path::new("-") => json::print(self, std::io::stdout()),
++            _ => {
++                let file = File::create(path)?;
++                json::print(self, file)
++            }
++        }
++        Ok(())
++    }
++}
++
++/// Statistics for the currently open streams
++#[derive(Clone, Default)]
++pub struct OpenStreamStats(Arc<Mutex<Vec<Arc<StreamStats>>>>);
++
++impl OpenStreamStats {
++    pub fn new_sender(&self, stream: &quinn::SendStream, upload_size: u64) -> Arc<StreamStats> {
++        let send_stream_stats = StreamStats {
++            id: stream.id(),
++            request_size: upload_size,
++            bytes: Default::default(),
++            sender: true,
++            finished: Default::default(),
++            duration: Default::default(),
++            first_byte_latency: Default::default(),
++        };
++        let send_stream_stats = Arc::new(send_stream_stats);
++        self.push(send_stream_stats.clone());
++        send_stream_stats
++    }
++
++    pub fn new_receiver(&self, stream: &quinn::RecvStream, download_size: u64) -> Arc<StreamStats> {
++        let recv_stream_stats = StreamStats {
++            id: stream.id(),
++            request_size: download_size,
++            bytes: Default::default(),
++            sender: false,
++            finished: Default::default(),
++            duration: Default::default(),
++            first_byte_latency: Default::default(),
++        };
++        let recv_stream_stats = Arc::new(recv_stream_stats);
++        self.push(recv_stream_stats.clone());
++        recv_stream_stats
++    }
++
++    fn push(&self, stream_stats: Arc<StreamStats>) {
++        self.0.lock().unwrap().push(stream_stats);
 +    }
 +}
 +
@@ -632,30 +699,6 @@ index 00000000..bb363be5
 +}
 +
 +impl StreamStats {
-+    pub fn new_sender(id: StreamId, upload_size: u64) -> Self {
-+        Self {
-+            id,
-+            request_size: upload_size,
-+            bytes: Default::default(),
-+            sender: true,
-+            finished: Default::default(),
-+            duration: Default::default(),
-+            first_byte_latency: Default::default(),
-+        }
-+    }
-+
-+    pub fn new_receiver(id: StreamId, download_size: u64) -> Self {
-+        Self {
-+            id,
-+            request_size: download_size,
-+            bytes: Default::default(),
-+            sender: false,
-+            finished: Default::default(),
-+            duration: Default::default(),
-+            first_byte_latency: Default::default(),
-+        }
-+    }
-+
 +    pub fn on_first_byte(&self, latency: Duration) {
 +        self.first_byte_latency
 +            .store(latency.as_micros() as u64, Ordering::SeqCst);
@@ -878,8 +921,21 @@ index 00000000..bb363be5
 +        }
 +    }
 +}
+diff --git a/quinn/src/lib.rs b/quinn/src/lib.rs
+index 7e676df0..aaac5d0b 100644
+--- a/quinn/src/lib.rs
++++ b/quinn/src/lib.rs
+@@ -140,6 +140,8 @@ mod rustls_impls {
+ #[cfg(feature = "rustls")]
+ pub use rustls_impls::*;
+ 
++pub use proto::congestion::NewRenoConfig;
++
+ #[cfg(test)]
+ mod tests;
+ 
 diff --git a/quinn/src/platform/unix.rs b/quinn/src/platform/unix.rs
-index 9344ecf1..39653290 100644
+index 23979df7..eed02e9e 100644
 --- a/quinn/src/platform/unix.rs
 +++ b/quinn/src/platform/unix.rs
 @@ -528,7 +528,7 @@ mod gso {

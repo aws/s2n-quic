@@ -26,13 +26,17 @@ if [ -d "/certs" ]; then
     CERT_ARGS="--private-key /certs/priv.key --certificate /certs/cert.pem"
 fi
 
+SERVER_CMD=""
+if [ "$USE_NEW_RENO" == "true" ]; then
+    SERVER_CMD="--use-new-reno"
+fi
+
 # Wait for the simulator to start up.
 /wait-for-it.sh sim:57832 -s -t 30
 
-
 if [ "$ROLE" == "server" ]; then
   perf_server \
-  --listen "[::]:443" 2>&1 | tee $LOG
+  --listen "[::]:443" 2>&1 ${SERVER_CMD} | tee $LOG
 else
   perf_client  \
   --download-size "$DOWNLOAD_B" \
