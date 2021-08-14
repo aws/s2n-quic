@@ -69,7 +69,7 @@ impl<Config: endpoint::Config> fmt::Debug for PacketSpaceManager<Config> {
 }
 
 macro_rules! packet_space_api {
-    ($ty:ty, $field:ident, $get_mut:ident $(, $discard:ident)?) => {
+    ($ty:ty, $field:ident, $get_mut:ident $(, $discard:ident $(, $assert_discard:ident)? )?) => {
         #[allow(dead_code)]
         pub fn $field(&self) -> Option<&$ty> {
             self.$field
@@ -108,6 +108,9 @@ macro_rules! packet_space_api {
                 // keys.
 
                 debug_assert!(self.$field.is_none(), "space should have been discarded");
+                $(
+                    debug_assert!(self.$assert_discard.is_none(), "space should have been discarded");
+                )?
             }
         )?
     };
@@ -147,7 +150,8 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         HandshakeSpace<Config>,
         handshake,
         handshake_mut,
-        discard_handshake
+        discard_handshake,
+        initial
     );
 
     packet_space_api!(ApplicationSpace<Config>, application, application_mut);
