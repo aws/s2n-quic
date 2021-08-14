@@ -1159,8 +1159,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
                 interests.transmission = self.can_transmit(constraint);
                 interests.new_connection_id =
-                    // Don't issue new Connection Ids to the peer until after handshake completion
-                    self.space_manager.handshake().is_none()
+                    // Only issue new Connection Ids to the peer when we know they won't be used
+                    // for Initial or Handshake packets.
+                    // This is important so that Connection Ids can't be linked to the
+                    // Application space.
+                    self.space_manager.initial().is_none()
+                    && self.space_manager.handshake().is_none()
                     && self.local_id_registry.connection_id_interest()
                         != connection::id::Interest::None;
             }
