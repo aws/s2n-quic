@@ -4,7 +4,7 @@
 use crate::{
     buffer::Buffer,
     message::{
-        mmsg::{Message, Ring},
+        mmsg::{self, Message, Ring},
         queue,
     },
 };
@@ -12,6 +12,8 @@ use std::{io, os::unix::io::AsRawFd};
 
 #[derive(Debug, Default)]
 pub struct Queue<B: Buffer>(queue::Queue<Ring<B>>);
+
+pub use mmsg::Handle;
 
 impl<B: Buffer> Queue<B> {
     pub fn new(buffer: B, max_gso: usize) -> Self {

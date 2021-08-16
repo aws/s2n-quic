@@ -7,7 +7,7 @@ use crate::{
     endpoint, path::MaxMtu, recovery::congestion_controller, space::PacketSpaceManager,
     wakeup_queue::WakeupHandle,
 };
-use s2n_quic_core::{connection, inet::SocketAddress, time::Timestamp};
+use s2n_quic_core::{connection, time::Timestamp};
 
 mod api;
 mod api_provider;
@@ -55,8 +55,8 @@ pub struct Parameters<Cfg: endpoint::Config> {
     pub peer_connection_id: PeerId,
     /// The last utilized local Connection ID
     pub local_connection_id: LocalId,
-    /// The peers socket address
-    pub peer_socket_address: SocketAddress,
+    /// The path handle on which the connection was created
+    pub path_handle: Cfg::PathHandle,
     /// The space manager created for the connection
     pub space_manager: PacketSpaceManager<Cfg>,
     /// A struct which triggers a wakeup for the given connection

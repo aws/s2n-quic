@@ -131,6 +131,8 @@ macro_rules! zerocopy_network_integer {
         pub struct $name(::zerocopy::byteorder::$name<NetworkEndian>);
 
         impl $name {
+            pub const ZERO: Self = Self(::zerocopy::byteorder::$name::ZERO);
+
             pub fn new(value: $native) -> Self {
                 value.into()
             }

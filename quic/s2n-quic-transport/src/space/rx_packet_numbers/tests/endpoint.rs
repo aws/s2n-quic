@@ -49,7 +49,6 @@ impl Endpoint {
         let datagram = DatagramInfo {
             ecn: packet.ecn,
             payload_len: 1200,
-            remote_address: Default::default(),
             timestamp: self.env.current_time,
             destination_connection_id: connection::LocalId::TEST_ID,
         };

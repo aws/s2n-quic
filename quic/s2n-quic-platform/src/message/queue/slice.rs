@@ -4,7 +4,10 @@
 use super::{Behavior, Segment};
 use crate::message;
 use core::ops::{Deref, DerefMut};
-use s2n_quic_core::io::{rx, tx};
+use s2n_quic_core::{
+    io::{rx, tx},
+    path::{self, Handle as _},
+};
 
 /// A view of the currently enqueued messages for a given segment
 #[derive(Debug)]
@@ -128,7 +131,10 @@ impl<'a, Message: message::Message, B> Slice<'a, Message, B> {
     ///
     /// Returns the Err(Message) if it was not able to. Otherwise, the index of the GSO'd message is returned.
     #[inline]
-    fn try_gso<M: tx::Message>(&mut self, mut message: M) -> Result<Result<usize, M>, tx::Error> {
+    fn try_gso<M: tx::Message<Handle = Message::Handle>>(
+        &mut self,
+        mut message: M,
+    ) -> Result<Result<usize, M>, tx::Error> {
         if !Message::SUPPORTS_GSO {
             return Ok(Err(message));
         }
@@ -147,8 +153,13 @@ impl<'a, Message: message::Message, B> Slice<'a, Message, B> {
 
         let prev_message = &mut self.messages[gso.index];
 
-        // check to make sure the message can be GSO'd and that the remote_addresses match
-        if !(message.can_gso() && prev_message.remote_address() == Some(message.remote_address())) {
+        // check to make sure the message can be GSO'd and that the path handles match
+        if !(message.can_gso()
+            && prev_message
+                .path_handle()
+                .map(|handle| message.path_handle().strict_eq(&handle))
+                .unwrap_or(false))
+        {
             self.flush_gso();
             return Ok(Err(message));
         }
@@ -243,8 +254,15 @@ impl<'a, Message: message::Message, R> DerefMut for Slice<'a, Message, R> {
     }
 }
 
-impl<'a, Message: rx::Entry + message::Message, B: Behavior> rx::Queue for Slice<'a, Message, B> {
+impl<
+        'a,
+        Message: rx::Entry<Handle = H> + message::Message<Handle = H>,
+        B: Behavior,
+        H: path::Handle,
+    > rx::Queue for Slice<'a, Message, B>
+{
     type Entry = Message;
+    type Handle = H;
 
     #[inline]
     fn as_slice_mut(&mut self) -> &mut [Message] {
@@ -263,11 +281,21 @@ impl<'a, Message: rx::Entry + message::Message, B: Behavior> rx::Queue for Slice
     }
 }
 
-impl<'a, Message: tx::Entry + message::Message, B: Behavior> tx::Queue for Slice<'a, Message, B> {
+impl<
+        'a,
+        Message: tx::Entry<Handle = H> + message::Message<Handle = H>,
+        B: Behavior,
+        H: path::Handle,
+    > tx::Queue for Slice<'a, Message, B>
+{
     type Entry = Message;
+    type Handle = H;
 
     #[inline]
-    fn push<M: tx::Message>(&mut self, message: M) -> Result<usize, tx::Error> {
+    fn push<M: tx::Message<Handle = Self::Handle>>(
+        &mut self,
+        message: M,
+    ) -> Result<usize, tx::Error> {
         // first try to write a GSO payload
         let message = match self.try_gso(message)? {
             Ok(index) => return Ok(index),

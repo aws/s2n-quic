@@ -5,7 +5,6 @@ use crate::{
     connection::{self, limits::Limits},
     endpoint,
     path::Path,
-    recovery::congestion_controller,
     space::{
         rx_packet_numbers::AckManager, ApplicationSpace, HandshakeSpace, HandshakeStatus,
         InitialSpace,
@@ -25,7 +24,7 @@ use s2n_quic_core::{
 
 pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::Publisher> {
     pub now: Timestamp,
-    pub path: &'a Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+    pub path: &'a Path<Config>,
     pub initial: &'a mut Option<Box<InitialSpace<Config>>>,
     pub handshake: &'a mut Option<Box<HandshakeSpace<Config>>>,
     pub application: &'a mut Option<Box<ApplicationSpace<Config>>>,

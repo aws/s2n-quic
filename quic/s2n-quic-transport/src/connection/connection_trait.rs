@@ -28,7 +28,7 @@ use s2n_quic_core::{
         zero_rtt::ProtectedZeroRtt,
         ProtectedPacket,
     },
-    path::MaxMtu,
+    path::{Handle as _, MaxMtu},
     random, stateless_reset,
     time::Timestamp,
 };
@@ -82,7 +82,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     ) -> Result<(), LocalIdRegistrationError>;
 
     /// Queries the connection for outgoing packets
-    fn on_transmit<'sub, Tx: tx::Queue>(
+    fn on_transmit<'sub, Tx>(
         &mut self,
         queue: &mut Tx,
         timestamp: Timestamp,
@@ -90,7 +90,9 @@ pub trait ConnectionTrait: 'static + Send + Sized {
             'sub,
             <Self::Config as endpoint::Config>::EventSubscriber,
         >,
-    ) -> Result<(), ConnectionOnTransmitError>;
+    ) -> Result<(), ConnectionOnTransmitError>
+    where
+        Tx: tx::Queue<Handle = <Self::Config as endpoint::Config>::PathHandle>;
 
     /// Handles all timeouts on the `Connection`.
     ///
@@ -174,6 +176,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     /// Notifies a connection it has received a datagram from a peer
     fn on_datagram_received(
         &mut self,
+        path_handle: &<Self::Config as endpoint::Config>::PathHandle,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
@@ -240,6 +243,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         Rnd: random::Generator,
     >(
         &mut self,
+        path_handle: &<Self::Config as endpoint::Config>::PathHandle,
         datagram: &DatagramInfo,
         path_id: path::Id,
         connection_id_validator: &Validator,
@@ -247,7 +251,8 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         publisher: &mut Pub,
         random_generator: &mut Rnd,
     ) -> Result<(), connection::Error> {
-        let connection_info = ConnectionInfo::new(&datagram.remote_address);
+        let remote_address = path_handle.remote_address();
+        let connection_info = ConnectionInfo::new(&remote_address);
 
         while !payload.is_empty() {
             if let Ok((packet, remaining)) =

@@ -4,25 +4,22 @@
 use crate::endpoint;
 use alloc::collections::VecDeque;
 use s2n_quic_core::{
-    inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
-    io::tx,
-    packet,
-    path::MINIMUM_MTU,
-    random, stateless_reset, time,
+    inet::ExplicitCongestionNotification, io::tx, packet, path, path::MINIMUM_MTU, random,
+    stateless_reset, time,
 };
 
 #[derive(Debug)]
-pub struct Dispatch {
-    transmissions: VecDeque<Transmission>,
+pub struct Dispatch<Path: path::Handle> {
+    transmissions: VecDeque<Transmission<Path>>,
 }
 
-impl Default for Dispatch {
+impl<Path: path::Handle> Default for Dispatch<Path> {
     fn default() -> Self {
         Self::new(endpoint::DEFAULT_MAX_PEERS)
     }
 }
 
-impl Dispatch {
+impl<Path: path::Handle> Dispatch<Path> {
     pub fn new(max_peers: usize) -> Self {
         Self {
             transmissions: VecDeque::with_capacity(max_peers),
@@ -31,14 +28,14 @@ impl Dispatch {
 
     pub fn queue<R: random::Generator>(
         &mut self,
+        path: Path,
         token: stateless_reset::Token,
         max_tag_len: usize,
         triggering_packet_len: usize,
         random_generator: &mut R,
-        datagram: &DatagramInfo,
     ) {
         if let Some(transmission) = Transmission::new(
-            datagram.remote_address,
+            path,
             token,
             max_tag_len,
             triggering_packet_len,
@@ -48,7 +45,7 @@ impl Dispatch {
         }
     }
 
-    pub fn on_transmit<Tx: tx::Queue>(&mut self, queue: &mut Tx) {
+    pub fn on_transmit<Tx: tx::Queue<Handle = Path>>(&mut self, queue: &mut Tx) {
         while let Some(transmission) = self.transmissions.pop_front() {
             if queue.push(&transmission).is_err() {
                 self.transmissions.push_front(transmission);
@@ -58,25 +55,26 @@ impl Dispatch {
     }
 }
 
-pub struct Transmission {
-    remote_address: SocketAddress,
+pub struct Transmission<Path: path::Handle> {
+    path: Path,
     packet: [u8; MINIMUM_MTU as usize],
     packet_len: usize,
 }
 
-impl core::fmt::Debug for Transmission {
+impl<Handle: path::Handle> core::fmt::Debug for Transmission<Handle> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Transmission")
-            .field("remote_address", &self.remote_address)
+            .field("remote_address", &self.path.remote_address())
+            .field("local_address", &self.path.local_address())
             .field("packet_len", &self.packet_len)
             .field("packet", &&self.packet[0..self.packet_len])
             .finish()
     }
 }
 
-impl Transmission {
+impl<Path: path::Handle> Transmission<Path> {
     pub fn new<R: random::Generator>(
-        remote_address: SocketAddress,
+        path: Path,
         token: stateless_reset::Token,
         max_tag_len: usize,
         triggering_packet_len: usize,
@@ -93,23 +91,25 @@ impl Transmission {
         )?;
 
         Some(Self {
-            remote_address,
+            path,
             packet: packet_buf,
             packet_len,
         })
     }
 }
 
-impl AsRef<[u8]> for Transmission {
+impl<Path: path::Handle> AsRef<[u8]> for Transmission<Path> {
     fn as_ref(&self) -> &[u8] {
         &self.packet[..self.packet_len]
     }
 }
 
-impl tx::Message for &Transmission {
+impl<Path: path::Handle> tx::Message for &Transmission<Path> {
+    type Handle = Path;
+
     #[inline]
-    fn remote_address(&mut self) -> SocketAddress {
-        self.remote_address
+    fn path_handle(&self) -> &Self::Handle {
+        &self.path
     }
 
     #[inline]

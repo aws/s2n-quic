@@ -7,7 +7,6 @@ use crate::{
     endpoint, path,
     path::mtu,
     recovery,
-    recovery::congestion_controller,
     space::{rx_packet_numbers::AckManager, HandshakeStatus},
     stream::{AbstractStreamManager, StreamTrait as Stream},
     sync::{flag, flag::Ping},
@@ -17,10 +16,10 @@ use core::ops::RangeInclusive;
 use s2n_quic_core::packet::number::PacketNumberSpace;
 
 pub enum Payload<'a, Config: endpoint::Config> {
-    Normal(Normal<'a, Config::Stream, Config::CongestionControllerEndpoint>),
+    Normal(Normal<'a, Config::Stream, Config>),
     MtuProbe(MtuProbe<'a>),
     /// For use on non-active paths where only path validation frames are sent.
-    PathValidationOnly(PathValidationOnly<'a, Config::CongestionControllerEndpoint>),
+    PathValidationOnly(PathValidationOnly<'a, Config>),
 }
 
 impl<'a, Config: endpoint::Config> Payload<'a, Config> {
@@ -29,14 +28,14 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         path_id: path::Id,
-        path_manager: &'a mut path::Manager<Config::CongestionControllerEndpoint>,
+        path_manager: &'a mut path::Manager<Config>,
         local_id_registry: &'a mut connection::LocalIdRegistry,
         transmission_mode: transmission::Mode,
         ack_manager: &'a mut AckManager,
         handshake_status: &'a mut HandshakeStatus,
         ping: &'a mut flag::Ping,
         stream_manager: &'a mut AbstractStreamManager<Config::Stream>,
-        recovery_manager: &'a mut recovery::Manager,
+        recovery_manager: &'a mut recovery::Manager<Config>,
     ) -> Self {
         if transmission_mode != Mode::PathValidationOnly {
             debug_assert_eq!(path_id, path_manager.active_path_id());
@@ -98,17 +97,17 @@ impl<'a, Config: endpoint::Config> transmission::interest::Provider for Payload<
     }
 }
 
-pub struct Normal<'a, S: Stream, CCE: congestion_controller::Endpoint> {
+pub struct Normal<'a, S: Stream, Config: endpoint::Config> {
     ack_manager: &'a mut AckManager,
     handshake_status: &'a mut HandshakeStatus,
     ping: &'a mut Ping,
     stream_manager: &'a mut AbstractStreamManager<S>,
     local_id_registry: &'a mut connection::LocalIdRegistry,
-    path_manager: &'a mut path::Manager<CCE>,
-    recovery_manager: &'a mut recovery::Manager,
+    path_manager: &'a mut path::Manager<Config>,
+    recovery_manager: &'a mut recovery::Manager<Config>,
 }
 
-impl<'a, S: Stream, CCE: congestion_controller::Endpoint> Normal<'a, S, CCE> {
+impl<'a, S: Stream, Config: endpoint::Config> Normal<'a, S, Config> {
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         let did_send_ack = self.ack_manager.on_transmit(context);
 
@@ -145,8 +144,8 @@ impl<'a, S: Stream, CCE: congestion_controller::Endpoint> Normal<'a, S, CCE> {
     }
 }
 
-impl<'a, S: Stream, CCE: congestion_controller::Endpoint> transmission::interest::Provider
-    for Normal<'a, S, CCE>
+impl<'a, S: Stream, Config: endpoint::Config> transmission::interest::Provider
+    for Normal<'a, S, Config>
 {
     fn transmission_interest<Q: transmission::interest::Query>(
         &self,
@@ -186,11 +185,11 @@ impl<'a> transmission::interest::Provider for MtuProbe<'a> {
     }
 }
 
-pub struct PathValidationOnly<'a, CCE: congestion_controller::Endpoint> {
-    path: &'a mut path::Path<CCE::CongestionController>,
+pub struct PathValidationOnly<'a, Config: endpoint::Config> {
+    path: &'a mut path::Path<Config>,
 }
 
-impl<'a, CCE: congestion_controller::Endpoint> PathValidationOnly<'a, CCE> {
+impl<'a, Config: endpoint::Config> PathValidationOnly<'a, Config> {
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         if context.transmission_constraint().can_transmit() {
             self.path.on_transmit(context)
@@ -198,8 +197,8 @@ impl<'a, CCE: congestion_controller::Endpoint> PathValidationOnly<'a, CCE> {
     }
 }
 
-impl<'a, CCE: congestion_controller::Endpoint> transmission::interest::Provider
-    for PathValidationOnly<'a, CCE>
+impl<'a, Config: endpoint::Config> transmission::interest::Provider
+    for PathValidationOnly<'a, Config>
 {
     fn transmission_interest<Q: transmission::interest::Query>(
         &self,

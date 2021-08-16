@@ -3,6 +3,7 @@
 
 use crate::{
     connection::finalization,
+    endpoint,
     path::Path,
     transmission::{self, interest::Provider as _},
 };
@@ -10,9 +11,8 @@ use bytes::Bytes;
 use core::{task::Poll, time::Duration};
 use s2n_quic_core::{
     counter::{self, Counter},
-    inet::{ExplicitCongestionNotification, SocketAddress},
+    inet::ExplicitCongestionNotification,
     io::tx,
-    recovery::CongestionController,
     time::{timer, Timer, Timestamp},
 };
 
@@ -44,10 +44,10 @@ impl CloseSender {
         self.state.on_datagram_received(rtt, now);
     }
 
-    pub fn transmission<'a, CC: CongestionController>(
+    pub fn transmission<'a, Config: endpoint::Config>(
         &'a mut self,
-        path: &'a mut Path<CC>,
-    ) -> Transmission<'a, CC> {
+        path: &'a mut Path<Config>,
+    ) -> Transmission<'a, Config> {
         debug_assert!(
             self.has_transmission_interest(),
             "transmission should only be called when transmission interest is expressed"
@@ -116,16 +116,18 @@ impl transmission::interest::Provider for CloseSender {
     }
 }
 
-pub struct Transmission<'a, CC: CongestionController> {
+pub struct Transmission<'a, Config: endpoint::Config> {
     packet: &'a Bytes,
     transmission: &'a mut TransmissionState,
-    path: &'a mut Path<CC>,
+    path: &'a mut Path<Config>,
 }
 
-impl<'a, CC: CongestionController> tx::Message for Transmission<'a, CC> {
+impl<'a, Config: endpoint::Config> tx::Message for Transmission<'a, Config> {
+    type Handle = Config::PathHandle;
+
     #[inline]
-    fn remote_address(&mut self) -> SocketAddress {
-        self.path.peer_socket_address
+    fn path_handle(&self) -> &Self::Handle {
+        &self.path.handle
     }
 
     #[inline]

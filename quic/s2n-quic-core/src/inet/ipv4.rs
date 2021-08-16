@@ -19,7 +19,13 @@ define_inet_type!(
 );
 
 impl IpV4Address {
+    /// An unspecified IpV4Address
+    pub const UNSPECIFIED: Self = Self {
+        octets: [0; IPV4_LEN],
+    };
+
     /// Converts the IP address into a IPv6 mapped address
+    #[inline]
     pub const fn to_ipv6_mapped(self) -> IpV6Address {
         //= https://tools.ietf.org/rfc/rfc5156.txt#2.2
         //# ::FFFF:0:0/96 are the IPv4-mapped addresses [RFC4291].
@@ -53,8 +59,9 @@ impl fmt::Display for IpV4Address {
 }
 
 impl Unspecified for IpV4Address {
+    #[inline]
     fn is_unspecified(&self) -> bool {
-        <[u8; IPV4_LEN]>::default().eq(&self.octets)
+        Self::UNSPECIFIED.eq(self)
     }
 }
 
@@ -68,20 +75,28 @@ define_inet_type!(
 );
 
 impl SocketAddressV4 {
+    pub const UNSPECIFIED: Self = Self {
+        ip: IpV4Address::UNSPECIFIED,
+        port: U16::ZERO,
+    };
+
+    #[inline]
     pub const fn ip(&self) -> &IpV4Address {
         &self.ip
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn port(self) -> u16 {
         self.port.into()
     }
 
+    #[inline]
     pub fn set_port(&mut self, port: u16) {
         self.port.set(port)
     }
 
     /// Converts the IP address into a IPv6 mapped address
+    #[inline]
     pub const fn to_ipv6_mapped(self) -> SocketAddressV6 {
         let ip = self.ip().to_ipv6_mapped();
         let port = self.port;
@@ -102,20 +117,23 @@ impl fmt::Display for SocketAddressV4 {
 }
 
 impl Unspecified for SocketAddressV4 {
+    #[inline]
     fn is_unspecified(&self) -> bool {
-        self.ip.is_unspecified() && self.port.is_unspecified()
+        Self::UNSPECIFIED.eq(self)
     }
 }
 
 test_inet_snapshot!(socket_v4, socket_v4_snapshot_test, SocketAddressV4);
 
 impl From<[u8; IPV4_LEN]> for IpV4Address {
+    #[inline]
     fn from(octets: [u8; IPV4_LEN]) -> Self {
         Self { octets }
     }
 }
 
 impl From<IpV4Address> for [u8; IPV4_LEN] {
+    #[inline]
     fn from(address: IpV4Address) -> Self {
         address.octets
     }

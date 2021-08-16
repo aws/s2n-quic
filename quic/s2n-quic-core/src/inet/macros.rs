@@ -12,7 +12,7 @@ macro_rules! define_inet_type {
         #[cfg(feature = "generator")]
         use bolero_generator::*;
 
-        #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, zerocopy::FromBytes, zerocopy::AsBytes, zerocopy::Unaligned)]
+        #[derive(Clone, Copy, Default, Eq, zerocopy::FromBytes, zerocopy::AsBytes, zerocopy::Unaligned)]
         #[cfg_attr(feature = "generator", derive(bolero_generator::TypeGenerator))]
         #[repr(C)]
         $($vis)? struct $name {
@@ -21,8 +21,40 @@ macro_rules! define_inet_type {
             )*
         }
 
+        impl PartialEq for $name {
+            #[inline]
+            fn eq(&self, other: &Self) -> bool {
+                use zerocopy::AsBytes;
+                self.as_bytes().eq(other.as_bytes())
+            }
+        }
+
+        impl PartialOrd for $name {
+            #[inline]
+            fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+                Some(self.cmp(other))
+            }
+        }
+
+        impl Ord for $name {
+            #[inline]
+            fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+                use zerocopy::AsBytes;
+                self.as_bytes().cmp(other.as_bytes())
+            }
+        }
+
+        impl core::hash::Hash for $name {
+            #[inline]
+            fn hash<H: core::hash::Hasher>(&self, hasher: &mut H) {
+                use zerocopy::AsBytes;
+                self.as_bytes().hash(hasher);
+            }
+        }
+
         impl $name {
             #[allow(non_camel_case_types, clippy::too_many_arguments)]
+            #[inline]
             pub fn new<$($field: Into<$field_ty>),*>($($field: $field),*) -> Self {
                 Self {
                     $(

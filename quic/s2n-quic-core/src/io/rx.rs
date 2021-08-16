@@ -1,11 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::inet::{ExplicitCongestionNotification, SocketAddress};
+use crate::{inet::datagram, path};
 
 /// A structure capable of queueing and receiving messages
 pub trait Queue {
-    type Entry: Entry;
+    type Entry: Entry<Handle = Self::Handle>;
+    type Handle: path::Handle;
 
     /// Returns a slice of all of the entries in the queue
     fn as_slice_mut(&mut self) -> &mut [Self::Entry];
@@ -24,20 +25,8 @@ pub trait Queue {
 
 /// An entry in a Rx queue
 pub trait Entry {
-    /// Returns the remote address
-    fn remote_address(&self) -> Option<SocketAddress>;
+    type Handle: path::Handle;
 
-    /// Returns the ECN markings
-    fn ecn(&self) -> ExplicitCongestionNotification;
-
-    /// Returns the payload
-    fn payload(&self) -> &[u8];
-
-    /// Returns the length of the payload
-    fn payload_len(&self) -> usize {
-        self.payload().len()
-    }
-
-    /// Returns a mutable payload
-    fn payload_mut(&mut self) -> &mut [u8];
+    /// Returns the datagram information with the datagram payload
+    fn read(&mut self) -> Option<(datagram::Header<Self::Handle>, &mut [u8])>;
 }

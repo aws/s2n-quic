@@ -7,27 +7,27 @@ use core::ops::Range;
 use s2n_quic_core::{
     connection,
     crypto::RetryKey,
-    inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
+    inet::ExplicitCongestionNotification,
     io::tx,
     packet,
-    path::MINIMUM_MTU,
+    path::{self, MINIMUM_MTU},
     random, time, token,
 };
 
 #[derive(Debug)]
-pub struct Dispatch {
+pub struct Dispatch<Path: path::Handle> {
     // TODO: Find a better datastructure capable of handling delays in transmission
     // https://github.com/awslabs/s2n-quic/issues/280
-    transmissions: VecDeque<Transmission>,
+    transmissions: VecDeque<Transmission<Path>>,
 }
 
-impl Default for Dispatch {
+impl<Path: path::Handle> Default for Dispatch<Path> {
     fn default() -> Self {
         Self::new(endpoint::DEFAULT_MAX_PEERS)
     }
 }
 
-impl Dispatch {
+impl<Path: path::Handle> Dispatch<Path> {
     pub fn new(max_peers: usize) -> Self {
         Self {
             transmissions: VecDeque::with_capacity(max_peers),
@@ -37,14 +37,14 @@ impl Dispatch {
     #[allow(dead_code)]
     pub fn queue<T: token::Format, C: RetryKey, R: random::Generator>(
         &mut self,
-        datagram: &DatagramInfo,
+        path_handle: Path,
         packet: &packet::initial::ProtectedInitial,
         local_connection_id: connection::LocalId,
         random: &mut R,
         token_format: &mut T,
     ) {
         if let Some(transmission) = Transmission::new::<_, C, _>(
-            datagram.remote_address,
+            path_handle,
             packet,
             local_connection_id,
             random,
@@ -54,7 +54,7 @@ impl Dispatch {
         }
     }
 
-    pub fn on_transmit<Tx: tx::Queue>(&mut self, queue: &mut Tx) {
+    pub fn on_transmit<Tx: tx::Queue<Handle = Path>>(&mut self, queue: &mut Tx) {
         while let Some(transmission) = self.transmissions.pop_front() {
             if queue.push(&transmission).is_err() {
                 self.transmissions.push_front(transmission);
@@ -64,24 +64,25 @@ impl Dispatch {
     }
 }
 
-pub struct Transmission {
-    remote_address: SocketAddress,
+pub struct Transmission<Path: path::Handle> {
+    path: Path,
     packet: [u8; MINIMUM_MTU as usize],
     packet_range: Range<usize>,
 }
 
-impl core::fmt::Debug for Transmission {
+impl<Path: path::Handle> core::fmt::Debug for Transmission<Path> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Transmission")
-            .field("remote_address", &self.remote_address)
+            .field("remote_address", &self.path.remote_address())
+            .field("local_address", &self.path.local_address())
             .field("packet", &&self.packet[self.packet_range.clone()])
             .finish()
     }
 }
 
-impl Transmission {
+impl<Path: path::Handle> Transmission<Path> {
     pub fn new<T: token::Format, C: RetryKey, R: random::Generator>(
-        remote_address: SocketAddress,
+        path: Path,
         packet: &packet::initial::ProtectedInitial,
         local_connection_id: connection::LocalId,
         random: &mut R,
@@ -89,7 +90,7 @@ impl Transmission {
     ) -> Option<Self> {
         let mut packet_buf = [0u8; MINIMUM_MTU as usize];
         let packet_range = packet::retry::Retry::encode_packet::<_, C, _>(
-            &remote_address,
+            &path.remote_address(),
             packet,
             &local_connection_id,
             random,
@@ -98,23 +99,25 @@ impl Transmission {
         )?;
 
         Some(Self {
-            remote_address,
+            path,
             packet: packet_buf,
             packet_range,
         })
     }
 }
 
-impl AsRef<[u8]> for Transmission {
+impl<Path: path::Handle> AsRef<[u8]> for Transmission<Path> {
     fn as_ref(&self) -> &[u8] {
         &self.packet[self.packet_range.clone()]
     }
 }
 
-impl tx::Message for &Transmission {
+impl<Path: path::Handle> tx::Message for &Transmission<Path> {
+    type Handle = Path;
+
     #[inline]
-    fn remote_address(&mut self) -> SocketAddress {
-        self.remote_address
+    fn path_handle(&self) -> &Self::Handle {
+        &self.path
     }
 
     #[inline]

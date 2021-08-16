@@ -205,6 +205,7 @@ impl connection::Trait for TestConnection {
     /// Notifies a connection it has received a datagram from a peer
     fn on_datagram_received(
         &mut self,
+        _path: &<Self::Config as endpoint::Config>::PathHandle,
         _datagram: &DatagramInfo,
         _congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
         _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,

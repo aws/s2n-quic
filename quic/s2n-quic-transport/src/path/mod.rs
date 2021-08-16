@@ -2,6 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! This module contains the Path implementation
+
+use crate::{
+    connection,
+    contexts::WriteContext,
+    endpoint,
+    recovery::{congestion_controller, CongestionController, RttEstimator},
+    transmission::{self, Mode},
+};
+use s2n_quic_core::{
+    frame, packet,
+    time::{timer, Timestamp},
+};
+
 mod challenge;
 mod manager;
 pub(crate) mod mtu;
@@ -11,18 +24,6 @@ pub use manager::*;
 
 /// re-export core
 pub use s2n_quic_core::path::*;
-use s2n_quic_core::{
-    frame, packet,
-    time::{timer, Timestamp},
-};
-
-use crate::{
-    connection,
-    connection::close::SocketAddress,
-    contexts::WriteContext,
-    recovery::{CongestionController, RttEstimator},
-    transmission::{self, Mode},
-};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[allow(dead_code)]
@@ -34,10 +35,10 @@ enum State {
     AmplificationLimited { tx_bytes: u32, rx_bytes: u32 },
 }
 
-#[derive(Debug, Clone)]
-pub struct Path<CC: CongestionController> {
+#[derive(Debug)]
+pub struct Path<Config: endpoint::Config> {
     /// The peer's socket address
-    pub peer_socket_address: SocketAddress,
+    pub handle: Config::PathHandle,
     /// The connection id of the peer
     pub peer_connection_id: connection::PeerId,
     /// The local connection id which the peer sends to
@@ -45,7 +46,7 @@ pub struct Path<CC: CongestionController> {
     /// The path owns the roundtrip between peers
     pub rtt_estimator: RttEstimator,
     /// The congestion controller for the path
-    pub congestion_controller: CC,
+    pub congestion_controller: <Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController,
     /// Probe timeout backoff multiplier
     pub pto_backoff: u32,
     /// Tracks whether this path has passed Address or Path validation
@@ -58,24 +59,44 @@ pub struct Path<CC: CongestionController> {
 
     /// Challenge sent to the peer in a PATH_CHALLENGE
     challenge: Challenge,
+
     /// Received a Challenge and should echo back data in PATH_RESPONSE
     response_data: Option<challenge::Data>,
 }
 
+impl<Config: endpoint::Config> Clone for Path<Config> {
+    fn clone(&self) -> Self {
+        Self {
+            handle: self.handle,
+            peer_connection_id: self.peer_connection_id,
+            local_connection_id: self.local_connection_id,
+            rtt_estimator: self.rtt_estimator,
+            congestion_controller: self.congestion_controller.clone(),
+            pto_backoff: self.pto_backoff,
+            state: self.state,
+            mtu_controller: self.mtu_controller.clone(),
+            peer_validated: self.peer_validated,
+            challenge: self.challenge.clone(),
+            response_data: self.response_data,
+        }
+    }
+}
+
 /// A Path holds the local and peer socket addresses, connection ids, and state. It can be
 /// validated or pending validation.
-impl<CC: CongestionController> Path<CC> {
+impl<Config: endpoint::Config> Path<Config> {
     pub fn new(
-        peer_socket_address: SocketAddress,
+        handle: Config::PathHandle,
         peer_connection_id: connection::PeerId,
         local_connection_id: connection::LocalId,
         rtt_estimator: RttEstimator,
-        congestion_controller: CC,
+        congestion_controller: <Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController,
         peer_validated: bool,
         max_mtu: MaxMtu,
-    ) -> Path<CC> {
+    ) -> Path<Config> {
+        let peer_socket_address = handle.remote_address();
         Path {
-            peer_socket_address,
+            handle,
             peer_connection_id,
             local_connection_id,
             rtt_estimator,
@@ -94,6 +115,16 @@ impl<CC: CongestionController> Path<CC> {
             challenge: Challenge::disabled(),
             response_data: None,
         }
+    }
+
+    #[inline]
+    pub fn remote_address(&self) -> RemoteAddress {
+        self.handle.remote_address()
+    }
+
+    #[inline]
+    pub fn local_address(&self) -> LocalAddress {
+        self.handle.local_address()
     }
 
     #[inline]
@@ -153,6 +184,9 @@ impl<CC: CongestionController> Path<CC> {
     /// Only PATH_CHALLENGE and PATH_RESPONSE frames should be transmitted here.
     #[inline]
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+        //# A PATH_RESPONSE frame MUST be sent on the network path where the
+        //# PATH_CHALLENGE was received.
         if let Some(response_data) = &mut self.response_data {
             let frame = frame::PathResponse {
                 data: response_data,
@@ -402,7 +436,7 @@ impl<CC: CongestionController> Path<CC> {
     }
 }
 
-impl<CC: CongestionController> timer::Provider for Path<CC> {
+impl<Config: endpoint::Config> timer::Provider for Path<Config> {
     #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
         self.challenge.timers(query)?;
@@ -412,7 +446,7 @@ impl<CC: CongestionController> timer::Provider for Path<CC> {
     }
 }
 
-impl<CC: CongestionController> transmission::interest::Provider for Path<CC> {
+impl<Config: endpoint::Config> transmission::interest::Provider for Path<Config> {
     /// Indicate if the path is interested in transmitting PATH_CHALLENGE or
     /// PATH_RESPONSE frames.
     #[inline]
@@ -437,19 +471,19 @@ impl<CC: CongestionController> transmission::interest::Provider for Path<CC> {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use crate::{
+        endpoint,
         path::{Path, DEFAULT_MAX_MTU},
-        recovery::congestion_controller::testing::unlimited::CongestionController as Unlimited,
     };
     use core::time::Duration;
-    use s2n_quic_core::{connection, inet::SocketAddress, recovery::RttEstimator};
+    use s2n_quic_core::{connection, recovery::RttEstimator};
 
-    pub fn helper_path() -> Path<Unlimited> {
+    pub fn helper_path() -> Path<endpoint::testing::Server> {
         Path::new(
-            SocketAddress::default(),
+            Default::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
             connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
-            Unlimited::default(),
+            Default::default(),
             true,
             DEFAULT_MAX_MTU,
         )
@@ -458,20 +492,21 @@ pub mod testing {
 
 #[cfg(test)]
 mod tests {
-    use core::time::Duration;
-
     use super::*;
     use crate::{
         contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
-        path::{challenge::testing::helper_challenge, testing, Path},
+        endpoint::testing::Server as Config,
+        path::{challenge::testing::helper_challenge, testing},
     };
+    use core::time::Duration;
     use s2n_quic_core::{
         connection, endpoint,
-        inet::SocketAddress,
-        recovery::{CongestionController, CubicCongestionController, RttEstimator},
+        recovery::{CongestionController, RttEstimator},
         time::{Clock, NoopClock},
         transmission,
     };
+
+    type Path = super::Path<Config>;
 
     #[test]
     fn response_data_should_only_be_sent_once() {
@@ -926,11 +961,11 @@ mod tests {
     #[test]
     fn transmission_constraint_test() {
         let mut path = Path::new(
-            SocketAddress::default(),
+            Default::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
             connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
-            CubicCongestionController::new(MINIMUM_MTU),
+            Default::default(),
             false,
             DEFAULT_MAX_MTU,
         );
@@ -953,6 +988,7 @@ mod tests {
 
         // Lose a byte to enter recovery
         path.congestion_controller.on_packets_lost(1, false, now);
+        path.congestion_controller.requires_fast_retransmission = true;
 
         assert_eq!(
             path.transmission_constraint(),
@@ -965,6 +1001,7 @@ mod tests {
             false,
             now,
         );
+        path.congestion_controller.requires_fast_retransmission = false;
 
         // Since we are no longer congestion limited, there is no transmission constraint
         assert_eq!(

@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    connection, endpoint, path, path::Path, recovery::congestion_controller,
-    space::PacketSpaceManager, transmission, transmission::interest::Provider,
+    connection, endpoint, path, path::Path, space::PacketSpaceManager, transmission,
+    transmission::interest::Provider,
 };
 use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
     event,
     frame::ack_elicitation::AckElicitable,
-    inet::{ExplicitCongestionNotification, SocketAddress},
+    inet::ExplicitCongestionNotification,
     io::tx,
     packet::{encoding::PacketEncodingError, number::PacketNumberSpace},
     time::Timestamp,
@@ -21,7 +21,7 @@ pub struct ConnectionTransmissionContext<'a, 'sub, Config: endpoint::Config> {
     pub quic_version: u32,
     pub timestamp: Timestamp,
     pub path_id: path::Id,
-    pub path_manager: &'a mut path::Manager<Config::CongestionControllerEndpoint>,
+    pub path_manager: &'a mut path::Manager<Config>,
     pub local_id_registry: &'a mut connection::LocalIdRegistry,
     pub outcome: &'a mut transmission::Outcome,
     pub ecn: ExplicitCongestionNotification,
@@ -31,17 +31,11 @@ pub struct ConnectionTransmissionContext<'a, 'sub, Config: endpoint::Config> {
 }
 
 impl<'a, 'sub, Config: endpoint::Config> ConnectionTransmissionContext<'a, 'sub, Config> {
-    pub fn path(
-        &self,
-    ) -> &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>
-    {
+    pub fn path(&self) -> &Path<Config> {
         &self.path_manager[self.path_id]
     }
 
-    pub fn path_mut(
-        &mut self
-    ) -> &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>
-    {
+    pub fn path_mut(&mut self) -> &mut Path<Config> {
         &mut self.path_manager[self.path_id]
     }
 }
@@ -52,9 +46,11 @@ pub struct ConnectionTransmission<'a, 'sub, Config: endpoint::Config> {
 }
 
 impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, 'sub, Config> {
+    type Handle = Config::PathHandle;
+
     #[inline]
-    fn remote_address(&mut self) -> SocketAddress {
-        self.context.path().peer_socket_address
+    fn path_handle(&self) -> &Self::Handle {
+        &self.context.path().handle
     }
 
     #[inline]

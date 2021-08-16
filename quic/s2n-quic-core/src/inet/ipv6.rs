@@ -16,6 +16,12 @@ define_inet_type!(
 );
 
 impl IpV6Address {
+    /// An unspecified IpV6Address
+    pub const UNSPECIFIED: Self = Self {
+        octets: [0; IPV6_LEN],
+    };
+
+    #[inline]
     pub fn segments(&self) -> [u16; 8] {
         let octets = &self.octets;
         [
@@ -72,8 +78,9 @@ impl fmt::Display for IpV6Address {
 }
 
 impl Unspecified for IpV6Address {
+    #[inline]
     fn is_unspecified(&self) -> bool {
-        <[u8; IPV6_LEN]>::default().eq(&self.octets)
+        Self::UNSPECIFIED.eq(self)
     }
 }
 
@@ -87,14 +94,23 @@ define_inet_type!(
 );
 
 impl SocketAddressV6 {
+    /// An unspecified SocketAddressV6
+    pub const UNSPECIFIED: Self = Self {
+        ip: IpV6Address::UNSPECIFIED,
+        port: U16::ZERO,
+    };
+
+    #[inline]
     pub const fn ip(&self) -> &IpV6Address {
         &self.ip
     }
 
+    #[inline]
     pub fn port(&self) -> u16 {
         self.port.into()
     }
 
+    #[inline]
     pub fn set_port(&mut self, port: u16) {
         self.port.set(port)
     }
@@ -113,20 +129,23 @@ impl fmt::Display for SocketAddressV6 {
 }
 
 impl Unspecified for SocketAddressV6 {
+    #[inline]
     fn is_unspecified(&self) -> bool {
-        self.ip.is_unspecified() && self.port.is_unspecified()
+        Self::UNSPECIFIED.eq(self)
     }
 }
 
 test_inet_snapshot!(socket_v6, socket_v6_snapshot_test, SocketAddressV6);
 
 impl From<[u8; IPV6_LEN]> for IpV6Address {
+    #[inline]
     fn from(octets: [u8; IPV6_LEN]) -> Self {
         Self { octets }
     }
 }
 
 impl From<IpV6Address> for [u8; IPV6_LEN] {
+    #[inline]
     fn from(v: IpV6Address) -> Self {
         v.octets
     }
