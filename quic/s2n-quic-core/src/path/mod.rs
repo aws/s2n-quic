@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::inet::{SocketAddress, SocketAddressV4};
+use crate::inet::{SocketAddress, SocketAddressV4, SocketAddressV6};
 use core::{
     convert::{TryFrom, TryInto},
     fmt,
@@ -42,10 +42,10 @@ pub const INITIAL_PTO_BACKOFF: u32 = 1;
 /// An interface for an object that represents a unique path between two endpoints
 pub trait Handle: 'static + Copy + Send + fmt::Debug {
     /// Returns the remote address for the given handle
-    fn remote_address(&self) -> SocketAddress;
+    fn remote_address(&self) -> RemoteAddress;
 
     /// Returns the local address for the given handle
-    fn local_address(&self) -> SocketAddress;
+    fn local_address(&self) -> LocalAddress;
 
     /// Returns `true` if the two handles are equal from a network perspective
     ///
@@ -53,12 +53,57 @@ pub trait Handle: 'static + Copy + Send + fmt::Debug {
     /// path.
     fn eq(&self, other: &Self) -> bool;
 
-    /// Returns `true` if the two handles are strictly equal to each other
+    /// Returns `true` if the two handles are strictly equal to each other, i.e.
+    /// byte-for-byte.
     fn strict_eq(&self, other: &Self) -> bool;
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq)]
-pub struct RemoteAddress(pub SocketAddress);
+macro_rules! impl_addr {
+    ($name:ident) => {
+        #[derive(Clone, Copy, Debug, Default, Eq)]
+        pub struct $name(pub SocketAddress);
+
+        impl From<SocketAddress> for $name {
+            #[inline]
+            fn from(value: SocketAddress) -> Self {
+                Self(value)
+            }
+        }
+
+        impl From<SocketAddressV4> for $name {
+            #[inline]
+            fn from(value: SocketAddressV4) -> Self {
+                Self(value.into())
+            }
+        }
+
+        impl From<SocketAddressV6> for $name {
+            #[inline]
+            fn from(value: SocketAddressV6) -> Self {
+                Self(value.into())
+            }
+        }
+
+        impl PartialEq for $name {
+            #[inline]
+            fn eq(&self, other: &Self) -> bool {
+                self.0.eq(&other.0)
+            }
+        }
+
+        impl core::ops::Deref for $name {
+            type Target = SocketAddress;
+
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+    };
+}
+
+impl_addr!(LocalAddress);
+
+impl_addr!(RemoteAddress);
 
 impl RemoteAddress {
     #[inline]
@@ -67,21 +112,14 @@ impl RemoteAddress {
     }
 }
 
-impl From<SocketAddress> for RemoteAddress {
-    #[inline]
-    fn from(value: SocketAddress) -> Self {
-        Self(value)
-    }
-}
-
 impl Handle for RemoteAddress {
     #[inline]
-    fn remote_address(&self) -> SocketAddress {
-        self.0
+    fn remote_address(&self) -> RemoteAddress {
+        *self
     }
 
     #[inline]
-    fn local_address(&self) -> SocketAddress {
+    fn local_address(&self) -> LocalAddress {
         SocketAddressV4::new([0, 0, 0, 0], 0).into()
     }
 
@@ -96,22 +134,15 @@ impl Handle for RemoteAddress {
     }
 }
 
-impl PartialEq for RemoteAddress {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.0.eq(&other.0)
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq)]
 pub struct Tuple {
-    pub remote_address: SocketAddress,
-    pub local_address: SocketAddress,
+    pub remote_address: RemoteAddress,
+    pub local_address: LocalAddress,
 }
 
 impl Tuple {
     #[inline]
-    pub fn from_remote_address(remote_address: SocketAddress) -> Self {
+    pub fn from_remote_address(remote_address: RemoteAddress) -> Self {
         let local_address = SocketAddressV4::new([0, 0, 0, 0], 0).into();
         Self {
             remote_address,
@@ -123,18 +154,19 @@ impl Tuple {
 impl PartialEq for Tuple {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.remote_address.eq(&other.remote_address) && self.local_address.eq(&other.local_address)
+        PartialEq::eq(&self.remote_address, &other.remote_address)
+            && PartialEq::eq(&self.local_address, &other.local_address)
     }
 }
 
 impl Handle for Tuple {
     #[inline]
-    fn remote_address(&self) -> SocketAddress {
+    fn remote_address(&self) -> RemoteAddress {
         self.remote_address
     }
 
     #[inline]
-    fn local_address(&self) -> SocketAddress {
+    fn local_address(&self) -> LocalAddress {
         self.local_address
     }
 

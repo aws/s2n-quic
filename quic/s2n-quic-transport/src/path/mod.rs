@@ -5,7 +5,6 @@
 
 use crate::{
     connection,
-    connection::close::SocketAddress,
     contexts::WriteContext,
     endpoint,
     recovery::{congestion_controller, CongestionController, RttEstimator},
@@ -60,6 +59,7 @@ pub struct Path<Config: endpoint::Config> {
 
     /// Challenge sent to the peer in a PATH_CHALLENGE
     challenge: Challenge,
+
     /// Received a Challenge and should echo back data in PATH_RESPONSE
     response_data: Option<challenge::Data>,
 }
@@ -118,12 +118,12 @@ impl<Config: endpoint::Config> Path<Config> {
     }
 
     #[inline]
-    pub fn remote_address(&self) -> SocketAddress {
+    pub fn remote_address(&self) -> RemoteAddress {
         self.handle.remote_address()
     }
 
     #[inline]
-    pub fn local_address(&self) -> SocketAddress {
+    pub fn local_address(&self) -> LocalAddress {
         self.handle.local_address()
     }
 
@@ -184,6 +184,9 @@ impl<Config: endpoint::Config> Path<Config> {
     /// Only PATH_CHALLENGE and PATH_RESPONSE frames should be transmitted here.
     #[inline]
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+        //# A PATH_RESPONSE frame MUST be sent on the network path where the
+        //# PATH_CHALLENGE was received.
         if let Some(response_data) = &mut self.response_data {
             let frame = frame::PathResponse {
                 data: response_data,

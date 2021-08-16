@@ -133,7 +133,7 @@ impl MessageTrait for msghdr {
 
     #[inline]
     fn path_handle(&self) -> Option<Self::Handle> {
-        let remote_address = self.remote_address()?;
+        let remote_address = self.remote_address()?.into();
 
         // TODO set local_address
         let local_address = SocketAddressV4::new([0, 0, 0, 0], 0).into();

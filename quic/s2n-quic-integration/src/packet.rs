@@ -26,8 +26,8 @@ impl tx::Entry for Packet {
         mut message: M,
     ) -> Result<usize, tx::Error> {
         let handle = message.path_handle();
-        self.destination_address = handle.remote_address();
-        self.source_address = handle.local_address();
+        self.destination_address = handle.remote_address().0;
+        self.source_address = handle.local_address().0;
         self.ecn = message.ecn();
         self.ipv6_flow_label = message.ipv6_flow_label();
 
@@ -56,8 +56,8 @@ impl rx::Entry for Packet {
 
     fn read(&mut self) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
         let path = path::Tuple {
-            remote_address: self.source_address,
-            local_address: self.destination_address,
+            remote_address: self.source_address.into(),
+            local_address: self.destination_address.into(),
         };
         let header = datagram::Header {
             path,

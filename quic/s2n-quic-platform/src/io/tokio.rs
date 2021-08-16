@@ -656,7 +656,7 @@ mod tests {
                     }
                     _ => {
                         let payload = id.to_be_bytes();
-                        let addr = PathHandle::from_remote_address(self.addr);
+                        let addr = PathHandle::from_remote_address(self.addr.into());
                         let msg = (addr, payload);
                         if queue.push(msg).is_ok() {
                             *tx_time = Some(now);

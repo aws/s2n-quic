@@ -170,12 +170,12 @@ impl<Payload: AsRef<[u8]>> Message for (path::Tuple, Payload) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::inet::{SocketAddress, SocketAddressV4};
+    use crate::inet::SocketAddressV4;
 
     #[test]
     fn message_tuple_test() {
-        let remote_address: SocketAddress = SocketAddressV4::new([127, 0, 0, 1], 80).into();
-        let local_address = remote_address;
+        let remote_address = SocketAddressV4::new([127, 0, 0, 1], 80).into();
+        let local_address = SocketAddressV4::new([192, 168, 0, 1], 3000).into();
         let tuple = path::Tuple {
             remote_address,
             local_address,

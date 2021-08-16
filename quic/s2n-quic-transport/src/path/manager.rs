@@ -387,13 +387,10 @@ impl<Config: endpoint::Config> Manager<Config> {
     #[inline]
     pub fn on_path_challenge(
         &mut self,
-        path: Id,
+        path_id: Id,
         challenge: &frame::path_challenge::PathChallenge,
     ) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
-        //# A PATH_RESPONSE frame MUST be sent on the network path where the
-        //# PATH_CHALLENGE was received.
-        self[path].on_path_challenge(challenge.data);
+        self[path_id].on_path_challenge(challenge.data);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.3
