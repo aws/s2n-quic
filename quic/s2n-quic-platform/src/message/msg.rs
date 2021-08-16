@@ -136,7 +136,7 @@ impl MessageTrait for msghdr {
         let remote_address = self.remote_address()?.into();
 
         // TODO set local_address
-        let local_address = SocketAddressV4::new([0, 0, 0, 0], 0).into();
+        let local_address = SocketAddressV4::UNSPECIFIED.into();
 
         Some(path::Tuple {
             remote_address,

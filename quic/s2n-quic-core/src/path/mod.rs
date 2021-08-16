@@ -120,7 +120,7 @@ impl Handle for RemoteAddress {
 
     #[inline]
     fn local_address(&self) -> LocalAddress {
-        SocketAddressV4::new([0, 0, 0, 0], 0).into()
+        SocketAddressV4::UNSPECIFIED.into()
     }
 
     #[inline]
@@ -143,7 +143,7 @@ pub struct Tuple {
 impl Tuple {
     #[inline]
     pub fn from_remote_address(remote_address: RemoteAddress) -> Self {
-        let local_address = SocketAddressV4::new([0, 0, 0, 0], 0).into();
+        let local_address = SocketAddressV4::UNSPECIFIED.into();
         Self {
             remote_address,
             local_address,
