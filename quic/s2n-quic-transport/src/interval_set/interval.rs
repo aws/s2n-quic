@@ -57,17 +57,20 @@ impl<T: IntervalBound> Interval<T> {
         self.end.step_up_saturating()
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         // Interval always has at least 1
         let interval_base_len = 1;
         interval_base_len + self.start.steps_between(&self.end)
     }
 
+    #[inline]
     pub fn set_len(&mut self, len: usize) {
         debug_assert_ne!(len, 0, "Intervals cannot be 0 length");
         self.end = self.start.steps_between_len(len);
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
         // Interval always has at least 1
         false
@@ -88,38 +91,45 @@ impl<T: IntervalBound> IntoIterator for &Interval<T> {
     type IntoIter = Interval<T>;
     type Item = T;
 
+    #[inline]
     fn into_iter(self) -> Self::IntoIter {
         *self
     }
 }
 
 impl<T> RangeBounds<T> for Interval<T> {
+    #[inline]
     fn start_bound(&self) -> Bound<&T> {
         Bound::Included(&self.start)
     }
 
+    #[inline]
     fn end_bound(&self) -> Bound<&T> {
         Bound::Included(&self.end)
     }
 }
 
 impl<T> RangeBounds<T> for &Interval<T> {
+    #[inline]
     fn start_bound(&self) -> Bound<&T> {
         Bound::Included(&self.start)
     }
 
+    #[inline]
     fn end_bound(&self) -> Bound<&T> {
         Bound::Included(&self.end)
     }
 }
 
 impl<T: Ord> PartialEq<T> for Interval<T> {
+    #[inline]
     fn eq(&self, value: &T) -> bool {
         self.partial_cmp(value) == Some(Ordering::Equal)
     }
 }
 
 impl<T: Ord> PartialOrd<T> for Interval<T> {
+    #[inline]
     fn partial_cmp(&self, value: &T) -> Option<Ordering> {
         use Ordering::*;
         Some(match (self.start.cmp(value), self.end.cmp(value)) {
@@ -134,6 +144,7 @@ impl<T: Ord> PartialOrd<T> for Interval<T> {
 }
 
 impl<T: IntervalBound> From<&Interval<T>> for Interval<T> {
+    #[inline]
     fn from(interval: &Interval<T>) -> Self {
         *interval
     }
@@ -142,6 +153,7 @@ impl<T: IntervalBound> From<&Interval<T>> for Interval<T> {
 macro_rules! range_impls {
     ($range_ty:ident, $into:expr, $from:expr) => {
         impl<T: IntervalBound> From<Interval<T>> for $range_ty<T> {
+            #[inline]
             fn from(range: Interval<T>) -> Self {
                 #[allow(clippy::redundant_closure_call)]
                 ($into)(range)
@@ -149,6 +161,7 @@ macro_rules! range_impls {
         }
 
         impl<T: IntervalBound> From<&Interval<T>> for $range_ty<T> {
+            #[inline]
             fn from(range: &Interval<T>) -> Self {
                 #[allow(clippy::redundant_closure_call)]
                 ($into)(*range)
@@ -156,6 +169,7 @@ macro_rules! range_impls {
         }
 
         impl<T: IntervalBound> From<$range_ty<T>> for Interval<T> {
+            #[inline]
             fn from(range: $range_ty<T>) -> Self {
                 #[allow(clippy::redundant_closure_call)]
                 ($from)(range)
@@ -163,6 +177,7 @@ macro_rules! range_impls {
         }
 
         impl<'a, T: IntervalBound> From<&'a $range_ty<T>> for Interval<T> {
+            #[inline]
             fn from(range: &'a $range_ty<T>) -> Self {
                 #[allow(clippy::redundant_closure_call)]
                 ($from)(range.clone())
@@ -170,18 +185,21 @@ macro_rules! range_impls {
         }
 
         impl<T: IntervalBound> PartialEq<$range_ty<T>> for Interval<T> {
+            #[inline]
             fn eq(&self, other: &$range_ty<T>) -> bool {
                 self.partial_cmp(other) == Some(Ordering::Equal)
             }
         }
 
         impl<T: IntervalBound> PartialEq<$range_ty<T>> for &Interval<T> {
+            #[inline]
             fn eq(&self, other: &$range_ty<T>) -> bool {
                 self.partial_cmp(other) == Some(Ordering::Equal)
             }
         }
 
         impl<T: IntervalBound> PartialOrd<$range_ty<T>> for Interval<T> {
+            #[inline]
             fn partial_cmp(&self, other: &$range_ty<T>) -> Option<Ordering> {
                 let other: Self = other.into();
                 self.partial_cmp(&other)
@@ -189,6 +207,7 @@ macro_rules! range_impls {
         }
 
         impl<T: IntervalBound> PartialOrd<$range_ty<T>> for &Interval<T> {
+            #[inline]
             fn partial_cmp(&self, other: &$range_ty<T>) -> Option<Ordering> {
                 let other: Interval<_> = other.into();
                 (*self).partial_cmp(&other)
@@ -218,6 +237,7 @@ range_impls!(
 impl<T: IntervalBound> Iterator for Interval<T> {
     type Item = T;
 
+    #[inline]
     fn next(&mut self) -> Option<T> {
         let current = self.start;
         if current > self.end {
@@ -233,6 +253,7 @@ impl<T: IntervalBound> Iterator for Interval<T> {
 }
 
 impl<T: IntervalBound> DoubleEndedIterator for Interval<T> {
+    #[inline]
     fn next_back(&mut self) -> Option<T> {
         let current = self.end;
         if current < self.start {
@@ -271,19 +292,23 @@ pub trait IntervalBound: Copy + Ord + Sized {
 macro_rules! integer_bounds {
     ($type:ident) => {
         impl IntervalBound for $type {
+            #[inline]
             fn step_up(self) -> Option<Self> {
                 self.checked_add(1)
             }
 
+            #[inline]
             fn step_down(self) -> Option<Self> {
                 self.checked_sub(1)
             }
 
+            #[inline]
             fn steps_between(&self, upper: &Self) -> usize {
                 use core::convert::TryInto;
                 (upper - self).try_into().unwrap_or(core::usize::MAX)
             }
 
+            #[inline]
             fn steps_between_len(&self, len: usize) -> Self {
                 use core::convert::TryInto;
                 let len: Self = (len - 1).try_into().unwrap();
@@ -309,40 +334,48 @@ integer_bounds!(isize);
 use s2n_quic_core::{packet::number::PacketNumber, varint::VarInt};
 
 impl IntervalBound for VarInt {
+    #[inline]
     fn step_up(self) -> Option<Self> {
         self.checked_add(Self::from_u8(1))
     }
 
+    #[inline]
     fn step_down(self) -> Option<Self> {
         self.checked_sub(Self::from_u8(1))
     }
 
+    #[inline]
     fn steps_between(&self, upper: &Self) -> usize {
         <u64 as IntervalBound>::steps_between(&*self, &*upper)
     }
 
+    #[inline]
     fn steps_between_len(&self, len: usize) -> Self {
         *self + (len - 1)
     }
 }
 
 impl IntervalBound for PacketNumber {
+    #[inline]
     fn step_up(self) -> Option<Self> {
         self.next()
     }
 
+    #[inline]
     fn step_down(self) -> Option<Self> {
         let space = self.space();
         let value = PacketNumber::as_varint(self);
         Some(space.new_packet_number(value.step_down()?))
     }
 
+    #[inline]
     fn steps_between(&self, upper: &Self) -> usize {
         let lower = PacketNumber::as_varint(*self);
         let upper = PacketNumber::as_varint(*upper);
         lower.steps_between(&upper)
     }
 
+    #[inline]
     fn steps_between_len(&self, len: usize) -> Self {
         let start = PacketNumber::as_varint(*self);
         let end = start.steps_between_len(len);

@@ -295,6 +295,7 @@ impl<T: IntervalBound> IntervalSet<T> {
     /// assert!(set.contains(&3));
     /// assert!(!set.contains(&5));
     /// ```
+    #[inline]
     pub fn insert<R: RangeBounds<T>>(&mut self, interval: R) -> Result<(), IntervalSetError> {
         let interval = Interval::from_range_bounds(interval)?;
 
@@ -324,6 +325,7 @@ impl<T: IntervalBound> IntervalSet<T> {
     /// assert!(set.contains(&3));
     /// assert!(!set.contains(&5));
     /// ```
+    #[inline]
     pub fn insert_front<R: RangeBounds<T>>(&mut self, interval: R) -> Result<(), IntervalSetError> {
         let interval = Interval::from_range_bounds(interval)?;
 
@@ -351,6 +353,7 @@ impl<T: IntervalBound> IntervalSet<T> {
     /// assert!(!set.contains(&0));
     /// assert!(!set.contains(&2));
     /// ```
+    #[inline]
     pub fn insert_value(&mut self, value: T) -> Result<(), IntervalSetError> {
         self.insert((Bound::Included(value), Bound::Included(value)))
     }
@@ -369,6 +372,7 @@ impl<T: IntervalBound> IntervalSet<T> {
     /// a.union(&b);
     /// assert_eq!(a.iter().collect::<Vec<_>>(), (0..8).collect::<Vec<_>>());
     /// ```
+    #[inline]
     pub fn union(&mut self, other: &Self) -> Result<(), IntervalSetError> {
         if self.intervals.is_empty() {
             self.intervals = other.intervals.clone();
@@ -389,6 +393,7 @@ impl<T: IntervalBound> IntervalSet<T> {
     /// assert!(set.remove(0..4).is_ok());
     /// assert!(set.is_empty());
     /// ```
+    #[inline]
     pub fn remove<R: RangeBounds<T>>(&mut self, interval: R) -> Result<(), IntervalSetError> {
         let interval = Interval::from_range_bounds(interval)?;
 
@@ -415,6 +420,7 @@ impl<T: IntervalBound> IntervalSet<T> {
     /// assert!(set.remove_value(1).is_ok());
     /// assert!(!set.contains(&1));
     /// ```
+    #[inline]
     pub fn remove_value(&mut self, value: T) -> Result<(), IntervalSetError> {
         self.remove((Bound::Included(value), Bound::Included(value)))
     }
@@ -433,6 +439,7 @@ impl<T: IntervalBound> IntervalSet<T> {
     /// assert!(set_a.difference(&set_b).is_ok());
     /// assert_eq!(set_a.iter().collect::<Vec<_>>(), vec![0, 1, 2, 3, 9, 10]);
     /// ```
+    #[inline]
     pub fn difference(&mut self, other: &Self) -> Result<(), IntervalSetError> {
         if self.intervals.is_empty() {
             return Ok(());
@@ -455,6 +462,7 @@ impl<T: IntervalBound> IntervalSet<T> {
     /// assert!(set_a.intersection(&set_b).is_ok());
     /// assert_eq!(set_a.iter().collect::<Vec<_>>(), vec![4, 5, 6, 7, 8]);
     /// ```
+    #[inline]
     pub fn intersection(&mut self, other: &Self) -> Result<(), IntervalSetError> {
         if self.is_empty() {
             return Ok(());
@@ -486,6 +494,7 @@ impl<T: IntervalBound> IntervalSet<T> {
     /// let intersection = set_a.intersection_iter(&set_b).flatten();
     /// assert_eq!(intersection.collect::<Vec<_>>(), vec![4, 5, 6, 7, 8]);
     /// ```
+    #[inline]
     pub fn intersection_iter<'a>(&'a self, other: &'a Self) -> Intersection<'a, T> {
         Intersection::new(&self.intervals, &other.intervals)
     }
@@ -558,11 +567,13 @@ impl<T: IntervalBound> IntervalSet<T> {
     /// assert!(set.insert(0..5).is_ok());
     /// assert_eq!(set.contains(&1), true);
     /// ```
+    #[inline]
     pub fn contains(&self, value: &T) -> bool {
         self.binary_search_with(value, |_index| true, |_index| false, |_index| false)
     }
 
     /// Internal function for applying set operations
+    #[inline]
     fn set_operation<
         F: Fn(
             &mut VecDeque<Interval<T>>,
@@ -603,6 +614,7 @@ impl<T: IntervalBound> IntervalSet<T> {
 
     /// Internal function for locating the optimal starting index for
     /// interval comparison
+    #[inline]
     fn index_for(&self, interval: &Interval<T>) -> usize {
         // it's faster just to iterate through the set for smaller lengths
         if self.interval_len() < 16 {
@@ -755,6 +767,7 @@ pub struct Iter<'a, T> {
 impl<'a, T: IntervalBound> Iterator for Iter<'a, T> {
     type Item = T;
 
+    #[inline]
     fn next(&mut self) -> Option<T> {
         loop {
             if let Some(item) = self.head.as_mut().and_then(Iterator::next) {
@@ -765,6 +778,7 @@ impl<'a, T: IntervalBound> Iterator for Iter<'a, T> {
         }
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let (lower, _) = self.iter.size_hint();
         // Computing the upper length would require iterating through all of the ranges
@@ -774,6 +788,7 @@ impl<'a, T: IntervalBound> Iterator for Iter<'a, T> {
 }
 
 impl<'a, T: IntervalBound> DoubleEndedIterator for Iter<'a, T> {
+    #[inline]
     fn next_back(&mut self) -> Option<T> {
         loop {
             if let Some(item) = self.tail.as_mut().and_then(DoubleEndedIterator::next_back) {
@@ -800,16 +815,19 @@ macro_rules! impl_iterator_conversions {
         impl<'a, T: IntervalBound> Iterator for $iter<'a, T> {
             type Item = $item<T>;
 
+            #[inline]
             fn next(&mut self) -> Option<Self::Item> {
                 self.iter.next().map(|interval| interval.into())
             }
 
+            #[inline]
             fn size_hint(&self) -> (usize, Option<usize>) {
                 self.iter.size_hint()
             }
         }
 
         impl<'a, T: IntervalBound> DoubleEndedIterator for $iter<'a, T> {
+            #[inline]
             fn next_back(&mut self) -> Option<Self::Item> {
                 self.iter.next_back().map(|interval| interval.into())
             }
@@ -821,6 +839,7 @@ macro_rules! impl_iterator_conversions {
         }
 
         impl<T: IntervalBound> FromIterator<$item<T>> for IntervalSet<T> {
+            #[inline]
             fn from_iter<I: IntoIterator<Item = $item<T>>>(intervals: I) -> Self {
                 let intervals = intervals.into_iter();
                 let mut set = Self::with_capacity(intervals.size_hint().0);
@@ -830,6 +849,7 @@ macro_rules! impl_iterator_conversions {
         }
 
         impl<'a, T: 'a + IntervalBound> FromIterator<&'a $item<T>> for IntervalSet<T> {
+            #[inline]
             fn from_iter<I: IntoIterator<Item = &'a $item<T>>>(intervals: I) -> Self {
                 let intervals = intervals.into_iter();
                 let mut set = Self::with_capacity(intervals.size_hint().0);
@@ -839,6 +859,7 @@ macro_rules! impl_iterator_conversions {
         }
 
         impl<T: IntervalBound> Extend<$item<T>> for IntervalSet<T> {
+            #[inline]
             fn extend<I: IntoIterator<Item = $item<T>>>(&mut self, intervals: I) {
                 for interval in intervals {
                     if self.insert(interval).is_err() {
@@ -849,6 +870,7 @@ macro_rules! impl_iterator_conversions {
         }
 
         impl<'a, T: 'a + IntervalBound> Extend<&'a $item<T>> for IntervalSet<T> {
+            #[inline]
             fn extend<I: IntoIterator<Item = &'a $item<T>>>(&mut self, intervals: I) {
                 for interval in intervals {
                     let interval: Interval<T> = interval.into();
@@ -860,6 +882,7 @@ macro_rules! impl_iterator_conversions {
         }
 
         impl<T: IntervalBound> From<$item<T>> for IntervalSet<T> {
+            #[inline]
             fn from(interval: $item<T>) -> Self {
                 let mut set = Self::with_capacity(1);
                 let _ = set.insert(interval);
@@ -874,6 +897,7 @@ impl_iterator_conversions!(Range, RangeIter);
 impl_iterator_conversions!(RangeInclusive, RangeInclusiveIter);
 
 impl<T: IntervalBound> FromIterator<T> for IntervalSet<T> {
+    #[inline]
     fn from_iter<I: IntoIterator<Item = T>>(values: I) -> Self {
         let values = values.into_iter();
         let mut set = Self::with_capacity(values.size_hint().0);
@@ -887,6 +911,7 @@ impl<T: IntervalBound> FromIterator<T> for IntervalSet<T> {
 }
 
 impl<'a, T: 'a + IntervalBound> FromIterator<&'a T> for IntervalSet<T> {
+    #[inline]
     fn from_iter<I: IntoIterator<Item = &'a T>>(values: I) -> Self {
         values.into_iter().cloned().collect()
     }
