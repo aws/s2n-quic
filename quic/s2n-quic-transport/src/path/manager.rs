@@ -13,7 +13,6 @@ use s2n_quic_core::{
     connection::id::AsEvent as _,
     event, frame,
     inet::{ip::AsEvent as _, DatagramInfo, SocketAddress},
-    packet,
     packet::number::PacketNumberSpace,
     path::MaxMtu,
     random,
@@ -177,26 +176,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     /// transmission.
     pub fn paths_pending_validation(&mut self) -> PathsPendingValidation<CCE> {
         PathsPendingValidation::new(self)
-    }
-
-    /// Checks if the peer has started using a different destination Connection Id.
-    ///
-    /// The CleartextShort packet guarantees the packet has been validated
-    /// (authenticated and de-duped).
-    pub fn process_local_connection_id(
-        &mut self,
-        path_id: Id,
-        packet: &packet::short::CleartextShort<'_>,
-        local_connection_id: &connection::LocalId,
-    ) {
-        debug_assert_eq!(
-            packet.destination_connection_id(),
-            local_connection_id.as_ref()
-        );
-
-        if &self[path_id].local_connection_id != local_connection_id {
-            self[path_id].local_connection_id = *local_connection_id;
-        }
     }
 
     /// Called when a datagram is received on a connection
