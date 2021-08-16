@@ -194,6 +194,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     ) -> Result<(Id, bool), transport::Error> {
         if let Some((id, path)) = self.path_mut(&datagram.remote_address) {
             let unblocked = path.on_bytes_received(datagram.payload_len);
+
             return Ok((id, unblocked));
         }
 

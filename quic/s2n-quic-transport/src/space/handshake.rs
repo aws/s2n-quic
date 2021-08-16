@@ -147,7 +147,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         let packet = Handshake {
             version: context.quic_version,
             destination_connection_id,
-            source_connection_id: context.source_connection_id.as_ref(),
+            source_connection_id: context.path_manager[context.path_id].local_connection_id,
             packet_number,
             payload,
         };
@@ -200,7 +200,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         let packet = Handshake {
             version: context.quic_version,
             destination_connection_id,
-            source_connection_id: context.source_connection_id.as_ref(),
+            source_connection_id: context.path_manager[context.path_id].local_connection_id,
             packet_number,
             payload,
         };

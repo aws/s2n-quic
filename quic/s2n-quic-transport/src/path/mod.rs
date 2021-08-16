@@ -12,7 +12,7 @@ pub use manager::*;
 /// re-export core
 pub use s2n_quic_core::path::*;
 use s2n_quic_core::{
-    frame,
+    frame, packet,
     time::{timer, Timestamp},
 };
 
@@ -214,6 +214,25 @@ impl<CC: CongestionController> Path<CC> {
     #[inline]
     pub fn on_handshake_packet(&mut self) {
         self.on_validated();
+    }
+
+    /// Checks if the peer has started using a different destination Connection Id.
+    ///
+    /// The CleartextShort packet guarantees the packet has been validated
+    /// (authenticated and de-duped).
+    pub fn on_process_local_connection_id(
+        &mut self,
+        packet: &packet::short::CleartextShort<'_>,
+        local_connection_id: &connection::LocalId,
+    ) {
+        debug_assert_eq!(
+            packet.destination_connection_id(),
+            local_connection_id.as_ref()
+        );
+
+        if &self.local_connection_id != local_connection_id {
+            self.local_connection_id = *local_connection_id;
+        }
     }
 
     /// Called when the path is validated

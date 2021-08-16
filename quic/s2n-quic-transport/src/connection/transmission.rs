@@ -23,7 +23,6 @@ pub struct ConnectionTransmissionContext<'a, 'sub, Config: endpoint::Config> {
     pub path_id: path::Id,
     pub path_manager: &'a mut path::Manager<Config::CongestionControllerEndpoint>,
     pub local_id_registry: &'a mut connection::LocalIdRegistry,
-    pub source_connection_id: &'a connection::LocalId,
     pub outcome: &'a mut transmission::Outcome,
     pub ecn: ExplicitCongestionNotification,
     pub min_packet_len: Option<usize>,

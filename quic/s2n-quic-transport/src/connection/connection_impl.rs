@@ -136,8 +136,6 @@ impl From<connection::Error> for ConnectionState {
 pub struct ConnectionImpl<Config: endpoint::Config> {
     /// The [`Connection`]s internal identifier
     internal_connection_id: InternalConnectionId,
-    /// The connection ID to send packets from
-    local_connection_id: connection::LocalId,
     /// The local ID registry which should be utilized by the connection
     local_id_registry: connection::LocalIdRegistry,
     /// The timers which are used within the connection
@@ -195,7 +193,6 @@ macro_rules! transmission_context {
             timestamp: $timestamp,
             path_id: $path_id,
             path_manager: &mut $self.path_manager,
-            source_connection_id: &$self.local_connection_id,
             local_id_registry: &mut $self.local_id_registry,
             outcome: $outcome,
             ecn: Default::default(),
@@ -327,7 +324,6 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
                             timestamp,
                             path_id,
                             path_manager,
-                            source_connection_id: &self.local_connection_id,
                             local_id_registry: &mut self.local_id_registry,
                             outcome,
                             ecn,
@@ -396,7 +392,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         Self {
             internal_connection_id: parameters.internal_connection_id,
-            local_connection_id: parameters.local_connection_id,
             local_id_registry: parameters.local_id_registry,
             timers: Default::default(),
             quic_version: parameters.quic_version,
@@ -1011,6 +1006,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 publisher,
             )?;
 
+            // Connection Ids are issued to the peer after the handshake is
+            // confirmed and the handshake space is discarded. Therefore only
+            // short packets need to be processed for local_connection_id changes.
+            self.path_manager[path_id]
+                .on_process_local_connection_id(&packet, &datagram.destination_connection_id);
+
             space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -1154,8 +1155,15 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 let constraint = self.path_manager.transmission_constraint();
 
                 interests.transmission = self.can_transmit(constraint);
-                interests.new_connection_id = self.local_id_registry.connection_id_interest()
-                    != connection::id::Interest::None;
+                interests.new_connection_id =
+                    // Only issue new Connection Ids to the peer when we know they won't be used
+                    // for Initial or Handshake packets.
+                    // This is important so that Connection Ids can't be linked to the
+                    // Application space.
+                    self.space_manager.initial().is_none()
+                    && self.space_manager.handshake().is_none()
+                    && self.local_id_registry.connection_id_interest()
+                        != connection::id::Interest::None;
             }
             ConnectionState::Closing => {
                 let constraint = self.path_manager.active_path().transmission_constraint();
