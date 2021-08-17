@@ -19,6 +19,7 @@ use s2n_quic_core::{
     connection::id::Generator,
     crypto::{tls, CryptoSuite},
     endpoint::{limits::Outcome, Limits},
+    event::Publisher as _,
     inet::{datagram, DatagramInfo},
     io::{rx, tx},
     packet::{initial::ProtectedInitial, ProtectedPacket},
@@ -349,8 +350,24 @@ impl<Cfg: Config> Endpoint<Cfg> {
             //# in a valid stateless reset token as a stateless reset, as other QUIC
             //# versions might allow the use of a long header.
 
-            // The packet may be a stateless reset, check before returning.
-            self.close_on_matching_stateless_reset(payload, timestamp);
+            // // The packet may be a stateless reset, check before returning.
+            let connection_id = self.close_on_matching_stateless_reset(payload, timestamp);
+
+            if connection_id.is_none() {
+                let mut publisher = event::PublisherSubscriber::new(
+                    event::builders::Meta {
+                        endpoint_type: Cfg::ENDPOINT_TYPE,
+                        group_id: 7, // TODO: figure out what connection id to use for logging
+                        timestamp,
+                    },
+                    None,
+                    self.config.context().event_subscriber,
+                );
+                publisher.on_datagram_dropped(event::builders::DatagramDropped {
+                    len: payload_len as u16,
+                });
+            }
+
             return;
         };
 

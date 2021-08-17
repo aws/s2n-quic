@@ -311,4 +311,11 @@ events!(
     struct DatagramReceived {
         pub len: u16,
     }
+
+    #[name = "transport:datagram_dropped"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.12
+    /// Datagram dropped
+    struct DatagramDropped {
+        pub len: u16,
+    }
 );
