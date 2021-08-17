@@ -134,7 +134,7 @@ impl<'a, Message: message::Message, B> Slice<'a, Message, B> {
     fn try_gso<M: tx::Message<Handle = Message::Handle>>(
         &mut self,
         mut message: M,
-    ) -> Result<Result<usize, M>, tx::Error> {
+    ) -> Result<Result<tx::Outcome, M>, tx::Error> {
         if !Message::SUPPORTS_GSO {
             return Ok(Err(message));
         }
@@ -225,7 +225,7 @@ impl<'a, Message: message::Message, B> Slice<'a, Message, B> {
                     self.flush_gso();
                 }
 
-                Ok(Ok(index))
+                Ok(Ok(tx::Outcome { len: size, index }))
             }
         }
     }
@@ -295,10 +295,10 @@ impl<
     fn push<M: tx::Message<Handle = Self::Handle>>(
         &mut self,
         message: M,
-    ) -> Result<usize, tx::Error> {
+    ) -> Result<tx::Outcome, tx::Error> {
         // first try to write a GSO payload
         let message = match self.try_gso(message)? {
-            Ok(index) => return Ok(index),
+            Ok(outcome) => return Ok(outcome),
             Err(message) => message,
         };
 
@@ -320,7 +320,7 @@ impl<
             });
         }
 
-        Ok(index)
+        Ok(tx::Outcome { len: size, index })
     }
 
     #[inline]

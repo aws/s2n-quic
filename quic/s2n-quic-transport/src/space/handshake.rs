@@ -170,12 +170,12 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         Ok((outcome, buffer))
     }
 
-    pub fn on_transmit_close<'a>(
+    pub(super) fn on_transmit_close<'a>(
         &mut self,
         context: &mut ConnectionTransmissionContext<Config>,
         connection_close: &ConnectionClose,
         buffer: EncoderBuffer<'a>,
-    ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
+    ) -> Result<(transmission::Outcome, EncoderBuffer<'a>), PacketEncodingError<'a>> {
         let packet_number = self.tx_packet_numbers.next();
 
         let packet_number_encoder = self.packet_number_encoder();
@@ -214,7 +214,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
             buffer,
         )?;
 
-        Ok(buffer)
+        Ok((outcome, buffer))
     }
 
     /// Signals the connection was previously blocked by anti-amplification limits

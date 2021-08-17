@@ -336,13 +336,6 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
                     .is_ok()
             {
                 count += 1;
-                publisher.on_packet_sent(event::builders::PacketSent {
-                    packet_header: event::builders::PacketHeader {
-                        packet_type: outcome.packet_number.as_event(),
-                        version: Some(self.quic_version),
-                    }
-                    .into(),
-                });
             }
         }
 
@@ -588,15 +581,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         .is_ok()
                 {
                     count += 1;
-                    // TODO this is wrong - multiple packets can be sent in the same
-                    // transmission
-                    publisher.on_packet_sent(event::builders::PacketSent {
-                        packet_header: event::builders::PacketHeader {
-                            packet_type: outcome.packet_number.as_event(),
-                            version: Some(self.quic_version),
-                        }
-                        .into(),
-                    });
                 }
 
                 if outcome.ack_elicitation.is_ack_eliciting() {
@@ -624,14 +608,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         .is_ok()
                 {
                     count += 1;
-                    publisher.on_packet_sent(event::builders::PacketSent {
-                        packet_header: event::builders::PacketHeader {
-                            packet_type: outcome.packet_number.as_event(),
-                            version: Some(self.quic_version),
-                        }
-                        .into(),
-                    });
-                };
+                }
 
                 // PathValidationOnly handles transmission on non-active paths. Transmission
                 // on the active path should be handled prior to this.
@@ -644,7 +621,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             }
             ConnectionState::Closing => {
                 let path = self.path_manager.active_path_mut();
-                if queue.push(self.close_sender.transmission(path)).is_ok() {
+
+                if queue
+                    .push(self.close_sender.transmission(path, publisher))
+                    .is_ok()
+                {
                     count += 1;
                 }
             }

@@ -7,6 +7,7 @@ use core::ops::Range;
 use s2n_quic_core::{
     connection,
     crypto::RetryKey,
+    event,
     inet::ExplicitCongestionNotification,
     io::tx,
     packet,
@@ -54,11 +55,28 @@ impl<Path: path::Handle> Dispatch<Path> {
         }
     }
 
-    pub fn on_transmit<Tx: tx::Queue<Handle = Path>>(&mut self, queue: &mut Tx) {
+    pub fn on_transmit<Tx: tx::Queue<Handle = Path>, Pub: event::Publisher>(
+        &mut self,
+        queue: &mut Tx,
+        publisher: &mut Pub,
+    ) {
         while let Some(transmission) = self.transmissions.pop_front() {
-            if queue.push(&transmission).is_err() {
-                self.transmissions.push_front(transmission);
-                return;
+            match queue.push(&transmission) {
+                Ok(tx::Outcome { len, .. }) => {
+                    publisher.on_packet_sent(event::builders::PacketSent {
+                        packet_header: event::builders::PacketHeader {
+                            packet_type: event::builders::retry_packet_type(),
+                            version: publisher.quic_version(),
+                        }
+                        .into(),
+                    });
+
+                    publisher.on_datagram_sent(event::builders::DatagramSent { len: len as u16 });
+                }
+                Err(_) => {
+                    self.transmissions.push_front(transmission);
+                    return;
+                }
             }
         }
     }

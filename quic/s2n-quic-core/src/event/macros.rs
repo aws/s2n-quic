@@ -305,6 +305,23 @@ macro_rules! common {
                     }
                 }
             )*
+
+            // TODO: find a more automated way to create and maintain these and other enum
+            // variants.
+            //
+            // The following functions exist since PacketType is a non_exhaustive enum
+            // and therefore its variants cannot be created outside this crate.
+            pub fn version_packet_type() -> common::PacketType {
+                common::PacketType::VersionNegotiation
+            }
+
+            pub fn retry_packet_type() -> common::PacketType {
+                common::PacketType::Retry
+            }
+
+            pub fn stateless_reset_packet_type() -> common::PacketType {
+                common::PacketType::StatelessReset
+            }
         }
     };
 }

@@ -5,7 +5,6 @@ use crate::{
     frame::ack_elicitation::{AckElicitable, AckElicitation},
     packet::number,
 };
-use core::ops;
 
 pub mod constraint;
 pub mod mode;
@@ -35,14 +34,5 @@ impl Outcome {
 impl AckElicitable for Outcome {
     fn ack_elicitation(&self) -> AckElicitation {
         self.ack_elicitation
-    }
-}
-
-impl ops::AddAssign for Outcome {
-    fn add_assign(&mut self, rhs: Self) {
-        self.ack_elicitation |= rhs.ack_elicitation;
-        self.is_congestion_controlled |= rhs.is_congestion_controlled;
-        self.bytes_sent += rhs.bytes_sent;
-        self.packet_number = rhs.packet_number;
     }
 }
