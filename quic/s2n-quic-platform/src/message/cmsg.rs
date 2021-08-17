@@ -113,6 +113,7 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
             (libc::IPPROTO_IP, libc::IP_TOS) | (libc::IPPROTO_IP, libc::IP_RECVTOS) => unsafe {
                 result.ecn = ExplicitCongestionNotification::new(decode_value::<u8>(cmsg));
             },
+            #[cfg(feature = "ipv6")]
             (libc::IPPROTO_IPV6, libc::IPV6_TCLASS) => unsafe {
                 result.ecn =
                     ExplicitCongestionNotification::new(decode_value::<libc::c_int>(cmsg) as u8);

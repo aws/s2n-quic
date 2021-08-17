@@ -20,10 +20,6 @@ use s2n_quic_core::{
 use std::{convert::TryInto, io, io::ErrorKind};
 use tokio::{net::UdpSocket, runtime::Handle, time::Instant};
 
-#[cfg(unix)]
-#[allow(unused_imports)]
-use std::os::unix::io::AsRawFd;
-
 pub type PathHandle = socket::Handle;
 
 #[derive(Debug)]
@@ -150,6 +146,7 @@ impl Io {
         //# DPLPMTUD to control the size of packets that are sent by a flow.
         #[cfg(target_os = "linux")]
         {
+            use std::os::unix::io::AsRawFd;
             // IP_PMTUDISC_PROBE setting will set the DF (Don't Fragment) flag
             // while also ignoring the Path MTU. This means packets will not
             // be fragmented, and the EMSGSIZE error will not be returned for
@@ -174,6 +171,7 @@ impl Io {
         // Set up the RX socket to pass information about the local address and interface
         #[cfg(s2n_quic_platform_pktinfo)]
         {
+            use std::os::unix::io::AsRawFd;
             let enabled: libc::c_int = 1;
 
             if cfg!(feature = "ipv6") {
