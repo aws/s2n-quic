@@ -41,7 +41,11 @@ jobs:
           echo "::set-output name=tags::${TAGS}"
 
       - name: Login to GitHub Packages
-        run: docker login https://ghcr.io -u ${{ github.actor }} --password-stdin <<< ${{ github.token }}
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push image
         uses: docker/build-push-action@v2
@@ -49,6 +53,3 @@ jobs:
           tags: ${{ steps.tags.outputs.tags }}
           file: quic/s2n-quic-qns/etc/Dockerfile.build
           push: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') }}
-
-      - name: Logout of GitHub Packages
-        run: docker logout https://ghcr.io
