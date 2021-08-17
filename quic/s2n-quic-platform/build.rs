@@ -11,21 +11,36 @@ fn main() -> Result<(), Error> {
         if let Some(name) = path.file_stem() {
             println!("cargo:rerun-if-changed={}", path.display());
             if env.check(&path)? {
-                println!(
-                    "cargo:rustc-cfg=s2n_quic_platform_{}",
-                    name.to_str().expect("valid feature name")
-                );
+                supports(name.to_str().expect("valid feature name"));
             }
+        }
+    }
+
+    match env.target_os.as_str() {
+        "linux" => {
+            supports("gso");
+            supports("pktinfo");
+        }
+        "macos" => {
+            supports("pktinfo");
+        }
+        _ => {
+            // TODO others
         }
     }
 
     Ok(())
 }
 
+fn supports(name: &str) {
+    println!("cargo:rustc-cfg=s2n_quic_platform_{}", name);
+}
+
 struct Env {
     rustc: String,
     out_dir: String,
     target: String,
+    target_os: String,
 }
 
 impl Env {
@@ -35,6 +50,7 @@ impl Env {
             rustc: env("RUSTC"),
             out_dir: env("OUT_DIR"),
             target: env("TARGET"),
+            target_os: env("CARGO_CFG_TARGET_OS"),
         }
     }
 

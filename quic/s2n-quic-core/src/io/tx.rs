@@ -97,43 +97,8 @@ pub trait Message {
     fn write_payload(&mut self, buffer: &mut [u8]) -> usize;
 }
 
-impl<Payload: AsRef<[u8]>> Message for (path::RemoteAddress, Payload) {
-    type Handle = path::RemoteAddress;
-
-    fn path_handle(&self) -> &Self::Handle {
-        &self.0
-    }
-
-    fn ecn(&mut self) -> ExplicitCongestionNotification {
-        Default::default()
-    }
-
-    fn delay(&mut self) -> Duration {
-        Default::default()
-    }
-
-    fn ipv6_flow_label(&mut self) -> u32 {
-        0
-    }
-
-    fn can_gso(&self) -> bool {
-        true
-    }
-
-    fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
-        let payload = self.1.as_ref();
-        let len = payload.len();
-        if let Some(buffer) = buffer.get_mut(..len) {
-            buffer.copy_from_slice(payload);
-            len
-        } else {
-            0
-        }
-    }
-}
-
-impl<Payload: AsRef<[u8]>> Message for (path::Tuple, Payload) {
-    type Handle = path::Tuple;
+impl<Handle: path::Handle, Payload: AsRef<[u8]>> Message for (Handle, Payload) {
+    type Handle = Handle;
 
     fn path_handle(&self) -> &Self::Handle {
         &self.0

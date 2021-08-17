@@ -1,5 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
+
+use core::mem::{align_of, size_of};
 use s2n_quic_core::inet::{AncillaryData, ExplicitCongestionNotification};
 
 /// The maximum number of bytes allocated for cmsg data
@@ -7,6 +9,34 @@ use s2n_quic_core::inet::{AncillaryData, ExplicitCongestionNotification};
 /// This should be enough for UDP_SEGMENT + IP_TOS + IP_PKTINFO. It may need to be increased
 /// to allow for future control messages.
 pub const MAX_LEN: usize = 128;
+
+#[test]
+fn max_len_test() {
+    let mut len = 0;
+
+    unsafe {
+        // UDP_SEGMENT
+        len += libc::CMSG_LEN(size_of::<u16>() as _) as usize;
+
+        // IP_TOS
+        len += libc::CMSG_LEN(size_of::<libc::c_int>() as _) as usize;
+
+        // IP_PKTINFO
+        #[cfg(s2n_quic_platform_pktinfo)]
+        {
+            len += libc::CMSG_LEN(
+                size_of::<libc::in_pktinfo>().max(size_of::<libc::in6_pktinfo>()) as _,
+            ) as usize;
+        }
+    }
+
+    // We use the MAX_LEN to determine if the cmsg has been populated at all so the actual
+    // len must be less than it, rather than less than or equal.
+    assert!(
+        len < MAX_LEN,
+        "required len should be less than maximum allocated len"
+    );
+}
 
 pub trait Encoder {
     /// Encodes the given value as a control message in the cmsg buffer.
@@ -18,9 +48,12 @@ pub trait Encoder {
 
 impl Encoder for libc::msghdr {
     fn encode_cmsg<T: Copy + ?Sized>(&mut self, level: libc::c_int, ty: libc::c_int, value: T) {
-        use core::mem::{align_of, size_of};
-
         unsafe {
+            // If it's equal to the max len it means it's empty so reset it to 0
+            if self.msg_controllen as usize == MAX_LEN {
+                self.msg_controllen = 0;
+            }
+
             let cmsg =
                 // Safety: the msg_control buffer should always be allocated to MAX_LEN
                 core::slice::from_raw_parts_mut(self.msg_control as *mut u8, MAX_LEN);
@@ -69,19 +102,43 @@ impl Encoder for libc::msghdr {
 }
 
 /// Decodes all recognized control messages in the given `msghdr` into `AncillaryData`
+#[inline]
 pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
     let mut result = AncillaryData::default();
     let cmsg_iter = unsafe { Iter::new(msghdr) };
 
     for cmsg in cmsg_iter {
-        match (cmsg.cmsg_type, cmsg.cmsg_level) {
+        match (cmsg.cmsg_level, cmsg.cmsg_type) {
             // Linux uses IP_TOS, FreeBSD uses IP_RECVTOS
             (libc::IPPROTO_IP, libc::IP_TOS) | (libc::IPPROTO_IP, libc::IP_RECVTOS) => unsafe {
                 result.ecn = ExplicitCongestionNotification::new(decode_value::<u8>(cmsg));
             },
+            #[cfg(feature = "ipv6")]
             (libc::IPPROTO_IPV6, libc::IPV6_TCLASS) => unsafe {
                 result.ecn =
                     ExplicitCongestionNotification::new(decode_value::<libc::c_int>(cmsg) as u8);
+            },
+            #[cfg(s2n_quic_platform_pktinfo)]
+            (libc::IPPROTO_IP, libc::IP_PKTINFO) => unsafe {
+                let pkt_info = decode_value::<libc::in_pktinfo>(cmsg);
+                let local_address = pkt_info.ipi_addr.s_addr.to_ne_bytes();
+                // TODO set the correct port
+                //      https://github.com/awslabs/s2n-quic/issues/816
+                let port = 0;
+                let local_address = s2n_quic_core::inet::SocketAddressV4::new(local_address, port);
+                result.local_address = local_address.into();
+                result.local_interface = Some(pkt_info.ipi_ifindex as _);
+            },
+            #[cfg(all(s2n_quic_platform_pktinfo, feature = "ipv6"))]
+            (libc::IPPROTO_IPV6, libc::IPV6_PKTINFO) => unsafe {
+                let pkt_info = decode_value::<libc::in6_pktinfo>(cmsg);
+                let local_address = pkt_info.ipi6_addr.s6_addr;
+                // TODO set the correct port
+                //      https://github.com/awslabs/s2n-quic/issues/816
+                let port = 0;
+                let local_address = s2n_quic_core::inet::SocketAddressV6::new(local_address, port);
+                result.local_address = local_address.into();
+                result.local_interface = Some(pkt_info.ipi6_ifindex as _);
             },
             _ => {}
         }
