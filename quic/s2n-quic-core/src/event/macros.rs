@@ -226,15 +226,6 @@ macro_rules! common {
                 pub timestamp: Timestamp,
             }
 
-            impl Subject {
-                pub fn new(id: Option<u64>) -> Self {
-                    match id {
-                        Some(id) => Subject::Connection(id),
-                        None => Subject::Endpoint,
-                    }
-                }
-            }
-
             $(
                 $(#[$struct_attrs])*
                 #[non_exhaustive]

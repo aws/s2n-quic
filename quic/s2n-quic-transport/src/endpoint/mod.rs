@@ -137,9 +137,9 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
             let mut publisher = event::PublisherSubscriber::new(
                 event::builders::Meta {
                     endpoint_type: Cfg::ENDPOINT_TYPE,
-                    subject: event::common::Subject::new(Some(
+                    subject: event::common::Subject::Connection(
                         connection.internal_connection_id().into(),
-                    )),
+                    ),
                     timestamp,
                 },
                 Some(connection.quic_version()),
@@ -193,9 +193,9 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                 let mut publisher = event::PublisherSubscriber::new(
                     event::builders::Meta {
                         endpoint_type: Cfg::ENDPOINT_TYPE,
-                        subject: event::common::Subject::new(Some(
+                        subject: event::common::Subject::Connection(
                             conn.internal_connection_id().into(),
-                        )),
+                        ),
                         timestamp,
                     },
                     Some(conn.quic_version()),
@@ -359,7 +359,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 let mut publisher = event::PublisherSubscriber::new(
                     event::builders::Meta {
                         endpoint_type: Cfg::ENDPOINT_TYPE,
-                        subject: event::common::Subject::new(None),
+                        subject: event::common::Subject::Endpoint,
                         timestamp,
                     },
                     None,
@@ -376,7 +376,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let mut publisher = event::PublisherSubscriber::new(
             event::builders::Meta {
                 endpoint_type: Cfg::ENDPOINT_TYPE,
-                subject: event::common::Subject::new(None),
+                subject: event::common::Subject::Endpoint,
                 timestamp,
             },
             packet.version(),
@@ -426,9 +426,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 let mut publisher = event::PublisherSubscriber::new(
                     event::builders::Meta {
                         endpoint_type: Cfg::ENDPOINT_TYPE,
-                        subject: event::common::Subject::new(Some(
+                        subject: event::common::Subject::Connection(
                             conn.internal_connection_id().into(),
-                        )),
+                        ),
                         timestamp,
                     },
                     Some(conn.quic_version()),
@@ -725,9 +725,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
             let mut publisher = event::PublisherSubscriber::new(
                 event::builders::Meta {
                     endpoint_type: Cfg::ENDPOINT_TYPE,
-                    subject: event::common::Subject::new(Some(
+                    subject: event::common::Subject::Connection(
                         conn.internal_connection_id().into(),
-                    )),
+                    ),
                     timestamp,
                 },
                 Some(conn.quic_version()),
@@ -754,9 +754,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
             let mut publisher = event::PublisherSubscriber::new(
                 event::builders::Meta {
                     endpoint_type: Cfg::ENDPOINT_TYPE,
-                    subject: event::common::Subject::new(Some(
+                    subject: event::common::Subject::Connection(
                         conn.internal_connection_id().into(),
-                    )),
+                    ),
                     timestamp,
                 },
                 Some(conn.quic_version()),
