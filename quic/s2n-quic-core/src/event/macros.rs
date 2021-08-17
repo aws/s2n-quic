@@ -200,9 +200,13 @@ macro_rules! common {
                 $(#[$enum_attr:meta])*
                 $enum_variant: ident
                     $({
-                        $( $enum_field:ident: $enum_field_type:ty ),*
+                        $( $enum_struct_field:ident: $enum_struct_field_type:ty ),*
                         $(,)?
                     })?
+                    $(
+                        ($enum_new_type_field_type:ty)
+                        $(,)?
+                    )?
                 ,
             )*
         }
@@ -214,17 +218,21 @@ macro_rules! common {
 
             use super::*;
 
-            //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#4
-            //# When the qlog "group_id" field is used, it is recommended to use
-            //# QUIC's Original Destination Connection ID (ODCID, the CID chosen by
-            //# the client when first contacting the server)
             #[non_exhaustive]
             #[derive(Clone, Debug)]
             pub struct Meta {
                 pub endpoint_type: endpoint::Type,
-                // This maps to `InternalConnectionId` and is the stable identifier across CID changes.
-                pub group_id: u64,
+                pub subject: common::Subject,
                 pub timestamp: Timestamp,
+            }
+
+            impl Subject {
+                pub fn new(id: Option<u64>) -> Self {
+                    match id {
+                        Some(id) => Subject::Connection(id),
+                        None => Subject::Endpoint,
+                    }
+                }
             }
 
             $(
@@ -248,8 +256,11 @@ macro_rules! common {
                     $(#[$enum_attr])*
                     $enum_variant
                         $({
-                            $( $enum_field: $enum_field_type ),*
+                            $( $enum_struct_field: $enum_struct_field_type ),*
                         })?
+                        $(
+                            ($enum_new_type_field_type)
+                        )?
                     ,
                 )*
                 }
@@ -263,7 +274,7 @@ macro_rules! common {
             #[derive(Clone, Debug)]
             pub struct Meta {
                 pub endpoint_type: endpoint::Type,
-                pub group_id: u64,
+                pub subject: common::Subject,
                 pub timestamp: crate::time::Timestamp,
             }
 
@@ -272,7 +283,7 @@ macro_rules! common {
                 fn from(builder: Meta) -> Self {
                     Self {
                         endpoint_type: builder.endpoint_type,
-                        group_id: builder.group_id,
+                        subject: builder.subject,
                         timestamp: Timestamp::new(builder.timestamp),
                     }
                 }

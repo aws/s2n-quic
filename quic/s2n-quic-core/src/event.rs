@@ -41,7 +41,7 @@ impl Timestamp {
     /// // Meta is included as part of each event
     /// let meta: event::common::Meta = event::builders::Meta {
     ///     endpoint_type: endpoint::Type::Server,
-    ///     group_id: 0,
+    ///     subject: event::common::Subject::new(Some(0)),
     ///     timestamp: unsafe { Timestamp::from_duration(Duration::from_secs(1) )},
     /// }.into();
     /// let event_time = start_time + meta.timestamp.duration_since_start();
@@ -162,6 +162,20 @@ common!(
         Handshake,
         ZeroRtt,
         OneRtt { generation: u16 },
+    }
+
+    /// A common identifier for aggregating events
+    ///
+    /// An event can occur in the context of an Endpoint or Connection
+    enum Subject {
+        Endpoint,
+        //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#4
+        //# it is recommended to use
+        //# QUIC's Original Destination Connection ID (ODCID, the CID chosen by
+        //# the client when first contacting the server)
+        //
+        // This maps to `InternalConnectionId` and is the stable identifier across CID changes.
+        Connection(u64),
     }
 );
 

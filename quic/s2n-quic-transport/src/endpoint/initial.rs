@@ -218,7 +218,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         let mut publisher = event::PublisherSubscriber::new(
             event::builders::Meta {
                 endpoint_type: Config::ENDPOINT_TYPE,
-                group_id: internal_connection_id.into(),
+                subject: event::common::Subject::new(Some(internal_connection_id.into())),
                 timestamp: datagram.timestamp,
             },
             Some(quic_version),

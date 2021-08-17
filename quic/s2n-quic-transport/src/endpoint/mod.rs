@@ -137,7 +137,9 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
             let mut publisher = event::PublisherSubscriber::new(
                 event::builders::Meta {
                     endpoint_type: Cfg::ENDPOINT_TYPE,
-                    group_id: connection.internal_connection_id().into(),
+                    subject: event::common::Subject::new(Some(
+                        connection.internal_connection_id().into(),
+                    )),
                     timestamp,
                 },
                 Some(connection.quic_version()),
@@ -191,7 +193,9 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                 let mut publisher = event::PublisherSubscriber::new(
                     event::builders::Meta {
                         endpoint_type: Cfg::ENDPOINT_TYPE,
-                        group_id: conn.internal_connection_id().into(),
+                        subject: event::common::Subject::new(Some(
+                            conn.internal_connection_id().into(),
+                        )),
                         timestamp,
                     },
                     Some(conn.quic_version()),
@@ -342,22 +346,20 @@ impl<Cfg: Config> Endpoint<Cfg> {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
             //# Servers MUST drop incoming packets under all other circumstances.
 
-            // Packet is not decodable. Skip it.
-            // TODO: Potentially add a metric
-
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
             //# However, endpoints MUST treat any packet ending
             //# in a valid stateless reset token as a stateless reset, as other QUIC
             //# versions might allow the use of a long header.
 
-            // // The packet may be a stateless reset, check before returning.
-            let connection_id = self.close_on_matching_stateless_reset(payload, timestamp);
+            // The packet may be a stateless reset, check before returning.
+            let internal_connection_id = self.close_on_matching_stateless_reset(payload, timestamp);
 
-            if connection_id.is_none() {
+            if internal_connection_id.is_none() {
+                // The packet didn't contain a valid stateless token
                 let mut publisher = event::PublisherSubscriber::new(
                     event::builders::Meta {
                         endpoint_type: Cfg::ENDPOINT_TYPE,
-                        group_id: 7, // TODO: figure out what connection id to use for logging
+                        subject: event::common::Subject::new(None),
                         timestamp,
                     },
                     None,
@@ -374,7 +376,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let mut publisher = event::PublisherSubscriber::new(
             event::builders::Meta {
                 endpoint_type: Cfg::ENDPOINT_TYPE,
-                group_id: 7, // TODO: generate a new internal connection id
+                subject: event::common::Subject::new(None),
                 timestamp,
             },
             packet.version(),
@@ -424,7 +426,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 let mut publisher = event::PublisherSubscriber::new(
                     event::builders::Meta {
                         endpoint_type: Cfg::ENDPOINT_TYPE,
-                        group_id: conn.internal_connection_id().into(),
+                        subject: event::common::Subject::new(Some(
+                            conn.internal_connection_id().into(),
+                        )),
                         timestamp,
                     },
                     Some(conn.quic_version()),
@@ -721,7 +725,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
             let mut publisher = event::PublisherSubscriber::new(
                 event::builders::Meta {
                     endpoint_type: Cfg::ENDPOINT_TYPE,
-                    group_id: conn.internal_connection_id().into(),
+                    subject: event::common::Subject::new(Some(
+                        conn.internal_connection_id().into(),
+                    )),
                     timestamp,
                 },
                 Some(conn.quic_version()),
@@ -748,7 +754,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
             let mut publisher = event::PublisherSubscriber::new(
                 event::builders::Meta {
                     endpoint_type: Cfg::ENDPOINT_TYPE,
-                    group_id: conn.internal_connection_id().into(),
+                    subject: event::common::Subject::new(Some(
+                        conn.internal_connection_id().into(),
+                    )),
                     timestamp,
                 },
                 Some(conn.quic_version()),
