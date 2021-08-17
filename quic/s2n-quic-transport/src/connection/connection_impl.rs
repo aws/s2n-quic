@@ -741,13 +741,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     // Packet handling
-    fn on_datagram_received(
+    fn on_datagram_received<Pub: event::Publisher>(
         &mut self,
         path_handle: &Config::PathHandle,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         random: &mut Config::RandomGenerator,
         max_mtu: MaxMtu,
+        publisher: &mut Pub,
     ) -> Result<path::Id, connection::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //# The design of QUIC relies on endpoints retaining a stable address
@@ -771,6 +772,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             random,
             max_mtu,
         )?;
+
+        publisher.on_datagram_received(event::builders::DatagramReceived {
+            len: datagram.payload_len as u16,
+        });
 
         if matches!(self.state, ConnectionState::Closing) {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.1

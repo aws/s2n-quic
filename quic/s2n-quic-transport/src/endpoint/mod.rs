@@ -19,6 +19,7 @@ use s2n_quic_core::{
     connection::id::Generator,
     crypto::{tls, CryptoSuite},
     endpoint::{limits::Outcome, Limits},
+    event::Publisher as _,
     inet::{datagram, DatagramInfo},
     io::{rx, tx},
     packet::{initial::ProtectedInitial, ProtectedPacket},
@@ -136,7 +137,9 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
             let mut publisher = event::PublisherSubscriber::new(
                 event::builders::Meta {
                     endpoint_type: Cfg::ENDPOINT_TYPE,
-                    group_id: connection.internal_connection_id().into(),
+                    subject: event::common::Subject::Connection(
+                        connection.internal_connection_id().into(),
+                    ),
                     timestamp,
                 },
                 Some(connection.quic_version()),
@@ -190,7 +193,9 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                 let mut publisher = event::PublisherSubscriber::new(
                     event::builders::Meta {
                         endpoint_type: Cfg::ENDPOINT_TYPE,
-                        group_id: conn.internal_connection_id().into(),
+                        subject: event::common::Subject::Connection(
+                            conn.internal_connection_id().into(),
+                        ),
                         timestamp,
                     },
                     Some(conn.quic_version()),
@@ -341,23 +346,37 @@ impl<Cfg: Config> Endpoint<Cfg> {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
             //# Servers MUST drop incoming packets under all other circumstances.
 
-            // Packet is not decodable. Skip it.
-            // TODO: Potentially add a metric
-
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
             //# However, endpoints MUST treat any packet ending
             //# in a valid stateless reset token as a stateless reset, as other QUIC
             //# versions might allow the use of a long header.
 
             // The packet may be a stateless reset, check before returning.
-            self.close_on_matching_stateless_reset(payload, timestamp);
+            let internal_connection_id = self.close_on_matching_stateless_reset(payload, timestamp);
+
+            if internal_connection_id.is_none() {
+                // The packet didn't contain a valid stateless token
+                let mut publisher = event::PublisherSubscriber::new(
+                    event::builders::Meta {
+                        endpoint_type: Cfg::ENDPOINT_TYPE,
+                        subject: event::common::Subject::Endpoint,
+                        timestamp,
+                    },
+                    None,
+                    self.config.context().event_subscriber,
+                );
+                publisher.on_datagram_dropped(event::builders::DatagramDropped {
+                    len: payload_len as u16,
+                });
+            }
+
             return;
         };
 
         let mut publisher = event::PublisherSubscriber::new(
             event::builders::Meta {
                 endpoint_type: Cfg::ENDPOINT_TYPE,
-                group_id: 7, // TODO: generate a new internal connection id
+                subject: event::common::Subject::Endpoint,
                 timestamp,
             },
             packet.version(),
@@ -404,6 +423,18 @@ impl<Cfg: Config> Endpoint<Cfg> {
             let max_mtu = self.max_mtu;
 
             let _ = self.connections.with_connection(internal_id, |conn| {
+                let mut publisher = event::PublisherSubscriber::new(
+                    event::builders::Meta {
+                        endpoint_type: Cfg::ENDPOINT_TYPE,
+                        subject: event::common::Subject::Connection(
+                            conn.internal_connection_id().into(),
+                        ),
+                        timestamp,
+                    },
+                    Some(conn.quic_version()),
+                    endpoint_context.event_subscriber,
+                );
+
                 // The path `Id` needs to be passed around instead of the path to get around `&mut self` and
                 // `&mut self.path_manager` being borrowed at the same time
                 let path_id = conn
@@ -413,6 +444,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         endpoint_context.congestion_controller,
                         endpoint_context.random_generator,
                         max_mtu,
+                        &mut publisher,
                     )
                     .map_err(|_| {
                         // TODO https://github.com/awslabs/s2n-quic/issues/669
@@ -436,15 +468,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 //# An endpoint
                 //# that is closing is not required to process any received frame.
 
-                let mut publisher = event::PublisherSubscriber::new(
-                    event::builders::Meta {
-                        endpoint_type: Cfg::ENDPOINT_TYPE,
-                        group_id: conn.internal_connection_id().into(),
-                        timestamp,
-                    },
-                    Some(conn.quic_version()),
-                    endpoint_context.event_subscriber,
-                );
                 if let Err(err) = conn.handle_packet(
                     datagram,
                     path_id,
@@ -702,7 +725,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
             let mut publisher = event::PublisherSubscriber::new(
                 event::builders::Meta {
                     endpoint_type: Cfg::ENDPOINT_TYPE,
-                    group_id: conn.internal_connection_id().into(),
+                    subject: event::common::Subject::Connection(
+                        conn.internal_connection_id().into(),
+                    ),
                     timestamp,
                 },
                 Some(conn.quic_version()),
@@ -729,7 +754,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
             let mut publisher = event::PublisherSubscriber::new(
                 event::builders::Meta {
                     endpoint_type: Cfg::ENDPOINT_TYPE,
-                    group_id: conn.internal_connection_id().into(),
+                    subject: event::common::Subject::Connection(
+                        conn.internal_connection_id().into(),
+                    ),
                     timestamp,
                 },
                 Some(conn.quic_version()),

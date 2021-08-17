@@ -22,8 +22,8 @@ pub struct Subscriber;
 impl super::Subscriber for Subscriber {
     fn on_event<E: Event>(&mut self, meta: &common::Meta, event: &E) {
         debug!(
-            group_id = meta.group_id,
-            "{:?} {:?}",
+            "{:?} {:?} {:?}",
+            meta.subject,
             meta.timestamp.duration_since_start(),
             event
         );
