@@ -17,10 +17,12 @@ use s2n_quic_core::{
     path::MaxMtu,
     time::{self, Clock as ClockTrait},
 };
-#[cfg(target_os = "linux")]
-use std::os::unix::io::AsRawFd;
 use std::{convert::TryInto, io, io::ErrorKind};
 use tokio::{net::UdpSocket, runtime::Handle, time::Instant};
+
+#[cfg(unix)]
+#[allow(unused_imports)]
+use std::os::unix::io::AsRawFd;
 
 pub type PathHandle = socket::Handle;
 
@@ -169,6 +171,30 @@ impl Io {
             ))?;
         }
 
+        // Set up the RX socket to pass information about the local address and interface
+        #[cfg(s2n_quic_platform_pktinfo)]
+        {
+            let enabled: libc::c_int = 1;
+
+            if cfg!(feature = "ipv6") {
+                libc!(setsockopt(
+                    rx_socket.as_raw_fd(),
+                    libc::IPPROTO_IPV6,
+                    libc::IPV6_RECVPKTINFO,
+                    &enabled as *const _ as _,
+                    core::mem::size_of_val(&enabled) as _,
+                ))?;
+            } else {
+                libc!(setsockopt(
+                    rx_socket.as_raw_fd(),
+                    libc::IPPROTO_IP,
+                    libc::IP_PKTINFO,
+                    &enabled as *const _ as _,
+                    core::mem::size_of_val(&enabled) as _,
+                ))?;
+            }
+        }
+
         let instance = Instance {
             clock: Clock::default(),
             rx_socket: rx_socket.into(),
@@ -229,20 +255,25 @@ fn bind<A: std::net::ToSocketAddrs>(addr: A) -> io::Result<socket2::Socket> {
     #[cfg(unix)]
     socket.set_reuse_port(true)?;
 
-    for addr in addr.to_socket_addrs()? {
-        let addr = if cfg!(feature = "ipv6") {
-            use ::std::net::SocketAddr;
+    let addr = addr.to_socket_addrs()?.next().ok_or_else(|| {
+        std::io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "the provided bind address was empty",
+        )
+    })?;
 
-            let addr: SocketAddress = addr.into();
-            let addr: SocketAddr = addr.to_ipv6_mapped().into();
-            addr
-        } else {
-            addr
-        }
-        .into();
+    let addr = if cfg!(feature = "ipv6") {
+        use ::std::net::SocketAddr;
 
-        socket.bind(&addr)?;
+        let addr: SocketAddress = addr.into();
+        let addr: SocketAddr = addr.to_ipv6_mapped().into();
+        addr
+    } else {
+        addr
     }
+    .into();
+
+    socket.bind(&addr)?;
 
     Ok(socket)
 }

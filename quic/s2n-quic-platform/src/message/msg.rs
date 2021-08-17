@@ -10,9 +10,12 @@ use core::{
 };
 use libc::{c_void, iovec, msghdr, sockaddr_in, sockaddr_in6, AF_INET, AF_INET6};
 use s2n_quic_core::{
-    inet::{datagram, ExplicitCongestionNotification, IpV4Address, SocketAddress, SocketAddressV4},
+    inet::{
+        datagram, AncillaryData, ExplicitCongestionNotification, IpV4Address, SocketAddress,
+        SocketAddressV4,
+    },
     io::{rx, tx},
-    path,
+    path::{self, LocalAddress, RemoteAddress},
 };
 
 #[cfg(feature = "ipv6")]
@@ -21,7 +24,121 @@ use s2n_quic_core::inet::{IpV6Address, SocketAddressV6};
 #[repr(transparent)]
 pub struct Message(pub(crate) msghdr);
 
-pub type Handle = path::Tuple;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Handle {
+    pub remote_address: RemoteAddress,
+    #[cfg(s2n_quic_platform_pktinfo)]
+    pub local_address: LocalAddress,
+    #[cfg(s2n_quic_platform_pktinfo)]
+    pub local_interface: Option<libc::c_int>,
+}
+
+impl Handle {
+    #[inline]
+    pub fn from_remote_address(remote_address: RemoteAddress) -> Self {
+        Self {
+            remote_address,
+            #[cfg(s2n_quic_platform_pktinfo)]
+            local_address: SocketAddressV4::UNSPECIFIED.into(),
+            #[cfg(s2n_quic_platform_pktinfo)]
+            local_interface: None,
+        }
+    }
+
+    #[inline]
+    fn with_ancillary_data(&mut self, ancillary_data: AncillaryData) {
+        #[cfg(s2n_quic_platform_pktinfo)]
+        {
+            self.local_address = ancillary_data.local_address;
+            self.local_interface = ancillary_data.local_interface.map(|v| v as _);
+        }
+
+        let _ = ancillary_data;
+    }
+
+    #[inline]
+    pub(crate) fn update_msg_hdr(self, msghdr: &mut msghdr) {
+        msghdr.set_remote_address(&self.remote_address.0);
+
+        #[cfg(s2n_quic_platform_pktinfo)]
+        match self.local_address.0 {
+            SocketAddress::IpV4(addr) => {
+                use s2n_quic_core::inet::Unspecified;
+
+                let ip = addr.ip();
+
+                if ip.is_unspecified() {
+                    return;
+                }
+
+                let mut pkt_info = unsafe { core::mem::zeroed::<libc::in_pktinfo>() };
+                pkt_info.ipi_spec_dst.s_addr = u32::from_ne_bytes((*ip).into());
+
+                if let Some(interface) = self.local_interface {
+                    pkt_info.ipi_ifindex = interface as _;
+                }
+
+                msghdr.encode_cmsg(libc::IPPROTO_IP, libc::IP_PKTINFO, pkt_info);
+            }
+            SocketAddress::IpV6(addr) => {
+                use s2n_quic_core::inet::Unspecified;
+
+                let ip = addr.ip();
+
+                if ip.is_unspecified() {
+                    return;
+                }
+
+                let mut pkt_info = unsafe { core::mem::zeroed::<libc::in6_pktinfo>() };
+
+                pkt_info.ipi6_addr.s6_addr = (*ip).into();
+
+                if let Some(interface) = self.local_interface {
+                    pkt_info.ipi6_ifindex = interface as _;
+                }
+
+                msghdr.encode_cmsg(libc::IPPROTO_IPV6, libc::IPV6_PKTINFO, pkt_info);
+            }
+        }
+    }
+}
+
+impl path::Handle for Handle {
+    #[inline]
+    fn remote_address(&self) -> RemoteAddress {
+        self.remote_address
+    }
+
+    #[inline]
+    fn local_address(&self) -> LocalAddress {
+        #[cfg(s2n_quic_platform_pktinfo)]
+        {
+            self.local_address
+        }
+
+        #[cfg(not(s2n_quic_platform_pktinfo))]
+        {
+            SocketAddressV4::UNSPECIFIED.into()
+        }
+    }
+
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        let mut eq = true;
+
+        #[cfg(s2n_quic_platform_pktinfo)]
+        {
+            eq &= self.local_address.eq(&other.local_address);
+        }
+
+        eq && path::Handle::eq(&self.remote_address, &other.remote_address)
+    }
+
+    #[inline]
+    fn strict_eq(&self, other: &Self) -> bool {
+        PartialEq::eq(self, other)
+    }
+}
 
 impl_message_delegate!(Message, 0, msghdr);
 
@@ -56,12 +173,25 @@ impl Message {
 
         Self(msghdr)
     }
+
+    #[inline]
+    pub(crate) fn header(msghdr: &msghdr) -> Option<datagram::Header<Handle>> {
+        let addr = msghdr.remote_address()?;
+        let mut path = Handle::from_remote_address(addr.into());
+
+        let ancillary_data = cmsg::decode(msghdr);
+        let ecn = ancillary_data.ecn;
+
+        path.with_ancillary_data(ancillary_data);
+
+        Some(datagram::Header { path, ecn })
+    }
 }
 
 impl MessageTrait for msghdr {
     type Handle = Handle;
 
-    const SUPPORTS_GSO: bool = true;
+    const SUPPORTS_GSO: bool = cfg!(s2n_quic_platform_gso);
 
     #[inline]
     fn ecn(&self) -> ExplicitCongestionNotification {
@@ -71,6 +201,10 @@ impl MessageTrait for msghdr {
 
     #[inline]
     fn set_ecn(&mut self, ecn: ExplicitCongestionNotification, remote_address: &SocketAddress) {
+        if ecn == ExplicitCongestionNotification::NotEct {
+            return;
+        }
+
         let ecn = ecn as libc::c_int;
 
         match remote_address {
@@ -86,6 +220,7 @@ impl MessageTrait for msghdr {
         };
     }
 
+    #[inline]
     fn remote_address(&self) -> Option<SocketAddress> {
         debug_assert!(!self.msg_name.is_null());
         match self.msg_namelen {
@@ -106,6 +241,7 @@ impl MessageTrait for msghdr {
         }
     }
 
+    #[inline]
     fn set_remote_address(&mut self, remote_address: &SocketAddress) {
         debug_assert!(!self.msg_name.is_null());
 
@@ -133,15 +269,8 @@ impl MessageTrait for msghdr {
 
     #[inline]
     fn path_handle(&self) -> Option<Self::Handle> {
-        let remote_address = self.remote_address()?.into();
-
-        // TODO set local_address
-        let local_address = SocketAddressV4::UNSPECIFIED.into();
-
-        Some(path::Tuple {
-            remote_address,
-            local_address,
-        })
+        let header = Message::header(self)?;
+        Some(header.path)
     }
 
     #[inline]
@@ -156,7 +285,7 @@ impl MessageTrait for msghdr {
         (*self.msg_iov).iov_len = payload_len;
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(s2n_quic_platform_gso)]
     #[inline]
     fn set_segment_size(&mut self, size: usize) {
         type SegmentType = u16;
@@ -180,14 +309,19 @@ impl MessageTrait for msghdr {
             )
         }
 
-        // reset the control messages
-        let cmsg =
-            core::slice::from_raw_parts_mut(self.msg_control as *mut u8, self.msg_controllen as _);
+        // reset the control messages if it isn't set to the default value
+        if self.msg_controllen as usize != cmsg::MAX_LEN {
+            let cmsg = core::slice::from_raw_parts_mut(
+                self.msg_control as *mut u8,
+                self.msg_controllen as _,
+            );
 
-        for byte in cmsg.iter_mut() {
-            *byte = 0;
+            for byte in cmsg.iter_mut() {
+                *byte = 0;
+            }
         }
-        self.msg_controllen = 0;
+
+        self.msg_controllen = cmsg::MAX_LEN as _;
     }
 
     #[inline]
@@ -318,7 +452,7 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
                 (&mut msg_names[index]) as *mut _ as *mut _,
                 size_of::<sockaddr_in6>(),
                 cmsg as *mut _ as *mut _,
-                0,
+                cmsg::MAX_LEN,
             );
 
             messages.push(msg);
@@ -379,6 +513,7 @@ impl<Payloads: crate::buffer::Buffer> super::Ring for Ring<Payloads> {
 impl tx::Entry for Message {
     type Handle = Handle;
 
+    #[inline]
     fn set<M: tx::Message<Handle = Self::Handle>>(
         &mut self,
         mut message: M,
@@ -398,12 +533,9 @@ impl tx::Entry for Message {
             self.set_payload_len(len);
         }
 
-        let handle = message.path_handle();
-
-        self.set_remote_address(&handle.remote_address);
-
-        // TODO set local_address
-        // TODO ecn
+        let handle = *message.path_handle();
+        handle.update_msg_hdr(&mut self.0);
+        self.set_ecn(message.ecn(), &handle.remote_address.0);
 
         Ok(len)
     }
@@ -422,12 +554,9 @@ impl tx::Entry for Message {
 impl rx::Entry for Message {
     type Handle = Handle;
 
+    #[inline]
     fn read(&mut self) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
-        let header = datagram::Header {
-            path: self.path_handle()?,
-            ecn: self.ecn(),
-        };
-
+        let header = Self::header(&self.0)?;
         let payload = self.payload_mut();
         Some((header, payload))
     }

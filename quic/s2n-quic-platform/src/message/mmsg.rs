@@ -11,13 +11,12 @@ use libc::mmsghdr;
 use s2n_quic_core::{
     inet::{datagram, ExplicitCongestionNotification, SocketAddress},
     io::{rx, tx},
-    path,
 };
 
 #[repr(transparent)]
 pub struct Message(pub(crate) mmsghdr);
 
-pub type Handle = path::Tuple;
+pub type Handle = msg::Handle;
 
 impl_message_delegate!(Message, 0, mmsghdr);
 
@@ -34,7 +33,7 @@ impl fmt::Debug for Message {
 impl MessageTrait for mmsghdr {
     type Handle = Handle;
 
-    const SUPPORTS_GSO: bool = true;
+    const SUPPORTS_GSO: bool = libc::msghdr::SUPPORTS_GSO;
 
     #[inline]
     fn ecn(&self) -> ExplicitCongestionNotification {
@@ -200,12 +199,9 @@ impl tx::Entry for Message {
             self.set_payload_len(len);
         }
 
-        let path = message.path_handle();
-
-        self.set_remote_address(&path.remote_address);
-
-        // TODO set local_address
-        // TODO ecn
+        let handle = *message.path_handle();
+        handle.update_msg_hdr(&mut self.0.msg_hdr);
+        self.set_ecn(message.ecn(), &handle.remote_address.0);
 
         Ok(len)
     }
@@ -226,11 +222,7 @@ impl rx::Entry for Message {
 
     #[inline]
     fn read(&mut self) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
-        let header = datagram::Header {
-            path: self.path_handle()?,
-            ecn: self.ecn(),
-        };
-
+        let header = msg::Message::header(&self.0.msg_hdr)?;
         let payload = self.payload_mut();
         Some((header, payload))
     }

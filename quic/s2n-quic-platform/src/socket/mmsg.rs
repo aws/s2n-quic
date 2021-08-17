@@ -90,7 +90,7 @@ impl<B: Buffer> Queue<B> {
                 Err(err)
             }
             // check to see if we need to disable GSO
-            #[cfg(target_os = "linux")]
+            #[cfg(s2n_quic_platform_gso)]
             Err(err) if unsafe { *libc::__errno_location() } == libc::EIO => {
                 let count = vlen as usize;
                 entries.finish(count);

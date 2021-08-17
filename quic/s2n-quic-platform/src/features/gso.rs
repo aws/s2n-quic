@@ -10,7 +10,7 @@ pub struct Gso {
 
 impl Default for Gso {
     fn default() -> Self {
-        let max_segments = if cfg!(target_os = "linux") {
+        let max_segments = if cfg!(s2n_quic_platform_gso) {
             // https://github.com/torvalds/linux/blob/e9f1cbc0c4114880090c7a578117d3b9cf184ad4/tools/testing/selftests/net/udpgso.c#L37
             // ```
             // #define UDP_MAX_SEGMENTS	(1 << 6UL)
@@ -26,7 +26,7 @@ impl Default for Gso {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(s2n_quic_platform_gso)]
 impl Gso {
     #[inline]
     pub fn max_segments(&self) -> usize {
@@ -46,7 +46,7 @@ impl Gso {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(s2n_quic_platform_gso))]
 impl Gso {
     #[inline]
     pub fn max_segments(&self) -> usize {
