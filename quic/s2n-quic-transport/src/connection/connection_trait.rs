@@ -174,13 +174,14 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     ) -> Result<(), ProcessingError>;
 
     /// Notifies a connection it has received a datagram from a peer
-    fn on_datagram_received(
+    fn on_datagram_received<Pub: event::Publisher>(
         &mut self,
         path_handle: &<Self::Config as endpoint::Config>::PathHandle,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         max_mtu: MaxMtu,
+        publisher: &mut Pub,
     ) -> Result<path::Id, connection::Error>;
 
     /// Returns the Connections interests

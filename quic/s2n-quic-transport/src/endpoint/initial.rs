@@ -261,6 +261,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             endpoint_context.congestion_controller,
             endpoint_context.random_generator,
             self.max_mtu,
+            &mut publisher,
         )?;
 
         connection

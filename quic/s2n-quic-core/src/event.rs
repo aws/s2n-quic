@@ -304,4 +304,11 @@ events!(
         pub path_id: u64,
         pub error: common::DuplicatePacketError,
     }
+
+    #[name = "transport:datagram_received"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.11
+    /// Datagram received
+    struct DatagramReceived {
+        pub len: u16,
+    }
 );
