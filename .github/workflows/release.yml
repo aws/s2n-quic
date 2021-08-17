@@ -41,11 +41,7 @@ jobs:
           echo "::set-output name=tags::${TAGS}"
 
       - name: Login to GitHub Packages
-        uses: docker/login-action@v1
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+        run: docker login https://ghcr.io -u ${{ github.actor }} --password-stdin <<< ${{ github.token }}
 
       - name: Build and push image
         uses: docker/build-push-action@v2
