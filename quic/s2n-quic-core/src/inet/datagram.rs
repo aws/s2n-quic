@@ -26,5 +26,9 @@ pub struct DatagramInfo {
 pub struct AncillaryData {
     pub ecn: ExplicitCongestionNotification,
     pub local_address: LocalAddress,
+    /// The network interface the datagram is sent/received on
+    ///
+    /// Correctly threading this value through to connections ensures packets end up on the same
+    /// network interfaces and thereby have consistent MAC addresses.
     pub local_interface: Option<i32>,
 }
