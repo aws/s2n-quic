@@ -13,7 +13,7 @@ use s2n_quic_core::{
         event::AsEvent,
         path_validation::Probing as PathValidationProbing,
     },
-    packet::number::PacketNumber,
+    packet::number::{PacketNumber, PacketNumberAsEvent as _},
     time::Timestamp,
 };
 
@@ -117,8 +117,7 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
 
         self.publisher.on_frame_sent(event::builders::FrameSent {
             packet_header: event::builders::PacketHeader {
-                packet_type: self.packet_number.space().into(),
-                packet_number: self.packet_number.as_u64(),
+                packet_type: self.packet_number.as_event(),
                 version: self.publisher.quic_version(),
             }
             .into(),
@@ -142,8 +141,7 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
 
         self.publisher.on_frame_sent(event::builders::FrameSent {
             packet_header: event::builders::PacketHeader {
-                packet_type: self.packet_number.space().into(),
-                packet_number: self.packet_number.as_u64(),
+                packet_type: self.packet_number.as_event(),
                 version: self.publisher.quic_version(),
             }
             .into(),

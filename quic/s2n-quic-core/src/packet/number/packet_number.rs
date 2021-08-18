@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    event,
     packet::number::{
         derive_truncation_range, packet_number_space::PacketNumberSpace,
         truncated_packet_number::TruncatedPacketNumber,
@@ -173,6 +174,21 @@ impl PacketNumber {
     pub fn checked_distance(self, rhs: PacketNumber) -> Option<u64> {
         self.space().assert_eq(rhs.space());
         Self::as_u64(self).checked_sub(Self::as_u64(rhs))
+    }
+}
+
+pub trait AsEvent {
+    fn as_event(&self) -> event::common::PacketType;
+}
+
+impl AsEvent for PacketNumber {
+    fn as_event(&self) -> event::common::PacketType {
+        match self.space() {
+            PacketNumberSpace::Initial => event::common::PacketType::Initial(self.as_u64()),
+            PacketNumberSpace::Handshake => event::common::PacketType::Handshake(self.as_u64()),
+            PacketNumberSpace::ApplicationData => event::common::PacketType::OneRtt(self.as_u64()),
+            // TODO: need to figure out how to capture ZeroRtt
+        }
     }
 }
 

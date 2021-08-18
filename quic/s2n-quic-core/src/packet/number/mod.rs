@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod sliding_window;
-pub use sliding_window::*;
+pub use sliding_window::{AsEvent as SlidingWindowAsEvent, SlidingWindow};
 
 mod protected_packet_number;
 pub use protected_packet_number::ProtectedPacketNumber;
@@ -16,7 +16,7 @@ pub use protected_packet_number::ProtectedPacketNumber;
 use crate::varint::VarInt;
 
 mod packet_number;
-pub use packet_number::PacketNumber;
+pub use packet_number::{AsEvent as PacketNumberAsEvent, PacketNumber};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
 //# Packet numbers are limited to this range because they need to be

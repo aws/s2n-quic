@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{connection, endpoint, packet::number::PacketNumberSpace};
+use crate::{connection, endpoint};
 use core::time::Duration;
 use paste::paste;
 
@@ -57,7 +57,6 @@ common!(
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
     struct PacketHeader {
         pub packet_type: common::PacketType,
-        pub packet_number: u64,
         pub version: Option<u32>,
     }
 
@@ -147,10 +146,10 @@ common!(
 
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.2
     enum PacketType {
-        Initial,
-        Handshake,
-        ZeroRtt,
-        OneRtt,
+        Initial(u64),
+        Handshake(u64),
+        ZeroRtt(u64),
+        OneRtt(u64),
         Retry,
         VersionNegotiation,
         StatelessReset,
@@ -182,16 +181,6 @@ common!(
 impl Default for common::PacketType {
     fn default() -> Self {
         common::PacketType::Unknown
-    }
-}
-
-impl From<PacketNumberSpace> for common::PacketType {
-    fn from(packet_space: PacketNumberSpace) -> common::PacketType {
-        match packet_space {
-            PacketNumberSpace::Initial => common::PacketType::Initial,
-            PacketNumberSpace::Handshake => common::PacketType::Handshake,
-            PacketNumberSpace::ApplicationData => common::PacketType::OneRtt, // TODO: need to figure out how to capture ZeroRtt
-        }
     }
 }
 
