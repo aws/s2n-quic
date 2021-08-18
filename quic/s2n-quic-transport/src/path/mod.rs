@@ -270,7 +270,7 @@ impl<Config: endpoint::Config> Path<Config> {
         if &self.local_connection_id != local_connection_id {
             publisher.on_connection_id_updated(event::builders::ConnectionIdUpdated {
                 path_id: path_id.as_u8() as u64,
-                endpoint: event::common::Endpoint::Local,
+                cid_consumer: event::common::Endpoint::Remote,
                 previous: self.local_connection_id.as_event(),
                 current: local_connection_id.as_event(),
             });

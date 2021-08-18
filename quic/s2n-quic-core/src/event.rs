@@ -178,11 +178,11 @@ common!(
         Connection(u64),
     }
 
-    /// Used to disambiguate events that can occur for the local or the remote endpoint
+    /// Used to disambiguate events that can occur for the local or the remote endpoint.
     enum Endpoint {
         /// The Local endpoint
         Local,
-        /// The Peer endpoint
+        /// The Remote endpoint
         Remote,
     }
 );
@@ -346,7 +346,8 @@ events!(
     /// ConnectionId updated
     struct ConnectionIdUpdated<'a> {
         pub path_id: u64,
-        pub endpoint: common::Endpoint,
+        /// The endpoint that updated its connection id
+        pub cid_consumer: common::Endpoint,
         pub previous: common::ConnectionId<'a>,
         pub current: common::ConnectionId<'a>,
     }

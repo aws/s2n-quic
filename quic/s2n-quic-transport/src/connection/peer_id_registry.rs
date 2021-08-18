@@ -436,10 +436,13 @@ impl PeerIdRegistry {
     pub fn consume_new_id<Pub: event::Publisher>(
         &mut self,
         path_id: path::Id,
+        current_peer_connection_id: connection::PeerId,
         publisher: &mut Pub,
     ) -> Option<connection::PeerId> {
         for id_info in self.registered_ids.iter_mut() {
             if id_info.status == New {
+                debug_assert_ne!(current_peer_connection_id, id_info.id);
+
                 // Start tracking the stateless reset token
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
                 //# An endpoint MUST NOT check for any Stateless Reset Tokens associated
@@ -454,8 +457,8 @@ impl PeerIdRegistry {
 
                 publisher.on_connection_id_updated(event::builders::ConnectionIdUpdated {
                     path_id: path_id.as_u8() as u64,
-                    endpoint: event::common::Endpoint::Remote,
-                    previous: id_info.id.as_event(),
+                    cid_consumer: event::common::Endpoint::Local,
+                    previous: current_peer_connection_id.as_event(),
                     current: id_info.id.as_event(),
                 });
 
@@ -1019,7 +1022,7 @@ pub(crate) mod tests {
             .is_none());
         assert_eq!(
             Some(id_2),
-            reg.consume_new_id(path::Id::test_id(), &mut Publisher)
+            reg.consume_new_id(path::Id::test_id(), id_1, &mut Publisher)
         );
         reg.registered_ids[1].status = InUse;
         // this is an indirect way to test that we inserted a reset token when we consumed id_2
@@ -1044,7 +1047,7 @@ pub(crate) mod tests {
 
         assert_eq!(
             None,
-            reg.consume_new_id(path::Id::test_id(), &mut Publisher)
+            reg.consume_new_id(path::Id::test_id(), id_1, &mut Publisher)
         );
     }
 

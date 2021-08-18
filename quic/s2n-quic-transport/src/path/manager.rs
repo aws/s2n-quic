@@ -61,33 +61,31 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// Update the active path
     fn update_active_path<Rnd: random::Generator, Pub: event::Publisher>(
         &mut self,
-        path_id: Id,
+        new_path_id: Id,
         random_generator: &mut Rnd,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        debug_assert!(path_id != Id(self.active));
+        debug_assert!(new_path_id != Id(self.active));
 
         let prev_path_id = self.active_path_id();
-        let new_path_idx = path_id.as_u8();
-        // Attempt to consume a new connection id in case it has been retired since the last use.
-        let peer_connection_id = self.paths[new_path_idx as usize].peer_connection_id;
+
+        let mut peer_connection_id = self[new_path_id].peer_connection_id;
 
         // The path's connection id might have retired since we last used it. Check if it is still
         // active, otherwise try and consume a new connection id.
-        let use_peer_connection_id = if self.peer_id_registry.is_active(&peer_connection_id) {
-            peer_connection_id
-        } else {
+        if !self.peer_id_registry.is_active(&peer_connection_id) {
             // TODO https://github.com/awslabs/s2n-quic/issues/669
             // If there are no new connection ids the peer is responsible for
             // providing additional connection ids to continue.
             //
             // Insufficient connection ids should not cause the connection to close.
             // Investigate api after this is used.
-            self.peer_id_registry
-                .consume_new_id(path_id, publisher)
-                .ok_or(transport::Error::INTERNAL_ERROR)?
+            peer_connection_id = self
+                .peer_id_registry
+                .consume_new_id(new_path_id, peer_connection_id, publisher)
+                .ok_or(transport::Error::INTERNAL_ERROR)?;
         };
-        self[path_id].peer_connection_id = use_peer_connection_id;
+        self[new_path_id].peer_connection_id = peer_connection_id;
 
         if self.active_path().is_validated() {
             self.last_known_validated_path = Some(self.active);
@@ -104,7 +102,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.set_challenge(self.active_path_id(), random_generator);
         }
 
-        self.active = new_path_idx;
+        self.active = new_path_id.as_u8();
 
         publisher.on_active_path_updated(event::builders::ActivePathUpdated {
             previous: event::builders::Path {
@@ -116,7 +114,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             active: event::builders::Path {
                 remote_addr: self.active_path().remote_address().as_event(),
                 remote_cid: self.active_path().peer_connection_id.as_event(),
-                id: new_path_idx as u64,
+                id: new_path_id.as_u8() as u64,
             }
             .into(),
         });
@@ -277,7 +275,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             if self.active_path().local_connection_id != datagram.destination_connection_id {
                 publisher.on_connection_id_updated(event::builders::ConnectionIdUpdated {
                     path_id: new_path_id.as_u8() as u64,
-                    endpoint: event::common::Endpoint::Local,
+                    cid_consumer: event::common::Endpoint::Remote,
                     previous: self.active_path().local_connection_id.as_event(),
                     current: datagram.destination_connection_id.as_event(),
                 });
@@ -288,8 +286,9 @@ impl<Config: endpoint::Config> Manager<Config> {
 
                 // Peer has intentionally tried to migrate to this new path because they changed
                 // their destination_connection_id, so we will change our destination_connection_id as well.
+                let current_peer_connection_id = self.active_path().peer_connection_id;
                 self.peer_id_registry
-                    .consume_new_id(self.active_path_id(), publisher)
+                    .consume_new_id(self.active_path_id(), current_peer_connection_id, publisher)
                     // TODO https://github.com/awslabs/s2n-quic/issues/669
                     // Insufficient connection ids should not cause the connection to close.
                     // Investigate if there is a safer way to expose an error here.
@@ -506,7 +505,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         if !self.peer_id_registry.is_active(&active_path_connection_id) {
             self.active_path_mut().peer_connection_id = self
                 .peer_id_registry
-                .consume_new_id(self.active_path_id(), publisher)
+                .consume_new_id(self.active_path_id(), active_path_connection_id, publisher)
                 .expect(
                     "since we are only checking the active path and new id was delivered \
                     via the new_connection_id frames, there will always be a new id available \
@@ -1892,7 +1891,7 @@ mod tests {
 
         assert!(manager
             .peer_id_registry
-            .consume_new_id(Id(0), &mut Publisher)
+            .consume_new_id(Id(0), zero_conn_id, &mut Publisher)
             .is_some());
 
         // assert first_path is active and last_known_validated_path
