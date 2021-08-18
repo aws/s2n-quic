@@ -146,13 +146,21 @@ common!(
 
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.2
     enum PacketType {
-        Initial(u64),
-        Handshake(u64),
-        ZeroRtt(u64),
-        OneRtt(u64),
+        #[non_exhaustive]
+        Initial { number: u64 },
+        #[non_exhaustive]
+        Handshake { number: u64 },
+        #[non_exhaustive]
+        ZeroRtt { number: u64 },
+        #[non_exhaustive]
+        OneRtt { number: u64 },
+        #[non_exhaustive]
         Retry,
+        #[non_exhaustive]
         VersionNegotiation,
+        #[non_exhaustive]
         StatelessReset,
+        #[non_exhaustive]
         Unknown,
     }
 

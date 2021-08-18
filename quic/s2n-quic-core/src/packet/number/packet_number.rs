@@ -184,9 +184,15 @@ pub trait AsEvent {
 impl AsEvent for PacketNumber {
     fn as_event(&self) -> event::common::PacketType {
         match self.space() {
-            PacketNumberSpace::Initial => event::common::PacketType::Initial(self.as_u64()),
-            PacketNumberSpace::Handshake => event::common::PacketType::Handshake(self.as_u64()),
-            PacketNumberSpace::ApplicationData => event::common::PacketType::OneRtt(self.as_u64()),
+            PacketNumberSpace::Initial => event::common::PacketType::Initial {
+                number: self.as_u64(),
+            },
+            PacketNumberSpace::Handshake => event::common::PacketType::Handshake {
+                number: self.as_u64(),
+            },
+            PacketNumberSpace::ApplicationData => event::common::PacketType::OneRtt {
+                number: self.as_u64(),
+            },
             // TODO: need to figure out how to capture ZeroRtt
         }
     }
