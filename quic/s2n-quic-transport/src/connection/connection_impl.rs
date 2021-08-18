@@ -29,13 +29,13 @@ use core::{
 };
 use s2n_quic_core::{
     application,
-    event::{self, common::PacketType, Publisher as _},
+    event::{self, Publisher as _},
     inet::{ip::AsEvent as _, DatagramInfo},
     io::tx,
     packet::{
         handshake::ProtectedHandshake,
         initial::{CleartextInitial, ProtectedInitial},
-        number::{PacketNumber, PacketNumberSpace},
+        number::{PacketNumber, PacketNumberAsEvent as _, PacketNumberSpace},
         retry::ProtectedRetry,
         short::ProtectedShort,
         version_negotiation::ProtectedVersionNegotiation,
@@ -338,8 +338,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
                 count += 1;
                 publisher.on_packet_sent(event::builders::PacketSent {
                     packet_header: event::builders::PacketHeader {
-                        packet_type: outcome.packet_number.space().into(),
-                        packet_number: outcome.packet_number.as_u64(),
+                        packet_type: outcome.packet_number.as_event(),
                         version: Some(self.quic_version),
                     }
                     .into(),
@@ -593,8 +592,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     // transmission
                     publisher.on_packet_sent(event::builders::PacketSent {
                         packet_header: event::builders::PacketHeader {
-                            packet_type: outcome.packet_number.space().into(),
-                            packet_number: outcome.packet_number.as_u64(),
+                            packet_type: outcome.packet_number.as_event(),
                             version: Some(self.quic_version),
                         }
                         .into(),
@@ -628,8 +626,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     count += 1;
                     publisher.on_packet_sent(event::builders::PacketSent {
                         packet_header: event::builders::PacketHeader {
-                            packet_type: outcome.packet_number.space().into(),
-                            packet_number: outcome.packet_number.as_u64(),
+                            packet_type: outcome.packet_number.as_event(),
                             version: Some(self.quic_version),
                         }
                         .into(),
@@ -818,8 +815,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             publisher.on_packet_received(event::builders::PacketReceived {
                 packet_header: event::builders::PacketHeader {
-                    packet_type: PacketType::Initial,
-                    packet_number: packet.packet_number.as_u64(),
+                    packet_type: packet.packet_number.as_event(),
                     version: Some(self.quic_version),
                 }
                 .into(),
@@ -913,8 +909,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             publisher.on_packet_received(event::builders::PacketReceived {
                 packet_header: event::builders::PacketHeader {
-                    packet_type: PacketType::Handshake,
-                    packet_number: packet.packet_number.as_u64(),
+                    packet_type: packet.packet_number.as_event(),
                     version: Some(self.quic_version),
                 }
                 .into(),
@@ -1044,8 +1039,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             publisher.on_packet_received(event::builders::PacketReceived {
                 packet_header: event::builders::PacketHeader {
-                    packet_type: PacketType::OneRtt,
-                    packet_number: packet.packet_number.as_u64(),
+                    packet_type: packet.packet_number.as_event(),
                     version: Some(self.quic_version),
                 }
                 .into(),

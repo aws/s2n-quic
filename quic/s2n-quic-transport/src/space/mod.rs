@@ -24,7 +24,7 @@ use s2n_quic_core::{
         StopSending, StreamDataBlocked, StreamsBlocked,
     },
     inet::DatagramInfo,
-    packet::number::{PacketNumber, PacketNumberSpace},
+    packet::number::{PacketNumber, PacketNumberAsEvent as _, PacketNumberSpace},
     random,
     time::{timer, Timestamp},
     transport,
@@ -591,8 +591,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
             publisher.on_frame_received(event::builders::FrameReceived {
                 packet_header: event::builders::PacketHeader {
-                    packet_type: packet_number.space().into(),
-                    packet_number: packet_number.as_u64(),
+                    packet_type: packet_number.as_event(),
                     version: publisher.quic_version(),
                 }
                 .into(),

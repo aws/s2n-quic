@@ -13,7 +13,9 @@ use s2n_quic_core::{
     connection::id::AsEvent as _,
     event, frame,
     inet::{ip::AsEvent as _, DatagramInfo},
-    packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
+    packet::number::{
+        PacketNumber, PacketNumberAsEvent as _, PacketNumberRange, PacketNumberSpace,
+    },
     recovery::{CongestionController, RttEstimator, K_GRANULARITY},
     time::{timer, Timer, Timestamp},
     transport,
@@ -756,8 +758,7 @@ impl<Config: endpoint::Config> Manager<Config> {
 
             publisher.on_packet_lost(event::builders::PacketLost {
                 packet_header: event::builders::PacketHeader {
-                    packet_type: packet_number.space().into(),
-                    packet_number: packet_number.as_u64(),
+                    packet_type: packet_number.as_event(),
                     version: publisher.quic_version(),
                 }
                 .into(),

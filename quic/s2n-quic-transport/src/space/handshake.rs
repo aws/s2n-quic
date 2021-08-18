@@ -22,7 +22,10 @@ use s2n_quic_core::{
     packet::{
         encoding::{PacketEncoder, PacketEncodingError},
         handshake::{CleartextHandshake, Handshake, ProtectedHandshake},
-        number::{AsEvent as _, PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow},
+        number::{
+            PacketNumber, PacketNumberAsEvent as _, PacketNumberRange, PacketNumberSpace,
+            SlidingWindow, SlidingWindowAsEvent as _,
+        },
     },
     time::{timer, Timestamp},
     transport,
@@ -87,8 +90,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         if let Err(err) = packet_check {
             publisher.on_duplicate_packet(event::builders::DuplicatePacket {
                 packet_header: event::builders::PacketHeader {
-                    packet_type: packet_number.space().into(),
-                    packet_number: packet_number.as_u64(),
+                    packet_type: packet_number.as_event(),
                     version: publisher.quic_version(),
                 }
                 .into(),
