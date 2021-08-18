@@ -433,16 +433,9 @@ impl PeerIdRegistry {
     /// Tries to consume a new peer_id if one is available.
     ///
     /// Register the stateless reset token once a connection ID is in use.
-    pub fn consume_new_id<Pub: event::Publisher>(
-        &mut self,
-        path_id: path::Id,
-        current_peer_connection_id: connection::PeerId,
-        publisher: &mut Pub,
-    ) -> Option<connection::PeerId> {
+    fn consume_new_id_inner(&mut self) -> Option<connection::PeerId> {
         for id_info in self.registered_ids.iter_mut() {
             if id_info.status == New {
-                debug_assert_ne!(current_peer_connection_id, id_info.id);
-
                 // Start tracking the stateless reset token
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
                 //# An endpoint MUST NOT check for any Stateless Reset Tokens associated
@@ -455,13 +448,6 @@ impl PeerIdRegistry {
                         .insert(token, self.internal_id);
                 }
 
-                publisher.on_connection_id_updated(event::builders::ConnectionIdUpdated {
-                    path_id: path_id.as_u8() as u64,
-                    cid_consumer: event::common::Endpoint::Local,
-                    previous: current_peer_connection_id.as_event(),
-                    current: id_info.id.as_event(),
-                });
-
                 // Consume the new id
                 id_info.status = InUse;
                 return Some(id_info.id);
@@ -469,6 +455,32 @@ impl PeerIdRegistry {
         }
 
         None
+    }
+
+    /// Tries to consume a new peer_id if one is available for an existing path.
+    pub fn consume_new_id_for_existing_path<Pub: event::Publisher>(
+        &mut self,
+        path_id: path::Id,
+        current_peer_connection_id: connection::PeerId,
+        publisher: &mut Pub,
+    ) -> Option<connection::PeerId> {
+        let new_id = self.consume_new_id_inner();
+        if let Some(new_id) = new_id {
+            debug_assert_ne!(current_peer_connection_id, new_id);
+
+            publisher.on_connection_id_updated(event::builders::ConnectionIdUpdated {
+                path_id: path_id.as_u8() as u64,
+                cid_consumer: event::common::Endpoint::Local,
+                previous: current_peer_connection_id.as_event(),
+                current: new_id.as_event(),
+            });
+        }
+        new_id
+    }
+
+    /// Tries to consume a new peer_id if one is available for a new path.
+    pub fn consume_new_id_for_new_path(&mut self) -> Option<connection::PeerId> {
+        self.consume_new_id_inner()
     }
 
     // Validate that the ACTIVE_CONNECTION_ID_LIMIT has not been exceeded
@@ -593,12 +605,11 @@ pub(crate) mod tests {
             testing::{MockWriteContext, OutgoingFrameBuffer},
             WriteContext,
         },
-        path, transmission,
+        transmission,
         transmission::interest::Provider,
     };
     use s2n_quic_core::{
         connection, endpoint,
-        event::testing::Publisher,
         frame::{new_connection_id::STATELESS_RESET_TOKEN_LEN, Frame, RetireConnectionId},
         packet::number::PacketNumberRange,
         random, stateless_reset,
@@ -1020,10 +1031,7 @@ pub(crate) mod tests {
             .stateless_reset_map
             .remove(&TEST_TOKEN_2)
             .is_none());
-        assert_eq!(
-            Some(id_2),
-            reg.consume_new_id(path::Id::test_id(), id_1, &mut Publisher)
-        );
+        assert_eq!(Some(id_2), reg.consume_new_id_inner());
         reg.registered_ids[1].status = InUse;
         // this is an indirect way to test that we inserted a reset token when we consumed id_2
         assert!(reg
@@ -1045,10 +1053,7 @@ pub(crate) mod tests {
             Some(TEST_TOKEN_1),
         );
 
-        assert_eq!(
-            None,
-            reg.consume_new_id(path::Id::test_id(), id_1, &mut Publisher)
-        );
+        assert_eq!(None, reg.consume_new_id_inner());
     }
 
     #[test]

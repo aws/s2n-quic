@@ -251,6 +251,13 @@ events!(
         pub active: common::Path<'a>,
     }
 
+    #[name = "transport:path_created"]
+    /// A new path was created
+    struct PathCreated<'a> {
+        pub active: common::Path<'a>,
+        pub new: common::Path<'a>,
+    }
+
     #[name = "transport:frame_sent"]
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.5
     // This diverges a bit from the qlog spec, which prefers to log data as part of the

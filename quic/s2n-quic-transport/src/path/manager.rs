@@ -82,7 +82,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             // Investigate api after this is used.
             peer_connection_id = self
                 .peer_id_registry
-                .consume_new_id(new_path_id, peer_connection_id, publisher)
+                .consume_new_id_for_existing_path(new_path_id, peer_connection_id, publisher)
                 .ok_or(transport::Error::INTERNAL_ERROR)?;
         };
         self[new_path_id].peer_connection_id = peer_connection_id;
@@ -224,7 +224,6 @@ impl<Config: endpoint::Config> Manager<Config> {
 
     #[allow(unreachable_code)]
     #[allow(unused_variables)]
-    #[allow(clippy::too_many_arguments)]
     fn handle_connection_migration<Rnd: random::Generator, Pub: event::Publisher>(
         &mut self,
         path_handle: &Config::PathHandle,
@@ -273,22 +272,14 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         let peer_connection_id = {
             if self.active_path().local_connection_id != datagram.destination_connection_id {
-                publisher.on_connection_id_updated(event::builders::ConnectionIdUpdated {
-                    path_id: new_path_id.as_u8() as u64,
-                    cid_consumer: event::common::Endpoint::Remote,
-                    previous: self.active_path().local_connection_id.as_event(),
-                    current: datagram.destination_connection_id.as_event(),
-                });
-
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
                 //# Similarly, an endpoint MUST NOT reuse a connection ID when sending to
                 //# more than one destination address.
 
                 // Peer has intentionally tried to migrate to this new path because they changed
                 // their destination_connection_id, so we will change our destination_connection_id as well.
-                let current_peer_connection_id = self.active_path().peer_connection_id;
                 self.peer_id_registry
-                    .consume_new_id(self.active_path_id(), current_peer_connection_id, publisher)
+                    .consume_new_id_for_new_path()
                     // TODO https://github.com/awslabs/s2n-quic/issues/669
                     // Insufficient connection ids should not cause the connection to close.
                     // Investigate if there is a safer way to expose an error here.
@@ -327,6 +318,21 @@ impl<Config: endpoint::Config> Manager<Config> {
             true,
             max_mtu,
         );
+
+        publisher.on_path_created(event::builders::PathCreated {
+            active: event::builders::Path {
+                remote_addr: self.active_path().remote_address().as_event(),
+                remote_cid: self.active_path().peer_connection_id.as_event(),
+                id: self.active_path_id().as_u8() as u64,
+            }
+            .into(),
+            new: event::builders::Path {
+                remote_addr: path.remote_address().as_event(),
+                remote_cid: path.peer_connection_id.as_event(),
+                id: new_path_idx as u64,
+            }
+            .into(),
+        });
 
         let unblocked = path.on_bytes_received(datagram.payload_len);
         // create a new path
@@ -478,7 +484,6 @@ impl<Config: endpoint::Config> Manager<Config> {
     }
 
     /// Called when a NEW_CONNECTION_ID frame is received from the peer
-    #[allow(clippy::too_many_arguments)]
     pub fn on_new_connection_id<Pub: event::Publisher>(
         &mut self,
         connection_id: &connection::PeerId,
@@ -505,7 +510,11 @@ impl<Config: endpoint::Config> Manager<Config> {
         if !self.peer_id_registry.is_active(&active_path_connection_id) {
             self.active_path_mut().peer_connection_id = self
                 .peer_id_registry
-                .consume_new_id(self.active_path_id(), active_path_connection_id, publisher)
+                .consume_new_id_for_existing_path(
+                    self.active_path_id(),
+                    active_path_connection_id,
+                    publisher,
+                )
                 .expect(
                     "since we are only checking the active path and new id was delivered \
                     via the new_connection_id frames, there will always be a new id available \
@@ -1891,7 +1900,7 @@ mod tests {
 
         assert!(manager
             .peer_id_registry
-            .consume_new_id(Id(0), zero_conn_id, &mut Publisher)
+            .consume_new_id_for_existing_path(Id(0), zero_conn_id, &mut Publisher)
             .is_some());
 
         // assert first_path is active and last_known_validated_path
