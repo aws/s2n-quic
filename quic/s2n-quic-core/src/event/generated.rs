@@ -163,6 +163,20 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub enum DropTrigger {
+        #[non_exhaustive]
+        DecodingFailed {},
+        #[non_exhaustive]
+        UnsupportedVersion {},
+        #[non_exhaustive]
+        InvalidDestinationConnectionId {},
+        #[non_exhaustive]
+        InvalidSourceConnectionId {},
+        #[non_exhaustive]
+        Unknown {},
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " QUIC version"]
     pub struct VersionInformation<'a> {
         pub server_versions: &'a [u32],
@@ -333,6 +347,7 @@ pub mod api {
     #[doc = " Datagram dropped"]
     pub struct DatagramDropped {
         pub len: u16,
+        pub trigger: DropTrigger,
     }
     impl Event for DatagramDropped {
         const NAME: &'static str = "transport:datagram_dropped";
@@ -865,6 +880,27 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub enum DropTrigger {
+        DecodingFailed,
+        UnsupportedVersion,
+        InvalidDestinationConnectionId,
+        InvalidSourceConnectionId,
+        Unknown,
+    }
+    impl IntoEvent<api::DropTrigger> for DropTrigger {
+        #[inline]
+        fn into_event(self) -> api::DropTrigger {
+            use api::DropTrigger::*;
+            match self {
+                Self::DecodingFailed => DecodingFailed {},
+                Self::UnsupportedVersion => UnsupportedVersion {},
+                Self::InvalidDestinationConnectionId => InvalidDestinationConnectionId {},
+                Self::InvalidSourceConnectionId => InvalidSourceConnectionId {},
+                Self::Unknown => Unknown {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " QUIC version"]
     pub struct VersionInformation<'a> {
         pub server_versions: &'a [u32],
@@ -1173,13 +1209,15 @@ pub mod builder {
     #[doc = " Datagram dropped"]
     pub struct DatagramDropped {
         pub len: u16,
+        pub trigger: DropTrigger,
     }
     impl IntoEvent<api::DatagramDropped> for DatagramDropped {
         #[inline]
         fn into_event(self) -> api::DatagramDropped {
-            let DatagramDropped { len } = self;
+            let DatagramDropped { len, trigger } = self;
             api::DatagramDropped {
                 len: len.into_event(),
+                trigger: trigger.into_event(),
             }
         }
     }

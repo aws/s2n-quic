@@ -382,3 +382,12 @@ impl IntoEvent<builder::EndpointType> for crate::endpoint::Type {
         }
     }
 }
+
+enum DropTrigger {
+    DecodingFailed,
+    UnsupportedVersion,
+    InvalidDestinationConnectionId,
+    InvalidSourceConnectionId,
+    Unknown,
+}
+

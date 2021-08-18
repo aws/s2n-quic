@@ -1027,12 +1027,19 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a version negotiation packet had been received
-    fn handle_version_negotiation_packet(
+    fn handle_version_negotiation_packet<Pub: event::Publisher>(
         &mut self,
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedVersionNegotiation,
+        publisher: &mut Pub,
     ) -> Result<(), ProcessingError> {
+        publisher.on_packet_received(event::builder::PacketReceived {
+            packet_header: event::builder::PacketHeader {
+                packet_type: event::builder::PacketType::VersionNegotiation {},
+                version: publisher.quic_version(),
+            },
+        });
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.2
         //= type=TODO
         //= feature=Version negotiation handler
@@ -1061,12 +1068,23 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a zero rtt packet had been received
-    fn handle_zero_rtt_packet(
+    fn handle_zero_rtt_packet<Pub: event::Publisher>(
         &mut self,
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedZeroRtt,
+        publisher: &mut Pub,
     ) -> Result<(), ProcessingError> {
+        publisher.on_packet_received(event::builder::PacketReceived {
+            packet_header: event::builder::PacketHeader {
+                // FIXME: remove when we support zero-rtt. Since there is a
+                // `IntoEvent<PacketType>` for PacketNumber` this can be replaced
+                // wih `packet_number.into_event()` once the packet number is
+                // available.
+                packet_type: event::builder::PacketType::ZeroRtt { number: 0 },
+                version: publisher.quic_version(),
+            },
+        });
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
         //= type=TODO
         //= tracking-issue=339
@@ -1079,12 +1097,19 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a retry packet had been received
-    fn handle_retry_packet(
+    fn handle_retry_packet<Pub: event::Publisher>(
         &mut self,
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedRetry,
+        publisher: &mut Pub,
     ) -> Result<(), ProcessingError> {
+        publisher.on_packet_received(event::builder::PacketReceived {
+            packet_header: event::builder::PacketHeader {
+                packet_type: event::builder::PacketType::Retry {},
+                version: publisher.quic_version(),
+            },
+        });
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
         //= type=TODO
         //= tracking-issue=386

@@ -48,19 +48,20 @@ impl<Path: path::Handle> Dispatch<Path> {
     pub fn on_transmit<Tx: tx::Queue<Handle = Path>, Pub: event::Publisher>(
         &mut self,
         queue: &mut Tx,
-        publisher: &mut Pub,
+        endpoint_publisher: &mut Pub,
     ) {
         while let Some(transmission) = self.transmissions.pop_front() {
             match queue.push(&transmission) {
                 Ok(tx::Outcome { len, .. }) => {
-                    publisher.on_packet_sent(event::builder::PacketSent {
+                    endpoint_publisher.on_packet_sent(event::builder::PacketSent {
                         packet_header: event::builder::PacketHeader {
                             packet_type: event::builder::PacketType::StatelessReset,
-                            version: publisher.quic_version(),
+                            version: endpoint_publisher.quic_version(),
                         },
                     });
 
-                    publisher.on_datagram_sent(event::builder::DatagramSent { len: len as u16 });
+                    endpoint_publisher
+                        .on_datagram_sent(event::builder::DatagramSent { len: len as u16 });
                 }
                 Err(_) => {
                     self.transmissions.push_front(transmission);

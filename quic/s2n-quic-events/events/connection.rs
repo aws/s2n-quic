@@ -150,6 +150,7 @@ struct DatagramReceived {
 /// Datagram dropped
 struct DatagramDropped {
     len: u16,
+    trigger: DropTrigger,
 }
 
 #[event("connectivity:connection_id_updated")]

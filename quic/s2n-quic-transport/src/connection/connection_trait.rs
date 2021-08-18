@@ -150,27 +150,30 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a version negotiation packet had been received
-    fn handle_version_negotiation_packet(
+    fn handle_version_negotiation_packet<Pub: event::Publisher>(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedVersionNegotiation,
+        publisher: &mut Pub,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a zero rtt packet had been received
-    fn handle_zero_rtt_packet(
+    fn handle_zero_rtt_packet<Pub: event::Publisher>(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedZeroRtt,
+        publisher: &mut Pub,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a retry packet had been received
-    fn handle_retry_packet(
+    fn handle_retry_packet<Pub: event::Publisher>(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedRetry,
+        publisher: &mut Pub,
     ) -> Result<(), ProcessingError>;
 
     /// Notifies a connection it has received a datagram from a peer
@@ -220,18 +223,20 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 self.handle_short_packet(datagram, path_id, packet, publisher, random_generator)
             }
             ProtectedPacket::VersionNegotiation(packet) => {
-                self.handle_version_negotiation_packet(datagram, path_id, packet)
+                self.handle_version_negotiation_packet(datagram, path_id, packet, publisher)
             }
             ProtectedPacket::Initial(packet) => {
                 self.handle_initial_packet(datagram, path_id, packet, publisher, random_generator)
             }
             ProtectedPacket::ZeroRtt(packet) => {
-                self.handle_zero_rtt_packet(datagram, path_id, packet)
+                self.handle_zero_rtt_packet(datagram, path_id, packet, publisher)
             }
             ProtectedPacket::Handshake(packet) => {
                 self.handle_handshake_packet(datagram, path_id, packet, publisher, random_generator)
             }
-            ProtectedPacket::Retry(packet) => self.handle_retry_packet(datagram, path_id, packet),
+            ProtectedPacket::Retry(packet) => {
+                self.handle_retry_packet(datagram, path_id, packet, publisher)
+            }
         }
     }
 
