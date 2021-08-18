@@ -177,6 +177,14 @@ common!(
         /// This maps to an internal connection id, which is a stable identifier across CID changes.
         Connection(u64),
     }
+
+    /// Used to disambiguate events that can occur for the local or the remote endpoint.
+    enum Endpoint {
+        /// The Local endpoint
+        Local,
+        /// The Remote endpoint
+        Remote,
+    }
 );
 
 impl Default for common::PacketType {
@@ -241,6 +249,13 @@ events!(
         // pub packet_header: common::PacketHeader,
         pub previous: common::Path<'a>,
         pub active: common::Path<'a>,
+    }
+
+    #[name = "transport:path_created"]
+    /// A new path was created
+    struct PathCreated<'a> {
+        pub active: common::Path<'a>,
+        pub new: common::Path<'a>,
     }
 
     #[name = "transport:frame_sent"]
@@ -331,5 +346,16 @@ events!(
     /// Datagram dropped
     struct DatagramDropped {
         pub len: u16,
+    }
+
+    #[name = "connectivity:connection_id_updated"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.4
+    /// ConnectionId updated
+    struct ConnectionIdUpdated<'a> {
+        pub path_id: u64,
+        /// The endpoint that updated its connection id
+        pub cid_consumer: common::Endpoint,
+        pub previous: common::ConnectionId<'a>,
+        pub current: common::ConnectionId<'a>,
     }
 );

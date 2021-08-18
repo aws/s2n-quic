@@ -11,7 +11,8 @@ use crate::{
     transmission::{self, Mode},
 };
 use s2n_quic_core::{
-    frame, packet,
+    connection::id::AsEvent as _,
+    event, frame, packet,
     time::{timer, Timestamp},
 };
 
@@ -254,10 +255,12 @@ impl<Config: endpoint::Config> Path<Config> {
     ///
     /// The CleartextShort packet guarantees the packet has been validated
     /// (authenticated and de-duped).
-    pub fn on_process_local_connection_id(
+    pub fn on_process_local_connection_id<Pub: event::Publisher>(
         &mut self,
+        path_id: Id,
         packet: &packet::short::CleartextShort<'_>,
         local_connection_id: &connection::LocalId,
+        publisher: &mut Pub,
     ) {
         debug_assert_eq!(
             packet.destination_connection_id(),
@@ -265,6 +268,12 @@ impl<Config: endpoint::Config> Path<Config> {
         );
 
         if &self.local_connection_id != local_connection_id {
+            publisher.on_connection_id_updated(event::builders::ConnectionIdUpdated {
+                path_id: path_id.as_u8() as u64,
+                cid_consumer: event::common::Endpoint::Remote,
+                previous: self.local_connection_id.as_event(),
+                current: local_connection_id.as_event(),
+            });
             self.local_connection_id = *local_connection_id;
         }
     }

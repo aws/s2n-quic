@@ -665,11 +665,12 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         Ok(())
     }
 
-    fn handle_new_connection_id_frame(
+    fn handle_new_connection_id_frame<Pub: event::Publisher>(
         &mut self,
         frame: NewConnectionId,
         _datagram: &DatagramInfo,
         path_manager: &mut path::Manager<Config>,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         if path_manager.active_path().peer_connection_id.is_empty() {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
@@ -698,6 +699,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
             sequence_number,
             retire_prior_to,
             &stateless_reset_token,
+            publisher,
         )
     }
 

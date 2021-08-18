@@ -6,7 +6,10 @@ macro_rules! events {
         #[name = $name_str:literal]
         $(#[$attrs:meta])*
         struct $name:ident $(<$lt:lifetime>)? {
-            $( pub $field_name:ident : $field_type:ty, )*
+            $(
+                $(#[$field_attrs:meta])?
+                pub $field_name:ident : $field_type:ty,
+            )*
         }
     )*) => {
 
@@ -20,7 +23,10 @@ macro_rules! events {
                 #[non_exhaustive]
                 #[derive(Clone, Debug)]
                 pub struct $name $(<$lt>)? {
-                    $( pub $field_name: $field_type, )*
+                    $(
+                        $(#[$field_attrs])?
+                        pub $field_name: $field_type,
+                    )*
                 }
 
                 impl $(<$lt>)? Event for $name $(<$lt>)? {

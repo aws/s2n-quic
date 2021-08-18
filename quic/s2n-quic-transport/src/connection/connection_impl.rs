@@ -771,6 +771,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             congestion_controller_endpoint,
             random,
             max_mtu,
+            publisher,
         )?;
 
         publisher.on_datagram_received(event::builders::DatagramReceived {
@@ -1016,8 +1017,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             // Connection Ids are issued to the peer after the handshake is
             // confirmed and the handshake space is discarded. Therefore only
             // short packets need to be processed for local_connection_id changes.
-            self.path_manager[path_id]
-                .on_process_local_connection_id(&packet, &datagram.destination_connection_id);
+            self.path_manager[path_id].on_process_local_connection_id(
+                path_id,
+                &packet,
+                &datagram.destination_connection_id,
+                publisher,
+            );
 
             space.handle_cleartext_payload(
                 packet.packet_number,
