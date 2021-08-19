@@ -100,7 +100,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR_ACCESS_TOKEN }}
 
       - name: Run script for pull request
         if: github.event.pull_request
