@@ -102,6 +102,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GHCR_ACCESS_TOKEN }}
 
+      - name: Pull s2n-quic-qns:main
+        if: github.event.pull_request
+        run: docker pull ghcr.io/awslabs/s2n-quic/s2n-quic-qns:main
+
       - name: Run script for pull request
         if: github.event.pull_request
         run: sudo env "PATH=$PATH" "COMPARE_TO_MAIN=true" ./scripts/benchmark/run-all
