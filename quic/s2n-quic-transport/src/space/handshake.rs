@@ -165,7 +165,13 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         let path_id = context.path_id;
         let (recovery_manager, mut recovery_context) =
             self.recovery(handshake_status, path_id, context.path_manager);
-        recovery_manager.on_packet_sent(packet_number, outcome, time_sent, &mut recovery_context);
+        recovery_manager.on_packet_sent(
+            packet_number,
+            outcome,
+            time_sent,
+            context.ecn,
+            &mut recovery_context,
+        );
 
         Ok((outcome, buffer))
     }

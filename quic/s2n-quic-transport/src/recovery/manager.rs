@@ -12,7 +12,7 @@ use core::{cmp::max, marker::PhantomData, time::Duration};
 use s2n_quic_core::{
     connection::id::AsEvent as _,
     event, frame,
-    inet::{ip::AsEvent as _, DatagramInfo},
+    inet::{ip::AsEvent as _, DatagramInfo, ExplicitCongestionNotification},
     packet::number::{
         PacketNumber, PacketNumberAsEvent as _, PacketNumberRange, PacketNumberSpace,
     },
@@ -143,6 +143,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         packet_number: PacketNumber,
         outcome: transmission::Outcome,
         time_sent: Timestamp,
+        ecn: ExplicitCongestionNotification,
         context: &mut Ctx,
     ) {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7
@@ -168,6 +169,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 time_sent,
                 outcome.ack_elicitation,
                 context.path_id(),
+                ecn,
             ),
         );
 
@@ -1109,6 +1111,7 @@ mod test {
         let max_ack_delay = Duration::from_millis(100);
         let now = s2n_quic_platform::time::now();
         let mut time_sent = now;
+        let ecn = ExplicitCongestionNotification::Ect0;
         let space = PacketNumberSpace::ApplicationData;
         let (
             _first_addr,
@@ -1148,7 +1151,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             };
 
-            manager.on_packet_sent(sent_packet, outcome, time_sent, &mut context);
+            manager.on_packet_sent(sent_packet, outcome, time_sent, ecn, &mut context);
 
             assert!(manager.sent_packets.get(sent_packet).is_some());
             let actual_sent_packet = manager.sent_packets.get(sent_packet).unwrap();
@@ -1157,6 +1160,7 @@ mod test {
                 outcome.is_congestion_controlled
             );
             assert_eq!(actual_sent_packet.time_sent, time_sent);
+            assert_eq!(actual_sent_packet.ecn, ecn);
 
             if outcome.is_congestion_controlled {
                 assert_eq!(actual_sent_packet.sent_bytes as usize, outcome.bytes_sent);
@@ -1233,6 +1237,7 @@ mod test {
         let max_ack_delay = Duration::from_millis(100);
         // let mut manager = Manager::new(space, max_ack_delay);
         let now = s2n_quic_platform::time::now();
+        let ecn = ExplicitCongestionNotification::default();
         let mut time_sent = now;
         // let mut path_manager = helper_generate_path_manager(Duration::from_millis(100));
         // let mut context = MockContext::new(&mut path_manager);
@@ -1270,7 +1275,7 @@ mod test {
             packet_number: space.new_packet_number(VarInt::from_u8(1)),
         };
 
-        manager.on_packet_sent(sent_packet, outcome, time_sent, &mut context);
+        manager.on_packet_sent(sent_packet, outcome, time_sent, ecn, &mut context);
 
         // Expectation 1:
         assert!(manager.sent_packets.get(sent_packet).is_some());
@@ -1308,7 +1313,7 @@ mod test {
 
         // Trigger 2:
         context.set_path_id(second_path_id);
-        manager.on_packet_sent(sent_packet, outcome, time_sent, &mut context);
+        manager.on_packet_sent(sent_packet, outcome, time_sent, ecn, &mut context);
 
         // Expectation 2:
         assert!(manager.sent_packets.get(sent_packet).is_some());
@@ -1338,6 +1343,7 @@ mod test {
         let space = PacketNumberSpace::ApplicationData;
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let packet_bytes = 128;
+        let ecn = ExplicitCongestionNotification::default();
         let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
         let mut context = MockContext::new(&mut path_manager);
 
@@ -1357,6 +1363,7 @@ mod test {
                     packet_number: space.new_packet_number(VarInt::from_u8(1)),
                 },
                 time_sent,
+                ecn,
                 &mut context,
             );
         }
@@ -1465,6 +1472,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
+            ecn,
             &mut context,
         );
         ack_packets(11..=11, ack_receive_time, &mut context, &mut manager);
@@ -1517,7 +1525,7 @@ mod test {
             mut path_manager,
         ) = helper_generate_multi_path_manager(space);
         let mut context = MockContext::new(&mut path_manager);
-
+        let ecn = ExplicitCongestionNotification::default();
         let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
 
         // Send packets 1 on first_path
@@ -1530,6 +1538,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
+            ecn,
             &mut context,
         );
         // Send packets 2 on second_path
@@ -1543,6 +1552,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
+            ecn,
             &mut context,
         );
 
@@ -1625,6 +1635,7 @@ mod test {
             mut manager,
             mut path_manager,
         ) = helper_generate_multi_path_manager(space);
+        let ecn = ExplicitCongestionNotification::default();
         let mut context = MockContext::new(&mut path_manager);
 
         let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
@@ -1639,6 +1650,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
+            ecn,
             &mut context,
         );
         // Send packets 2 on second_path
@@ -1652,6 +1664,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
+            ecn,
             &mut context,
         );
 
@@ -1747,7 +1760,7 @@ mod test {
             mut path_manager,
         ) = helper_generate_multi_path_manager(space);
         let mut context = MockContext::new(&mut path_manager);
-
+        let ecn = ExplicitCongestionNotification::default();
         let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
 
         // Send packets 1 on first_path
@@ -1760,6 +1773,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
+            ecn,
             &mut context,
         );
         // Send packets 2 on second_path
@@ -1773,6 +1787,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
+            ecn,
             &mut context,
         );
 
@@ -1804,6 +1819,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
+            ecn,
             &mut context,
         );
 
@@ -1833,6 +1849,7 @@ mod test {
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let packet_bytes = 128;
         let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+        let ecn = ExplicitCongestionNotification::default();
         let mut context = MockContext::new(&mut path_manager);
 
         let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
@@ -1847,6 +1864,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
+            ecn,
             &mut context,
         );
         manager.on_packet_sent(
@@ -1858,6 +1876,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
+            ecn,
             &mut context,
         );
 
@@ -1908,6 +1927,7 @@ mod test {
             mut path_manager,
         ) = helper_generate_multi_path_manager(space);
         let packet_bytes = 128;
+        let ecn = ExplicitCongestionNotification::default();
         let mut context = MockContext::new(&mut path_manager);
 
         let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
@@ -1922,6 +1942,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
+            ecn,
             &mut context,
         );
         manager.on_packet_sent(
@@ -1933,6 +1954,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
+            ecn,
             &mut context,
         );
         assert_eq!(manager.sent_packets.iter().count(), 2);
@@ -2014,6 +2036,7 @@ mod test {
             mut manager,
             mut path_manager,
         ) = helper_generate_multi_path_manager(space);
+        let ecn = ExplicitCongestionNotification::default();
         let mut context = MockContext::new(&mut path_manager);
 
         // Trigger:
@@ -2032,6 +2055,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             sent_time,
+            ecn,
             &mut context,
         );
 
@@ -2046,6 +2070,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             sent_time,
+            ecn,
             &mut context,
         );
         assert_eq!(manager.sent_packets.iter().count(), 2);
@@ -2094,6 +2119,7 @@ mod test {
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let now = s2n_quic_platform::time::now();
         let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+        let ecn = ExplicitCongestionNotification::default();
         let mut context = MockContext::new(&mut path_manager);
 
         manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
@@ -2108,7 +2134,7 @@ mod test {
 
         // Send a packet that was sent too long ago (lost)
         let old_packet_time_sent = space.new_packet_number(VarInt::from_u8(0));
-        manager.on_packet_sent(old_packet_time_sent, outcome, time_sent, &mut context);
+        manager.on_packet_sent(old_packet_time_sent, outcome, time_sent, ecn, &mut context);
 
         // time threshold = max(kTimeThreshold * max(smoothed_rtt, latest_rtt), kGranularity)
         // time threshold = max(9/8 * 8) = 9
@@ -2131,15 +2157,21 @@ mod test {
         // K_PACKET_THRESHOLD away from the largest (lost)
         let old_packet_packet_number =
             space.new_packet_number(VarInt::new(10 - K_PACKET_THRESHOLD).unwrap());
-        manager.on_packet_sent(old_packet_packet_number, outcome, time_sent, &mut context);
+        manager.on_packet_sent(
+            old_packet_packet_number,
+            outcome,
+            time_sent,
+            ecn,
+            &mut context,
+        );
 
         // Send a packet that is less than the largest acked but not lost
         let not_lost = space.new_packet_number(VarInt::from_u8(9));
-        manager.on_packet_sent(not_lost, outcome, time_sent, &mut context);
+        manager.on_packet_sent(not_lost, outcome, time_sent, ecn, &mut context);
 
         // Send a packet larger than the largest acked (not lost)
         let larger_than_largest = manager.largest_acked_packet.unwrap().next().unwrap();
-        manager.on_packet_sent(larger_than_largest, outcome, time_sent, &mut context);
+        manager.on_packet_sent(larger_than_largest, outcome, time_sent, ecn, &mut context);
 
         // Four packets sent, each size 1 byte
         let bytes_in_flight: u16 = manager
@@ -2221,6 +2253,7 @@ mod test {
             mut manager,
             mut path_manager,
         ) = helper_generate_multi_path_manager(space);
+        let ecn = ExplicitCongestionNotification::default();
         let mut context = MockContext::new(&mut path_manager);
 
         let mut now = s2n_quic_platform::time::now();
@@ -2263,6 +2296,7 @@ mod test {
                 space.new_packet_number(VarInt::from_u8(i)),
                 outcome,
                 now,
+                ecn,
                 &mut context,
             );
         }
@@ -2274,6 +2308,7 @@ mod test {
                 space.new_packet_number(VarInt::from_u8(i)),
                 outcome,
                 now,
+                ecn,
                 &mut context,
             );
         }
@@ -2285,6 +2320,7 @@ mod test {
                 space.new_packet_number(VarInt::from_u8(i)),
                 outcome,
                 now,
+                ecn,
                 &mut context,
             );
         }
@@ -2343,6 +2379,7 @@ mod test {
             mut manager,
             mut path_manager,
         ) = helper_generate_multi_path_manager(space);
+        let ecn = ExplicitCongestionNotification::default();
         let mut context = MockContext::new(&mut path_manager);
         let mut now = s2n_quic_platform::time::now();
 
@@ -2402,6 +2439,7 @@ mod test {
                     sent_bytes: 1,
                     time_sent: now,
                     ack_elicitation: AckElicitation::Eliciting,
+                    ecn,
                     path_id: first_path_id,
                 },
             ),
@@ -2412,6 +2450,7 @@ mod test {
                     sent_bytes: 1,
                     time_sent: now,
                     ack_elicitation: AckElicitation::Eliciting,
+                    ecn,
                     path_id: second_path_id,
                 },
             ),
@@ -2459,6 +2498,7 @@ mod test {
         let space = PacketNumberSpace::ApplicationData;
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+        let ecn = ExplicitCongestionNotification::default();
         let mut context = MockContext::new(&mut path_manager);
         manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
 
@@ -2472,7 +2512,7 @@ mod test {
 
         // Send a packet that is less than the largest acked but not lost
         let not_lost = space.new_packet_number(VarInt::from_u8(9));
-        manager.on_packet_sent(not_lost, outcome, time_sent, &mut context);
+        manager.on_packet_sent(not_lost, outcome, time_sent, ecn, &mut context);
 
         manager.detect_and_remove_lost_packets(time_sent, &mut context, &mut Publisher);
 
@@ -2500,6 +2540,7 @@ mod test {
         let space = PacketNumberSpace::ApplicationData;
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+        let ecn = ExplicitCongestionNotification::default();
         let mut context = MockContext::new(&mut path_manager);
         manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
 
@@ -2513,7 +2554,7 @@ mod test {
 
         // Send an MTU probe packet
         let lost_packet = space.new_packet_number(VarInt::from_u8(2));
-        manager.on_packet_sent(lost_packet, outcome, time_sent, &mut context);
+        manager.on_packet_sent(lost_packet, outcome, time_sent, ecn, &mut context);
         assert_eq!(
             context.path().congestion_controller.bytes_in_flight,
             MINIMUM_MTU as u32 + 1
@@ -2540,6 +2581,7 @@ mod test {
         let space = PacketNumberSpace::ApplicationData;
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+        let ecn = ExplicitCongestionNotification::default();
         let mut context = MockContext::new(&mut path_manager);
 
         let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
@@ -2566,6 +2608,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(1)),
             outcome,
             time_zero,
+            ecn,
             &mut context,
         );
 
@@ -2574,6 +2617,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(2)),
             outcome,
             time_zero + Duration::from_secs(1),
+            ecn,
             &mut context,
         );
 
@@ -2591,6 +2635,7 @@ mod test {
                 space.new_packet_number(VarInt::from_u8(t + 1)),
                 outcome,
                 time_zero + Duration::from_secs(t.into()),
+                ecn,
                 &mut context,
             );
         }
@@ -2600,6 +2645,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(8)),
             outcome,
             time_zero + Duration::from_secs(8),
+            ecn,
             &mut context,
         );
 
@@ -2608,6 +2654,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(9)),
             outcome,
             time_zero + Duration::from_secs(12),
+            ecn,
             &mut context,
         );
 
@@ -2645,6 +2692,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(10)),
             outcome,
             time_zero + Duration::from_secs(20),
+            ecn,
             &mut context,
         );
 
@@ -2677,6 +2725,7 @@ mod test {
         let space = PacketNumberSpace::ApplicationData;
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+        let ecn = ExplicitCongestionNotification::default();
         let mut context = MockContext::new(&mut path_manager);
         let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
 
@@ -2692,6 +2741,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(1)),
             outcome,
             time_zero,
+            ecn,
             &mut context,
         );
 
@@ -2700,6 +2750,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(2)),
             outcome,
             time_zero + Duration::from_secs(1),
+            ecn,
             &mut context,
         );
 
@@ -2717,6 +2768,7 @@ mod test {
                 space.new_packet_number(VarInt::from_u8(t + 1)),
                 outcome,
                 time_zero + Duration::from_secs(t.into()),
+                ecn,
                 &mut context,
             );
         }
@@ -2728,6 +2780,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(9)),
             outcome,
             time_zero + Duration::from_secs(8),
+            ecn,
             &mut context,
         );
 
@@ -2736,6 +2789,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(10)),
             outcome,
             time_zero + Duration::from_secs(20),
+            ecn,
             &mut context,
         );
 
@@ -2744,6 +2798,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(11)),
             outcome,
             time_zero + Duration::from_secs(30),
+            ecn,
             &mut context,
         );
 
@@ -2781,6 +2836,7 @@ mod test {
         let space = PacketNumberSpace::ApplicationData;
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+        let ecn = ExplicitCongestionNotification::default();
         let mut context = MockContext::new(&mut path_manager);
         let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
 
@@ -2796,6 +2852,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(1)),
             outcome,
             time_zero,
+            ecn,
             &mut context,
         );
 
@@ -2804,6 +2861,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(2)),
             outcome,
             time_zero + Duration::from_secs(10),
+            ecn,
             &mut context,
         );
 
@@ -2812,6 +2870,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(3)),
             outcome,
             time_zero + Duration::from_secs(20),
+            ecn,
             &mut context,
         );
 
@@ -2842,6 +2901,7 @@ mod test {
         let now = s2n_quic_platform::time::now() + Duration::from_secs(10);
         let is_handshake_confirmed = true;
         let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+        let ecn = ExplicitCongestionNotification::default();
         let mut context = MockContext::new(&mut path_manager);
 
         context.path_mut().rtt_estimator.update_rtt(
@@ -2923,6 +2983,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             now,
+            ecn,
             &mut context,
         );
 
@@ -3030,6 +3091,7 @@ mod test {
         let now = s2n_quic_platform::time::now() + Duration::from_secs(10);
         manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
         let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+        let ecn = ExplicitCongestionNotification::default();
         let mut context = MockContext::new(&mut path_manager);
 
         let mut expected_pto_backoff = context.path().pto_backoff;
@@ -3055,6 +3117,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             now - Duration::from_secs(5),
+            ecn,
             &mut context,
         );
 
@@ -3101,6 +3164,7 @@ mod test {
                 sent_bytes: 1,
                 time_sent: now,
                 ack_elicitation: AckElicitation::Eliciting,
+                ecn,
                 path_id: path::Id::new(0),
             },
         );
@@ -3324,6 +3388,7 @@ mod test {
     fn probe_packets_count_towards_bytes_in_flight() {
         let space = PacketNumberSpace::ApplicationData;
         let mut manager = Manager::new(space, Duration::from_millis(10));
+        let ecn = ExplicitCongestionNotification::default();
 
         manager.pto.state = PtoState::RequiresTransmission(2);
 
@@ -3339,6 +3404,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(1)),
             outcome,
             s2n_quic_platform::time::now(),
+            ecn,
             &mut context,
         );
 
@@ -3413,6 +3479,7 @@ mod test {
         let space = PacketNumberSpace::ApplicationData;
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+        let ecn = ExplicitCongestionNotification::default();
         let mut context = MockContext::new(&mut path_manager);
         let sent_time = s2n_quic_platform::time::now() + Duration::from_secs(10);
         let outcome = transmission::Outcome {
@@ -3425,6 +3492,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(1)),
             outcome,
             sent_time,
+            ecn,
             &mut context,
         );
         manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(2)));
