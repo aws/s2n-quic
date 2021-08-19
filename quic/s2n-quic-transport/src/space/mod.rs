@@ -13,6 +13,7 @@ use s2n_quic_core::{
     connection::limits::Limits,
     crypto::{tls, tls::Session, CryptoSuite},
     event,
+    event::Publisher as _,
     frame::{
         ack::AckRanges,
         crypto::CryptoRef,
@@ -285,7 +286,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         }
     }
 
-    pub fn on_transmit_close(
+    pub(crate) fn on_transmit_close(
         &mut self,
         early_connection_close: &ConnectionClose,
         connection_close: &ConnectionClose,
@@ -345,7 +346,18 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                         let result = space.on_transmit_close(context, &$frame, $buffer);
 
                         match result {
-                            Ok(buffer) => buffer,
+                            Ok((outcome, buffer)) => {
+                                context
+                                    .publisher
+                                    .on_packet_sent(event::builders::PacketSent {
+                                        packet_header: event::builders::PacketHeader {
+                                            packet_type: outcome.packet_number.as_event(),
+                                            version: context.publisher.quic_version(),
+                                        }
+                                        .into(),
+                                    });
+                                buffer
+                            }
                             Err(err) => err.take_buffer(),
                         }
                     } else {

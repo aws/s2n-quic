@@ -161,16 +161,33 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         Err(Error)
     }
 
-    pub fn on_transmit<Tx: tx::Queue<Handle = Config::PathHandle>>(&mut self, queue: &mut Tx) {
+    pub fn on_transmit<Tx: tx::Queue<Handle = Config::PathHandle>, Pub: event::Publisher>(
+        &mut self,
+        queue: &mut Tx,
+        publisher: &mut Pub,
+    ) {
         // clients don't transmit version negotiation packets
         if Config::ENDPOINT_TYPE.is_client() {
             return;
         }
 
         while let Some(transmission) = self.transmissions.pop_front() {
-            if queue.push(&transmission).is_err() {
-                self.transmissions.push_front(transmission);
-                return;
+            match queue.push(&transmission) {
+                Ok(tx::Outcome { len, .. }) => {
+                    publisher.on_packet_sent(event::builders::PacketSent {
+                        packet_header: event::builders::PacketHeader {
+                            packet_type: event::builders::version_packet_type(),
+                            version: publisher.quic_version(),
+                        }
+                        .into(),
+                    });
+
+                    publisher.on_datagram_sent(event::builders::DatagramSent { len: len as u16 });
+                }
+                Err(_) => {
+                    self.transmissions.push_front(transmission);
+                    return;
+                }
             }
         }
     }

@@ -331,6 +331,13 @@ events!(
         pub error: common::DuplicatePacketError,
     }
 
+    #[name = "transport:datagram_sent"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.10
+    /// Datagram sent
+    struct DatagramSent {
+        pub len: u16,
+    }
+
     #[name = "transport:datagram_received"]
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.11
     /// Datagram received

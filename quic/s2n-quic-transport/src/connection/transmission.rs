@@ -9,10 +9,14 @@ use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
     event,
+    event::Publisher as _,
     frame::ack_elicitation::AckElicitable,
     inet::ExplicitCongestionNotification,
     io::tx,
-    packet::{encoding::PacketEncodingError, number::PacketNumberSpace},
+    packet::{
+        encoding::PacketEncodingError,
+        number::{PacketNumberAsEvent as _, PacketNumberSpace},
+    },
     time::Timestamp,
 };
 
@@ -174,7 +178,15 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 encoder,
             ) {
                 Ok((outcome, encoder)) => {
-                    *self.context.outcome += outcome;
+                    self.context
+                        .publisher
+                        .on_packet_sent(event::builders::PacketSent {
+                            packet_header: event::builders::PacketHeader {
+                                packet_type: outcome.packet_number.as_event(),
+                                version: self.context.publisher.quic_version(),
+                            }
+                            .into(),
+                        });
 
                     if Config::ENDPOINT_TYPE.is_server()
                         && !outcome.ack_elicitation().is_ack_eliciting()
@@ -223,7 +235,15 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 encoder,
             ) {
                 Ok((outcome, encoder)) => {
-                    *self.context.outcome += outcome;
+                    self.context
+                        .publisher
+                        .on_packet_sent(event::builders::PacketSent {
+                            packet_header: event::builders::PacketHeader {
+                                packet_type: outcome.packet_number.as_event(),
+                                version: self.context.publisher.quic_version(),
+                            }
+                            .into(),
+                        });
 
                     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
                     //# a client MUST discard Initial keys when it first sends a
@@ -314,7 +334,15 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 encoder,
             ) {
                 Ok((outcome, encoder)) => {
-                    *self.context.outcome += outcome;
+                    self.context
+                        .publisher
+                        .on_packet_sent(event::builders::PacketSent {
+                            packet_header: event::builders::PacketHeader {
+                                packet_type: outcome.packet_number.as_event(),
+                                version: self.context.publisher.quic_version(),
+                            }
+                            .into(),
+                        });
                     encoder
                 }
                 Err(PacketEncodingError::PacketNumberTruncationError(encoder)) => {
@@ -340,6 +368,12 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
 
         let datagram_len = initial_capacity - encoder.capacity();
         self.context.path_mut().on_bytes_transmitted(datagram_len);
+
+        self.context
+            .publisher
+            .on_datagram_sent(event::builders::DatagramSent {
+                len: datagram_len as u16,
+            });
 
         datagram_len
     }

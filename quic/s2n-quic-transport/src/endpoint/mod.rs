@@ -122,18 +122,9 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         let mut transmit_result = Ok(());
         let endpoint_context = self.config.context();
 
-        let mut now: Option<Timestamp> = None;
+        let timestamp = clock.get_time();
 
         self.connections.iterate_transmission_list(|connection| {
-            let timestamp = match now {
-                Some(now) => now,
-                _ => {
-                    let time = clock.get_time();
-                    now = Some(time);
-                    time
-                }
-            };
-
             let mut publisher = event::PublisherSubscriber::new(
                 event::builders::Meta {
                     endpoint_type: Cfg::ENDPOINT_TYPE,
@@ -156,9 +147,19 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         });
 
         if transmit_result.is_ok() {
-            self.version_negotiator.on_transmit(queue);
-            self.retry_dispatch.on_transmit(queue);
-            self.stateless_reset_dispatch.on_transmit(queue);
+            let mut publisher = event::PublisherSubscriber::new(
+                event::builders::Meta {
+                    endpoint_type: Cfg::ENDPOINT_TYPE,
+                    subject: event::common::Subject::Endpoint,
+                    timestamp,
+                },
+                None,
+                endpoint_context.event_subscriber,
+            );
+            self.version_negotiator.on_transmit(queue, &mut publisher);
+            self.retry_dispatch.on_transmit(queue, &mut publisher);
+            self.stateless_reset_dispatch
+                .on_transmit(queue, &mut publisher);
         }
     }
 
