@@ -1104,7 +1104,7 @@ fn detect_and_remove_lost_packets() {
     assert_eq!(bytes_in_flight, 4);
 
     let now = time_sent;
-    manager.detect_and_remove_lost_packets(now, &mut context, &mut Publisher);
+    manager.detect_and_remove_lost_packets(now, &mut context, &mut Publisher::default());
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
     //= type=test
@@ -1371,7 +1371,7 @@ fn remove_lost_packets_persistent_cogestion_path_aware() {
         Duration::from_secs(20),
         sent_packets_to_remove,
         &mut context,
-        &mut Publisher,
+        &mut Publisher::default(),
     );
 
     // Expectation:
@@ -1422,7 +1422,7 @@ fn detect_and_remove_lost_packets_nothing_lost() {
     let not_lost = space.new_packet_number(VarInt::from_u8(9));
     manager.on_packet_sent(not_lost, outcome, time_sent, ecn, &mut context);
 
-    manager.detect_and_remove_lost_packets(time_sent, &mut context, &mut Publisher);
+    manager.detect_and_remove_lost_packets(time_sent, &mut context, &mut Publisher::default());
 
     // Verify no lost bytes are sent to the congestion controller and
     // on_packets_lost is not called
@@ -1468,7 +1468,7 @@ fn detect_and_remove_lost_packets_mtu_probe() {
         MINIMUM_MTU as u32 + 1
     );
 
-    manager.detect_and_remove_lost_packets(time_sent, &mut context, &mut Publisher);
+    manager.detect_and_remove_lost_packets(time_sent, &mut context, &mut Publisher::default());
 
     // Verify no lost bytes are sent to the congestion controller and
     // on_packets_lost is not called, but bytes_in_flight is reduced
@@ -2006,7 +2006,7 @@ fn on_timeout() {
 
     // Loss timer is armed but not expired yet, nothing happens
     manager.loss_timer.set(now + Duration::from_secs(10));
-    manager.on_timeout(now, &mut context, &mut Publisher);
+    manager.on_timeout(now, &mut context, &mut Publisher::default());
     assert_eq!(context.on_packet_loss_count, 0);
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
     //= type=test
@@ -2031,7 +2031,7 @@ fn on_timeout() {
 
     // Loss timer is armed and expired, on_packet_loss is called
     manager.loss_timer.set(now - Duration::from_secs(1));
-    manager.on_timeout(now, &mut context, &mut Publisher);
+    manager.on_timeout(now, &mut context, &mut Publisher::default());
     assert_eq!(context.on_packet_loss_count, 1);
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
     //= type=test
@@ -2042,19 +2042,19 @@ fn on_timeout() {
 
     // Loss timer is not armed, pto timer is not armed
     manager.loss_timer.cancel();
-    manager.on_timeout(now, &mut context, &mut Publisher);
+    manager.on_timeout(now, &mut context, &mut Publisher::default());
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
     // Loss timer is not armed, pto timer is armed but not expired
     manager.loss_timer.cancel();
     manager.pto.timer.set(now + Duration::from_secs(5));
-    manager.on_timeout(now, &mut context, &mut Publisher);
+    manager.on_timeout(now, &mut context, &mut Publisher::default());
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
     // Loss timer is not armed, pto timer is expired without bytes in flight
     expected_pto_backoff *= 2;
     manager.pto.timer.set(now - Duration::from_secs(5));
-    manager.on_timeout(now, &mut context, &mut Publisher);
+    manager.on_timeout(now, &mut context, &mut Publisher::default());
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
     assert_eq!(manager.pto.state, RequiresTransmission(1));
 
@@ -2077,7 +2077,7 @@ fn on_timeout() {
         },
     );
     manager.pto.timer.set(now - Duration::from_secs(5));
-    manager.on_timeout(now, &mut context, &mut Publisher);
+    manager.on_timeout(now, &mut context, &mut Publisher::default());
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
@@ -2257,7 +2257,7 @@ fn ack_packets_on_path(
         ecn_counts: None,
     };
 
-    let _ = manager.on_ack_frame(&datagram, frame, context, &mut Publisher);
+    let _ = manager.on_ack_frame(&datagram, frame, context, &mut Publisher::default());
 
     for packet in acked_packets {
         assert!(manager.sent_packets.get(packet).is_none());
@@ -2410,7 +2410,7 @@ fn packet_declared_lost_less_than_1_ms_from_loss_threshold() {
     manager.detect_and_remove_lost_packets(
         sent_time + loss_time_threshold - Duration::from_micros(999),
         &mut context,
-        &mut Publisher,
+        &mut Publisher::default(),
     );
 
     assert_eq!(1, context.on_packet_loss_count);
@@ -2462,7 +2462,7 @@ fn helper_generate_multi_path_manager(
                 &mut Endpoint::default(),
                 &mut random::testing::Generator(123),
                 DEFAULT_MAX_MTU,
-                &mut Publisher,
+                &mut Publisher::default(),
             )
             .unwrap();
 

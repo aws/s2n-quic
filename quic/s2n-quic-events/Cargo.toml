@@ -1,0 +1,15 @@
+[package]
+name = "s2n-quic-events"
+version = "0.1.0"
+authors = ["Cameron Bytheway <bythewc@amazon.com>"]
+edition = "2018"
+license = "Apache-2.0"
+# This is a commit-time crate and should not be published
+publish = false
+
+[dependencies]
+glob = "0.3"
+heck = "0.3"
+proc-macro2 = "1"
+quote = "1"
+syn = "1"

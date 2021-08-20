@@ -12,12 +12,10 @@ use s2n_quic_core::{
     ack,
     connection::limits::Limits,
     crypto::{tls, tls::Session, CryptoSuite},
-    event,
-    event::Publisher as _,
+    event::{self, IntoEvent, Publisher as _},
     frame::{
         ack::AckRanges,
         crypto::CryptoRef,
-        event::AsEvent as _,
         path_validation::{self, Probing},
         stream::StreamRef,
         Ack, ConnectionClose, DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams,
@@ -25,7 +23,7 @@ use s2n_quic_core::{
         StopSending, StreamDataBlocked, StreamsBlocked,
     },
     inet::DatagramInfo,
-    packet::number::{PacketNumber, PacketNumberAsEvent as _, PacketNumberSpace},
+    packet::number::{PacketNumber, PacketNumberSpace},
     random,
     time::{timer, Timestamp},
     transport,
@@ -99,7 +97,7 @@ macro_rules! packet_space_api {
                 //# a now discarded packet number space.
                 path.reset_pto_backoff();
                 if let Some(mut space) = self.$field.take() {
-                    space.on_discard(path,  path_id, publisher);
+                    space.on_discard(path, path_id, publisher);
                 }
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
@@ -127,8 +125,8 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     ) -> Self {
         let ack_manager = AckManager::new(PacketNumberSpace::Initial, ack::Settings::EARLY);
 
-        publisher.on_key_update(event::builders::KeyUpdate {
-            key_type: event::common::KeyType::Initial,
+        publisher.on_key_update(event::builder::KeyUpdate {
+            key_type: event::builder::KeyType::Initial,
         });
         Self {
             session: Some(session),
@@ -349,12 +347,11 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                             Ok((outcome, buffer)) => {
                                 context
                                     .publisher
-                                    .on_packet_sent(event::builders::PacketSent {
-                                        packet_header: event::builders::PacketHeader {
-                                            packet_type: outcome.packet_number.as_event(),
+                                    .on_packet_sent(event::builder::PacketSent {
+                                        packet_header: event::builder::PacketHeader {
+                                            packet_type: outcome.packet_number.into_event(),
                                             version: context.publisher.quic_version(),
-                                        }
-                                        .into(),
+                                        },
                                     });
                                 buffer
                             }
@@ -601,14 +598,13 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 .map_err(transport::Error::from)?;
             is_path_validation_probing |= frame.path_validation();
 
-            publisher.on_frame_received(event::builders::FrameReceived {
-                packet_header: event::builders::PacketHeader {
-                    packet_type: packet_number.as_event(),
+            publisher.on_frame_received(event::builder::FrameReceived {
+                packet_header: event::builder::PacketHeader {
+                    packet_type: packet_number.into_event(),
                     version: publisher.quic_version(),
-                }
-                .into(),
-                path_id: path_id.as_u8() as u64,
-                frame: frame.as_event(),
+                },
+                path_id: path_id.into_event(),
+                frame: frame.into_event(),
             });
             match frame {
                 Frame::Padding(frame) => {

@@ -173,7 +173,7 @@ impl<'a, Config: endpoint::Config, Pub: event::Publisher> tx::Message
         *self.transmission = TransmissionState::Idle;
 
         self.publisher
-            .on_datagram_sent(event::builders::DatagramSent { len: len as u16 });
+            .on_datagram_sent(event::builder::DatagramSent { len: len as u16 });
 
         len
     }
@@ -351,7 +351,7 @@ mod tests {
                 // transmit an initial packet
                 assert!(sender.can_transmit(path.transmission_constraint()));
                 sender
-                    .transmission(&mut path, &mut Publisher)
+                    .transmission(&mut path, &mut Publisher::default())
                     .write_payload(&mut buffer);
 
                 for (gap, packet_size) in events {
@@ -373,7 +373,7 @@ mod tests {
                         let interest = sender.get_transmission_interest();
                         if interest.can_transmit(path.transmission_constraint()) {
                             sender
-                                .transmission(&mut path, &mut Publisher)
+                                .transmission(&mut path, &mut Publisher::default())
                                 .write_payload(&mut buffer);
                             transmission_count += 1;
                         }

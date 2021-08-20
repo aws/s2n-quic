@@ -11,9 +11,9 @@ use crate::{
 };
 use s2n_quic_core::{
     ack, connection,
-    connection::id::AsEvent as _,
-    event, frame,
-    inet::{ip::AsEvent as _, DatagramInfo},
+    event::{self, IntoEvent},
+    frame,
+    inet::DatagramInfo,
     packet::number::PacketNumberSpace,
     path::{Handle as _, MaxMtu},
     random,
@@ -104,19 +104,17 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         self.active = new_path_id.as_u8();
 
-        publisher.on_active_path_updated(event::builders::ActivePathUpdated {
-            previous: event::builders::Path {
-                remote_addr: self[prev_path_id].remote_address().as_event(),
-                remote_cid: self[prev_path_id].peer_connection_id.as_event(),
-                id: prev_path_id.as_u8() as u64,
-            }
-            .into(),
-            active: event::builders::Path {
-                remote_addr: self.active_path().remote_address().as_event(),
-                remote_cid: self.active_path().peer_connection_id.as_event(),
-                id: new_path_id.as_u8() as u64,
-            }
-            .into(),
+        publisher.on_active_path_updated(event::builder::ActivePathUpdated {
+            previous: event::builder::Path {
+                remote_addr: self[prev_path_id].remote_address().into_event(),
+                remote_cid: self[prev_path_id].peer_connection_id.into_event(),
+                id: prev_path_id.into_event(),
+            },
+            active: event::builder::Path {
+                remote_addr: self.active_path().remote_address().into_event(),
+                remote_cid: self.active_path().peer_connection_id.into_event(),
+                id: new_path_id.into_event(),
+            },
         });
 
         Ok(())
@@ -319,19 +317,17 @@ impl<Config: endpoint::Config> Manager<Config> {
             max_mtu,
         );
 
-        publisher.on_path_created(event::builders::PathCreated {
-            active: event::builders::Path {
-                remote_addr: self.active_path().remote_address().as_event(),
-                remote_cid: self.active_path().peer_connection_id.as_event(),
-                id: self.active_path_id().as_u8() as u64,
-            }
-            .into(),
-            new: event::builders::Path {
-                remote_addr: path.remote_address().as_event(),
-                remote_cid: path.peer_connection_id.as_event(),
+        publisher.on_path_created(event::builder::PathCreated {
+            active: event::builder::Path {
+                remote_addr: self.active_path().remote_address().into_event(),
+                remote_cid: self.active_path().peer_connection_id.into_event(),
+                id: self.active_path_id().into_event(),
+            },
+            new: event::builder::Path {
+                remote_addr: path.remote_address().into_event(),
+                remote_cid: path.peer_connection_id.into_event(),
                 id: new_path_idx as u64,
-            }
-            .into(),
+            },
         });
 
         let unblocked = path.on_bytes_received(datagram.payload_len);
@@ -691,6 +687,13 @@ impl<Config: endpoint::Config> core::ops::IndexMut<Id> for Manager<Config> {
     #[inline]
     fn index_mut(&mut self, id: Id) -> &mut Self::Output {
         &mut self.paths[id.0 as usize]
+    }
+}
+
+impl event::IntoEvent<u64> for Id {
+    #[inline]
+    fn into_event(self) -> u64 {
+        self.0 as u64
     }
 }
 

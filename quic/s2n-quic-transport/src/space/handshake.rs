@@ -16,16 +16,13 @@ use core::{fmt, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{tls, CryptoSuite},
-    event,
+    event::{self, IntoEvent},
     frame::{ack::AckRanges, crypto::CryptoRef, Ack, ConnectionClose},
     inet::DatagramInfo,
     packet::{
         encoding::{PacketEncoder, PacketEncodingError},
         handshake::{CleartextHandshake, Handshake, ProtectedHandshake},
-        number::{
-            PacketNumber, PacketNumberAsEvent as _, PacketNumberRange, PacketNumberSpace,
-            SlidingWindow, SlidingWindowAsEvent as _,
-        },
+        number::{PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow},
     },
     time::{timer, Timestamp},
     transport,
@@ -87,15 +84,14 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         publisher: &mut Pub,
     ) -> bool {
         let packet_check = self.processed_packet_numbers.check(packet_number);
-        if let Err(err) = packet_check {
-            publisher.on_duplicate_packet(event::builders::DuplicatePacket {
-                packet_header: event::builders::PacketHeader {
-                    packet_type: packet_number.as_event(),
+        if let Err(error) = packet_check {
+            publisher.on_duplicate_packet(event::builder::DuplicatePacket {
+                packet_header: event::builder::PacketHeader {
+                    packet_type: packet_number.into_event(),
                     version: publisher.quic_version(),
-                }
-                .into(),
-                path_id: path_id.as_u8() as u64,
-                error: err.as_event(),
+                },
+                path_id: path_id.into_event(),
+                error: error.into_event(),
             });
         }
         match packet_check {

@@ -41,7 +41,7 @@ macro_rules! is_supported {
             //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.1
             //# Upon receiving a client initial with a supported version, the
             //# server logs this event with server_versions and chosen_version set
-            $publisher.on_version_information(event::builders::VersionInformation {
+            $publisher.on_version_information(event::builder::VersionInformation {
                 server_versions: &SUPPORTED_VERSIONS,
                 client_versions: &[],
                 chosen_version: Some($packet.version),
@@ -53,7 +53,7 @@ macro_rules! is_supported {
             //# client_versions to the single-element array containing the
             //# client's attempted version.  The absence of chosen_version implies
             //# no overlap was found.
-            $publisher.on_version_information(event::builders::VersionInformation {
+            $publisher.on_version_information(event::builder::VersionInformation {
                 server_versions: &SUPPORTED_VERSIONS,
                 client_versions: &[$packet.version],
                 chosen_version: None,
@@ -174,15 +174,14 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         while let Some(transmission) = self.transmissions.pop_front() {
             match queue.push(&transmission) {
                 Ok(tx::Outcome { len, .. }) => {
-                    publisher.on_packet_sent(event::builders::PacketSent {
-                        packet_header: event::builders::PacketHeader {
-                            packet_type: event::builders::version_packet_type(),
+                    publisher.on_packet_sent(event::builder::PacketSent {
+                        packet_header: event::builder::PacketHeader {
+                            packet_type: event::builder::PacketType::VersionNegotiation,
                             version: publisher.quic_version(),
-                        }
-                        .into(),
+                        },
                     });
 
-                    publisher.on_datagram_sent(event::builders::DatagramSent { len: len as u16 });
+                    publisher.on_datagram_sent(event::builder::DatagramSent { len: len as u16 });
                 }
                 Err(_) => {
                     self.transmissions.push_front(transmission);
@@ -353,7 +352,12 @@ mod tests {
             let remote_address = SocketAddress::default();
             let connection_info = ConnectionInfo::new(&remote_address);
             let (packet, _) = ProtectedPacket::decode(decoder, &connection_info, &3).unwrap();
-            $negotiator.on_packet(&$remote_address, $payload_len, &packet, &mut Publisher)
+            $negotiator.on_packet(
+                &$remote_address,
+                $payload_len,
+                &packet,
+                &mut Publisher::default(),
+            )
         }};
     }
 

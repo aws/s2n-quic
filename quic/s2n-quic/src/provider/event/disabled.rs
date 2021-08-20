@@ -15,4 +15,8 @@ impl super::Provider for Provider {
 
 pub struct Subscriber;
 
-impl super::Subscriber for Subscriber {}
+impl super::Subscriber for Subscriber {
+    type ConnectionContext = ();
+
+    fn create_connection_context(&mut self) -> Self::ConnectionContext {}
+}

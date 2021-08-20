@@ -22,7 +22,10 @@ use crate::{
 use alloc::rc::Rc;
 use core::cell::RefCell;
 use s2n_quic_core::{
-    ack, connection, connection::id::AsEvent as _, event, frame, packet::number::PacketNumber,
+    ack, connection, endpoint,
+    event::{self, IntoEvent},
+    frame,
+    packet::number::PacketNumber,
     stateless_reset, transport,
 };
 use smallvec::SmallVec;
@@ -468,11 +471,11 @@ impl PeerIdRegistry {
         if let Some(new_id) = new_id {
             debug_assert_ne!(current_peer_connection_id, new_id);
 
-            publisher.on_connection_id_updated(event::builders::ConnectionIdUpdated {
-                path_id: path_id.as_u8() as u64,
-                cid_consumer: event::common::Endpoint::Local,
-                previous: current_peer_connection_id.as_event(),
-                current: new_id.as_event(),
+            publisher.on_connection_id_updated(event::builder::ConnectionIdUpdated {
+                path_id: path_id.into_event(),
+                cid_consumer: endpoint::Location::Local,
+                previous: current_peer_connection_id.into_event(),
+                current: new_id.into_event(),
             });
         }
         new_id

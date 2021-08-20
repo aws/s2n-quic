@@ -505,3 +505,30 @@ jobs:
       - name: Check
         run: |
           ./scripts/copyright_check
+
+  # ensures the event codegen is up to date
+  events:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
+          profile: minimal
+          override: true
+          components: rustfmt
+
+      - uses: camshaft/rust-cache@v1
+
+      - name: Run events codegen
+        run: |
+          cargo run --bin s2n-quic-events
+
+      - name: Check to make sure the generated events are up-to-date
+        run: |
+          # If this fails you neeed to run `cargo run --bin s2n-quic-events`
+          git diff --exit-code

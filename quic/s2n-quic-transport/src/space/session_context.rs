@@ -66,8 +66,8 @@ impl<'a, Config: endpoint::Config, Pub: event::Publisher>
             ack_manager,
         )));
 
-        self.publisher.on_key_update(event::builders::KeyUpdate {
-            key_type: event::common::KeyType::Handshake,
+        self.publisher.on_key_update(event::builder::KeyUpdate {
+            key_type: event::builder::KeyType::Handshake,
         });
         Ok(())
     }
@@ -86,8 +86,8 @@ impl<'a, Config: endpoint::Config, Pub: event::Publisher>
         // TODO: also store the header_key https://github.com/awslabs/s2n-quic/issues/319
         *self.zero_rtt_crypto = Some(Box::new(key));
 
-        self.publisher.on_key_update(event::builders::KeyUpdate {
-            key_type: event::common::KeyType::ZeroRtt,
+        self.publisher.on_key_update(event::builder::KeyUpdate {
+            key_type: event::builder::KeyType::ZeroRtt,
         });
         Ok(())
     }
@@ -186,8 +186,8 @@ impl<'a, Config: endpoint::Config, Pub: event::Publisher>
             sni,
             alpn,
         )));
-        self.publisher.on_key_update(event::builders::KeyUpdate {
-            key_type: event::common::KeyType::OneRtt { generation: 0 },
+        self.publisher.on_key_update(event::builder::KeyUpdate {
+            key_type: event::builder::KeyType::OneRtt { generation: 0 },
         });
 
         self.local_id_registry

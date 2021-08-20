@@ -7,7 +7,7 @@ use crate::{
     connection::{
         self,
         close_sender::CloseSender,
-        id::{AsEvent as _, ConnectionInfo, Interest},
+        id::{ConnectionInfo, Interest},
         limits::Limits,
         local_id_registry::LocalIdRegistrationError,
         ConnectionIdMapper, ConnectionInterests, ConnectionTimers, ConnectionTransmission,
@@ -29,13 +29,13 @@ use core::{
 };
 use s2n_quic_core::{
     application,
-    event::{self, Publisher as _},
-    inet::{ip::AsEvent as _, DatagramInfo},
+    event::{self, IntoEvent as _, Publisher as _},
+    inet::DatagramInfo,
     io::tx,
     packet::{
         handshake::ProtectedHandshake,
         initial::{CleartextInitial, ProtectedInitial},
-        number::{PacketNumber, PacketNumberAsEvent as _, PacketNumberSpace},
+        number::{PacketNumber, PacketNumberSpace},
         retry::ProtectedRetry,
         short::ProtectedShort,
         version_negotiation::ProtectedVersionNegotiation,
@@ -373,13 +373,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         let path_manager = path::Manager::new(initial_path, parameters.peer_id_registry);
 
-        publisher.on_connection_started(event::builders::ConnectionStarted {
-            path: event::builders::Path {
-                remote_addr: parameters.path_handle.remote_address().as_event(),
-                remote_cid: parameters.peer_connection_id.as_event(),
-                id: path_manager.active_path_id().as_u8() as u64,
-            }
-            .into(),
+        publisher.on_connection_started(event::builder::ConnectionStarted {
+            path: event::builder::Path {
+                remote_addr: parameters.path_handle.remote_address().into_event(),
+                remote_cid: parameters.peer_connection_id.into_event(),
+                id: path_manager.active_path_id().into_event(),
+            },
         });
 
         Self {
@@ -418,7 +417,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         timestamp: Timestamp,
         publisher: &mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
     ) {
-        publisher.on_connection_closed(event::builders::ConnectionClosed { error });
+        publisher.on_connection_closed(event::builder::ConnectionClosed { error });
         match self.state {
             ConnectionState::Closing | ConnectionState::Draining | ConnectionState::Finished => {
                 // The connection is already closing
@@ -752,7 +751,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             publisher,
         )?;
 
-        publisher.on_datagram_received(event::builders::DatagramReceived {
+        publisher.on_datagram_received(event::builder::DatagramReceived {
             len: datagram.payload_len as u16,
         });
 
@@ -794,12 +793,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         if let Some((space, _status)) = self.space_manager.initial_mut() {
             let packet = space.validate_and_decrypt_packet(packet, path_id, publisher)?;
 
-            publisher.on_packet_received(event::builders::PacketReceived {
-                packet_header: event::builders::PacketHeader {
-                    packet_type: packet.packet_number.as_event(),
+            publisher.on_packet_received(event::builder::PacketReceived {
+                packet_header: event::builder::PacketHeader {
+                    packet_type: packet.packet_number.into_event(),
                     version: Some(self.quic_version),
-                }
-                .into(),
+                },
             });
 
             self.handle_cleartext_initial_packet(
@@ -888,12 +886,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         if let Some((space, handshake_status)) = self.space_manager.handshake_mut() {
             let packet = space.validate_and_decrypt_packet(packet, path_id, publisher)?;
 
-            publisher.on_packet_received(event::builders::PacketReceived {
-                packet_header: event::builders::PacketHeader {
-                    packet_type: packet.packet_number.as_event(),
+            publisher.on_packet_received(event::builder::PacketReceived {
+                packet_header: event::builder::PacketHeader {
+                    packet_type: packet.packet_number.into_event(),
                     version: Some(self.quic_version),
-                }
-                .into(),
+                },
             });
 
             space.handle_cleartext_payload(
@@ -1018,12 +1015,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             // notify the connection a packet was processed
             self.on_processed_packet(datagram.timestamp);
 
-            publisher.on_packet_received(event::builders::PacketReceived {
-                packet_header: event::builders::PacketHeader {
-                    packet_type: packet.packet_number.as_event(),
+            publisher.on_packet_received(event::builder::PacketReceived {
+                packet_header: event::builder::PacketHeader {
+                    packet_type: packet.packet_number.into_event(),
                     version: Some(self.quic_version),
-                }
-                .into(),
+                },
             });
         }
 

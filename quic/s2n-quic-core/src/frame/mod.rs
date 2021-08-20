@@ -3,7 +3,7 @@
 
 #![forbid(unsafe_code)]
 
-use crate::event as evt;
+use crate::event;
 use core::fmt;
 use s2n_codec::{
     DecoderBuffer, DecoderBufferMut, DecoderBufferMutResult, DecoderError,
@@ -12,7 +12,6 @@ use s2n_codec::{
 
 pub mod ack_elicitation;
 pub mod congestion_controlled;
-pub mod event;
 pub mod path_validation;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19
@@ -53,15 +52,15 @@ macro_rules! frames {
             }
         }
 
-        impl<'a, $ack, $data> event::AsEvent for Frame<'a, $ack, $data>
+        impl<'a, $ack, $data> event::IntoEvent<event::builder::Frame> for &Frame<'a, $ack, $data>
         where
             $data: EncoderValue,
         {
             #[inline]
-            fn as_event(&self) -> evt::common::Frame {
-                match &self {
+            fn into_event(self) -> event::builder::Frame {
+                match self {
                     $(
-                        Frame::$ty(inner) => inner.as_event(),
+                        Frame::$ty(inner) => inner.into_event(),
                     )*
                 }
             }
