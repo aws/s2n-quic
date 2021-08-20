@@ -11,8 +11,8 @@ use crate::{
     transmission::{self, Mode},
 };
 use s2n_quic_core::{
-    connection::id::AsEvent as _,
-    event, frame, packet,
+    event::{self, IntoEvent},
+    frame, packet,
     time::{timer, Timestamp},
 };
 
@@ -268,11 +268,11 @@ impl<Config: endpoint::Config> Path<Config> {
         );
 
         if &self.local_connection_id != local_connection_id {
-            publisher.on_connection_id_updated(event::builders::ConnectionIdUpdated {
-                path_id: path_id.as_u8() as u64,
-                cid_consumer: event::common::Endpoint::Remote,
-                previous: self.local_connection_id.as_event(),
-                current: local_connection_id.as_event(),
+            publisher.on_connection_id_updated(event::builder::ConnectionIdUpdated {
+                path_id: path_id.into_event(),
+                cid_consumer: endpoint::Location::Remote,
+                previous: self.local_connection_id.into_event(),
+                current: local_connection_id.into_event(),
             });
             self.local_connection_id = *local_connection_id;
         }

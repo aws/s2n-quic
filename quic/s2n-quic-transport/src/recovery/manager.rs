@@ -10,12 +10,10 @@ use crate::{
 };
 use core::{cmp::max, marker::PhantomData, time::Duration};
 use s2n_quic_core::{
-    connection::id::AsEvent as _,
-    event, frame,
-    inet::{ip::AsEvent as _, DatagramInfo, ExplicitCongestionNotification},
-    packet::number::{
-        PacketNumber, PacketNumberAsEvent as _, PacketNumberRange, PacketNumberSpace,
-    },
+    event::{self, IntoEvent},
+    frame,
+    inet::{DatagramInfo, ExplicitCongestionNotification},
+    packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     recovery::{CongestionController, RttEstimator, K_GRANULARITY},
     time::{timer, Timer, Timestamp},
     transport,
@@ -758,18 +756,16 @@ impl<Config: endpoint::Config> Manager<Config> {
                 is_mtu_probe = false;
             }
 
-            publisher.on_packet_lost(event::builders::PacketLost {
-                packet_header: event::builders::PacketHeader {
-                    packet_type: packet_number.as_event(),
+            publisher.on_packet_lost(event::builder::PacketLost {
+                packet_header: event::builder::PacketHeader {
+                    packet_type: packet_number.into_event(),
                     version: publisher.quic_version(),
-                }
-                .into(),
-                path: event::builders::Path {
-                    remote_addr: path.remote_address().as_event(),
-                    remote_cid: path.peer_connection_id.as_event(),
-                    id: current_path_id.as_u8() as u64,
-                }
-                .into(),
+                },
+                path: event::builder::Path {
+                    remote_addr: path.remote_address().into_event(),
+                    remote_cid: path.peer_connection_id.into_event(),
+                    id: current_path_id.into_event(),
+                },
                 bytes_lost: sent_info.sent_bytes,
                 is_mtu_probe,
             });
@@ -812,8 +808,8 @@ impl<Config: endpoint::Config> Manager<Config> {
         max(time_threshold, K_GRANULARITY)
     }
 
-    fn recovery_event(&self, path_id: u8, path: &Path<Config>) -> event::builders::RecoveryMetrics {
-        event::builders::RecoveryMetrics {
+    fn recovery_event(&self, path_id: u8, path: &Path<Config>) -> event::builder::RecoveryMetrics {
+        event::builder::RecoveryMetrics {
             path_id: path_id as u64,
             min_rtt: path.rtt_estimator.min_rtt(),
             smoothed_rtt: path.rtt_estimator.smoothed_rtt(),

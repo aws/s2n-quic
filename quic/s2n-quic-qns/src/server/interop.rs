@@ -8,13 +8,12 @@ use futures::stream::StreamExt;
 use s2n_quic::{
     provider::{
         endpoint_limits,
-        event::{self, Subscriber},
+        event::{self, events, Subscriber},
         tls::default::certificate::{Certificate, IntoCertificate, IntoPrivateKey, PrivateKey},
     },
     stream::BidirectionalStream,
     Connection, Server,
 };
-use s2n_quic_core::event::{common, events};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -246,7 +245,11 @@ impl Interop {
 pub struct EventSubscriber;
 
 impl Subscriber for EventSubscriber {
-    fn on_active_path_updated(&mut self, meta: &common::Meta, event: &events::ActivePathUpdated) {
+    type ConnectionContext = ();
+
+    fn create_connection_context(&mut self) -> Self::ConnectionContext {}
+
+    fn on_active_path_updated(&mut self, meta: &events::Meta, event: &events::ActivePathUpdated) {
         info!("{:?} {:?}", meta.subject, event);
     }
 }

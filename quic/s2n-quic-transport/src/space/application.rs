@@ -17,7 +17,7 @@ use core::{convert::TryInto, fmt, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{application::KeySet, tls, CryptoSuite},
-    event,
+    event::{self, IntoEvent},
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
         HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionId, NewToken,
@@ -27,10 +27,7 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     packet::{
         encoding::{PacketEncoder, PacketEncodingError},
-        number::{
-            PacketNumber, PacketNumberAsEvent as _, PacketNumberRange, PacketNumberSpace,
-            SlidingWindow, SlidingWindowAsEvent as _,
-        },
+        number::{PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow},
         short::{CleartextShort, ProtectedShort, Short, SpinBit},
     },
     recovery::RttEstimator,
@@ -128,15 +125,14 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         publisher: &mut Pub,
     ) -> bool {
         let packet_check = self.processed_packet_numbers.check(packet_number);
-        if let Err(err) = packet_check {
-            publisher.on_duplicate_packet(event::builders::DuplicatePacket {
-                packet_header: event::builders::PacketHeader {
-                    packet_type: packet_number.as_event(),
+        if let Err(error) = packet_check {
+            publisher.on_duplicate_packet(event::builder::DuplicatePacket {
+                packet_header: event::builder::PacketHeader {
+                    packet_type: packet_number.into_event(),
                     version: publisher.quic_version(),
-                }
-                .into(),
-                path_id: path_id.as_u8() as u64,
-                error: err.as_event(),
+                },
+                path_id: path_id.into_event(),
+                error: error.into_event(),
             });
         }
         match packet_check {
@@ -422,8 +418,8 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             datagram.timestamp + rtt_estimator.pto_period(1, PacketNumberSpace::ApplicationData),
         );
         if let Ok((_, Some(generation))) = decrypted {
-            publisher.on_key_update(event::builders::KeyUpdate {
-                key_type: event::common::KeyType::OneRtt { generation },
+            publisher.on_key_update(event::builder::KeyUpdate {
+                key_type: event::builder::KeyType::OneRtt { generation },
             });
         }
 

@@ -7,7 +7,7 @@ use crate::{
     acceptor::Acceptor,
     connection::{
         self, ConnectionContainer, ConnectionContainerIterationResult, ConnectionIdMapper,
-        InternalConnectionId, InternalConnectionIdGenerator, Trait as _,
+        InternalConnectionId, InternalConnectionIdGenerator, ProcessingError, Trait as _,
     },
     unbounded_channel,
     wakeup_queue::WakeupQueue,
@@ -16,14 +16,18 @@ use alloc::collections::VecDeque;
 use core::task::{self, Poll};
 use s2n_codec::{DecoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{
-    connection::id::Generator,
-    crypto::{tls, CryptoSuite},
+    connection::{
+        id::{ConnectionInfo, Generator},
+        LocalId,
+    },
+    crypto::{tls, tls::Endpoint as _, CryptoSuite},
     endpoint::{limits::Outcome, Limits},
-    event::Publisher as _,
+    event::{self, Publisher as _},
     inet::{datagram, DatagramInfo},
     io::{rx, tx},
     packet::{initial::ProtectedInitial, ProtectedPacket},
-    stateless_reset::token::LEN as StatelessResetTokenLen,
+    path::{Handle as _, MaxMtu},
+    stateless_reset::token::{Generator as _, LEN as StatelessResetTokenLen},
     time::{Clock, Timestamp},
     token::{self, Format},
 };
@@ -35,18 +39,10 @@ mod retry;
 mod stateless_reset;
 mod version;
 
-use crate::connection::ProcessingError;
+// exports
 pub use config::{Config, Context};
-use connection::id::ConnectionInfo;
 pub use packet_buffer::Buffer as PacketBuffer;
 pub use s2n_quic_core::endpoint::*;
-use s2n_quic_core::{
-    connection::LocalId,
-    crypto::tls::Endpoint as _,
-    event,
-    path::{Handle as _, MaxMtu},
-    stateless_reset::token::Generator as _,
-};
 
 const DEFAULT_MAX_PEERS: usize = 1024;
 
@@ -126,11 +122,11 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
 
         self.connections.iterate_transmission_list(|connection| {
             let mut publisher = event::PublisherSubscriber::new(
-                event::builders::Meta {
+                event::builder::Meta {
                     endpoint_type: Cfg::ENDPOINT_TYPE,
-                    subject: event::common::Subject::Connection(
-                        connection.internal_connection_id().into(),
-                    ),
+                    subject: event::builder::Subject::Connection {
+                        id: connection.internal_connection_id().into(),
+                    },
                     timestamp,
                 },
                 Some(connection.quic_version()),
@@ -148,9 +144,9 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
 
         if transmit_result.is_ok() {
             let mut publisher = event::PublisherSubscriber::new(
-                event::builders::Meta {
+                event::builder::Meta {
                     endpoint_type: Cfg::ENDPOINT_TYPE,
-                    subject: event::common::Subject::Endpoint,
+                    subject: event::builder::Subject::Endpoint,
                     timestamp,
                 },
                 None,
@@ -192,11 +188,11 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                 };
 
                 let mut publisher = event::PublisherSubscriber::new(
-                    event::builders::Meta {
+                    event::builder::Meta {
                         endpoint_type: Cfg::ENDPOINT_TYPE,
-                        subject: event::common::Subject::Connection(
-                            conn.internal_connection_id().into(),
-                        ),
+                        subject: event::builder::Subject::Connection {
+                            id: internal_id.into(),
+                        },
                         timestamp,
                     },
                     Some(conn.quic_version()),
@@ -358,15 +354,15 @@ impl<Cfg: Config> Endpoint<Cfg> {
             if internal_connection_id.is_none() {
                 // The packet didn't contain a valid stateless token
                 let mut publisher = event::PublisherSubscriber::new(
-                    event::builders::Meta {
+                    event::builder::Meta {
                         endpoint_type: Cfg::ENDPOINT_TYPE,
-                        subject: event::common::Subject::Endpoint,
+                        subject: event::builder::Subject::Endpoint,
                         timestamp,
                     },
                     None,
                     self.config.context().event_subscriber,
                 );
-                publisher.on_datagram_dropped(event::builders::DatagramDropped {
+                publisher.on_datagram_dropped(event::builder::DatagramDropped {
                     len: payload_len as u16,
                 });
             }
@@ -375,9 +371,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
         };
 
         let mut publisher = event::PublisherSubscriber::new(
-            event::builders::Meta {
+            event::builder::Meta {
                 endpoint_type: Cfg::ENDPOINT_TYPE,
-                subject: event::common::Subject::Endpoint,
+                subject: event::builder::Subject::Endpoint,
                 timestamp,
             },
             packet.version(),
@@ -425,11 +421,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
             let _ = self.connections.with_connection(internal_id, |conn| {
                 let mut publisher = event::PublisherSubscriber::new(
-                    event::builders::Meta {
+                    event::builder::Meta {
                         endpoint_type: Cfg::ENDPOINT_TYPE,
-                        subject: event::common::Subject::Connection(
-                            conn.internal_connection_id().into(),
-                        ),
+                        subject: event::builder::Subject::Connection {
+                            id: internal_id.into(),
+                        },
                         timestamp,
                     },
                     Some(conn.quic_version()),
@@ -724,11 +720,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
         //# and not send any further packets on this connection.
         self.connections.with_connection(internal_id, |conn| {
             let mut publisher = event::PublisherSubscriber::new(
-                event::builders::Meta {
+                event::builder::Meta {
                     endpoint_type: Cfg::ENDPOINT_TYPE,
-                    subject: event::common::Subject::Connection(
-                        conn.internal_connection_id().into(),
-                    ),
+                    subject: event::builder::Subject::Connection {
+                        id: internal_id.into(),
+                    },
                     timestamp,
                 },
                 Some(conn.quic_version()),
@@ -753,11 +749,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         self.connections.iterate_timeout_list(timestamp, |conn| {
             let mut publisher = event::PublisherSubscriber::new(
-                event::builders::Meta {
+                event::builder::Meta {
                     endpoint_type: Cfg::ENDPOINT_TYPE,
-                    subject: event::common::Subject::Connection(
-                        conn.internal_connection_id().into(),
-                    ),
+                    subject: event::builder::Subject::Connection {
+                        id: conn.internal_connection_id().into(),
+                    },
                     timestamp,
                 },
                 Some(conn.quic_version()),

@@ -215,14 +215,21 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .new_congestion_controller(path_info);
 
         let quic_version = packet.version;
+        // TODO implement when event contexts are implemented
+        // let mut event_context = endpoint_context
+        //    .event_subscriber
+        //    .create_connection_context();
         let mut publisher = event::PublisherSubscriber::new(
-            event::builders::Meta {
+            event::builder::Meta {
                 endpoint_type: Config::ENDPOINT_TYPE,
-                subject: event::common::Subject::Connection(internal_connection_id.into()),
+                subject: event::builder::Subject::Connection {
+                    id: internal_connection_id.into(),
+                },
                 timestamp: datagram.timestamp,
             },
             Some(quic_version),
             endpoint_context.event_subscriber,
+            //&mut event_context,
         );
 
         let space_manager = PacketSpaceManager::new(

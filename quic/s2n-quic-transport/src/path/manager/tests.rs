@@ -115,7 +115,11 @@ fn test_invalid_path_fallback() {
     assert!(manager.paths[0].is_validated());
 
     manager
-        .update_active_path(Id(1), &mut random::testing::Generator(123), &mut Publisher)
+        .update_active_path(
+            Id(1),
+            &mut random::testing::Generator(123),
+            &mut Publisher::default(),
+        )
         .unwrap();
     assert_eq!(manager.active, 1);
     assert_eq!(manager.last_known_validated_path, Some(0));
@@ -155,7 +159,7 @@ fn promote_validated_path_to_last_known_validated_path() {
         .update_active_path(
             helper.second_path_id,
             &mut random::testing::Generator(123),
-            &mut Publisher,
+            &mut Publisher::default(),
         )
         .unwrap();
 
@@ -176,7 +180,7 @@ fn dont_promote_non_validated_path_to_last_known_validated_path() {
         .update_active_path(
             helper.second_path_id,
             &mut random::testing::Generator(123),
-            &mut Publisher,
+            &mut Publisher::default(),
         )
         .unwrap();
 
@@ -197,7 +201,7 @@ fn update_path_to_active_path() {
         .update_active_path(
             helper.second_path_id,
             &mut random::testing::Generator(123),
-            &mut Publisher,
+            &mut Publisher::default(),
         )
         .unwrap();
 
@@ -217,7 +221,7 @@ fn dont_update_path_to_active_path_if_no_connection_id_available() {
         helper.manager.update_active_path(
             helper.second_path_id,
             &mut random::testing::Generator(123),
-            &mut Publisher
+            &mut Publisher::default(),
         ),
         Err(transport::Error::INTERNAL_ERROR)
     );
@@ -243,7 +247,7 @@ fn set_path_challenge_on_active_path_on_connection_migration() {
         .update_active_path(
             helper.second_path_id,
             &mut random::testing::Generator(123),
-            &mut Publisher,
+            &mut Publisher::default(),
         )
         .unwrap();
 
@@ -408,7 +412,7 @@ fn initiate_path_challenge_if_new_path_is_not_validated() {
         .on_non_path_validation_probing_packet(
             helper.second_path_id,
             &mut random::testing::Generator(123),
-            &mut Publisher,
+            &mut Publisher::default(),
         )
         .unwrap();
 
@@ -501,7 +505,7 @@ fn dont_abandon_path_challenge_if_new_path_is_not_validated() {
         .on_non_path_validation_probing_packet(
             helper.second_path_id,
             &mut random::testing::Generator(123),
-            &mut Publisher,
+            &mut Publisher::default(),
         )
         .unwrap();
 
@@ -529,7 +533,7 @@ fn abandon_path_challenges_if_new_path_is_validated() {
         .on_non_path_validation_probing_packet(
             helper.second_path_id,
             &mut random::testing::Generator(123),
-            &mut Publisher,
+            &mut Publisher::default(),
         )
         .unwrap();
 
@@ -604,7 +608,7 @@ fn test_adding_new_path() {
             &mut Default::default(),
             &mut random::testing::Generator(123),
             DEFAULT_MAX_MTU,
-            &mut Publisher,
+            &mut Publisher::default(),
         )
         .unwrap();
 
@@ -662,7 +666,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
         &mut Default::default(),
         &mut random::testing::Generator(123),
         DEFAULT_MAX_MTU,
-        &mut Publisher,
+        &mut Publisher::default(),
     );
 
     // Expectation:
@@ -704,7 +708,7 @@ fn limit_number_of_connection_migrations() {
             &mut Default::default(),
             &mut random::testing::Generator(123),
             DEFAULT_MAX_MTU,
-            &mut Publisher,
+            &mut Publisher::default(),
         );
         match res {
             Ok(_) => total_paths += 1,
@@ -747,7 +751,7 @@ fn connection_migration_challenge_behavior() {
             &mut Default::default(),
             &mut random::testing::Generator(123),
             DEFAULT_MAX_MTU,
-            &mut Publisher,
+            &mut Publisher::default(),
         )
         .unwrap();
 
@@ -825,7 +829,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
             &mut Default::default(),
             &mut random::testing::Generator(123),
             DEFAULT_MAX_MTU,
-            &mut Publisher,
+            &mut Publisher::default(),
         )
         .unwrap();
     let first_path_id = Id(0);
@@ -897,7 +901,7 @@ fn connection_migration_new_path_abandon_timer() {
             &mut Default::default(),
             &mut random::testing::Generator(123),
             DEFAULT_MAX_MTU,
-            &mut Publisher,
+            &mut Publisher::default(),
         )
         .unwrap();
     let first_path_id = Id(0);
@@ -981,7 +985,7 @@ fn stop_using_a_retired_connection_id() {
 
     let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
     assert!(manager
-        .on_new_connection_id(&id_2, 1, 1, &TEST_TOKEN_1, &mut Publisher)
+        .on_new_connection_id(&id_2, 1, 1, &TEST_TOKEN_1, &mut Publisher::default())
         .is_ok());
 
     assert_eq!(id_2, manager.paths[0].peer_connection_id);
@@ -1194,7 +1198,7 @@ fn helper_manager_with_paths_base(
         .update_active_path(
             first_path_id,
             &mut random::testing::Generator(123),
-            &mut Publisher
+            &mut Publisher::default(),
         )
         .is_ok());
     if validate_path_zero {
@@ -1203,7 +1207,7 @@ fn helper_manager_with_paths_base(
 
     assert!(manager
         .peer_id_registry
-        .consume_new_id_for_existing_path(Id(0), zero_conn_id, &mut Publisher)
+        .consume_new_id_for_existing_path(Id(0), zero_conn_id, &mut Publisher::default())
         .is_some());
 
     // assert first_path is active and last_known_validated_path

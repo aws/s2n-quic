@@ -8,15 +8,11 @@ use crate::{
 use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
-    event,
-    event::Publisher as _,
+    event::{self, IntoEvent as _, Publisher as _},
     frame::ack_elicitation::AckElicitable,
     inet::ExplicitCongestionNotification,
     io::tx,
-    packet::{
-        encoding::PacketEncodingError,
-        number::{PacketNumberAsEvent as _, PacketNumberSpace},
-    },
+    packet::{encoding::PacketEncodingError, number::PacketNumberSpace},
     time::Timestamp,
 };
 
@@ -180,12 +176,11 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 Ok((outcome, encoder)) => {
                     self.context
                         .publisher
-                        .on_packet_sent(event::builders::PacketSent {
-                            packet_header: event::builders::PacketHeader {
-                                packet_type: outcome.packet_number.as_event(),
+                        .on_packet_sent(event::builder::PacketSent {
+                            packet_header: event::builder::PacketHeader {
+                                packet_type: outcome.packet_number.into_event(),
                                 version: self.context.publisher.quic_version(),
-                            }
-                            .into(),
+                            },
                         });
 
                     if Config::ENDPOINT_TYPE.is_server()
@@ -237,12 +232,11 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 Ok((outcome, encoder)) => {
                     self.context
                         .publisher
-                        .on_packet_sent(event::builders::PacketSent {
-                            packet_header: event::builders::PacketHeader {
-                                packet_type: outcome.packet_number.as_event(),
+                        .on_packet_sent(event::builder::PacketSent {
+                            packet_header: event::builder::PacketHeader {
+                                packet_type: outcome.packet_number.into_event(),
                                 version: self.context.publisher.quic_version(),
-                            }
-                            .into(),
+                            },
                         });
 
                     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
@@ -336,12 +330,11 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 Ok((outcome, encoder)) => {
                     self.context
                         .publisher
-                        .on_packet_sent(event::builders::PacketSent {
-                            packet_header: event::builders::PacketHeader {
-                                packet_type: outcome.packet_number.as_event(),
+                        .on_packet_sent(event::builder::PacketSent {
+                            packet_header: event::builder::PacketHeader {
+                                packet_type: outcome.packet_number.into_event(),
                                 version: self.context.publisher.quic_version(),
-                            }
-                            .into(),
+                            },
                         });
                     encoder
                 }
@@ -372,7 +365,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
         if datagram_len > 0 {
             self.context
                 .publisher
-                .on_datagram_sent(event::builders::DatagramSent {
+                .on_datagram_sent(event::builder::DatagramSent {
                     len: datagram_len as u16,
                 });
         }
