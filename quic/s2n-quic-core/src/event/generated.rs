@@ -1216,145 +1216,109 @@ mod traits {
     pub trait Subscriber: 'static + Send {
         type ConnectionContext;
         fn create_connection_context(&mut self) -> Self::ConnectionContext;
-        #[doc = r" Called when the `"]
-        #[doc = "VersionInformation"]
-        #[doc = r" ` event is triggered"]
+        #[doc = "Called when the `VersionInformation` event is triggered"]
         #[inline]
         fn on_version_information(&mut self, meta: &Meta, event: &VersionInformation) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Called when the `"]
-        #[doc = "AlpnInformation"]
-        #[doc = r" ` event is triggered"]
+        #[doc = "Called when the `AlpnInformation` event is triggered"]
         #[inline]
         fn on_alpn_information(&mut self, meta: &Meta, event: &AlpnInformation) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Called when the `"]
-        #[doc = "PacketSent"]
-        #[doc = r" ` event is triggered"]
+        #[doc = "Called when the `PacketSent` event is triggered"]
         #[inline]
         fn on_packet_sent(&mut self, meta: &Meta, event: &PacketSent) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Called when the `"]
-        #[doc = "PacketReceived"]
-        #[doc = r" ` event is triggered"]
+        #[doc = "Called when the `PacketReceived` event is triggered"]
         #[inline]
         fn on_packet_received(&mut self, meta: &Meta, event: &PacketReceived) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Called when the `"]
-        #[doc = "ActivePathUpdated"]
-        #[doc = r" ` event is triggered"]
+        #[doc = "Called when the `ActivePathUpdated` event is triggered"]
         #[inline]
         fn on_active_path_updated(&mut self, meta: &Meta, event: &ActivePathUpdated) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Called when the `"]
-        #[doc = "PathCreated"]
-        #[doc = r" ` event is triggered"]
+        #[doc = "Called when the `PathCreated` event is triggered"]
         #[inline]
         fn on_path_created(&mut self, meta: &Meta, event: &PathCreated) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Called when the `"]
-        #[doc = "FrameSent"]
-        #[doc = r" ` event is triggered"]
+        #[doc = "Called when the `FrameSent` event is triggered"]
         #[inline]
         fn on_frame_sent(&mut self, meta: &Meta, event: &FrameSent) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Called when the `"]
-        #[doc = "FrameReceived"]
-        #[doc = r" ` event is triggered"]
+        #[doc = "Called when the `FrameReceived` event is triggered"]
         #[inline]
         fn on_frame_received(&mut self, meta: &Meta, event: &FrameReceived) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Called when the `"]
-        #[doc = "PacketLost"]
-        #[doc = r" ` event is triggered"]
+        #[doc = "Called when the `PacketLost` event is triggered"]
         #[inline]
         fn on_packet_lost(&mut self, meta: &Meta, event: &PacketLost) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Called when the `"]
-        #[doc = "RecoveryMetrics"]
-        #[doc = r" ` event is triggered"]
+        #[doc = "Called when the `RecoveryMetrics` event is triggered"]
         #[inline]
         fn on_recovery_metrics(&mut self, meta: &Meta, event: &RecoveryMetrics) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Called when the `"]
-        #[doc = "KeyUpdate"]
-        #[doc = r" ` event is triggered"]
+        #[doc = "Called when the `KeyUpdate` event is triggered"]
         #[inline]
         fn on_key_update(&mut self, meta: &Meta, event: &KeyUpdate) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Called when the `"]
-        #[doc = "ConnectionStarted"]
-        #[doc = r" ` event is triggered"]
+        #[doc = "Called when the `ConnectionStarted` event is triggered"]
         #[inline]
         fn on_connection_started(&mut self, meta: &Meta, event: &ConnectionStarted) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Called when the `"]
-        #[doc = "ConnectionClosed"]
-        #[doc = r" ` event is triggered"]
+        #[doc = "Called when the `ConnectionClosed` event is triggered"]
         #[inline]
         fn on_connection_closed(&mut self, meta: &Meta, event: &ConnectionClosed) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Called when the `"]
-        #[doc = "DuplicatePacket"]
-        #[doc = r" ` event is triggered"]
+        #[doc = "Called when the `DuplicatePacket` event is triggered"]
         #[inline]
         fn on_duplicate_packet(&mut self, meta: &Meta, event: &DuplicatePacket) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Called when the `"]
-        #[doc = "DatagramSent"]
-        #[doc = r" ` event is triggered"]
+        #[doc = "Called when the `DatagramSent` event is triggered"]
         #[inline]
         fn on_datagram_sent(&mut self, meta: &Meta, event: &DatagramSent) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Called when the `"]
-        #[doc = "DatagramReceived"]
-        #[doc = r" ` event is triggered"]
+        #[doc = "Called when the `DatagramReceived` event is triggered"]
         #[inline]
         fn on_datagram_received(&mut self, meta: &Meta, event: &DatagramReceived) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Called when the `"]
-        #[doc = "DatagramDropped"]
-        #[doc = r" ` event is triggered"]
+        #[doc = "Called when the `DatagramDropped` event is triggered"]
         #[inline]
         fn on_datagram_dropped(&mut self, meta: &Meta, event: &DatagramDropped) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Called when the `"]
-        #[doc = "ConnectionIdUpdated"]
-        #[doc = r" ` event is triggered"]
+        #[doc = "Called when the `ConnectionIdUpdated` event is triggered"]
         #[inline]
         fn on_connection_id_updated(&mut self, meta: &Meta, event: &ConnectionIdUpdated) {
             let _ = meta;
@@ -1500,77 +1464,41 @@ mod traits {
         }
     }
     pub trait Publisher {
-        #[doc = r" Publishes a `"]
-        #[doc = "VersionInformation"]
-        #[doc = r" ` event to an owned subscriber"]
+        #[doc = "Publishes a `VersionInformation` event to the publisher's subscriber"]
         fn on_version_information(&mut self, event: builder::VersionInformation);
-        #[doc = r" Publishes a `"]
-        #[doc = "AlpnInformation"]
-        #[doc = r" ` event to an owned subscriber"]
+        #[doc = "Publishes a `AlpnInformation` event to the publisher's subscriber"]
         fn on_alpn_information(&mut self, event: builder::AlpnInformation);
-        #[doc = r" Publishes a `"]
-        #[doc = "PacketSent"]
-        #[doc = r" ` event to an owned subscriber"]
+        #[doc = "Publishes a `PacketSent` event to the publisher's subscriber"]
         fn on_packet_sent(&mut self, event: builder::PacketSent);
-        #[doc = r" Publishes a `"]
-        #[doc = "PacketReceived"]
-        #[doc = r" ` event to an owned subscriber"]
+        #[doc = "Publishes a `PacketReceived` event to the publisher's subscriber"]
         fn on_packet_received(&mut self, event: builder::PacketReceived);
-        #[doc = r" Publishes a `"]
-        #[doc = "ActivePathUpdated"]
-        #[doc = r" ` event to an owned subscriber"]
+        #[doc = "Publishes a `ActivePathUpdated` event to the publisher's subscriber"]
         fn on_active_path_updated(&mut self, event: builder::ActivePathUpdated);
-        #[doc = r" Publishes a `"]
-        #[doc = "PathCreated"]
-        #[doc = r" ` event to an owned subscriber"]
+        #[doc = "Publishes a `PathCreated` event to the publisher's subscriber"]
         fn on_path_created(&mut self, event: builder::PathCreated);
-        #[doc = r" Publishes a `"]
-        #[doc = "FrameSent"]
-        #[doc = r" ` event to an owned subscriber"]
+        #[doc = "Publishes a `FrameSent` event to the publisher's subscriber"]
         fn on_frame_sent(&mut self, event: builder::FrameSent);
-        #[doc = r" Publishes a `"]
-        #[doc = "FrameReceived"]
-        #[doc = r" ` event to an owned subscriber"]
+        #[doc = "Publishes a `FrameReceived` event to the publisher's subscriber"]
         fn on_frame_received(&mut self, event: builder::FrameReceived);
-        #[doc = r" Publishes a `"]
-        #[doc = "PacketLost"]
-        #[doc = r" ` event to an owned subscriber"]
+        #[doc = "Publishes a `PacketLost` event to the publisher's subscriber"]
         fn on_packet_lost(&mut self, event: builder::PacketLost);
-        #[doc = r" Publishes a `"]
-        #[doc = "RecoveryMetrics"]
-        #[doc = r" ` event to an owned subscriber"]
+        #[doc = "Publishes a `RecoveryMetrics` event to the publisher's subscriber"]
         fn on_recovery_metrics(&mut self, event: builder::RecoveryMetrics);
-        #[doc = r" Publishes a `"]
-        #[doc = "KeyUpdate"]
-        #[doc = r" ` event to an owned subscriber"]
+        #[doc = "Publishes a `KeyUpdate` event to the publisher's subscriber"]
         fn on_key_update(&mut self, event: builder::KeyUpdate);
-        #[doc = r" Publishes a `"]
-        #[doc = "ConnectionStarted"]
-        #[doc = r" ` event to an owned subscriber"]
+        #[doc = "Publishes a `ConnectionStarted` event to the publisher's subscriber"]
         fn on_connection_started(&mut self, event: builder::ConnectionStarted);
-        #[doc = r" Publishes a `"]
-        #[doc = "ConnectionClosed"]
-        #[doc = r" ` event to an owned subscriber"]
+        #[doc = "Publishes a `ConnectionClosed` event to the publisher's subscriber"]
         fn on_connection_closed(&mut self, event: builder::ConnectionClosed);
-        #[doc = r" Publishes a `"]
-        #[doc = "DuplicatePacket"]
-        #[doc = r" ` event to an owned subscriber"]
+        #[doc = "Publishes a `DuplicatePacket` event to the publisher's subscriber"]
         fn on_duplicate_packet(&mut self, event: builder::DuplicatePacket);
-        #[doc = r" Publishes a `"]
-        #[doc = "DatagramSent"]
-        #[doc = r" ` event to an owned subscriber"]
+        #[doc = "Publishes a `DatagramSent` event to the publisher's subscriber"]
         fn on_datagram_sent(&mut self, event: builder::DatagramSent);
-        #[doc = r" Publishes a `"]
-        #[doc = "DatagramReceived"]
-        #[doc = r" ` event to an owned subscriber"]
+        #[doc = "Publishes a `DatagramReceived` event to the publisher's subscriber"]
         fn on_datagram_received(&mut self, event: builder::DatagramReceived);
-        #[doc = r" Publishes a `"]
-        #[doc = "DatagramDropped"]
-        #[doc = r" ` event to an owned subscriber"]
+        #[doc = "Publishes a `DatagramDropped` event to the publisher's subscriber"]
         fn on_datagram_dropped(&mut self, event: builder::DatagramDropped);
-        #[doc = r" Publishes a `"]
-        #[doc = "ConnectionIdUpdated"]
-        #[doc = r" ` event to an owned subscriber"]
+        #[doc = "Publishes a `ConnectionIdUpdated` event to the publisher's subscriber"]
         fn on_connection_id_updated(&mut self, event: builder::ConnectionIdUpdated);
         #[doc = r" Returns the QUIC version, if any"]
         fn quic_version(&self) -> Option<u32>;

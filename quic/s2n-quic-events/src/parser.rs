@@ -120,6 +120,12 @@ impl Struct {
             let counter = Ident::new(&snake, Span::call_site());
             let function = Ident::new(&function, Span::call_site());
 
+            let subscriber_doc = format!("Called when the `{}` event is triggered", ident_str);
+            let publisher_doc = format!(
+                "Publishes a `{}` event to the publisher's subscriber",
+                ident_str
+            );
+
             // add a counter for testing structs
             output.testing_fields.extend(quote!(
                 pub #counter: u32,
@@ -128,9 +134,7 @@ impl Struct {
             match attrs.subject {
                 Subject::Endpoint => {
                     output.subscriber.extend(quote!(
-                        /// Called when the `
-                        #[doc = #ident_str]
-                        /// ` event is triggered
+                        #[doc = #subscriber_doc]
                         #[inline]
                         fn #function(&mut self, meta: &Meta, event: &#ident) {
                             let _ = meta;
@@ -147,9 +151,7 @@ impl Struct {
                     ));
 
                     output.endpoint_publisher.extend(quote!(
-                        /// Publishes a `
-                        #[doc = #ident_str]
-                        /// ` event to an owned subscriber
+                        #[doc = #publisher_doc]
                         fn #function(&mut self, event: builder::#ident);
                     ));
 
@@ -176,9 +178,7 @@ impl Struct {
                 }
                 Subject::Connection => {
                     output.subscriber.extend(quote!(
-                        /// Called when the `
-                        #[doc = #ident_str]
-                        /// ` event is triggered
+                        #[doc = #subscriber_doc]
                         #[inline]
                         fn #function(&mut self, context: &mut Self::ConnectionContext, meta: &Meta, event: &#ident) {
                             let _ = context;
@@ -196,9 +196,7 @@ impl Struct {
                     ));
 
                     output.connection_publisher.extend(quote!(
-                        /// Publishes a `
-                        #[doc = #ident_str]
-                        /// ` event to an owned subscriber
+                        #[doc = #publisher_doc]
                         fn #function(&mut self, event: builder::#ident);
                     ));
 
