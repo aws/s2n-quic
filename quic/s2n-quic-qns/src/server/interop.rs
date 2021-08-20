@@ -14,14 +14,14 @@ use s2n_quic::{
     stream::BidirectionalStream,
     Connection, Server,
 };
-use s2n_quic_core::event::{common, events};
+use s2n_quic_core::event::{common, Event};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
 use structopt::StructOpt;
 use tokio::spawn;
-use tracing::info;
+use tracing::debug;
 
 #[derive(Debug, StructOpt)]
 pub struct Interop {
@@ -246,8 +246,13 @@ impl Interop {
 pub struct EventSubscriber;
 
 impl Subscriber for EventSubscriber {
-    fn on_active_path_updated(&mut self, meta: &common::Meta, event: &events::ActivePathUpdated) {
-        info!("{:?} {:?}", meta.subject, event);
+    fn on_event<E: Event>(&mut self, meta: &common::Meta, event: &E) {
+        debug!(
+            "{:?} {:?} {:?}",
+            meta.subject,
+            meta.timestamp.duration_since_start(),
+            event
+        );
     }
 }
 
