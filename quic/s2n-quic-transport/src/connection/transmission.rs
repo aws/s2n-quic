@@ -369,11 +369,13 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
         let datagram_len = initial_capacity - encoder.capacity();
         self.context.path_mut().on_bytes_transmitted(datagram_len);
 
-        self.context
-            .publisher
-            .on_datagram_sent(event::builders::DatagramSent {
-                len: datagram_len as u16,
-            });
+        if datagram_len > 0 {
+            self.context
+                .publisher
+                .on_datagram_sent(event::builders::DatagramSent {
+                    len: datagram_len as u16,
+                });
+        }
 
         datagram_len
     }
