@@ -29,7 +29,7 @@ Defining new events should be as straightforward as possible. Ideally, it is as 
 * The `#[non_exhaustive]` attribute needs to be applied to everything to ensure applications are not broken
 when new fields or variants are added.
 * A builder type needs to also be generated so crates outside of `s2n-quic-core` can construct events. Constructing the type directly would be impossible with the `#[non_exhaustive]` attribute.
-* The 2-element tuple needs to be updated to forward the event on to the child-subscribers.
+* The `impl<A, B> Subscriber for (A, B) { .. }` needs to be updated to forward the event on to the child-subscribers.
 * The built-in subscribers (tracing, serde, etc) need to log the new event with the appropriate level.
 * The test subscribers need to add a new counter for the event.
 
