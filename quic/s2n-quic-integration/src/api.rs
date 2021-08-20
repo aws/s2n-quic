@@ -11,7 +11,7 @@ use core::{
 };
 
 #[cfg(test)]
-pub(crate) mod test;
+pub(crate) mod testing;
 
 pub trait Connection {
     type Acceptor: Acceptor;

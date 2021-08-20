@@ -347,7 +347,7 @@ impl Endpoint {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::test::Connection;
+    use crate::api::testing::Connection;
 
     async fn check(scenario: &Scenario) {
         let (client, server) = Connection::pair();
