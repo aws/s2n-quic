@@ -34,6 +34,7 @@ pub struct Transmissions<FlowController, Writer> {
 impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
     Transmissions<FlowController, Writer>
 {
+    #[inline]
     pub fn new(flow_controller: FlowController) -> Self {
         Self {
             in_flight: Default::default(),
@@ -42,10 +43,12 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
         }
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.in_flight.is_empty()
     }
 
+    #[inline]
     pub fn on_ack_signal<Set: ack::Set, F: FnMut(Interval<VarInt>)>(
         &mut self,
         ack_set: &Set,
@@ -63,6 +66,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
         changed
     }
 
+    #[inline]
     pub fn transmit_set<W: WriteContext>(
         &mut self,
         buffer: &Buffer,
@@ -103,6 +107,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
         Ok(has_transmitted)
     }
 
+    #[inline]
     pub fn transmit_interval<W: WriteContext>(
         &mut self,
         viewer: &mut Viewer,
@@ -180,6 +185,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
         Ok(interval)
     }
 
+    #[inline]
     pub fn transmit_fin<W: WriteContext>(
         &mut self,
         buffer: &Buffer,
@@ -208,11 +214,13 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
     }
 
     /// Remove all inflight transmissions
+    #[inline]
     pub fn clear(&mut self) {
         self.in_flight.clear();
     }
 
     /// Remove all inflight transmissions and finish the flow controller
+    #[inline]
     pub fn finish(&mut self) {
         self.clear();
         self.flow_controller.finish();
@@ -231,6 +239,7 @@ struct Transmission {
 }
 
 impl Transmission {
+    #[inline]
     pub fn range(&self) -> Interval<VarInt> {
         (self.offset..self.offset + VarInt::from_u16(self.len)).into()
     }
@@ -239,17 +248,16 @@ impl Transmission {
 #[derive(Debug, Default)]
 struct Set {
     /// The packets that are currently in flight
-    ///
-    /// The value is an index into the transmissions slab
-    packets: PacketNumberMap<TransmissionId>,
+    packets: PacketNumberMap<Transmission>,
     /// A slab of transmission ranges
     ///
     /// Because a packet number can have more than one transmission range,
-    /// we need to store them outside of the map itself.
-    transmissions: TransmissionSlab,
+    /// we need to store any extras outside of the map
+    overflow: TransmissionSlab,
 }
 
 impl Set {
+    #[inline]
     pub fn insert(&mut self, packet_number: PacketNumber, offset: VarInt, len: VarInt) {
         debug_assert!(len <= u16::MAX as u64);
 
@@ -259,40 +267,50 @@ impl Set {
             next: None,
         };
 
-        let idx = self.transmissions.insert(transmission);
-        let transmissions = &mut self.transmissions;
+        let transmissions = &mut self.overflow;
 
-        self.packets.insert_or_update(packet_number, idx, |prev| {
-            // if we already have a entry for this packet number then chain the transmissions
-            // together
-            transmissions.chain(*prev, idx);
-        });
+        self.packets
+            .insert_or_update(packet_number, transmission, |prev| {
+                // if we already have a entry for this packet number then chain the transmissions
+                // together
+                let idx = transmissions.insert(transmission);
+
+                if let Some(prev) = prev.next {
+                    transmissions.chain(prev, idx);
+                } else {
+                    prev.next = Some(idx);
+                }
+            });
     }
 
+    #[inline]
     pub fn remove_range(&mut self, range: PacketNumberRange) -> SetRemoveIter {
         SetRemoveIter {
             inner: self.packets.remove_range(range),
             next: None,
-            transmissions: &mut self.transmissions,
+            transmissions: &mut self.overflow,
         }
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.packets.is_empty()
     }
 
+    #[inline]
     pub fn has_capacity(&self) -> bool {
-        self.transmissions.has_capacity()
+        self.overflow.has_capacity()
     }
 
+    #[inline]
     pub fn clear(&mut self) {
         self.packets.clear();
-        self.transmissions.clear();
+        self.overflow.clear();
     }
 }
 
 struct SetRemoveIter<'a> {
-    inner: s2n_quic_core::packet::number::map::RemoveIter<'a, TransmissionId>,
+    inner: s2n_quic_core::packet::number::map::RemoveIter<'a, Transmission>,
     next: Option<TransmissionId>,
     transmissions: &'a mut TransmissionSlab,
 }
@@ -308,8 +326,7 @@ impl<'a> Iterator for SetRemoveIter<'a> {
             return Some(transmission.range());
         }
 
-        let (_, idx) = self.inner.next()?;
-        let transmission = self.transmissions.remove(idx);
+        let (_, transmission) = self.inner.next()?;
         self.next = transmission.next;
         Some(transmission.range())
     }
@@ -345,6 +362,7 @@ struct TransmissionSlabEntry {
 }
 
 impl TransmissionSlab {
+    #[inline]
     fn insert(&mut self, transmission: Transmission) -> TransmissionId {
         debug_assert!(self.has_capacity());
         let id = self.next_free;
@@ -389,6 +407,7 @@ impl TransmissionSlab {
         entry.transmission
     }
 
+    #[inline]
     fn chain(&mut self, prev: TransmissionId, next: TransmissionId) {
         let prev_entry = self.get_mut(prev);
 
@@ -403,6 +422,7 @@ impl TransmissionSlab {
         self.get_mut(next).transmission.next = next_entry;
     }
 
+    #[inline]
     fn get_mut(&mut self, idx: TransmissionId) -> &mut TransmissionSlabEntry {
         let index = (idx.0.get() - 1) as usize;
 
@@ -412,11 +432,13 @@ impl TransmissionSlab {
         &mut self.entries[index]
     }
 
+    #[inline]
     fn has_capacity(&self) -> bool {
         // we need to be able to store the correct index so it's 1 less than the max
         self.len < u16::MAX - 1
     }
 
+    #[inline]
     fn clear(&mut self) {
         self.entries.clear();
         self.len = 0;
