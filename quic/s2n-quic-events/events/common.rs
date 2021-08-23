@@ -137,7 +137,6 @@ enum Frame {
     PathResponse,
     ConnectionClose,
     HandshakeDone,
-    Unknown,
 }
 
 impl IntoEvent<builder::Frame> for &crate::frame::Padding {
@@ -283,7 +282,6 @@ enum PacketType {
     Retry,
     VersionNegotiation,
     StatelessReset,
-    Unknown,
 }
 
 impl IntoEvent<builder::PacketType> for crate::packet::number::PacketNumber {
@@ -302,12 +300,6 @@ impl IntoEvent<builder::PacketType> for crate::packet::number::PacketNumber {
                 number: self.as_u64(),
             },
         }
-    }
-}
-
-impl Default for PacketType {
-    fn default() -> Self {
-        PacketType::Unknown {}
     }
 }
 
@@ -383,11 +375,12 @@ impl IntoEvent<builder::EndpointType> for crate::endpoint::Type {
     }
 }
 
-enum DropTrigger {
+enum DropReason {
     DecodingFailed,
+    InvalidRetryToken,
+    ConnectionNotAllowed,
     UnsupportedVersion,
     InvalidDestinationConnectionId,
     InvalidSourceConnectionId,
-    Unknown,
 }
 

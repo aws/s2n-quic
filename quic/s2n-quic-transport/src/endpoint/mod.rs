@@ -365,7 +365,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 );
                 endpoint_publisher.on_datagram_dropped(event::builder::DatagramDropped {
                     len: payload_len as u16,
-                    trigger: event::builder::DropTrigger::DecodingFailed,
+                    reason: event::builder::DropReason::DecodingFailed,
                 });
             }
 
@@ -392,7 +392,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         {
             endpoint_publisher.on_datagram_dropped(event::builder::DatagramDropped {
                 len: payload_len as u16,
-                trigger: event::builder::DropTrigger::UnsupportedVersion,
+                reason: event::builder::DropReason::UnsupportedVersion,
             });
             return;
         }
@@ -402,10 +402,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 Some(connection_id) => connection_id,
                 None => {
                     // Ignore the datagram
-                    dbg!("packet with invalid connection ID received");
                     endpoint_publisher.on_datagram_dropped(event::builder::DatagramDropped {
                         len: payload_len as u16,
-                        trigger: event::builder::DropTrigger::InvalidDestinationConnectionId,
+                        reason: event::builder::DropReason::InvalidDestinationConnectionId,
                     });
                     return;
                 }
@@ -548,12 +547,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         match connection::PeerId::try_from_bytes(packet.source_connection_id()) {
                             Some(connection_id) => connection_id,
                             None => {
-                                dbg!("Could not decode source connection id");
                                 endpoint_publisher.on_datagram_dropped(
                                     event::builder::DatagramDropped {
                                         len: payload_len as u16,
-                                        trigger:
-                                            event::builder::DropTrigger::InvalidSourceConnectionId,
+                                        reason:
+                                            event::builder::DropReason::InvalidSourceConnectionId,
                                     },
                                 );
                                 return;
@@ -600,7 +598,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             //# Instead, the
                             //# server SHOULD immediately close (Section 10.2) the connection with an
                             //# INVALID_TOKEN error.
-                            dbg!("Invalid token");
+                            endpoint_publisher.on_datagram_dropped(
+                                event::builder::DatagramDropped {
+                                    len: payload_len as u16,
+                                    reason: event::builder::DropReason::InvalidRetryToken,
+                                },
+                            );
 
                             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
                             //# Servers MAY
@@ -613,7 +616,23 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         //# address validation by sending a Retry packet (Section 17.2.5)
                         //# containing a token.
                         if self.connection_allowed(header, &packet).is_none() {
-                            dbg!("Connection not allowed");
+                            let mut endpoint_publisher = event::PublisherSubscriber::new(
+                                event::builder::Meta {
+                                    endpoint_type: Cfg::ENDPOINT_TYPE,
+                                    subject: event::builder::Subject::Endpoint,
+                                    timestamp,
+                                },
+                                None,
+                                self.config.context().event_subscriber,
+                            );
+
+                            endpoint_publisher.on_datagram_dropped(
+                                event::builder::DatagramDropped {
+                                    len: payload_len as u16,
+                                    reason: event::builder::DropReason::ConnectionNotAllowed,
+                                },
+                            );
+
                             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.1
                             //# A server MUST NOT send more than one Retry
                             //# packet in response to a single UDP datagram.
@@ -674,10 +693,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
         } else {
             // TODO: Find out what is required for the client. It seems like
             // those should at least send stateless resets on Initial packets
-            endpoint_publisher.on_datagram_dropped(event::builder::DatagramDropped {
-                len: payload_len as u16,
-                trigger: event::builder::DropTrigger::Unknown,
-            });
         }
 
         // TODO: Handle version negotiation packets
