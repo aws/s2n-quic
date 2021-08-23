@@ -173,31 +173,34 @@ impl connection::Trait for TestConnection {
     }
 
     /// Is called when a version negotiation packet had been received
-    fn handle_version_negotiation_packet(
+    fn handle_version_negotiation_packet<Pub: event::Publisher>(
         &mut self,
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedVersionNegotiation,
+        _publisher: &mut Pub,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
 
     /// Is called when a zero rtt packet had been received
-    fn handle_zero_rtt_packet(
+    fn handle_zero_rtt_packet<Pub: event::Publisher>(
         &mut self,
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedZeroRtt,
+        _publisher: &mut Pub,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
 
     /// Is called when a retry packet had been received
-    fn handle_retry_packet(
+    fn handle_retry_packet<Pub: event::Publisher>(
         &mut self,
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedRetry,
+        _publisher: &mut Pub,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }

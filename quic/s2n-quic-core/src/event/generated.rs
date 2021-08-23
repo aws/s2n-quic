@@ -98,8 +98,6 @@ pub mod api {
         ConnectionClose {},
         #[non_exhaustive]
         HandshakeDone {},
-        #[non_exhaustive]
-        Unknown {},
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -118,8 +116,6 @@ pub mod api {
         VersionNegotiation {},
         #[non_exhaustive]
         StatelessReset {},
-        #[non_exhaustive]
-        Unknown {},
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -160,6 +156,22 @@ pub mod api {
         Server {},
         #[non_exhaustive]
         Client {},
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub enum DropReason {
+        #[non_exhaustive]
+        DecodingFailed {},
+        #[non_exhaustive]
+        InvalidRetryToken {},
+        #[non_exhaustive]
+        ConnectionNotAllowed {},
+        #[non_exhaustive]
+        UnsupportedVersion {},
+        #[non_exhaustive]
+        InvalidDestinationConnectionId {},
+        #[non_exhaustive]
+        InvalidSourceConnectionId {},
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -333,6 +345,7 @@ pub mod api {
     #[doc = " Datagram dropped"]
     pub struct DatagramDropped {
         pub len: u16,
+        pub reason: DropReason,
     }
     impl Event for DatagramDropped {
         const NAME: &'static str = "transport:datagram_dropped";
@@ -534,11 +547,6 @@ pub mod api {
             }
         }
     }
-    impl Default for PacketType {
-        fn default() -> Self {
-            PacketType::Unknown {}
-        }
-    }
     impl IntoEvent<api::Location> for crate::endpoint::Location {
         fn into_event(self) -> api::Location {
             match self {
@@ -713,7 +721,6 @@ pub mod builder {
         PathResponse,
         ConnectionClose,
         HandshakeDone,
-        Unknown,
     }
     impl IntoEvent<api::Frame> for Frame {
         #[inline]
@@ -753,7 +760,6 @@ pub mod builder {
                 Self::PathResponse => PathResponse {},
                 Self::ConnectionClose => ConnectionClose {},
                 Self::HandshakeDone => HandshakeDone {},
-                Self::Unknown => Unknown {},
             }
         }
     }
@@ -766,7 +772,6 @@ pub mod builder {
         Retry,
         VersionNegotiation,
         StatelessReset,
-        Unknown,
     }
     impl IntoEvent<api::PacketType> for PacketType {
         #[inline]
@@ -788,7 +793,6 @@ pub mod builder {
                 Self::Retry => Retry {},
                 Self::VersionNegotiation => VersionNegotiation {},
                 Self::StatelessReset => StatelessReset {},
-                Self::Unknown => Unknown {},
             }
         }
     }
@@ -861,6 +865,29 @@ pub mod builder {
             match self {
                 Self::Server => Server {},
                 Self::Client => Client {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub enum DropReason {
+        DecodingFailed,
+        InvalidRetryToken,
+        ConnectionNotAllowed,
+        UnsupportedVersion,
+        InvalidDestinationConnectionId,
+        InvalidSourceConnectionId,
+    }
+    impl IntoEvent<api::DropReason> for DropReason {
+        #[inline]
+        fn into_event(self) -> api::DropReason {
+            use api::DropReason::*;
+            match self {
+                Self::DecodingFailed => DecodingFailed {},
+                Self::InvalidRetryToken => InvalidRetryToken {},
+                Self::ConnectionNotAllowed => ConnectionNotAllowed {},
+                Self::UnsupportedVersion => UnsupportedVersion {},
+                Self::InvalidDestinationConnectionId => InvalidDestinationConnectionId {},
+                Self::InvalidSourceConnectionId => InvalidSourceConnectionId {},
             }
         }
     }
@@ -1173,13 +1200,15 @@ pub mod builder {
     #[doc = " Datagram dropped"]
     pub struct DatagramDropped {
         pub len: u16,
+        pub reason: DropReason,
     }
     impl IntoEvent<api::DatagramDropped> for DatagramDropped {
         #[inline]
         fn into_event(self) -> api::DatagramDropped {
-            let DatagramDropped { len } = self;
+            let DatagramDropped { len, reason } = self;
             api::DatagramDropped {
                 len: len.into_event(),
+                reason: reason.into_event(),
             }
         }
     }
