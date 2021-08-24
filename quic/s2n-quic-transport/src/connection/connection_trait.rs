@@ -16,7 +16,7 @@ use bytes::Bytes;
 use core::task::{Context, Poll};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    application, event,
+    application,
     inet::DatagramInfo,
     io::tx,
     packet::{
@@ -39,10 +39,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     type Config: endpoint::Config;
 
     /// Creates a new `Connection` instance with the given configuration
-    fn new<Pub: event::Publisher>(
-        parameters: ConnectionParameters<Self::Config>,
-        publisher: &mut Pub,
-    ) -> Self;
+    fn new(parameters: ConnectionParameters<Self::Config>) -> Self;
 
     /// Returns the Connections internal ID
     fn internal_connection_id(&self) -> InternalConnectionId;
@@ -52,16 +49,13 @@ pub trait ConnectionTrait: 'static + Send + Sized {
 
     /// Initiates closing the connection as described in
     /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
-    fn close<'sub>(
+    fn close(
         &mut self,
         error: connection::Error,
         close_formatter: &<Self::Config as endpoint::Config>::ConnectionCloseFormatter,
         packet_buffer: &mut endpoint::PacketBuffer,
         timestamp: Timestamp,
-        publisher: &mut event::PublisherSubscriber<
-            'sub,
-            <Self::Config as endpoint::Config>::EventSubscriber,
-        >,
+        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     );
 
     /// Marks a connection which advertised itself as having completed the handshake
@@ -82,14 +76,11 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     ) -> Result<(), LocalIdRegistrationError>;
 
     /// Queries the connection for outgoing packets
-    fn on_transmit<'sub, Tx>(
+    fn on_transmit<Tx>(
         &mut self,
         queue: &mut Tx,
         timestamp: Timestamp,
-        publisher: &mut event::PublisherSubscriber<
-            'sub,
-            <Self::Config as endpoint::Config>::EventSubscriber,
-        >,
+        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ConnectionOnTransmitError>
     where
         Tx: tx::Queue<Handle = <Self::Config as endpoint::Config>::PathHandle>;
@@ -97,11 +88,11 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     /// Handles all timeouts on the `Connection`.
     ///
     /// `timestamp` passes the current time.
-    fn on_timeout<Pub: event::Publisher>(
+    fn on_timeout(
         &mut self,
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
-        publisher: &mut Pub,
+        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), connection::Error>;
 
     /// Handles all external wakeups on the [`Connection`].
@@ -110,81 +101,81 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     // Packet handling
 
     /// Is called when an initial packet had been received
-    fn handle_initial_packet<Pub: event::Publisher, Rnd: random::Generator>(
+    fn handle_initial_packet<Rnd: random::Generator>(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedInitial,
-        publisher: &mut Pub,
         random_generator: &mut Rnd,
+        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when an unprotected initial packet had been received
-    fn handle_cleartext_initial_packet<Pub: event::Publisher, Rnd: random::Generator>(
+    fn handle_cleartext_initial_packet<Rnd: random::Generator>(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: CleartextInitial,
-        publisher: &mut Pub,
         random_generator: &mut Rnd,
+        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a handshake packet had been received
-    fn handle_handshake_packet<Pub: event::Publisher, Rnd: random::Generator>(
+    fn handle_handshake_packet<Rnd: random::Generator>(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedHandshake,
-        publisher: &mut Pub,
         random_generator: &mut Rnd,
+        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a short packet had been received
-    fn handle_short_packet<Pub: event::Publisher, Rnd: random::Generator>(
+    fn handle_short_packet<Rnd: random::Generator>(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedShort,
-        publisher: &mut Pub,
         random_generator: &mut Rnd,
+        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a version negotiation packet had been received
-    fn handle_version_negotiation_packet<Pub: event::Publisher>(
+    fn handle_version_negotiation_packet(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedVersionNegotiation,
-        publisher: &mut Pub,
+        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a zero rtt packet had been received
-    fn handle_zero_rtt_packet<Pub: event::Publisher>(
+    fn handle_zero_rtt_packet(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedZeroRtt,
-        publisher: &mut Pub,
+        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a retry packet had been received
-    fn handle_retry_packet<Pub: event::Publisher>(
+    fn handle_retry_packet(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedRetry,
-        publisher: &mut Pub,
+        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError>;
 
     /// Notifies a connection it has received a datagram from a peer
-    fn on_datagram_received<Pub: event::Publisher>(
+    fn on_datagram_received(
         &mut self,
         path_handle: &<Self::Config as endpoint::Config>::PathHandle,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         max_mtu: MaxMtu,
-        publisher: &mut Pub,
+        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<path::Id, connection::Error>;
 
     /// Returns the Connections interests
@@ -194,19 +185,20 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     fn quic_version(&self) -> u32;
 
     /// Handles reception of a single QUIC packet
-    fn handle_packet<Pub: event::Publisher, Rnd: random::Generator>(
+    fn handle_packet<Rnd: random::Generator>(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedPacket,
-        publisher: &mut Pub,
         random_generator: &mut Rnd,
+        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
         //# If a client receives a packet that uses a different version than it
         //# initially selected, it MUST discard that packet.
         if let Some(version) = packet.version() {
             if version != self.quic_version() {
+                // TODO emit packet dropped event here with version mismatch reason
                 return Ok(());
             }
         }
@@ -220,22 +212,26 @@ pub trait ConnectionTrait: 'static + Send + Sized {
 
         match packet {
             ProtectedPacket::Short(packet) => {
-                self.handle_short_packet(datagram, path_id, packet, publisher, random_generator)
+                self.handle_short_packet(datagram, path_id, packet, random_generator, subscriber)
             }
             ProtectedPacket::VersionNegotiation(packet) => {
-                self.handle_version_negotiation_packet(datagram, path_id, packet, publisher)
+                self.handle_version_negotiation_packet(datagram, path_id, packet, subscriber)
             }
             ProtectedPacket::Initial(packet) => {
-                self.handle_initial_packet(datagram, path_id, packet, publisher, random_generator)
+                self.handle_initial_packet(datagram, path_id, packet, random_generator, subscriber)
             }
             ProtectedPacket::ZeroRtt(packet) => {
-                self.handle_zero_rtt_packet(datagram, path_id, packet, publisher)
+                self.handle_zero_rtt_packet(datagram, path_id, packet, subscriber)
             }
-            ProtectedPacket::Handshake(packet) => {
-                self.handle_handshake_packet(datagram, path_id, packet, publisher, random_generator)
-            }
+            ProtectedPacket::Handshake(packet) => self.handle_handshake_packet(
+                datagram,
+                path_id,
+                packet,
+                random_generator,
+                subscriber,
+            ),
             ProtectedPacket::Retry(packet) => {
-                self.handle_retry_packet(datagram, path_id, packet, publisher)
+                self.handle_retry_packet(datagram, path_id, packet, subscriber)
             }
         }
     }
@@ -243,19 +239,15 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     /// This is called to handle the remaining and yet undecoded packets inside
     /// a datagram.
     #[allow(clippy::too_many_arguments)]
-    fn handle_remaining_packets<
-        Validator: connection::id::Validator,
-        Pub: event::Publisher,
-        Rnd: random::Generator,
-    >(
+    fn handle_remaining_packets<Validator: connection::id::Validator, Rnd: random::Generator>(
         &mut self,
         path_handle: &<Self::Config as endpoint::Config>::PathHandle,
         datagram: &DatagramInfo,
         path_id: path::Id,
         connection_id_validator: &Validator,
         mut payload: DecoderBufferMut,
-        publisher: &mut Pub,
         random_generator: &mut Rnd,
+        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), connection::Error> {
         let remote_address = path_handle.remote_address();
         let connection_info = ConnectionInfo::new(&remote_address);
@@ -274,11 +266,12 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 if datagram.destination_connection_id.as_bytes()
                     != packet.destination_connection_id()
                 {
+                    // TODO emit packet dropped event with different CID reason
                     break;
                 }
 
                 let result =
-                    self.handle_packet(datagram, path_id, packet, publisher, random_generator);
+                    self.handle_packet(datagram, path_id, packet, random_generator, subscriber);
 
                 if let Err(ProcessingError::ConnectionError(err)) = result {
                     // CryptoErrors returned as a result of a packet failing decryption will be
@@ -300,6 +293,9 @@ pub trait ConnectionTrait: 'static + Send + Sized {
 
                 // we choose to discard the rest of the datagram on parsing errors since it would
                 // be difficult to recover from an invalid packet.
+
+                // TODO emit packet dropped event with packet corruption reason
+
                 break;
             }
         }

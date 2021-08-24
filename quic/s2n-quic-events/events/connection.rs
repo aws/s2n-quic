@@ -1,17 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#[event("transport::version_information")]
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.1
-//# QUIC endpoints each have their own list of of QUIC versions they
-//# support.
-/// QUIC version
-struct VersionInformation<'a> {
-    server_versions: &'a [u32],
-    client_versions: &'a [u32],
-    chosen_version: Option<u32>,
-}
-
 #[event("transport:alpn_information")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.2
 //# QUIC implementations each have their own list of application level
@@ -25,14 +14,14 @@ struct AlpnInformation<'a> {
 
 #[event("transport:packet_sent")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.5
-/// Packet was sent
+/// Packet was sent by a connection
 struct PacketSent {
     packet_header: PacketHeader,
 }
 
 #[event("transport:packet_received")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.6
-/// Packet was received
+/// Packet was received by a connection
 struct PacketReceived {
     packet_header: PacketHeader,
 }
@@ -133,21 +122,21 @@ struct DuplicatePacket {
 
 #[event("transport:datagram_sent")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.10
-/// Datagram sent
+/// Datagram sent by a connection
 struct DatagramSent {
     len: u16,
 }
 
 #[event("transport:datagram_received")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.11
-/// Datagram received
+/// Datagram received by a connection
 struct DatagramReceived {
     len: u16,
 }
 
 #[event("transport:datagram_dropped")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.12
-/// Datagram dropped
+/// Datagram dropped by a connection
 struct DatagramDropped {
     len: u16,
     reason: DropReason,

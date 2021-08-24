@@ -461,7 +461,7 @@ impl PeerIdRegistry {
     }
 
     /// Tries to consume a new peer_id if one is available for an existing path.
-    pub fn consume_new_id_for_existing_path<Pub: event::Publisher>(
+    pub fn consume_new_id_for_existing_path<Pub: event::ConnectionPublisher>(
         &mut self,
         path_id: path::Id,
         current_peer_connection_id: connection::PeerId,

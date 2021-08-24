@@ -12,7 +12,7 @@ use s2n_quic_core::{
     ack,
     connection::limits::Limits,
     crypto::{tls, tls::Session, CryptoSuite},
-    event::{self, IntoEvent, Publisher as _},
+    event::{self, ConnectionPublisher as _, IntoEvent},
     frame::{
         ack::AckRanges,
         crypto::CryptoRef,
@@ -84,7 +84,7 @@ macro_rules! packet_space_api {
         }
 
         $(
-            pub fn $discard<Pub: event::Publisher>(
+            pub fn $discard<Pub: event::ConnectionPublisher>(
                 &mut self,
                 path: &mut Path<Config>,
                 path_id: path::Id,
@@ -116,7 +116,7 @@ macro_rules! packet_space_api {
 }
 
 impl<Config: endpoint::Config> PacketSpaceManager<Config> {
-    pub fn new<Pub: event::Publisher>(
+    pub fn new<Pub: event::ConnectionPublisher>(
         session: <Config::TLSEndpoint as tls::Endpoint>::Session,
         initial_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialKey,
         header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialHeaderKey,
@@ -166,7 +166,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         self.zero_rtt_crypto = None;
     }
 
-    pub fn poll_crypto<Pub: event::Publisher>(
+    pub fn poll_crypto<Pub: event::ConnectionPublisher>(
         &mut self,
         path: &Path<Config>,
         local_id_registry: &mut connection::LocalIdRegistry,
@@ -200,7 +200,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout<Pub: event::Publisher>(
+    pub fn on_timeout<Pub: event::ConnectionPublisher>(
         &mut self,
         local_id_registry: &mut connection::LocalIdRegistry,
         path_manager: &mut path::Manager<Config>,
@@ -350,7 +350,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                                     .on_packet_sent(event::builder::PacketSent {
                                         packet_header: event::builder::PacketHeader {
                                             packet_type: outcome.packet_number.into_event(),
-                                            version: context.publisher.quic_version(),
+                                            version: Some(context.publisher.quic_version()),
                                         },
                                     });
                                 buffer
@@ -471,7 +471,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
     ) -> Result<(), transport::Error>;
 
     #[allow(clippy::too_many_arguments)]
-    fn handle_ack_frame<A: AckRanges, Pub: event::Publisher>(
+    fn handle_ack_frame<A: AckRanges, Pub: event::ConnectionPublisher>(
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,
@@ -514,7 +514,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
             .with_frame_type(frame.tag().into()))
     }
 
-    fn handle_new_connection_id_frame<Pub: event::Publisher>(
+    fn handle_new_connection_id_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: NewConnectionId,
         _datagram: &DatagramInfo,
@@ -565,7 +565,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
     // TODO: Reduce arguments, https://github.com/awslabs/s2n-quic/issues/312
     #[allow(clippy::too_many_arguments)]
-    fn handle_cleartext_payload<'a, Rnd: random::Generator, Pub: event::Publisher>(
+    fn handle_cleartext_payload<'a, Rnd: random::Generator, Pub: event::ConnectionPublisher>(
         &mut self,
         packet_number: PacketNumber,
         mut payload: DecoderBufferMut<'a>,
@@ -601,7 +601,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
             publisher.on_frame_received(event::builder::FrameReceived {
                 packet_header: event::builder::PacketHeader {
                     packet_type: packet_number.into_event(),
-                    version: publisher.quic_version(),
+                    version: Some(publisher.quic_version()),
                 },
                 path_id: path_id.into_event(),
                 frame: frame.into_event(),

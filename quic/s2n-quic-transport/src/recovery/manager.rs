@@ -99,7 +99,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
     }
 
-    pub fn on_timeout<Ctx: Context<Config>, Pub: event::Publisher>(
+    pub fn on_timeout<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         timestamp: Timestamp,
         context: &mut Ctx,
@@ -250,7 +250,11 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// Process ACK frame.
     ///
     /// Update congestion controler, timers and meta data around acked packet ranges.
-    pub fn on_ack_frame<A: frame::ack::AckRanges, Ctx: Context<Config>, Pub: event::Publisher>(
+    pub fn on_ack_frame<
+        A: frame::ack::AckRanges,
+        Ctx: Context<Config>,
+        Pub: event::ConnectionPublisher,
+    >(
         &mut self,
         datagram: &DatagramInfo,
         frame: frame::Ack<A>,
@@ -432,7 +436,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
     }
 
-    fn process_new_acked_packets<Ctx: Context<Config>, Pub: event::Publisher>(
+    fn process_new_acked_packets<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         newly_acked_packets: &SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
         largest_newly_acked_time_sent: Timestamp,
@@ -515,7 +519,7 @@ impl<Config: endpoint::Config> Manager<Config> {
     //# When Initial or Handshake keys are discarded, packets sent in that
     //# space no longer count toward bytes in flight.
     /// Clears bytes in flight for sent packets.
-    pub fn on_packet_number_space_discarded<Pub: event::Publisher>(
+    pub fn on_packet_number_space_discarded<Pub: event::ConnectionPublisher>(
         &mut self,
         path: &mut Path<Config>,
         path_id: path::Id,
@@ -543,7 +547,7 @@ impl<Config: endpoint::Config> Manager<Config> {
     //# DetectAndRemoveLostPackets is called every time an ACK is received or the time threshold
     //# loss detection timer expires. This function operates on the sent_packets for that packet
     //# number space and returns a list of packets newly detected as lost.
-    fn detect_and_remove_lost_packets<Ctx: Context<Config>, Pub: event::Publisher>(
+    fn detect_and_remove_lost_packets<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         now: Timestamp,
         context: &mut Ctx,
@@ -706,7 +710,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         (max_persistent_congestion_period, sent_packets_to_remove)
     }
 
-    fn remove_lost_packets<Ctx: Context<Config>, Pub: event::Publisher>(
+    fn remove_lost_packets<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         now: Timestamp,
         max_persistent_congestion_period: Duration,
@@ -759,7 +763,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             publisher.on_packet_lost(event::builder::PacketLost {
                 packet_header: event::builder::PacketHeader {
                     packet_type: packet_number.into_event(),
-                    version: publisher.quic_version(),
+                    version: Some(publisher.quic_version()),
                 },
                 path: event::builder::Path {
                     remote_addr: path.remote_address().into_event(),

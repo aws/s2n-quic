@@ -309,8 +309,7 @@ impl ContainerAttrs {
             // events must include a name to be considered an event
             event_name: None,
             // most event subjects relate to actual connections so make that the default
-            // subject: Subject::Connection,
-            subject: Subject::Endpoint, // TODO make connection the default when we get context implemented
+            subject: Subject::Connection,
             // default to #[non_exhaustive]
             exhaustive: false,
             extra: quote!(),
@@ -340,8 +339,8 @@ enum Subject {
 
 impl Parse for Subject {
     fn parse(input: ParseStream) -> syn::parse::Result<Self> {
-        let name: syn::LitStr = input.parse()?;
-        match name.value().as_str() {
+        let name: Ident = input.parse()?;
+        match name.to_string().as_str() {
             "connection" => Ok(Self::Connection),
             "endpoint" => Ok(Self::Endpoint),
             name => Err(syn::parse::Error::new(

@@ -255,7 +255,7 @@ impl<Config: endpoint::Config> Path<Config> {
     ///
     /// The CleartextShort packet guarantees the packet has been validated
     /// (authenticated and de-duped).
-    pub fn on_process_local_connection_id<Pub: event::Publisher>(
+    pub fn on_process_local_connection_id<Pub: event::ConnectionPublisher>(
         &mut self,
         path_id: Id,
         packet: &packet::short::CleartextShort<'_>,

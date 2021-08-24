@@ -249,7 +249,12 @@ impl Subscriber for EventSubscriber {
 
     fn create_connection_context(&mut self) -> Self::ConnectionContext {}
 
-    fn on_active_path_updated(&mut self, meta: &events::Meta, event: &events::ActivePathUpdated) {
+    fn on_active_path_updated(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        meta: &events::Meta,
+        event: &events::ActivePathUpdated,
+    ) {
         info!("{:?} {:?}", meta.subject, event);
     }
 }

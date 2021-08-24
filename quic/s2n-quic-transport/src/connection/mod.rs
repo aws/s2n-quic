@@ -7,7 +7,7 @@ use crate::{
     endpoint, path::MaxMtu, recovery::congestion_controller, space::PacketSpaceManager,
     wakeup_queue::WakeupHandle,
 };
-use s2n_quic_core::{connection, time::Timestamp};
+use s2n_quic_core::{connection, event, time::Timestamp};
 
 mod api;
 mod api_provider;
@@ -44,7 +44,7 @@ pub use s2n_quic_core::connection::*;
 
 /// Parameters which are passed to a Connection.
 /// These are unique per created connection.
-pub struct Parameters<Cfg: endpoint::Config> {
+pub struct Parameters<'a, Cfg: endpoint::Config> {
     /// The [`Connection`]s internal identifier
     pub internal_connection_id: InternalConnectionId,
     /// The local ID registry which should be utilized by the connection
@@ -73,4 +73,8 @@ pub struct Parameters<Cfg: endpoint::Config> {
     pub limits: connection::Limits,
     /// The largest maximum transmission unit (MTU) that can be sent on a path
     pub max_mtu: MaxMtu,
+    /// The context that should be passed to all related connection events
+    pub event_context: <Cfg::EventSubscriber as event::Subscriber>::ConnectionContext,
+    /// The event subscriber for the endpoint
+    pub event_subscriber: &'a mut Cfg::EventSubscriber,
 }

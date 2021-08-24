@@ -82,7 +82,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         }
     }
 
-    pub fn on_packet<Pub: event::Publisher>(
+    pub fn on_packet<Pub: event::EndpointPublisher>(
         &mut self,
         path: &Config::PathHandle,
         payload_len: usize,
@@ -161,10 +161,13 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         Err(Error)
     }
 
-    pub fn on_transmit<Tx: tx::Queue<Handle = Config::PathHandle>, Pub: event::Publisher>(
+    pub fn on_transmit<
+        Tx: tx::Queue<Handle = Config::PathHandle>,
+        Pub: event::EndpointPublisher,
+    >(
         &mut self,
         queue: &mut Tx,
-        endpoint_publisher: &mut Pub,
+        publisher: &mut Pub,
     ) {
         // clients don't transmit version negotiation packets
         if Config::ENDPOINT_TYPE.is_client() {
@@ -174,15 +177,16 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         while let Some(transmission) = self.transmissions.pop_front() {
             match queue.push(&transmission) {
                 Ok(tx::Outcome { len, .. }) => {
-                    endpoint_publisher.on_packet_sent(event::builder::PacketSent {
+                    publisher.on_endpoint_packet_sent(event::builder::EndpointPacketSent {
                         packet_header: event::builder::PacketHeader {
                             packet_type: event::builder::PacketType::VersionNegotiation {},
-                            version: endpoint_publisher.quic_version(),
+                            version: publisher.quic_version(),
                         },
                     });
 
-                    endpoint_publisher
-                        .on_datagram_sent(event::builder::DatagramSent { len: len as u16 });
+                    publisher.on_endpoint_datagram_sent(event::builder::EndpointDatagramSent {
+                        len: len as u16,
+                    });
                 }
                 Err(_) => {
                     self.transmissions.push_front(transmission);

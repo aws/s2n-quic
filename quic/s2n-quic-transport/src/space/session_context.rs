@@ -22,7 +22,7 @@ use s2n_quic_core::{
     transport::{self, parameters::ClientTransportParameters},
 };
 
-pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::Publisher> {
+pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> {
     pub now: Timestamp,
     pub path: &'a Path<Config>,
     pub initial: &'a mut Option<Box<InitialSpace<Config>>>,
@@ -37,7 +37,7 @@ pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::Publisher> {
     pub publisher: &'a mut Pub,
 }
 
-impl<'a, Config: endpoint::Config, Pub: event::Publisher>
+impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
     tls::Context<<Config::TLSEndpoint as tls::Endpoint>::Session>
     for SessionContext<'a, Config, Pub>
 {
