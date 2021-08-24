@@ -132,7 +132,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         });
 
         if transmit_result.is_ok() {
-            let mut endpoint_publisher = event::EndpointPublisherSubscriber::new(
+            let mut publisher = event::EndpointPublisherSubscriber::new(
                 event::builder::Meta {
                     endpoint_type: Cfg::ENDPOINT_TYPE,
                     subject: event::builder::Subject::Endpoint,
@@ -141,12 +141,10 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                 None,
                 endpoint_context.event_subscriber,
             );
-            self.version_negotiator
-                .on_transmit(queue, &mut endpoint_publisher);
-            self.retry_dispatch
-                .on_transmit(queue, &mut endpoint_publisher);
+            self.version_negotiator.on_transmit(queue, &mut publisher);
+            self.retry_dispatch.on_transmit(queue, &mut publisher);
             self.stateless_reset_dispatch
-                .on_transmit(queue, &mut endpoint_publisher);
+                .on_transmit(queue, &mut publisher);
         }
     }
 
@@ -337,7 +335,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
             if internal_connection_id.is_none() {
                 // The packet didn't contain a valid stateless token
-                let mut endpoint_publisher = event::EndpointPublisherSubscriber::new(
+                let mut publisher = event::EndpointPublisherSubscriber::new(
                     event::builder::Meta {
                         endpoint_type: Cfg::ENDPOINT_TYPE,
                         subject: event::builder::Subject::Endpoint,
@@ -346,18 +344,16 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     None,
                     self.config.context().event_subscriber,
                 );
-                endpoint_publisher.on_endpoint_datagram_dropped(
-                    event::builder::EndpointDatagramDropped {
-                        len: payload_len as u16,
-                        reason: event::builder::DropReason::DecodingFailed,
-                    },
-                );
+                publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
+                    len: payload_len as u16,
+                    reason: event::builder::DropReason::DecodingFailed,
+                });
             }
 
             return;
         };
 
-        let mut endpoint_publisher = event::EndpointPublisherSubscriber::new(
+        let mut publisher = event::EndpointPublisherSubscriber::new(
             event::builder::Meta {
                 endpoint_type: Cfg::ENDPOINT_TYPE,
                 subject: event::builder::Subject::Endpoint,
@@ -372,15 +368,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
         // length requirements for connection IDs.
         if self
             .version_negotiator
-            .on_packet(&header.path, payload_len, &packet, &mut endpoint_publisher)
+            .on_packet(&header.path, payload_len, &packet, &mut publisher)
             .is_err()
         {
-            endpoint_publisher.on_endpoint_datagram_dropped(
-                event::builder::EndpointDatagramDropped {
-                    len: payload_len as u16,
-                    reason: event::builder::DropReason::UnsupportedVersion,
-                },
-            );
+            publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
+                len: payload_len as u16,
+                reason: event::builder::DropReason::UnsupportedVersion,
+            });
             return;
         }
 
@@ -389,7 +383,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 Some(connection_id) => connection_id,
                 None => {
                     // Ignore the datagram
-                    endpoint_publisher.on_endpoint_datagram_dropped(
+                    publisher.on_endpoint_datagram_dropped(
                         event::builder::EndpointDatagramDropped {
                             len: payload_len as u16,
                             reason: event::builder::DropReason::InvalidDestinationConnectionId,
@@ -524,7 +518,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         match connection::PeerId::try_from_bytes(packet.source_connection_id()) {
                             Some(connection_id) => connection_id,
                             None => {
-                                endpoint_publisher.on_endpoint_datagram_dropped(
+                                publisher.on_endpoint_datagram_dropped(
                                     event::builder::EndpointDatagramDropped {
                                         len: payload_len as u16,
                                         reason:
@@ -575,7 +569,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             //# Instead, the
                             //# server SHOULD immediately close (Section 10.2) the connection with an
                             //# INVALID_TOKEN error.
-                            endpoint_publisher.on_endpoint_datagram_dropped(
+                            publisher.on_endpoint_datagram_dropped(
                                 event::builder::EndpointDatagramDropped {
                                     len: payload_len as u16,
                                     reason: event::builder::DropReason::InvalidRetryToken,
@@ -593,7 +587,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         //# address validation by sending a Retry packet (Section 17.2.5)
                         //# containing a token.
                         if self.connection_allowed(header, &packet).is_none() {
-                            let mut endpoint_publisher = event::EndpointPublisherSubscriber::new(
+                            let mut publisher = event::EndpointPublisherSubscriber::new(
                                 event::builder::Meta {
                                     endpoint_type: Cfg::ENDPOINT_TYPE,
                                     subject: event::builder::Subject::Endpoint,
@@ -603,7 +597,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                                 self.config.context().event_subscriber,
                             );
 
-                            endpoint_publisher.on_endpoint_datagram_dropped(
+                            publisher.on_endpoint_datagram_dropped(
                                 event::builder::EndpointDatagramDropped {
                                     len: payload_len as u16,
                                     reason: event::builder::DropReason::ConnectionNotAllowed,

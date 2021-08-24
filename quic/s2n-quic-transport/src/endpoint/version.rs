@@ -167,7 +167,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
     >(
         &mut self,
         queue: &mut Tx,
-        endpoint_publisher: &mut Pub,
+        publisher: &mut Pub,
     ) {
         // clients don't transmit version negotiation packets
         if Config::ENDPOINT_TYPE.is_client() {
@@ -177,18 +177,16 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         while let Some(transmission) = self.transmissions.pop_front() {
             match queue.push(&transmission) {
                 Ok(tx::Outcome { len, .. }) => {
-                    endpoint_publisher.on_endpoint_packet_sent(
-                        event::builder::EndpointPacketSent {
-                            packet_header: event::builder::PacketHeader {
-                                packet_type: event::builder::PacketType::VersionNegotiation {},
-                                version: endpoint_publisher.quic_version(),
-                            },
+                    publisher.on_endpoint_packet_sent(event::builder::EndpointPacketSent {
+                        packet_header: event::builder::PacketHeader {
+                            packet_type: event::builder::PacketType::VersionNegotiation {},
+                            version: publisher.quic_version(),
                         },
-                    );
+                    });
 
-                    endpoint_publisher.on_endpoint_datagram_sent(
-                        event::builder::EndpointDatagramSent { len: len as u16 },
-                    );
+                    publisher.on_endpoint_datagram_sent(event::builder::EndpointDatagramSent {
+                        len: len as u16,
+                    });
                 }
                 Err(_) => {
                     self.transmissions.push_front(transmission);
