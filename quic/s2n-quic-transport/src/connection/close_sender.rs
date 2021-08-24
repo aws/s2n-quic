@@ -45,7 +45,7 @@ impl CloseSender {
         self.state.on_datagram_received(rtt, now);
     }
 
-    pub fn transmission<'a, Config: endpoint::Config, Pub: event::Publisher>(
+    pub fn transmission<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>(
         &'a mut self,
         path: &'a mut Path<Config>,
         publisher: &'a mut Pub,
@@ -119,14 +119,14 @@ impl transmission::interest::Provider for CloseSender {
     }
 }
 
-pub struct Transmission<'a, Config: endpoint::Config, Pub: event::Publisher> {
+pub struct Transmission<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> {
     packet: &'a Bytes,
     transmission: &'a mut TransmissionState,
     path: &'a mut Path<Config>,
     publisher: &'a mut Pub,
 }
 
-impl<'a, Config: endpoint::Config, Pub: event::Publisher> tx::Message
+impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> tx::Message
     for Transmission<'a, Config, Pub>
 {
     type Handle = Config::PathHandle;

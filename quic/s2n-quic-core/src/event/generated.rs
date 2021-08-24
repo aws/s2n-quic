@@ -175,17 +175,6 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    #[doc = " QUIC version"]
-    pub struct VersionInformation<'a> {
-        pub server_versions: &'a [u32],
-        pub client_versions: &'a [u32],
-        pub chosen_version: Option<u32>,
-    }
-    impl<'a> Event for VersionInformation<'a> {
-        const NAME: &'static str = "transport::version_information";
-    }
-    #[derive(Clone, Debug)]
-    #[non_exhaustive]
     #[doc = " Application level protocol"]
     pub struct AlpnInformation<'a> {
         pub server_alpns: &'a [&'a [u8]],
@@ -197,7 +186,7 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    #[doc = " Packet was sent"]
+    #[doc = " Packet was sent by a connection"]
     pub struct PacketSent {
         pub packet_header: PacketHeader,
     }
@@ -206,7 +195,7 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    #[doc = " Packet was received"]
+    #[doc = " Packet was received by a connection"]
     pub struct PacketReceived {
         pub packet_header: PacketHeader,
     }
@@ -324,7 +313,7 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    #[doc = " Datagram sent"]
+    #[doc = " Datagram sent by a connection"]
     pub struct DatagramSent {
         pub len: u16,
     }
@@ -333,7 +322,7 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    #[doc = " Datagram received"]
+    #[doc = " Datagram received by a connection"]
     pub struct DatagramReceived {
         pub len: u16,
     }
@@ -342,7 +331,7 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    #[doc = " Datagram dropped"]
+    #[doc = " Datagram dropped by a connection"]
     pub struct DatagramDropped {
         pub len: u16,
         pub reason: DropReason,
@@ -361,6 +350,63 @@ pub mod api {
     }
     impl<'a> Event for ConnectionIdUpdated<'a> {
         const NAME: &'static str = "connectivity:connection_id_updated";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " QUIC version"]
+    pub struct VersionInformation<'a> {
+        pub server_versions: &'a [u32],
+        pub client_versions: &'a [u32],
+        pub chosen_version: Option<u32>,
+    }
+    impl<'a> Event for VersionInformation<'a> {
+        const NAME: &'static str = "transport::version_information";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Packet was sent by the endpoint"]
+    pub struct EndpointPacketSent {
+        pub packet_header: PacketHeader,
+    }
+    impl Event for EndpointPacketSent {
+        const NAME: &'static str = "transport:packet_sent";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Packet was received by the endpoint"]
+    pub struct EndpointPacketReceived {
+        pub packet_header: PacketHeader,
+    }
+    impl Event for EndpointPacketReceived {
+        const NAME: &'static str = "transport:packet_received";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Datagram sent by the endpoint"]
+    pub struct EndpointDatagramSent {
+        pub len: u16,
+    }
+    impl Event for EndpointDatagramSent {
+        const NAME: &'static str = "transport:datagram_sent";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Datagram received by the endpoint"]
+    pub struct EndpointDatagramReceived {
+        pub len: u16,
+    }
+    impl Event for EndpointDatagramReceived {
+        const NAME: &'static str = "transport:datagram_received";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Datagram dropped by the endpoint"]
+    pub struct EndpointDatagramDropped {
+        pub len: u16,
+        pub reason: DropReason,
+    }
+    impl Event for EndpointDatagramDropped {
+        const NAME: &'static str = "transport:datagram_dropped";
     }
     macro_rules! impl_conn_id {
         ($name:ident) => {
@@ -892,28 +938,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " QUIC version"]
-    pub struct VersionInformation<'a> {
-        pub server_versions: &'a [u32],
-        pub client_versions: &'a [u32],
-        pub chosen_version: Option<u32>,
-    }
-    impl<'a> IntoEvent<api::VersionInformation<'a>> for VersionInformation<'a> {
-        #[inline]
-        fn into_event(self) -> api::VersionInformation<'a> {
-            let VersionInformation {
-                server_versions,
-                client_versions,
-                chosen_version,
-            } = self;
-            api::VersionInformation {
-                server_versions: server_versions.into_event(),
-                client_versions: client_versions.into_event(),
-                chosen_version: chosen_version.into_event(),
-            }
-        }
-    }
-    #[derive(Clone, Debug)]
     #[doc = " Application level protocol"]
     pub struct AlpnInformation<'a> {
         pub server_alpns: &'a [&'a [u8]],
@@ -936,7 +960,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Packet was sent"]
+    #[doc = " Packet was sent by a connection"]
     pub struct PacketSent {
         pub packet_header: PacketHeader,
     }
@@ -950,7 +974,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Packet was received"]
+    #[doc = " Packet was received by a connection"]
     pub struct PacketReceived {
         pub packet_header: PacketHeader,
     }
@@ -1169,7 +1193,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Datagram sent"]
+    #[doc = " Datagram sent by a connection"]
     pub struct DatagramSent {
         pub len: u16,
     }
@@ -1183,7 +1207,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Datagram received"]
+    #[doc = " Datagram received by a connection"]
     pub struct DatagramReceived {
         pub len: u16,
     }
@@ -1197,7 +1221,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Datagram dropped"]
+    #[doc = " Datagram dropped by a connection"]
     pub struct DatagramDropped {
         pub len: u16,
         pub reason: DropReason,
@@ -1237,119 +1261,347 @@ pub mod builder {
             }
         }
     }
+    #[derive(Clone, Debug)]
+    #[doc = " QUIC version"]
+    pub struct VersionInformation<'a> {
+        pub server_versions: &'a [u32],
+        pub client_versions: &'a [u32],
+        pub chosen_version: Option<u32>,
+    }
+    impl<'a> IntoEvent<api::VersionInformation<'a>> for VersionInformation<'a> {
+        #[inline]
+        fn into_event(self) -> api::VersionInformation<'a> {
+            let VersionInformation {
+                server_versions,
+                client_versions,
+                chosen_version,
+            } = self;
+            api::VersionInformation {
+                server_versions: server_versions.into_event(),
+                client_versions: client_versions.into_event(),
+                chosen_version: chosen_version.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Packet was sent by the endpoint"]
+    pub struct EndpointPacketSent {
+        pub packet_header: PacketHeader,
+    }
+    impl IntoEvent<api::EndpointPacketSent> for EndpointPacketSent {
+        #[inline]
+        fn into_event(self) -> api::EndpointPacketSent {
+            let EndpointPacketSent { packet_header } = self;
+            api::EndpointPacketSent {
+                packet_header: packet_header.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Packet was received by the endpoint"]
+    pub struct EndpointPacketReceived {
+        pub packet_header: PacketHeader,
+    }
+    impl IntoEvent<api::EndpointPacketReceived> for EndpointPacketReceived {
+        #[inline]
+        fn into_event(self) -> api::EndpointPacketReceived {
+            let EndpointPacketReceived { packet_header } = self;
+            api::EndpointPacketReceived {
+                packet_header: packet_header.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Datagram sent by the endpoint"]
+    pub struct EndpointDatagramSent {
+        pub len: u16,
+    }
+    impl IntoEvent<api::EndpointDatagramSent> for EndpointDatagramSent {
+        #[inline]
+        fn into_event(self) -> api::EndpointDatagramSent {
+            let EndpointDatagramSent { len } = self;
+            api::EndpointDatagramSent {
+                len: len.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Datagram received by the endpoint"]
+    pub struct EndpointDatagramReceived {
+        pub len: u16,
+    }
+    impl IntoEvent<api::EndpointDatagramReceived> for EndpointDatagramReceived {
+        #[inline]
+        fn into_event(self) -> api::EndpointDatagramReceived {
+            let EndpointDatagramReceived { len } = self;
+            api::EndpointDatagramReceived {
+                len: len.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Datagram dropped by the endpoint"]
+    pub struct EndpointDatagramDropped {
+        pub len: u16,
+        pub reason: DropReason,
+    }
+    impl IntoEvent<api::EndpointDatagramDropped> for EndpointDatagramDropped {
+        #[inline]
+        fn into_event(self) -> api::EndpointDatagramDropped {
+            let EndpointDatagramDropped { len, reason } = self;
+            api::EndpointDatagramDropped {
+                len: len.into_event(),
+                reason: reason.into_event(),
+            }
+        }
+    }
 }
 pub use traits::*;
 mod traits {
     use super::*;
     use api::*;
+    use core::fmt;
     pub trait Subscriber: 'static + Send {
-        type ConnectionContext;
+        type ConnectionContext: 'static + Send;
+        #[doc = r" Creates a context to be passed to each connection-related event"]
         fn create_connection_context(&mut self) -> Self::ConnectionContext;
+        #[doc = "Called when the `AlpnInformation` event is triggered"]
+        #[inline]
+        fn on_alpn_information(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &AlpnInformation,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `PacketSent` event is triggered"]
+        #[inline]
+        fn on_packet_sent(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &PacketSent,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `PacketReceived` event is triggered"]
+        #[inline]
+        fn on_packet_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &PacketReceived,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `ActivePathUpdated` event is triggered"]
+        #[inline]
+        fn on_active_path_updated(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &ActivePathUpdated,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `PathCreated` event is triggered"]
+        #[inline]
+        fn on_path_created(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &PathCreated,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `FrameSent` event is triggered"]
+        #[inline]
+        fn on_frame_sent(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &FrameSent,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `FrameReceived` event is triggered"]
+        #[inline]
+        fn on_frame_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &FrameReceived,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `PacketLost` event is triggered"]
+        #[inline]
+        fn on_packet_lost(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &PacketLost,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `RecoveryMetrics` event is triggered"]
+        #[inline]
+        fn on_recovery_metrics(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &RecoveryMetrics,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `KeyUpdate` event is triggered"]
+        #[inline]
+        fn on_key_update(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &KeyUpdate,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `ConnectionStarted` event is triggered"]
+        #[inline]
+        fn on_connection_started(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &ConnectionStarted,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `ConnectionClosed` event is triggered"]
+        #[inline]
+        fn on_connection_closed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &ConnectionClosed,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `DuplicatePacket` event is triggered"]
+        #[inline]
+        fn on_duplicate_packet(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &DuplicatePacket,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `DatagramSent` event is triggered"]
+        #[inline]
+        fn on_datagram_sent(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &DatagramSent,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `DatagramReceived` event is triggered"]
+        #[inline]
+        fn on_datagram_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &DatagramReceived,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `DatagramDropped` event is triggered"]
+        #[inline]
+        fn on_datagram_dropped(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &DatagramDropped,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `ConnectionIdUpdated` event is triggered"]
+        #[inline]
+        fn on_connection_id_updated(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &ConnectionIdUpdated,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `VersionInformation` event is triggered"]
         #[inline]
         fn on_version_information(&mut self, meta: &Meta, event: &VersionInformation) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = "Called when the `AlpnInformation` event is triggered"]
+        #[doc = "Called when the `EndpointPacketSent` event is triggered"]
         #[inline]
-        fn on_alpn_information(&mut self, meta: &Meta, event: &AlpnInformation) {
+        fn on_endpoint_packet_sent(&mut self, meta: &Meta, event: &EndpointPacketSent) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = "Called when the `PacketSent` event is triggered"]
+        #[doc = "Called when the `EndpointPacketReceived` event is triggered"]
         #[inline]
-        fn on_packet_sent(&mut self, meta: &Meta, event: &PacketSent) {
+        fn on_endpoint_packet_received(&mut self, meta: &Meta, event: &EndpointPacketReceived) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = "Called when the `PacketReceived` event is triggered"]
+        #[doc = "Called when the `EndpointDatagramSent` event is triggered"]
         #[inline]
-        fn on_packet_received(&mut self, meta: &Meta, event: &PacketReceived) {
+        fn on_endpoint_datagram_sent(&mut self, meta: &Meta, event: &EndpointDatagramSent) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = "Called when the `ActivePathUpdated` event is triggered"]
+        #[doc = "Called when the `EndpointDatagramReceived` event is triggered"]
         #[inline]
-        fn on_active_path_updated(&mut self, meta: &Meta, event: &ActivePathUpdated) {
+        fn on_endpoint_datagram_received(&mut self, meta: &Meta, event: &EndpointDatagramReceived) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = "Called when the `PathCreated` event is triggered"]
+        #[doc = "Called when the `EndpointDatagramDropped` event is triggered"]
         #[inline]
-        fn on_path_created(&mut self, meta: &Meta, event: &PathCreated) {
-            let _ = meta;
-            let _ = event;
-        }
-        #[doc = "Called when the `FrameSent` event is triggered"]
-        #[inline]
-        fn on_frame_sent(&mut self, meta: &Meta, event: &FrameSent) {
-            let _ = meta;
-            let _ = event;
-        }
-        #[doc = "Called when the `FrameReceived` event is triggered"]
-        #[inline]
-        fn on_frame_received(&mut self, meta: &Meta, event: &FrameReceived) {
-            let _ = meta;
-            let _ = event;
-        }
-        #[doc = "Called when the `PacketLost` event is triggered"]
-        #[inline]
-        fn on_packet_lost(&mut self, meta: &Meta, event: &PacketLost) {
-            let _ = meta;
-            let _ = event;
-        }
-        #[doc = "Called when the `RecoveryMetrics` event is triggered"]
-        #[inline]
-        fn on_recovery_metrics(&mut self, meta: &Meta, event: &RecoveryMetrics) {
-            let _ = meta;
-            let _ = event;
-        }
-        #[doc = "Called when the `KeyUpdate` event is triggered"]
-        #[inline]
-        fn on_key_update(&mut self, meta: &Meta, event: &KeyUpdate) {
-            let _ = meta;
-            let _ = event;
-        }
-        #[doc = "Called when the `ConnectionStarted` event is triggered"]
-        #[inline]
-        fn on_connection_started(&mut self, meta: &Meta, event: &ConnectionStarted) {
-            let _ = meta;
-            let _ = event;
-        }
-        #[doc = "Called when the `ConnectionClosed` event is triggered"]
-        #[inline]
-        fn on_connection_closed(&mut self, meta: &Meta, event: &ConnectionClosed) {
-            let _ = meta;
-            let _ = event;
-        }
-        #[doc = "Called when the `DuplicatePacket` event is triggered"]
-        #[inline]
-        fn on_duplicate_packet(&mut self, meta: &Meta, event: &DuplicatePacket) {
-            let _ = meta;
-            let _ = event;
-        }
-        #[doc = "Called when the `DatagramSent` event is triggered"]
-        #[inline]
-        fn on_datagram_sent(&mut self, meta: &Meta, event: &DatagramSent) {
-            let _ = meta;
-            let _ = event;
-        }
-        #[doc = "Called when the `DatagramReceived` event is triggered"]
-        #[inline]
-        fn on_datagram_received(&mut self, meta: &Meta, event: &DatagramReceived) {
-            let _ = meta;
-            let _ = event;
-        }
-        #[doc = "Called when the `DatagramDropped` event is triggered"]
-        #[inline]
-        fn on_datagram_dropped(&mut self, meta: &Meta, event: &DatagramDropped) {
-            let _ = meta;
-            let _ = event;
-        }
-        #[doc = "Called when the `ConnectionIdUpdated` event is triggered"]
-        #[inline]
-        fn on_connection_id_updated(&mut self, meta: &Meta, event: &ConnectionIdUpdated) {
+        fn on_endpoint_datagram_dropped(&mut self, meta: &Meta, event: &EndpointDatagramDropped) {
             let _ = meta;
             let _ = event;
         }
@@ -1380,6 +1632,7 @@ mod traits {
         B: Subscriber,
     {
         type ConnectionContext = (A::ConnectionContext, B::ConnectionContext);
+        #[inline]
         fn create_connection_context(&mut self) -> Self::ConnectionContext {
             (
                 self.0.create_connection_context(),
@@ -1387,94 +1640,204 @@ mod traits {
             )
         }
         #[inline]
+        fn on_alpn_information(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &AlpnInformation,
+        ) {
+            (self.0).on_alpn_information(&mut context.0, meta, event);
+            (self.1).on_alpn_information(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_packet_sent(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &PacketSent,
+        ) {
+            (self.0).on_packet_sent(&mut context.0, meta, event);
+            (self.1).on_packet_sent(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_packet_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &PacketReceived,
+        ) {
+            (self.0).on_packet_received(&mut context.0, meta, event);
+            (self.1).on_packet_received(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_active_path_updated(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &ActivePathUpdated,
+        ) {
+            (self.0).on_active_path_updated(&mut context.0, meta, event);
+            (self.1).on_active_path_updated(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_path_created(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &PathCreated,
+        ) {
+            (self.0).on_path_created(&mut context.0, meta, event);
+            (self.1).on_path_created(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_frame_sent(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &FrameSent,
+        ) {
+            (self.0).on_frame_sent(&mut context.0, meta, event);
+            (self.1).on_frame_sent(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_frame_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &FrameReceived,
+        ) {
+            (self.0).on_frame_received(&mut context.0, meta, event);
+            (self.1).on_frame_received(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_packet_lost(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &PacketLost,
+        ) {
+            (self.0).on_packet_lost(&mut context.0, meta, event);
+            (self.1).on_packet_lost(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_recovery_metrics(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &RecoveryMetrics,
+        ) {
+            (self.0).on_recovery_metrics(&mut context.0, meta, event);
+            (self.1).on_recovery_metrics(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_key_update(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &KeyUpdate,
+        ) {
+            (self.0).on_key_update(&mut context.0, meta, event);
+            (self.1).on_key_update(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_connection_started(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &ConnectionStarted,
+        ) {
+            (self.0).on_connection_started(&mut context.0, meta, event);
+            (self.1).on_connection_started(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_connection_closed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &ConnectionClosed,
+        ) {
+            (self.0).on_connection_closed(&mut context.0, meta, event);
+            (self.1).on_connection_closed(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_duplicate_packet(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &DuplicatePacket,
+        ) {
+            (self.0).on_duplicate_packet(&mut context.0, meta, event);
+            (self.1).on_duplicate_packet(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_datagram_sent(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &DatagramSent,
+        ) {
+            (self.0).on_datagram_sent(&mut context.0, meta, event);
+            (self.1).on_datagram_sent(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_datagram_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &DatagramReceived,
+        ) {
+            (self.0).on_datagram_received(&mut context.0, meta, event);
+            (self.1).on_datagram_received(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_datagram_dropped(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &DatagramDropped,
+        ) {
+            (self.0).on_datagram_dropped(&mut context.0, meta, event);
+            (self.1).on_datagram_dropped(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_connection_id_updated(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &ConnectionIdUpdated,
+        ) {
+            (self.0).on_connection_id_updated(&mut context.0, meta, event);
+            (self.1).on_connection_id_updated(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_version_information(&mut self, meta: &Meta, event: &VersionInformation) {
             (self.0).on_version_information(meta, event);
             (self.1).on_version_information(meta, event);
         }
         #[inline]
-        fn on_alpn_information(&mut self, meta: &Meta, event: &AlpnInformation) {
-            (self.0).on_alpn_information(meta, event);
-            (self.1).on_alpn_information(meta, event);
+        fn on_endpoint_packet_sent(&mut self, meta: &Meta, event: &EndpointPacketSent) {
+            (self.0).on_endpoint_packet_sent(meta, event);
+            (self.1).on_endpoint_packet_sent(meta, event);
         }
         #[inline]
-        fn on_packet_sent(&mut self, meta: &Meta, event: &PacketSent) {
-            (self.0).on_packet_sent(meta, event);
-            (self.1).on_packet_sent(meta, event);
+        fn on_endpoint_packet_received(&mut self, meta: &Meta, event: &EndpointPacketReceived) {
+            (self.0).on_endpoint_packet_received(meta, event);
+            (self.1).on_endpoint_packet_received(meta, event);
         }
         #[inline]
-        fn on_packet_received(&mut self, meta: &Meta, event: &PacketReceived) {
-            (self.0).on_packet_received(meta, event);
-            (self.1).on_packet_received(meta, event);
+        fn on_endpoint_datagram_sent(&mut self, meta: &Meta, event: &EndpointDatagramSent) {
+            (self.0).on_endpoint_datagram_sent(meta, event);
+            (self.1).on_endpoint_datagram_sent(meta, event);
         }
         #[inline]
-        fn on_active_path_updated(&mut self, meta: &Meta, event: &ActivePathUpdated) {
-            (self.0).on_active_path_updated(meta, event);
-            (self.1).on_active_path_updated(meta, event);
+        fn on_endpoint_datagram_received(&mut self, meta: &Meta, event: &EndpointDatagramReceived) {
+            (self.0).on_endpoint_datagram_received(meta, event);
+            (self.1).on_endpoint_datagram_received(meta, event);
         }
         #[inline]
-        fn on_path_created(&mut self, meta: &Meta, event: &PathCreated) {
-            (self.0).on_path_created(meta, event);
-            (self.1).on_path_created(meta, event);
-        }
-        #[inline]
-        fn on_frame_sent(&mut self, meta: &Meta, event: &FrameSent) {
-            (self.0).on_frame_sent(meta, event);
-            (self.1).on_frame_sent(meta, event);
-        }
-        #[inline]
-        fn on_frame_received(&mut self, meta: &Meta, event: &FrameReceived) {
-            (self.0).on_frame_received(meta, event);
-            (self.1).on_frame_received(meta, event);
-        }
-        #[inline]
-        fn on_packet_lost(&mut self, meta: &Meta, event: &PacketLost) {
-            (self.0).on_packet_lost(meta, event);
-            (self.1).on_packet_lost(meta, event);
-        }
-        #[inline]
-        fn on_recovery_metrics(&mut self, meta: &Meta, event: &RecoveryMetrics) {
-            (self.0).on_recovery_metrics(meta, event);
-            (self.1).on_recovery_metrics(meta, event);
-        }
-        #[inline]
-        fn on_key_update(&mut self, meta: &Meta, event: &KeyUpdate) {
-            (self.0).on_key_update(meta, event);
-            (self.1).on_key_update(meta, event);
-        }
-        #[inline]
-        fn on_connection_started(&mut self, meta: &Meta, event: &ConnectionStarted) {
-            (self.0).on_connection_started(meta, event);
-            (self.1).on_connection_started(meta, event);
-        }
-        #[inline]
-        fn on_connection_closed(&mut self, meta: &Meta, event: &ConnectionClosed) {
-            (self.0).on_connection_closed(meta, event);
-            (self.1).on_connection_closed(meta, event);
-        }
-        #[inline]
-        fn on_duplicate_packet(&mut self, meta: &Meta, event: &DuplicatePacket) {
-            (self.0).on_duplicate_packet(meta, event);
-            (self.1).on_duplicate_packet(meta, event);
-        }
-        #[inline]
-        fn on_datagram_sent(&mut self, meta: &Meta, event: &DatagramSent) {
-            (self.0).on_datagram_sent(meta, event);
-            (self.1).on_datagram_sent(meta, event);
-        }
-        #[inline]
-        fn on_datagram_received(&mut self, meta: &Meta, event: &DatagramReceived) {
-            (self.0).on_datagram_received(meta, event);
-            (self.1).on_datagram_received(meta, event);
-        }
-        #[inline]
-        fn on_datagram_dropped(&mut self, meta: &Meta, event: &DatagramDropped) {
-            (self.0).on_datagram_dropped(meta, event);
-            (self.1).on_datagram_dropped(meta, event);
-        }
-        #[inline]
-        fn on_connection_id_updated(&mut self, meta: &Meta, event: &ConnectionIdUpdated) {
-            (self.0).on_connection_id_updated(meta, event);
-            (self.1).on_connection_id_updated(meta, event);
+        fn on_endpoint_datagram_dropped(&mut self, meta: &Meta, event: &EndpointDatagramDropped) {
+            (self.0).on_endpoint_datagram_dropped(meta, event);
+            (self.1).on_endpoint_datagram_dropped(meta, event);
         }
         #[inline]
         fn on_event<E: Event>(&mut self, meta: &Meta, event: &E) {
@@ -1492,9 +1855,96 @@ mod traits {
             self.1.on_connection_event(&mut context.1, meta, event);
         }
     }
-    pub trait Publisher {
+    pub trait EndpointPublisher {
         #[doc = "Publishes a `VersionInformation` event to the publisher's subscriber"]
         fn on_version_information(&mut self, event: builder::VersionInformation);
+        #[doc = "Publishes a `EndpointPacketSent` event to the publisher's subscriber"]
+        fn on_endpoint_packet_sent(&mut self, event: builder::EndpointPacketSent);
+        #[doc = "Publishes a `EndpointPacketReceived` event to the publisher's subscriber"]
+        fn on_endpoint_packet_received(&mut self, event: builder::EndpointPacketReceived);
+        #[doc = "Publishes a `EndpointDatagramSent` event to the publisher's subscriber"]
+        fn on_endpoint_datagram_sent(&mut self, event: builder::EndpointDatagramSent);
+        #[doc = "Publishes a `EndpointDatagramReceived` event to the publisher's subscriber"]
+        fn on_endpoint_datagram_received(&mut self, event: builder::EndpointDatagramReceived);
+        #[doc = "Publishes a `EndpointDatagramDropped` event to the publisher's subscriber"]
+        fn on_endpoint_datagram_dropped(&mut self, event: builder::EndpointDatagramDropped);
+        #[doc = r" Returns the QUIC version, if any"]
+        fn quic_version(&self) -> Option<u32>;
+    }
+    pub struct EndpointPublisherSubscriber<'a, Sub: Subscriber> {
+        meta: Meta,
+        quic_version: Option<u32>,
+        subscriber: &'a mut Sub,
+    }
+    impl<'a, Sub: Subscriber> fmt::Debug for EndpointPublisherSubscriber<'a, Sub> {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.debug_struct("ConnectionPublisherSubscriber")
+                .field("meta", &self.meta)
+                .field("quic_version", &self.quic_version)
+                .finish()
+        }
+    }
+    impl<'a, Sub: Subscriber> EndpointPublisherSubscriber<'a, Sub> {
+        #[inline]
+        pub fn new(
+            meta: builder::Meta,
+            quic_version: Option<u32>,
+            subscriber: &'a mut Sub,
+        ) -> Self {
+            Self {
+                meta: meta.into_event(),
+                quic_version,
+                subscriber,
+            }
+        }
+    }
+    impl<'a, Sub: Subscriber> EndpointPublisher for EndpointPublisherSubscriber<'a, Sub> {
+        #[inline]
+        fn on_version_information(&mut self, event: builder::VersionInformation) {
+            let event = event.into_event();
+            self.subscriber.on_version_information(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_endpoint_packet_sent(&mut self, event: builder::EndpointPacketSent) {
+            let event = event.into_event();
+            self.subscriber.on_endpoint_packet_sent(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_endpoint_packet_received(&mut self, event: builder::EndpointPacketReceived) {
+            let event = event.into_event();
+            self.subscriber
+                .on_endpoint_packet_received(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_endpoint_datagram_sent(&mut self, event: builder::EndpointDatagramSent) {
+            let event = event.into_event();
+            self.subscriber
+                .on_endpoint_datagram_sent(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_endpoint_datagram_received(&mut self, event: builder::EndpointDatagramReceived) {
+            let event = event.into_event();
+            self.subscriber
+                .on_endpoint_datagram_received(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_endpoint_datagram_dropped(&mut self, event: builder::EndpointDatagramDropped) {
+            let event = event.into_event();
+            self.subscriber
+                .on_endpoint_datagram_dropped(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn quic_version(&self) -> Option<u32> {
+            self.quic_version
+        }
+    }
+    pub trait ConnectionPublisher {
         #[doc = "Publishes a `AlpnInformation` event to the publisher's subscriber"]
         fn on_alpn_information(&mut self, event: builder::AlpnInformation);
         #[doc = "Publishes a `PacketSent` event to the publisher's subscriber"]
@@ -1529,159 +1979,28 @@ mod traits {
         fn on_datagram_dropped(&mut self, event: builder::DatagramDropped);
         #[doc = "Publishes a `ConnectionIdUpdated` event to the publisher's subscriber"]
         fn on_connection_id_updated(&mut self, event: builder::ConnectionIdUpdated);
-        #[doc = r" Returns the QUIC version, if any"]
-        fn quic_version(&self) -> Option<u32>;
-    }
-    #[derive(Debug)]
-    pub struct PublisherSubscriber<'a, Sub: Subscriber> {
-        meta: Meta,
-        quic_version: Option<u32>,
-        subscriber: &'a mut Sub,
-    }
-    impl<'a, Sub: Subscriber> PublisherSubscriber<'a, Sub> {
-        #[inline]
-        pub fn new(
-            meta: builder::Meta,
-            quic_version: Option<u32>,
-            subscriber: &'a mut Sub,
-        ) -> Self {
-            Self {
-                meta: meta.into_event(),
-                quic_version,
-                subscriber,
-            }
-        }
-    }
-    impl<'a, Sub: Subscriber> Publisher for PublisherSubscriber<'a, Sub> {
-        #[inline]
-        fn on_version_information(&mut self, event: builder::VersionInformation) {
-            let event = event.into_event();
-            self.subscriber.on_version_information(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_alpn_information(&mut self, event: builder::AlpnInformation) {
-            let event = event.into_event();
-            self.subscriber.on_alpn_information(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_packet_sent(&mut self, event: builder::PacketSent) {
-            let event = event.into_event();
-            self.subscriber.on_packet_sent(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_packet_received(&mut self, event: builder::PacketReceived) {
-            let event = event.into_event();
-            self.subscriber.on_packet_received(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_active_path_updated(&mut self, event: builder::ActivePathUpdated) {
-            let event = event.into_event();
-            self.subscriber.on_active_path_updated(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_path_created(&mut self, event: builder::PathCreated) {
-            let event = event.into_event();
-            self.subscriber.on_path_created(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_frame_sent(&mut self, event: builder::FrameSent) {
-            let event = event.into_event();
-            self.subscriber.on_frame_sent(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_frame_received(&mut self, event: builder::FrameReceived) {
-            let event = event.into_event();
-            self.subscriber.on_frame_received(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_packet_lost(&mut self, event: builder::PacketLost) {
-            let event = event.into_event();
-            self.subscriber.on_packet_lost(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_recovery_metrics(&mut self, event: builder::RecoveryMetrics) {
-            let event = event.into_event();
-            self.subscriber.on_recovery_metrics(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_key_update(&mut self, event: builder::KeyUpdate) {
-            let event = event.into_event();
-            self.subscriber.on_key_update(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_connection_started(&mut self, event: builder::ConnectionStarted) {
-            let event = event.into_event();
-            self.subscriber.on_connection_started(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_connection_closed(&mut self, event: builder::ConnectionClosed) {
-            let event = event.into_event();
-            self.subscriber.on_connection_closed(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_duplicate_packet(&mut self, event: builder::DuplicatePacket) {
-            let event = event.into_event();
-            self.subscriber.on_duplicate_packet(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_datagram_sent(&mut self, event: builder::DatagramSent) {
-            let event = event.into_event();
-            self.subscriber.on_datagram_sent(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_datagram_received(&mut self, event: builder::DatagramReceived) {
-            let event = event.into_event();
-            self.subscriber.on_datagram_received(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_datagram_dropped(&mut self, event: builder::DatagramDropped) {
-            let event = event.into_event();
-            self.subscriber.on_datagram_dropped(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_connection_id_updated(&mut self, event: builder::ConnectionIdUpdated) {
-            let event = event.into_event();
-            self.subscriber.on_connection_id_updated(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn quic_version(&self) -> Option<u32> {
-            self.quic_version
-        }
-    }
-    pub trait ConnectionPublisher {
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
-        fn quic_version(&self) -> Option<u32>;
+        fn quic_version(&self) -> u32;
     }
-    #[derive(Debug)]
     pub struct ConnectionPublisherSubscriber<'a, Sub: Subscriber> {
         meta: Meta,
-        quic_version: Option<u32>,
+        quic_version: u32,
         subscriber: &'a mut Sub,
         context: &'a mut Sub::ConnectionContext,
+    }
+    impl<'a, Sub: Subscriber> fmt::Debug for ConnectionPublisherSubscriber<'a, Sub> {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.debug_struct("ConnectionPublisherSubscriber")
+                .field("meta", &self.meta)
+                .field("quic_version", &self.quic_version)
+                .finish()
+        }
     }
     impl<'a, Sub: Subscriber> ConnectionPublisherSubscriber<'a, Sub> {
         #[inline]
         pub fn new(
             meta: builder::Meta,
-            quic_version: Option<u32>,
+            quic_version: u32,
             subscriber: &'a mut Sub,
             context: &'a mut Sub::ConnectionContext,
         ) -> Self {
@@ -1695,7 +2014,160 @@ mod traits {
     }
     impl<'a, Sub: Subscriber> ConnectionPublisher for ConnectionPublisherSubscriber<'a, Sub> {
         #[inline]
-        fn quic_version(&self) -> Option<u32> {
+        fn on_alpn_information(&mut self, event: builder::AlpnInformation) {
+            let event = event.into_event();
+            self.subscriber
+                .on_alpn_information(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_packet_sent(&mut self, event: builder::PacketSent) {
+            let event = event.into_event();
+            self.subscriber
+                .on_packet_sent(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_packet_received(&mut self, event: builder::PacketReceived) {
+            let event = event.into_event();
+            self.subscriber
+                .on_packet_received(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_active_path_updated(&mut self, event: builder::ActivePathUpdated) {
+            let event = event.into_event();
+            self.subscriber
+                .on_active_path_updated(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_path_created(&mut self, event: builder::PathCreated) {
+            let event = event.into_event();
+            self.subscriber
+                .on_path_created(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_frame_sent(&mut self, event: builder::FrameSent) {
+            let event = event.into_event();
+            self.subscriber
+                .on_frame_sent(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_frame_received(&mut self, event: builder::FrameReceived) {
+            let event = event.into_event();
+            self.subscriber
+                .on_frame_received(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_packet_lost(&mut self, event: builder::PacketLost) {
+            let event = event.into_event();
+            self.subscriber
+                .on_packet_lost(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_recovery_metrics(&mut self, event: builder::RecoveryMetrics) {
+            let event = event.into_event();
+            self.subscriber
+                .on_recovery_metrics(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_key_update(&mut self, event: builder::KeyUpdate) {
+            let event = event.into_event();
+            self.subscriber
+                .on_key_update(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_connection_started(&mut self, event: builder::ConnectionStarted) {
+            let event = event.into_event();
+            self.subscriber
+                .on_connection_started(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_connection_closed(&mut self, event: builder::ConnectionClosed) {
+            let event = event.into_event();
+            self.subscriber
+                .on_connection_closed(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_duplicate_packet(&mut self, event: builder::DuplicatePacket) {
+            let event = event.into_event();
+            self.subscriber
+                .on_duplicate_packet(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_datagram_sent(&mut self, event: builder::DatagramSent) {
+            let event = event.into_event();
+            self.subscriber
+                .on_datagram_sent(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_datagram_received(&mut self, event: builder::DatagramReceived) {
+            let event = event.into_event();
+            self.subscriber
+                .on_datagram_received(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_datagram_dropped(&mut self, event: builder::DatagramDropped) {
+            let event = event.into_event();
+            self.subscriber
+                .on_datagram_dropped(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_connection_id_updated(&mut self, event: builder::ConnectionIdUpdated) {
+            let event = event.into_event();
+            self.subscriber
+                .on_connection_id_updated(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn quic_version(&self) -> u32 {
             self.quic_version
         }
     }
@@ -1705,7 +2177,6 @@ pub mod testing {
     use super::*;
     #[derive(Copy, Clone, Debug, Default)]
     pub struct Subscriber {
-        pub version_information: u32,
         pub alpn_information: u32,
         pub packet_sent: u32,
         pub packet_received: u32,
@@ -1723,72 +2194,189 @@ pub mod testing {
         pub datagram_received: u32,
         pub datagram_dropped: u32,
         pub connection_id_updated: u32,
+        pub version_information: u32,
+        pub endpoint_packet_sent: u32,
+        pub endpoint_packet_received: u32,
+        pub endpoint_datagram_sent: u32,
+        pub endpoint_datagram_received: u32,
+        pub endpoint_datagram_dropped: u32,
     }
     impl super::Subscriber for Subscriber {
         type ConnectionContext = ();
         fn create_connection_context(&mut self) -> Self::ConnectionContext {}
-        fn on_version_information(&mut self, _meta: &api::Meta, _event: &api::VersionInformation) {
-            self.version_information += 1;
-        }
-        fn on_alpn_information(&mut self, _meta: &api::Meta, _event: &api::AlpnInformation) {
+        fn on_alpn_information(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::Meta,
+            _event: &api::AlpnInformation,
+        ) {
             self.alpn_information += 1;
         }
-        fn on_packet_sent(&mut self, _meta: &api::Meta, _event: &api::PacketSent) {
+        fn on_packet_sent(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::Meta,
+            _event: &api::PacketSent,
+        ) {
             self.packet_sent += 1;
         }
-        fn on_packet_received(&mut self, _meta: &api::Meta, _event: &api::PacketReceived) {
+        fn on_packet_received(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::Meta,
+            _event: &api::PacketReceived,
+        ) {
             self.packet_received += 1;
         }
-        fn on_active_path_updated(&mut self, _meta: &api::Meta, _event: &api::ActivePathUpdated) {
+        fn on_active_path_updated(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::Meta,
+            _event: &api::ActivePathUpdated,
+        ) {
             self.active_path_updated += 1;
         }
-        fn on_path_created(&mut self, _meta: &api::Meta, _event: &api::PathCreated) {
+        fn on_path_created(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::Meta,
+            _event: &api::PathCreated,
+        ) {
             self.path_created += 1;
         }
-        fn on_frame_sent(&mut self, _meta: &api::Meta, _event: &api::FrameSent) {
+        fn on_frame_sent(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::Meta,
+            _event: &api::FrameSent,
+        ) {
             self.frame_sent += 1;
         }
-        fn on_frame_received(&mut self, _meta: &api::Meta, _event: &api::FrameReceived) {
+        fn on_frame_received(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::Meta,
+            _event: &api::FrameReceived,
+        ) {
             self.frame_received += 1;
         }
-        fn on_packet_lost(&mut self, _meta: &api::Meta, _event: &api::PacketLost) {
+        fn on_packet_lost(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::Meta,
+            _event: &api::PacketLost,
+        ) {
             self.packet_lost += 1;
         }
-        fn on_recovery_metrics(&mut self, _meta: &api::Meta, _event: &api::RecoveryMetrics) {
+        fn on_recovery_metrics(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::Meta,
+            _event: &api::RecoveryMetrics,
+        ) {
             self.recovery_metrics += 1;
         }
-        fn on_key_update(&mut self, _meta: &api::Meta, _event: &api::KeyUpdate) {
+        fn on_key_update(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::Meta,
+            _event: &api::KeyUpdate,
+        ) {
             self.key_update += 1;
         }
-        fn on_connection_started(&mut self, _meta: &api::Meta, _event: &api::ConnectionStarted) {
+        fn on_connection_started(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::Meta,
+            _event: &api::ConnectionStarted,
+        ) {
             self.connection_started += 1;
         }
-        fn on_connection_closed(&mut self, _meta: &api::Meta, _event: &api::ConnectionClosed) {
+        fn on_connection_closed(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::Meta,
+            _event: &api::ConnectionClosed,
+        ) {
             self.connection_closed += 1;
         }
-        fn on_duplicate_packet(&mut self, _meta: &api::Meta, _event: &api::DuplicatePacket) {
+        fn on_duplicate_packet(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::Meta,
+            _event: &api::DuplicatePacket,
+        ) {
             self.duplicate_packet += 1;
         }
-        fn on_datagram_sent(&mut self, _meta: &api::Meta, _event: &api::DatagramSent) {
+        fn on_datagram_sent(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::Meta,
+            _event: &api::DatagramSent,
+        ) {
             self.datagram_sent += 1;
         }
-        fn on_datagram_received(&mut self, _meta: &api::Meta, _event: &api::DatagramReceived) {
+        fn on_datagram_received(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::Meta,
+            _event: &api::DatagramReceived,
+        ) {
             self.datagram_received += 1;
         }
-        fn on_datagram_dropped(&mut self, _meta: &api::Meta, _event: &api::DatagramDropped) {
+        fn on_datagram_dropped(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::Meta,
+            _event: &api::DatagramDropped,
+        ) {
             self.datagram_dropped += 1;
         }
         fn on_connection_id_updated(
             &mut self,
+            _context: &mut Self::ConnectionContext,
             _meta: &api::Meta,
             _event: &api::ConnectionIdUpdated,
         ) {
             self.connection_id_updated += 1;
         }
+        fn on_version_information(&mut self, _meta: &api::Meta, _event: &api::VersionInformation) {
+            self.version_information += 1;
+        }
+        fn on_endpoint_packet_sent(&mut self, _meta: &api::Meta, _event: &api::EndpointPacketSent) {
+            self.endpoint_packet_sent += 1;
+        }
+        fn on_endpoint_packet_received(
+            &mut self,
+            _meta: &api::Meta,
+            _event: &api::EndpointPacketReceived,
+        ) {
+            self.endpoint_packet_received += 1;
+        }
+        fn on_endpoint_datagram_sent(
+            &mut self,
+            _meta: &api::Meta,
+            _event: &api::EndpointDatagramSent,
+        ) {
+            self.endpoint_datagram_sent += 1;
+        }
+        fn on_endpoint_datagram_received(
+            &mut self,
+            _meta: &api::Meta,
+            _event: &api::EndpointDatagramReceived,
+        ) {
+            self.endpoint_datagram_received += 1;
+        }
+        fn on_endpoint_datagram_dropped(
+            &mut self,
+            _meta: &api::Meta,
+            _event: &api::EndpointDatagramDropped,
+        ) {
+            self.endpoint_datagram_dropped += 1;
+        }
     }
     #[derive(Copy, Clone, Debug, Default)]
     pub struct Publisher {
-        pub version_information: u32,
         pub alpn_information: u32,
         pub packet_sent: u32,
         pub packet_received: u32,
@@ -1806,11 +2394,37 @@ pub mod testing {
         pub datagram_received: u32,
         pub datagram_dropped: u32,
         pub connection_id_updated: u32,
+        pub version_information: u32,
+        pub endpoint_packet_sent: u32,
+        pub endpoint_packet_received: u32,
+        pub endpoint_datagram_sent: u32,
+        pub endpoint_datagram_received: u32,
+        pub endpoint_datagram_dropped: u32,
     }
-    impl super::Publisher for Publisher {
+    impl super::EndpointPublisher for Publisher {
         fn on_version_information(&mut self, _event: builder::VersionInformation) {
             self.version_information += 1;
         }
+        fn on_endpoint_packet_sent(&mut self, _event: builder::EndpointPacketSent) {
+            self.endpoint_packet_sent += 1;
+        }
+        fn on_endpoint_packet_received(&mut self, _event: builder::EndpointPacketReceived) {
+            self.endpoint_packet_received += 1;
+        }
+        fn on_endpoint_datagram_sent(&mut self, _event: builder::EndpointDatagramSent) {
+            self.endpoint_datagram_sent += 1;
+        }
+        fn on_endpoint_datagram_received(&mut self, _event: builder::EndpointDatagramReceived) {
+            self.endpoint_datagram_received += 1;
+        }
+        fn on_endpoint_datagram_dropped(&mut self, _event: builder::EndpointDatagramDropped) {
+            self.endpoint_datagram_dropped += 1;
+        }
+        fn quic_version(&self) -> Option<u32> {
+            Some(1)
+        }
+    }
+    impl super::ConnectionPublisher for Publisher {
         fn on_alpn_information(&mut self, _event: builder::AlpnInformation) {
             self.alpn_information += 1;
         }
@@ -1862,13 +2476,8 @@ pub mod testing {
         fn on_connection_id_updated(&mut self, _event: builder::ConnectionIdUpdated) {
             self.connection_id_updated += 1;
         }
-        fn quic_version(&self) -> Option<u32> {
-            Some(1)
-        }
-    }
-    impl super::ConnectionPublisher for Publisher {
-        fn quic_version(&self) -> Option<u32> {
-            Some(1)
+        fn quic_version(&self) -> u32 {
+            1
         }
     }
 }

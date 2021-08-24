@@ -8,7 +8,7 @@ use crate::{
 use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
-    event::{self, IntoEvent as _, Publisher as _},
+    event::{self, ConnectionPublisher as _, IntoEvent as _},
     frame::ack_elicitation::AckElicitable,
     inet::ExplicitCongestionNotification,
     io::tx,
@@ -27,7 +27,7 @@ pub struct ConnectionTransmissionContext<'a, 'sub, Config: endpoint::Config> {
     pub ecn: ExplicitCongestionNotification,
     pub min_packet_len: Option<usize>,
     pub transmission_mode: transmission::Mode,
-    pub publisher: &'a mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
+    pub publisher: &'a mut event::ConnectionPublisherSubscriber<'sub, Config::EventSubscriber>,
 }
 
 impl<'a, 'sub, Config: endpoint::Config> ConnectionTransmissionContext<'a, 'sub, Config> {
@@ -179,7 +179,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                         .on_packet_sent(event::builder::PacketSent {
                             packet_header: event::builder::PacketHeader {
                                 packet_type: outcome.packet_number.into_event(),
-                                version: self.context.publisher.quic_version(),
+                                version: Some(self.context.publisher.quic_version()),
                             },
                         });
 
@@ -235,7 +235,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                         .on_packet_sent(event::builder::PacketSent {
                             packet_header: event::builder::PacketHeader {
                                 packet_type: outcome.packet_number.into_event(),
-                                version: self.context.publisher.quic_version(),
+                                version: Some(self.context.publisher.quic_version()),
                             },
                         });
 
@@ -333,7 +333,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                         .on_packet_sent(event::builder::PacketSent {
                             packet_header: event::builder::PacketHeader {
                                 packet_type: outcome.packet_number.into_event(),
-                                version: self.context.publisher.quic_version(),
+                                version: Some(self.context.publisher.quic_version()),
                             },
                         });
                     encoder

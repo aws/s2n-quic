@@ -5,7 +5,7 @@ use crate::{contexts::WriteContext, endpoint, path, transmission, transmission::
 use core::marker::PhantomData;
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
-    event::{self, IntoEvent, Publisher as _},
+    event::{self, ConnectionPublisher as _, IntoEvent},
     frame::{
         ack_elicitation::{AckElicitable, AckElicitation},
         congestion_controlled::CongestionControlled,
@@ -26,8 +26,10 @@ pub struct Context<'a, 'b, 'sub, Config: endpoint::Config> {
     pub tag_len: usize,
     pub config: PhantomData<Config>,
     pub path_id: path::Id,
-    pub publisher:
-        &'a mut event::PublisherSubscriber<'sub, <Config as endpoint::Config>::EventSubscriber>,
+    pub publisher: &'a mut event::ConnectionPublisherSubscriber<
+        'sub,
+        <Config as endpoint::Config>::EventSubscriber,
+    >,
 }
 
 impl<'a, 'b, 'sub, Config: endpoint::Config> Context<'a, 'b, 'sub, Config> {
@@ -114,7 +116,7 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
         self.publisher.on_frame_sent(event::builder::FrameSent {
             packet_header: event::builder::PacketHeader {
                 packet_type: self.packet_number.into_event(),
-                version: self.publisher.quic_version(),
+                version: Some(self.publisher.quic_version()),
             },
             path_id: self.path_id.into_event(),
             frame: frame.into_event(),
@@ -138,7 +140,7 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
         self.publisher.on_frame_sent(event::builder::FrameSent {
             packet_header: event::builder::PacketHeader {
                 packet_type: self.packet_number.into_event(),
-                version: self.publisher.quic_version(),
+                version: Some(self.publisher.quic_version()),
             },
             path_id: self.path_id.into_event(),
             frame: frame.into_event(),

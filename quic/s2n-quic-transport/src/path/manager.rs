@@ -59,7 +59,7 @@ impl<Config: endpoint::Config> Manager<Config> {
     }
 
     /// Update the active path
-    fn update_active_path<Rnd: random::Generator, Pub: event::Publisher>(
+    fn update_active_path<Rnd: random::Generator, Pub: event::ConnectionPublisher>(
         &mut self,
         new_path_id: Id,
         random_generator: &mut Rnd,
@@ -174,7 +174,7 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// true if the path had been amplification limited prior to receiving the datagram
     /// and is now no longer amplification limited.
     #[allow(unused_variables, clippy::too_many_arguments)]
-    pub fn on_datagram_received<Rnd: random::Generator, Pub: event::Publisher>(
+    pub fn on_datagram_received<Rnd: random::Generator, Pub: event::ConnectionPublisher>(
         &mut self,
         path_handle: &Config::PathHandle,
         datagram: &DatagramInfo,
@@ -222,7 +222,7 @@ impl<Config: endpoint::Config> Manager<Config> {
 
     #[allow(unreachable_code)]
     #[allow(unused_variables)]
-    fn handle_connection_migration<Rnd: random::Generator, Pub: event::Publisher>(
+    fn handle_connection_migration<Rnd: random::Generator, Pub: event::ConnectionPublisher>(
         &mut self,
         path_handle: &Config::PathHandle,
         datagram: &DatagramInfo,
@@ -435,7 +435,10 @@ impl<Config: endpoint::Config> Manager<Config> {
     }
 
     /// Process a non-probing (path validation probing) packet.
-    pub fn on_non_path_validation_probing_packet<Rnd: random::Generator, Pub: event::Publisher>(
+    pub fn on_non_path_validation_probing_packet<
+        Rnd: random::Generator,
+        Pub: event::ConnectionPublisher,
+    >(
         &mut self,
         path_id: Id,
         random_generator: &mut Rnd,
@@ -480,7 +483,7 @@ impl<Config: endpoint::Config> Manager<Config> {
     }
 
     /// Called when a NEW_CONNECTION_ID frame is received from the peer
-    pub fn on_new_connection_id<Pub: event::Publisher>(
+    pub fn on_new_connection_id<Pub: event::ConnectionPublisher>(
         &mut self,
         connection_id: &connection::PeerId,
         sequence_number: u32,

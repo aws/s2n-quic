@@ -24,12 +24,13 @@ use crate::{
 };
 use bytes::Bytes;
 use core::{
+    fmt,
     task::{Context, Poll},
     time::Duration,
 };
 use s2n_quic_core::{
     application,
-    event::{self, IntoEvent as _, Publisher as _},
+    event::{self, ConnectionPublisher as _, IntoEvent as _},
     inet::DatagramInfo,
     io::tx,
     packet::{
@@ -134,14 +135,10 @@ impl From<connection::Error> for ConnectionState {
 
 #[derive(Debug)]
 pub struct ConnectionImpl<Config: endpoint::Config> {
-    /// The [`Connection`]s internal identifier
-    internal_connection_id: InternalConnectionId,
     /// The local ID registry which should be utilized by the connection
     local_id_registry: connection::LocalIdRegistry,
     /// The timers which are used within the connection
     timers: ConnectionTimers,
-    /// The QUIC protocol version which is used for this particular connection
-    quic_version: u32,
     /// Describes whether the connection is known to be accepted by the application
     accept_state: AcceptState,
     /// The current state of the connection
@@ -160,6 +157,49 @@ pub struct ConnectionImpl<Config: endpoint::Config> {
     space_manager: PacketSpaceManager<Config>,
     /// Holds the handle for waking up the endpoint from a application call
     wakeup_handle: WakeupHandle<InternalConnectionId>,
+    event_context: EventContext<Config>,
+}
+
+struct EventContext<Config: endpoint::Config> {
+    /// The [`Connection`]s internal identifier
+    internal_connection_id: InternalConnectionId,
+
+    /// The QUIC protocol version which is used for this particular connection
+    quic_version: u32,
+
+    /// Holds the event context associated with the connection
+    context: <Config::EventSubscriber as event::Subscriber>::ConnectionContext,
+}
+
+impl<Config: endpoint::Config> fmt::Debug for EventContext<Config> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("EventContext")
+            .field("internal_connection_id", &self.internal_connection_id)
+            .field("quic_version", &self.quic_version)
+            .finish()
+    }
+}
+
+impl<Config: endpoint::Config> EventContext<Config> {
+    #[inline]
+    fn publisher<'a>(
+        &'a mut self,
+        timestamp: Timestamp,
+        subscriber: &'a mut Config::EventSubscriber,
+    ) -> event::ConnectionPublisherSubscriber<'a, Config::EventSubscriber> {
+        event::ConnectionPublisherSubscriber::new(
+            event::builder::Meta {
+                endpoint_type: Config::ENDPOINT_TYPE,
+                subject: event::builder::Subject::Connection {
+                    id: self.internal_connection_id.into(),
+                },
+                timestamp,
+            },
+            self.quic_version,
+            subscriber,
+            &mut self.context,
+        )
+    }
 }
 
 /// Safety: we use some `Rc<RefCell<T>>` inside of the connection but these values
@@ -185,11 +225,11 @@ macro_rules! transmission_context {
         $path_id:expr,
         $timestamp:expr,
         $transmission_mode:expr,
-        $publisher:expr,
+        $subscriber:expr,
         $(,)?
     ) => {
         ConnectionTransmissionContext {
-            quic_version: $self.quic_version,
+            quic_version: $self.event_context.quic_version,
             timestamp: $timestamp,
             path_id: $path_id,
             path_manager: &mut $self.path_manager,
@@ -198,24 +238,25 @@ macro_rules! transmission_context {
             ecn: Default::default(),
             min_packet_len: None,
             transmission_mode: $transmission_mode,
-            publisher: $publisher,
+            publisher: &mut $self.event_context.publisher($timestamp, $subscriber),
         }
     };
 }
 
 impl<Config: endpoint::Config> ConnectionImpl<Config> {
-    fn update_crypto_state<Pub: event::Publisher>(
+    fn update_crypto_state(
         &mut self,
         datagram: &DatagramInfo,
-        publisher: &mut Pub,
+        subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), connection::Error> {
+        let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
         let space_manager = &mut self.space_manager;
         space_manager.poll_crypto(
             self.path_manager.active_path(),
             &mut self.local_id_registry,
             &mut self.limits,
             datagram.timestamp,
-            publisher,
+            &mut publisher,
         )?;
 
         if matches!(self.state, ConnectionState::Handshaking)
@@ -303,7 +344,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         queue: &mut Tx,
         timestamp: Timestamp,
         outcome: &'a mut transmission::Outcome,
-        publisher: &'a mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
+        subscriber: &'sub mut Config::EventSubscriber,
     ) -> usize {
         let mut count = 0;
         let mut pending_paths = self.path_manager.paths_pending_validation();
@@ -320,7 +361,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
                 && queue
                     .push(ConnectionTransmission {
                         context: ConnectionTransmissionContext {
-                            quic_version: self.quic_version,
+                            quic_version: self.event_context.quic_version,
                             timestamp,
                             path_id,
                             path_manager,
@@ -329,7 +370,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
                             ecn,
                             min_packet_len: None,
                             transmission_mode: transmission::Mode::PathValidationOnly,
-                            publisher,
+                            publisher: &mut self.event_context.publisher(timestamp, subscriber),
                         },
                         space_manager: &mut self.space_manager,
                     })
@@ -352,10 +393,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Creates a new `Connection` instance with the given configuration
-    fn new<Pub: event::Publisher>(
-        parameters: ConnectionParameters<Self::Config>,
-        publisher: &mut Pub,
-    ) -> Self {
+    fn new(parameters: ConnectionParameters<Self::Config>) -> Self {
+        let mut event_context = EventContext {
+            context: parameters.event_context,
+            internal_connection_id: parameters.internal_connection_id,
+            quic_version: parameters.quic_version,
+        };
+
         // The path manager always starts with a single path containing the known peer and local
         // connection ids.
         let rtt_estimator = RttEstimator::new(parameters.limits.ack_settings().max_ack_delay);
@@ -373,6 +417,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         let path_manager = path::Manager::new(initial_path, parameters.peer_id_registry);
 
+        let mut publisher =
+            event_context.publisher(parameters.timestamp, parameters.event_subscriber);
+
         publisher.on_connection_started(event::builder::ConnectionStarted {
             path: event::builder::Path {
                 remote_addr: parameters.path_handle.remote_address().into_event(),
@@ -382,10 +429,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         });
 
         Self {
-            internal_connection_id: parameters.internal_connection_id,
             local_id_registry: parameters.local_id_registry,
             timers: Default::default(),
-            quic_version: parameters.quic_version,
             accept_state: AcceptState::Handshaking,
             state: ConnectionState::Handshaking,
             path_manager,
@@ -394,30 +439,30 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             close_sender: CloseSender::default(),
             space_manager: parameters.space_manager,
             wakeup_handle: parameters.wakeup_handle,
+            event_context,
         }
     }
 
     /// Returns the Connections internal ID
     fn internal_connection_id(&self) -> InternalConnectionId {
-        self.internal_connection_id
+        self.event_context.internal_connection_id
     }
 
     /// Returns the QUIC version selected for the current connection
     fn quic_version(&self) -> u32 {
-        self.quic_version
+        self.event_context.quic_version
     }
 
     /// Initiates closing the connection as described in
     /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
-    fn close<'sub>(
+    fn close(
         &mut self,
         error: connection::Error,
         close_formatter: &Config::ConnectionCloseFormatter,
         packet_buffer: &mut endpoint::PacketBuffer,
         timestamp: Timestamp,
-        publisher: &mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
+        subscriber: &mut Config::EventSubscriber,
     ) {
-        publisher.on_connection_closed(event::builder::ConnectionClosed { error });
         match self.state {
             ConnectionState::Closing | ConnectionState::Draining | ConnectionState::Finished => {
                 // The connection is already closing
@@ -425,6 +470,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             }
             ConnectionState::Handshaking | ConnectionState::Active => {}
         }
+
+        let mut publisher = self.event_context.publisher(timestamp, subscriber);
+
+        publisher.on_connection_closed(event::builder::ConnectionClosed { error });
 
         // We don't need any timers anymore
         self.timers.cancel();
@@ -452,7 +501,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 active_path_id,
                 timestamp,
                 transmission::Mode::Normal,
-                publisher,
+                subscriber,
             );
 
             if let Some(packet) = self.space_manager.on_transmit_close(
@@ -487,15 +536,16 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# An endpoint's selected connection ID and the QUIC version are
         //# sufficient information to identify packets for a closing connection;
         //# the endpoint MAY discard all other connection state.
+        let mut publisher = self.event_context.publisher(timestamp, subscriber);
         self.space_manager.discard_initial(
             self.path_manager.active_path_mut(),
             active_path_id,
-            publisher,
+            &mut publisher,
         );
         self.space_manager.discard_handshake(
             self.path_manager.active_path_mut(),
             active_path_id,
-            publisher,
+            &mut publisher,
         );
         self.space_manager.discard_zero_rtt_crypto();
 
@@ -547,11 +597,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Queries the connection for outgoing packets
-    fn on_transmit<'sub, Tx: tx::Queue<Handle = Config::PathHandle>>(
+    fn on_transmit<Tx: tx::Queue<Handle = Config::PathHandle>>(
         &mut self,
         queue: &mut Tx,
         timestamp: Timestamp,
-        publisher: &mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
+        subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ConnectionOnTransmitError> {
         let mut count = 0;
 
@@ -573,7 +623,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                                 self.path_manager.active_path_id(),
                                 timestamp,
                                 transmission::Mode::Normal,
-                                publisher,
+                                subscriber,
                             ),
                             space_manager: &mut self.space_manager,
                         })
@@ -600,7 +650,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                                 self.path_manager.active_path_id(),
                                 timestamp,
                                 transmission::Mode::MtuProbing,
-                                publisher,
+                                subscriber,
                             ),
                             space_manager: &mut self.space_manager,
                         })
@@ -615,14 +665,15 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     queue,
                     timestamp,
                     &mut outcome,
-                    publisher,
+                    subscriber,
                 );
             }
             ConnectionState::Closing => {
+                let mut publisher = self.event_context.publisher(timestamp, subscriber);
                 let path = self.path_manager.active_path_mut();
 
                 if queue
-                    .push(self.close_sender.transmission(path, publisher))
+                    .push(self.close_sender.transmission(path, &mut publisher))
                     .is_ok()
                 {
                     count += 1;
@@ -643,11 +694,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     /// Handles all timeouts on the `Connection`.
     ///
     /// `timestamp` passes the current time.
-    fn on_timeout<Pub: event::Publisher>(
+    fn on_timeout(
         &mut self,
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
-        publisher: &mut Pub,
+        subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), connection::Error> {
         if self.close_sender.on_timeout(timestamp).is_ready() {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2
@@ -662,17 +713,18 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .poll_expiration(timestamp)
             .is_ready()
         {
-            connection_id_mapper.remove_initial_id(&self.internal_connection_id);
+            connection_id_mapper.remove_initial_id(&self.event_context.internal_connection_id);
         }
 
         self.path_manager.on_timeout(timestamp)?;
         self.local_id_registry.on_timeout(timestamp);
 
+        let mut publisher = self.event_context.publisher(timestamp, subscriber);
         self.space_manager.on_timeout(
             &mut self.local_id_registry,
             &mut self.path_manager,
             timestamp,
-            publisher,
+            &mut publisher,
         );
 
         if self
@@ -718,15 +770,17 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     // Packet handling
-    fn on_datagram_received<Pub: event::Publisher>(
+    fn on_datagram_received(
         &mut self,
         path_handle: &Config::PathHandle,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         random: &mut Config::RandomGenerator,
         max_mtu: MaxMtu,
-        publisher: &mut Pub,
+        subscriber: &mut Config::EventSubscriber,
     ) -> Result<path::Id, connection::Error> {
+        let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
+
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //# The design of QUIC relies on endpoints retaining a stable address
         //# for the duration of the handshake.  An endpoint MUST NOT initiate
@@ -748,7 +802,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             congestion_controller_endpoint,
             random,
             max_mtu,
-            publisher,
+            &mut publisher,
         )?;
 
         publisher.on_datagram_received(event::builder::DatagramReceived {
@@ -782,21 +836,23 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a initial packet had been received
-    fn handle_initial_packet<Pub: event::Publisher, Rnd: random::Generator>(
+    fn handle_initial_packet<Rnd: random::Generator>(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedInitial,
-        publisher: &mut Pub,
         random_generator: &mut Rnd,
+        subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         if let Some((space, _status)) = self.space_manager.initial_mut() {
-            let packet = space.validate_and_decrypt_packet(packet, path_id, publisher)?;
+            let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
+
+            let packet = space.validate_and_decrypt_packet(packet, path_id, &mut publisher)?;
 
             publisher.on_packet_received(event::builder::PacketReceived {
                 packet_header: event::builder::PacketHeader {
                     packet_type: packet.packet_number.into_event(),
-                    version: Some(self.quic_version),
+                    version: Some(packet.version),
                 },
             });
 
@@ -804,8 +860,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 datagram,
                 path_id,
                 packet,
-                publisher,
                 random_generator,
+                subscriber,
             )?;
         }
 
@@ -813,15 +869,17 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when an unprotected initial packet had been received
-    fn handle_cleartext_initial_packet<Pub: event::Publisher, Rnd: random::Generator>(
+    fn handle_cleartext_initial_packet<Rnd: random::Generator>(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: CleartextInitial,
-        publisher: &mut Pub,
         random_generator: &mut Rnd,
+        subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         if let Some((space, handshake_status)) = self.space_manager.initial_mut() {
+            let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
+
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2
             //= type=TODO
             //= tracking-issue=336
@@ -848,11 +906,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 handshake_status,
                 &mut self.local_id_registry,
                 random_generator,
-                publisher,
+                &mut publisher,
             )?;
 
             // try to move the crypto state machine forward
-            self.update_crypto_state(datagram, publisher)?;
+            self.update_crypto_state(datagram, subscriber)?;
 
             // notify the connection a packet was processed
             self.on_processed_packet(datagram.timestamp);
@@ -862,13 +920,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a handshake packet had been received
-    fn handle_handshake_packet<Pub: event::Publisher, Rnd: random::Generator>(
+    fn handle_handshake_packet<Rnd: random::Generator>(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedHandshake,
-        publisher: &mut Pub,
         random_generator: &mut Rnd,
+        subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
         //= type=TODO
@@ -884,12 +942,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# packets.
 
         if let Some((space, handshake_status)) = self.space_manager.handshake_mut() {
-            let packet = space.validate_and_decrypt_packet(packet, path_id, publisher)?;
+            let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
+
+            let packet = space.validate_and_decrypt_packet(packet, path_id, &mut publisher)?;
 
             publisher.on_packet_received(event::builder::PacketReceived {
                 packet_header: event::builder::PacketHeader {
                     packet_type: packet.packet_number.into_event(),
-                    version: Some(self.quic_version),
+                    version: Some(packet.version),
                 },
             });
 
@@ -902,7 +962,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 handshake_status,
                 &mut self.local_id_registry,
                 random_generator,
-                publisher,
+                &mut publisher,
             )?;
 
             if Self::Config::ENDPOINT_TYPE.is_server() {
@@ -912,7 +972,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 self.space_manager.discard_initial(
                     self.path_manager.active_path_mut(),
                     path_id,
-                    publisher,
+                    &mut publisher,
                 );
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
@@ -923,7 +983,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             }
 
             // try to move the crypto state machine forward
-            self.update_crypto_state(datagram, publisher)?;
+            self.update_crypto_state(datagram, subscriber)?;
 
             // notify the connection a packet was processed
             self.on_processed_packet(datagram.timestamp);
@@ -933,13 +993,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a short packet had been received
-    fn handle_short_packet<Pub: event::Publisher, Rnd: random::Generator>(
+    fn handle_short_packet<Rnd: random::Generator>(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedShort,
-        publisher: &mut Pub,
         random_generator: &mut Rnd,
+        subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
         //# Endpoints in either role MUST NOT decrypt 1-RTT packets from
@@ -979,12 +1039,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         }
 
         if let Some((space, handshake_status)) = self.space_manager.application_mut() {
+            let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
+
             let packet = space.validate_and_decrypt_packet(
                 packet,
                 datagram,
                 &self.path_manager.active_path().rtt_estimator,
                 path_id,
-                publisher,
+                &mut publisher,
             )?;
 
             // Connection Ids are issued to the peer after the handshake is
@@ -994,7 +1056,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 path_id,
                 &packet,
                 &datagram.destination_connection_id,
-                publisher,
+                &mut publisher,
             );
 
             space.handle_cleartext_payload(
@@ -1006,7 +1068,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 handshake_status,
                 &mut self.local_id_registry,
                 random_generator,
-                publisher,
+                &mut publisher,
             )?;
 
             // Currently, the application space does not have any crypto state.
@@ -1015,10 +1077,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             // notify the connection a packet was processed
             self.on_processed_packet(datagram.timestamp);
 
+            let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
             publisher.on_packet_received(event::builder::PacketReceived {
                 packet_header: event::builder::PacketHeader {
                     packet_type: packet.packet_number.into_event(),
-                    version: Some(self.quic_version),
+                    version: Some(publisher.quic_version()),
                 },
             });
         }
@@ -1027,17 +1090,19 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a version negotiation packet had been received
-    fn handle_version_negotiation_packet<Pub: event::Publisher>(
+    fn handle_version_negotiation_packet(
         &mut self,
-        _datagram: &DatagramInfo,
+        datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedVersionNegotiation,
-        publisher: &mut Pub,
+        subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
+        let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
+
         publisher.on_packet_received(event::builder::PacketReceived {
             packet_header: event::builder::PacketHeader {
                 packet_type: event::builder::PacketType::VersionNegotiation {},
-                version: publisher.quic_version(),
+                version: Some(publisher.quic_version()),
             },
         });
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.2
@@ -1068,13 +1133,15 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a zero rtt packet had been received
-    fn handle_zero_rtt_packet<Pub: event::Publisher>(
+    fn handle_zero_rtt_packet(
         &mut self,
-        _datagram: &DatagramInfo,
+        datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedZeroRtt,
-        publisher: &mut Pub,
+        subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
+        let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
+
         publisher.on_packet_received(event::builder::PacketReceived {
             packet_header: event::builder::PacketHeader {
                 // FIXME: remove when we support zero-rtt. Since there is a
@@ -1082,7 +1149,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 // wih `packet_number.into_event()` once the packet number is
                 // available.
                 packet_type: event::builder::PacketType::ZeroRtt { number: 0 },
-                version: publisher.quic_version(),
+                version: Some(publisher.quic_version()),
             },
         });
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
@@ -1097,17 +1164,19 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a retry packet had been received
-    fn handle_retry_packet<Pub: event::Publisher>(
+    fn handle_retry_packet(
         &mut self,
-        _datagram: &DatagramInfo,
+        datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedRetry,
-        publisher: &mut Pub,
+        subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
+        let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
+
         publisher.on_packet_received(event::builder::PacketReceived {
             packet_header: event::builder::PacketHeader {
                 packet_type: event::builder::PacketType::Retry {},
-                version: publisher.quic_version(),
+                version: Some(publisher.quic_version()),
             },
         });
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3

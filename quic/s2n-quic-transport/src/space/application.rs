@@ -118,7 +118,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     }
 
     /// Returns true if the packet number has already been processed
-    pub fn is_duplicate<Pub: event::Publisher>(
+    pub fn is_duplicate<Pub: event::ConnectionPublisher>(
         &self,
         packet_number: PacketNumber,
         path_id: path::Id,
@@ -129,7 +129,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             publisher.on_duplicate_packet(event::builder::DuplicatePacket {
                 packet_header: event::builder::PacketHeader {
                     packet_type: packet_number.into_event(),
-                    version: publisher.quic_version(),
+                    version: Some(publisher.quic_version()),
                 },
                 path_id: path_id.into_event(),
                 error: error.into_event(),
@@ -326,7 +326,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout<Pub: event::Publisher>(
+    pub fn on_timeout<Pub: event::ConnectionPublisher>(
         &mut self,
         path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
@@ -390,7 +390,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     }
 
     /// Validate packets in the Application packet space
-    pub fn validate_and_decrypt_packet<'a, Pub: event::Publisher>(
+    pub fn validate_and_decrypt_packet<'a, Pub: event::ConnectionPublisher>(
         &mut self,
         protected: ProtectedShort<'a>,
         datagram: &DatagramInfo,
@@ -572,7 +572,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         Ok(())
     }
 
-    fn handle_ack_frame<A: AckRanges, Pub: event::Publisher>(
+    fn handle_ack_frame<A: AckRanges, Pub: event::ConnectionPublisher>(
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,
@@ -664,7 +664,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         Ok(())
     }
 
-    fn handle_new_connection_id_frame<Pub: event::Publisher>(
+    fn handle_new_connection_id_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: NewConnectionId,
         _datagram: &DatagramInfo,

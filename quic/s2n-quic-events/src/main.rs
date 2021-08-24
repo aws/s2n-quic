@@ -67,10 +67,12 @@ impl ToTokens for Output {
             mod traits {
                 use super::*;
                 use api::*;
+                use core::fmt;
 
                 pub trait Subscriber: 'static + Send {
-                    type ConnectionContext;
+                    type ConnectionContext: 'static + Send;
 
+                    /// Creates a context to be passed to each connection-related event
                     fn create_connection_context(&mut self) -> Self::ConnectionContext;
 
                     #subscriber
@@ -100,6 +102,7 @@ impl ToTokens for Output {
                 {
                     type ConnectionContext = (A::ConnectionContext, B::ConnectionContext);
 
+                    #[inline]
                     fn create_connection_context(&mut self) -> Self::ConnectionContext {
                         (self.0.create_connection_context(), self.1.create_connection_context())
                     }
@@ -119,21 +122,29 @@ impl ToTokens for Output {
                     }
                 }
 
-                pub trait Publisher {
+                pub trait EndpointPublisher {
                     #endpoint_publisher
 
                     /// Returns the QUIC version, if any
                     fn quic_version(&self) -> Option<u32>;
                 }
 
-                #[derive(Debug)]
-                pub struct PublisherSubscriber<'a, Sub: Subscriber> {
+                pub struct EndpointPublisherSubscriber<'a, Sub: Subscriber> {
                     meta: Meta,
                     quic_version: Option<u32>,
                     subscriber: &'a mut Sub,
                 }
 
-                impl<'a, Sub: Subscriber> PublisherSubscriber<'a, Sub> {
+                impl<'a, Sub: Subscriber> fmt::Debug for EndpointPublisherSubscriber<'a, Sub> {
+                    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                        f.debug_struct("ConnectionPublisherSubscriber")
+                            .field("meta", &self.meta)
+                            .field("quic_version", &self.quic_version)
+                            .finish()
+                    }
+                }
+
+                impl<'a, Sub: Subscriber> EndpointPublisherSubscriber<'a, Sub> {
                     #[inline]
                     pub fn new(
                         meta: builder::Meta,
@@ -148,7 +159,7 @@ impl ToTokens for Output {
                     }
                 }
 
-                impl<'a, Sub: Subscriber> Publisher for PublisherSubscriber<'a, Sub> {
+                impl<'a, Sub: Subscriber> EndpointPublisher for EndpointPublisherSubscriber<'a, Sub> {
                     #endpoint_publisher_subscriber
 
                     #[inline]
@@ -161,22 +172,30 @@ impl ToTokens for Output {
                     #connection_publisher
 
                     /// Returns the QUIC version negotiated for the current connection, if any
-                    fn quic_version(&self) -> Option<u32>;
+                    fn quic_version(&self) -> u32;
                 }
 
-                #[derive(Debug)]
                 pub struct ConnectionPublisherSubscriber<'a, Sub: Subscriber> {
                     meta: Meta,
-                    quic_version: Option<u32>,
+                    quic_version: u32,
                     subscriber: &'a mut Sub,
                     context: &'a mut Sub::ConnectionContext,
+                }
+
+                impl<'a, Sub: Subscriber> fmt::Debug for ConnectionPublisherSubscriber<'a, Sub> {
+                    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                        f.debug_struct("ConnectionPublisherSubscriber")
+                            .field("meta", &self.meta)
+                            .field("quic_version", &self.quic_version)
+                            .finish()
+                    }
                 }
 
                 impl<'a, Sub: Subscriber> ConnectionPublisherSubscriber<'a, Sub> {
                     #[inline]
                     pub fn new(
                         meta: builder::Meta,
-                        quic_version: Option<u32>,
+                        quic_version: u32,
                         subscriber: &'a mut Sub,
                         context: &'a mut Sub::ConnectionContext
                     ) -> Self {
@@ -193,7 +212,7 @@ impl ToTokens for Output {
                     #connection_publisher_subscriber
 
                     #[inline]
-                    fn quic_version(&self) -> Option<u32> {
+                    fn quic_version(&self) -> u32 {
                         self.quic_version
                     }
                 }
@@ -221,7 +240,7 @@ impl ToTokens for Output {
                     #testing_fields
                 }
 
-                impl super::Publisher for Publisher {
+                impl super::EndpointPublisher for Publisher {
                     #endpoint_publisher_testing
 
                     fn quic_version(&self) -> Option<u32> {
@@ -232,8 +251,8 @@ impl ToTokens for Output {
                 impl super::ConnectionPublisher for Publisher {
                     #connection_publisher_testing
 
-                    fn quic_version(&self) -> Option<u32> {
-                        Some(1)
+                    fn quic_version(&self) -> u32 {
+                        1
                     }
                 }
             }
