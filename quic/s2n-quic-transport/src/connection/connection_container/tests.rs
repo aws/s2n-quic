@@ -15,7 +15,7 @@ use bytes::Bytes;
 use core::task::{Context, Poll};
 use s2n_quic_core::{
     application,
-    inet::DatagramInfo,
+    inet::{DatagramInfo, SocketAddress},
     io::tx,
     packet::{
         handshake::ProtectedHandshake,
@@ -257,6 +257,14 @@ impl connection::Trait for TestConnection {
     }
 
     fn ping(&mut self) -> Result<(), connection::Error> {
+        todo!()
+    }
+
+    fn local_address(&self) -> Result<SocketAddress, connection::Error> {
+        todo!()
+    }
+
+    fn remote_address(&self) -> Result<SocketAddress, connection::Error> {
         todo!()
     }
 }

@@ -12,7 +12,7 @@ use core::{
     fmt,
     task::{Context, Poll},
 };
-use s2n_quic_core::{application, stream::StreamType};
+use s2n_quic_core::{application, inet::SocketAddress, stream::StreamType};
 
 /// A QUIC connection
 #[derive(Clone)]
@@ -93,5 +93,13 @@ impl Connection {
 
     pub fn ping(&self) -> Result<(), connection::Error> {
         self.api.ping()
+    }
+
+    pub fn local_address(&self) -> Result<SocketAddress, connection::Error> {
+        self.api.local_address()
+    }
+
+    pub fn remote_address(&self) -> Result<SocketAddress, connection::Error> {
+        self.api.remote_address()
     }
 }

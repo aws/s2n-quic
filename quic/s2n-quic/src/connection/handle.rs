@@ -116,8 +116,7 @@ macro_rules! impl_handle_api {
         /// ```
         #[cfg(feature = "std")]
         pub fn local_addr(&self) -> $crate::connection::Result<std::net::SocketAddr> {
-            // TODO: Return the actual local address
-            Ok("127.0.0.1:443".parse().unwrap())
+            self.0.local_address().map(std::net::SocketAddr::from)
         }
 
         /// Returns the remote address that this connection is connected to.
@@ -129,8 +128,7 @@ macro_rules! impl_handle_api {
         /// ```
         #[cfg(feature = "std")]
         pub fn remote_addr(&self) -> $crate::connection::Result<std::net::SocketAddr> {
-            // TODO: Return the actual remote address
-            Ok("127.0.0.2:8000".parse().unwrap())
+            self.0.remote_address().map(std::net::SocketAddr::from)
         }
 
         /// TODO

@@ -453,6 +453,22 @@ pub mod api {
             }
         }
     }
+    #[cfg(feature = "std")]
+    impl From<&SocketAddress<'_>> for std::net::SocketAddr {
+        fn from(address: &SocketAddress) -> Self {
+            use std::net;
+            match address {
+                SocketAddress::IpV4 { ip, port } => {
+                    let ip = net::IpAddr::V4(net::Ipv4Addr::from(**ip));
+                    Self::new(ip, *port)
+                }
+                SocketAddress::IpV6 { ip, port } => {
+                    let ip = net::IpAddr::V6(net::Ipv6Addr::from(**ip));
+                    Self::new(ip, *port)
+                }
+            }
+        }
+    }
     impl IntoEvent<builder::DuplicatePacketError> for crate::packet::number::SlidingWindowError {
         fn into_event(self) -> builder::DuplicatePacketError {
             use crate::packet::number::SlidingWindowError;
