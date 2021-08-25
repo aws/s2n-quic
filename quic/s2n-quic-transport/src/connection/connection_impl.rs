@@ -31,7 +31,7 @@ use core::{
 use s2n_quic_core::{
     application,
     event::{self, ConnectionPublisher as _, IntoEvent as _},
-    inet::DatagramInfo,
+    inet::{DatagramInfo, SocketAddress},
     io::tx,
     packet::{
         handshake::ProtectedHandshake,
@@ -1352,6 +1352,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         }
 
         Ok(())
+    }
+
+    fn local_address(&self) -> Result<SocketAddress, connection::Error> {
+        Ok(*self.path_manager.active_path().handle.local_address())
+    }
+
+    fn remote_address(&self) -> Result<SocketAddress, connection::Error> {
+        Ok(*self.path_manager.active_path().handle.remote_address())
     }
 }
 

@@ -17,7 +17,7 @@ use core::task::{Context, Poll};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     application,
-    inet::DatagramInfo,
+    inet::{DatagramInfo, SocketAddress},
     io::tx,
     packet::{
         handshake::ProtectedHandshake,
@@ -329,6 +329,10 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     fn alpn(&self) -> Bytes;
 
     fn ping(&mut self) -> Result<(), connection::Error>;
+
+    fn local_address(&self) -> Result<SocketAddress, connection::Error>;
+
+    fn remote_address(&self) -> Result<SocketAddress, connection::Error>;
 }
 
 /// A lock that synchronizes connection state between the QUIC endpoint thread and application
