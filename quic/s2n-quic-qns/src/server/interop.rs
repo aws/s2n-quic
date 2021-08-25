@@ -49,7 +49,12 @@ impl Interop {
         let www_dir: Arc<Path> = Arc::from(self.www_dir.as_path());
 
         while let Some(connection) = server.accept().await {
-            println!("Accepted a QUIC connection!");
+            let unspecified: std::net::SocketAddr = ([0, 0, 0, 0], 0).into();
+            println!(
+                "Accepted a QUIC connection from {} on {}",
+                connection.remote_addr().unwrap_or(unspecified),
+                connection.local_addr().unwrap_or(unspecified)
+            );
 
             // TODO check the ALPN of the connection to determine handler
 
