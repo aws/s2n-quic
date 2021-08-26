@@ -549,7 +549,7 @@ impl Cubic {
     //# where beta_cubic is the CUBIC multiplication decrease factor
     #[inline]
     fn w_cubic(&self, t: Duration) -> f32 {
-        C * (t.as_secs_f32() - self.k.as_secs_f32()).powf(3.0) + self.w_max as f32
+        C * (t.as_secs_f32() - self.k.as_secs_f32()).powi(3) + self.w_max as f32
     }
 
     //= https://tools.ietf.org/rfc/rfc8312#4.2
