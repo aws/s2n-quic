@@ -1,6 +1,6 @@
 FROM rust:latest as planner
 WORKDIR app
-RUN cargo install cargo-chef
+RUN cargo install cargo-chef --version 0.1.23
 
 #Install git
 RUN apt-get update; \
@@ -12,7 +12,7 @@ RUN cargo chef prepare  --recipe-path recipe.json
 
 FROM rust:latest as cacher
 WORKDIR app
-RUN cargo install cargo-chef
+RUN cargo install cargo-chef --version 0.1.23
 COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --recipe-path recipe.json
 
