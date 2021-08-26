@@ -36,12 +36,12 @@ jobs:
           export VERSIONS=$(echo $RAW_VERSIONS | jq -scR 'rtrimstr("\n")|split(" ")|.')
           echo "::set-output name=versions::$VERSIONS"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.0
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
         with:
           name: 'compliance / report'
           status: 'pending'
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.0
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
         with:
           name: 'doc / report'
           status: 'pending'
@@ -155,7 +155,7 @@ jobs:
           URL="$CDN/$TARGET/s2n_quic/index.html"
           echo "::set-output name=URL::$URL"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.0
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
         with:
           name: 'doc / report'
           status: 'success'
@@ -313,7 +313,7 @@ jobs:
           URL="$CDN/$TARGET"
           echo "::set-output name=URL::$URL"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.0
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
         with:
           name: 'compliance / report'
           status: 'success'
@@ -451,7 +451,7 @@ jobs:
           URL="$CDN/$TARGET/index.html"
           echo "::set-output name=URL::$URL"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.0
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
         with:
           name: 'perf / report'
           status: 'success'
@@ -491,7 +491,7 @@ jobs:
           URL="$CDN/$TARGET/index.html"
           echo "::set-output name=URL::$URL"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.0
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
         with:
           name: 'recovery-simulations / report'
           status: 'success'

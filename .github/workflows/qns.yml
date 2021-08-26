@@ -28,12 +28,12 @@ jobs:
     outputs:
       matrix: ${{ steps.implementations.outputs.matrix }}
     steps:
-      - uses: ouzi-dev/commit-status-updater@v1.1.0
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
         with:
           name: 'interop / report'
           status: 'pending'
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.0
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
         with:
           name: 'bench / report'
           status: 'pending'
@@ -361,7 +361,7 @@ jobs:
           URL="$CDN/$TARGET/index.html"
           echo "::set-output name=URL::$URL"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.0
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
         with:
           name: 'interop / report'
           status: "${{ steps.diffstatus.outputs.DIFF_STATUS }}"
@@ -455,7 +455,7 @@ jobs:
           URL="$CDN/$TARGET/index.html"
           echo "::set-output name=URL::$URL"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.0
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
         with:
           name: 'bench / report'
           status: 'success'
