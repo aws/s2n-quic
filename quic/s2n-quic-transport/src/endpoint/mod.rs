@@ -21,7 +21,7 @@ use s2n_quic_core::{
         LocalId,
     },
     crypto::{tls, tls::Endpoint as _, CryptoSuite},
-    endpoint::{limits::Outcome, Limits},
+    endpoint::{limits::Outcome, Limiter as _},
     event::{self, EndpointPublisher as _},
     inet::{datagram, DatagramInfo},
     io::{rx, tx},
@@ -280,10 +280,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
                 None
             }
-            Outcome::Drop => {
-                // TODO emit drop event
-                None
-            }
             #[allow(unused_variables)]
             Outcome::Close { delay } => {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
@@ -295,6 +291,15 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
                 // TODO emit event
 
+                None
+            }
+            Outcome::Drop => {
+                // TODO emit drop event
+                None
+            }
+            _ => {
+                // Outcome is non_exhaustive so drop on things we don't understand
+                // TODO emit drop event
                 None
             }
         }
@@ -683,7 +688,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .config
             .context()
             .stateless_reset_token_generator
-            .generate(destination_connection_id);
+            .generate(destination_connection_id.as_bytes());
         let max_tag_length = self.config.context().tls.max_tag_length();
         // The datagram payload length is used as the packet length since
         // a stateless reset is only sent if the first packet in a datagram is
@@ -861,7 +866,7 @@ pub mod testing {
     #[derive(Debug)]
     pub struct Limits;
 
-    impl endpoint::Limits for Limits {
+    impl endpoint::Limiter for Limits {
         fn on_connection_attempt(
             &mut self,
             _attempt: &endpoint::limits::ConnectionAttempt,

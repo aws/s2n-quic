@@ -12,7 +12,7 @@ use core::{
 };
 
 pub mod limits;
-pub use limits::Limits;
+pub use limits::Limiter;
 
 /// Enumerates endpoint types
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

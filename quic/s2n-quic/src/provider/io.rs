@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use cfg_if::cfg_if;
-pub use s2n_quic_core::{endpoint::Endpoint, inet, path::Handle as PathHandle};
+pub use s2n_quic_core::{endpoint::Endpoint, path::Handle as PathHandle};
 use std::io;
 
 /// Provides IO support for an endpoint
@@ -55,8 +55,5 @@ impl_socket_addrs!(&str);
 impl_socket_addrs!(std::net::SocketAddr);
 impl_socket_addrs!(std::net::SocketAddrV4);
 impl_socket_addrs!(std::net::SocketAddrV6);
-impl_socket_addrs!(inet::SocketAddress);
-impl_socket_addrs!(inet::SocketAddressV4);
-impl_socket_addrs!(inet::SocketAddressV6);
 
 impl_provider_utils!();

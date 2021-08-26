@@ -3,7 +3,10 @@
 
 //! Defines the QUIC connection ID
 
-use crate::{inet::SocketAddress, transport};
+use crate::{
+    event::{api::SocketAddress, IntoEvent},
+    inet, transport,
+};
 use core::{
     convert::{TryFrom, TryInto},
     time::Duration,
@@ -233,16 +236,19 @@ impl From<Error> for transport::Error {
 
 /// Information about the connection that may be used
 /// when generating or validating connection IDs
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct ConnectionInfo<'a> {
-    pub remote_address: &'a SocketAddress,
+    pub remote_address: SocketAddress<'a>,
 }
 
 impl<'a> ConnectionInfo<'a> {
     #[inline]
-    pub fn new(remote_address: &'a SocketAddress) -> Self {
-        Self { remote_address }
+    #[doc(hidden)]
+    pub fn new(remote_address: &'a inet::SocketAddress) -> Self {
+        Self {
+            remote_address: remote_address.into_event(),
+        }
     }
 }
 

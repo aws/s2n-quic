@@ -26,7 +26,7 @@ pub trait Config: 'static + Send + Sized + core::fmt::Debug {
     /// The validation token format
     type TokenFormat: s2n_quic_core::token::Format;
     /// The endpoint limits
-    type EndpointLimits: endpoint::Limits;
+    type EndpointLimits: endpoint::Limiter;
     /// The connection limits
     type ConnectionLimits: connection::limits::Limiter;
     /// The type of stream

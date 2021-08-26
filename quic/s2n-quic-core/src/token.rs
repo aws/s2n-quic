@@ -1,24 +1,30 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{connection, inet::SocketAddress, random};
+use crate::{
+    connection,
+    event::{api::SocketAddress, IntoEvent},
+    inet, random,
+};
 
 #[non_exhaustive]
 pub struct Context<'a> {
-    pub peer_address: &'a SocketAddress,
-    pub destination_connection_id: &'a connection::PeerId,
+    pub remote_address: SocketAddress<'a>,
+    pub peer_connection_id: &'a [u8],
     pub random: &'a mut dyn random::Generator,
 }
 
 impl<'a> Context<'a> {
+    #[inline]
+    #[doc(hidden)]
     pub fn new(
-        peer_address: &'a SocketAddress,
-        destination_connection_id: &'a connection::PeerId,
+        remote_address: &'a inet::SocketAddress,
+        peer_connection_id: &'a connection::PeerId,
         random: &'a mut dyn random::Generator,
     ) -> Self {
         Self {
-            peer_address,
-            destination_connection_id,
+            remote_address: remote_address.into_event(),
+            peer_connection_id: peer_connection_id.as_bytes(),
             random,
         }
     }

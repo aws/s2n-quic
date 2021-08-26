@@ -1,12 +1,17 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{inet::SocketAddress, time::Duration};
+use crate::{
+    event::{api::SocketAddress, IntoEvent},
+    inet,
+    time::Duration,
+};
 
 /// Outcome describes how the library should proceed on a connection attempt. The implementor will
 /// use information from the ConnectionAttempt object to determine how the library should handle
 /// the connection attempt
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Outcome {
     /// Allow the connection to continue
     Allow,
@@ -32,30 +37,31 @@ pub struct ConnectionAttempt<'a> {
 
     /// The unverified address of the connecting peer
     /// This address comes from the datagram
-    pub source_address: &'a SocketAddress,
+    pub remote_address: SocketAddress<'a>,
 }
 
 impl<'a> ConnectionAttempt<'a> {
-    pub fn new(inflight_handshakes: usize, source_address: &'a SocketAddress) -> Self {
+    #[doc(hidden)]
+    pub fn new(inflight_handshakes: usize, remote_address: &'a inet::SocketAddress) -> Self {
         Self {
             inflight_handshakes,
-            source_address,
+            remote_address: remote_address.into_event(),
         }
     }
 }
 
-pub trait Limits: 'static + Send {
+pub trait Limiter: 'static + Send {
     /// This trait is used to determine the outcome of connection attempts on an endpoint. The
     /// implementor returns an Outcome based on the ConnectionAttempt, or other information that the
     /// implementor may have.
     ///
     /// ```rust
-    /// use s2n_quic_core::endpoint::limits::{Limits, ConnectionAttempt, Outcome};
+    /// use s2n_quic_core::endpoint::limits::{Limiter, ConnectionAttempt, Outcome};
     /// # struct MyEndpointLimits {
     /// #    handshake_limit: usize,
     /// #    delay: core::time::Duration,
     /// # }
-    ///  impl Limits for MyEndpointLimits {
+    ///  impl Limiter for MyEndpointLimits {
     ///     fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome {
     ///         if info.inflight_handshakes > self.handshake_limit {
     ///             Outcome::Retry { delay: self.delay }

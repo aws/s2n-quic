@@ -120,7 +120,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .config
             .context()
             .stateless_reset_token_generator
-            .generate(&initial_connection_id);
+            .generate(initial_connection_id.as_bytes());
 
         let local_id_registry = self.connection_id_mapper.create_local_id_registry(
             internal_connection_id,

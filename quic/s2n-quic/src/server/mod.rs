@@ -9,11 +9,9 @@ use core::{
 use s2n_quic_transport::acceptor::Acceptor;
 
 mod builder;
-pub mod metric;
 mod providers;
 
 pub use builder::*;
-pub use metric::Metric;
 pub use providers::*;
 
 /// A QUIC server endpoint, capable of accepting connections

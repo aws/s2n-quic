@@ -3,7 +3,6 @@
 
 //! Defines the Stateless Reset token
 
-use crate::connection::LocalId;
 use core::convert::{TryFrom, TryInto};
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
 use subtle::ConstantTimeEq;
@@ -105,14 +104,13 @@ pub trait Generator: 'static + Send {
     /// The stateless reset token MUST be difficult to guess.
     ///
     /// To enable stateless reset functionality, the stateless reset token must
-    /// be generated the same for a given `LocalId` before and after loss of state.
-    fn generate(&mut self, connection_id: &LocalId) -> Token;
+    /// be generated the same for a given `local_connection_id` before and after loss of state.
+    fn generate(&mut self, local_connection_id: &[u8]) -> Token;
 }
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use crate::{
-        connection::LocalId,
         stateless_reset,
         stateless_reset::token::{Token, LEN},
     };
@@ -136,7 +134,7 @@ pub mod testing {
     pub struct Generator();
 
     impl stateless_reset::token::Generator for Generator {
-        fn generate(&mut self, connection_id: &LocalId) -> Token {
+        fn generate(&mut self, connection_id: &[u8]) -> Token {
             let mut token = [0; LEN];
 
             for (index, byte) in connection_id.as_ref().iter().enumerate() {

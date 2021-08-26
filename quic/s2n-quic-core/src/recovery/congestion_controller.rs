@@ -1,7 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{inet::SocketAddress, path::MINIMUM_MTU, recovery::RttEstimator, time::Timestamp};
+use crate::{
+    event::{api::SocketAddress, IntoEvent},
+    inet,
+    path::MINIMUM_MTU,
+    recovery::RttEstimator,
+    time::Timestamp,
+};
 use core::fmt::Debug;
 
 pub trait Endpoint: 'static + Debug + Send {
@@ -13,15 +19,15 @@ pub trait Endpoint: 'static + Debug + Send {
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct PathInfo<'a> {
-    pub remote_address: &'a SocketAddress,
+    pub remote_address: SocketAddress<'a>,
     pub alpn: Option<&'a [u8]>,
     pub max_datagram_size: u16,
 }
 
 impl<'a> PathInfo<'a> {
-    pub fn new(remote_address: &'a SocketAddress) -> Self {
+    pub fn new(remote_address: &'a inet::SocketAddress) -> Self {
         Self {
-            remote_address,
+            remote_address: remote_address.into_event(),
             alpn: None,
             max_datagram_size: MINIMUM_MTU,
         }

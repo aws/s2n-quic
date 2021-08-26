@@ -11,10 +11,10 @@ pub mod event;
 pub mod io;
 pub mod limits;
 pub mod stateless_reset_token;
-pub mod sync;
 pub mod tls;
 pub mod token;
 
 // These providers are not currently exposed to applications
 pub(crate) mod connection_close_formatter;
 pub(crate) mod random;
+pub(crate) mod sync;

@@ -1,13 +1,15 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Default provider for the endpoint limits.
-//!
+//! Allows applications to limit peer's ability to open new connections
 
-use s2n_quic_core::endpoint;
+pub use s2n_quic_core::endpoint::{
+    limits::{ConnectionAttempt, Outcome},
+    Limiter,
+};
 
 pub trait Provider: 'static {
-    type Limits: 'static + endpoint::Limits;
+    type Limits: 'static + Limiter;
     type Error: core::fmt::Display;
 
     /// Starts the token provider
@@ -19,8 +21,10 @@ pub use default::Provider as Default;
 impl_provider_utils!();
 
 pub mod default {
-    use core::convert::Infallible;
-    use s2n_quic_core::{endpoint::limits, time};
+    //! Default provider for the endpoint limits.
+
+    use super::*;
+    use core::{convert::Infallible, time::Duration};
 
     /// Allows the endpoint limits to be built with specific values
     ///
@@ -31,26 +35,25 @@ pub mod default {
     /// ```rust
     /// use s2n_quic::provider::endpoint_limits;
     /// # use std::error::Error;
-    /// # use s2n_quic_core::time;
     /// # #[tokio::main]
     /// # async fn main() -> Result<(), Box<dyn Error>> {
     /// let limits = endpoint_limits::Default::builder()
     ///     .with_inflight_handshake_limit(100)?
-    ///     .with_retry_delay(time::Duration::from_millis(100))?
+    ///     .with_retry_delay(core::time::Duration::from_millis(100))?
     ///     .build();
     ///
     ///     Ok(())
     /// # }
     /// ```
     pub struct Builder {
-        retry_delay: time::Duration,
+        retry_delay: Duration,
         max_inflight_handshake_limit: Option<usize>,
     }
 
     impl std::default::Default for Builder {
         fn default() -> Self {
             Self {
-                retry_delay: time::Duration::from_millis(0),
+                retry_delay: Duration::from_millis(0),
                 max_inflight_handshake_limit: None,
             }
         }
@@ -64,7 +67,7 @@ pub mod default {
         }
 
         /// Sets the delay when sending Retry packets
-        pub fn with_retry_delay(mut self, delay: time::Duration) -> Result<Self, Infallible> {
+        pub fn with_retry_delay(mut self, delay: Duration) -> Result<Self, Infallible> {
             self.retry_delay = delay;
             Ok(self)
         }
@@ -81,24 +84,24 @@ pub mod default {
     #[derive(Clone, Copy, Debug)]
     pub struct Limits {
         /// Amount of time to wait before sending a Retry packet
-        retry_delay: time::Duration,
+        retry_delay: Duration,
 
         /// Maximum number of handshakes to allow before Retry packets are queued
         max_inflight_handshake_limit: Option<usize>,
     }
 
     /// Default implementation for the Limits
-    impl super::endpoint::Limits for Limits {
-        fn on_connection_attempt(&mut self, info: &limits::ConnectionAttempt) -> limits::Outcome {
+    impl super::Limiter for Limits {
+        fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome {
             if let Some(limit) = self.max_inflight_handshake_limit {
                 if info.inflight_handshakes >= limit {
-                    return limits::Outcome::Retry {
+                    return Outcome::Retry {
                         delay: self.retry_delay,
                     };
                 }
             }
 
-            limits::Outcome::Allow
+            Outcome::Allow
         }
     }
 
@@ -106,7 +109,7 @@ pub mod default {
     impl std::default::Default for Limits {
         fn default() -> Self {
             Self {
-                retry_delay: time::Duration::from_millis(0),
+                retry_delay: Duration::from_millis(0),
                 max_inflight_handshake_limit: None,
             }
         }
@@ -144,11 +147,11 @@ pub mod default {
         let elp = Provider::builder()
             .with_inflight_handshake_limit(100)
             .unwrap()
-            .with_retry_delay(time::Duration::from_millis(100))
+            .with_retry_delay(Duration::from_millis(100))
             .unwrap()
             .build()
             .unwrap();
         assert_eq!(elp.max_inflight_handshake_limit, Some(100));
-        assert_eq!(elp.retry_delay, time::Duration::from_millis(100));
+        assert_eq!(elp.retry_delay, Duration::from_millis(100));
     }
 }
