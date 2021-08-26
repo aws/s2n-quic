@@ -248,7 +248,7 @@ jobs:
                 $from
           done
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.9
+      - uses: aws-actions/configure-aws-credentials@v1.5.11
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -345,7 +345,7 @@ jobs:
           DIFF_STATUS=$(jq --raw-output 'if .regression then "failure" else "success" end' web/logs/latest/result.json)
           echo "::set-output name=DIFF_STATUS::$DIFF_STATUS"
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.9
+      - uses: aws-actions/configure-aws-credentials@v1.5.11
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -441,7 +441,7 @@ jobs:
         if: github.event_name == 'push'
         run: sudo env "PATH=$PATH" "BUILD_S2N_QUIC=false" ./scripts/benchmark/run-all
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.9
+      - uses: aws-actions/configure-aws-credentials@v1.5.11
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
