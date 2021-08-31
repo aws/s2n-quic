@@ -7,9 +7,13 @@
 //# protocols and versions thereof they support.
 /// Application level protocol
 struct AlpnInformation<'a> {
-    server_alpns: &'a [&'a [u8]],
-    client_alpns: &'a [&'a [u8]],
     chosen_alpn: &'a [u8],
+}
+
+#[event("transport:sni_information")]
+/// Server Name Indication
+struct SniInformation<'a> {
+    chosen_sni: &'a [u8],
 }
 
 #[event("transport:packet_sent")]
