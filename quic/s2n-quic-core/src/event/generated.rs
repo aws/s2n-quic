@@ -177,12 +177,19 @@ pub mod api {
     #[non_exhaustive]
     #[doc = " Application level protocol"]
     pub struct AlpnInformation<'a> {
-        pub server_alpns: &'a [&'a [u8]],
-        pub client_alpns: &'a [&'a [u8]],
         pub chosen_alpn: &'a [u8],
     }
     impl<'a> Event for AlpnInformation<'a> {
         const NAME: &'static str = "transport:alpn_information";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Server Name Indication"]
+    pub struct SniInformation<'a> {
+        pub chosen_sni: &'a [u8],
+    }
+    impl<'a> Event for SniInformation<'a> {
+        const NAME: &'static str = "transport:sni_information";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -956,22 +963,28 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Application level protocol"]
     pub struct AlpnInformation<'a> {
-        pub server_alpns: &'a [&'a [u8]],
-        pub client_alpns: &'a [&'a [u8]],
         pub chosen_alpn: &'a [u8],
     }
     impl<'a> IntoEvent<api::AlpnInformation<'a>> for AlpnInformation<'a> {
         #[inline]
         fn into_event(self) -> api::AlpnInformation<'a> {
-            let AlpnInformation {
-                server_alpns,
-                client_alpns,
-                chosen_alpn,
-            } = self;
+            let AlpnInformation { chosen_alpn } = self;
             api::AlpnInformation {
-                server_alpns: server_alpns.into_event(),
-                client_alpns: client_alpns.into_event(),
                 chosen_alpn: chosen_alpn.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Server Name Indication"]
+    pub struct SniInformation<'a> {
+        pub chosen_sni: &'a [u8],
+    }
+    impl<'a> IntoEvent<api::SniInformation<'a>> for SniInformation<'a> {
+        #[inline]
+        fn into_event(self) -> api::SniInformation<'a> {
+            let SniInformation { chosen_sni } = self;
+            api::SniInformation {
+                chosen_sni: chosen_sni.into_event(),
             }
         }
     }
@@ -1393,6 +1406,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `SniInformation` event is triggered"]
+        #[inline]
+        fn on_sni_information(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &SniInformation,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `PacketSent` event is triggered"]
         #[inline]
         fn on_packet_sent(
@@ -1664,6 +1689,16 @@ mod traits {
         ) {
             (self.0).on_alpn_information(&mut context.0, meta, event);
             (self.1).on_alpn_information(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_sni_information(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &Meta,
+            event: &SniInformation,
+        ) {
+            (self.0).on_sni_information(&mut context.0, meta, event);
+            (self.1).on_sni_information(&mut context.1, meta, event);
         }
         #[inline]
         fn on_packet_sent(
@@ -1963,6 +1998,8 @@ mod traits {
     pub trait ConnectionPublisher {
         #[doc = "Publishes a `AlpnInformation` event to the publisher's subscriber"]
         fn on_alpn_information(&mut self, event: builder::AlpnInformation);
+        #[doc = "Publishes a `SniInformation` event to the publisher's subscriber"]
+        fn on_sni_information(&mut self, event: builder::SniInformation);
         #[doc = "Publishes a `PacketSent` event to the publisher's subscriber"]
         fn on_packet_sent(&mut self, event: builder::PacketSent);
         #[doc = "Publishes a `PacketReceived` event to the publisher's subscriber"]
@@ -2034,6 +2071,15 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_alpn_information(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_sni_information(&mut self, event: builder::SniInformation) {
+            let event = event.into_event();
+            self.subscriber
+                .on_sni_information(&mut self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(&mut self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -2194,6 +2240,7 @@ pub mod testing {
     #[derive(Copy, Clone, Debug, Default)]
     pub struct Subscriber {
         pub alpn_information: u32,
+        pub sni_information: u32,
         pub packet_sent: u32,
         pub packet_received: u32,
         pub active_path_updated: u32,
@@ -2227,6 +2274,14 @@ pub mod testing {
             _event: &api::AlpnInformation,
         ) {
             self.alpn_information += 1;
+        }
+        fn on_sni_information(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::Meta,
+            _event: &api::SniInformation,
+        ) {
+            self.sni_information += 1;
         }
         fn on_packet_sent(
             &mut self,
@@ -2394,6 +2449,7 @@ pub mod testing {
     #[derive(Copy, Clone, Debug, Default)]
     pub struct Publisher {
         pub alpn_information: u32,
+        pub sni_information: u32,
         pub packet_sent: u32,
         pub packet_received: u32,
         pub active_path_updated: u32,
@@ -2443,6 +2499,9 @@ pub mod testing {
     impl super::ConnectionPublisher for Publisher {
         fn on_alpn_information(&mut self, _event: builder::AlpnInformation) {
             self.alpn_information += 1;
+        }
+        fn on_sni_information(&mut self, _event: builder::SniInformation) {
+            self.sni_information += 1;
         }
         fn on_packet_sent(&mut self, _event: builder::PacketSent) {
             self.packet_sent += 1;

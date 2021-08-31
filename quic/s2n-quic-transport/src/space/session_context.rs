@@ -177,6 +177,13 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         let sni = application_parameters.sni.map(Bytes::copy_from_slice);
         let alpn = Bytes::copy_from_slice(application_parameters.alpn_protocol);
 
+        self.publisher
+            .on_alpn_information(event::builder::AlpnInformation { chosen_alpn: &alpn });
+        if let Some(chosen_sni) = &sni {
+            self.publisher
+                .on_sni_information(event::builder::SniInformation { chosen_sni });
+        };
+
         *self.application = Some(Box::new(ApplicationSpace::new(
             key,
             header_key,
