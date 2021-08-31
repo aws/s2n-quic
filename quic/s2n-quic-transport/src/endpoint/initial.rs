@@ -221,11 +221,9 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .create_connection_context();
 
         let mut publisher = event::ConnectionPublisherSubscriber::new(
-            event::builder::Meta {
+            event::builder::ConnectionMeta {
                 endpoint_type: Config::ENDPOINT_TYPE,
-                subject: event::builder::Subject::Connection {
-                    id: internal_connection_id.into(),
-                },
+                id: internal_connection_id.into(),
                 timestamp: datagram.timestamp,
             },
             quic_version,

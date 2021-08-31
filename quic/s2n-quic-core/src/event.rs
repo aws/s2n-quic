@@ -70,9 +70,9 @@ impl Timestamp {
     ///
     /// let start_time = std::time::SystemTime::now();
     /// // `meta` is included as part of each event
-    /// # let meta: event::api::Meta = event::builder::Meta {
+    /// # let meta: event::api::ConnectionMeta = event::builder::ConnectionMeta {
     /// #     endpoint_type: endpoint::Type::Server,
-    /// #     subject: event::builder::Subject::Connection { id: 0 },
+    /// #     id: 0,
     /// #     timestamp: unsafe { Timestamp::from_duration(Duration::from_secs(1) )},
     /// # }.into_event();
     /// let event_time = start_time + meta.timestamp.duration_since_start();

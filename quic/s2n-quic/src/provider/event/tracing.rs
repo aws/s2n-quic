@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::provider::event::{events, Event};
+use crate::provider::event::{Event, Meta};
 use tracing::debug;
 
 #[derive(Debug, Default)]
@@ -24,12 +24,12 @@ impl super::Subscriber for Subscriber {
 
     fn create_connection_context(&mut self) -> Self::ConnectionContext {}
 
-    fn on_event<E: Event>(&mut self, meta: &events::Meta, event: &E) {
+    fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
         debug!(
             "{:?} {:?} {:?}",
-            meta.subject,
-            meta.timestamp.duration_since_start(),
-            event
+            meta.subject(),
+            meta.timestamp().duration_since_start(),
+            event,
         );
     }
 }

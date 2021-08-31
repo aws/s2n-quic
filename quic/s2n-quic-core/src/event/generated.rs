@@ -11,9 +11,15 @@ pub mod api {
     pub use traits::Subscriber;
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    pub struct Meta {
+    pub struct ConnectionMeta {
         pub endpoint_type: EndpointType,
-        pub subject: Subject,
+        pub id: u64,
+        pub timestamp: crate::event::Timestamp,
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct EndpointMeta {
+        pub endpoint_type: EndpointType,
         pub timestamp: crate::event::Timestamp,
     }
     #[derive(Clone, Debug)]
@@ -652,22 +658,40 @@ pub mod api {
 pub mod builder {
     use super::*;
     #[derive(Clone, Debug)]
-    pub struct Meta {
+    pub struct ConnectionMeta {
         pub endpoint_type: crate::endpoint::Type,
-        pub subject: Subject,
+        pub id: u64,
         pub timestamp: crate::time::Timestamp,
     }
-    impl IntoEvent<api::Meta> for Meta {
+    impl IntoEvent<api::ConnectionMeta> for ConnectionMeta {
         #[inline]
-        fn into_event(self) -> api::Meta {
-            let Meta {
+        fn into_event(self) -> api::ConnectionMeta {
+            let ConnectionMeta {
                 endpoint_type,
-                subject,
+                id,
                 timestamp,
             } = self;
-            api::Meta {
+            api::ConnectionMeta {
                 endpoint_type: endpoint_type.into_event(),
-                subject: subject.into_event(),
+                id: id.into_event(),
+                timestamp: timestamp.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct EndpointMeta {
+        pub endpoint_type: crate::endpoint::Type,
+        pub timestamp: crate::time::Timestamp,
+    }
+    impl IntoEvent<api::EndpointMeta> for EndpointMeta {
+        #[inline]
+        fn into_event(self) -> api::EndpointMeta {
+            let EndpointMeta {
+                endpoint_type,
+                timestamp,
+            } = self;
+            api::EndpointMeta {
+                endpoint_type: endpoint_type.into_event(),
                 timestamp: timestamp.into_event(),
             }
         }
@@ -1390,6 +1414,33 @@ mod traits {
     use super::*;
     use api::*;
     use core::fmt;
+    pub trait Meta {
+        fn endpoint_type(&self) -> &EndpointType;
+        fn subject(&self) -> Subject;
+        fn timestamp(&self) -> &crate::event::Timestamp;
+    }
+    impl Meta for ConnectionMeta {
+        fn endpoint_type(&self) -> &EndpointType {
+            &self.endpoint_type
+        }
+        fn subject(&self) -> Subject {
+            Subject::Connection { id: self.id }
+        }
+        fn timestamp(&self) -> &crate::event::Timestamp {
+            &self.timestamp
+        }
+    }
+    impl Meta for EndpointMeta {
+        fn endpoint_type(&self) -> &EndpointType {
+            &self.endpoint_type
+        }
+        fn subject(&self) -> Subject {
+            Subject::Endpoint {}
+        }
+        fn timestamp(&self) -> &crate::event::Timestamp {
+            &self.timestamp
+        }
+    }
     pub trait Subscriber: 'static + Send {
         type ConnectionContext: 'static + Send;
         #[doc = r" Creates a context to be passed to each connection-related event"]
@@ -1399,7 +1450,7 @@ mod traits {
         fn on_alpn_information(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &AlpnInformation,
         ) {
             let _ = context;
@@ -1411,7 +1462,7 @@ mod traits {
         fn on_sni_information(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &SniInformation,
         ) {
             let _ = context;
@@ -1423,7 +1474,7 @@ mod traits {
         fn on_packet_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &PacketSent,
         ) {
             let _ = context;
@@ -1435,7 +1486,7 @@ mod traits {
         fn on_packet_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &PacketReceived,
         ) {
             let _ = context;
@@ -1447,7 +1498,7 @@ mod traits {
         fn on_active_path_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &ActivePathUpdated,
         ) {
             let _ = context;
@@ -1459,7 +1510,7 @@ mod traits {
         fn on_path_created(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &PathCreated,
         ) {
             let _ = context;
@@ -1471,7 +1522,7 @@ mod traits {
         fn on_frame_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &FrameSent,
         ) {
             let _ = context;
@@ -1483,7 +1534,7 @@ mod traits {
         fn on_frame_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &FrameReceived,
         ) {
             let _ = context;
@@ -1495,7 +1546,7 @@ mod traits {
         fn on_packet_lost(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &PacketLost,
         ) {
             let _ = context;
@@ -1507,7 +1558,7 @@ mod traits {
         fn on_recovery_metrics(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &RecoveryMetrics,
         ) {
             let _ = context;
@@ -1519,7 +1570,7 @@ mod traits {
         fn on_key_update(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &KeyUpdate,
         ) {
             let _ = context;
@@ -1531,7 +1582,7 @@ mod traits {
         fn on_connection_started(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &ConnectionStarted,
         ) {
             let _ = context;
@@ -1543,7 +1594,7 @@ mod traits {
         fn on_connection_closed(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &ConnectionClosed,
         ) {
             let _ = context;
@@ -1555,7 +1606,7 @@ mod traits {
         fn on_duplicate_packet(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &DuplicatePacket,
         ) {
             let _ = context;
@@ -1567,7 +1618,7 @@ mod traits {
         fn on_datagram_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &DatagramSent,
         ) {
             let _ = context;
@@ -1579,7 +1630,7 @@ mod traits {
         fn on_datagram_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &DatagramReceived,
         ) {
             let _ = context;
@@ -1591,7 +1642,7 @@ mod traits {
         fn on_datagram_dropped(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &DatagramDropped,
         ) {
             let _ = context;
@@ -1603,7 +1654,7 @@ mod traits {
         fn on_connection_id_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &ConnectionIdUpdated,
         ) {
             let _ = context;
@@ -1612,43 +1663,55 @@ mod traits {
         }
         #[doc = "Called when the `VersionInformation` event is triggered"]
         #[inline]
-        fn on_version_information(&mut self, meta: &Meta, event: &VersionInformation) {
+        fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
             let _ = meta;
             let _ = event;
         }
         #[doc = "Called when the `EndpointPacketSent` event is triggered"]
         #[inline]
-        fn on_endpoint_packet_sent(&mut self, meta: &Meta, event: &EndpointPacketSent) {
+        fn on_endpoint_packet_sent(&mut self, meta: &EndpointMeta, event: &EndpointPacketSent) {
             let _ = meta;
             let _ = event;
         }
         #[doc = "Called when the `EndpointPacketReceived` event is triggered"]
         #[inline]
-        fn on_endpoint_packet_received(&mut self, meta: &Meta, event: &EndpointPacketReceived) {
+        fn on_endpoint_packet_received(
+            &mut self,
+            meta: &EndpointMeta,
+            event: &EndpointPacketReceived,
+        ) {
             let _ = meta;
             let _ = event;
         }
         #[doc = "Called when the `EndpointDatagramSent` event is triggered"]
         #[inline]
-        fn on_endpoint_datagram_sent(&mut self, meta: &Meta, event: &EndpointDatagramSent) {
+        fn on_endpoint_datagram_sent(&mut self, meta: &EndpointMeta, event: &EndpointDatagramSent) {
             let _ = meta;
             let _ = event;
         }
         #[doc = "Called when the `EndpointDatagramReceived` event is triggered"]
         #[inline]
-        fn on_endpoint_datagram_received(&mut self, meta: &Meta, event: &EndpointDatagramReceived) {
+        fn on_endpoint_datagram_received(
+            &mut self,
+            meta: &EndpointMeta,
+            event: &EndpointDatagramReceived,
+        ) {
             let _ = meta;
             let _ = event;
         }
         #[doc = "Called when the `EndpointDatagramDropped` event is triggered"]
         #[inline]
-        fn on_endpoint_datagram_dropped(&mut self, meta: &Meta, event: &EndpointDatagramDropped) {
+        fn on_endpoint_datagram_dropped(
+            &mut self,
+            meta: &EndpointMeta,
+            event: &EndpointDatagramDropped,
+        ) {
             let _ = meta;
             let _ = event;
         }
         #[doc = r" Called for each event that relates to the endpoint and all connections"]
         #[inline]
-        fn on_event<E: Event>(&mut self, meta: &Meta, event: &E) {
+        fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
             let _ = meta;
             let _ = event;
         }
@@ -1657,7 +1720,7 @@ mod traits {
         fn on_connection_event<E: Event>(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &E,
         ) {
             let _ = context;
@@ -1684,7 +1747,7 @@ mod traits {
         fn on_alpn_information(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &AlpnInformation,
         ) {
             (self.0).on_alpn_information(&mut context.0, meta, event);
@@ -1694,7 +1757,7 @@ mod traits {
         fn on_sni_information(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &SniInformation,
         ) {
             (self.0).on_sni_information(&mut context.0, meta, event);
@@ -1704,7 +1767,7 @@ mod traits {
         fn on_packet_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &PacketSent,
         ) {
             (self.0).on_packet_sent(&mut context.0, meta, event);
@@ -1714,7 +1777,7 @@ mod traits {
         fn on_packet_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &PacketReceived,
         ) {
             (self.0).on_packet_received(&mut context.0, meta, event);
@@ -1724,7 +1787,7 @@ mod traits {
         fn on_active_path_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &ActivePathUpdated,
         ) {
             (self.0).on_active_path_updated(&mut context.0, meta, event);
@@ -1734,7 +1797,7 @@ mod traits {
         fn on_path_created(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &PathCreated,
         ) {
             (self.0).on_path_created(&mut context.0, meta, event);
@@ -1744,7 +1807,7 @@ mod traits {
         fn on_frame_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &FrameSent,
         ) {
             (self.0).on_frame_sent(&mut context.0, meta, event);
@@ -1754,7 +1817,7 @@ mod traits {
         fn on_frame_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &FrameReceived,
         ) {
             (self.0).on_frame_received(&mut context.0, meta, event);
@@ -1764,7 +1827,7 @@ mod traits {
         fn on_packet_lost(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &PacketLost,
         ) {
             (self.0).on_packet_lost(&mut context.0, meta, event);
@@ -1774,7 +1837,7 @@ mod traits {
         fn on_recovery_metrics(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &RecoveryMetrics,
         ) {
             (self.0).on_recovery_metrics(&mut context.0, meta, event);
@@ -1784,7 +1847,7 @@ mod traits {
         fn on_key_update(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &KeyUpdate,
         ) {
             (self.0).on_key_update(&mut context.0, meta, event);
@@ -1794,7 +1857,7 @@ mod traits {
         fn on_connection_started(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &ConnectionStarted,
         ) {
             (self.0).on_connection_started(&mut context.0, meta, event);
@@ -1804,7 +1867,7 @@ mod traits {
         fn on_connection_closed(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &ConnectionClosed,
         ) {
             (self.0).on_connection_closed(&mut context.0, meta, event);
@@ -1814,7 +1877,7 @@ mod traits {
         fn on_duplicate_packet(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &DuplicatePacket,
         ) {
             (self.0).on_duplicate_packet(&mut context.0, meta, event);
@@ -1824,7 +1887,7 @@ mod traits {
         fn on_datagram_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &DatagramSent,
         ) {
             (self.0).on_datagram_sent(&mut context.0, meta, event);
@@ -1834,7 +1897,7 @@ mod traits {
         fn on_datagram_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &DatagramReceived,
         ) {
             (self.0).on_datagram_received(&mut context.0, meta, event);
@@ -1844,7 +1907,7 @@ mod traits {
         fn on_datagram_dropped(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &DatagramDropped,
         ) {
             (self.0).on_datagram_dropped(&mut context.0, meta, event);
@@ -1854,44 +1917,56 @@ mod traits {
         fn on_connection_id_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &ConnectionIdUpdated,
         ) {
             (self.0).on_connection_id_updated(&mut context.0, meta, event);
             (self.1).on_connection_id_updated(&mut context.1, meta, event);
         }
         #[inline]
-        fn on_version_information(&mut self, meta: &Meta, event: &VersionInformation) {
+        fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
             (self.0).on_version_information(meta, event);
             (self.1).on_version_information(meta, event);
         }
         #[inline]
-        fn on_endpoint_packet_sent(&mut self, meta: &Meta, event: &EndpointPacketSent) {
+        fn on_endpoint_packet_sent(&mut self, meta: &EndpointMeta, event: &EndpointPacketSent) {
             (self.0).on_endpoint_packet_sent(meta, event);
             (self.1).on_endpoint_packet_sent(meta, event);
         }
         #[inline]
-        fn on_endpoint_packet_received(&mut self, meta: &Meta, event: &EndpointPacketReceived) {
+        fn on_endpoint_packet_received(
+            &mut self,
+            meta: &EndpointMeta,
+            event: &EndpointPacketReceived,
+        ) {
             (self.0).on_endpoint_packet_received(meta, event);
             (self.1).on_endpoint_packet_received(meta, event);
         }
         #[inline]
-        fn on_endpoint_datagram_sent(&mut self, meta: &Meta, event: &EndpointDatagramSent) {
+        fn on_endpoint_datagram_sent(&mut self, meta: &EndpointMeta, event: &EndpointDatagramSent) {
             (self.0).on_endpoint_datagram_sent(meta, event);
             (self.1).on_endpoint_datagram_sent(meta, event);
         }
         #[inline]
-        fn on_endpoint_datagram_received(&mut self, meta: &Meta, event: &EndpointDatagramReceived) {
+        fn on_endpoint_datagram_received(
+            &mut self,
+            meta: &EndpointMeta,
+            event: &EndpointDatagramReceived,
+        ) {
             (self.0).on_endpoint_datagram_received(meta, event);
             (self.1).on_endpoint_datagram_received(meta, event);
         }
         #[inline]
-        fn on_endpoint_datagram_dropped(&mut self, meta: &Meta, event: &EndpointDatagramDropped) {
+        fn on_endpoint_datagram_dropped(
+            &mut self,
+            meta: &EndpointMeta,
+            event: &EndpointDatagramDropped,
+        ) {
             (self.0).on_endpoint_datagram_dropped(meta, event);
             (self.1).on_endpoint_datagram_dropped(meta, event);
         }
         #[inline]
-        fn on_event<E: Event>(&mut self, meta: &Meta, event: &E) {
+        fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
             self.0.on_event(meta, event);
             self.1.on_event(meta, event);
         }
@@ -1899,7 +1974,7 @@ mod traits {
         fn on_connection_event<E: Event>(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &Meta,
+            meta: &ConnectionMeta,
             event: &E,
         ) {
             self.0.on_connection_event(&mut context.0, meta, event);
@@ -1923,7 +1998,7 @@ mod traits {
         fn quic_version(&self) -> Option<u32>;
     }
     pub struct EndpointPublisherSubscriber<'a, Sub: Subscriber> {
-        meta: Meta,
+        meta: EndpointMeta,
         quic_version: Option<u32>,
         subscriber: &'a mut Sub,
     }
@@ -1938,7 +2013,7 @@ mod traits {
     impl<'a, Sub: Subscriber> EndpointPublisherSubscriber<'a, Sub> {
         #[inline]
         pub fn new(
-            meta: builder::Meta,
+            meta: builder::EndpointMeta,
             quic_version: Option<u32>,
             subscriber: &'a mut Sub,
         ) -> Self {
@@ -2036,7 +2111,7 @@ mod traits {
         fn quic_version(&self) -> u32;
     }
     pub struct ConnectionPublisherSubscriber<'a, Sub: Subscriber> {
-        meta: Meta,
+        meta: ConnectionMeta,
         quic_version: u32,
         subscriber: &'a mut Sub,
         context: &'a mut Sub::ConnectionContext,
@@ -2052,7 +2127,7 @@ mod traits {
     impl<'a, Sub: Subscriber> ConnectionPublisherSubscriber<'a, Sub> {
         #[inline]
         pub fn new(
-            meta: builder::Meta,
+            meta: builder::ConnectionMeta,
             quic_version: u32,
             subscriber: &'a mut Sub,
             context: &'a mut Sub::ConnectionContext,
@@ -2270,7 +2345,7 @@ pub mod testing {
         fn on_alpn_information(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::Meta,
+            _meta: &api::ConnectionMeta,
             _event: &api::AlpnInformation,
         ) {
             self.alpn_information += 1;
@@ -2278,7 +2353,7 @@ pub mod testing {
         fn on_sni_information(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::Meta,
+            _meta: &api::ConnectionMeta,
             _event: &api::SniInformation,
         ) {
             self.sni_information += 1;
@@ -2286,7 +2361,7 @@ pub mod testing {
         fn on_packet_sent(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::Meta,
+            _meta: &api::ConnectionMeta,
             _event: &api::PacketSent,
         ) {
             self.packet_sent += 1;
@@ -2294,7 +2369,7 @@ pub mod testing {
         fn on_packet_received(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::Meta,
+            _meta: &api::ConnectionMeta,
             _event: &api::PacketReceived,
         ) {
             self.packet_received += 1;
@@ -2302,7 +2377,7 @@ pub mod testing {
         fn on_active_path_updated(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::Meta,
+            _meta: &api::ConnectionMeta,
             _event: &api::ActivePathUpdated,
         ) {
             self.active_path_updated += 1;
@@ -2310,7 +2385,7 @@ pub mod testing {
         fn on_path_created(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::Meta,
+            _meta: &api::ConnectionMeta,
             _event: &api::PathCreated,
         ) {
             self.path_created += 1;
@@ -2318,7 +2393,7 @@ pub mod testing {
         fn on_frame_sent(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::Meta,
+            _meta: &api::ConnectionMeta,
             _event: &api::FrameSent,
         ) {
             self.frame_sent += 1;
@@ -2326,7 +2401,7 @@ pub mod testing {
         fn on_frame_received(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::Meta,
+            _meta: &api::ConnectionMeta,
             _event: &api::FrameReceived,
         ) {
             self.frame_received += 1;
@@ -2334,7 +2409,7 @@ pub mod testing {
         fn on_packet_lost(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::Meta,
+            _meta: &api::ConnectionMeta,
             _event: &api::PacketLost,
         ) {
             self.packet_lost += 1;
@@ -2342,7 +2417,7 @@ pub mod testing {
         fn on_recovery_metrics(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::Meta,
+            _meta: &api::ConnectionMeta,
             _event: &api::RecoveryMetrics,
         ) {
             self.recovery_metrics += 1;
@@ -2350,7 +2425,7 @@ pub mod testing {
         fn on_key_update(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::Meta,
+            _meta: &api::ConnectionMeta,
             _event: &api::KeyUpdate,
         ) {
             self.key_update += 1;
@@ -2358,7 +2433,7 @@ pub mod testing {
         fn on_connection_started(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::Meta,
+            _meta: &api::ConnectionMeta,
             _event: &api::ConnectionStarted,
         ) {
             self.connection_started += 1;
@@ -2366,7 +2441,7 @@ pub mod testing {
         fn on_connection_closed(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::Meta,
+            _meta: &api::ConnectionMeta,
             _event: &api::ConnectionClosed,
         ) {
             self.connection_closed += 1;
@@ -2374,7 +2449,7 @@ pub mod testing {
         fn on_duplicate_packet(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::Meta,
+            _meta: &api::ConnectionMeta,
             _event: &api::DuplicatePacket,
         ) {
             self.duplicate_packet += 1;
@@ -2382,7 +2457,7 @@ pub mod testing {
         fn on_datagram_sent(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::Meta,
+            _meta: &api::ConnectionMeta,
             _event: &api::DatagramSent,
         ) {
             self.datagram_sent += 1;
@@ -2390,7 +2465,7 @@ pub mod testing {
         fn on_datagram_received(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::Meta,
+            _meta: &api::ConnectionMeta,
             _event: &api::DatagramReceived,
         ) {
             self.datagram_received += 1;
@@ -2398,7 +2473,7 @@ pub mod testing {
         fn on_datagram_dropped(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::Meta,
+            _meta: &api::ConnectionMeta,
             _event: &api::DatagramDropped,
         ) {
             self.datagram_dropped += 1;
@@ -2406,41 +2481,49 @@ pub mod testing {
         fn on_connection_id_updated(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::Meta,
+            _meta: &api::ConnectionMeta,
             _event: &api::ConnectionIdUpdated,
         ) {
             self.connection_id_updated += 1;
         }
-        fn on_version_information(&mut self, _meta: &api::Meta, _event: &api::VersionInformation) {
+        fn on_version_information(
+            &mut self,
+            _meta: &api::EndpointMeta,
+            _event: &api::VersionInformation,
+        ) {
             self.version_information += 1;
         }
-        fn on_endpoint_packet_sent(&mut self, _meta: &api::Meta, _event: &api::EndpointPacketSent) {
+        fn on_endpoint_packet_sent(
+            &mut self,
+            _meta: &api::EndpointMeta,
+            _event: &api::EndpointPacketSent,
+        ) {
             self.endpoint_packet_sent += 1;
         }
         fn on_endpoint_packet_received(
             &mut self,
-            _meta: &api::Meta,
+            _meta: &api::EndpointMeta,
             _event: &api::EndpointPacketReceived,
         ) {
             self.endpoint_packet_received += 1;
         }
         fn on_endpoint_datagram_sent(
             &mut self,
-            _meta: &api::Meta,
+            _meta: &api::EndpointMeta,
             _event: &api::EndpointDatagramSent,
         ) {
             self.endpoint_datagram_sent += 1;
         }
         fn on_endpoint_datagram_received(
             &mut self,
-            _meta: &api::Meta,
+            _meta: &api::EndpointMeta,
             _event: &api::EndpointDatagramReceived,
         ) {
             self.endpoint_datagram_received += 1;
         }
         fn on_endpoint_datagram_dropped(
             &mut self,
-            _meta: &api::Meta,
+            _meta: &api::EndpointMeta,
             _event: &api::EndpointDatagramDropped,
         ) {
             self.endpoint_datagram_dropped += 1;
