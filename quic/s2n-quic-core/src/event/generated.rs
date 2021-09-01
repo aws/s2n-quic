@@ -1444,7 +1444,7 @@ mod traits {
     pub trait Subscriber: 'static + Send {
         type ConnectionContext: 'static + Send;
         #[doc = r" Creates a context to be passed to each connection-related event"]
-        fn create_connection_context(&mut self) -> Self::ConnectionContext;
+        fn create_connection_context(&mut self, meta: &ConnectionMeta) -> Self::ConnectionContext;
         #[doc = "Called when the `AlpnInformation` event is triggered"]
         #[inline]
         fn on_alpn_information(
@@ -1737,10 +1737,10 @@ mod traits {
     {
         type ConnectionContext = (A::ConnectionContext, B::ConnectionContext);
         #[inline]
-        fn create_connection_context(&mut self) -> Self::ConnectionContext {
+        fn create_connection_context(&mut self, meta: &ConnectionMeta) -> Self::ConnectionContext {
             (
-                self.0.create_connection_context(),
-                self.1.create_connection_context(),
+                self.0.create_connection_context(meta),
+                self.1.create_connection_context(meta),
             )
         }
         #[inline]
@@ -2341,7 +2341,11 @@ pub mod testing {
     }
     impl super::Subscriber for Subscriber {
         type ConnectionContext = ();
-        fn create_connection_context(&mut self) -> Self::ConnectionContext {}
+        fn create_connection_context(
+            &mut self,
+            _meta: &api::ConnectionMeta,
+        ) -> Self::ConnectionContext {
+        }
         fn on_alpn_information(
             &mut self,
             _context: &mut Self::ConnectionContext,

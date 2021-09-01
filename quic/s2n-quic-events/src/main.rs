@@ -109,7 +109,7 @@ impl ToTokens for Output {
                     type ConnectionContext: 'static + Send;
 
                     /// Creates a context to be passed to each connection-related event
-                    fn create_connection_context(&mut self) -> Self::ConnectionContext;
+                    fn create_connection_context(&mut self, meta: &ConnectionMeta) -> Self::ConnectionContext;
 
                     #subscriber
 
@@ -139,8 +139,8 @@ impl ToTokens for Output {
                     type ConnectionContext = (A::ConnectionContext, B::ConnectionContext);
 
                     #[inline]
-                    fn create_connection_context(&mut self) -> Self::ConnectionContext {
-                        (self.0.create_connection_context(), self.1.create_connection_context())
+                    fn create_connection_context(&mut self, meta: &ConnectionMeta) -> Self::ConnectionContext {
+                        (self.0.create_connection_context(meta), self.1.create_connection_context(meta))
                     }
 
                     #tuple_subscriber
@@ -266,7 +266,7 @@ impl ToTokens for Output {
                 impl super::Subscriber for Subscriber {
                     type ConnectionContext = ();
 
-                    fn create_connection_context(&mut self) -> Self::ConnectionContext {}
+                    fn create_connection_context(&mut self, _meta: &api::ConnectionMeta) -> Self::ConnectionContext {}
 
                     #subscriber_testing
                 }
