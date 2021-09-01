@@ -133,9 +133,8 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
 
         if transmit_result.is_ok() {
             let mut publisher = event::EndpointPublisherSubscriber::new(
-                event::builder::Meta {
+                event::builder::EndpointMeta {
                     endpoint_type: Cfg::ENDPOINT_TYPE,
-                    subject: event::builder::Subject::Endpoint,
                     timestamp,
                 },
                 None,
@@ -336,9 +335,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
             if internal_connection_id.is_none() {
                 // The packet didn't contain a valid stateless token
                 let mut publisher = event::EndpointPublisherSubscriber::new(
-                    event::builder::Meta {
+                    event::builder::EndpointMeta {
                         endpoint_type: Cfg::ENDPOINT_TYPE,
-                        subject: event::builder::Subject::Endpoint,
                         timestamp,
                     },
                     None,
@@ -354,9 +352,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
         };
 
         let mut publisher = event::EndpointPublisherSubscriber::new(
-            event::builder::Meta {
+            event::builder::EndpointMeta {
                 endpoint_type: Cfg::ENDPOINT_TYPE,
-                subject: event::builder::Subject::Endpoint,
                 timestamp,
             },
             packet.version(),
@@ -588,9 +585,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         //# containing a token.
                         if self.connection_allowed(header, &packet).is_none() {
                             let mut publisher = event::EndpointPublisherSubscriber::new(
-                                event::builder::Meta {
+                                event::builder::EndpointMeta {
                                     endpoint_type: Cfg::ENDPOINT_TYPE,
-                                    subject: event::builder::Subject::Endpoint,
                                     timestamp,
                                 },
                                 None,
@@ -723,16 +719,14 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .remove_internal_connection_id_by_stateless_reset_token(&token)?;
 
         let mut publisher = event::EndpointPublisherSubscriber::new(
-            event::builder::Meta {
+            event::builder::EndpointMeta {
                 endpoint_type: Cfg::ENDPOINT_TYPE,
-                subject: event::builder::Subject::Connection {
-                    id: internal_id.into(),
-                },
                 timestamp,
             },
             None,
             endpoint_context.event_subscriber,
         );
+
         publisher.on_endpoint_packet_received(event::builder::EndpointPacketReceived {
             packet_header: event::builder::PacketHeader {
                 packet_type: event::builder::PacketType::StatelessReset {},

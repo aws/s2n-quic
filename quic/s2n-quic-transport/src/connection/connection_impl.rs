@@ -188,11 +188,9 @@ impl<Config: endpoint::Config> EventContext<Config> {
         subscriber: &'a mut Config::EventSubscriber,
     ) -> event::ConnectionPublisherSubscriber<'a, Config::EventSubscriber> {
         event::ConnectionPublisherSubscriber::new(
-            event::builder::Meta {
+            event::builder::ConnectionMeta {
                 endpoint_type: Config::ENDPOINT_TYPE,
-                subject: event::builder::Subject::Connection {
-                    id: self.internal_connection_id.into(),
-                },
+                id: self.internal_connection_id.into(),
                 timestamp,
             },
             self.quic_version,

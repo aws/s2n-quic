@@ -1,11 +1,19 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-struct Meta {
+struct ConnectionMeta {
     #[builder(crate::endpoint::Type)]
     endpoint_type: EndpointType,
 
-    subject: Subject,
+    id: u64,
+
+    #[builder(crate::time::Timestamp)]
+    timestamp: crate::event::Timestamp,
+}
+
+struct EndpointMeta {
+    #[builder(crate::endpoint::Type)]
+    endpoint_type: EndpointType,
 
     #[builder(crate::time::Timestamp)]
     timestamp: crate::event::Timestamp,

@@ -136,7 +136,7 @@ impl Struct {
                     output.subscriber.extend(quote!(
                         #[doc = #subscriber_doc]
                         #[inline]
-                        fn #function(&mut self, meta: &Meta, event: &#ident) {
+                        fn #function(&mut self, meta: &EndpointMeta, event: &#ident) {
                             let _ = meta;
                             let _ = event;
                         }
@@ -144,7 +144,7 @@ impl Struct {
 
                     output.tuple_subscriber.extend(quote!(
                         #[inline]
-                        fn #function(&mut self, meta: &Meta, event: &#ident) {
+                        fn #function(&mut self, meta: &EndpointMeta, event: &#ident) {
                             (self.0).#function(meta, event);
                             (self.1).#function(meta, event);
                         }
@@ -165,7 +165,7 @@ impl Struct {
                     ));
 
                     output.subscriber_testing.extend(quote!(
-                        fn #function(&mut self, _meta: &api::Meta, _event: &api::#ident) {
+                        fn #function(&mut self, _meta: &api::EndpointMeta, _event: &api::#ident) {
                             self.#counter += 1;
                         }
                     ));
@@ -180,7 +180,7 @@ impl Struct {
                     output.subscriber.extend(quote!(
                         #[doc = #subscriber_doc]
                         #[inline]
-                        fn #function(&mut self, context: &mut Self::ConnectionContext, meta: &Meta, event: &#ident) {
+                        fn #function(&mut self, context: &mut Self::ConnectionContext, meta: &ConnectionMeta, event: &#ident) {
                             let _ = context;
                             let _ = meta;
                             let _ = event;
@@ -189,7 +189,7 @@ impl Struct {
 
                     output.tuple_subscriber.extend(quote!(
                         #[inline]
-                        fn #function(&mut self, context: &mut Self::ConnectionContext, meta: &Meta, event: &#ident) {
+                        fn #function(&mut self, context: &mut Self::ConnectionContext, meta: &ConnectionMeta, event: &#ident) {
                             (self.0).#function(&mut context.0, meta, event);
                             (self.1).#function(&mut context.1, meta, event);
                         }
@@ -211,7 +211,7 @@ impl Struct {
                     ));
 
                     output.subscriber_testing.extend(quote!(
-                        fn #function(&mut self, _context: &mut Self::ConnectionContext, _meta: &api::Meta, _event: &api::#ident) {
+                        fn #function(&mut self, _context: &mut Self::ConnectionContext, _meta: &api::ConnectionMeta, _event: &api::#ident) {
                             self.#counter += 1;
                         }
                     ));

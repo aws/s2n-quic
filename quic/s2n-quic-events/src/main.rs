@@ -69,6 +69,42 @@ impl ToTokens for Output {
                 use api::*;
                 use core::fmt;
 
+                pub trait Meta {
+                    fn endpoint_type(&self) -> &EndpointType;
+
+                    fn subject(&self) -> Subject;
+
+                    fn timestamp(&self) -> &crate::event::Timestamp;
+                }
+
+                impl Meta for ConnectionMeta {
+                    fn endpoint_type(&self) -> &EndpointType {
+                        &self.endpoint_type
+                    }
+
+                    fn subject(&self) -> Subject {
+                        Subject::Connection { id : self.id }
+                    }
+
+                    fn timestamp(&self) -> &crate::event::Timestamp {
+                        &self.timestamp
+                    }
+                }
+
+                impl Meta for EndpointMeta {
+                    fn endpoint_type(&self) -> &EndpointType {
+                        &self.endpoint_type
+                    }
+
+                    fn subject(&self) -> Subject {
+                        Subject::Endpoint {}
+                    }
+
+                    fn timestamp(&self) -> &crate::event::Timestamp {
+                        &self.timestamp
+                    }
+                }
+
                 pub trait Subscriber: 'static + Send {
                     type ConnectionContext: 'static + Send;
 
@@ -79,14 +115,14 @@ impl ToTokens for Output {
 
                     /// Called for each event that relates to the endpoint and all connections
                     #[inline]
-                    fn on_event<E: Event>(&mut self, meta: &Meta, event: &E) {
+                    fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
                         let _ = meta;
                         let _ = event;
                     }
 
                     /// Called for each event that relates to a connection
                     #[inline]
-                    fn on_connection_event<E: Event>(&mut self, context: &mut Self::ConnectionContext, meta: &Meta, event: &E) {
+                    fn on_connection_event<E: Event>(&mut self, context: &mut Self::ConnectionContext, meta: &ConnectionMeta, event: &E) {
                         let _ = context;
                         let _ = meta;
                         let _ = event;
@@ -110,13 +146,13 @@ impl ToTokens for Output {
                     #tuple_subscriber
 
                     #[inline]
-                    fn on_event<E: Event>(&mut self, meta: &Meta, event: &E) {
+                    fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
                         self.0.on_event(meta, event);
                         self.1.on_event(meta, event);
                     }
 
                     #[inline]
-                    fn on_connection_event<E: Event>(&mut self, context: &mut Self::ConnectionContext, meta: &Meta, event: &E) {
+                    fn on_connection_event<E: Event>(&mut self, context: &mut Self::ConnectionContext, meta: &ConnectionMeta, event: &E) {
                         self.0.on_connection_event(&mut context.0, meta, event);
                         self.1.on_connection_event(&mut context.1, meta, event);
                     }
@@ -130,7 +166,7 @@ impl ToTokens for Output {
                 }
 
                 pub struct EndpointPublisherSubscriber<'a, Sub: Subscriber> {
-                    meta: Meta,
+                    meta: EndpointMeta,
                     quic_version: Option<u32>,
                     subscriber: &'a mut Sub,
                 }
@@ -147,7 +183,7 @@ impl ToTokens for Output {
                 impl<'a, Sub: Subscriber> EndpointPublisherSubscriber<'a, Sub> {
                     #[inline]
                     pub fn new(
-                        meta: builder::Meta,
+                        meta: builder::EndpointMeta,
                         quic_version: Option<u32>,
                         subscriber: &'a mut Sub,
                     ) -> Self {
@@ -176,7 +212,7 @@ impl ToTokens for Output {
                 }
 
                 pub struct ConnectionPublisherSubscriber<'a, Sub: Subscriber> {
-                    meta: Meta,
+                    meta: ConnectionMeta,
                     quic_version: u32,
                     subscriber: &'a mut Sub,
                     context: &'a mut Sub::ConnectionContext,
@@ -194,7 +230,7 @@ impl ToTokens for Output {
                 impl<'a, Sub: Subscriber> ConnectionPublisherSubscriber<'a, Sub> {
                     #[inline]
                     pub fn new(
-                        meta: builder::Meta,
+                        meta: builder::ConnectionMeta,
                         quic_version: u32,
                         subscriber: &'a mut Sub,
                         context: &'a mut Sub::ConnectionContext

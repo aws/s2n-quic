@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use cfg_if::cfg_if;
-pub use s2n_quic_core::event::{api as events, Event, Subscriber, Timestamp};
+pub use s2n_quic_core::event::{api as events, Event, Meta, Subscriber, Timestamp};
 
 /// Provides logging support for an endpoint
 pub trait Provider {
