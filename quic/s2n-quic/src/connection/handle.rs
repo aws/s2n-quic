@@ -198,6 +198,13 @@ macro_rules! impl_handle_api {
         pub fn close(&self, error_code: $crate::application::Error) {
             self.0.close(error_code)
         }
+
+        pub fn query_mut(
+            &self,
+            query: &mut dyn s2n_quic_core::event::ConnectionQuery,
+        ) -> $crate::connection::Result<()> {
+            self.0.query_mut(query)
+        }
     };
 }
 

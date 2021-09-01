@@ -160,7 +160,7 @@ pub struct ConnectionImpl<Config: endpoint::Config> {
     event_context: EventContext<Config>,
 }
 
-struct EventContext<Config: endpoint::Config> {
+pub struct EventContext<Config: endpoint::Config> {
     /// The [`Connection`]s internal identifier
     internal_connection_id: InternalConnectionId,
 
@@ -1361,6 +1361,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
     fn remote_address(&self) -> Result<SocketAddress, connection::Error> {
         Ok(*self.path_manager.active_path().handle.remote_address())
+    }
+
+    fn query_mut(&mut self, query: &mut dyn event::ConnectionQuery) {
+        <Config::EventSubscriber as event::Subscriber>::query_mut(
+            &mut self.event_context.context,
+            query,
+        );
     }
 }
 

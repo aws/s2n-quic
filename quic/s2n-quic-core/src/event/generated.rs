@@ -1468,6 +1468,19 @@ mod traits {
             &self.timestamp
         }
     }
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub enum ControlFlow {
+        Continue,
+        Break,
+    }
+    impl ControlFlow {
+        pub fn and(self, f: impl FnOnce() -> Self) -> Self {
+            match self {
+                Self::Continue => f(),
+                Self::Break => Self::Break,
+            }
+        }
+    }
     pub trait Subscriber: 'static + Send {
         type ConnectionContext: 'static + Send;
         #[doc = r" Creates a context to be passed to each connection-related event"]
@@ -1754,6 +1767,13 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[inline]
+        fn query_mut(
+            context: &mut Self::ConnectionContext,
+            query: &mut dyn ConnectionQuery,
+        ) -> ControlFlow {
+            query.execute_mut(context)
+        }
     }
     #[doc = r" Subscriber is implemented for a 2-element tuple to make it easy to compose multiple"]
     #[doc = r" subscribers."]
@@ -2006,6 +2026,16 @@ mod traits {
         ) {
             self.0.on_connection_event(&mut context.0, meta, event);
             self.1.on_connection_event(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn query_mut(
+            context: &mut Self::ConnectionContext,
+            query: &mut dyn ConnectionQuery,
+        ) -> ControlFlow {
+            query
+                .execute_mut(context)
+                .and(|| A::query_mut(&mut context.0, query))
+                .and(|| B::query_mut(&mut context.1, query))
         }
     }
     pub trait EndpointPublisher {
@@ -2334,6 +2364,9 @@ mod traits {
         fn quic_version(&self) -> u32 {
             self.quic_version
         }
+    }
+    pub trait ConnectionQuery {
+        fn execute_mut(&mut self, context: &mut dyn core::any::Any) -> ControlFlow;
     }
 }
 #[cfg(any(test, feature = "testing"))]

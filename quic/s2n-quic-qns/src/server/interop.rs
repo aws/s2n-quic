@@ -40,6 +40,28 @@ pub struct Interop {
     www_dir: PathBuf,
 }
 
+#[derive(Default)]
+struct MyQuery {
+    counter: Option<u64>,
+}
+
+#[derive(Default)]
+pub struct MyContext {
+    packet_sent: u64,
+}
+
+impl ConnectionQuery for MyQuery {
+    fn execute_mut(&mut self, context: &mut dyn core::any::Any) -> event::ControlFlow {
+        match context.downcast_mut::<MyContext>() {
+            Some(context) => {
+                self.counter = Some(context.packet_sent);
+                event::ControlFlow::Break
+            }
+            None => event::ControlFlow::Continue,
+        }
+    }
+}
+
 impl Interop {
     pub async fn run(&self) -> Result<()> {
         self.check_testcase();
@@ -63,6 +85,8 @@ impl Interop {
         }
 
         async fn handle_h09_connection(mut connection: Connection, www_dir: Arc<Path>) {
+            let mut query = MyQuery::default();
+
             loop {
                 match connection.accept_bidirectional_stream().await {
                     Ok(Some(stream)) => {
@@ -76,10 +100,14 @@ impl Interop {
                     }
                     Ok(None) => {
                         // the connection was closed without an error
+                        let _ = connection.query_mut(&mut query).unwrap();
+                        println!("Total packets sent : {}", query.counter.unwrap());
                         return;
                     }
                     Err(err) => {
                         eprintln!("error while accepting stream: {}", err);
+                        let _ = connection.query_mut(&mut query).unwrap();
+                        println!("Total packets sent : {}", query.counter.unwrap());
                         return;
                     }
                 }
@@ -250,12 +278,13 @@ impl Interop {
 pub struct EventSubscriber;
 
 impl Subscriber for EventSubscriber {
-    type ConnectionContext = ();
+    type ConnectionContext = MyContext;
 
     fn create_connection_context(
         &mut self,
         _meta: &events::ConnectionMeta,
     ) -> Self::ConnectionContext {
+        MyContext::default()
     }
 
     fn on_active_path_updated(
@@ -265,6 +294,16 @@ impl Subscriber for EventSubscriber {
         event: &events::ActivePathUpdated,
     ) {
         info!("{:?} {:?}", meta.id, event);
+    }
+
+    fn on_packet_sent(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        _meta: &events::ConnectionMeta,
+        _event: &events::PacketSent,
+    ) {
+        context.packet_sent += 1;
+        println!("packet_sent event count: {}", context.packet_sent);
     }
 }
 

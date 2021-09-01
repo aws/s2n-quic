@@ -12,7 +12,7 @@ use core::{
     fmt,
     task::{Context, Poll},
 };
-use s2n_quic_core::{application, inet::SocketAddress, stream::StreamType};
+use s2n_quic_core::{application, event::ConnectionQuery, inet::SocketAddress, stream::StreamType};
 
 /// A QUIC connection
 #[derive(Clone)]
@@ -120,5 +120,9 @@ impl Connection {
     #[inline]
     pub fn remote_address(&self) -> Result<SocketAddress, connection::Error> {
         self.api.remote_address()
+    }
+
+    pub fn query_mut(&self, query: &mut dyn ConnectionQuery) -> Result<(), connection::Error> {
+        self.api.query_mut(query)
     }
 }

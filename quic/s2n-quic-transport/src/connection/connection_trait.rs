@@ -16,7 +16,7 @@ use bytes::Bytes;
 use core::task::{Context, Poll};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    application,
+    application, event,
     inet::{DatagramInfo, SocketAddress},
     io::tx,
     packet::{
@@ -333,6 +333,8 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     fn local_address(&self) -> Result<SocketAddress, connection::Error>;
 
     fn remote_address(&self) -> Result<SocketAddress, connection::Error>;
+
+    fn query_mut(&mut self, query: &mut dyn event::ConnectionQuery);
 }
 
 /// A lock that synchronizes connection state between the QUIC endpoint thread and application

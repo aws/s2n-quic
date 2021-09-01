@@ -105,6 +105,21 @@ impl ToTokens for Output {
                     }
                 }
 
+                #[derive(Debug, Clone, Copy, PartialEq)]
+                pub enum ControlFlow {
+                    Continue,
+                    Break,
+                }
+
+                impl ControlFlow {
+                    pub fn and(self, f: impl FnOnce() -> Self) -> Self {
+                        match self {
+                            Self::Continue => f(),
+                            Self::Break => Self::Break,
+                        }
+                    }
+                }
+
                 pub trait Subscriber: 'static + Send {
                     type ConnectionContext: 'static + Send;
 
@@ -126,6 +141,11 @@ impl ToTokens for Output {
                         let _ = context;
                         let _ = meta;
                         let _ = event;
+                    }
+
+                    #[inline]
+                    fn query_mut(context: &mut Self::ConnectionContext, query: &mut dyn ConnectionQuery) -> ControlFlow {
+                        query.execute_mut(context)
                     }
                 }
 
@@ -155,6 +175,13 @@ impl ToTokens for Output {
                     fn on_connection_event<E: Event>(&mut self, context: &mut Self::ConnectionContext, meta: &ConnectionMeta, event: &E) {
                         self.0.on_connection_event(&mut context.0, meta, event);
                         self.1.on_connection_event(&mut context.1, meta, event);
+                    }
+
+                    #[inline]
+                    fn query_mut(context: &mut Self::ConnectionContext, query: &mut dyn ConnectionQuery) -> ControlFlow {
+                        query.execute_mut(context)
+                            .and(|| A::query_mut(&mut context.0, query))
+                            .and(|| B::query_mut(&mut context.1, query))
                     }
                 }
 
@@ -251,6 +278,13 @@ impl ToTokens for Output {
                     fn quic_version(&self) -> u32 {
                         self.quic_version
                     }
+                }
+
+                pub trait ConnectionQuery {
+                    fn execute_mut(
+                        &mut self,
+                        context: &mut dyn core::any::Any,
+                    ) -> ControlFlow;
                 }
             }
 
