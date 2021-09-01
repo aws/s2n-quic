@@ -106,11 +106,15 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         publisher.on_active_path_updated(event::builder::ActivePathUpdated {
             previous: event::builder::Path {
+                local_addr: self[prev_path_id].local_address().into_event(),
+                local_cid: self[prev_path_id].local_connection_id.into_event(),
                 remote_addr: self[prev_path_id].remote_address().into_event(),
                 remote_cid: self[prev_path_id].peer_connection_id.into_event(),
                 id: prev_path_id.into_event(),
             },
             active: event::builder::Path {
+                local_addr: self.active_path().local_address().into_event(),
+                local_cid: self.active_path().local_connection_id.into_event(),
                 remote_addr: self.active_path().remote_address().into_event(),
                 remote_cid: self.active_path().peer_connection_id.into_event(),
                 id: new_path_id.into_event(),
@@ -319,11 +323,15 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         publisher.on_path_created(event::builder::PathCreated {
             active: event::builder::Path {
+                local_addr: self.active_path().local_address().into_event(),
+                local_cid: self.active_path().local_connection_id.into_event(),
                 remote_addr: self.active_path().remote_address().into_event(),
                 remote_cid: self.active_path().peer_connection_id.into_event(),
                 id: self.active_path_id().into_event(),
             },
             new: event::builder::Path {
+                local_addr: path.local_address().into_event(),
+                local_cid: path.local_connection_id.into_event(),
                 remote_addr: path.remote_address().into_event(),
                 remote_cid: path.peer_connection_id.into_event(),
                 id: new_path_idx as u64,

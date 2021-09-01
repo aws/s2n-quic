@@ -31,6 +31,8 @@ pub mod api {
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub struct Path<'a> {
+        pub local_addr: SocketAddress<'a>,
+        pub local_cid: ConnectionId<'a>,
         pub remote_addr: SocketAddress<'a>,
         pub remote_cid: ConnectionId<'a>,
         pub id: u64,
@@ -716,6 +718,8 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct Path<'a> {
+        pub local_addr: SocketAddress<'a>,
+        pub local_cid: ConnectionId<'a>,
         pub remote_addr: SocketAddress<'a>,
         pub remote_cid: ConnectionId<'a>,
         pub id: u64,
@@ -724,11 +728,15 @@ pub mod builder {
         #[inline]
         fn into_event(self) -> api::Path<'a> {
             let Path {
+                local_addr,
+                local_cid,
                 remote_addr,
                 remote_cid,
                 id,
             } = self;
             api::Path {
+                local_addr: local_addr.into_event(),
+                local_cid: local_cid.into_event(),
                 remote_addr: remote_addr.into_event(),
                 remote_cid: remote_cid.into_event(),
                 id: id.into_event(),
