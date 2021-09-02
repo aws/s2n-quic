@@ -39,10 +39,10 @@ impl Error {
 }
 
 impl ops::Deref for Error {
-    type Target = VarInt;
+    type Target = u64;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        self.0.deref()
     }
 }
 

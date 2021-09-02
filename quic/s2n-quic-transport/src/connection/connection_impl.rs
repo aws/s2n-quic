@@ -582,7 +582,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     let expiration = connection_id_format
                         .lifetime()
                         .map(|duration| timestamp + duration);
-                    let stateless_reset_token = stateless_reset_token_generator.generate(&id);
+                    let stateless_reset_token =
+                        stateless_reset_token_generator.generate(id.as_bytes());
                     self.local_id_registry.register_connection_id(
                         &id,
                         expiration,

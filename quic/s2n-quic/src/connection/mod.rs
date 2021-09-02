@@ -23,16 +23,6 @@ impl fmt::Debug for Connection {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum HandshakeStatus {
-    /// The handshake has not completed
-    Pending,
-
-    /// The handshake has finished
-    Complete,
-}
-
 impl Connection {
     pub(crate) const fn new(inner: Inner) -> Self {
         Self(inner)

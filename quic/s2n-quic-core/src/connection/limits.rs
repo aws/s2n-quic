@@ -3,8 +3,8 @@
 
 use crate::{
     ack,
-    inet::SocketAddress,
-    stream,
+    event::{api::SocketAddress, IntoEvent},
+    inet, stream,
     transport::parameters::{
         AckDelayExponent, ActiveConnectionIdLimit, InitialFlowControlLimits, InitialMaxData,
         InitialMaxStreamDataBidiLocal, InitialMaxStreamDataBidiRemote, InitialMaxStreamDataUni,
@@ -19,12 +19,16 @@ pub use crate::transport::parameters::ValidationError;
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct ConnectionInfo<'a> {
-    pub source_adddress: &'a SocketAddress,
+    pub remote_adddress: SocketAddress<'a>,
 }
 
 impl<'a> ConnectionInfo<'a> {
-    pub fn new(source_adddress: &'a SocketAddress) -> Self {
-        Self { source_adddress }
+    #[inline]
+    #[doc(hidden)]
+    pub fn new(remote_adddress: &'a inet::SocketAddress) -> Self {
+        Self {
+            remote_adddress: remote_adddress.into_event(),
+        }
     }
 }
 

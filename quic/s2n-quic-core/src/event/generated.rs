@@ -426,6 +426,7 @@ pub mod api {
     macro_rules! impl_conn_id {
         ($name:ident) => {
             impl<'a> IntoEvent<builder::ConnectionId<'a>> for &'a crate::connection::id::$name {
+                #[inline]
                 fn into_event(self) -> builder::ConnectionId<'a> {
                     builder::ConnectionId {
                         bytes: self.as_bytes(),
@@ -438,7 +439,23 @@ pub mod api {
     impl_conn_id!(PeerId);
     impl_conn_id!(UnboundedId);
     impl_conn_id!(InitialId);
+    impl<'a> IntoEvent<api::SocketAddress<'a>> for &'a crate::inet::SocketAddress {
+        #[inline]
+        fn into_event(self) -> api::SocketAddress<'a> {
+            match self {
+                crate::inet::SocketAddress::IpV4(addr) => api::SocketAddress::IpV4 {
+                    ip: &addr.ip.octets,
+                    port: addr.port.into(),
+                },
+                crate::inet::SocketAddress::IpV6(addr) => api::SocketAddress::IpV6 {
+                    ip: &addr.ip.octets,
+                    port: addr.port.into(),
+                },
+            }
+        }
+    }
     impl<'a> IntoEvent<builder::SocketAddress<'a>> for &'a crate::inet::SocketAddress {
+        #[inline]
         fn into_event(self) -> builder::SocketAddress<'a> {
             match self {
                 crate::inet::SocketAddress::IpV4(addr) => builder::SocketAddress::IpV4 {
@@ -454,6 +471,7 @@ pub mod api {
     }
     #[cfg(feature = "std")]
     impl From<SocketAddress<'_>> for std::net::SocketAddr {
+        #[inline]
         fn from(address: SocketAddress) -> Self {
             use std::net;
             match address {
@@ -470,6 +488,7 @@ pub mod api {
     }
     #[cfg(feature = "std")]
     impl From<&SocketAddress<'_>> for std::net::SocketAddr {
+        #[inline]
         fn from(address: &SocketAddress) -> Self {
             use std::net;
             match address {

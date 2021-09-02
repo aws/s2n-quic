@@ -175,32 +175,6 @@ macro_rules! impl_handle_api {
             self.0.ping()
         }
 
-        /// Returns a reference to the [`Extensions`] for the [`Connection`]
-        ///
-        /// # Examples
-        ///
-        /// ```rust
-        /// // TODO
-        /// ```
-        #[cfg(feature = "protocol-extensions")]
-        pub fn extensions(&self) -> $crate::connection::Result<&crate::extensions::Extensions> {
-            todo!()
-        }
-
-        /// Returns a mutable reference to the [`Extensions`] for the [`Connection`]
-        ///
-        /// # Examples
-        ///
-        /// ```rust
-        /// // TODO
-        /// ```
-        #[cfg(feature = "protocol-extensions")]
-        pub fn extensions_mut(
-            &mut self,
-        ) -> $crate::connection::Result<&mut crate::extensions::Extensions> {
-            todo!()
-        }
-
         /// TODO
         ///
         /// # Examples

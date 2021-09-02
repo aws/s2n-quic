@@ -54,8 +54,3 @@ pub mod application {
 
 pub use connection::Connection;
 pub use server::Server;
-
-#[cfg(feature = "protocol-extensions")]
-mod extensions;
-#[cfg(feature = "protocol-extensions")]
-pub use extensions::Extensions;
