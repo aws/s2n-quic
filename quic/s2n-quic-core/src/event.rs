@@ -92,16 +92,22 @@ impl IntoEvent<Timestamp> for crate::time::Timestamp {
 }
 
 pub mod query {
+
+    //! This module provides `Query` and `QueryMut` traits, which are used for querying the
+    //! [`Subscriber::ConnectionContext`](crate::event::Subscriber::ConnectionContext)
+    //! on a Subscriber.
+
     use core::marker::PhantomData;
 
-    pub trait ConnectionQuery {
+    pub trait Query {
         fn execute(&mut self, context: &dyn core::any::Any) -> ControlFlow;
     }
 
-    pub trait ConnectionQueryMut {
+    pub trait QueryMut {
         fn execute_mut(&mut self, context: &mut dyn core::any::Any) -> ControlFlow;
     }
 
+    /// Used to tell a query whether it should exit early or go on as usual.
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub enum ControlFlow {
         Continue,
@@ -109,7 +115,8 @@ pub mod query {
     }
 
     impl ControlFlow {
-        pub fn and(self, f: impl FnOnce() -> Self) -> Self {
+        #[inline]
+        pub fn and_then(self, f: impl FnOnce() -> Self) -> Self {
             match self {
                 Self::Continue => f(),
                 Self::Break => Self::Break,
@@ -117,24 +124,29 @@ pub mod query {
         }
     }
 
-    pub struct Once<F, T, R> {
+    /// A type that implements Query and QueryMut traits and only executes once.
+    ///
+    /// This will execute and short-circuit on the first match.
+    pub struct Once<F, EventContext, Outcome> {
         query: Option<F>,
-        result: Option<R>,
-        context: PhantomData<T>,
+        result: Option<Outcome>,
+        context: PhantomData<EventContext>,
     }
 
-    impl<F, T, R> From<Once<F, T, R>> for Option<R> {
-        fn from(query: Once<F, T, R>) -> Self {
-            query.result
+    impl<F, EventContext, Outcome> From<Once<F, EventContext, Outcome>> for Result<Outcome, Error> {
+        #[inline]
+        fn from(query: Once<F, EventContext, Outcome>) -> Self {
+            query.result.ok_or(Error::ContextTypeMismatch)
         }
     }
 
-    impl<Query, ConnectionContext, Outcome> Once<Query, ConnectionContext, Outcome>
+    impl<F, ConnectionContext, Outcome> Once<F, ConnectionContext, Outcome>
     where
-        Query: FnOnce(&ConnectionContext) -> Outcome,
+        F: FnOnce(&ConnectionContext) -> Outcome,
         ConnectionContext: 'static,
     {
-        pub fn new(query: Query) -> Self {
+        #[inline]
+        pub fn new(query: F) -> Self {
             Self {
                 query: Some(query),
                 result: None,
@@ -143,12 +155,13 @@ pub mod query {
         }
     }
 
-    impl<Query, ConnectionContext, Outcome> Once<Query, ConnectionContext, Outcome>
+    impl<F, ConnectionContext, Outcome> Once<F, ConnectionContext, Outcome>
     where
-        Query: FnOnce(&mut ConnectionContext) -> Outcome,
+        F: FnOnce(&mut ConnectionContext) -> Outcome,
         ConnectionContext: 'static,
     {
-        pub fn new_mut(query: Query) -> Self {
+        #[inline]
+        pub fn new_mut(query: F) -> Self {
             Self {
                 query: Some(query),
                 result: None,
@@ -157,9 +170,13 @@ pub mod query {
         }
     }
 
-    impl<F: FnOnce(&T) -> R, T: 'static, R> ConnectionQuery for Once<F, T, R> {
+    impl<F, EventContext, Outcome> Query for Once<F, EventContext, Outcome>
+    where
+        F: FnOnce(&EventContext) -> Outcome,
+        EventContext: 'static,
+    {
         fn execute(&mut self, context: &dyn core::any::Any) -> ControlFlow {
-            match context.downcast_ref::<T>() {
+            match context.downcast_ref::<EventContext>() {
                 Some(context) => {
                     let query = self.query.take().expect("can only match once");
                     self.result = Some(query(context));
@@ -170,9 +187,13 @@ pub mod query {
         }
     }
 
-    impl<F: FnOnce(&mut T) -> R, T: 'static, R> ConnectionQueryMut for Once<F, T, R> {
+    impl<F, EventContext, Outcome> QueryMut for Once<F, EventContext, Outcome>
+    where
+        F: FnOnce(&mut EventContext) -> Outcome,
+        EventContext: 'static,
+    {
         fn execute_mut(&mut self, context: &mut dyn core::any::Any) -> ControlFlow {
-            match context.downcast_mut::<T>() {
+            match context.downcast_mut::<EventContext>() {
                 Some(context) => {
                     let query = self.query.take().expect("can only match once");
                     self.result = Some(query(context));
@@ -182,4 +203,25 @@ pub mod query {
             }
         }
     }
+
+    #[non_exhaustive]
+    #[derive(Debug, Clone)]
+    /// Reason for the failed query.
+    pub enum Error {
+        /// The connection lock is poisoned and the connection unusable.
+        ConnectionLockPoisoned,
+
+        /// The expected query type failed to match any of the configured Subscriber's
+        /// context types.
+        ContextTypeMismatch,
+    }
+
+    impl core::fmt::Display for Error {
+        fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+            write!(f, "{:?}", self)
+        }
+    }
+
+    #[cfg(feature = "std")]
+    impl std::error::Error for Error {}
 }

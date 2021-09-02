@@ -14,7 +14,7 @@ use core::{
 };
 use s2n_quic_core::{
     application,
-    event::query::{ConnectionQuery, ConnectionQueryMut},
+    event::query::{Query, QueryMut},
     inet::SocketAddress,
     stream::StreamType,
 };
@@ -127,14 +127,16 @@ impl Connection {
         self.api.remote_address()
     }
 
-    pub fn event_query(&self, query: &mut dyn ConnectionQuery) -> Result<(), connection::Error> {
-        self.api.event_query(query)
+    #[inline]
+    pub fn query_event_context(&self, query: &mut dyn Query) -> Result<(), connection::Error> {
+        self.api.query_event_context(query)
     }
 
-    pub fn event_query_mut(
+    #[inline]
+    pub fn query_event_context_mut(
         &self,
-        query: &mut dyn ConnectionQueryMut,
+        query: &mut dyn QueryMut,
     ) -> Result<(), connection::Error> {
-        self.api.event_query_mut(query)
+        self.api.query_event_context_mut(query)
     }
 }

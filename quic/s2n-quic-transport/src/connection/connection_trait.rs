@@ -334,9 +334,9 @@ pub trait ConnectionTrait: 'static + Send + Sized {
 
     fn remote_address(&self) -> Result<SocketAddress, connection::Error>;
 
-    fn event_query(&self, query: &mut dyn event::query::ConnectionQuery);
+    fn query_event_context(&self, query: &mut dyn event::query::Query);
 
-    fn event_query_mut(&mut self, query: &mut dyn event::query::ConnectionQueryMut);
+    fn query_event_context_mut(&mut self, query: &mut dyn event::query::QueryMut);
 }
 
 /// A lock that synchronizes connection state between the QUIC endpoint thread and application

@@ -22,7 +22,7 @@ use intrusive_collections::{
 };
 use s2n_quic_core::{
     application,
-    event::query::{ConnectionQuery, ConnectionQueryMut},
+    event::query::{Query, QueryMut},
     inet::SocketAddress,
     recovery::K_GRANULARITY,
     time::Timestamp,
@@ -272,16 +272,18 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
         self.api_read_call(|conn| conn.remote_address())
     }
 
-    fn event_query(&self, query: &mut dyn ConnectionQuery) -> Result<(), connection::Error> {
+    #[inline]
+    fn query_event_context(&self, query: &mut dyn Query) -> Result<(), connection::Error> {
         self.api_read_call(|conn| {
-            conn.event_query(query);
+            conn.query_event_context(query);
             Ok(())
         })
     }
 
-    fn event_query_mut(&self, query: &mut dyn ConnectionQueryMut) -> Result<(), connection::Error> {
+    #[inline]
+    fn query_event_context_mut(&self, query: &mut dyn QueryMut) -> Result<(), connection::Error> {
         self.api_write_call(|conn| {
-            conn.event_query_mut(query);
+            conn.query_event_context_mut(query);
             Ok(())
         })
     }

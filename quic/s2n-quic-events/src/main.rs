@@ -106,6 +106,48 @@ impl ToTokens for Output {
                 }
 
                 pub trait Subscriber: 'static + Send {
+
+                    /// An application provided type associated with each connection.
+                    ///
+                    /// The context provides a mechanism for applications to provide a custom type
+                    /// and update it on each event, e.g. computing statictics. Each event
+                    /// invocation (e.g. [`Subscriber::on_packet_sent`]) also provides mutable
+                    /// access to the context `&mut ConnectionContext` and allows for updating the
+                    /// context.
+                    ///
+                    /// ```no_run
+                    /// # mod s2n_quic { pub mod provider { pub mod event {
+                    /// #     pub use s2n_quic_core::event::{api as events, api::ConnectionMeta, Subscriber};
+                    /// # }}}
+                    /// use s2n_quic::provider::event::{
+                    ///     ConnectionMeta, Subscriber, events::PacketSent
+                    /// };
+                    ///
+                    /// pub struct MyEventSubscriber;
+                    ///
+                    /// pub struct MyEventContext {
+                    ///     packet_sent: u64,
+                    /// }
+                    ///
+                    /// impl Subscriber for MyEventSubscriber {
+                    ///     type ConnectionContext = MyEventContext;
+                    ///
+                    ///     fn create_connection_context(
+                    ///         &mut self, _meta: &ConnectionMeta,
+                    ///     ) -> Self::ConnectionContext {
+                    ///         MyEventContext { packet_sent: 0 }
+                    ///     }
+                    ///
+                    ///     fn on_packet_sent(
+                    ///         &mut self,
+                    ///         context: &mut Self::ConnectionContext,
+                    ///         _meta: &ConnectionMeta,
+                    ///         _event: &PacketSent,
+                    ///     ) {
+                    ///         context.packet_sent += 1;
+                    ///     }
+                    /// }
+                    ///  ```
                     type ConnectionContext: 'static + Send;
 
                     /// Creates a context to be passed to each connection-related event
@@ -129,12 +171,12 @@ impl ToTokens for Output {
                     }
 
                     #[inline]
-                    fn query(context: &Self::ConnectionContext, query: &mut dyn query::ConnectionQuery) -> query::ControlFlow {
+                    fn query(context: &Self::ConnectionContext, query: &mut dyn query::Query) -> query::ControlFlow {
                         query.execute(context)
                     }
 
                     #[inline]
-                    fn query_mut(context: &mut Self::ConnectionContext, query: &mut dyn query::ConnectionQueryMut) -> query::ControlFlow {
+                    fn query_mut(context: &mut Self::ConnectionContext, query: &mut dyn query::QueryMut) -> query::ControlFlow {
                         query.execute_mut(context)
                     }
                 }
@@ -168,17 +210,17 @@ impl ToTokens for Output {
                     }
 
                     #[inline]
-                    fn query(context: &Self::ConnectionContext, query: &mut dyn query::ConnectionQuery) -> query::ControlFlow {
+                    fn query(context: &Self::ConnectionContext, query: &mut dyn query::Query) -> query::ControlFlow {
                         query.execute(context)
-                            .and(|| A::query(&context.0, query))
-                            .and(|| B::query(&context.1, query))
+                            .and_then(|| A::query(&context.0, query))
+                            .and_then(|| B::query(&context.1, query))
                     }
 
                     #[inline]
-                    fn query_mut(context: &mut Self::ConnectionContext, query: &mut dyn query::ConnectionQueryMut) -> query::ControlFlow {
+                    fn query_mut(context: &mut Self::ConnectionContext, query: &mut dyn query::QueryMut) -> query::ControlFlow {
                         query.execute_mut(context)
-                            .and(|| A::query_mut(&mut context.0, query))
-                            .and(|| B::query_mut(&mut context.1, query))
+                            .and_then(|| A::query_mut(&mut context.0, query))
+                            .and_then(|| B::query_mut(&mut context.1, query))
                     }
                 }
 
