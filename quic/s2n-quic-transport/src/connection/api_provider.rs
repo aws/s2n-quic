@@ -13,7 +13,7 @@ use bytes::Bytes;
 use core::task::{Context, Poll};
 use s2n_quic_core::{
     application,
-    event::ConnectionQuery,
+    event::query::{ConnectionQuery, ConnectionQueryMut},
     inet::SocketAddress,
     stream::{ops, StreamId, StreamType},
 };
@@ -59,5 +59,7 @@ pub(crate) trait ConnectionApiProvider: Sync + Send {
 
     fn remote_address(&self) -> Result<SocketAddress, connection::Error>;
 
-    fn query_mut(&self, query: &mut dyn ConnectionQuery) -> Result<(), connection::Error>;
+    fn event_query(&self, query: &mut dyn ConnectionQuery) -> Result<(), connection::Error>;
+
+    fn event_query_mut(&self, query: &mut dyn ConnectionQueryMut) -> Result<(), connection::Error>;
 }

@@ -3,7 +3,7 @@
 
 use cfg_if::cfg_if;
 pub use s2n_quic_core::event::{
-    api as events, api::ConnectionMeta, Event, Meta, Subscriber, Timestamp,
+    api as events, api::ConnectionMeta, query, Event, Meta, Subscriber, Timestamp,
 };
 
 /// Provides logging support for an endpoint
@@ -27,5 +27,17 @@ cfg_if! {
 }
 
 pub use default::Provider as Default;
+
+impl<S> Provider for S
+where
+    S: 'static + Subscriber,
+{
+    type Subscriber = S;
+    type Error = core::convert::Infallible;
+
+    fn start(self) -> Result<S, Self::Error> {
+        Ok(self)
+    }
+}
 
 impl_provider_utils!();

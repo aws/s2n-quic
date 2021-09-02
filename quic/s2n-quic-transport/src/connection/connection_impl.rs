@@ -1363,7 +1363,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         Ok(*self.path_manager.active_path().handle.remote_address())
     }
 
-    fn query_mut(&mut self, query: &mut dyn event::ConnectionQuery) {
+    fn event_query(&self, query: &mut dyn event::query::ConnectionQuery) {
+        <Config::EventSubscriber as event::Subscriber>::query(&self.event_context.context, query);
+    }
+
+    fn event_query_mut(&mut self, query: &mut dyn event::query::ConnectionQueryMut) {
         <Config::EventSubscriber as event::Subscriber>::query_mut(
             &mut self.event_context.context,
             query,

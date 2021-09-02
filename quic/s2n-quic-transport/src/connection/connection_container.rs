@@ -21,7 +21,10 @@ use intrusive_collections::{
     intrusive_adapter, KeyAdapter, LinkedList, LinkedListLink, RBTree, RBTreeLink,
 };
 use s2n_quic_core::{
-    application, event::ConnectionQuery, inet::SocketAddress, recovery::K_GRANULARITY,
+    application,
+    event::query::{ConnectionQuery, ConnectionQueryMut},
+    inet::SocketAddress,
+    recovery::K_GRANULARITY,
     time::Timestamp,
 };
 
@@ -269,9 +272,16 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
         self.api_read_call(|conn| conn.remote_address())
     }
 
-    fn query_mut(&self, query: &mut dyn ConnectionQuery) -> Result<(), connection::Error> {
+    fn event_query(&self, query: &mut dyn ConnectionQuery) -> Result<(), connection::Error> {
+        self.api_read_call(|conn| {
+            conn.event_query(query);
+            Ok(())
+        })
+    }
+
+    fn event_query_mut(&self, query: &mut dyn ConnectionQueryMut) -> Result<(), connection::Error> {
         self.api_write_call(|conn| {
-            conn.query_mut(query);
+            conn.event_query_mut(query);
             Ok(())
         })
     }

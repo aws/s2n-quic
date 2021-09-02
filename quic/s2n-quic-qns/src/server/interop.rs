@@ -8,7 +8,7 @@ use futures::stream::StreamExt;
 use s2n_quic::{
     provider::{
         endpoint_limits,
-        event::{self, events, Subscriber},
+        event::{events, Subscriber},
         tls::default::certificate::{Certificate, IntoCertificate, IntoPrivateKey, PrivateKey},
     },
     stream::BidirectionalStream,
@@ -40,26 +40,11 @@ pub struct Interop {
     www_dir: PathBuf,
 }
 
-#[derive(Default)]
-struct MyQuery {
-    counter: Option<u64>,
-}
-
-#[derive(Default)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct MyContext {
+    id: usize,
     packet_sent: u64,
-}
-
-impl ConnectionQuery for MyQuery {
-    fn execute_mut(&mut self, context: &mut dyn core::any::Any) -> event::ControlFlow {
-        match context.downcast_mut::<MyContext>() {
-            Some(context) => {
-                self.counter = Some(context.packet_sent);
-                event::ControlFlow::Break
-            }
-            None => event::ControlFlow::Continue,
-        }
-    }
+    requests: u64,
 }
 
 impl Interop {
@@ -85,11 +70,12 @@ impl Interop {
         }
 
         async fn handle_h09_connection(mut connection: Connection, www_dir: Arc<Path>) {
-            let mut query = MyQuery::default();
-
             loop {
                 match connection.accept_bidirectional_stream().await {
                     Ok(Some(stream)) => {
+                        let _ = connection
+                            .event_query_mut(|context: &mut MyContext| context.requests += 1);
+
                         let www_dir = www_dir.clone();
                         // spawn a task per stream
                         tokio::spawn(async move {
@@ -100,14 +86,20 @@ impl Interop {
                     }
                     Ok(None) => {
                         // the connection was closed without an error
-                        let _ = connection.query_mut(&mut query).unwrap();
-                        println!("Total packets sent : {}", query.counter.unwrap());
+                        let context = connection
+                            .event_query(|context: &MyContext| *context)
+                            .unwrap()
+                            .unwrap();
+                        println!("Final stats: {:?}", context);
                         return;
                     }
                     Err(err) => {
                         eprintln!("error while accepting stream: {}", err);
-                        let _ = connection.query_mut(&mut query).unwrap();
-                        println!("Total packets sent : {}", query.counter.unwrap());
+                        let context = connection
+                            .event_query(|context: &MyContext| *context)
+                            .unwrap()
+                            .unwrap();
+                        println!("Final stats: {:?}", context);
                         return;
                     }
                 }
@@ -221,7 +213,7 @@ impl Interop {
             .with_io(("::", self.port))?
             .with_tls(tls)?
             .with_endpoint_limits(limits)?
-            .with_event(EventProvider)?
+            .with_event(((EventSubscriber(1), EventSubscriber(2)), EventSubscriber(3)))?
             .start()
             .unwrap();
 
@@ -275,7 +267,7 @@ impl Interop {
     }
 }
 
-pub struct EventSubscriber;
+pub struct EventSubscriber(usize);
 
 impl Subscriber for EventSubscriber {
     type ConnectionContext = MyContext;
@@ -284,7 +276,11 @@ impl Subscriber for EventSubscriber {
         &mut self,
         _meta: &events::ConnectionMeta,
     ) -> Self::ConnectionContext {
-        MyContext::default()
+        MyContext {
+            id: self.0,
+            packet_sent: 0,
+            requests: 0,
+        }
     }
 
     fn on_active_path_updated(
@@ -304,17 +300,5 @@ impl Subscriber for EventSubscriber {
     ) {
         context.packet_sent += 1;
         println!("packet_sent event count: {}", context.packet_sent);
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct EventProvider;
-
-impl event::Provider for EventProvider {
-    type Subscriber = EventSubscriber;
-    type Error = core::convert::Infallible;
-
-    fn start(self) -> core::result::Result<Self::Subscriber, Self::Error> {
-        Ok(EventSubscriber)
     }
 }

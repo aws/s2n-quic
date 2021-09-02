@@ -1468,19 +1468,6 @@ mod traits {
             &self.timestamp
         }
     }
-    #[derive(Debug, Clone, Copy, PartialEq)]
-    pub enum ControlFlow {
-        Continue,
-        Break,
-    }
-    impl ControlFlow {
-        pub fn and(self, f: impl FnOnce() -> Self) -> Self {
-            match self {
-                Self::Continue => f(),
-                Self::Break => Self::Break,
-            }
-        }
-    }
     pub trait Subscriber: 'static + Send {
         type ConnectionContext: 'static + Send;
         #[doc = r" Creates a context to be passed to each connection-related event"]
@@ -1768,10 +1755,17 @@ mod traits {
             let _ = event;
         }
         #[inline]
+        fn query(
+            context: &Self::ConnectionContext,
+            query: &mut dyn query::ConnectionQuery,
+        ) -> query::ControlFlow {
+            query.execute(context)
+        }
+        #[inline]
         fn query_mut(
             context: &mut Self::ConnectionContext,
-            query: &mut dyn ConnectionQuery,
-        ) -> ControlFlow {
+            query: &mut dyn query::ConnectionQueryMut,
+        ) -> query::ControlFlow {
             query.execute_mut(context)
         }
     }
@@ -2028,10 +2022,20 @@ mod traits {
             self.1.on_connection_event(&mut context.1, meta, event);
         }
         #[inline]
+        fn query(
+            context: &Self::ConnectionContext,
+            query: &mut dyn query::ConnectionQuery,
+        ) -> query::ControlFlow {
+            query
+                .execute(context)
+                .and(|| A::query(&context.0, query))
+                .and(|| B::query(&context.1, query))
+        }
+        #[inline]
         fn query_mut(
             context: &mut Self::ConnectionContext,
-            query: &mut dyn ConnectionQuery,
-        ) -> ControlFlow {
+            query: &mut dyn query::ConnectionQueryMut,
+        ) -> query::ControlFlow {
             query
                 .execute_mut(context)
                 .and(|| A::query_mut(&mut context.0, query))
@@ -2364,9 +2368,6 @@ mod traits {
         fn quic_version(&self) -> u32 {
             self.quic_version
         }
-    }
-    pub trait ConnectionQuery {
-        fn execute_mut(&mut self, context: &mut dyn core::any::Any) -> ControlFlow;
     }
 }
 #[cfg(any(test, feature = "testing"))]

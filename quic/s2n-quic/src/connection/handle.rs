@@ -199,11 +199,34 @@ macro_rules! impl_handle_api {
             self.0.close(error_code)
         }
 
-        pub fn query_mut(
+        pub fn event_query<Query, EventContext, Outcome>(
             &self,
-            query: &mut dyn s2n_quic_core::event::ConnectionQuery,
-        ) -> $crate::connection::Result<()> {
-            self.0.query_mut(query)
+            query: Query,
+        ) -> $crate::connection::Result<Option<Outcome>>
+        where
+            Query: FnOnce(&EventContext) -> Outcome,
+            EventContext: 'static,
+        {
+            let mut query = s2n_quic_core::event::query::Once::new(query);
+
+            self.0.event_query(&mut query)?;
+
+            Ok(query.into())
+        }
+
+        pub fn event_query_mut<Query, EventContext, Outcome>(
+            &mut self,
+            query: Query,
+        ) -> $crate::connection::Result<Option<Outcome>>
+        where
+            Query: FnOnce(&mut EventContext) -> Outcome,
+            EventContext: 'static,
+        {
+            let mut query = s2n_quic_core::event::query::Once::new_mut(query);
+
+            self.0.event_query_mut(&mut query)?;
+
+            Ok(query.into())
         }
     };
 }

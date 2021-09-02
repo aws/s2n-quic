@@ -268,9 +268,11 @@ impl connection::Trait for TestConnection {
         todo!()
     }
 
-    fn event_context(
-        &mut self,
-    ) -> &mut <<Self::Config as endpoint::Config>::EventSubscriber as event::Subscriber>::ConnectionContext{
+    fn event_query(&self, _query: &mut dyn event::query::ConnectionQuery) {
+        todo!()
+    }
+
+    fn event_query_mut(&mut self, _query: &mut dyn event::query::ConnectionQueryMut) {
         todo!()
     }
 }

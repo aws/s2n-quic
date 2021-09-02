@@ -90,3 +90,96 @@ impl IntoEvent<Timestamp> for crate::time::Timestamp {
         Timestamp(self)
     }
 }
+
+pub mod query {
+    use core::marker::PhantomData;
+
+    pub trait ConnectionQuery {
+        fn execute(&mut self, context: &dyn core::any::Any) -> ControlFlow;
+    }
+
+    pub trait ConnectionQueryMut {
+        fn execute_mut(&mut self, context: &mut dyn core::any::Any) -> ControlFlow;
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub enum ControlFlow {
+        Continue,
+        Break,
+    }
+
+    impl ControlFlow {
+        pub fn and(self, f: impl FnOnce() -> Self) -> Self {
+            match self {
+                Self::Continue => f(),
+                Self::Break => Self::Break,
+            }
+        }
+    }
+
+    pub struct Once<F, T, R> {
+        query: Option<F>,
+        result: Option<R>,
+        context: PhantomData<T>,
+    }
+
+    impl<F, T, R> From<Once<F, T, R>> for Option<R> {
+        fn from(query: Once<F, T, R>) -> Self {
+            query.result
+        }
+    }
+
+    impl<Query, ConnectionContext, Outcome> Once<Query, ConnectionContext, Outcome>
+    where
+        Query: FnOnce(&ConnectionContext) -> Outcome,
+        ConnectionContext: 'static,
+    {
+        pub fn new(query: Query) -> Self {
+            Self {
+                query: Some(query),
+                result: None,
+                context: PhantomData,
+            }
+        }
+    }
+
+    impl<Query, ConnectionContext, Outcome> Once<Query, ConnectionContext, Outcome>
+    where
+        Query: FnOnce(&mut ConnectionContext) -> Outcome,
+        ConnectionContext: 'static,
+    {
+        pub fn new_mut(query: Query) -> Self {
+            Self {
+                query: Some(query),
+                result: None,
+                context: PhantomData,
+            }
+        }
+    }
+
+    impl<F: FnOnce(&T) -> R, T: 'static, R> ConnectionQuery for Once<F, T, R> {
+        fn execute(&mut self, context: &dyn core::any::Any) -> ControlFlow {
+            match context.downcast_ref::<T>() {
+                Some(context) => {
+                    let query = self.query.take().expect("can only match once");
+                    self.result = Some(query(context));
+                    ControlFlow::Break
+                }
+                None => ControlFlow::Continue,
+            }
+        }
+    }
+
+    impl<F: FnOnce(&mut T) -> R, T: 'static, R> ConnectionQueryMut for Once<F, T, R> {
+        fn execute_mut(&mut self, context: &mut dyn core::any::Any) -> ControlFlow {
+            match context.downcast_mut::<T>() {
+                Some(context) => {
+                    let query = self.query.take().expect("can only match once");
+                    self.result = Some(query(context));
+                    ControlFlow::Break
+                }
+                None => ControlFlow::Continue,
+            }
+        }
+    }
+}
