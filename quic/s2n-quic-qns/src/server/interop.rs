@@ -252,7 +252,11 @@ pub struct EventSubscriber;
 impl Subscriber for EventSubscriber {
     type ConnectionContext = ();
 
-    fn create_connection_context(&mut self) -> Self::ConnectionContext {}
+    fn create_connection_context(
+        &mut self,
+        _meta: &events::ConnectionMeta,
+    ) -> Self::ConnectionContext {
+    }
 
     fn on_active_path_updated(
         &mut self,

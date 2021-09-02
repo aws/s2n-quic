@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::provider::event::ConnectionMeta;
+
 #[derive(Debug, Default)]
 pub struct Provider;
 
@@ -18,5 +20,5 @@ pub struct Subscriber;
 impl super::Subscriber for Subscriber {
     type ConnectionContext = ();
 
-    fn create_connection_context(&mut self) -> Self::ConnectionContext {}
+    fn create_connection_context(&mut self, _meta: &ConnectionMeta) -> Self::ConnectionContext {}
 }

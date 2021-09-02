@@ -16,7 +16,7 @@ use core::convert::TryInto;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     crypto::{tls, tls::Endpoint as TLSEndpoint, CryptoSuite, InitialKey},
-    event::{self, Subscriber as _},
+    event::{self, IntoEvent, Subscriber as _},
     inet::{datagram, DatagramInfo},
     packet::initial::ProtectedInitial,
     path::Handle as _,
@@ -216,16 +216,17 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let quic_version = packet.version;
 
+        let meta = event::builder::ConnectionMeta {
+            endpoint_type: Config::ENDPOINT_TYPE,
+            id: internal_connection_id.into(),
+            timestamp: datagram.timestamp,
+        };
         let mut event_context = endpoint_context
             .event_subscriber
-            .create_connection_context();
+            .create_connection_context(&meta.clone().into_event());
 
         let mut publisher = event::ConnectionPublisherSubscriber::new(
-            event::builder::ConnectionMeta {
-                endpoint_type: Config::ENDPOINT_TYPE,
-                id: internal_connection_id.into(),
-                timestamp: datagram.timestamp,
-            },
+            meta,
             quic_version,
             endpoint_context.event_subscriber,
             &mut event_context,
