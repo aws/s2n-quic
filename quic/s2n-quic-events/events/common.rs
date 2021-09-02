@@ -26,9 +26,8 @@ struct PacketHeader {
 }
 
 struct Path<'a> {
-    // TODO uncomment once we record the local Address/CID
-    // pub local_addr: SocketAddress<'a>,
-    // pub local_cid: ConnectionId<'a>,
+    local_addr: SocketAddress<'a>,
+    local_cid: ConnectionId<'a>,
     remote_addr: SocketAddress<'a>,
     remote_cid: ConnectionId<'a>,
     id: u64,
