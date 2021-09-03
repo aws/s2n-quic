@@ -48,16 +48,16 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// # Examples
         ///
-        /// Sets the congestion controller to `Reno` with the default configuration.
+        /// Sets the congestion controller to `Cubic` with the default configuration.
         ///
-        /// ```rust,ignore
+        /// ```rust,no_run
         /// # use std::error::Error;
         /// use s2n_quic::{Server, provider::congestion_controller};
         ///
         /// # #[tokio::main]
         /// # async fn main() -> Result<(), Box<dyn Error>> {
         /// let server = Server::builder()
-        ///     .with_congestion_controller(congestion_controller::Reno::default())?
+        ///     .with_congestion_controller(congestion_controller::cubic::Provider::default())?
         ///     .start()?;
         /// #
         /// #    Ok(())
@@ -72,16 +72,50 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// # Examples
         ///
-        /// Sets a custom connection ID provider for the server
+        /// Uses the default connection ID provider with the default configuration.
         ///
-        /// ```rust,ignore
+        /// ```rust,no_run
         /// # use std::{error::Error, time::Duration};
-        /// use s2n_quic::Server;
+        /// use s2n_quic::{Server, provider::connection_id};
         /// #
         /// # #[tokio::main]
         /// # async fn main() -> Result<(), Box<dyn Error>> {
         /// let server = Server::builder()
-        ///     .with_connection_id(MyConnectionIDFormat::new())?
+        ///     .with_connection_id(connection_id::Default::default())?
+        ///     .start()?;
+        /// #
+        /// #    Ok(())
+        /// # }
+        /// ```
+        ///
+        /// Sets a custom connection ID provider for the server
+        ///
+        /// ```rust,no_run
+        /// # use std::{error::Error, time::Duration};
+        /// use s2n_quic::{Server, provider::connection_id};
+        /// use rand::prelude::*;
+        /// #
+        /// # #[tokio::main]
+        /// # async fn main() -> Result<(), Box<dyn Error>> {
+        /// struct MyConnectionIdFormat;
+        ///
+        /// impl connection_id::Generator for MyConnectionIdFormat {
+        ///     fn generate(&mut self, _conn_info: &connection_id::ConnectionInfo) -> connection_id::LocalId {
+        ///         let mut id = [0u8; 16];
+        ///         rand::thread_rng().fill_bytes(&mut id);
+        ///         connection_id::LocalId::try_from_bytes(&id[..]).unwrap()
+        ///     }
+        /// }
+        ///
+        /// impl connection_id::Validator for MyConnectionIdFormat {
+        ///     fn validate(&self, _conn_info: &connection_id::ConnectionInfo, packet: &[u8]) -> Option<usize> {
+        ///         // this connection id format is always 16 bytes
+        ///         Some(16)
+        ///     }
+        /// }
+        ///
+        /// let server = Server::builder()
+        ///     .with_connection_id(MyConnectionIdFormat)?
         ///     .start()?;
         /// #
         /// #    Ok(())

@@ -10,6 +10,7 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub async fn open_stream(
             &mut self,
             stream_type: $crate::stream::Type,
@@ -24,6 +25,7 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn poll_open_stream(
             &mut self,
             stream_type: $crate::stream::Type,
@@ -50,6 +52,7 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub async fn open_bidirectional_stream(
             &mut self,
         ) -> $crate::connection::Result<$crate::stream::BidirectionalStream> {
@@ -63,6 +66,7 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn poll_open_bidirectional_stream(
             &mut self,
             cx: &mut core::task::Context,
@@ -82,6 +86,7 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub async fn open_send_stream(
             &mut self,
         ) -> $crate::connection::Result<$crate::stream::SendStream> {
@@ -95,6 +100,7 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn poll_open_send_stream(
             &mut self,
             cx: &mut core::task::Context,
@@ -115,6 +121,7 @@ macro_rules! impl_handle_api {
         /// // TODO
         /// ```
         #[cfg(feature = "std")]
+        #[inline]
         pub fn local_addr(&self) -> $crate::connection::Result<std::net::SocketAddr> {
             self.0.local_address().map(std::net::SocketAddr::from)
         }
@@ -127,6 +134,7 @@ macro_rules! impl_handle_api {
         /// // TODO
         /// ```
         #[cfg(feature = "std")]
+        #[inline]
         pub fn remote_addr(&self) -> $crate::connection::Result<std::net::SocketAddr> {
             self.0.remote_address().map(std::net::SocketAddr::from)
         }
@@ -138,6 +146,7 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn sni(&self) -> $crate::connection::Result<Option<::bytes::Bytes>> {
             self.0.sni()
         }
@@ -149,6 +158,7 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn alpn(&self) -> $crate::connection::Result<::bytes::Bytes> {
             self.0.alpn()
         }
@@ -160,6 +170,7 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn id(&self) -> u64 {
             self.0.id()
         }
@@ -171,6 +182,7 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn ping(&mut self) -> $crate::connection::Result<()> {
             self.0.ping()
         }
@@ -182,6 +194,7 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn close(&self, error_code: $crate::application::Error) {
             self.0.close(error_code)
         }

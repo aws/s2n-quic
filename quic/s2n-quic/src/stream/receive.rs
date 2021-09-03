@@ -19,6 +19,7 @@ macro_rules! impl_receive_stream_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub async fn receive(&mut self) -> $crate::stream::Result<Option<bytes::Bytes>> {
             ::futures::future::poll_fn(|cx| self.poll_receive(cx)).await
         }
@@ -30,6 +31,7 @@ macro_rules! impl_receive_stream_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn poll_receive(
             &mut self,
             cx: &mut core::task::Context,
@@ -54,6 +56,7 @@ macro_rules! impl_receive_stream_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub async fn receive_vectored(
             &mut self,
             chunks: &mut [bytes::Bytes],
@@ -68,6 +71,7 @@ macro_rules! impl_receive_stream_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn poll_receive_vectored(
             &mut self,
             chunks: &mut [bytes::Bytes],
@@ -102,6 +106,7 @@ macro_rules! impl_receive_stream_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn stop_sending(
             &mut self,
             error_code: $crate::application::Error,
@@ -120,6 +125,7 @@ macro_rules! impl_receive_stream_api {
         }
 
         /// Create a batch request for receiving data
+        #[inline]
         pub(crate) fn rx_request(
             &mut self,
         ) -> $crate::stream::Result<s2n_quic_transport::stream::RxRequest> {
@@ -143,6 +149,7 @@ macro_rules! impl_receive_stream_trait {
         impl futures::stream::Stream for $name {
             type Item = $crate::stream::Result<bytes::Bytes>;
 
+            #[inline]
             fn poll_next(
                 mut self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
@@ -293,17 +300,19 @@ macro_rules! impl_receive_stream_trait {
 }
 
 impl ReceiveStream {
+    #[inline]
     pub(crate) const fn new(stream: stream::ReceiveStream) -> Self {
         Self(stream)
     }
 
     impl_receive_stream_api!(|stream, dispatch| dispatch!(stream.0));
 
+    #[inline]
     pub fn id(&self) -> u64 {
         self.0.id().into()
     }
 
-    impl_connection_api!(|_stream| todo!());
+    impl_connection_api!(|stream| crate::connection::Handle(stream.0.connection().clone()));
 }
 
 impl_splittable_stream_trait!(ReceiveStream, |stream| (Some(stream), None));

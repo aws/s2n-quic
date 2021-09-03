@@ -15,6 +15,7 @@ macro_rules! impl_accept_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub async fn accept(
             &mut self,
         ) -> crate::connection::Result<Option<crate::stream::PeerStream>> {
@@ -28,6 +29,7 @@ macro_rules! impl_accept_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn poll_accept(
             &mut self,
             cx: &mut core::task::Context,
@@ -60,6 +62,7 @@ macro_rules! impl_accept_bidirectional_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub async fn accept_bidirectional_stream(
             &mut self,
         ) -> $crate::connection::Result<Option<$crate::stream::BidirectionalStream>> {
@@ -73,6 +76,7 @@ macro_rules! impl_accept_bidirectional_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn poll_accept_bidirectional_stream(
             &mut self,
             cx: &mut core::task::Context,
@@ -96,6 +100,7 @@ macro_rules! impl_accept_receive_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub async fn accept_receive_stream(
             &mut self,
         ) -> $crate::connection::Result<Option<$crate::stream::ReceiveStream>> {
@@ -109,6 +114,7 @@ macro_rules! impl_accept_receive_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn poll_accept_receive_stream(
             &mut self,
             cx: &mut core::task::Context,
@@ -135,6 +141,7 @@ impl StreamAcceptor {
     /// ```rust
     /// // TODO
     /// ```
+    #[inline]
     pub fn split(self) -> (BidirectionalStreamAcceptor, ReceiveStreamAcceptor) {
         let bidi = BidirectionalStreamAcceptor(self.0.clone());
         let recv = ReceiveStreamAcceptor(self.0);
@@ -145,6 +152,7 @@ impl StreamAcceptor {
 impl futures::stream::Stream for StreamAcceptor {
     type Item = connection::Result<PeerStream>;
 
+    #[inline]
     fn poll_next(
         mut self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
@@ -168,6 +176,7 @@ impl BidirectionalStreamAcceptor {
 impl futures::stream::Stream for BidirectionalStreamAcceptor {
     type Item = connection::Result<BidirectionalStream>;
 
+    #[inline]
     fn poll_next(
         mut self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
@@ -191,6 +200,7 @@ impl ReceiveStreamAcceptor {
 impl futures::stream::Stream for ReceiveStreamAcceptor {
     type Item = connection::Result<ReceiveStream>;
 
+    #[inline]
     fn poll_next(
         mut self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,

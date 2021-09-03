@@ -24,7 +24,7 @@ pub use receive::*;
 pub use send::*;
 pub use splittable::*;
 
-pub type Result<T> = core::result::Result<T, Error>;
+pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 /// An enum of all the possible types of QUIC streams.
 ///
@@ -50,6 +50,7 @@ impl Stream {
         Stream::Send(stream) => dispatch!(stream),
     });
 
+    #[inline]
     pub fn id(&self) -> u64 {
         match self {
             Self::Bidirectional(stream) => stream.id(),
