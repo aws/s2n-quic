@@ -8,7 +8,7 @@ use futures::stream::StreamExt;
 use s2n_quic::{
     provider::{
         endpoint_limits,
-        event::{self, events, Subscriber},
+        event::{events, Subscriber},
         tls::default::certificate::{Certificate, IntoCertificate, IntoPrivateKey, PrivateKey},
     },
     stream::BidirectionalStream,
@@ -66,6 +66,10 @@ impl Interop {
             loop {
                 match connection.accept_bidirectional_stream().await {
                     Ok(Some(stream)) => {
+                        let _ = connection.query_event_context_mut(
+                            |context: &mut MyConnectionContext| context.stream_requests += 1,
+                        );
+
                         let www_dir = www_dir.clone();
                         // spawn a task per stream
                         tokio::spawn(async move {
@@ -76,10 +80,18 @@ impl Interop {
                     }
                     Ok(None) => {
                         // the connection was closed without an error
+                        let context = connection
+                            .query_event_context(|context: &MyConnectionContext| *context)
+                            .expect("query should execute");
+                        println!("Final stats: {:?}", context);
                         return;
                     }
                     Err(err) => {
                         eprintln!("error while accepting stream: {}", err);
+                        let context = connection
+                            .query_event_context(|context: &MyConnectionContext| *context)
+                            .expect("query should execute");
+                        println!("Final stats: {:?}", context);
                         return;
                     }
                 }
@@ -193,7 +205,7 @@ impl Interop {
             .with_io(("::", self.port))?
             .with_tls(tls)?
             .with_endpoint_limits(limits)?
-            .with_event(EventProvider)?
+            .with_event(EventSubscriber(1))?
             .start()
             .unwrap();
 
@@ -247,15 +259,27 @@ impl Interop {
     }
 }
 
-pub struct EventSubscriber;
+#[derive(Debug, Clone, Copy)]
+pub struct MyConnectionContext {
+    id: usize,
+    packet_sent: u64,
+    stream_requests: u64,
+}
+
+pub struct EventSubscriber(usize);
 
 impl Subscriber for EventSubscriber {
-    type ConnectionContext = ();
+    type ConnectionContext = MyConnectionContext;
 
     fn create_connection_context(
         &mut self,
         _meta: &events::ConnectionMeta,
     ) -> Self::ConnectionContext {
+        MyConnectionContext {
+            id: self.0,
+            packet_sent: 0,
+            stream_requests: 0,
+        }
     }
 
     fn on_active_path_updated(
@@ -266,16 +290,13 @@ impl Subscriber for EventSubscriber {
     ) {
         info!("{:?} {:?}", meta.id, event);
     }
-}
 
-#[derive(Debug, Default)]
-pub struct EventProvider;
-
-impl event::Provider for EventProvider {
-    type Subscriber = EventSubscriber;
-    type Error = core::convert::Infallible;
-
-    fn start(self) -> core::result::Result<Self::Subscriber, Self::Error> {
-        Ok(EventSubscriber)
+    fn on_packet_sent(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        _meta: &events::ConnectionMeta,
+        _event: &events::PacketSent,
+    ) {
+        context.packet_sent += 1;
     }
 }

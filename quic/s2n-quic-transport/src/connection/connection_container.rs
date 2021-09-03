@@ -20,7 +20,13 @@ use core::{
 use intrusive_collections::{
     intrusive_adapter, KeyAdapter, LinkedList, LinkedListLink, RBTree, RBTreeLink,
 };
-use s2n_quic_core::{application, inet::SocketAddress, recovery::K_GRANULARITY, time::Timestamp};
+use s2n_quic_core::{
+    application,
+    event::query::{Query, QueryMut},
+    inet::SocketAddress,
+    recovery::K_GRANULARITY,
+    time::Timestamp,
+};
 
 // Intrusive list adapter for managing the list of `done` connections
 intrusive_adapter!(DoneConnectionsAdapter<C, L> = Arc<ConnectionNode<C, L>>: ConnectionNode<C, L> {
@@ -264,6 +270,22 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
 
     fn remote_address(&self) -> Result<SocketAddress, connection::Error> {
         self.api_read_call(|conn| conn.remote_address())
+    }
+
+    #[inline]
+    fn query_event_context(&self, query: &mut dyn Query) -> Result<(), connection::Error> {
+        self.api_read_call(|conn| {
+            conn.query_event_context(query);
+            Ok(())
+        })
+    }
+
+    #[inline]
+    fn query_event_context_mut(&self, query: &mut dyn QueryMut) -> Result<(), connection::Error> {
+        self.api_write_call(|conn| {
+            conn.query_event_context_mut(query);
+            Ok(())
+        })
     }
 }
 

@@ -14,7 +14,7 @@ use bolero::{check, generator::*};
 use bytes::Bytes;
 use core::task::{Context, Poll};
 use s2n_quic_core::{
-    application,
+    application, event,
     inet::{DatagramInfo, SocketAddress},
     io::tx,
     packet::{
@@ -265,6 +265,14 @@ impl connection::Trait for TestConnection {
     }
 
     fn remote_address(&self) -> Result<SocketAddress, connection::Error> {
+        todo!()
+    }
+
+    fn query_event_context(&self, _query: &mut dyn event::query::Query) {
+        todo!()
+    }
+
+    fn query_event_context_mut(&mut self, _query: &mut dyn event::query::QueryMut) {
         todo!()
     }
 }

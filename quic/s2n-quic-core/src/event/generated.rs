@@ -1469,6 +1469,47 @@ mod traits {
         }
     }
     pub trait Subscriber: 'static + Send {
+        #[doc = r" An application provided type associated with each connection."]
+        #[doc = r""]
+        #[doc = r" The context provides a mechanism for applications to provide a custom type"]
+        #[doc = r" and update it on each event, e.g. computing statictics. Each event"]
+        #[doc = r" invocation (e.g. [`Subscriber::on_packet_sent`]) also provides mutable"]
+        #[doc = r" access to the context `&mut ConnectionContext` and allows for updating the"]
+        #[doc = r" context."]
+        #[doc = r""]
+        #[doc = r" ```no_run"]
+        #[doc = r" # mod s2n_quic { pub mod provider { pub mod event {"]
+        #[doc = r" #     pub use s2n_quic_core::event::{api as events, api::ConnectionMeta, Subscriber};"]
+        #[doc = r" # }}}"]
+        #[doc = r" use s2n_quic::provider::event::{"]
+        #[doc = r"     ConnectionMeta, Subscriber, events::PacketSent"]
+        #[doc = r" };"]
+        #[doc = r""]
+        #[doc = r" pub struct MyEventSubscriber;"]
+        #[doc = r""]
+        #[doc = r" pub struct MyEventContext {"]
+        #[doc = r"     packet_sent: u64,"]
+        #[doc = r" }"]
+        #[doc = r""]
+        #[doc = r" impl Subscriber for MyEventSubscriber {"]
+        #[doc = r"     type ConnectionContext = MyEventContext;"]
+        #[doc = r""]
+        #[doc = r"     fn create_connection_context("]
+        #[doc = r"         &mut self, _meta: &ConnectionMeta,"]
+        #[doc = r"     ) -> Self::ConnectionContext {"]
+        #[doc = r"         MyEventContext { packet_sent: 0 }"]
+        #[doc = r"     }"]
+        #[doc = r""]
+        #[doc = r"     fn on_packet_sent("]
+        #[doc = r"         &mut self,"]
+        #[doc = r"         context: &mut Self::ConnectionContext,"]
+        #[doc = r"         _meta: &ConnectionMeta,"]
+        #[doc = r"         _event: &PacketSent,"]
+        #[doc = r"     ) {"]
+        #[doc = r"         context.packet_sent += 1;"]
+        #[doc = r"     }"]
+        #[doc = r" }"]
+        #[doc = r"  ```"]
         type ConnectionContext: 'static + Send;
         #[doc = r" Creates a context to be passed to each connection-related event"]
         fn create_connection_context(&mut self, meta: &ConnectionMeta) -> Self::ConnectionContext;
@@ -1754,6 +1795,20 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[inline]
+        fn query(
+            context: &Self::ConnectionContext,
+            query: &mut dyn query::Query,
+        ) -> query::ControlFlow {
+            query.execute(context)
+        }
+        #[inline]
+        fn query_mut(
+            context: &mut Self::ConnectionContext,
+            query: &mut dyn query::QueryMut,
+        ) -> query::ControlFlow {
+            query.execute_mut(context)
+        }
     }
     #[doc = r" Subscriber is implemented for a 2-element tuple to make it easy to compose multiple"]
     #[doc = r" subscribers."]
@@ -2006,6 +2061,26 @@ mod traits {
         ) {
             self.0.on_connection_event(&mut context.0, meta, event);
             self.1.on_connection_event(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn query(
+            context: &Self::ConnectionContext,
+            query: &mut dyn query::Query,
+        ) -> query::ControlFlow {
+            query
+                .execute(context)
+                .and_then(|| A::query(&context.0, query))
+                .and_then(|| B::query(&context.1, query))
+        }
+        #[inline]
+        fn query_mut(
+            context: &mut Self::ConnectionContext,
+            query: &mut dyn query::QueryMut,
+        ) -> query::ControlFlow {
+            query
+                .execute_mut(context)
+                .and_then(|| A::query_mut(&mut context.0, query))
+                .and_then(|| B::query_mut(&mut context.1, query))
         }
     }
     pub trait EndpointPublisher {

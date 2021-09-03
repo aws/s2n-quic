@@ -1362,6 +1362,19 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     fn remote_address(&self) -> Result<SocketAddress, connection::Error> {
         Ok(*self.path_manager.active_path().handle.remote_address())
     }
+
+    #[inline]
+    fn query_event_context(&self, query: &mut dyn event::query::Query) {
+        <Config::EventSubscriber as event::Subscriber>::query(&self.event_context.context, query);
+    }
+
+    #[inline]
+    fn query_event_context_mut(&mut self, query: &mut dyn event::query::QueryMut) {
+        <Config::EventSubscriber as event::Subscriber>::query_mut(
+            &mut self.event_context.context,
+            query,
+        );
+    }
 }
 
 impl<Config: endpoint::Config> timer::Provider for ConnectionImpl<Config> {
