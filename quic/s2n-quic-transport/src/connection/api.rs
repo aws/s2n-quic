@@ -52,8 +52,8 @@ impl Connection {
     /// - `Poll::Ready(Ok(None))` if the connection was closed without an error
     /// - `Poll::Ready(Err(stream_error))` if no could be accepted due to an error
     /// - `Poll::Pending` if no new [`Stream`] of the given type was accepted by the connection yet.
-    ///   In this case the caller must retry calling [`poll_accept`].
-    ///   For this purpose the method will save the [`Waker`]
+    ///   In this case the caller must retry calling [`Self::poll_accept`].
+    ///   For this purpose the method will save the [`core::task::Waker`]
     ///   which is provided as part of the [`Context`] parameter, and notify it
     ///   as soon as retrying the method will yield a different result.
     #[inline]

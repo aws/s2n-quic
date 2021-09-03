@@ -59,7 +59,7 @@ pub struct Endpoint<Cfg: Config> {
     /// Allows to wakeup the endpoint task which might be blocked on waiting for packets
     /// from application tasks (which e.g. enqueued new data to send).
     wakeup_queue: WakeupQueue<InternalConnectionId>,
-    /// This queue contains wakeups we retrieved from the [`wakeup_queue`] earlier.
+    /// This queue contains wakeups we retrieved from the [`Self::wakeup_queue`] earlier.
     /// This is not a local variable in order to reuse the allocated queue capacity in between
     /// [`Endpoint`] interactions.
     dequeued_wakeups: VecDeque<InternalConnectionId>,

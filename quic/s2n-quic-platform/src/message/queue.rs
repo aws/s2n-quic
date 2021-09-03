@@ -22,9 +22,9 @@ use core::fmt;
 /// it will be moved to the other.
 ///
 /// The payloads of the messages are backed by a parameterized
-/// [`Ring`] to reduce allocations.
+/// [`message::Ring`] to reduce allocations.
 ///
-/// The queue uses a `Vec` of [`Message`]s double the length of the payload buffer.
+/// The queue uses a [`Vec`] of [`message::Message`]s double the length of the payload buffer.
 /// The messages in the second half point to the same payloads as the first half, which
 /// enables contiguous slices with arbitrary indexes. For example:
 ///

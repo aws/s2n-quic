@@ -81,7 +81,7 @@ impl StreamId {
     /// Returns the n-th `StreamId` for a certain type of `Stream`.
     ///
     /// The 0th `StreamId` thereby represents the `StreamId` which is returned
-    /// by the [`initial`] method. All further `StreamId`s of a certain type
+    /// by the [`Self::initial`] method. All further `StreamId`s of a certain type
     /// will be spaced apart by 4.
     ///
     /// nth() will return `None` if the resulting `StreamId` would not be valid.

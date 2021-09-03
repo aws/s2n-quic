@@ -628,7 +628,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     }
 
     /// Closes the [`AbstractStreamManager`] and resets all streams with the
-    /// given error. The current implementation of [`StreamManager`] will still
+    /// given error. The current implementation will still
     /// allow to forward frames to the contained Streams as well as to query them
     /// for data. However new Streams can not be created.
     pub fn close(&mut self, error: connection::Error) {
