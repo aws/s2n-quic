@@ -205,7 +205,9 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
             Poll::Ready(Err(e)) => Err(e).into(),
             Poll::Ready(Ok(None)) => Ok(None).into(),
             Poll::Ready(Ok(Some(stream_id))) => {
-                let stream = stream::Stream::new(arc_self.clone(), stream_id);
+                let connection = arc_self.clone();
+                let connection = Connection::new(connection);
+                let stream = stream::Stream::new(connection, stream_id);
 
                 Ok(Some(stream)).into()
             }
@@ -224,7 +226,9 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
             Poll::Pending => Poll::Pending,
             Poll::Ready(Err(e)) => Err(e).into(),
             Poll::Ready(Ok(stream_id)) => {
-                let stream = stream::Stream::new(arc_self.clone(), stream_id);
+                let connection = arc_self.clone();
+                let connection = Connection::new(connection);
+                let stream = stream::Stream::new(connection, stream_id);
 
                 Ok(stream).into()
             }

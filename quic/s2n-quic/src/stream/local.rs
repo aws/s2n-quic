@@ -24,6 +24,7 @@ impl LocalStream {
         LocalStream::Send(stream) => dispatch!(stream),
     });
 
+    #[inline]
     pub fn id(&self) -> u64 {
         match self {
             Self::Bidirectional(stream) => stream.id(),
@@ -53,12 +54,14 @@ impl_splittable_stream_trait!(LocalStream, |stream| match stream {
 });
 
 impl From<SendStream> for LocalStream {
+    #[inline]
     fn from(stream: SendStream) -> Self {
         Self::Send(stream)
     }
 }
 
 impl From<BidirectionalStream> for LocalStream {
+    #[inline]
     fn from(stream: BidirectionalStream) -> Self {
         Self::Bidirectional(stream)
     }

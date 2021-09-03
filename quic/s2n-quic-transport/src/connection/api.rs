@@ -5,7 +5,7 @@
 
 use crate::{
     connection::{self, ConnectionApi},
-    stream::Stream,
+    stream::{ops, Stream, StreamError, StreamId},
 };
 use bytes::Bytes;
 use core::{
@@ -56,6 +56,7 @@ impl Connection {
     ///   For this purpose the method will save the [`Waker`]
     ///   which is provided as part of the [`Context`] parameter, and notify it
     ///   as soon as retrying the method will yield a different result.
+    #[inline]
     pub fn poll_accept(
         &mut self,
         stream_type: Option<StreamType>,
@@ -64,6 +65,7 @@ impl Connection {
         self.api.poll_accept(&self.api, stream_type, context)
     }
 
+    #[inline]
     pub fn poll_open_stream(
         &mut self,
         stream_type: StreamType,
@@ -72,33 +74,50 @@ impl Connection {
         self.api.poll_open_stream(&self.api, stream_type, context)
     }
 
+    #[inline]
+    pub fn poll_request(
+        &self,
+        stream_id: StreamId,
+        request: &mut ops::Request,
+        context: Option<&Context>,
+    ) -> Result<ops::Response, StreamError> {
+        self.api.poll_request(stream_id, request, context)
+    }
+
     /// Closes the Connection with the provided error code
     ///
     /// This will immediatly terminate all outstanding streams.
+    #[inline]
     pub fn close(&self, error_code: application::Error) {
         self.api.close_connection(Some(error_code));
     }
 
+    #[inline]
     pub fn sni(&self) -> Result<Option<Bytes>, connection::Error> {
         self.api.sni()
     }
 
+    #[inline]
     pub fn alpn(&self) -> Result<Bytes, connection::Error> {
         self.api.alpn()
     }
 
+    #[inline]
     pub fn id(&self) -> u64 {
         self.api.id()
     }
 
+    #[inline]
     pub fn ping(&self) -> Result<(), connection::Error> {
         self.api.ping()
     }
 
+    #[inline]
     pub fn local_address(&self) -> Result<SocketAddress, connection::Error> {
         self.api.local_address()
     }
 
+    #[inline]
     pub fn remote_address(&self) -> Result<SocketAddress, connection::Error> {
         self.api.remote_address()
     }

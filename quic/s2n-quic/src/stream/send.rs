@@ -19,6 +19,7 @@ macro_rules! impl_send_stream_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub async fn send(&mut self, mut data: bytes::Bytes) -> $crate::stream::Result<()> {
             ::futures::future::poll_fn(|cx| self.poll_send(&mut data, cx)).await
         }
@@ -30,6 +31,7 @@ macro_rules! impl_send_stream_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn poll_send(
             &mut self,
             chunk: &mut bytes::Bytes,
@@ -55,6 +57,7 @@ macro_rules! impl_send_stream_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub async fn send_vectored(
             &mut self,
             chunks: &mut [bytes::Bytes],
@@ -79,6 +82,7 @@ macro_rules! impl_send_stream_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn poll_send_vectored(
             &mut self,
             chunks: &mut [bytes::Bytes],
@@ -106,6 +110,7 @@ macro_rules! impl_send_stream_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn poll_send_ready(
             &mut self,
             cx: &mut core::task::Context,
@@ -132,6 +137,7 @@ macro_rules! impl_send_stream_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn send_data(&mut self, data: bytes::Bytes) -> $crate::stream::Result<()> {
             macro_rules! $dispatch {
                 () => {
@@ -153,6 +159,7 @@ macro_rules! impl_send_stream_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub async fn flush(&mut self) -> $crate::stream::Result<()> {
             ::futures::future::poll_fn(|cx| self.poll_flush(cx)).await
         }
@@ -164,6 +171,7 @@ macro_rules! impl_send_stream_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn poll_flush(
             &mut self,
             cx: &mut core::task::Context,
@@ -191,6 +199,7 @@ macro_rules! impl_send_stream_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn finish(&mut self) -> $crate::stream::Result<()> {
             macro_rules! $dispatch {
                 () => {
@@ -212,6 +221,7 @@ macro_rules! impl_send_stream_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub async fn close(&mut self) -> $crate::stream::Result<()> {
             ::futures::future::poll_fn(|cx| self.poll_close(cx)).await
         }
@@ -223,6 +233,7 @@ macro_rules! impl_send_stream_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn poll_close(
             &mut self,
             cx: &mut core::task::Context,
@@ -250,6 +261,7 @@ macro_rules! impl_send_stream_api {
         /// ```rust
         /// // TODO
         /// ```
+        #[inline]
         pub fn reset(
             &mut self,
             error_code: $crate::application::Error,
@@ -274,6 +286,7 @@ macro_rules! impl_send_stream_trait {
         impl futures::sink::Sink<bytes::Bytes> for $name {
             type Error = $crate::stream::Error;
 
+            #[inline]
             fn poll_ready(
                 mut self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
@@ -282,6 +295,7 @@ macro_rules! impl_send_stream_trait {
                 Ok(()).into()
             }
 
+            #[inline]
             fn start_send(
                 mut self: core::pin::Pin<&mut Self>,
                 data: bytes::Bytes,
@@ -289,6 +303,7 @@ macro_rules! impl_send_stream_trait {
                 self.send_data(data)
             }
 
+            #[inline]
             fn poll_flush(
                 mut self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
@@ -296,6 +311,7 @@ macro_rules! impl_send_stream_trait {
                 Self::poll_flush(&mut self, cx)
             }
 
+            #[inline]
             fn poll_close(
                 mut self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
@@ -351,6 +367,7 @@ macro_rules! impl_send_stream_trait {
                 Ok(len).into()
             }
 
+            #[inline]
             fn poll_flush(
                 mut self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
@@ -359,6 +376,7 @@ macro_rules! impl_send_stream_trait {
                 Ok(()).into()
             }
 
+            #[inline]
             fn poll_close(
                 mut self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
@@ -370,6 +388,7 @@ macro_rules! impl_send_stream_trait {
 
         #[cfg(all(feature = "std", feature = "tokio"))]
         impl tokio::io::AsyncWrite for $name {
+            #[inline]
             fn poll_write(
                 self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
@@ -408,10 +427,12 @@ macro_rules! impl_send_stream_trait {
                 Ok(len).into()
             }
 
+            #[inline]
             fn is_write_vectored(&self) -> bool {
                 true
             }
 
+            #[inline]
             fn poll_flush(
                 self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
@@ -419,6 +440,7 @@ macro_rules! impl_send_stream_trait {
                 futures::io::AsyncWrite::poll_flush(self, cx)
             }
 
+            #[inline]
             fn poll_shutdown(
                 mut self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
@@ -431,17 +453,19 @@ macro_rules! impl_send_stream_trait {
 }
 
 impl SendStream {
+    #[inline]
     pub(crate) const fn new(stream: stream::SendStream) -> Self {
         Self(stream)
     }
 
     impl_send_stream_api!(|stream, dispatch| dispatch!(stream.0));
 
+    #[inline]
     pub fn id(&self) -> u64 {
         self.0.id().into()
     }
 
-    impl_connection_api!(|_stream| todo!());
+    impl_connection_api!(|stream| crate::connection::Handle(stream.0.connection().clone()));
 }
 
 impl_splittable_stream_trait!(SendStream, |stream| (None, Some(stream)));

@@ -1,9 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-pub use s2n_quic_core::recovery::{
-    congestion_controller::{CongestionController, Endpoint, PathInfo},
-    CubicCongestionController,
+pub use s2n_quic_core::recovery::congestion_controller::{
+    CongestionController, Endpoint, PathInfo,
 };
 
 /// Provides congestion controller support for an endpoint
@@ -14,15 +13,16 @@ pub trait Provider {
     fn start(self) -> Result<Self::Endpoint, Self::Error>;
 }
 
+pub use cubic as default;
 pub use default::Provider as Default;
 
 impl_provider_utils!();
 
-pub mod default {
+pub mod cubic {
     use s2n_quic_core::recovery::cubic::Endpoint;
 
     #[derive(Debug, Default)]
-    pub struct Provider;
+    pub struct Provider(());
 
     impl super::Provider for Provider {
         type Endpoint = Endpoint;
