@@ -4,7 +4,7 @@
 /// A trait to determine if the value is left unspecified,
 /// usually containing the default value.
 ///
-/// See: https://en.wikipedia.org/wiki/IPv6_address#Unspecified_address
+/// See: <https://en.wikipedia.org/wiki/IPv6_address#Unspecified_address>
 pub trait Unspecified: Sized {
     /// Returns true if the value is unspecified
     fn is_unspecified(&self) -> bool;

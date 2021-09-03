@@ -88,7 +88,7 @@ pub const EXAMPLE_SERVER_INITIAL_SECRET: [u8; 32] = hex!(
 //# a500320408ffffffffffffffff050480 00ffff07048000ffff08011001048000
 //# 75300901100f088394c8f03e51570806 048000ffff
 
-/// Example payload from https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.2
+/// Example payload from <https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.2>
 pub const EXAMPLE_CLIENT_INITIAL_PAYLOAD: [u8; 245] = hex!(
     "
    060040f1010000ed0303ebf8fa56f129 39b9584a3896472ec40bb863cfd3e868
@@ -181,7 +181,7 @@ fn client_initial_protection_test() {
 //# b5a464ca5b62df3be35ee0d0a2ec68f3
 
 /// Example protected packet from
-/// https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.2
+/// <https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.2>
 pub const EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET: [u8; 1200] = hex!(
     "
    cdff000020088394c8f03e5157080000 449e9cdb990bfb66bc6a93032b50dd89
@@ -234,7 +234,7 @@ pub const EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET: [u8; 1200] = hex!(
 //# 0d89690b84d08a60993c144eca684d10 81287c834d5311bcf32bb9da1a002b00
 //# 020304
 
-/// Example payload from https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.3
+/// Example payload from <https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.3>
 pub const EXAMPLE_SERVER_INITIAL_PAYLOAD: [u8; 99] = hex!(
     "
    02000000000600405a020000560303ee fce7f7b37ba1d1632e96677825ddf739
@@ -284,7 +284,7 @@ fn server_initial_protection_test() {
 //# fd8142fafc0f76
 
 /// Example protected packet from
-/// https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.3
+/// <https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.3>
 pub const EXAMPLE_SERVER_INITIAL_PROTECTED_PACKET: [u8; 135] = hex!(
     "
    c7ff0000200008f067a5502a4262b500 4075fb12ff07823a5d24534d906ce4c7

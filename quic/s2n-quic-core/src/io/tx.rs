@@ -77,7 +77,7 @@ pub trait Entry {
 /// Instead of a concrete struct with eagerly evaluted fields,
 /// using trait callbacks ensure messages only need to compute what
 /// the actual transmission queue requires. For example, if the transmission
-/// queue cannot set ECN markings, it will not call the [`ecn`] function.
+/// queue cannot set ECN markings, it will not call the [`Message::ecn`] function.
 pub trait Message {
     type Handle: path::Handle;
 

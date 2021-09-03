@@ -49,7 +49,7 @@ impl StreamEvents {
     }
 
     /// Wakes all [`Waker`] instances that have been stored via `add_waker`.
-    /// Waking the [`Waker`]s will remove them from the [`DataEvent`]s struct.
+    /// Waking the [`Waker`]s will remove them from the [`StreamEvents`]s struct.
     pub fn wake_all(&mut self) {
         if let Some(waker) = self.read_wake.take() {
             waker.wake();

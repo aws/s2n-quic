@@ -163,7 +163,7 @@ macro_rules! impl_handle_api {
             self.0.alpn()
         }
 
-        /// Returns the identifier for the [`Connection`]
+        /// Returns the identifier for the [`crate::Connection`]
         ///
         /// # Examples
         ///

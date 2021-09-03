@@ -12,7 +12,7 @@ pub struct ReceiveStream(stream::ReceiveStream);
 
 macro_rules! impl_receive_stream_api {
     (| $stream:ident, $dispatch:ident | $dispatch_body:expr) => {
-        /// Reads the next chunk of data from the [`Stream`]
+        /// Reads the next chunk of data from the stream.
         ///
         /// # Examples
         ///
@@ -49,7 +49,7 @@ macro_rules! impl_receive_stream_api {
             $dispatch_body
         }
 
-        /// Reads the next slice of chunked data from the [`Stream`]
+        /// Reads the next slice of chunked data from the stream.
         ///
         /// # Examples
         ///

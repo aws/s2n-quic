@@ -220,7 +220,7 @@ mod if_testing {
             }
 
             /// Sets the current time to the given [`Timestamp`].
-            /// Follow-up calls to [`get_time`] will return this [`Timestamp`]
+            /// Follow-up calls to [`Self::get_time`] will return this [`Timestamp`]
             /// until the time had been adjusted again.
             pub fn set_time(&self, timestamp: Timestamp) {
                 let mut guard = self.timestamp.lock().unwrap();
