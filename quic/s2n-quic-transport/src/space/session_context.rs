@@ -174,7 +174,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
         // TODO use interning for these values
         // issue: https://github.com/awslabs/s2n-quic/issues/248
-        let sni = application_parameters.sni.map(Bytes::copy_from_slice);
+        let sni = application_parameters.sni;
         let alpn = Bytes::copy_from_slice(application_parameters.alpn_protocol);
 
         self.publisher

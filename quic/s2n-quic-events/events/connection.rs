@@ -13,7 +13,7 @@ struct AlpnInformation<'a> {
 #[event("transport:sni_information")]
 /// Server Name Indication
 struct SniInformation<'a> {
-    chosen_sni: &'a [u8],
+    chosen_sni: &'a str,
 }
 
 #[event("transport:packet_sent")]

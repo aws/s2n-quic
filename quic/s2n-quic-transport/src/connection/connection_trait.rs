@@ -16,7 +16,9 @@ use bytes::Bytes;
 use core::task::{Context, Poll};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    application, event,
+    application,
+    application::Sni,
+    event,
     inet::{DatagramInfo, SocketAddress},
     io::tx,
     packet::{
@@ -324,7 +326,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
 
     fn application_close(&mut self, error: Option<application::Error>);
 
-    fn sni(&self) -> Option<Bytes>;
+    fn sni(&self) -> Option<Sni>;
 
     fn alpn(&self) -> Bytes;
 

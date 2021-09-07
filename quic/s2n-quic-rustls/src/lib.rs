@@ -12,6 +12,7 @@ use rustls::{
 use s2n_codec::{EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
     self,
+    application::Sni,
     crypto::{tls, CryptoError, CryptoSuite},
     transport,
 };
@@ -473,8 +474,8 @@ pub mod server {
     }
 
     impl Session {
-        fn sni(&self) -> Option<&[u8]> {
-            self.0.session.get_sni_hostname().map(|sni| sni.as_bytes())
+        fn sni(&self) -> Option<Sni> {
+            self.0.session.get_sni_hostname().map(|sni| sni.into())
         }
     }
 }
@@ -587,7 +588,7 @@ pub mod client {
     }
 
     impl Session {
-        fn sni(&self) -> Option<&[u8]> {
+        fn sni(&self) -> Option<Sni> {
             // TODO return the specified sni value
             None
         }

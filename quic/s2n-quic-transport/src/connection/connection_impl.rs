@@ -30,6 +30,7 @@ use core::{
 };
 use s2n_quic_core::{
     application,
+    application::Sni,
     event::{self, ConnectionPublisher as _, IntoEvent as _},
     inet::{DatagramInfo, SocketAddress},
     io::tx,
@@ -1325,7 +1326,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         });
     }
 
-    fn sni(&self) -> Option<Bytes> {
+    fn sni(&self) -> Option<Sni> {
         // TODO move SNI to connection
         self.space_manager.application()?.sni.clone()
     }

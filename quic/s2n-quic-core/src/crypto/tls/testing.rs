@@ -247,7 +247,7 @@ impl<C: CryptoSuite> Context<C> {
 
     fn on_application_params(&mut self, params: tls::ApplicationParameters) {
         self.alpn = Some(Bytes::copy_from_slice(params.alpn_protocol));
-        self.sni = params.sni.map(Bytes::copy_from_slice);
+        self.sni = params.sni.map(|sni| sni.into_bytes());
         self.transport_parameters = Some(Bytes::copy_from_slice(params.transport_parameters));
     }
 }

@@ -15,7 +15,7 @@ pub struct ApplicationParameters<'a> {
     /// The negotiated Application Layer Protocol
     pub alpn_protocol: &'a [u8],
     /// Server Name Indication
-    pub sni: Option<&'a [u8]>,
+    pub sni: Option<crate::application::Sni>,
     /// Encoded transport parameters
     pub transport_parameters: &'a [u8],
 }

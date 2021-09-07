@@ -16,6 +16,7 @@ use bytes::Bytes;
 use core::{convert::TryInto, fmt, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
+    application::Sni,
     crypto::{application::KeySet, tls, CryptoSuite},
     event::{self, IntoEvent},
     frame::{
@@ -65,7 +66,7 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     //# another mechanism is used for agreeing on an application protocol,
     //# endpoints MUST use ALPN for this purpose.
     pub alpn: Bytes,
-    pub sni: Option<Bytes>,
+    pub sni: Option<Sni>,
     ping: flag::Ping,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager<Config>,
@@ -93,7 +94,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         now: Timestamp,
         stream_manager: AbstractStreamManager<Config::Stream>,
         ack_manager: AckManager,
-        sni: Option<Bytes>,
+        sni: Option<Sni>,
         alpn: Bytes,
     ) -> Self {
         let key_set = KeySet::new(key);

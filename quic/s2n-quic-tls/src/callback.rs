@@ -4,6 +4,7 @@
 use bytes::BytesMut;
 use core::{ffi::c_void, marker::PhantomData};
 use s2n_quic_core::{
+    application::Sni,
     crypto::{tls, CryptoError, CryptoSuite},
     endpoint, transport,
 };
@@ -435,9 +436,13 @@ unsafe fn get_application_params<'a>(
     })
 }
 
-unsafe fn get_sni<'a>(connection: *mut s2n_connection) -> Option<&'a [u8]> {
+unsafe fn get_sni(connection: *mut s2n_connection) -> Option<Sni> {
     let ptr = call!(s2n_get_server_name(connection)).ok()?;
-    get_cstr_slice(ptr)
+    let data = get_cstr_slice(ptr)?;
+
+    // validate sni is a valid UTF-8 string
+    let string = core::str::from_utf8(data).ok()?;
+    Some(string.into())
 }
 
 unsafe fn get_alpn<'a>(connection: *mut s2n_connection) -> Option<&'a [u8]> {

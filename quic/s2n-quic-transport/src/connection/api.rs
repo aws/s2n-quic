@@ -14,6 +14,7 @@ use core::{
 };
 use s2n_quic_core::{
     application,
+    application::Sni,
     event::query::{Query, QueryMut},
     inet::SocketAddress,
     stream::StreamType,
@@ -98,7 +99,7 @@ impl Connection {
     }
 
     #[inline]
-    pub fn sni(&self) -> Result<Option<Bytes>, connection::Error> {
+    pub fn sni(&self) -> Result<Option<Sni>, connection::Error> {
         self.api.sni()
     }
 
