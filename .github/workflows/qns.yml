@@ -367,6 +367,12 @@ jobs:
           status: "${{ steps.diffstatus.outputs.DIFF_STATUS }}"
           url: "${{ steps.s3.outputs.URL }}"
 
+      - name: Check for regressions
+        run: |
+          python3 .github/interop/check.py \
+            --required .github/interop/required.json \
+            web/logs/latest/result.json
+
   bench:
     runs-on: ubuntu-latest
     needs: [env, build, tshark]
