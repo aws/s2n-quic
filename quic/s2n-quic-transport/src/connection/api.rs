@@ -7,6 +7,7 @@ use crate::{
     connection::{self, ConnectionApi},
     stream::{ops, Stream, StreamError, StreamId},
 };
+use alloc::sync::Arc;
 use bytes::Bytes;
 use core::{
     fmt,
@@ -41,7 +42,12 @@ impl Drop for Connection {
     fn drop(&mut self) {
         // If the connection wasn't closed before, close it now to make sure
         // all Streams terminate.
-        self.api.close_connection(None);
+        //
+        // Only close the connection if we no longer have a connection inside the endpoint
+        // and application task. Otherwise, just drop the `api` which decrements the strong count.
+        if Arc::strong_count(&self.api) <= 2 {
+            self.api.close_connection(None);
+        }
     }
 }
 
