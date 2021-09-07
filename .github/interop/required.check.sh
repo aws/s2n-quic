@@ -19,8 +19,6 @@ mkdir -p $OUT_DIR
 
 IFS=$'\n'
 for commit in $COMMITS; do
-  rm -f result.json
-
   if [[ "$SKIPLIST" =~ (^|[[:space:]])$commit($|[[:space:]]) ]]; then
     echo "$commit in skiplist"
     continue
@@ -29,7 +27,8 @@ for commit in $COMMITS; do
   echo $commit
 
   if [ ! -f $OUT_DIR/$commit.json ]; then
-    curl --fail --silent -o $OUT_DIR/$commit.json https://dnglbrstg7yg.cloudfront.net/$commit/interop/logs/latest/result.json || touch $OUT_DIR/$commit.json
+    curl --fail --silent -o $OUT_DIR/$commit.json \
+      https://dnglbrstg7yg.cloudfront.net/$commit/interop/logs/latest/result.json || touch $OUT_DIR/$commit.json
   fi
 
   if [ -s $OUT_DIR/$commit.json ]; then
