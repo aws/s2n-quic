@@ -262,14 +262,8 @@ jobs:
 
       - uses: camshaft/rust-cache@v1
 
-      # see https://github.com/rust-lang/cargo/issues/7916
       - name: Run cargo build
-        run: |
-          cd quic/s2n-quic-core && \
-            cargo build \
-              -Z features=dev_dep \
-              --no-default-features \
-              --target thumbv7m-none-eabi
+        run: ./scripts/test_no_std ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
   compliance:
     runs-on: ubuntu-latest
