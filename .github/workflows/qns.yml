@@ -339,12 +339,6 @@ jobs:
             results/**/result.json > \
               web/logs/latest/result.json
 
-      - name: Set diff status
-        id: diffstatus
-        run: |
-          DIFF_STATUS=$(jq --raw-output 'if .regression then "failure" else "success" end' web/logs/latest/result.json)
-          echo "::set-output name=DIFF_STATUS::$DIFF_STATUS"
-
       - uses: aws-actions/configure-aws-credentials@v1.5.11
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -364,8 +358,14 @@ jobs:
       - uses: ouzi-dev/commit-status-updater@v1.1.2
         with:
           name: 'interop / report'
-          status: "${{ steps.diffstatus.outputs.DIFF_STATUS }}"
+          status: "success"
           url: "${{ steps.s3.outputs.URL }}"
+
+      - name: Check for regressions
+        run: |
+          python3 .github/interop/check.py \
+            --required .github/interop/required.json \
+            web/logs/latest/result.json
 
   bench:
     runs-on: ubuntu-latest
