@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+#
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+
+set -e
+
+# can be run for specific toolchain: `./scripts/test_no_std nightly-2021-06-21`
+TOOLCHAIN=${1:-nightly}
+
+rustup target add thumbv7m-none-eabi --toolchain $TOOLCHAIN
+
+# see https://github.com/rust-lang/cargo/issues/7916
+cargo +$TOOLCHAIN build --package=s2n-quic-core --no-default-features -Z features=dev_dep --target thumbv7m-none-eabi
