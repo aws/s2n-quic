@@ -1,7 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::ops::{Deref, DerefMut};
+include!("/home/ubuntu/tools/rmc/src/test/rmc-prelude.rs");
+
+use std::ops::{Deref, DerefMut};
 
 /// Copies vectored slices from one slice into another
 ///
@@ -142,4 +144,97 @@ mod tests {
                 assert_eq_slices(&from, &to);
             })
     }
+}
+
+fn get_nth<A, T>(a: &[A], idx: usize) -> &T
+where
+    A: Deref<Target = [T]>,
+{
+    let mut count = 0;
+
+    for s in a.iter() {
+        if idx - count < s.len() {
+            return &s[idx - count];
+        } else {
+            count += s.len();
+        }
+    }
+    panic!();
+}
+
+fn assert_eq_slices<A, B, T>(a: &[A], b: &[B], len: usize)
+where
+    A: Deref<Target = [T]>,
+    B: Deref<Target = [T]>,
+    T: PartialEq + core::fmt::Debug + std::clone::Clone,
+{
+    let idx: usize = __nondet();
+    __VERIFIER_assume(idx < len);
+    let x = get_nth(a, idx);
+    let y = get_nth(b, idx);
+    assert!(x == y);
+}
+
+#[no_mangle]
+fn main() {
+
+    const sz1: usize = 4;
+    let a1: [u8; sz1] = __nondet();
+    let a2: [u8; sz1] = __nondet();
+    let a3: [u8; sz1] = __nondet();
+
+    let sa1_sz: usize = __nondet();
+    let sa2_sz: usize = __nondet();
+    let sa3_sz: usize = __nondet();
+
+    __VERIFIER_assume(sa1_sz <= sz1);
+    __VERIFIER_assume(sa2_sz <= sz1);
+    __VERIFIER_assume(sa3_sz <= sz1);
+
+    let from = [&a1[..sa1_sz], &a2[..sa2_sz], &a3[..sa3_sz]];
+
+    const sz2: usize = 4;
+
+    let mut b1: [u8; sz2] = __nondet();
+    let mut b2: [u8; sz2] = __nondet();
+    let mut b3: [u8; sz2] = __nondet();
+    let mut b4: [u8; sz2] = __nondet();
+
+    let sb1_sz: usize = __nondet();
+    let sb2_sz: usize = __nondet();
+    let sb3_sz: usize = __nondet();
+    let sb4_sz: usize = __nondet();
+
+    __VERIFIER_assume(sb1_sz <= sz2);
+    __VERIFIER_assume(sb2_sz <= sz2);
+    __VERIFIER_assume(sb3_sz <= sz2);
+    __VERIFIER_assume(sb4_sz <= sz2);
+
+    let mut to = [&mut b1[..sb1_sz], &mut b2[..sb2_sz], &mut b3[..sb3_sz], &mut b4[..sb4_sz]];
+
+    let copied = (sa1_sz + sa2_sz + sa3_sz).min(sb1_sz + sb2_sz + sb3_sz + sb4_sz);
+    let copied_len = vectored_copy(&from, &mut to);
+
+    // inject fault
+    //if copied_len > 0 {
+    //    if sb1_sz > 0 {
+    //        to[0][0] = 50;
+    //    } else if sb2_sz > 0 {
+    //        to[1][0] = 51;
+    //    } else if sb3_sz > 0 {
+    //        to[2][0] = 52;
+    //    } else if sb4_sz > 0 {
+    //        to[3][0] = 53;
+    //    }
+    //}
+
+    assert!(copied_len == copied);
+    assert_eq_slices(&from, &to, copied_len);
+}
+
+fn main_ideal() {
+    let from: Vec<Vec<u8>> = __nondet();
+    let mut to: Vec<Vec<u8>> = __nondet();
+    let copied_len = vectored_copy(&from, &mut to);
+    assert_eq_slices(&from, &to, copied_len);
 }
