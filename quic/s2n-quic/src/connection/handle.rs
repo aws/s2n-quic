@@ -228,6 +228,7 @@ macro_rules! impl_handle_api {
         ///     type ConnectionContext = MyEventContext;
         ///     fn create_connection_context(
         ///        &mut self, _meta: &events::ConnectionMeta,
+        ///        _info: &events::ConnectionInfo,
         ///     ) -> Self::ConnectionContext {
         ///         MyEventContext { request: 0 }
         ///     }
@@ -293,6 +294,7 @@ macro_rules! impl_handle_api {
         ///    type ConnectionContext = u64;
         ///    fn create_connection_context(
         ///        &mut self, _meta: &events::ConnectionMeta,
+        ///        _info: &events::ConnectionInfo,
         ///    ) -> Self::ConnectionContext { 0 }
         /// }
         ///
@@ -302,6 +304,7 @@ macro_rules! impl_handle_api {
         ///    type ConnectionContext = u64;
         ///    fn create_connection_context(
         ///        &mut self, _meta: &events::ConnectionMeta,
+        ///        _info: &events::ConnectionInfo,
         ///    ) -> Self::ConnectionContext { 0 }
         /// }
         ///

@@ -221,9 +221,11 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             id: internal_connection_id.into(),
             timestamp: datagram.timestamp,
         };
-        let mut event_context = endpoint_context
-            .event_subscriber
-            .create_connection_context(&meta.clone().into_event());
+
+        let mut event_context = endpoint_context.event_subscriber.create_connection_context(
+            &meta.clone().into_event(),
+            &event::builder::ConnectionInfo {}.into_event(),
+        );
 
         let mut publisher = event::ConnectionPublisherSubscriber::new(
             meta,

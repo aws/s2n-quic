@@ -274,6 +274,7 @@ impl Subscriber for EventSubscriber {
     fn create_connection_context(
         &mut self,
         _meta: &events::ConnectionMeta,
+        _info: &events::ConnectionInfo,
     ) -> Self::ConnectionContext {
         MyConnectionContext {
             id: self.0,
