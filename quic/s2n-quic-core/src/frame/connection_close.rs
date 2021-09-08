@@ -129,11 +129,9 @@ impl<'a> EncoderValue for ConnectionClose<'a> {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         buffer.encode(&self.tag());
 
+        buffer.encode(&self.error_code);
         if let Some(frame_type) = &self.frame_type {
-            buffer.encode(&self.error_code);
             buffer.encode(frame_type);
-        } else {
-            buffer.encode(&self.error_code);
         }
 
         if let Some(reason) = &self.reason {
