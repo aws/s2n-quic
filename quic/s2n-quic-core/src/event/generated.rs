@@ -194,7 +194,7 @@ pub mod api {
     #[non_exhaustive]
     #[doc = " Server Name Indication"]
     pub struct SniInformation<'a> {
-        pub chosen_sni: &'a [u8],
+        pub chosen_sni: &'a str,
     }
     impl<'a> Event for SniInformation<'a> {
         const NAME: &'static str = "transport:sni_information";
@@ -1028,7 +1028,7 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Server Name Indication"]
     pub struct SniInformation<'a> {
-        pub chosen_sni: &'a [u8],
+        pub chosen_sni: &'a str,
     }
     impl<'a> IntoEvent<api::SniInformation<'a>> for SniInformation<'a> {
         #[inline]

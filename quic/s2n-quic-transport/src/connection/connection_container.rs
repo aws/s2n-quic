@@ -22,6 +22,7 @@ use intrusive_collections::{
 };
 use s2n_quic_core::{
     application,
+    application::Sni,
     event::query::{Query, QueryMut},
     inet::SocketAddress,
     recovery::K_GRANULARITY,
@@ -248,7 +249,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
         });
     }
 
-    fn sni(&self) -> Result<Option<Bytes>, connection::Error> {
+    fn sni(&self) -> Result<Option<Sni>, connection::Error> {
         self.api_read_call(|conn| Ok(conn.sni()))
     }
 

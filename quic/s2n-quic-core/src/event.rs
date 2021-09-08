@@ -52,6 +52,13 @@ impl<T: IntoEvent<U>, U> IntoEvent<Option<U>> for Option<T> {
     }
 }
 
+impl<'a> IntoEvent<&'a str> for &'a str {
+    #[inline]
+    fn into_event(self) -> Self {
+        self
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Timestamp(crate::time::Timestamp);
 

@@ -147,7 +147,7 @@ macro_rules! impl_handle_api {
         /// // TODO
         /// ```
         #[inline]
-        pub fn sni(&self) -> $crate::connection::Result<Option<::bytes::Bytes>> {
+        pub fn sni(&self) -> $crate::connection::Result<Option<$crate::application::Sni>> {
             self.0.sni()
         }
 

@@ -248,7 +248,7 @@ impl connection::Trait for TestConnection {
         // no-op
     }
 
-    fn sni(&self) -> Option<Bytes> {
+    fn sni(&self) -> Option<Sni> {
         todo!()
     }
 
