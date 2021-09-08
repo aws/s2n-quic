@@ -19,6 +19,8 @@ struct EndpointMeta {
     timestamp: crate::event::Timestamp,
 }
 
+struct ConnectionInfo {}
+
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
 struct PacketHeader {
     packet_type: PacketType,

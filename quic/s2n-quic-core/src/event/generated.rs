@@ -24,6 +24,9 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub struct ConnectionInfo {}
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     pub struct PacketHeader {
         pub packet_type: PacketType,
         pub version: Option<u32>,
@@ -715,6 +718,15 @@ pub mod builder {
                 endpoint_type: endpoint_type.into_event(),
                 timestamp: timestamp.into_event(),
             }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ConnectionInfo {}
+    impl IntoEvent<api::ConnectionInfo> for ConnectionInfo {
+        #[inline]
+        fn into_event(self) -> api::ConnectionInfo {
+            let ConnectionInfo {} = self;
+            api::ConnectionInfo {}
         }
     }
     #[derive(Clone, Debug)]
@@ -1479,10 +1491,10 @@ mod traits {
         #[doc = r""]
         #[doc = r" ```no_run"]
         #[doc = r" # mod s2n_quic { pub mod provider { pub mod event {"]
-        #[doc = r" #     pub use s2n_quic_core::event::{api as events, api::ConnectionMeta, Subscriber};"]
+        #[doc = r" #     pub use s2n_quic_core::event::{api as events, api::ConnectionInfo, api::ConnectionMeta, Subscriber};"]
         #[doc = r" # }}}"]
         #[doc = r" use s2n_quic::provider::event::{"]
-        #[doc = r"     ConnectionMeta, Subscriber, events::PacketSent"]
+        #[doc = r"     ConnectionInfo, ConnectionMeta, Subscriber, events::PacketSent"]
         #[doc = r" };"]
         #[doc = r""]
         #[doc = r" pub struct MyEventSubscriber;"]
@@ -1496,6 +1508,7 @@ mod traits {
         #[doc = r""]
         #[doc = r"     fn create_connection_context("]
         #[doc = r"         &mut self, _meta: &ConnectionMeta,"]
+        #[doc = r"         _info: &ConnectionInfo,"]
         #[doc = r"     ) -> Self::ConnectionContext {"]
         #[doc = r"         MyEventContext { packet_sent: 0 }"]
         #[doc = r"     }"]
@@ -1512,7 +1525,11 @@ mod traits {
         #[doc = r"  ```"]
         type ConnectionContext: 'static + Send;
         #[doc = r" Creates a context to be passed to each connection-related event"]
-        fn create_connection_context(&mut self, meta: &ConnectionMeta) -> Self::ConnectionContext;
+        fn create_connection_context(
+            &mut self,
+            meta: &ConnectionMeta,
+            info: &ConnectionInfo,
+        ) -> Self::ConnectionContext;
         #[doc = "Called when the `AlpnInformation` event is triggered"]
         #[inline]
         fn on_alpn_information(
@@ -1819,10 +1836,14 @@ mod traits {
     {
         type ConnectionContext = (A::ConnectionContext, B::ConnectionContext);
         #[inline]
-        fn create_connection_context(&mut self, meta: &ConnectionMeta) -> Self::ConnectionContext {
+        fn create_connection_context(
+            &mut self,
+            meta: &ConnectionMeta,
+            info: &ConnectionInfo,
+        ) -> Self::ConnectionContext {
             (
-                self.0.create_connection_context(meta),
-                self.1.create_connection_context(meta),
+                self.0.create_connection_context(meta, info),
+                self.1.create_connection_context(meta, info),
             )
         }
         #[inline]
@@ -2446,6 +2467,7 @@ pub mod testing {
         fn create_connection_context(
             &mut self,
             _meta: &api::ConnectionMeta,
+            _info: &api::ConnectionInfo,
         ) -> Self::ConnectionContext {
         }
         fn on_alpn_information(

@@ -3,7 +3,9 @@
 
 use cfg_if::cfg_if;
 pub use s2n_quic_core::event::{
-    api as events, api::ConnectionMeta, query, Event, Meta, Subscriber, Timestamp,
+    api as events,
+    api::{ConnectionInfo, ConnectionMeta},
+    query, Event, Meta, Subscriber, Timestamp,
 };
 
 /// Provides logging support for an endpoint

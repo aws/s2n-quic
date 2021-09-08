@@ -117,10 +117,10 @@ impl ToTokens for Output {
                     ///
                     /// ```no_run
                     /// # mod s2n_quic { pub mod provider { pub mod event {
-                    /// #     pub use s2n_quic_core::event::{api as events, api::ConnectionMeta, Subscriber};
+                    /// #     pub use s2n_quic_core::event::{api as events, api::ConnectionInfo, api::ConnectionMeta, Subscriber};
                     /// # }}}
                     /// use s2n_quic::provider::event::{
-                    ///     ConnectionMeta, Subscriber, events::PacketSent
+                    ///     ConnectionInfo, ConnectionMeta, Subscriber, events::PacketSent
                     /// };
                     ///
                     /// pub struct MyEventSubscriber;
@@ -134,6 +134,7 @@ impl ToTokens for Output {
                     ///
                     ///     fn create_connection_context(
                     ///         &mut self, _meta: &ConnectionMeta,
+                    ///         _info: &ConnectionInfo,
                     ///     ) -> Self::ConnectionContext {
                     ///         MyEventContext { packet_sent: 0 }
                     ///     }
@@ -151,7 +152,7 @@ impl ToTokens for Output {
                     type ConnectionContext: 'static + Send;
 
                     /// Creates a context to be passed to each connection-related event
-                    fn create_connection_context(&mut self, meta: &ConnectionMeta) -> Self::ConnectionContext;
+                    fn create_connection_context(&mut self, meta: &ConnectionMeta, info: &ConnectionInfo) -> Self::ConnectionContext;
 
                     #subscriber
 
@@ -191,8 +192,8 @@ impl ToTokens for Output {
                     type ConnectionContext = (A::ConnectionContext, B::ConnectionContext);
 
                     #[inline]
-                    fn create_connection_context(&mut self, meta: &ConnectionMeta) -> Self::ConnectionContext {
-                        (self.0.create_connection_context(meta), self.1.create_connection_context(meta))
+                    fn create_connection_context(&mut self, meta: &ConnectionMeta, info: &ConnectionInfo) -> Self::ConnectionContext {
+                        (self.0.create_connection_context(meta, info), self.1.create_connection_context(meta, info))
                     }
 
                     #tuple_subscriber
@@ -332,7 +333,7 @@ impl ToTokens for Output {
                 impl super::Subscriber for Subscriber {
                     type ConnectionContext = ();
 
-                    fn create_connection_context(&mut self, _meta: &api::ConnectionMeta) -> Self::ConnectionContext {}
+                    fn create_connection_context(&mut self, _meta: &api::ConnectionMeta, _info: &api::ConnectionInfo) -> Self::ConnectionContext {}
 
                     #subscriber_testing
                 }
