@@ -289,7 +289,7 @@ impl Subscriber for EventSubscriber {
         meta: &events::ConnectionMeta,
         event: &events::ActivePathUpdated,
     ) {
-        info!("{:?} {:?}", meta.id, event);
+        info!("----------------------------- {:?} {:?}", meta.id, event);
     }
 
     fn on_packet_sent(
@@ -299,5 +299,13 @@ impl Subscriber for EventSubscriber {
         _event: &events::PacketSent,
     ) {
         context.packet_sent += 1;
+    }
+
+    fn on_event<M: s2n_quic_core::event::Meta, E: s2n_quic_core::event::Event>(
+        &mut self,
+        meta: &M,
+        event: &E,
+    ) {
+        info!("{:?} {:?}", meta.endpoint_type(), event);
     }
 }
