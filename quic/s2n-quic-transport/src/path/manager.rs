@@ -240,7 +240,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         // TODO: This would be better handled as a stateless reset so the peer can terminate the
         //       connection immediately. https://github.com/awslabs/s2n-quic/issues/317
         // We only enable connection migration for testing
-        #[cfg(not(any(feature = "connection_migration", feature = "testing", test)))]
+        #[cfg(not(any(feature = "connection-migration", feature = "testing", test)))]
         return Err(
             transport::Error::INTERNAL_ERROR.with_reason("Connection Migration is not supported")
         );
