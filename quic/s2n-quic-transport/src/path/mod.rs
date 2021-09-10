@@ -248,9 +248,23 @@ impl<Config: endpoint::Config> Path<Config> {
     }
 
     #[inline]
-    pub fn on_path_response(&mut self, response: &[u8]) {
+    pub fn on_path_response<Pub: event::ConnectionPublisher>(
+        &mut self,
+        response: &[u8],
+        path_id: Id,
+        publisher: &mut Pub,
+    ) {
         if self.challenge.on_validated(response) {
             self.on_validated();
+            publisher.on_path_challenge_validated(event::builder::PathChallengeValidated {
+                path: event::builder::Path {
+                    local_addr: self.local_address().into_event(),
+                    local_cid: self.local_connection_id.into_event(),
+                    remote_addr: self.remote_address().into_event(),
+                    remote_cid: self.peer_connection_id.into_event(),
+                    id: path_id.into_event(),
+                },
+            });
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
             //= type=TODO
@@ -738,7 +752,11 @@ mod tests {
 
         // Trigger:
         path.set_challenge(helper_challenge.challenge);
-        path.on_path_response(&helper_challenge.expected_data);
+        path.on_path_response(
+            &helper_challenge.expected_data,
+            Id::new(1),
+            &mut Publisher::default(),
+        );
 
         // Expectation:
         assert!(path.is_validated());

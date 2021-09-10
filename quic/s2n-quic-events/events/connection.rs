@@ -163,3 +163,9 @@ struct ConnectionIdUpdated<'a> {
 struct PathChallengeAbandoned<'a> {
     path: Path<'a>,
 }
+
+#[event("connectivity:path_challenge_validated")]
+/// Path challenge abandoned
+struct PathChallengeValidated<'a> {
+    path: Path<'a>,
+}

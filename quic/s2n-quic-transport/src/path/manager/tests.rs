@@ -327,7 +327,9 @@ fn validate_path_before_challenge_expiration() {
     let frame = s2n_quic_core::frame::PathResponse {
         data: &helper.expected_data,
     };
-    helper.manager.on_path_response(&frame);
+    helper
+        .manager
+        .on_path_response(&frame, &mut Publisher::default());
 
     // Expectation 2:
     assert!(helper.manager[helper.second_path_id].is_validated());
@@ -392,7 +394,9 @@ fn dont_validate_path_if_path_challenge_is_abandoned() {
     let frame = s2n_quic_core::frame::PathResponse {
         data: &helper.expected_data,
     };
-    helper.manager.on_path_response(&frame);
+    helper
+        .manager
+        .on_path_response(&frame, &mut Publisher::default());
 
     // Expectation 2:
     assert!(!helper.manager[helper.second_path_id].is_validated());
@@ -794,7 +798,7 @@ fn connection_migration_challenge_behavior() {
     //# An endpoint MUST
     //# perform path validation (Section 8.2) if it detects any change to a
     //# peer's address, unless it has previously validated that address.
-    manager[Id(1)].on_path_response(&expected_data);
+    manager[Id(1)].on_path_response(&expected_data, Id(1), &mut Publisher::default());
     assert!(manager[Id(1)].is_validated());
 }
 

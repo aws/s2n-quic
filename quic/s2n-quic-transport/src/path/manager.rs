@@ -418,7 +418,11 @@ impl<Config: endpoint::Config> Manager<Config> {
     //# A PATH_RESPONSE frame received on any network path validates the path
     //# on which the PATH_CHALLENGE was sent.
     #[inline]
-    pub fn on_path_response(&mut self, response: &frame::PathResponse) {
+    pub fn on_path_response<Pub: event::ConnectionPublisher>(
+        &mut self,
+        response: &frame::PathResponse,
+        publisher: &mut Pub,
+    ) {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
         //# A PATH_RESPONSE frame MUST be sent on the network path where the
         //# PATH_CHALLENGE was received.
@@ -437,8 +441,9 @@ impl<Config: endpoint::Config> Manager<Config> {
         //# A PATH_RESPONSE frame received on any network path validates the path
         //# on which the PATH_CHALLENGE was sent.
 
-        for path in self.paths.iter_mut() {
-            path.on_path_response(response.data);
+        for (path_id, path) in self.paths.iter_mut().enumerate() {
+            // enumerate is 0-indexed, which matches the path_id definition
+            path.on_path_response(response.data, Id(path_id as u8), publisher);
         }
     }
 
