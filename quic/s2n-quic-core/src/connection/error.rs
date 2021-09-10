@@ -219,6 +219,17 @@ impl From<Error> for ProcessingError {
     }
 }
 
+impl From<crate::transport::Error> for ProcessingError {
+    fn from(inner_error: crate::transport::Error) -> Self {
+        // Try extracting out the crypto error from other transport errors
+        if let Some(error) = inner_error.try_into_crypto_error() {
+            Self::CryptoError(error)
+        } else {
+            Self::ConnectionError(inner_error.into())
+        }
+    }
+}
+
 impl From<CryptoError> for ProcessingError {
     fn from(inner_error: CryptoError) -> Self {
         ProcessingError::CryptoError(inner_error)

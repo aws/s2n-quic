@@ -64,6 +64,7 @@ impl Endpoint {
             datagram: &datagram,
             packet_number: packet.packet_number,
             path_challenge_on_active_path: false,
+            frames: 1,
         };
 
         self.ack_manager.on_processed_packet(&packet);

@@ -21,6 +21,7 @@ env:
   WIRESHARK_VERSION: 3.4.8
   CDN: https://dnglbrstg7yg.cloudfront.net
   LOG_URL: logs/latest/SERVER_CLIENT/TEST/index.html
+  H3_SPEC_VERSION: v0.1.8
 
 jobs:
   env:
@@ -464,3 +465,33 @@ jobs:
       - name: Assert no crashes
         run: |
           ! grep -Rq 'The s2n-quic-qns application shut down unexpectedly' target/benchmark/results
+
+  h3spec:
+    runs-on: ubuntu-latest
+    needs: [build]
+
+    steps:
+      - uses: actions/download-artifact@v2
+        with:
+          name: s2n-quic-qns-debug
+
+      - name: Install h3spec
+        run: |
+          curl -L -o h3spec https://github.com/kazu-yamamoto/h3spec/releases/download/$H3_SPEC_VERSION/h3spec-linux-x86_64
+          chmod +x h3spec
+          chmod +x s2n-quic-qns-debug
+
+      - name: Run test
+        # the skipped tests here require modifications to the TLS library
+        # TODO remove the skips once these are fixed
+        #      https://github.com/awslabs/s2n-quic/issues/858
+        #      https://github.com/awslabs/s2n-quic/issues/859
+        run: |
+          ./s2n-quic-qns-debug interop server --port 4433 &
+          # wait for the server to boot
+          sleep 3
+          ./h3spec localhost 4433 \
+            --skip "MUST send unexpected_message TLS alert if KeyUpdate in Handshake is received [TLS 6]" \
+            --skip "MUST send unexpected_message TLS alert if KeyUpdate in 1-RTT is received [TLS 6]" \
+            --skip "MUST send missing_extension TLS alert if the quic_transport_parameters extension does not included [TLS 8.2]" \
+            --skip "MUST send unexpected_message TLS alert if EndOfEarlyData is received [TLS 8.3]"

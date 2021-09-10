@@ -140,13 +140,22 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         //# Connection ID fields of Initial packets that it sent.
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3
-        //= type=TODO
-        //= feature=Transport parameter ID validation
-        //= tracking-issue=353
         //# An endpoint MUST treat absence of the initial_source_connection_id
         //# transport parameter from either endpoint or absence of the
         //# original_destination_connection_id transport parameter from the
         //# server as a connection error of type TRANSPORT_PARAMETER_ERROR.
+        if peer_parameters.initial_source_connection_id.is_none() {
+            return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
+                .with_reason("missing initial_source_connection_id"));
+        }
+
+        // TODO uncomment when the client is implemented
+        //if Config::ENDPOINT_TYPE.is_client()
+        //    && peer_parameters.original_destination_connection_id.is_none()
+        //{
+        //    return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
+        //        .with_reason("missing original_destination_connection_id"));
+        //}
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3
         //= type=TODO
