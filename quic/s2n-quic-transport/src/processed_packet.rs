@@ -14,6 +14,7 @@ pub struct ProcessedPacket<'a> {
     pub(crate) datagram: &'a DatagramInfo,
     pub(crate) ack_elicitation: AckElicitation,
     pub(crate) path_challenge_on_active_path: bool,
+    pub(crate) frames: usize,
 }
 
 impl<'a> ProcessedPacket<'a> {
@@ -24,12 +25,14 @@ impl<'a> ProcessedPacket<'a> {
             datagram,
             ack_elicitation: AckElicitation::default(),
             path_challenge_on_active_path: false,
+            frames: 0,
         }
     }
 
     /// Records information about a processed frame
     pub fn on_processed_frame<F: AckElicitable>(&mut self, frame: &F) {
-        self.ack_elicitation |= frame.ack_elicitation()
+        self.ack_elicitation |= frame.ack_elicitation();
+        self.frames += 1;
     }
 
     /// Returns `true` if any of the processed frames are ack eliciting

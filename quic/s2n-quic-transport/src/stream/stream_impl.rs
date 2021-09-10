@@ -132,8 +132,12 @@ pub trait StreamTrait: StreamInterestProvider + timer::Provider + core::fmt::Deb
 pub struct StreamImpl {
     /// The stream ID
     pub(super) stream_id: StreamId,
+    /// Set to `true` when this stream has a receiving side
+    has_receive: bool,
     /// Manages the receiving side of the stream
     pub(super) receive_stream: ReceiveStream,
+    /// Set to `true` when this stream has a sending side
+    has_send: bool,
     /// Manages the sending side of the stream
     pub(super) send_stream: SendStream,
 }
@@ -165,12 +169,14 @@ impl StreamTrait for StreamImpl {
 
         StreamImpl {
             stream_id: config.stream_id,
+            has_receive: !receive_is_closed,
             receive_stream: ReceiveStream::new(
                 receive_is_closed,
                 config.incoming_connection_flow_controller,
                 config.initial_receive_window,
                 config.desired_flow_control_window,
             ),
+            has_send: !send_is_closed,
             send_stream: SendStream::new(
                 config.outgoing_connection_flow_controller,
                 send_is_closed,
@@ -220,6 +226,15 @@ impl StreamTrait for StreamImpl {
         frame: &MaxStreamData,
         events: &mut StreamEvents,
     ) -> Result<(), transport::Error> {
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.10
+        //# An endpoint that
+        //# receives a MAX_STREAM_DATA frame for a receive-only stream MUST
+        //# terminate the connection with error STREAM_STATE_ERROR.
+        if !self.has_send {
+            return Err(transport::Error::STREAM_STATE_ERROR
+                .with_reason("MAX_STREAM_DATA sent on receive-only stream"));
+        }
+
         self.send_stream.on_max_stream_data(frame, events)
     }
 

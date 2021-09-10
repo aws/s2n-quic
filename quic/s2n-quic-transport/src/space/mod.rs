@@ -761,6 +761,18 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
             payload = remaining;
         }
+
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#12.4
+        //# The payload of a packet that contains frames MUST contain at least
+        //# one frame, and MAY contain multiple frames and multiple frame types.
+        //# An endpoint MUST treat receipt of a packet containing no frames as a
+        //# connection error of type PROTOCOL_VIOLATION.
+        if processed_packet.frames == 0 {
+            return Err(transport::Error::PROTOCOL_VIOLATION
+                .with_reason("packet contained no frames")
+                .into());
+        }
+
         if is_path_validation_probing.is_probing() {
             path_manager.on_non_path_validation_probing_packet(
                 path_id,

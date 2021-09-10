@@ -190,11 +190,9 @@ impl<K: OneRttKey> KeySet<K> {
                 //# close the connection with a connection error of type
                 //# AEAD_LIMIT_REACHED and not process any more packets.
                 if self.decryption_error_count() > self.aead_integrity_limit {
-                    return Err(ProcessingError::ConnectionError(
-                        transport::Error::AEAD_LIMIT_REACHED.into(),
-                    ));
+                    return Err(transport::Error::AEAD_LIMIT_REACHED.into());
                 }
-                Err(ProcessingError::CryptoError(e))
+                Err(e.into())
             }
         }
     }

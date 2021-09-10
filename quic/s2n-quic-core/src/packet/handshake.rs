@@ -16,6 +16,7 @@ use crate::{
         },
         KeyPhase, Tag,
     },
+    transport,
     varint::VarInt,
 };
 use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue};
@@ -135,7 +136,7 @@ impl<'a> EncryptedHandshake<'a> {
     pub fn decrypt<C: HandshakeKey>(
         self,
         crypto: &C,
-    ) -> Result<CleartextHandshake<'a>, CryptoError> {
+    ) -> Result<CleartextHandshake<'a>, transport::Error> {
         let Handshake {
             version,
             destination_connection_id,
@@ -147,6 +148,18 @@ impl<'a> EncryptedHandshake<'a> {
         let (header, payload) = crate::crypto::decrypt(crypto, packet_number, payload)?;
 
         let header = header.into_less_safe_slice();
+
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2
+        //# The value
+        //# included prior to protection MUST be set to 0.  An endpoint MUST
+        //# treat receipt of a packet that has a non-zero value for these bits
+        //# after removing both packet and header protection as a connection
+        //# error of type PROTOCOL_VIOLATION.
+        if header[0] & super::long::RESERVED_BITS_MASK != 0 {
+            return Err(
+                transport::Error::PROTOCOL_VIOLATION.with_reason("reserved bits are non-zero")
+            );
+        }
 
         let destination_connection_id = destination_connection_id.get(header);
         let source_connection_id = source_connection_id.get(header);
