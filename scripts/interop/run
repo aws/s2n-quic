@@ -63,4 +63,6 @@ case "$@" in
      ;;
 esac
 
+echo $PWD
+echo $2
 python3 run.py --server s2n-quic --debug "$@"

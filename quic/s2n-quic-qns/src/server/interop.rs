@@ -263,6 +263,7 @@ impl Interop {
 pub struct MyConnectionContext {
     id: usize,
     packet_sent: u64,
+    updated: u64,
     stream_requests: u64,
 }
 
@@ -279,16 +280,18 @@ impl Subscriber for EventSubscriber {
         MyConnectionContext {
             id: self.0,
             packet_sent: 0,
+            updated: 0,
             stream_requests: 0,
         }
     }
 
     fn on_active_path_updated(
         &mut self,
-        _context: &mut Self::ConnectionContext,
+        context: &mut Self::ConnectionContext,
         meta: &events::ConnectionMeta,
         event: &events::ActivePathUpdated,
     ) {
+        context.updated += 1;
         info!("----------------------------- {:?} {:?}", meta.id, event);
     }
 

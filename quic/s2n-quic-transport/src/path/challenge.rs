@@ -104,16 +104,22 @@ impl Challenge {
         }
     }
 
-    pub fn on_timeout(&mut self, timestamp: Timestamp) {
+    /// Check and returns if the challenge was abandoned
+    pub fn on_timeout(&mut self, timestamp: Timestamp) -> bool {
         if self.abandon_timer.poll_expiration(timestamp).is_ready() {
-            self.abandon();
+            self.abandon()
+        } else {
+            false
         }
     }
 
-    pub fn abandon(&mut self) {
+    pub fn abandon(&mut self) -> bool {
         if self.is_pending() {
             self.state = State::Abandoned;
             self.abandon_timer.cancel();
+            true
+        } else {
+            false
         }
     }
 

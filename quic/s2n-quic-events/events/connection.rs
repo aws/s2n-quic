@@ -157,3 +157,9 @@ struct ConnectionIdUpdated<'a> {
     previous: ConnectionId<'a>,
     current: ConnectionId<'a>,
 }
+
+#[event("connectivity:path_challenge_abandoned")]
+/// Path challenge abandoned
+struct PathChallengeAbandoned<'a> {
+    path: Path<'a>,
+}

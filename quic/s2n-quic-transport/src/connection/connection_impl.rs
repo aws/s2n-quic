@@ -718,10 +718,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             connection_id_mapper.remove_initial_id(&self.event_context.internal_connection_id);
         }
 
-        self.path_manager.on_timeout(timestamp)?;
+        let mut publisher = self.event_context.publisher(timestamp, subscriber);
+        self.path_manager.on_timeout(timestamp, &mut publisher)?;
         self.local_id_registry.on_timeout(timestamp);
 
-        let mut publisher = self.event_context.publisher(timestamp, subscriber);
         self.space_manager.on_timeout(
             &mut self.local_id_registry,
             &mut self.path_manager,

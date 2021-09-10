@@ -532,9 +532,14 @@ impl<Config: endpoint::Config> Manager<Config> {
         Ok(())
     }
 
-    pub fn on_timeout(&mut self, timestamp: Timestamp) -> Result<(), connection::Error> {
-        for path in self.paths.iter_mut() {
-            path.on_timeout(timestamp);
+    pub fn on_timeout<Pub: event::ConnectionPublisher>(
+        &mut self,
+        timestamp: Timestamp,
+        publisher: &mut Pub,
+    ) -> Result<(), connection::Error> {
+        for (path_id, path) in self.paths.iter_mut().enumerate() {
+            // enumerate is 0-indexed, which matches the path_id definition
+            path.on_timeout(timestamp, Id(path_id as u8), publisher);
         }
 
         if self.active_path().failed_validation() {

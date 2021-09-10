@@ -176,9 +176,25 @@ impl<Config: endpoint::Config> Path<Config> {
         was_at_amplification_limit && !self.at_amplification_limit()
     }
 
+    // pub fn on_process_local_connection_id<Pub: event::ConnectionPublisher>(
     #[inline]
-    pub fn on_timeout(&mut self, timestamp: Timestamp) {
-        self.challenge.on_timeout(timestamp);
+    pub fn on_timeout<Pub: event::ConnectionPublisher>(
+        &mut self,
+        timestamp: Timestamp,
+        path_id: Id,
+        publisher: &mut Pub,
+    ) {
+        if self.challenge.on_timeout(timestamp) {
+            publisher.on_path_challenge_abandoned(event::builder::PathChallengeAbandoned {
+                path: event::builder::Path {
+                    local_addr: self.local_address().into_event(),
+                    local_cid: self.local_connection_id.into_event(),
+                    remote_addr: self.remote_address().into_event(),
+                    remote_cid: self.peer_connection_id.into_event(),
+                    id: path_id.into_event(),
+                },
+            });
+        }
         self.mtu_controller.on_timeout(timestamp);
     }
 
@@ -510,6 +526,7 @@ mod tests {
     use core::time::Duration;
     use s2n_quic_core::{
         connection, endpoint,
+        event::testing::Publisher,
         recovery::{CongestionController, RttEstimator},
         time::{Clock, NoopClock},
         transmission,
@@ -578,7 +595,11 @@ mod tests {
         assert!(path.challenge.is_pending());
 
         // Trigger:
-        path.on_timeout(expiration_time + Duration::from_millis(10));
+        path.on_timeout(
+            expiration_time + Duration::from_millis(10),
+            Id::new(1),
+            &mut Publisher::default(),
+        );
 
         // Expectation:
         assert!(!path.is_challenge_pending());
@@ -636,7 +657,11 @@ mod tests {
         let expiration_time = helper_challenge.now + helper_challenge.abandon_duration;
 
         // Trigger:
-        path.on_timeout(expiration_time + Duration::from_millis(10));
+        path.on_timeout(
+            expiration_time + Duration::from_millis(10),
+            Id::new(1),
+            &mut Publisher::default(),
+        );
 
         // Expectation:
         assert!(!path.challenge.is_disabled());
