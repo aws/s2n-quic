@@ -409,8 +409,9 @@ fn initiate_path_challenge_if_new_path_is_not_validated() {
     // Trigger:
     helper
         .manager
-        .on_non_path_validation_probing_packet(
+        .on_processed_packet(
             helper.second_path_id,
+            path_validation::Probe::NonProbing,
             &mut random::testing::Generator(123),
             &mut Publisher::default(),
         )
@@ -502,8 +503,9 @@ fn dont_abandon_path_challenge_if_new_path_is_not_validated() {
     // Trigger:
     helper
         .manager
-        .on_non_path_validation_probing_packet(
+        .on_processed_packet(
             helper.second_path_id,
+            path_validation::Probe::NonProbing,
             &mut random::testing::Generator(123),
             &mut Publisher::default(),
         )
@@ -530,8 +532,9 @@ fn abandon_path_challenges_if_new_path_is_validated() {
     // Trigger:
     helper
         .manager
-        .on_non_path_validation_probing_packet(
+        .on_processed_packet(
             helper.second_path_id,
+            path_validation::Probe::NonProbing,
             &mut random::testing::Generator(123),
             &mut Publisher::default(),
         )
@@ -558,6 +561,60 @@ fn abandon_all_path_challenges() {
     assert!(!helper.manager[helper.zero_path_id].is_challenge_pending());
     assert!(!helper.manager[helper.first_path_id].is_challenge_pending());
     assert!(!helper.manager[helper.second_path_id].is_challenge_pending());
+}
+
+#[test]
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.2
+//= type=test
+//# An endpoint can migrate a connection to a new local address by
+//# sending packets containing non-probing frames from that address.
+//
+// receiving a path_validation::Probing::NonProbing should update path to active path
+fn non_probing_should_update_path_to_active_path() {
+    // Setup:
+    let mut helper = helper_manager_with_paths();
+    assert_eq!(helper.manager.active, helper.first_path_id.0);
+
+    // Trigger:
+    helper
+        .manager
+        .on_processed_packet(
+            helper.second_path_id,
+            path_validation::Probe::NonProbing,
+            &mut random::testing::Generator(123),
+            &mut Publisher::default(),
+        )
+        .unwrap();
+
+    // Expectation:
+    assert_eq!(helper.manager.active, helper.second_path_id.0);
+}
+
+#[test]
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.2
+//= type=test
+//# An endpoint can migrate a connection to a new local address by
+//# sending packets containing non-probing frames from that address.
+//
+// receiving a path_validation::Probing::Probing should NOT update path to active path
+fn probing_should_not_update_path_to_active_path() {
+    // Setup:
+    let mut helper = helper_manager_with_paths();
+    assert_eq!(helper.manager.active, helper.first_path_id.0);
+
+    // Trigger:
+    helper
+        .manager
+        .on_processed_packet(
+            helper.second_path_id,
+            path_validation::Probe::Probing,
+            &mut random::testing::Generator(123),
+            &mut Publisher::default(),
+        )
+        .unwrap();
+
+    // Expectation:
+    assert_eq!(helper.manager.active, helper.first_path_id.0);
 }
 
 #[test]
@@ -1108,6 +1165,8 @@ fn pending_paths_should_return_paths_pending_validation() {
     assert!(next.is_none());
 }
 
+// creates a test path_manager. also check out `helper_manager_with_paths`
+// which calls this helper with preset options
 fn helper_manager_with_paths_base(
     register_second_conn_id: bool,
     validate_path_zero: bool,

@@ -14,13 +14,10 @@ use s2n_quic_core::{
     crypto::{tls, tls::Session, CryptoSuite},
     event::{self, ConnectionPublisher as _, IntoEvent},
     frame::{
-        ack::AckRanges,
-        crypto::CryptoRef,
-        path_validation::{self, Probing},
-        stream::StreamRef,
-        Ack, ConnectionClose, DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams,
-        NewConnectionId, NewToken, PathChallenge, PathResponse, ResetStream, RetireConnectionId,
-        StopSending, StreamDataBlocked, StreamsBlocked,
+        ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
+        HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionId, NewToken,
+        PathChallenge, PathResponse, ResetStream, RetireConnectionId, StopSending,
+        StreamDataBlocked, StreamsBlocked,
     },
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
@@ -584,19 +581,18 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
         let mut processed_packet = ProcessedPacket::new(packet_number, datagram);
 
-        macro_rules! with_frame_type {
+        macro_rules! on_frame_processed {
             ($frame:ident) => {{
                 let frame_type = $frame.tag();
+                processed_packet.on_processed_frame(&$frame);
                 move |err: transport::Error| err.with_frame_type(VarInt::from_u8(frame_type))
             }};
         }
 
-        let mut is_path_validation_probing = path_validation::Probe::Probing;
         while !payload.is_empty() {
             let (frame, remaining) = payload
                 .decode::<FrameMut>()
                 .map_err(transport::Error::from)?;
-            is_path_validation_probing |= frame.path_validation();
 
             publisher.on_frame_received(event::builder::FrameReceived {
                 packet_header: event::builder::PacketHeader {
@@ -613,30 +609,28 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     //# can be used to increase the size of a packet.  Padding can be used to
                     //# increase an initial client packet to the minimum required size, or to
                     //# provide protection against traffic analysis for protected packets.
-                    processed_packet.on_processed_frame(&frame);
+                    let _ = on_frame_processed!(frame);
                 }
                 Frame::Ping(frame) => {
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.2
                     //# Endpoints can use PING frames (type=0x01) to verify that their peers
                     //# are still alive or to check reachability to the peer.
-                    processed_packet.on_processed_frame(&frame);
+                    let _ = on_frame_processed!(frame);
                 }
                 Frame::Crypto(frame) => {
-                    let on_error = with_frame_type!(frame);
+                    let on_error = on_frame_processed!(frame);
 
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5
                     //# Packets containing
                     //# discarded CRYPTO frames MUST be acknowledged because the packet has
                     //# been received and processed by the transport even though the CRYPTO
                     //# frame was discarded.
-                    processed_packet.on_processed_frame(&frame);
 
                     self.handle_crypto_frame(frame.into(), datagram, &mut path_manager[path_id])
                         .map_err(on_error)?;
                 }
                 Frame::Ack(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
+                    let on_error = on_frame_processed!(frame);
                     self.handle_ack_frame(
                         frame,
                         datagram,
@@ -649,8 +643,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     .map_err(on_error)?;
                 }
                 Frame::ConnectionClose(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
+                    let on_error = on_frame_processed!(frame);
                     self.handle_connection_close_frame(frame, datagram, &mut path_manager[path_id])
                         .map_err(on_error)?;
 
@@ -658,65 +651,53 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     return Err(frame.into());
                 }
                 Frame::Stream(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
+                    let on_error = on_frame_processed!(frame);
                     self.handle_stream_frame(frame.into()).map_err(on_error)?;
                 }
                 Frame::DataBlocked(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
+                    let on_error = on_frame_processed!(frame);
                     self.handle_data_blocked_frame(frame).map_err(on_error)?;
                 }
                 Frame::MaxData(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
+                    let on_error = on_frame_processed!(frame);
                     self.handle_max_data_frame(frame).map_err(on_error)?;
                 }
                 Frame::MaxStreamData(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
+                    let on_error = on_frame_processed!(frame);
                     self.handle_max_stream_data_frame(frame).map_err(on_error)?;
                 }
                 Frame::MaxStreams(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
+                    let on_error = on_frame_processed!(frame);
                     self.handle_max_streams_frame(frame).map_err(on_error)?;
                 }
                 Frame::ResetStream(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
+                    let on_error = on_frame_processed!(frame);
                     self.handle_reset_stream_frame(frame).map_err(on_error)?;
                 }
                 Frame::StopSending(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
+                    let on_error = on_frame_processed!(frame);
                     self.handle_stop_sending_frame(frame).map_err(on_error)?;
                 }
                 Frame::StreamDataBlocked(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
+                    let on_error = on_frame_processed!(frame);
                     self.handle_stream_data_blocked_frame(frame)
                         .map_err(on_error)?;
                 }
                 Frame::StreamsBlocked(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
+                    let on_error = on_frame_processed!(frame);
                     self.handle_streams_blocked_frame(frame).map_err(on_error)?;
                 }
                 Frame::NewToken(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
+                    let on_error = on_frame_processed!(frame);
                     self.handle_new_token_frame(frame).map_err(on_error)?;
                 }
                 Frame::NewConnectionId(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
+                    let on_error = on_frame_processed!(frame);
                     self.handle_new_connection_id_frame(frame, datagram, path_manager, publisher)
                         .map_err(on_error)?;
                 }
                 Frame::RetireConnectionId(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
+                    let on_error = on_frame_processed!(frame);
                     self.handle_retire_connection_id_frame(
                         frame,
                         datagram,
@@ -726,8 +707,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     .map_err(on_error)?;
                 }
                 Frame::PathChallenge(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
+                    let on_error = on_frame_processed!(frame);
 
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.3
                     //# An endpoint that receives a PATH_CHALLENGE on an active path SHOULD
@@ -739,15 +719,13 @@ pub trait PacketSpace<Config: endpoint::Config> {
                         .map_err(on_error)?;
                 }
                 Frame::PathResponse(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
+                    let on_error = on_frame_processed!(frame);
 
                     self.handle_path_response_frame(frame, path_manager)
                         .map_err(on_error)?;
                 }
                 Frame::HandshakeDone(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
+                    let on_error = on_frame_processed!(frame);
                     self.handle_handshake_done_frame(
                         frame,
                         datagram,
@@ -773,13 +751,12 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 .into());
         }
 
-        if is_path_validation_probing.is_probing() {
-            path_manager.on_non_path_validation_probing_packet(
-                path_id,
-                random_generator,
-                publisher,
-            )?;
-        }
+        path_manager.on_processed_packet(
+            path_id,
+            processed_packet.path_validation_probing,
+            random_generator,
+            publisher,
+        )?;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.1
         //# A packet MUST NOT be acknowledged until packet protection has been

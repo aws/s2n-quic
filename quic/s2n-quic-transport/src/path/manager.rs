@@ -13,6 +13,7 @@ use s2n_quic_core::{
     ack, connection,
     event::{self, IntoEvent},
     frame,
+    frame::path_validation,
     inet::DatagramInfo,
     packet::number::PacketNumberSpace,
     path::{Handle as _, MaxMtu},
@@ -83,7 +84,10 @@ impl<Config: endpoint::Config> Manager<Config> {
             peer_connection_id = self
                 .peer_id_registry
                 .consume_new_id_for_existing_path(new_path_id, peer_connection_id, publisher)
-                .ok_or(transport::Error::INTERNAL_ERROR)?;
+                .ok_or(
+                    // TODO: add an event if active path update fails due to insufficient ids
+                    transport::Error::INTERNAL_ERROR,
+                )?;
         };
         self[new_path_id].peer_connection_id = peer_connection_id;
 
@@ -442,17 +446,21 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
     }
 
-    /// Process a non-probing (path validation probing) packet.
-    pub fn on_non_path_validation_probing_packet<
-        Rnd: random::Generator,
-        Pub: event::ConnectionPublisher,
-    >(
+    /// Process a packet and update internal state.
+    ///
+    /// Check if the packet is a non-probing (path validation) packet and attempt to
+    /// update the active path for the connection.
+    pub fn on_processed_packet<Rnd: random::Generator, Pub: event::ConnectionPublisher>(
         &mut self,
         path_id: Id,
+        path_validation_probing: path_validation::Probe,
         random_generator: &mut Rnd,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        if self.active_path_id() != path_id {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.2
+        //# An endpoint can migrate a connection to a new local address by
+        //# sending packets containing non-probing frames from that address.
+        if !path_validation_probing.is_probing() && self.active_path_id() != path_id {
             self.update_active_path(path_id, random_generator, publisher)?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
