@@ -287,28 +287,98 @@ impl Subscriber for EventSubscriber {
 
     fn on_active_path_updated(
         &mut self,
-        context: &mut Self::ConnectionContext,
+        _context: &mut Self::ConnectionContext,
         meta: &events::ConnectionMeta,
         event: &events::ActivePathUpdated,
     ) {
-        context.updated += 1;
         info!("----------------------------- {:?} {:?}", meta.id, event);
     }
 
-    fn on_packet_sent(
+    fn on_path_created(
         &mut self,
-        context: &mut Self::ConnectionContext,
-        _meta: &events::ConnectionMeta,
-        _event: &events::PacketSent,
+        _context: &mut Self::ConnectionContext,
+        meta: &events::ConnectionMeta,
+        event: &events::PathCreated,
     ) {
-        context.packet_sent += 1;
+        info!("----------------------------- {:?} {:?}", meta.id, event);
     }
 
-    fn on_event<M: s2n_quic_core::event::Meta, E: s2n_quic_core::event::Event>(
+    fn on_path_challenge_abandoned(
         &mut self,
-        meta: &M,
-        event: &E,
+        _context: &mut Self::ConnectionContext,
+        meta: &events::ConnectionMeta,
+        event: &events::PathChallengeAbandoned,
     ) {
-        info!("{:?} {:?}", meta.endpoint_type(), event);
+        info!("----------------------------- {:?} {:?}", meta.id, event);
     }
+
+    fn on_path_challenge_validated(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        meta: &events::ConnectionMeta,
+        event: &events::PathChallengeValidated,
+    ) {
+        info!("----------------------------- {:?} {:?}", meta.id, event);
+    }
+
+    fn on_packet_lost(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        meta: &events::ConnectionMeta,
+        event: &events::PacketLost,
+    ) {
+        info!("----------------------------- {:?} {:?}", meta.id, event);
+    }
+
+    fn on_frame_sent(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        _meta: &events::ConnectionMeta,
+        event: &events::FrameSent,
+    ) {
+        if let events::PacketType::OneRtt { number, .. } = event.packet_header.packet_type {
+            info!(
+                "---->>>> frame_sent path_id: {}, packet_num: {}, type: {:?}",
+                event.path_id, number, event.frame
+            );
+        }
+    }
+
+    fn on_frame_received(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        _meta: &events::ConnectionMeta,
+        event: &events::FrameReceived,
+    ) {
+        if let events::PacketType::OneRtt { number, .. } = event.packet_header.packet_type {
+            info!(
+                "<<<<<----- frame_received path_id: {}, packet_num: {}, type: {:?}",
+                event.path_id, number, event.frame
+            );
+        }
+    }
+    fn on_recovery_metrics(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        _meta: &events::ConnectionMeta,
+        event: &events::RecoveryMetrics,
+    ) {
+        info!("path_id: {}, smoothed_rtt: {:?}, latest_rtt: {:?}, bytes_in_flight: {}, rtt_variance: {:?}, max_ack_delay: {:?}, congestion_window: {}",
+            event.path_id,
+            event.smoothed_rtt,
+            event.latest_rtt,
+            event.bytes_in_flight,
+            event.rtt_variance,
+            event.max_ack_delay,
+            event.congestion_window
+        );
+    }
+
+    // fn on_event<M: s2n_quic_core::event::Meta, E: s2n_quic_core::event::Event>(
+    //     &mut self,
+    //     meta: &M,
+    //     event: &E,
+    // ) {
+    //     info!("{:?} {:?}", meta.endpoint_type(), event);
+    // }
 }

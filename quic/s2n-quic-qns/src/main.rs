@@ -24,7 +24,12 @@ async fn main() -> Result<()> {
     #[cfg(feature = "dhat")]
     let _dhat = dhat::Dhat::start_heap_profiling();
 
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .without_time()
+        .with_level(false)
+        .with_target(false)
+        .with_thread_ids(false)
+        .init();
 
     Arguments::from_args().run().await
 }
