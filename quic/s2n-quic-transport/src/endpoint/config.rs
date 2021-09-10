@@ -37,6 +37,8 @@ pub trait Config: 'static + Send + Sized + core::fmt::Debug {
     type EventSubscriber: event::Subscriber;
     /// The type by which paths are identified
     type PathHandle: path::Handle;
+    /// The path migration validator for the endpoint
+    type PathMigrationValidator: path::migration::Validator;
 
     /// The type of the local endpoint
     const ENDPOINT_TYPE: endpoint::Type;
@@ -74,4 +76,6 @@ pub struct Context<'a, Cfg: Config> {
     pub connection_close_formatter: &'a mut Cfg::ConnectionCloseFormatter,
 
     pub event_subscriber: &'a mut Cfg::EventSubscriber,
+
+    pub path_migration: &'a mut Cfg::PathMigrationValidator,
 }

@@ -88,6 +88,7 @@ pub enum SocketAddress {
 }
 
 impl SocketAddress {
+    #[inline]
     pub fn ip(&self) -> IpAddress {
         match self {
             SocketAddress::IpV4(addr) => IpAddress::Ipv4(*addr.ip()),
@@ -95,10 +96,19 @@ impl SocketAddress {
         }
     }
 
+    #[inline]
     pub fn port(&self) -> u16 {
         match self {
             SocketAddress::IpV4(addr) => addr.port(),
             SocketAddress::IpV6(addr) => addr.port(),
+        }
+    }
+
+    #[inline]
+    pub const fn range_type(&self) -> RangeType {
+        match self {
+            Self::IpV4(addr) => addr.range_type(),
+            Self::IpV6(addr) => addr.range_type(),
         }
     }
 
@@ -173,6 +183,21 @@ impl<'a> SocketAddressRef<'a> {
             Self::IpV6(addr) => SocketAddress::IpV6(*addr),
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RangeType {
+    Global,
+    Private,
+    Loopback,
+    LinkLocal,
+    Broadcast,
+    Documentation,
+    Shared,
+    IetfProtocolAssignment,
+    Reserved,
+    Benchmarking,
+    Unspecified,
 }
 
 #[cfg(any(test, feature = "std"))]

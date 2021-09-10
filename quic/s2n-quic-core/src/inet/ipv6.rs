@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::inet::{
-    unspecified::Unspecified, IpAddress, IpV4Address, SocketAddress, SocketAddressV4,
+    ip, ipv4::IpV4Address, unspecified::Unspecified, IpAddress, IpV4Address, SocketAddress,
+    SocketAddressV4,
 };
 use core::fmt;
 use s2n_codec::zerocopy::U16;
@@ -24,7 +25,7 @@ impl IpV6Address {
     };
 
     #[inline]
-    pub fn segments(&self) -> [u16; 8] {
+    pub const fn segments(&self) -> [u16; 8] {
         let octets = &self.octets;
         [
             u16::from_be_bytes([octets[0], octets[1]]),
@@ -46,6 +47,92 @@ impl IpV6Address {
                 IpV4Address::new([a, b, c, d]).into()
             }
             _ => self.into(),
+        }
+    }
+
+    /// Returns the [`ip::RangeType`] for the given address
+    ///
+    /// See the [IANA Registry](https://www.iana.org/assignments/ipv6-address-space/ipv6-address-space.xhtml)
+    /// for more details.
+    ///
+    /// ```
+    /// use s2n_quic_core::inet::{IpV6Address, ip::RangeType::*};
+    ///
+    /// assert_eq!(IpV6Address::from([0, 0, 0, 0, 0, 0, 0, 0]).range_type(), Unspecified);
+    /// assert_eq!(IpV6Address::from([0, 0, 0, 0, 0, 0, 0, 1]).range_type(), Loopback);
+    /// assert_eq!(IpV6Address::from([0xff0e, 0, 0, 0, 0, 0, 0, 0]).range_type(), Broadcast);
+    /// assert_eq!(IpV6Address::from([0xfe80, 0, 0, 0, 0, 0, 0, 0]).range_type(), LinkLocal);
+    /// assert_eq!(IpV6Address::from([0xfc02, 0, 0, 0, 0, 0, 0, 0]).range_type(), Private);
+    /// assert_eq!(IpV6Address::from([0x2001, 0xdb8, 0, 0, 0, 0, 0, 0]).range_type(), Documentation);
+    /// // IPv4-mapped address
+    /// assert_eq!(IpV6Address::from([0, 0, 0, 0, 0, 0xffff, 0xc00a, 0x2ff]).range_type(), Global);
+    /// ```
+    #[inline]
+    pub const fn range_type(self) -> ip::RangeType {
+        use ip::RangeType::*;
+
+        // https://www.iana.org/assignments/ipv6-address-space/ipv6-address-space.xhtml
+        match self.segments() {
+            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.2
+            //# The address 0:0:0:0:0:0:0:0 is called the unspecified address.
+            [0, 0, 0, 0, 0, 0, 0, 0] => Unspecified,
+
+            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.3
+            //# The unicast address 0:0:0:0:0:0:0:1 is called the loopback address.
+            [0, 0, 0, 0, 0, 0, 0, 1] => Loopback,
+
+            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.5.1
+            //# The format of the "IPv4-Compatible IPv6 address" is as
+            //# follows:
+            //#
+            //# |                80 bits               | 16 |      32 bits        |
+            //# +--------------------------------------+--------------------------+
+            //# |0000..............................0000|0000|    IPv4 address     |
+            //# +--------------------------------------+----+---------------------+
+
+            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.5.2
+            //# The format of the "IPv4-mapped IPv6
+            //# address" is as follows:
+            //#
+            //# |                80 bits               | 16 |      32 bits        |
+            //# +--------------------------------------+--------------------------+
+            //# |0000..............................0000|FFFF|    IPv4 address     |
+            //# +--------------------------------------+----+---------------------+
+            [0, 0, 0, 0, 0, 0, a, b] | [0, 0, 0, 0, 0, 0xffff, a, b] => {
+                let [c, d] = u16::to_be_bytes(b);
+                let [a, b] = u16::to_be_bytes(a);
+                IpV4Address {
+                    octets: [a, b, c, d],
+                }
+                .range_type()
+            }
+
+            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.7
+            //# binary 11111111 at the start of the address identifies the address
+            //# as being a multicast address.
+            [a, ..] if a & 0xff00 == 0xff00 => Broadcast,
+
+            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.6
+            //# Link-Local addresses have the following format:
+            //# |   10     |
+            //# |  bits    |         54 bits         |          64 bits           |
+            //# +----------+-------------------------+----------------------------+
+            //# |1111111010|           0             |       interface ID         |
+            //# +----------+-------------------------+----------------------------+
+            [a, ..] if a & 0xffc0 == 0xfe80 => LinkLocal,
+
+            //= https://www.rfc-editor.org/rfc/rfc4193.txt#8
+            //# The IANA has assigned the FC00::/7 prefix to "Unique Local Unicast".
+            [a, ..] if a & 0xfe00 == 0xfc00 => Private,
+
+            //= https://www.rfc-editor.org/rfc/rfc3849.txt#4
+            //# IANA is to record the allocation of the IPv6 global unicast address
+            //# prefix  2001:DB8::/32 as a documentation-only prefix  in the IPv6
+            //# address registry.
+            [0x2001, 0xdb8, ..] => Documentation,
+
+            // Everything else is considered globally-reachable
+            _ => Global,
         }
     }
 }
@@ -136,6 +223,11 @@ impl SocketAddressV6 {
             IpAddress::Ipv6(_) => self.into(),
         }
     }
+
+    #[inline]
+    pub const fn range_type(&self) -> ip::RangeType {
+        self.ip.range_type()
+    }
 }
 
 impl fmt::Debug for SocketAddressV6 {
@@ -166,10 +258,40 @@ impl From<[u8; IPV6_LEN]> for IpV6Address {
     }
 }
 
+impl From<[u16; IPV6_LEN / 2]> for IpV6Address {
+    #[inline]
+    fn from(octets: [u16; IPV6_LEN / 2]) -> Self {
+        macro_rules! convert {
+            ($($segment:ident),*) => {{
+                let [$($segment),*] = octets;
+                $(
+                    let $segment = u16::to_be_bytes($segment);
+                )*
+                Self {
+                    octets: [
+                        $(
+                            $segment[0],
+                            $segment[1],
+                        )*
+                    ]
+                }
+            }}
+        }
+        convert!(a, b, c, d, e, f, g, h)
+    }
+}
+
 impl From<IpV6Address> for [u8; IPV6_LEN] {
     #[inline]
     fn from(v: IpV6Address) -> Self {
         v.octets
+    }
+}
+
+impl From<IpV6Address> for [u16; IPV6_LEN / 2] {
+    #[inline]
+    fn from(v: IpV6Address) -> Self {
+        v.segments()
     }
 }
 

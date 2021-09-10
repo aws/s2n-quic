@@ -16,5 +16,6 @@ pub mod token;
 
 // These providers are not currently exposed to applications
 pub(crate) mod connection_close_formatter;
+pub(crate) mod path_migration;
 pub(crate) mod random;
 pub(crate) mod sync;

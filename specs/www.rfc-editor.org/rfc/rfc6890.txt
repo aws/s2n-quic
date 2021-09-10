@@ -1,0 +1,1291 @@
+
+
+
+
+
+
+Internet Engineering Task Force (IETF)                         M. Cotton
+Request for Comments: 6890                                     L. Vegoda
+BCP: 153                                                           ICANN
+Obsoletes: 4773, 5156, 5735, 5736                         R. Bonica, Ed.
+Category: Best Current Practice                         Juniper Networks
+ISSN: 2070-1721                                              B. Haberman
+                                                                     JHU
+                                                              April 2013
+
+
+                 Special-Purpose IP Address Registries
+
+Abstract
+
+   This memo reiterates the assignment of an IPv4 address block
+   (192.0.0.0/24) to IANA.  It also instructs IANA to restructure its
+   IPv4 and IPv6 Special-Purpose Address Registries.  Upon
+   restructuring, the aforementioned registries will record all special-
+   purpose address blocks, maintaining a common set of information
+   regarding each address block.
+
+   This memo obsoletes RFCs 4773, 5156, 5735, and 5736.
+
+Status of This Memo
+
+   This memo documents an Internet Best Current Practice.
+
+   This document is a product of the Internet Engineering Task Force
+   (IETF).  It represents the consensus of the IETF community.  It has
+   received public review and has been approved for publication by the
+   Internet Engineering Steering Group (IESG).  Further information on
+   BCPs is available in Section 2 of RFC 5741.
+
+   Information about the current status of this document, any errata,
+   and how to provide feedback on it may be obtained at
+   http://www.rfc-editor.org/info/rfc6890.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                 [Page 1]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+Copyright Notice
+
+   Copyright (c) 2013 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents
+   (http://trustee.ietf.org/license-info) in effect on the date of
+   publication of this document.  Please review these documents
+   carefully, as they describe your rights and restrictions with respect
+   to this document.  Code Components extracted from this document must
+   include Simplified BSD License text as described in Section 4.e of
+   the Trust Legal Provisions and are provided without warranty as
+   described in the Simplified BSD License.
+
+Table of Contents
+
+   1. Introduction ....................................................2
+   2. IANA Considerations .............................................3
+      2.1. Assignment of an IPv4 Address Block to IANA ................3
+      2.2. Restructuring of the IPv4 and IPv6 Special-Purpose
+           Address ....................................................4
+           2.2.1. Information Requirements ............................4
+           2.2.2. IPv4 Special-Purpose Address Registry Entries .......6
+           2.2.3. IPv6 Special-Purpose Address Registry Entries ......14
+   3. Security Considerations ........................................20
+   4. Acknowledgements ...............................................20
+   5. Informative References .........................................20
+
+1.  Introduction
+
+   In order to support new protocols and practices, the IETF
+   occasionally reserves an address block for a special purpose.  For
+   example, [RFC1122] reserves an IPv4 address block (0.0.0.0/8) to
+   represent the local (i.e., "this") network.  Likewise, [RFC4291]
+   reserves an IPv6 address block (fe80::/10) to represent link-scoped
+   unicast addresses.
+
+   Periodically, the IETF publishes an RFC that catalogs special-purpose
+   address blocks.  Currently, [RFC5735] catalogs all IPv4 special-
+   purpose address blocks and [RFC5156] catalogs all IPv6 special-
+   purpose address blocks.
+
+   [RFC5736] assigns an IPv4 address block (192.0.0.0/24) to IANA and
+   instructs IANA to allocate special-purpose address blocks from this
+   space.  [RFC5736] also instructs IANA to create an IPv4 Special-
+   Purpose Address Registry that records allocations from this address
+
+
+
+
+Cotton, et al.            Best Current Practice                 [Page 2]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+   space.  However, [RFC5736] does not instruct IANA to record special-
+   purpose address block reservations from outside of the aforementioned
+   space in the IPv4 Special-Purpose Address Registry.
+
+   Likewise, [RFC2928] assigns an IPv6 address block (2001:0000::/23) to
+   IANA and instructs IANA to allocate special-purpose address blocks
+   from this space.  [RFC4773] instructs IANA to create an IPv6 Special-
+   Purpose Address Registry that records allocations from this address
+   space.  However, [RFC4773] does not instruct IANA to record special-
+   purpose address block reservations from outside of the aforementioned
+   space in the IPv6 Special-Purpose Address Registry.
+
+   This memo reiterates the assignment of an IPv4 address block
+   (192.0.0.0/24) to IANA.  It also instructs IANA to restructure its
+   IPv4 and IPv6 Special-Purpose Address Registries.  Specifically, this
+   memo instructs IANA to record all special-purpose address blocks in
+   the aforementioned registries.  These include, but are not limited
+   to, IPv4 allocations from 192.0.0.0/24 and IPv6 allocations from
+   2001:0000::/23.  Furthermore, this memo defines:
+
+   o  a common set of information that the registries will maintain
+      regarding each special-purpose address block
+
+   o  a common set of requirements for future entries
+
+   When the aforementioned registries include all special-purpose
+   address blocks, [RFC5735] and [RFC5156] will become redundant with
+   the registries.  Therefore, this memo obsoletes [RFC5735] and
+   [RFC5156].  Because this memo reiterates the assignment of
+   192.0.0.0/24 to IANA, and because it restructures the IPv4 Special-
+   Purpose Address Registry, it obsoletes [RFC5736].  Finally, because
+   this memo restructures the IPv6 Special-Purpose Address Registry, it
+   obsoletes [RFC4773].
+
+2.  IANA Considerations
+
+2.1.  Assignment of an IPv4 Address Block to IANA
+
+   Table 7 of this document records the assignment of an IPv4 address
+   block (192.0.0.0/24) to IANA for IETF protocol assignments.  This
+   address allocation to IANA is intended to support IETF protocol
+   assignments.  A more general view of the roles of IANA with respect
+   to address allocation functions is documented in Sections 4.1 and 4.3
+   [RFC2860].
+
+   IANA has designated special-purpose address blocks in compliance with
+   [RFC2860].
+
+
+
+
+Cotton, et al.            Best Current Practice                 [Page 3]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+2.2.  Restructuring of the IPv4 and IPv6 Special-Purpose Address
+      Registries
+
+   IANA has restructured the following registries:
+
+      o  IPv4 Special-Purpose Address Registry
+
+      o  IPv6 Special-Purpose Address Registry
+
+   The IPv4 Special-Purpose Address Registry records all IPv4 special-
+   purpose address blocks.  These reservations include, but are not
+   limited to, allocations from the 192.0.0.0/24 address block.
+   Likewise, the IPv6 Special-Purpose Address Registry records all IPv6
+   special-purpose address blocks.  These reservations include, but are
+   not limited to, allocations from the 2001:0000::/23 address block.
+
+   Section 2.2.1 of this document describes information that both
+   registries will maintain for each entry.  Initially, IANA has
+   populated the IPv4 Special-Purpose Address Registry with information
+   taken from Section 2.2.2 of this document.  Likewise, IANA has
+   populated the IPv6 Special-Purpose Address Registry with information
+   taken from Section 2.2.3 of this document.
+
+   IANA will update the aforementioned registries as requested in the
+   "IANA Considerations" section of a document that has passed IETF
+   Review [RFC5226].  The "IANA Considerations" section must include all
+   of the information specified in Section 2.2.1 of this document.
+
+2.2.1.  Information Requirements
+
+   The IPv4 and IPv6 Special-Purpose Address Registries maintain the
+   following information regarding each entry:
+
+   o  Address Block - A block of IPv4 or IPv6 addresses that has been
+      registered for a special purpose.
+
+   o  Name - A descriptive name for the special-purpose address block.
+
+   o  RFC - The RFC through which the special-purpose address block was
+      requested.
+
+   o  Allocation Date - The date upon which the special-purpose address
+      block was allocated.
+
+   o  Termination Date - The date upon which the allocation is to be
+      terminated.  This field is applicable for limited-use allocations
+      only.
+
+
+
+
+Cotton, et al.            Best Current Practice                 [Page 4]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+   o  Source - A boolean value indicating whether an address from the
+      allocated special-purpose address block is valid when used as the
+      source address of an IP datagram that transits two devices.
+
+   o  Destination - A boolean value indicating whether an address from
+      the allocated special-purpose address block is valid when used as
+      the destination address of an IP datagram that transits two
+      devices.
+
+   o  Forwardable - A boolean value indicating whether a router may
+      forward an IP datagram whose destination address is drawn from the
+      allocated special-purpose address block between external
+      interfaces.
+
+   o  Global - A boolean value indicating whether an IP datagram whose
+      destination address is drawn from the allocated special-purpose
+      address block is forwardable beyond a specified administrative
+      domain.
+
+   o  Reserved-by-Protocol - A boolean value indicating whether the
+      special-purpose address block is reserved by IP, itself.  This
+      value is "TRUE" if the RFC that created the special-purpose
+      address block requires all compliant IP implementations to behave
+      in a special way when processing packets either to or from
+      addresses contained by the address block.
+
+   If the value of "Destination" is FALSE, the values of "Forwardable"
+   and "Global" must also be false.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                 [Page 5]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+2.2.2.  IPv4 Special-Purpose Address Registry Entries
+
+   Tables 1 though 16, below, represent entries with which IANA has
+   initially populated the IPv4 Special-Purpose Address Registry.
+
+              +----------------------+----------------------------+
+              | Attribute            | Value                      |
+              +----------------------+----------------------------+
+              | Address Block        | 0.0.0.0/8                  |
+              | Name                 | "This host on this network"|
+              | RFC                  | [RFC1122], Section 3.2.1.3 |
+              | Allocation Date      | September 1981             |
+              | Termination Date     | N/A                        |
+              | Source               | True                       |
+              | Destination          | False                      |
+              | Forwardable          | False                      |
+              | Global               | False                      |
+              | Reserved-by-Protocol | True                       |
+              +----------------------+----------------------------+
+
+                    Table 1: "This host on this network"
+
+                    +----------------------+---------------+
+                    | Attribute            | Value         |
+                    +----------------------+---------------+
+                    | Address Block        | 10.0.0.0/8    |
+                    | Name                 | Private-Use   |
+                    | RFC                  | [RFC1918]     |
+                    | Allocation Date      | February 1996 |
+                    | Termination Date     | N/A           |
+                    | Source               | True          |
+                    | Destination          | True          |
+                    | Forwardable          | True          |
+                    | Global               | False         |
+                    | Reserved-by-Protocol | False         |
+                    +----------------------+---------------+
+
+                       Table 2: Private-Use Networks
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                 [Page 6]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+                 +----------------------+----------------------+
+                 | Attribute            | Value                |
+                 +----------------------+----------------------+
+                 | Address Block        | 100.64.0.0/10        |
+                 | Name                 | Shared Address Space |
+                 | RFC                  | [RFC6598]            |
+                 | Allocation Date      | April 2012           |
+                 | Termination Date     | N/A                  |
+                 | Source               | True                 |
+                 | Destination          | True                 |
+                 | Forwardable          | True                 |
+                 | Global               | False                |
+                 | Reserved-by-Protocol | False                |
+                 +----------------------+----------------------+
+
+                       Table 3: Shared Address Space
+
+              +----------------------+----------------------------+
+              | Attribute            | Value                      |
+              +----------------------+----------------------------+
+              | Address Block        | 127.0.0.0/8                |
+              | Name                 | Loopback                   |
+              | RFC                  | [RFC1122], Section 3.2.1.3 |
+              | Allocation Date      | September 1981             |
+              | Termination Date     | N/A                        |
+              | Source               | False [1]                  |
+              | Destination          | False [1]                  |
+              | Forwardable          | False [1]                  |
+              | Global               | False [1]                  |
+              | Reserved-by-Protocol | True                       |
+              +----------------------+----------------------------+
+
+              [1] Several protocols have been granted exceptions to this
+                  rule.  For examples, see [RFC4379] and [RFC5884].
+
+                             Table 4: Loopback
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                 [Page 7]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+                    +----------------------+----------------+
+                    | Attribute            | Value          |
+                    +----------------------+----------------+
+                    | Address Block        | 169.254.0.0/16 |
+                    | Name                 | Link Local     |
+                    | RFC                  | [RFC3927]      |
+                    | Allocation Date      | May 2005       |
+                    | Termination Date     | N/A            |
+                    | Source               | True           |
+                    | Destination          | True           |
+                    | Forwardable          | False          |
+                    | Global               | False          |
+                    | Reserved-by-Protocol | True           |
+                    +----------------------+----------------+
+
+                            Table 5: Link Local
+
+                    +----------------------+---------------+
+                    | Attribute            | Value         |
+                    +----------------------+---------------+
+                    | Address Block        | 172.16.0.0/12 |
+                    | Name                 | Private-Use   |
+                    | RFC                  | [RFC1918]     |
+                    | Allocation Date      | February 1996 |
+                    | Termination Date     | N/A           |
+                    | Source               | True          |
+                    | Destination          | True          |
+                    | Forwardable          | True          |
+                    | Global               | False         |
+                    | Reserved-by-Protocol | False         |
+                    +----------------------+---------------+
+
+                       Table 6: Private-Use Networks
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                 [Page 8]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+            +----------------------+---------------------------------+
+            | Attribute            | Value                           |
+            +----------------------+---------------------------------+
+            | Address Block        | 192.0.0.0/24 [2]                |
+            | Name                 | IETF Protocol Assignments       |
+            | RFC                  | Section 2.1 of this document    |
+            | Allocation Date      | January 2010                    |
+            | Termination Date     | N/A                             |
+            | Source               | False                           |
+            | Destination          | False                           |
+            | Forwardable          | False                           |
+            | Global               | False                           |
+            | Reserved-by-Protocol | False                           |
+            +----------------------+---------------------------------+
+
+              [2] Not usable unless by virtue of a more specific
+                  reservation.
+
+                    Table 7: IETF Protocol Assignments
+
+             +----------------------+--------------------------------+
+             | Attribute            | Value                          |
+             +----------------------+--------------------------------+
+             | Address Block        | 192.0.0.0/29                   |
+             | Name                 | DS-Lite                        |
+             | RFC                  | [RFC6333]                      |
+             | Allocation Date      | June 2011                      |
+             | Termination Date     | N/A                            |
+             | Source               | True                           |
+             | Destination          | True                           |
+             | Forwardable          | True                           |
+             | Global               | False                          |
+             | Reserved-by-Protocol | False                          |
+             +----------------------+--------------------------------+
+
+                             Table 8: DS-Lite
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                 [Page 9]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+              +----------------------+----------------------------+
+              | Attribute            | Value                      |
+              +----------------------+----------------------------+
+              | Address Block        | 192.0.2.0/24               |
+              | Name                 | Documentation (TEST-NET-1) |
+              | RFC                  | [RFC5737]                  |
+              | Allocation Date      | January 2010               |
+              | Termination Date     | N/A                        |
+              | Source               | False                      |
+              | Destination          | False                      |
+              | Forwardable          | False                      |
+              | Global               | False                      |
+              | Reserved-by-Protocol | False                      |
+              +----------------------+----------------------------+
+
+                            Table 9: TEST-NET-1
+
+                  +----------------------+--------------------+
+                  | Attribute            | Value              |
+                  +----------------------+--------------------+
+                  | Address Block        | 192.88.99.0/24     |
+                  | Name                 | 6to4 Relay Anycast |
+                  | RFC                  | [RFC3068]          |
+                  | Allocation Date      | June 2001          |
+                  | Termination Date     | N/A                |
+                  | Source               | True               |
+                  | Destination          | True               |
+                  | Forwardable          | True               |
+                  | Global               | True               |
+                  | Reserved-by-Protocol | False              |
+                  +----------------------+--------------------+
+
+                       Table 10: 6to4 Relay Anycast
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 10]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+                    +----------------------+----------------+
+                    | Attribute            | Value          |
+                    +----------------------+----------------+
+                    | Address Block        | 192.168.0.0/16 |
+                    | Name                 | Private-Use    |
+                    | RFC                  | [RFC1918]      |
+                    | Allocation Date      | February 1996  |
+                    | Termination Date     | N/A            |
+                    | Source               | True           |
+                    | Destination          | True           |
+                    | Forwardable          | True           |
+                    | Global               | False          |
+                    | Reserved-by-Protocol | False          |
+                    +----------------------+----------------+
+
+                      Table 11: Private-Use Networks
+
+                    +----------------------+---------------+
+                    | Attribute            | Value         |
+                    +----------------------+---------------+
+                    | Address Block        | 198.18.0.0/15 |
+                    | Name                 | Benchmarking  |
+                    | RFC                  | [RFC2544]     |
+                    | Allocation Date      | March 1999    |
+                    | Termination Date     | N/A           |
+                    | Source               | True          |
+                    | Destination          | True          |
+                    | Forwardable          | True          |
+                    | Global               | False         |
+                    | Reserved-by-Protocol | False         |
+                    +----------------------+---------------+
+
+          Table 12: Network Interconnect Device Benchmark Testing
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 11]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+              +----------------------+----------------------------+
+              | Attribute            | Value                      |
+              +----------------------+----------------------------+
+              | Address Block        | 198.51.100.0/24            |
+              | Name                 | Documentation (TEST-NET-2) |
+              | RFC                  | [RFC5737]                  |
+              | Allocation Date      | January 2010               |
+              | Termination Date     | N/A                        |
+              | Source               | False                      |
+              | Destination          | False                      |
+              | Forwardable          | False                      |
+              | Global               | False                      |
+              | Reserved-by-Protocol | False                      |
+              +----------------------+----------------------------+
+
+                           Table 13: TEST-NET-2
+
+              +----------------------+----------------------------+
+              | Attribute            | Value                      |
+              +----------------------+----------------------------+
+              | Address Block        | 203.0.113.0/24             |
+              | Name                 | Documentation (TEST-NET-3) |
+              | RFC                  | [RFC5737]                  |
+              | Allocation Date      | January 2010               |
+              | Termination Date     | N/A                        |
+              | Source               | False                      |
+              | Destination          | False                      |
+              | Forwardable          | False                      |
+              | Global               | False                      |
+              | Reserved-by-Protocol | False                      |
+              +----------------------+----------------------------+
+
+                           Table 14: TEST-NET-3
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 12]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+                 +----------------------+----------------------+
+                 | Attribute            | Value                |
+                 +----------------------+----------------------+
+                 | Address Block        | 240.0.0.0/4          |
+                 | Name                 | Reserved             |
+                 | RFC                  | [RFC1112], Section 4 |
+                 | Allocation Date      | August 1989          |
+                 | Termination Date     | N/A                  |
+                 | Source               | False                |
+                 | Destination          | False                |
+                 | Forwardable          | False                |
+                 | Global               | False                |
+                 | Reserved-by-Protocol | True                 |
+                 +----------------------+----------------------+
+
+                     Table 15: Reserved for Future Use
+
+                 +----------------------+----------------------+
+                 | Attribute            | Value                |
+                 +----------------------+----------------------+
+                 | Address Block        | 255.255.255.255/32   |
+                 | Name                 | Limited Broadcast    |
+                 | RFC                  | [RFC0919], Section 7 |
+                 | Allocation Date      | October 1984         |
+                 | Termination Date     | N/A                  |
+                 | Source               | False                |
+                 | Destination          | True                 |
+                 | Forwardable          | False                |
+                 | Global               | False                |
+                 | Reserved-by-Protocol | False                |
+                 +----------------------+----------------------+
+
+                        Table 16: Limited Broadcast
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 13]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+2.2.3.  IPv6 Special-Purpose Address Registry Entries
+
+   Tables 17 through 28, below, represent entries with which the IANA
+   has initially populated the IPv6 Special-Purpose Address Registry.
+
+                   +----------------------+------------------+
+                   | Attribute            | Value            |
+                   +----------------------+------------------+
+                   | Address Block        | ::1/128          |
+                   | Name                 | Loopback Address |
+                   | RFC                  | [RFC4291]        |
+                   | Allocation Date      | February 2006    |
+                   | Termination Date     | N/A              |
+                   | Source               | False            |
+                   | Destination          | False            |
+                   | Forwardable          | False            |
+                   | Global               | False            |
+                   | Reserved-by-Protocol | True             |
+                   +----------------------+------------------+
+
+                        Table 17: Loopback Address
+
+                 +----------------------+---------------------+
+                 | Attribute            | Value               |
+                 +----------------------+---------------------+
+                 | Address Block        | ::/128              |
+                 | Name                 | Unspecified Address |
+                 | RFC                  | [RFC4291]           |
+                 | Allocation Date      | February 2006       |
+                 | Termination Date     | N/A                 |
+                 | Source               | True                |
+                 | Destination          | False               |
+                 | Forwardable          | False               |
+                 | Global               | False               |
+                 | Reserved-by-Protocol | True                |
+                 +----------------------+---------------------+
+
+                       Table 18: Unspecified Address
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 14]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+                +----------------------+---------------------+
+                | Attribute            | Value               |
+                +----------------------+---------------------+
+                | Address Block        | 64:ff9b::/96        |
+                | Name                 | IPv4-IPv6 Translat. |
+                | RFC                  | [RFC6052]           |
+                | Allocation Date      | October 2010        |
+                | Termination Date     | N/A                 |
+                | Source               | True                |
+                | Destination          | True                |
+                | Forwardable          | True                |
+                | Global               | True                |
+                | Reserved-by-Protocol | False               |
+                +----------------------+---------------------+
+
+                  Table 19: IPv4-IPv6 Translation Address
+
+                 +----------------------+---------------------+
+                 | Attribute            | Value               |
+                 +----------------------+---------------------+
+                 | Address Block        | ::ffff:0:0/96       |
+                 | Name                 | IPv4-mapped Address |
+                 | RFC                  | [RFC4291]           |
+                 | Allocation Date      | February 2006       |
+                 | Termination Date     | N/A                 |
+                 | Source               | False               |
+                 | Destination          | False               |
+                 | Forwardable          | False               |
+                 | Global               | False               |
+                 | Reserved-by-Protocol | True                |
+                 +----------------------+---------------------+
+
+                       Table 20: IPv4-Mapped Address
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 15]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+              +----------------------+----------------------------+
+              | Attribute            | Value                      |
+              +----------------------+----------------------------+
+              | Address Block        | 100::/64                   |
+              | Name                 | Discard-Only Address Block |
+              | RFC                  | [RFC6666]                  |
+              | Allocation Date      | June 2012                  |
+              | Termination Date     | N/A                        |
+              | Source               | True                       |
+              | Destination          | True                       |
+              | Forwardable          | True                       |
+              | Global               | False                      |
+              | Reserved-by-Protocol | False                      |
+              +----------------------+----------------------------+
+
+                       Table 21: Discard-Only Prefix
+
+              +----------------------+---------------------------+
+              | Attribute            | Value                     |
+              +----------------------+---------------------------+
+              | Address Block        | 2001::/23                 |
+              | Name                 | IETF Protocol Assignments |
+              | RFC                  | [RFC2928]                 |
+              | Allocation Date      | September 2000            |
+              | Termination Date     | N/A                       |
+              | Source               | False[1]                  |
+              | Destination          | False[1]                  |
+              | Forwardable          | False[1]                  |
+              | Global               | False[1]                  |
+              | Reserved-by-Protocol | False                     |
+              +----------------------+---------------------------+
+
+             [1] Unless allowed by a more specific allocation.
+
+                    Table 22: IETF Protocol Assignments
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 16]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+                    +----------------------+----------------+
+                    | Attribute            | Value          |
+                    +----------------------+----------------+
+                    | Address Block        | 2001::/32      |
+                    | Name                 | TEREDO         |
+                    | RFC                  | [RFC4380]      |
+                    | Allocation Date      | January 2006   |
+                    | Termination Date     | N/A            |
+                    | Source               | True           |
+                    | Destination          | True           |
+                    | Forwardable          | True           |
+                    | Global               | False          |
+                    | Reserved-by-Protocol | False          |
+                    +----------------------+----------------+
+
+                             Table 23: TEREDO
+
+                    +----------------------+----------------+
+                    | Attribute            | Value          |
+                    +----------------------+----------------+
+                    | Address Block        | 2001:2::/48    |
+                    | Name                 | Benchmarking   |
+                    | RFC                  | [RFC5180]      |
+                    | Allocation Date      | April 2008     |
+                    | Termination Date     | N/A            |
+                    | Source               | True           |
+                    | Destination          | True           |
+                    | Forwardable          | True           |
+                    | Global               | False          |
+                    | Reserved-by-Protocol | False          |
+                    +----------------------+----------------+
+
+                          Table 24: Benchmarking
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 17]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+                    +----------------------+---------------+
+                    | Attribute            | Value         |
+                    +----------------------+---------------+
+                    | Address Block        | 2001:db8::/32 |
+                    | Name                 | Documentation |
+                    | RFC                  | [RFC3849]     |
+                    | Allocation Date      | July 2004     |
+                    | Termination Date     | N/A           |
+                    | Source               | False         |
+                    | Destination          | False         |
+                    | Forwardable          | False         |
+                    | Global               | False         |
+                    | Reserved-by-Protocol | False         |
+                    +----------------------+---------------+
+
+                          Table 25: Documentation
+
+                     +----------------------+--------------+
+                     | Attribute            | Value        |
+                     +----------------------+--------------+
+                     | Address Block        | 2001:10::/28 |
+                     | Name                 | ORCHID       |
+                     | RFC                  | [RFC4843]    |
+                     | Allocation Date      | March 2007   |
+                     | Termination Date     | March 2014   |
+                     | Source               | False        |
+                     | Destination          | False        |
+                     | Forwardable          | False        |
+                     | Global               | False        |
+                     | Reserved-by-Protocol | False        |
+                     +----------------------+--------------+
+
+                             Table 26: ORCHID
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 18]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+                    +----------------------+---------------+
+                    | Attribute            | Value         |
+                    +----------------------+---------------+
+                    | Address Block        | 2002::/16 [2] |
+                    | Name                 | 6to4          |
+                    | RFC                  | [RFC3056]     |
+                    | Allocation Date      | February 2001 |
+                    | Termination Date     | N/A           |
+                    | Source               | True          |
+                    | Destination          | True          |
+                    | Forwardable          | True          |
+                    | Global               | N/A [2]       |
+                    | Reserved-by-Protocol | False         |
+                    +----------------------+---------------+
+
+                      [2] See [RFC3056] for details.
+
+                              Table 27: 6to4
+
+                     +----------------------+--------------+
+                     | Attribute            | Value        |
+                     +----------------------+--------------+
+                     | Address Block        | fc00::/7     |
+                     | Name                 | Unique-Local |
+                     | RFC                  | [RFC4193]    |
+                     | Allocation Date      | October 2005 |
+                     | Termination Date     | N/A          |
+                     | Source               | True         |
+                     | Destination          | True         |
+                     | Forwardable          | True         |
+                     | Global               | False        |
+                     | Reserved-by-Protocol | False        |
+                     +----------------------+--------------+
+
+                          Table 28: Unique-Local
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 19]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+                +----------------------+-----------------------+
+                | Attribute            | Value                 |
+                +----------------------+-----------------------+
+                | Address Block        | fe80::/10             |
+                | Name                 | Linked-Scoped Unicast |
+                | RFC                  | [RFC4291]             |
+                | Allocation Date      | February 2006         |
+                | Termination Date     | N/A                   |
+                | Source               | True                  |
+                | Destination          | True                  |
+                | Forwardable          | False                 |
+                | Global               | False                 |
+                | Reserved-by-Protocol | True                  |
+                +----------------------+-----------------------+
+
+                      Table 29: Linked-Scoped Unicast
+
+3.  Security Considerations
+
+   Security of the Internet's routing system relies on the ability to
+   authenticate an assertion of unique control of an address block.
+   Measures to authenticate such assertions rely on validation that the
+   address block forms part of an existing allocated address block and
+   that there is a trustable and unique reference in the IANA address
+   registries.
+
+   The proposed registry is intended to provide an authoritative source
+   of information regarding the currency and intended purpose of special
+   purpose address blocks that are designated from the IANA-administered
+   Special-Purpose registry.  This is a small step towards the creation
+   of a comprehensive registry framework that can be used as a trust
+   point for commencing a chain of address validation.  Consideration
+   should be given to IANA registry publication formats that are machine
+   parsable.  Additionally, consideration should be given to the use of
+   file signatures and associated certificate mechanisms to allow
+   applications to confirm that the registry contents are current and
+   that they have been published by the IANA.
+
+4.  Acknowledgements
+
+   The authors thank Geoff Huston and Randy Bush for their helpful
+   comments.  The authors also express their gratitude to an anonymous
+   donor, without whom this document would not have been written.
+
+5.  Informative References
+
+   [RFC0919]  Mogul, J., "Broadcasting Internet Datagrams", STD 5, RFC
+              919, October 1984.
+
+
+
+Cotton, et al.            Best Current Practice                [Page 20]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+   [RFC1112]  Deering, S., "Host extensions for IP multicasting", STD 5,
+              RFC 1112, August 1989.
+
+   [RFC1122]  Braden, R., Ed., "Requirements for Internet Hosts -
+              Communication Layers", STD 3, RFC 1122, October 1989.
+
+   [RFC1918]  Rekhter, Y., Moskowitz, B., Karrenberg, D., de Groot, G.,
+              and E. Lear, "Address Allocation for Private Internets",
+              BCP 5, RFC 1918, February 1996.
+
+   [RFC2544]  Bradner, S. and J. McQuaid, "Benchmarking Methodology for
+              Network Interconnect Devices", RFC 2544, March 1999.
+
+   [RFC2860]  Carpenter, B., Baker, F., and M. Roberts, "Memorandum of
+              Understanding Concerning the Technical Work of the
+              Internet Assigned Numbers Authority", RFC 2860, June 2000.
+
+   [RFC2928]  Hinden, R., Deering, S., Fink, R., and T. Hain, "Initial
+              IPv6 Sub-TLA ID Assignments", RFC 2928, September 2000.
+
+   [RFC3056]  Carpenter, B. and K. Moore, "Connection of IPv6 Domains
+              via IPv4 Clouds", RFC 3056, February 2001.
+
+   [RFC3068]  Huitema, C., "An Anycast Prefix for 6to4 Relay Routers",
+              RFC 3068, June 2001.
+
+   [RFC3849]  Huston, G., Lord, A., and P. Smith, "IPv6 Address Prefix
+              Reserved for Documentation", RFC 3849, July 2004.
+
+   [RFC3927]  Cheshire, S., Aboba, B., and E. Guttman, "Dynamic
+              Configuration of IPv4 Link-Local Addresses", RFC 3927, May
+              2005.
+
+   [RFC4193]  Hinden, R. and B. Haberman, "Unique Local IPv6 Unicast
+              Addresses", RFC 4193, October 2005.
+
+   [RFC4291]  Hinden, R. and S. Deering, "IP Version 6 Addressing
+              Architecture", RFC 4291, February 2006.
+
+   [RFC4379]  Kompella, K. and G. Swallow, "Detecting Multi-Protocol
+              Label Switched (MPLS) Data Plane Failures", RFC 4379,
+              February 2006.
+
+   [RFC4380]  Huitema, C., "Teredo: Tunneling IPv6 over UDP through
+              Network Address Translations (NATs)", RFC 4380, February
+              2006.
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 21]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+   [RFC4773]  Huston, G., "Administration of the IANA Special Purpose
+              IPv6 Address Block", RFC 4773, December 2006.
+
+   [RFC4843]  Nikander, P., Laganier, J., and F. Dupont, "An IPv6 Prefix
+              for Overlay Routable Cryptographic Hash Identifiers
+              (ORCHID)", RFC 4843, April 2007.
+
+   [RFC5156]  Blanchet, M., "Special-Use IPv6 Addresses", RFC 5156,
+              April 2008.
+
+   [RFC5180]  Popoviciu, C., Hamza, A., Van de Velde, G., and D.
+              Dugatkin, "IPv6 Benchmarking Methodology for Network
+              Interconnect Devices", RFC 5180, May 2008.
+
+   [RFC5226]  Narten, T. and H. Alvestrand, "Guidelines for Writing an
+              IANA Considerations Section in RFCs", BCP 26, RFC 5226,
+              May 2008.
+
+   [RFC5735]  Cotton, M. and L. Vegoda, "Special Use IPv4 Addresses",
+              RFC 5735, January 2010.
+
+   [RFC5736]  Huston, G., Cotton, M., and L. Vegoda, "IANA IPv4 Special
+              Purpose Address Registry", RFC 5736, January 2010.
+
+   [RFC5737]  Arkko, J., Cotton, M., and L. Vegoda, "IPv4 Address Blocks
+              Reserved for Documentation", RFC 5737, January 2010.
+
+   [RFC5884]  Aggarwal, R., Kompella, K., Nadeau, T., and G. Swallow,
+              "Bidirectional Forwarding Detection (BFD) for MPLS Label
+              Switched Paths (LSPs)", RFC 5884, June 2010.
+
+   [RFC6052]  Bao, C., Huitema, C., Bagnulo, M., Boucadair, M., and X.
+              Li, "IPv6 Addressing of IPv4/IPv6 Translators", RFC 6052,
+              October 2010.
+
+   [RFC6333]  Durand, A., Droms, R., Woodyatt, J., and Y. Lee, "Dual-
+              Stack Lite Broadband Deployments Following IPv4
+              Exhaustion", RFC 6333, August 2011.
+
+   [RFC6598]  Weil, J., Kuarsingh, V., Donley, C., Liljenstolpe, C., and
+              M. Azinger, "IANA-Reserved IPv4 Prefix for Shared Address
+              Space", BCP 153, RFC 6598, April 2012.
+
+   [RFC6666]  Hilliard, N. and D. Freedman, "A Discard Prefix for IPv6",
+              RFC 6666, August 2012.
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 22]
+
+RFC 6890           Special-Purpose Address Registries         April 2013
+
+
+Authors' Addresses
+
+   Michelle Cotton
+   Internet Corporation for Assigned Names and Numbers (ICANN)
+   12025 Waterfront Drive, Suite 300
+   Los Angeles, CA 90094-2536
+   USA
+
+   Phone: +310-823-9358
+   EMail: michelle.cotton@icann.org
+   URI:   http://www.icann.org/
+
+
+   Leo Vegoda
+   Internet Corporation for Assigned Names and Numbers (ICANN)
+   12025 Waterfront Drive, Suite 300
+   Los Angeles, CA 90094-2536
+   USA
+
+   Phone: +310-823-9358
+   EMail: leo.vegoda@icann.org
+   URI:   http://www.icann.org/
+
+
+   Ronald P Bonica (editor)
+   Juniper Networks
+   2251 Corporate Park Drive
+   Herndon, VA 20171
+   USA
+
+   EMail: rbonica@juniper.net
+
+
+   Brian Haberman
+   Johns Hopkins University (JHU) Applied Physics Lab
+   11100 Johns Hopkins Road
+   Laurel, MD 20723-6099
+   USA
+
+   EMail: brian@innovationslab.net
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 23]
+

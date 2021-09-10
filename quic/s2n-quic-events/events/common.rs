@@ -62,6 +62,24 @@ enum SocketAddress<'a> {
     IpV6 { ip: &'a [u8; 16], port: u16 },
 }
 
+impl<'a> SocketAddress<'a> {
+    #[inline]
+    pub fn ip(&self) -> &'a [u8] {
+        match self {
+            Self::IpV4 { ip, .. } => &ip[..],
+            Self::IpV6 { ip, .. } => &ip[..],
+        }
+    }
+
+    #[inline]
+    pub fn port(&self) -> u16 {
+        match self {
+            Self::IpV4 { port, .. } => *port,
+            Self::IpV6 { port, .. } => *port,
+        }
+    }
+}
+
 impl<'a> IntoEvent<api::SocketAddress<'a>> for &'a crate::inet::SocketAddress {
     #[inline]
     fn into_event(self) -> api::SocketAddress<'a> {
