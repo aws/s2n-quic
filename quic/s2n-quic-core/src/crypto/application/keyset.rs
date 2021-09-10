@@ -170,7 +170,7 @@ impl<K: OneRttKey> KeySet<K> {
 
                 Ok((packet, generation))
             }
-            Err(e) => {
+            Err(err) => {
                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
                 //# In addition to counting packets sent, endpoints MUST count the number
                 //# of received packets that fail authentication during the lifetime of a
@@ -192,7 +192,8 @@ impl<K: OneRttKey> KeySet<K> {
                 if self.decryption_error_count() > self.aead_integrity_limit {
                     return Err(transport::Error::AEAD_LIMIT_REACHED.into());
                 }
-                Err(e.into())
+
+                Err(err.into())
             }
         }
     }
