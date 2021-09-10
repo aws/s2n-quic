@@ -389,6 +389,15 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " Path challenge abandoned"]
+    pub struct PathValidationProbing {
+        pub frame: Frame,
+    }
+    impl Event for PathValidationProbing {
+        const NAME: &'static str = "connectivity:path_validation_probing";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " QUIC version"]
     pub struct VersionInformation<'a> {
         pub server_versions: &'a [u32],
@@ -1400,6 +1409,20 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Path challenge abandoned"]
+    pub struct PathValidationProbing {
+        pub frame: Frame,
+    }
+    impl IntoEvent<api::PathValidationProbing> for PathValidationProbing {
+        #[inline]
+        fn into_event(self) -> api::PathValidationProbing {
+            let PathValidationProbing { frame } = self;
+            api::PathValidationProbing {
+                frame: frame.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " QUIC version"]
     pub struct VersionInformation<'a> {
         pub server_versions: &'a [u32],
@@ -1816,6 +1839,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `PathValidationProbing` event is triggered"]
+        #[inline]
+        fn on_path_validation_probing(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &PathValidationProbing,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `VersionInformation` event is triggered"]
         #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
@@ -2117,6 +2152,16 @@ mod traits {
             (self.1).on_path_challenge_validated(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_path_validation_probing(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &PathValidationProbing,
+        ) {
+            (self.0).on_path_validation_probing(&mut context.0, meta, event);
+            (self.1).on_path_validation_probing(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
             (self.0).on_version_information(meta, event);
             (self.1).on_version_information(meta, event);
@@ -2324,6 +2369,8 @@ mod traits {
         fn on_path_challenge_abandoned(&mut self, event: builder::PathChallengeAbandoned);
         #[doc = "Publishes a `PathChallengeValidated` event to the publisher's subscriber"]
         fn on_path_challenge_validated(&mut self, event: builder::PathChallengeValidated);
+        #[doc = "Publishes a `PathValidationProbing` event to the publisher's subscriber"]
+        fn on_path_validation_probing(&mut self, event: builder::PathValidationProbing);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
         fn quic_version(&self) -> u32;
     }
@@ -2539,6 +2586,15 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_path_validation_probing(&mut self, event: builder::PathValidationProbing) {
+            let event = event.into_event();
+            self.subscriber
+                .on_path_validation_probing(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn quic_version(&self) -> u32 {
             self.quic_version
         }
@@ -2569,6 +2625,7 @@ pub mod testing {
         pub connection_id_updated: u32,
         pub path_challenge_abandoned: u32,
         pub path_challenge_validated: u32,
+        pub path_validation_probing: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -2744,6 +2801,14 @@ pub mod testing {
         ) {
             self.path_challenge_validated += 1;
         }
+        fn on_path_validation_probing(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::PathValidationProbing,
+        ) {
+            self.path_validation_probing += 1;
+        }
         fn on_version_information(
             &mut self,
             _meta: &api::EndpointMeta,
@@ -2809,6 +2874,7 @@ pub mod testing {
         pub connection_id_updated: u32,
         pub path_challenge_abandoned: u32,
         pub path_challenge_validated: u32,
+        pub path_validation_probing: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -2899,6 +2965,9 @@ pub mod testing {
         }
         fn on_path_challenge_validated(&mut self, _event: builder::PathChallengeValidated) {
             self.path_challenge_validated += 1;
+        }
+        fn on_path_validation_probing(&mut self, _event: builder::PathValidationProbing) {
+            self.path_validation_probing += 1;
         }
         fn quic_version(&self) -> u32 {
             1

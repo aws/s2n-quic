@@ -374,6 +374,15 @@ impl Subscriber for EventSubscriber {
         );
     }
 
+    fn on_path_validation_probing(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        _meta: &events::ConnectionMeta,
+        event: &events::PathValidationProbing,
+    ) {
+        info!("{:?}", event);
+    }
+
     // fn on_event<M: s2n_quic_core::event::Meta, E: s2n_quic_core::event::Event>(
     //     &mut self,
     //     meta: &M,

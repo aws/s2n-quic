@@ -598,6 +598,11 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 .decode::<FrameMut>()
                 .map_err(transport::Error::from)?;
             is_path_validation_probing |= frame.path_validation();
+            if is_path_validation_probing.is_probing() {
+                publisher.on_path_validation_probing(event::builder::PathValidationProbing {
+                    frame: frame.into_event(),
+                });
+            }
 
             publisher.on_frame_received(event::builder::FrameReceived {
                 packet_header: event::builder::PacketHeader {
@@ -762,7 +767,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
             payload = remaining;
         }
-        if is_path_validation_probing.is_probing() {
+        if !is_path_validation_probing.is_probing() {
             path_manager.on_non_path_validation_probing_packet(
                 path_id,
                 random_generator,

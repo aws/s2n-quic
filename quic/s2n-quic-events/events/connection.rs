@@ -169,3 +169,9 @@ struct PathChallengeAbandoned<'a> {
 struct PathChallengeValidated<'a> {
     path: Path<'a>,
 }
+
+#[event("connectivity:path_validation_probing")]
+/// Path validation probing
+struct PathValidationProbing {
+    frame: Frame,
+}
