@@ -474,6 +474,14 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             // will be silently discarded, but are a potential indication of a
                             // stateless reset from the peer
 
+                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
+                            //# Due to packet reordering or loss, a client might receive packets for
+                            //# a connection that are encrypted with a key it has not yet computed.
+                            //# The client MAY drop these packets, or MAY buffer them in anticipation
+                            //# of later packets that allow it to compute the key.
+                            //
+                            // Packets that fail decryption are discarded rather than buffered.
+
                             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
                             //# Endpoints MAY skip this check if any packet from a datagram is
                             //# successfully processed.  However, the comparison MUST be performed
