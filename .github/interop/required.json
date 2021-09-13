@@ -193,7 +193,7 @@
     "quic-go": ["client"],
     "quiche": [],
     "quicly": ["client"],
-    "xquic": ["client"]
+    "xquic": []
   },
   "handshakeloss": {
     "aioquic": [],
