@@ -148,6 +148,7 @@ mod tests {
     use crate::{path::MINIMUM_MTU, stateless_reset::token::testing::TEST_TOKEN_1};
 
     #[test]
+    #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
     fn gen_range_biased_test() {
         bolero::check!()
             .with_type()
@@ -164,6 +165,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
     fn generate_unpredictable_bits_test() {
         bolero::check!()
             .with_type::<(u8, u16, u16)>()
@@ -304,6 +306,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // This test breaks in CI but can't be reproduced locally - https://github.com/awslabs/s2n-quic/issues/867
     fn packet_encoding_test() {
         let mut buffer = [0; MINIMUM_MTU as usize];
 
