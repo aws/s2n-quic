@@ -30,6 +30,7 @@ bolero = "0.6"
 bolero-generator = { version = "0.6", default-features = false }
 criterion = { version = "0.3", features = ["html_reports"] }
 insta = "1"
+ip_network = "0.4.0"
 plotters = { version = "0.3", default-features = false, features = ["svg_backend", "line_series"] }
 s2n-codec = { version = "0.1", path = "../../common/s2n-codec", features = ["testing"] }
 

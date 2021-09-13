@@ -197,6 +197,7 @@ pub enum RangeType {
     IetfProtocolAssignment,
     Reserved,
     Benchmarking,
+    LocalId,
     Unspecified,
 }
 

@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::inet::{
-    ip, ipv4::IpV4Address, unspecified::Unspecified, IpAddress, IpV4Address, SocketAddress,
-    SocketAddressV4,
+    ip, ipv4::IpV4Address, unspecified::Unspecified, IpAddress, SocketAddress, SocketAddressV4,
 };
 use core::fmt;
 use s2n_codec::zerocopy::U16;
@@ -110,7 +109,7 @@ impl IpV6Address {
             //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.7
             //# binary 11111111 at the start of the address identifies the address
             //# as being a multicast address.
-            [a, ..] if a & 0xff00 == 0xff00 => Broadcast,
+            [0xff00..=0xffff, ..] => Broadcast,
 
             //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.6
             //# Link-Local addresses have the following format:
@@ -119,11 +118,11 @@ impl IpV6Address {
             //# +----------+-------------------------+----------------------------+
             //# |1111111010|           0             |       interface ID         |
             //# +----------+-------------------------+----------------------------+
-            [a, ..] if a & 0xffc0 == 0xfe80 => LinkLocal,
+            [0xfe80..=0xfebf, ..] => LinkLocal,
 
             //= https://www.rfc-editor.org/rfc/rfc4193.txt#8
             //# The IANA has assigned the FC00::/7 prefix to "Unique Local Unicast".
-            [a, ..] if a & 0xfe00 == 0xfc00 => Private,
+            [0xfc00..=0xfdff, ..] => Private,
 
             //= https://www.rfc-editor.org/rfc/rfc3849.txt#4
             //# IANA is to record the allocation of the IPv6 global unicast address
@@ -365,5 +364,63 @@ mod std_conversion {
             let addr = net::SocketAddrV6::new(ip, port, 0, 0);
             Ok(std::iter::once(addr.into()))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bolero::{check, generator::*};
+
+    /// Asserts the RangeType returned matches a known implementation
+    #[test]
+    fn range_type_test() {
+        let g = gen::<[u8; 16]>().map_gen(IpV6Address::from);
+        check!().with_generator(g).cloned().for_each(|subject| {
+            use ip::RangeType::*;
+
+            // the ipv4 ranges are tested elsewhere there so we just make sure the range types match
+            if let IpAddress::Ipv4(ipv4) = subject.unmap() {
+                // special-case loopback since ipv4 conversion doesn't check for it
+                if subject.segments() != [0, 0, 0, 0, 0, 0, 0, 1] {
+                    assert_eq!(ipv4.range_type(), subject.range_type());
+                    return;
+                }
+            }
+
+            let expected = std::net::Ipv6Addr::from(subject);
+            let network = ip_network::Ipv6Network::from(expected);
+
+            match subject.range_type() {
+                Global => {
+                    // Site-local addresses are deprecated but the `ip_network` still partitions
+                    // them out
+                    // See: https://datatracker.ietf.org/doc/html/rfc3879
+
+                    assert!(network.is_unicast_global() || network.is_unicast_site_local());
+                }
+                Private => {
+                    assert!(network.is_unique_local());
+                }
+                Loopback => {
+                    assert!(expected.is_loopback());
+                }
+                LinkLocal => {
+                    assert!(network.is_unicast_link_local());
+                }
+                Broadcast => {
+                    assert!(expected.is_multicast());
+                }
+                Documentation => {
+                    assert!(network.is_documentation());
+                }
+                Unspecified => {
+                    assert!(expected.is_unspecified());
+                }
+                Shared | IetfProtocolAssignment | Reserved | Benchmarking | LocalId => {
+                    unreachable!("{:?} is only IpV4", subject.range_type());
+                }
+            }
+        })
     }
 }

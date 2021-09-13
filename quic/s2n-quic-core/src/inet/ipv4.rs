@@ -37,7 +37,7 @@ impl IpV4Address {
     /// assert_eq!(IpV4Address::from([127, 0, 0, 1]).range_type(), Loopback);
     /// assert_eq!(IpV4Address::from([10, 0, 0, 1]).range_type(), Private);
     /// assert_eq!(IpV4Address::from([100, 64, 0, 1]).range_type(), Shared);
-    /// assert_eq!(IpV4Address::from([168, 254, 1, 2]).range_type(), LinkLocal);
+    /// assert_eq!(IpV4Address::from([169, 254, 1, 2]).range_type(), LinkLocal);
     /// assert_eq!(IpV4Address::from([192, 0, 0, 1]).range_type(), IetfProtocolAssignment);
     /// assert_eq!(IpV4Address::from([192, 0, 0, 9]).range_type(), Global);
     /// assert_eq!(IpV4Address::from([192, 0, 0, 10]).range_type(), Global);
@@ -45,7 +45,7 @@ impl IpV4Address {
     /// assert_eq!(IpV4Address::from([198, 18, 0, 0]).range_type(), Benchmarking);
     /// assert_eq!(IpV4Address::from([255, 255, 255, 255]).range_type(), Broadcast);
     /// assert_eq!(IpV4Address::from([240, 255, 255, 255]).range_type(), Reserved);
-    /// assert_eq!(IpV4Address::from([169, 254, 169, 253]).range_type(), Global);
+    /// assert_eq!(IpV4Address::from([168, 254, 169, 253]).range_type(), Global);
     /// ```
     #[inline]
     pub const fn range_type(self) -> ip::RangeType {
@@ -63,13 +63,14 @@ impl IpV4Address {
             //     by which the host learns its own IP address.
             //
             //     See also Section 3.3.6 for a non-standard use of {0,0}.
+            [0, 0, 0, 0] => Unspecified,
 
             // (b)  { 0, <Host-number> }
             //
             //     Specified host on this network.  It MUST NOT be sent,
             //     except as a source address as part of an initialization
             //     procedure by which the host learns its full IP address.
-            [0, _, _, _] => Unspecified,
+            [0, _, _, _] => LocalId,
 
             // NOTE: this RFC doesn't quite follow modern formatting so it doesn't parse with the
             // compliance tool
@@ -88,17 +89,17 @@ impl IpV4Address {
             //# 172.16.0.0      -   172.31.255.255  (172.16/12 prefix)
             //# 192.168.0.0     -   192.168.255.255 (192.168/16 prefix)
             [10, _, _, _] => Private,
-            [172, b, _, _] if 16 <= b && b < 32 => Private,
+            [172, 16..=31, _, _] => Private,
             [192, 168, _, _] => Private,
 
             //= https://www.rfc-editor.org/rfc/rfc6598.txt#7
             //# The Shared Address Space address range is 100.64.0.0/10.
-            [100, b, _, _] if b & 0b1100_0000 == 0b0100_0000 => Shared,
+            [100, 64..=127, _, _] => Shared,
 
             //= https://www.rfc-editor.org/rfc/rfc3927.txt#8
             //# The IANA has allocated the prefix 169.254/16 for the use described in
             //# this document.
-            [168, 254, _, _] => LinkLocal,
+            [169, 254, _, _] => LinkLocal,
 
             //= https://www.rfc-editor.org/rfc/rfc7723.txt#4.1
             //# +----------------------+-------------------------------------------+
@@ -139,7 +140,7 @@ impl IpV4Address {
             //# The network addresses 192.18.0.0 through 198.19.255.255 are have been
             //# assigned to the BMWG by the IANA for this purpose.
             // NOTE: this range should be 198.18.0.0/15 as corrected by https://www.rfc-editor.org/errata/eid423
-            [198, b, _, _] if b & 0xfe == 18 => Benchmarking,
+            [198, 18..=19, _, _] => Benchmarking,
 
             //= https://www.rfc-editor.org/rfc/rfc5737.txt#3
             //# The blocks 192.0.2.0/24 (TEST-NET-1), 198.51.100.0/24 (TEST-NET-2),
@@ -155,9 +156,10 @@ impl IpV4Address {
             [255, 255, 255, 255] => Broadcast,
 
             //= https://www.rfc-editor.org/rfc/rfc1112.txt#4
-            //# In Internet standard "dotted decimal" notation, host group addresses
-            //# range from 224.0.0.0 to 239.255.255.255.
-            [a, _, _, _] if a & 240 == 240 => Reserved,
+            //# Class E IP addresses, i.e.,
+            //# those with "1111" as their high-order four bits, are reserved for
+            //# future addressing modes.
+            [240..=255, _, _, _] => Reserved,
 
             // everything else is considered global
             _ => Global,
@@ -354,5 +356,73 @@ mod std_conversion {
             let addr = net::SocketAddrV4::new(ip, port);
             Ok(std::iter::once(addr.into()))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bolero::{check, generator::*};
+
+    /// Asserts the RangeType returned matches a known implementation
+    #[test]
+    fn range_type_test() {
+        let g = gen::<[u8; 4]>().map_gen(IpV4Address::from);
+        check!().with_generator(g).cloned().for_each(|subject| {
+            use ip::RangeType::*;
+
+            let expected = std::net::Ipv4Addr::from(subject);
+
+            // Several IP methods are blocked behind `feature(ip)`: https://github.com/rust-lang/rust/issues/27709
+            //
+            // Use the `ip_network` crate to fill any gaps
+            let network = ip_network::Ipv4Network::from(expected);
+
+            match subject.range_type() {
+                Global => {
+                    // ip_network has a bug in the `is_global` logic. Remove this once its fixed
+                    // and published
+                    // https://github.com/JakubOnderka/ip_network/pull/7
+                    if subject.octets == [192, 0, 0, 9] || subject.octets == [192, 0, 0, 10] {
+                        return;
+                    }
+
+                    assert!(network.is_global());
+                }
+                Private => {
+                    assert!(expected.is_private());
+                }
+                Loopback => {
+                    assert!(expected.is_loopback());
+                }
+                LinkLocal => {
+                    assert!(expected.is_link_local());
+                }
+                Broadcast => {
+                    assert!(expected.is_broadcast());
+                }
+                Documentation => {
+                    assert!(expected.is_documentation());
+                }
+                Shared => {
+                    assert!(network.is_shared_address_space());
+                }
+                IetfProtocolAssignment => {
+                    assert!(network.is_ietf_protocol_assignments());
+                }
+                Reserved => {
+                    assert!(network.is_reserved());
+                }
+                Benchmarking => {
+                    assert!(network.is_benchmarking());
+                }
+                LocalId => {
+                    assert!(network.is_local_identification());
+                }
+                Unspecified => {
+                    assert!(expected.is_unspecified());
+                }
+            }
+        })
     }
 }
