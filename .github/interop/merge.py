@@ -96,7 +96,7 @@ for pattern in args.patterns:
                         server = s2n_quic_new_version_name
 
                     servers.add(server)
- 
+
                     results[client].setdefault(server, {})
                     measurements[client].setdefault(server, {})
 
@@ -132,7 +132,7 @@ if args.prev_version:
                 if client != S2N_QUIC and server != S2N_QUIC:
                     index += 1
                     continue
-                    
+
                 servers.add(server)
 
                 results[client].setdefault(server, {})

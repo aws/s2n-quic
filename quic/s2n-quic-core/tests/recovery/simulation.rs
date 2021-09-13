@@ -73,7 +73,14 @@ struct Round {
 
 impl fmt::Debug for Round {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:>3}: cwnd: {}", self.number, self.cwnd)
+        // Print out packet count rather than bytes to normalize any differences between
+        // platforms.
+        //
+        // Floating point numbers are not guaranteed to be deterministic between CPU
+        // architectures, compilers, or libc implementations.
+        let packets = self.cwnd / MINIMUM_MTU as u32;
+
+        write!(f, "{:>3}: pkts: {}", self.number, packets)
     }
 }
 

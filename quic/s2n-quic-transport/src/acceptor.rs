@@ -26,7 +26,7 @@ impl Acceptor {
     ///   In this case the caller must retry polling as soon as a client
     ///   establishes a connection.
     ///   In order to notify the application of this condition,
-    ///   the method will save the [`Waker`] which is provided as part of the
+    ///   the method will save the [`core::task::Waker`] which is provided as part of the
     ///   [`Context`] parameter, and notify it as soon as retrying
     ///   the method will yield a different result.
     pub fn poll_accept(&mut self, context: &Context) -> Poll<Option<Connection>> {

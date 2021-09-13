@@ -16,8 +16,9 @@ use bytes::Bytes;
 use core::{convert::TryInto, fmt, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
+    application::Sni,
     crypto::{application::KeySet, tls, CryptoSuite},
-    event,
+    event::{self, IntoEvent},
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
         HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionId, NewToken,
@@ -27,7 +28,7 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     packet::{
         encoding::{PacketEncoder, PacketEncodingError},
-        number::{AsEvent as _, PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow},
+        number::{PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow},
         short::{CleartextShort, ProtectedShort, Short, SpinBit},
     },
     recovery::RttEstimator,
@@ -65,7 +66,7 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     //# another mechanism is used for agreeing on an application protocol,
     //# endpoints MUST use ALPN for this purpose.
     pub alpn: Bytes,
-    pub sni: Option<Bytes>,
+    pub sni: Option<Sni>,
     ping: flag::Ping,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager<Config>,
@@ -93,7 +94,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         now: Timestamp,
         stream_manager: AbstractStreamManager<Config::Stream>,
         ack_manager: AckManager,
-        sni: Option<Bytes>,
+        sni: Option<Sni>,
         alpn: Bytes,
     ) -> Self {
         let key_set = KeySet::new(key);
@@ -118,23 +119,21 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     }
 
     /// Returns true if the packet number has already been processed
-    pub fn is_duplicate<Pub: event::Publisher>(
+    pub fn is_duplicate<Pub: event::ConnectionPublisher>(
         &self,
         packet_number: PacketNumber,
         path_id: path::Id,
         publisher: &mut Pub,
     ) -> bool {
         let packet_check = self.processed_packet_numbers.check(packet_number);
-        if let Err(err) = packet_check {
-            publisher.on_duplicate_packet(event::builders::DuplicatePacket {
-                packet_header: event::builders::PacketHeader {
-                    packet_type: packet_number.space().into(),
-                    packet_number: packet_number.as_u64(),
-                    version: publisher.quic_version(),
-                }
-                .into(),
-                path_id: path_id.as_u8() as u64,
-                error: err.as_event(),
+        if let Err(error) = packet_check {
+            publisher.on_duplicate_packet(event::builder::DuplicatePacket {
+                packet_header: event::builder::PacketHeader {
+                    packet_type: packet_number.into_event(),
+                    version: Some(publisher.quic_version()),
+                },
+                path_id: path_id.into_event(),
+                error: error.into_event(),
             });
         }
         match packet_check {
@@ -225,18 +224,19 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             packet_number,
             outcome,
             context.timestamp,
+            context.ecn,
             &mut recovery_context,
         );
 
         Ok((outcome, buffer))
     }
 
-    pub fn on_transmit_close<'a>(
+    pub(super) fn on_transmit_close<'a>(
         &mut self,
         context: &mut ConnectionTransmissionContext<Config>,
         connection_close: &ConnectionClose,
         buffer: EncoderBuffer<'a>,
-    ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
+    ) -> Result<(transmission::Outcome, EncoderBuffer<'a>), PacketEncodingError<'a>> {
         let packet_number = self.tx_packet_numbers.next();
 
         let packet_number_encoder = self.packet_number_encoder();
@@ -282,7 +282,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                     )
                 })?;
 
-        Ok(buffer)
+        Ok((outcome, buffer))
     }
 
     /// Signals the connection was previously blocked by anti-amplification limits
@@ -327,7 +327,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout<Pub: event::Publisher>(
+    pub fn on_timeout<Pub: event::ConnectionPublisher>(
         &mut self,
         path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
@@ -391,7 +391,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     }
 
     /// Validate packets in the Application packet space
-    pub fn validate_and_decrypt_packet<'a, Pub: event::Publisher>(
+    pub fn validate_and_decrypt_packet<'a, Pub: event::ConnectionPublisher>(
         &mut self,
         protected: ProtectedShort<'a>,
         datagram: &DatagramInfo,
@@ -419,8 +419,8 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             datagram.timestamp + rtt_estimator.pto_period(1, PacketNumberSpace::ApplicationData),
         );
         if let Ok((_, Some(generation))) = decrypted {
-            publisher.on_key_update(event::builders::KeyUpdate {
-                key_type: event::common::KeyType::OneRtt { generation },
+            publisher.on_key_update(event::builder::KeyUpdate {
+                key_type: event::builder::KeyType::OneRtt { generation },
             });
         }
 
@@ -573,7 +573,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         Ok(())
     }
 
-    fn handle_ack_frame<A: AckRanges, Pub: event::Publisher>(
+    fn handle_ack_frame<A: AckRanges, Pub: event::ConnectionPublisher>(
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,
@@ -665,11 +665,12 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         Ok(())
     }
 
-    fn handle_new_connection_id_frame(
+    fn handle_new_connection_id_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: NewConnectionId,
         _datagram: &DatagramInfo,
         path_manager: &mut path::Manager<Config>,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         if path_manager.active_path().peer_connection_id.is_empty() {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
@@ -698,6 +699,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
             sequence_number,
             retire_prior_to,
             &stateless_reset_token,
+            publisher,
         )
     }
 

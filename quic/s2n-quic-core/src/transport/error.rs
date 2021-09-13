@@ -62,6 +62,10 @@ impl fmt::Debug for Error {
 
         d.field("code", &self.code.as_u64());
 
+        if let Some(description) = self.description() {
+            d.field("description", &description);
+        }
+
         if !self.reason.is_empty() {
             d.field("reason", &self.reason);
         }
@@ -317,11 +321,22 @@ impl_errors! {
 //#    Section 4.8 of [QUIC-TLS].
 
 impl Error {
-    #[inline]
     /// Creates a crypto-level `TransportError` from a TLS alert code.
+    #[inline]
     pub const fn crypto_error(code: u8) -> Self {
         Self::new(VarInt::from_u16(0x100 | (code as u16)))
             .with_frame_type(VarInt::from_u32(UNKNOWN_FRAME_TYPE))
+    }
+
+    /// If the [`Error`] contains a [`CryptoError`], it is returned
+    #[inline]
+    pub fn try_into_crypto_error(self) -> Option<CryptoError> {
+        let code = self.code.as_u64();
+        if (0x100..=0x1ff).contains(&code) {
+            Some(CryptoError::new(code as u8).with_reason(self.reason))
+        } else {
+            None
+        }
     }
 }
 
@@ -333,8 +348,8 @@ impl Error {
 //# (Section 19.19).
 
 impl Error {
-    #[inline]
     /// Creates an application-level `Error`
+    #[inline]
     pub const fn applicaton_error(code: VarInt) -> Self {
         // Application errors set `frame_type` to `None`
         Self::new(code)

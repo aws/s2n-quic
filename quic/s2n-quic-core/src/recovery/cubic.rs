@@ -57,7 +57,7 @@ enum FastRetransmission {
 }
 
 /// A congestion controller that implements "CUBIC for Fast Long-Distance Networks"
-/// as specified in https://tools.ietf.org/html/rfc8312. The Hybrid Slow Start algorithm
+/// as specified in <https://tools.ietf.org/html/rfc8312>. The Hybrid Slow Start algorithm
 /// is used for determining the slow start threshold.
 #[derive(Clone, Debug)]
 pub struct CubicCongestionController {
@@ -549,7 +549,7 @@ impl Cubic {
     //# where beta_cubic is the CUBIC multiplication decrease factor
     #[inline]
     fn w_cubic(&self, t: Duration) -> f32 {
-        C * (t.as_secs_f32() - self.k.as_secs_f32()).powf(3.0) + self.w_max as f32
+        C * (t.as_secs_f32() - self.k.as_secs_f32()).powi(3) + self.w_max as f32
     }
 
     //= https://tools.ietf.org/rfc/rfc8312#4.2

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod sliding_window;
-pub use sliding_window::*;
+pub use sliding_window::{SlidingWindow, SlidingWindowError};
 
 mod protected_packet_number;
 pub use protected_packet_number::ProtectedPacketNumber;

@@ -4,7 +4,7 @@
 use crate::endpoint;
 use alloc::collections::VecDeque;
 use s2n_quic_core::{
-    inet::ExplicitCongestionNotification, io::tx, packet, path, path::MINIMUM_MTU, random,
+    event, inet::ExplicitCongestionNotification, io::tx, packet, path, path::MINIMUM_MTU, random,
     stateless_reset, time,
 };
 
@@ -45,11 +45,29 @@ impl<Path: path::Handle> Dispatch<Path> {
         }
     }
 
-    pub fn on_transmit<Tx: tx::Queue<Handle = Path>>(&mut self, queue: &mut Tx) {
+    pub fn on_transmit<Tx: tx::Queue<Handle = Path>, Pub: event::EndpointPublisher>(
+        &mut self,
+        queue: &mut Tx,
+        publisher: &mut Pub,
+    ) {
         while let Some(transmission) = self.transmissions.pop_front() {
-            if queue.push(&transmission).is_err() {
-                self.transmissions.push_front(transmission);
-                return;
+            match queue.push(&transmission) {
+                Ok(tx::Outcome { len, .. }) => {
+                    publisher.on_endpoint_packet_sent(event::builder::EndpointPacketSent {
+                        packet_header: event::builder::PacketHeader {
+                            packet_type: event::builder::PacketType::StatelessReset,
+                            version: publisher.quic_version(),
+                        },
+                    });
+
+                    publisher.on_endpoint_datagram_sent(event::builder::EndpointDatagramSent {
+                        len: len as u16,
+                    });
+                }
+                Err(_) => {
+                    self.transmissions.push_front(transmission);
+                    return;
+                }
             }
         }
     }

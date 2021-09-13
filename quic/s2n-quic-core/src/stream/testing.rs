@@ -25,8 +25,9 @@ static DATA: Bytes = {
     Bytes::from_static(&INNER)
 };
 
-const DATA_LEN: usize = (DEFAULT_STREAM_LEN as usize) * 128;
-const DEFAULT_STREAM_LEN: u64 = 1024;
+// when running with miri, set the values lower to make execution less expensive
+const DATA_LEN: usize = (DEFAULT_STREAM_LEN as usize) * if cfg!(miri) { 1 } else { 128 };
+const DEFAULT_STREAM_LEN: u64 = if cfg!(miri) { DATA_MOD as _ } else { 1024 };
 const DATA_MOD: usize = 256; // Only the first 256 offsets of DATA are unique
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
@@ -40,7 +41,7 @@ pub struct Data {
 
 impl Default for Data {
     fn default() -> Self {
-        Self::new(DEFAULT_STREAM_LEN as u64)
+        Self::new(DEFAULT_STREAM_LEN)
     }
 }
 
@@ -192,6 +193,9 @@ mod tests {
                     assert_ne!(count, 0, "sender should return None if no chunks were sent");
                     receiver.receive(&buf[..count]);
                 }
+
+                assert!(sender.is_finished());
+                assert!(receiver.is_finished());
             })
     }
 }

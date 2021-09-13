@@ -14,6 +14,7 @@ use crate::{
         },
         KeyPhase, ProtectedKeyPhase, Tag,
     },
+    transport,
 };
 use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue};
 
@@ -52,6 +53,12 @@ const ENCODING_TAG: u8 = 0b0100_0000;
 //#    latency spin bit, set as described in Section 17.3.1.
 
 const SPIN_BIT_MASK: u8 = 0x20;
+
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.3.1
+//#  Reserved Bits:  The next two bits (those with a mask of 0x18) of byte
+//#      0 are reserved.
+
+const RESERVED_BITS_MASK: u8 = 0x18;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SpinBit {
@@ -193,7 +200,7 @@ impl<'a> ProtectedShort<'a> {
 }
 
 impl<'a> EncryptedShort<'a> {
-    pub fn decrypt<C: OneRttKey>(self, crypto: &C) -> Result<CleartextShort<'a>, CryptoError> {
+    pub fn decrypt<C: OneRttKey>(self, crypto: &C) -> Result<CleartextShort<'a>, transport::Error> {
         let Short {
             spin_bit,
             key_phase,
@@ -205,6 +212,17 @@ impl<'a> EncryptedShort<'a> {
         let (header, payload) = crate::crypto::decrypt(crypto, packet_number, payload)?;
 
         let header = header.into_less_safe_slice();
+
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.3.1
+        //# An endpoint MUST treat receipt of a
+        //# packet that has a non-zero value for these bits, after removing
+        //# both packet and header protection, as a connection error of type
+        //# PROTOCOL_VIOLATION.
+        if header[0] & RESERVED_BITS_MASK != 0 {
+            return Err(
+                transport::Error::PROTOCOL_VIOLATION.with_reason("reserved bits are non-zero")
+            );
+        }
 
         let destination_connection_id = destination_connection_id.get(header);
 

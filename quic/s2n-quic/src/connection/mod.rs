@@ -13,7 +13,7 @@ pub use acceptor::*;
 pub use handle::*;
 pub use s2n_quic_core::connection::Error;
 
-pub type Result<T> = core::result::Result<T, Error>;
+pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 pub struct Connection(Inner);
 
@@ -23,17 +23,8 @@ impl fmt::Debug for Connection {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum HandshakeStatus {
-    /// The handshake has not completed
-    Pending,
-
-    /// The handshake has finished
-    Complete,
-}
-
 impl Connection {
+    #[inline]
     pub(crate) const fn new(inner: Inner) -> Self {
         Self(inner)
     }
@@ -48,6 +39,7 @@ impl Connection {
     /// ```rust
     /// // TODO
     /// ```
+    #[inline]
     pub fn split(self) -> (Handle, StreamAcceptor) {
         let handle = Handle(self.0.clone());
         let acceptor = StreamAcceptor(self.0);

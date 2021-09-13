@@ -41,7 +41,7 @@ macro_rules! is_supported {
             //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.1
             //# Upon receiving a client initial with a supported version, the
             //# server logs this event with server_versions and chosen_version set
-            $publisher.on_version_information(event::builders::VersionInformation {
+            $publisher.on_version_information(event::builder::VersionInformation {
                 server_versions: &SUPPORTED_VERSIONS,
                 client_versions: &[],
                 chosen_version: Some($packet.version),
@@ -53,7 +53,7 @@ macro_rules! is_supported {
             //# client_versions to the single-element array containing the
             //# client's attempted version.  The absence of chosen_version implies
             //# no overlap was found.
-            $publisher.on_version_information(event::builders::VersionInformation {
+            $publisher.on_version_information(event::builder::VersionInformation {
                 server_versions: &SUPPORTED_VERSIONS,
                 client_versions: &[$packet.version],
                 chosen_version: None,
@@ -82,7 +82,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         }
     }
 
-    pub fn on_packet<Pub: event::Publisher>(
+    pub fn on_packet<Pub: event::EndpointPublisher>(
         &mut self,
         path: &Config::PathHandle,
         payload_len: usize,
@@ -161,16 +161,37 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         Err(Error)
     }
 
-    pub fn on_transmit<Tx: tx::Queue<Handle = Config::PathHandle>>(&mut self, queue: &mut Tx) {
+    pub fn on_transmit<
+        Tx: tx::Queue<Handle = Config::PathHandle>,
+        Pub: event::EndpointPublisher,
+    >(
+        &mut self,
+        queue: &mut Tx,
+        publisher: &mut Pub,
+    ) {
         // clients don't transmit version negotiation packets
         if Config::ENDPOINT_TYPE.is_client() {
             return;
         }
 
         while let Some(transmission) = self.transmissions.pop_front() {
-            if queue.push(&transmission).is_err() {
-                self.transmissions.push_front(transmission);
-                return;
+            match queue.push(&transmission) {
+                Ok(tx::Outcome { len, .. }) => {
+                    publisher.on_endpoint_packet_sent(event::builder::EndpointPacketSent {
+                        packet_header: event::builder::PacketHeader {
+                            packet_type: event::builder::PacketType::VersionNegotiation {},
+                            version: publisher.quic_version(),
+                        },
+                    });
+
+                    publisher.on_endpoint_datagram_sent(event::builder::EndpointDatagramSent {
+                        len: len as u16,
+                    });
+                }
+                Err(_) => {
+                    self.transmissions.push_front(transmission);
+                    return;
+                }
             }
         }
     }
@@ -336,7 +357,12 @@ mod tests {
             let remote_address = SocketAddress::default();
             let connection_info = ConnectionInfo::new(&remote_address);
             let (packet, _) = ProtectedPacket::decode(decoder, &connection_info, &3).unwrap();
-            $negotiator.on_packet(&$remote_address, $payload_len, &packet, &mut Publisher)
+            $negotiator.on_packet(
+                &$remote_address,
+                $payload_len,
+                &packet,
+                &mut Publisher::default(),
+            )
         }};
     }
 

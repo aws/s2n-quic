@@ -11,6 +11,7 @@ use bytes::Bytes;
 use core::{task::Poll, time::Duration};
 use s2n_quic_core::{
     counter::{self, Counter},
+    event,
     inet::ExplicitCongestionNotification,
     io::tx,
     time::{timer, Timer, Timestamp},
@@ -44,10 +45,11 @@ impl CloseSender {
         self.state.on_datagram_received(rtt, now);
     }
 
-    pub fn transmission<'a, Config: endpoint::Config>(
+    pub fn transmission<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>(
         &'a mut self,
         path: &'a mut Path<Config>,
-    ) -> Transmission<'a, Config> {
+        publisher: &'a mut Pub,
+    ) -> Transmission<'a, Config, Pub> {
         debug_assert!(
             self.has_transmission_interest(),
             "transmission should only be called when transmission interest is expressed"
@@ -63,6 +65,7 @@ impl CloseSender {
                 packet,
                 transmission,
                 path,
+                publisher,
             }
         } else {
             unreachable!(
@@ -116,13 +119,16 @@ impl transmission::interest::Provider for CloseSender {
     }
 }
 
-pub struct Transmission<'a, Config: endpoint::Config> {
+pub struct Transmission<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> {
     packet: &'a Bytes,
     transmission: &'a mut TransmissionState,
     path: &'a mut Path<Config>,
+    publisher: &'a mut Pub,
 }
 
-impl<'a, Config: endpoint::Config> tx::Message for Transmission<'a, Config> {
+impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> tx::Message
+    for Transmission<'a, Config, Pub>
+{
     type Handle = Config::PathHandle;
 
     #[inline]
@@ -165,6 +171,9 @@ impl<'a, Config: endpoint::Config> tx::Message for Transmission<'a, Config> {
 
         self.path.on_bytes_transmitted(len);
         *self.transmission = TransmissionState::Idle;
+
+        self.publisher
+            .on_datagram_sent(event::builder::DatagramSent { len: len as u16 });
 
         len
     }
@@ -299,6 +308,7 @@ mod tests {
     use super::*;
     use crate::path::testing::helper_path;
     use s2n_quic_core::{
+        event::testing::Publisher,
         io::tx::Message as _,
         path::MINIMUM_MTU,
         time::{testing::Clock, timer::Provider as _, Clock as _},
@@ -340,7 +350,9 @@ mod tests {
 
                 // transmit an initial packet
                 assert!(sender.can_transmit(path.transmission_constraint()));
-                sender.transmission(&mut path).write_payload(&mut buffer);
+                sender
+                    .transmission(&mut path, &mut Publisher::default())
+                    .write_payload(&mut buffer);
 
                 for (gap, packet_size) in events {
                     // get the next timer event
@@ -360,7 +372,9 @@ mod tests {
                     for _ in 0..3 {
                         let interest = sender.get_transmission_interest();
                         if interest.can_transmit(path.transmission_constraint()) {
-                            sender.transmission(&mut path).write_payload(&mut buffer);
+                            sender
+                                .transmission(&mut path, &mut Publisher::default())
+                                .write_payload(&mut buffer);
                             transmission_count += 1;
                         }
                     }

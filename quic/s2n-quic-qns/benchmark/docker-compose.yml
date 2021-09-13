@@ -30,11 +30,7 @@ services:
       - "server:193.167.100.100"
 
   server:
-    build:
-      context: ${ROOT_DIR}
-      dockerfile: ${ROOT_DIR}/quic/s2n-quic-qns/etc/Dockerfile.build
-      args:
-        release: "true"
+    image: awslabs/s2n-quic-qns
     container_name: server
     hostname: server
     stdin_open: true
@@ -48,6 +44,35 @@ services:
       - QNS_MODE=perf
       - SSLKEYLOGFILE=/logs/keys.log
       - QLOGDIR=/logs/qlog/
+      - TEST_TYPE=MEASUREMENT
+      - VERSION=$VERSION
+    depends_on:
+      - sim
+    cap_add:
+      - NET_ADMIN
+    ulimits:
+      memlock: 67108864
+    networks:
+      rightnet:
+        ipv4_address: 193.167.100.100
+        ipv6_address: fd00:cafe:cafe:100::100
+
+  server-main:
+    image: ghcr.io/awslabs/s2n-quic/s2n-quic-qns:main
+    container_name: server-main
+    hostname: server
+    stdin_open: true
+    tty: true
+    volumes:
+      - ${LOG_DIR}/server:/logs
+    environment:
+      - CRON=$CRON
+      - ROLE=server
+      - SERVER_PARAMS=$SERVER_PARAMS
+      - QNS_MODE=perf
+      - SSLKEYLOGFILE=/logs/keys.log
+      - QLOGDIR=/logs/qlog/
+      - TEST_TYPE=MEASUREMENT
       - VERSION=$VERSION
     depends_on:
       - sim
@@ -83,6 +108,7 @@ services:
       - UPLOAD_B=$UPLOAD_B
       - DURATION=$DURATION
       - RUST_LOG=info
+      - TEST_TYPE=MEASUREMENT
     depends_on:
       - sim
     cap_add:

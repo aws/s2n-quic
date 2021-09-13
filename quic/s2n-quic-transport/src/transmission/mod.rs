@@ -49,8 +49,10 @@ pub struct Transmission<'a, 'sub, Config: endpoint::Config, P: Payload> {
     pub transmission_mode: transmission::Mode,
     pub tx_packet_numbers: &'a mut TxPacketNumbers,
     pub path_id: path::Id,
-    pub publisher:
-        &'a mut event::PublisherSubscriber<'sub, <Config as endpoint::Config>::EventSubscriber>,
+    pub publisher: &'a mut event::ConnectionPublisherSubscriber<
+        'sub,
+        <Config as endpoint::Config>::EventSubscriber,
+    >,
 }
 
 impl<'a, 'sub, Config: endpoint::Config, P: Payload> PacketPayloadEncoder

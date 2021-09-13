@@ -20,7 +20,7 @@ pub trait SplittableStream {
 
 macro_rules! impl_splittable_stream_api {
     () => {
-        /// Splits the stream into [`ReceiveStream`] and [`SendStream`] halves
+        /// Splits the stream into [`crate::stream::ReceiveStream`] and [`crate::stream::SendStream`] halves
         ///
         /// # Examples
         ///

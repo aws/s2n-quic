@@ -3,14 +3,19 @@
 
 macro_rules! impl_connection_api {
     (| $self:ident | $convert:expr) => {
-        /// Returns the [`Connection`] associated with the [`Stream`]
+        /// Returns the [`connection::Handle`](crate::connection::Handle) associated with the stream.
         ///
         /// # Examples
         ///
-        /// ```rust
-        /// // TODO
+        /// ```rust,no_run
+        /// # let stream: s2n_quic::stream::Stream = todo!();
+        /// #
+        /// let connection = stream.connection();
+        ///
+        /// println!("The stream's connection id is: {}", connection.id());
         /// ```
-        pub fn connection(&self) -> $crate::connection::Connection {
+        #[inline]
+        pub fn connection(&self) -> $crate::connection::Handle {
             let $self = self;
             $convert
         }

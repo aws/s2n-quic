@@ -3,13 +3,16 @@
 
 use crate::contexts::{PathValidationProbing, WriteContext};
 use alloc::collections::VecDeque;
-use s2n_codec::{encoder::EncoderBuffer, DecoderBufferMut};
+use s2n_codec::{
+    encoder::{EncoderBuffer, EncoderValue},
+    DecoderBufferMut,
+};
 use s2n_quic_core::{
     endpoint,
+    event::{self, IntoEvent},
     frame::{
         ack_elicitation::{AckElicitable, AckElicitation},
         congestion_controlled::CongestionControlled,
-        event::AsEvent,
         FrameMut,
     },
     packet::number::{PacketNumber, PacketNumberSpace},
@@ -258,12 +261,11 @@ impl<'a> WriteContext for MockWriteContext<'a> {
         self.frame_buffer.remaining_capacity()
     }
 
-    fn write_frame<
-        Frame: s2n_codec::EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
-    >(
-        &mut self,
-        frame: &Frame,
-    ) -> Option<PacketNumber> {
+    fn write_frame<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
+    where
+        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
+        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
+    {
         match self.transmission_constraint() {
             transmission::Constraint::AmplificationLimited => {
                 unreachable!("frames should not be written when we're amplification limited")
@@ -277,24 +279,20 @@ impl<'a> WriteContext for MockWriteContext<'a> {
         self.frame_buffer.write_frame(frame)
     }
 
-    fn write_fitted_frame<
-        Frame: s2n_codec::EncoderValue
-            + AckElicitable
-            + CongestionControlled
-            + PathValidationProbing
-            + AsEvent,
-    >(
-        &mut self,
-        frame: &Frame,
-    ) -> PacketNumber {
+    fn write_fitted_frame<Frame>(&mut self, frame: &Frame) -> PacketNumber
+    where
+        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
+        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
+    {
         self.write_frame(frame)
             .expect("frame should fit in current buffer")
     }
 
-    fn write_frame_forced<Frame: s2n_codec::EncoderValue + AckElicitable>(
-        &mut self,
-        frame: &Frame,
-    ) -> Option<PacketNumber> {
+    fn write_frame_forced<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
+    where
+        Frame: EncoderValue + AckElicitable + CongestionControlled,
+        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
+    {
         self.frame_buffer.write_frame(frame)
     }
 

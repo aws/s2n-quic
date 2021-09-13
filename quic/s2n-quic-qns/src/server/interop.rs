@@ -8,13 +8,12 @@ use futures::stream::StreamExt;
 use s2n_quic::{
     provider::{
         endpoint_limits,
-        event::{self, Subscriber},
+        event::{events, Subscriber},
         tls::default::certificate::{Certificate, IntoCertificate, IntoPrivateKey, PrivateKey},
     },
     stream::BidirectionalStream,
     Connection, Server,
 };
-use s2n_quic_core::event::{common, events};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -50,7 +49,12 @@ impl Interop {
         let www_dir: Arc<Path> = Arc::from(self.www_dir.as_path());
 
         while let Some(connection) = server.accept().await {
-            println!("Accepted a QUIC connection!");
+            let unspecified: std::net::SocketAddr = ([0, 0, 0, 0], 0).into();
+            println!(
+                "Accepted a QUIC connection from {} on {}",
+                connection.remote_addr().unwrap_or(unspecified),
+                connection.local_addr().unwrap_or(unspecified)
+            );
 
             // TODO check the ALPN of the connection to determine handler
 
@@ -62,6 +66,10 @@ impl Interop {
             loop {
                 match connection.accept_bidirectional_stream().await {
                     Ok(Some(stream)) => {
+                        let _ = connection.query_event_context_mut(
+                            |context: &mut MyConnectionContext| context.stream_requests += 1,
+                        );
+
                         let www_dir = www_dir.clone();
                         // spawn a task per stream
                         tokio::spawn(async move {
@@ -72,10 +80,18 @@ impl Interop {
                     }
                     Ok(None) => {
                         // the connection was closed without an error
+                        let context = connection
+                            .query_event_context(|context: &MyConnectionContext| *context)
+                            .expect("query should execute");
+                        println!("Final stats: {:?}", context);
                         return;
                     }
                     Err(err) => {
                         eprintln!("error while accepting stream: {}", err);
+                        let context = connection
+                            .query_event_context(|context: &MyConnectionContext| *context)
+                            .expect("query should execute");
+                        println!("Final stats: {:?}", context);
                         return;
                     }
                 }
@@ -189,7 +205,7 @@ impl Interop {
             .with_io(("::", self.port))?
             .with_tls(tls)?
             .with_endpoint_limits(limits)?
-            .with_event(EventProvider)?
+            .with_event(EventSubscriber(1))?
             .start()
             .unwrap();
 
@@ -243,22 +259,45 @@ impl Interop {
     }
 }
 
-pub struct EventSubscriber;
-
-impl Subscriber for EventSubscriber {
-    fn on_active_path_updated(&mut self, meta: &common::Meta, event: &events::ActivePathUpdated) {
-        info!("{:?} {:?}", meta.subject, event);
-    }
+#[derive(Debug, Clone, Copy)]
+pub struct MyConnectionContext {
+    id: usize,
+    packet_sent: u64,
+    stream_requests: u64,
 }
 
-#[derive(Debug, Default)]
-pub struct EventProvider;
+pub struct EventSubscriber(usize);
 
-impl event::Provider for EventProvider {
-    type Subscriber = EventSubscriber;
-    type Error = core::convert::Infallible;
+impl Subscriber for EventSubscriber {
+    type ConnectionContext = MyConnectionContext;
 
-    fn start(self) -> core::result::Result<Self::Subscriber, Self::Error> {
-        Ok(EventSubscriber)
+    fn create_connection_context(
+        &mut self,
+        _meta: &events::ConnectionMeta,
+        _info: &events::ConnectionInfo,
+    ) -> Self::ConnectionContext {
+        MyConnectionContext {
+            id: self.0,
+            packet_sent: 0,
+            stream_requests: 0,
+        }
+    }
+
+    fn on_active_path_updated(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        meta: &events::ConnectionMeta,
+        event: &events::ActivePathUpdated,
+    ) {
+        info!("{:?} {:?}", meta.id, event);
+    }
+
+    fn on_packet_sent(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        _meta: &events::ConnectionMeta,
+        _event: &events::PacketSent,
+    ) {
+        context.packet_sent += 1;
     }
 }

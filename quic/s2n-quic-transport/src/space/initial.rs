@@ -16,13 +16,13 @@ use core::{fmt, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{tls, CryptoSuite},
-    event,
+    event::{self, IntoEvent},
     frame::{ack::AckRanges, crypto::CryptoRef, Ack, ConnectionClose},
     inet::DatagramInfo,
     packet::{
         encoding::{PacketEncoder, PacketEncodingError},
         initial::{CleartextInitial, Initial, ProtectedInitial},
-        number::{AsEvent as _, PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow},
+        number::{PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow},
     },
     time::{timer, Timestamp},
     transport,
@@ -77,23 +77,21 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
     }
 
     /// Returns true if the packet number has already been processed
-    pub fn is_duplicate<Pub: event::Publisher>(
+    pub fn is_duplicate<Pub: event::ConnectionPublisher>(
         &self,
         packet_number: PacketNumber,
         path_id: path::Id,
         publisher: &mut Pub,
     ) -> bool {
         let packet_check = self.processed_packet_numbers.check(packet_number);
-        if let Err(err) = packet_check {
-            publisher.on_duplicate_packet(event::builders::DuplicatePacket {
-                packet_header: event::builders::PacketHeader {
-                    packet_type: packet_number.space().into(),
-                    packet_number: packet_number.as_u64(),
-                    version: publisher.quic_version(),
-                }
-                .into(),
-                path_id: path_id.as_u8() as u64,
-                error: err.as_event(),
+        if let Err(error) = packet_check {
+            publisher.on_duplicate_packet(event::builder::DuplicatePacket {
+                packet_header: event::builder::PacketHeader {
+                    packet_type: packet_number.into_event(),
+                    version: Some(publisher.quic_version()),
+                },
+                path_id: path_id.into_event(),
+                error: error.into_event(),
             });
         }
         match packet_check {
@@ -165,17 +163,23 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         let path_id = context.path_id;
         let (recovery_manager, mut recovery_context) =
             self.recovery(handshake_status, path_id, context.path_manager);
-        recovery_manager.on_packet_sent(packet_number, outcome, time_sent, &mut recovery_context);
+        recovery_manager.on_packet_sent(
+            packet_number,
+            outcome,
+            time_sent,
+            context.ecn,
+            &mut recovery_context,
+        );
 
         Ok((outcome, buffer))
     }
 
-    pub fn on_transmit_close<'a>(
+    pub(super) fn on_transmit_close<'a>(
         &mut self,
         context: &mut ConnectionTransmissionContext<Config>,
         connection_close: &ConnectionClose,
         buffer: EncoderBuffer<'a>,
-    ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
+    ) -> Result<(transmission::Outcome, EncoderBuffer<'a>), PacketEncodingError<'a>> {
         let packet_number = self.tx_packet_numbers.next();
 
         let packet_number_encoder = self.packet_number_encoder();
@@ -215,7 +219,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             buffer,
         )?;
 
-        Ok(buffer)
+        Ok((outcome, buffer))
     }
 
     /// Signals the connection was previously blocked by anti-amplification limits
@@ -241,7 +245,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout<Pub: event::Publisher>(
+    pub fn on_timeout<Pub: event::ConnectionPublisher>(
         &mut self,
         handshake_status: &HandshakeStatus,
         path_id: path::Id,
@@ -257,7 +261,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
     }
 
     /// Called before the Initial packet space is discarded
-    pub fn on_discard<Pub: event::Publisher>(
+    pub fn on_discard<Pub: event::ConnectionPublisher>(
         &mut self,
         path: &mut Path<Config>,
         path_id: path::Id,
@@ -305,7 +309,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
     }
 
     /// Validate packets in the Initial packet space
-    pub fn validate_and_decrypt_packet<'a, Pub: event::Publisher>(
+    pub fn validate_and_decrypt_packet<'a, Pub: event::ConnectionPublisher>(
         &self,
         protected: ProtectedInitial<'a>,
         path_id: path::Id,
@@ -440,7 +444,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
         Ok(())
     }
 
-    fn handle_ack_frame<A: AckRanges, Pub: event::Publisher>(
+    fn handle_ack_frame<A: AckRanges, Pub: event::ConnectionPublisher>(
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,

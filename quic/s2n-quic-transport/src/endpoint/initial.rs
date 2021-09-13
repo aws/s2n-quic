@@ -16,7 +16,7 @@ use core::convert::TryInto;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     crypto::{tls, tls::Endpoint as TLSEndpoint, CryptoSuite, InitialKey},
-    event,
+    event::{self, IntoEvent, Subscriber as _},
     inet::{datagram, DatagramInfo},
     packet::initial::ProtectedInitial,
     path::Handle as _,
@@ -120,7 +120,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .config
             .context()
             .stateless_reset_token_generator
-            .generate(&initial_connection_id);
+            .generate(initial_connection_id.as_bytes());
 
         let local_id_registry = self.connection_id_mapper.create_local_id_registry(
             internal_connection_id,
@@ -215,14 +215,23 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .new_congestion_controller(path_info);
 
         let quic_version = packet.version;
-        let mut publisher = event::PublisherSubscriber::new(
-            event::builders::Meta {
-                endpoint_type: Config::ENDPOINT_TYPE,
-                subject: event::common::Subject::Connection(internal_connection_id.into()),
-                timestamp: datagram.timestamp,
-            },
-            Some(quic_version),
+
+        let meta = event::builder::ConnectionMeta {
+            endpoint_type: Config::ENDPOINT_TYPE,
+            id: internal_connection_id.into(),
+            timestamp: datagram.timestamp,
+        };
+
+        let mut event_context = endpoint_context.event_subscriber.create_connection_context(
+            &meta.clone().into_event(),
+            &event::builder::ConnectionInfo {}.into_event(),
+        );
+
+        let mut publisher = event::ConnectionPublisherSubscriber::new(
+            meta,
+            quic_version,
             endpoint_context.event_subscriber,
+            &mut event_context,
         );
 
         let space_manager = PacketSpaceManager::new(
@@ -250,10 +259,11 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             quic_version,
             limits,
             max_mtu: self.max_mtu,
+            event_context,
+            event_subscriber: endpoint_context.event_subscriber,
         };
 
-        let mut connection =
-            <Config as endpoint::Config>::Connection::new(connection_parameters, &mut publisher);
+        let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters);
 
         let path_id = connection.on_datagram_received(
             &header.path,
@@ -261,7 +271,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             endpoint_context.congestion_controller,
             endpoint_context.random_generator,
             self.max_mtu,
-            &mut publisher,
+            endpoint_context.event_subscriber,
         )?;
 
         connection
@@ -269,8 +279,8 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 datagram,
                 path_id,
                 packet,
-                &mut publisher,
                 endpoint_context.random_generator,
+                endpoint_context.event_subscriber,
             )
             .map_err(|err| {
                 use connection::ProcessingError;
@@ -294,8 +304,8 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             path_id,
             endpoint_context.connection_id_format,
             remaining,
-            &mut publisher,
             endpoint_context.random_generator,
+            endpoint_context.event_subscriber,
         )?;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.3

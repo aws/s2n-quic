@@ -22,7 +22,7 @@ pub trait Queue {
     ///
     /// The index of the message is returned to enable further operations to be
     /// performed, e.g. encryption.
-    fn push<M: Message<Handle = Self::Handle>>(&mut self, message: M) -> Result<usize, Error>;
+    fn push<M: Message<Handle = Self::Handle>>(&mut self, message: M) -> Result<Outcome, Error>;
 
     /// Returns the pending messages as a mutable slice
     fn as_slice_mut(&mut self) -> &mut [Self::Entry];
@@ -42,6 +42,11 @@ pub trait Queue {
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
+}
+
+pub struct Outcome {
+    pub len: usize,
+    pub index: usize,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Eq)]
@@ -72,7 +77,7 @@ pub trait Entry {
 /// Instead of a concrete struct with eagerly evaluted fields,
 /// using trait callbacks ensure messages only need to compute what
 /// the actual transmission queue requires. For example, if the transmission
-/// queue cannot set ECN markings, it will not call the [`ecn`] function.
+/// queue cannot set ECN markings, it will not call the [`Message::ecn`] function.
 pub trait Message {
     type Handle: path::Handle;
 

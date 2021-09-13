@@ -8,7 +8,7 @@ use crate::{
 use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
-    event,
+    event::{self, ConnectionPublisher as _, IntoEvent as _},
     frame::ack_elicitation::AckElicitable,
     inet::ExplicitCongestionNotification,
     io::tx,
@@ -27,7 +27,7 @@ pub struct ConnectionTransmissionContext<'a, 'sub, Config: endpoint::Config> {
     pub ecn: ExplicitCongestionNotification,
     pub min_packet_len: Option<usize>,
     pub transmission_mode: transmission::Mode,
-    pub publisher: &'a mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
+    pub publisher: &'a mut event::ConnectionPublisherSubscriber<'sub, Config::EventSubscriber>,
 }
 
 impl<'a, 'sub, Config: endpoint::Config> ConnectionTransmissionContext<'a, 'sub, Config> {
@@ -174,7 +174,14 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 encoder,
             ) {
                 Ok((outcome, encoder)) => {
-                    *self.context.outcome += outcome;
+                    self.context
+                        .publisher
+                        .on_packet_sent(event::builder::PacketSent {
+                            packet_header: event::builder::PacketHeader {
+                                packet_type: outcome.packet_number.into_event(),
+                                version: Some(self.context.publisher.quic_version()),
+                            },
+                        });
 
                     if Config::ENDPOINT_TYPE.is_server()
                         && !outcome.ack_elicitation().is_ack_eliciting()
@@ -223,7 +230,14 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 encoder,
             ) {
                 Ok((outcome, encoder)) => {
-                    *self.context.outcome += outcome;
+                    self.context
+                        .publisher
+                        .on_packet_sent(event::builder::PacketSent {
+                            packet_header: event::builder::PacketHeader {
+                                packet_type: outcome.packet_number.into_event(),
+                                version: Some(self.context.publisher.quic_version()),
+                            },
+                        });
 
                     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
                     //# a client MUST discard Initial keys when it first sends a
@@ -314,7 +328,14 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 encoder,
             ) {
                 Ok((outcome, encoder)) => {
-                    *self.context.outcome += outcome;
+                    self.context
+                        .publisher
+                        .on_packet_sent(event::builder::PacketSent {
+                            packet_header: event::builder::PacketHeader {
+                                packet_type: outcome.packet_number.into_event(),
+                                version: Some(self.context.publisher.quic_version()),
+                            },
+                        });
                     encoder
                 }
                 Err(PacketEncodingError::PacketNumberTruncationError(encoder)) => {
@@ -340,6 +361,14 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
 
         let datagram_len = initial_capacity - encoder.capacity();
         self.context.path_mut().on_bytes_transmitted(datagram_len);
+
+        if datagram_len > 0 {
+            self.context
+                .publisher
+                .on_datagram_sent(event::builder::DatagramSent {
+                    len: datagram_len as u16,
+                });
+        }
 
         datagram_len
     }

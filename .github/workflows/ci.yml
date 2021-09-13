@@ -36,12 +36,12 @@ jobs:
           export VERSIONS=$(echo $RAW_VERSIONS | jq -scR 'rtrimstr("\n")|split(" ")|.')
           echo "::set-output name=versions::$VERSIONS"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.0
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
         with:
           name: 'compliance / report'
           status: 'pending'
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.0
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
         with:
           name: 'doc / report'
           status: 'pending'
@@ -141,7 +141,7 @@ jobs:
           command: doc
           args: --all-features --no-deps --workspace --exclude cargo-compliance --exclude compliance --exclude s2n-quic-qns
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.9
+      - uses: aws-actions/configure-aws-credentials@v1.5.11
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -155,7 +155,7 @@ jobs:
           URL="$CDN/$TARGET/s2n_quic/index.html"
           echo "::set-output name=URL::$URL"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.0
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
         with:
           name: 'doc / report'
           status: 'success'
@@ -262,14 +262,8 @@ jobs:
 
       - uses: camshaft/rust-cache@v1
 
-      # see https://github.com/rust-lang/cargo/issues/7916
       - name: Run cargo build
-        run: |
-          cd quic/s2n-quic-core && \
-            cargo build \
-              -Z features=dev_dep \
-              --no-default-features \
-              --target thumbv7m-none-eabi
+        run: ./scripts/test_no_std ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
   compliance:
     runs-on: ubuntu-latest
@@ -287,7 +281,7 @@ jobs:
       - uses: camshaft/rust-cache@v1
 
       - name: Cache cargo-compliance
-        uses: actions/cache@v2.1.5
+        uses: actions/cache@v2.1.6
         continue-on-error: true
         with:
           path: target/release/cargo-compliance
@@ -299,7 +293,7 @@ jobs:
       - name: Run cargo compliance
         run: ./scripts/compliance ${{ github.sha }}
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.9
+      - uses: aws-actions/configure-aws-credentials@v1.5.11
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -313,7 +307,7 @@ jobs:
           URL="$CDN/$TARGET"
           echo "::set-output name=URL::$URL"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.0
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
         with:
           name: 'compliance / report'
           status: 'success'
@@ -437,7 +431,7 @@ jobs:
           zip perf.zip *.script
           rm *.script
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.9
+      - uses: aws-actions/configure-aws-credentials@v1.5.11
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -451,7 +445,7 @@ jobs:
           URL="$CDN/$TARGET/index.html"
           echo "::set-output name=URL::$URL"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.0
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
         with:
           name: 'perf / report'
           status: 'success'
@@ -477,7 +471,7 @@ jobs:
         run: |
           ./scripts/recovery-sim
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.9
+      - uses: aws-actions/configure-aws-credentials@v1.5.11
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -491,7 +485,7 @@ jobs:
           URL="$CDN/$TARGET/index.html"
           echo "::set-output name=URL::$URL"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.0
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
         with:
           name: 'recovery-simulations / report'
           status: 'success'
@@ -505,3 +499,30 @@ jobs:
       - name: Check
         run: |
           ./scripts/copyright_check
+
+  # ensures the event codegen is up to date
+  events:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
+          profile: minimal
+          override: true
+          components: rustfmt
+
+      - uses: camshaft/rust-cache@v1
+
+      - name: Run events codegen
+        run: |
+          cargo run --bin s2n-quic-events
+
+      - name: Check to make sure the generated events are up-to-date
+        run: |
+          # If this fails you neeed to run `cargo run --bin s2n-quic-events`
+          git diff --exit-code

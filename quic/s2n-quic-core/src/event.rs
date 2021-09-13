@@ -1,49 +1,87 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{connection, endpoint, packet::number::PacketNumberSpace};
+use crate::connection;
 use core::time::Duration;
-use paste::paste;
 
-#[macro_use]
-mod macros;
+mod generated;
+pub use generated::*;
 
 /// All event types which can be emitted from this library.
 pub trait Event: core::fmt::Debug {
     const NAME: &'static str;
 }
 
-pub mod builders {
-    pub use super::{common_builders::*, event_builders::*};
+pub trait IntoEvent<Target> {
+    fn into_event(self) -> Target;
+}
+
+macro_rules! ident_into_event {
+    ($($name:ty),* $(,)?) => {
+        $(
+            impl IntoEvent<$name> for $name {
+                #[inline]
+                fn into_event(self) -> Self {
+                    self
+                }
+            }
+        )*
+    };
+}
+
+macro_rules! borrowed_into_event {
+    ($($name:ty),* $(,)?) => {
+        $(
+            impl<'a> IntoEvent<&'a $name> for &'a $name {
+                #[inline]
+                fn into_event(self) -> Self {
+                    self
+                }
+            }
+        )*
+    };
+}
+
+ident_into_event!(u8, u16, u32, u64, usize, Duration, bool, connection::Error);
+borrowed_into_event!([u8; 4], [u8; 16], [u8], [u32], [&'a [u8]]);
+
+impl<T: IntoEvent<U>, U> IntoEvent<Option<U>> for Option<T> {
+    #[inline]
+    fn into_event(self) -> Option<U> {
+        self.map(IntoEvent::into_event)
+    }
+}
+
+impl<'a> IntoEvent<&'a str> for &'a str {
+    #[inline]
+    fn into_event(self) -> Self {
+        self
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct Timestamp(crate::time::Timestamp);
 
 impl Timestamp {
-    pub(super) fn new(timestamp: crate::time::Timestamp) -> Self {
-        Timestamp(timestamp)
-    }
-
     /// The duration since the start of the s2n-quic process.
     ///
     /// Record the start `SystemTime` at the start of the program
     /// to derive the absolute time at which an event is emitted.
     ///
     /// ```rust
-    /// use s2n_quic_core::{
-    ///     endpoint,
-    ///     event,
-    ///     time::{Duration, Timestamp},
-    /// };
+    /// # use s2n_quic_core::{
+    /// #    endpoint,
+    /// #    event::{self, IntoEvent},
+    /// #    time::{Duration, Timestamp},
+    /// # };
     ///
     /// let start_time = std::time::SystemTime::now();
-    /// // Meta is included as part of each event
-    /// let meta: event::common::Meta = event::builders::Meta {
-    ///     endpoint_type: endpoint::Type::Server,
-    ///     subject: event::common::Subject::Connection(0),
-    ///     timestamp: unsafe { Timestamp::from_duration(Duration::from_secs(1) )},
-    /// }.into();
+    /// // `meta` is included as part of each event
+    /// # let meta: event::api::ConnectionMeta = event::builder::ConnectionMeta {
+    /// #     endpoint_type: endpoint::Type::Server,
+    /// #     id: 0,
+    /// #     timestamp: unsafe { Timestamp::from_duration(Duration::from_secs(1) )},
+    /// # }.into_event();
     /// let event_time = start_time + meta.timestamp.duration_since_start();
     /// ```
     pub fn duration_since_start(&self) -> Duration {
@@ -53,283 +91,144 @@ impl Timestamp {
     }
 }
 
-common!(
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
-    struct PacketHeader {
-        pub packet_type: common::PacketType,
-        pub packet_number: u64,
-        pub version: Option<u32>,
-    }
-
-    struct Path<'a> {
-        // TODO uncomment once we record the local Address/CID
-        // pub local_addr: common::SocketAddress<'a>,
-        // pub local_cid: common::ConnectionId<'a>,
-        pub remote_addr: common::SocketAddress<'a>,
-        pub remote_cid: common::ConnectionId<'a>,
-        pub id: u64,
-    }
-
-    struct ConnectionId<'a> {
-        pub bytes: &'a [u8],
-    }
-
-    enum SocketAddress<'a> {
-        IpV4 { ip: &'a [u8; 4], port: u16 },
-        IpV6 { ip: &'a [u8; 16], port: u16 },
-    }
-
-    enum DuplicatePacketError {
-        #[non_exhaustive]
-        /// The packet number was already received and is a duplicate.
-        Duplicate,
-
-        #[non_exhaustive]
-        /// The received packet number was outside the range of tracked packet numbers.
-        ///
-        /// This can happen when packets are heavily delayed or reordered. Currently, the maximum
-        /// amount of reordering is limited to 128 packets. For example, if packet number `142`
-        /// is received, the allowed range would be limited to `14-142`. If an endpoint received
-        /// packet `< 14`, it would trigger this event.
-        TooOld,
-    }
-
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.7
-    enum Frame {
-        #[non_exhaustive]
-        Padding,
-        #[non_exhaustive]
-        Ping,
-        #[non_exhaustive]
-        Ack,
-        #[non_exhaustive]
-        ResetStream,
-        #[non_exhaustive]
-        StopSending,
-        #[non_exhaustive]
-        Crypto { offset: u64, len: u16 },
-        #[non_exhaustive]
-        NewToken,
-        #[non_exhaustive]
-        Stream {
-            id: u64,
-            offset: u64,
-            len: u16,
-            is_fin: bool,
-        },
-        #[non_exhaustive]
-        MaxData,
-        #[non_exhaustive]
-        MaxStreamData,
-        #[non_exhaustive]
-        MaxStreams,
-        #[non_exhaustive]
-        DataBlocked,
-        #[non_exhaustive]
-        StreamDataBlocked,
-        #[non_exhaustive]
-        StreamsBlocked,
-        #[non_exhaustive]
-        NewConnectionId,
-        #[non_exhaustive]
-        RetireConnectionId,
-        #[non_exhaustive]
-        PathChallenge,
-        #[non_exhaustive]
-        PathResponse,
-        #[non_exhaustive]
-        ConnectionClose,
-        #[non_exhaustive]
-        HandshakeDone,
-        #[non_exhaustive]
-        Unknown,
-    }
-
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.2
-    enum PacketType {
-        Initial,
-        Handshake,
-        ZeroRtt,
-        OneRtt,
-        Retry,
-        VersionNegotiation,
-        StatelessReset,
-        Unknown,
-    }
-
-    enum KeyType {
-        Initial,
-        Handshake,
-        ZeroRtt,
-        OneRtt { generation: u16 },
-    }
-
-    /// A common identifier for aggregating events
-    ///
-    /// An event can occur in the context of an Endpoint or Connection
-    enum Subject {
-        Endpoint,
-
-        //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#4
-        //# it is recommended to use
-        //# QUIC's Original Destination Connection ID (ODCID, the CID chosen by
-        //# the client when first contacting the server)
-        /// This maps to an internal connection id, which is a stable identifier across CID changes.
-        Connection(u64),
-    }
-);
-
-impl Default for common::PacketType {
-    fn default() -> Self {
-        common::PacketType::Unknown
+impl IntoEvent<Timestamp> for crate::time::Timestamp {
+    #[inline]
+    fn into_event(self) -> Timestamp {
+        Timestamp(self)
     }
 }
 
-impl From<PacketNumberSpace> for common::PacketType {
-    fn from(packet_space: PacketNumberSpace) -> common::PacketType {
-        match packet_space {
-            PacketNumberSpace::Initial => common::PacketType::Initial,
-            PacketNumberSpace::Handshake => common::PacketType::Handshake,
-            PacketNumberSpace::ApplicationData => common::PacketType::OneRtt, // TODO: need to figure out how to capture ZeroRtt
+pub mod query {
+
+    //! This module provides `Query` and `QueryMut` traits, which are used for querying the
+    //! [`Subscriber::ConnectionContext`](crate::event::Subscriber::ConnectionContext)
+    //! on a Subscriber.
+
+    use core::marker::PhantomData;
+
+    pub trait Query {
+        fn execute(&mut self, context: &dyn core::any::Any) -> ControlFlow;
+    }
+
+    pub trait QueryMut {
+        fn execute_mut(&mut self, context: &mut dyn core::any::Any) -> ControlFlow;
+    }
+
+    /// Used to tell a query whether it should exit early or go on as usual.
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub enum ControlFlow {
+        Continue,
+        Break,
+    }
+
+    impl ControlFlow {
+        #[inline]
+        pub fn and_then(self, f: impl FnOnce() -> Self) -> Self {
+            match self {
+                Self::Continue => f(),
+                Self::Break => Self::Break,
+            }
         }
     }
+
+    /// A type that implements Query and QueryMut traits and only executes once.
+    ///
+    /// This will execute and short-circuit on the first match.
+    pub struct Once<F, EventContext, Outcome> {
+        query: Option<F>,
+        result: Option<Outcome>,
+        context: PhantomData<EventContext>,
+    }
+
+    impl<F, EventContext, Outcome> From<Once<F, EventContext, Outcome>> for Result<Outcome, Error> {
+        #[inline]
+        fn from(query: Once<F, EventContext, Outcome>) -> Self {
+            query.result.ok_or(Error::ContextTypeMismatch)
+        }
+    }
+
+    impl<F, ConnectionContext, Outcome> Once<F, ConnectionContext, Outcome>
+    where
+        F: FnOnce(&ConnectionContext) -> Outcome,
+        ConnectionContext: 'static,
+    {
+        #[inline]
+        pub fn new(query: F) -> Self {
+            Self {
+                query: Some(query),
+                result: None,
+                context: PhantomData,
+            }
+        }
+    }
+
+    impl<F, ConnectionContext, Outcome> Once<F, ConnectionContext, Outcome>
+    where
+        F: FnOnce(&mut ConnectionContext) -> Outcome,
+        ConnectionContext: 'static,
+    {
+        #[inline]
+        pub fn new_mut(query: F) -> Self {
+            Self {
+                query: Some(query),
+                result: None,
+                context: PhantomData,
+            }
+        }
+    }
+
+    impl<F, EventContext, Outcome> Query for Once<F, EventContext, Outcome>
+    where
+        F: FnOnce(&EventContext) -> Outcome,
+        EventContext: 'static,
+    {
+        fn execute(&mut self, context: &dyn core::any::Any) -> ControlFlow {
+            match context.downcast_ref::<EventContext>() {
+                Some(context) => {
+                    let query = self.query.take().expect("can only match once");
+                    self.result = Some(query(context));
+                    ControlFlow::Break
+                }
+                None => ControlFlow::Continue,
+            }
+        }
+    }
+
+    impl<F, EventContext, Outcome> QueryMut for Once<F, EventContext, Outcome>
+    where
+        F: FnOnce(&mut EventContext) -> Outcome,
+        EventContext: 'static,
+    {
+        fn execute_mut(&mut self, context: &mut dyn core::any::Any) -> ControlFlow {
+            match context.downcast_mut::<EventContext>() {
+                Some(context) => {
+                    let query = self.query.take().expect("can only match once");
+                    self.result = Some(query(context));
+                    ControlFlow::Break
+                }
+                None => ControlFlow::Continue,
+            }
+        }
+    }
+
+    #[non_exhaustive]
+    #[derive(Debug, Clone)]
+    /// Reason for the failed query.
+    pub enum Error {
+        /// The connection lock is poisoned and the connection unusable.
+        ConnectionLockPoisoned,
+
+        /// The expected query type failed to match any of the configured Subscriber's
+        /// context types.
+        ContextTypeMismatch,
+    }
+
+    impl core::fmt::Display for Error {
+        fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+            write!(f, "{:?}", self)
+        }
+    }
+
+    #[cfg(feature = "std")]
+    impl std::error::Error for Error {}
 }
-
-events!(
-    #[name = "transport::version_information"]
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.1
-    //# QUIC endpoints each have their own list of of QUIC versions they
-    //# support.
-    /// QUIC version
-    struct VersionInformation<'a> {
-        pub server_versions: &'a [u32],
-        pub client_versions: &'a [u32],
-        pub chosen_version: Option<u32>,
-    }
-
-    #[name = "transport:alpn_information"]
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.2
-    //# QUIC implementations each have their own list of application level
-    //# protocols and versions thereof they support.
-    /// Application level protocol
-    struct AlpnInformation<'a> {
-        pub server_alpns: &'a [&'a [u8]],
-        pub client_alpns: &'a [&'a [u8]],
-        pub chosen_alpn: &'a [u8],
-    }
-
-    #[name = "transport:packet_sent"]
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.5
-    /// Packet was sent
-    struct PacketSent {
-        pub packet_header: common::PacketHeader,
-    }
-
-    #[name = "transport:packet_received"]
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.6
-    /// Packet was received
-    struct PacketReceived {
-        pub packet_header: common::PacketHeader,
-    }
-
-    #[name = "connectivity:active_path_updated"]
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.8
-    /// Active path was updated
-    struct ActivePathUpdated<'a> {
-        // TODO: many events seem to require PacketHeader. Make it more ergonomic
-        // to include this field.
-        // pub packet_header: common::PacketHeader,
-        pub previous: common::Path<'a>,
-        pub active: common::Path<'a>,
-    }
-
-    #[name = "transport:frame_sent"]
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.5
-    // This diverges a bit from the qlog spec, which prefers to log data as part of the
-    // packet events.
-    /// Frame was sent
-    struct FrameSent {
-        pub packet_header: common::PacketHeader,
-        pub path_id: u64,
-        pub frame: common::Frame,
-    }
-
-    #[name = "transport:frame_received"]
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.6
-    // This diverges a bit from the qlog spec, which prefers to log data as part of the
-    // packet events.
-    /// Frame was received
-    struct FrameReceived {
-        pub packet_header: common::PacketHeader,
-        pub path_id: u64,
-        pub frame: common::Frame,
-    }
-
-    #[name = "recovery:packet_lost"]
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.4.5
-    /// Packet was lost
-    struct PacketLost<'a> {
-        pub packet_header: common::PacketHeader,
-        pub path: common::Path<'a>,
-        pub bytes_lost: u16,
-        pub is_mtu_probe: bool,
-    }
-
-    #[name = "recovery:metrics_updated"]
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.4.2
-    /// Recovery metrics updated
-    struct RecoveryMetrics {
-        pub path_id: u64,
-        pub min_rtt: Duration,
-        pub smoothed_rtt: Duration,
-        pub latest_rtt: Duration,
-        pub rtt_variance: Duration,
-        pub max_ack_delay: Duration,
-        pub pto_count: u32,
-        pub congestion_window: u32,
-        pub bytes_in_flight: u32,
-    }
-
-    #[name = "security:key_update"]
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.2.1
-    /// Crypto key updated
-    struct KeyUpdate {
-        pub key_type: common::KeyType,
-    }
-
-    #[name = "connectivity:connection_started"]
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.2
-    /// Connection started
-    struct ConnectionStarted<'a> {
-        pub path: common::Path<'a>,
-    }
-
-    #[name = "connectivity:connection_closed"]
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.3
-    /// Connection closed
-    struct ConnectionClosed {
-        pub error: connection::Error,
-    }
-
-    #[name = "transport:duplicate_packet"]
-    /// Duplicate packet received
-    struct DuplicatePacket {
-        pub packet_header: common::PacketHeader,
-        pub path_id: u64,
-        pub error: common::DuplicatePacketError,
-    }
-
-    #[name = "transport:datagram_received"]
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.11
-    /// Datagram received
-    struct DatagramReceived {
-        pub len: u16,
-    }
-
-    #[name = "transport:datagram_dropped"]
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.12
-    /// Datagram dropped
-    struct DatagramDropped {
-        pub len: u16,
-    }
-);

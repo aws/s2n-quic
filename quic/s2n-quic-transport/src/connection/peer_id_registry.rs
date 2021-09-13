@@ -16,12 +16,17 @@ use crate::{
         },
         InternalConnectionId,
     },
+    path,
     transmission::{self, WriteContext},
 };
 use alloc::rc::Rc;
 use core::cell::RefCell;
 use s2n_quic_core::{
-    ack, connection, frame, packet::number::PacketNumber, stateless_reset, transport,
+    ack, connection, endpoint,
+    event::{self, IntoEvent},
+    frame,
+    packet::number::PacketNumber,
+    stateless_reset, transport,
 };
 use smallvec::SmallVec;
 
@@ -431,7 +436,7 @@ impl PeerIdRegistry {
     /// Tries to consume a new peer_id if one is available.
     ///
     /// Register the stateless reset token once a connection ID is in use.
-    pub fn consume_new_id(&mut self) -> Option<connection::PeerId> {
+    fn consume_new_id_inner(&mut self) -> Option<connection::PeerId> {
         for id_info in self.registered_ids.iter_mut() {
             if id_info.status == New {
                 // Start tracking the stateless reset token
@@ -453,6 +458,32 @@ impl PeerIdRegistry {
         }
 
         None
+    }
+
+    /// Tries to consume a new peer_id if one is available for an existing path.
+    pub fn consume_new_id_for_existing_path<Pub: event::ConnectionPublisher>(
+        &mut self,
+        path_id: path::Id,
+        current_peer_connection_id: connection::PeerId,
+        publisher: &mut Pub,
+    ) -> Option<connection::PeerId> {
+        let new_id = self.consume_new_id_inner();
+        if let Some(new_id) = new_id {
+            debug_assert_ne!(current_peer_connection_id, new_id);
+
+            publisher.on_connection_id_updated(event::builder::ConnectionIdUpdated {
+                path_id: path_id.into_event(),
+                cid_consumer: endpoint::Location::Local,
+                previous: current_peer_connection_id.into_event(),
+                current: new_id.into_event(),
+            });
+        }
+        new_id
+    }
+
+    /// Tries to consume a new peer_id if one is available for a new path.
+    pub fn consume_new_id_for_new_path(&mut self) -> Option<connection::PeerId> {
+        self.consume_new_id_inner()
     }
 
     // Validate that the ACTIVE_CONNECTION_ID_LIMIT has not been exceeded
@@ -1003,7 +1034,7 @@ pub(crate) mod tests {
             .stateless_reset_map
             .remove(&TEST_TOKEN_2)
             .is_none());
-        assert_eq!(Some(id_2), reg.consume_new_id());
+        assert_eq!(Some(id_2), reg.consume_new_id_inner());
         reg.registered_ids[1].status = InUse;
         // this is an indirect way to test that we inserted a reset token when we consumed id_2
         assert!(reg
@@ -1025,7 +1056,7 @@ pub(crate) mod tests {
             Some(TEST_TOKEN_1),
         );
 
-        assert_eq!(None, reg.consume_new_id());
+        assert_eq!(None, reg.consume_new_id_inner());
     }
 
     #[test]

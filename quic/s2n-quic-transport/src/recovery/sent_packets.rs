@@ -4,7 +4,8 @@
 use crate::path;
 use core::convert::TryInto;
 use s2n_quic_core::{
-    frame::ack_elicitation::AckElicitation, packet::number::Map as PacketNumberMap, time::Timestamp,
+    frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification,
+    packet::number::Map as PacketNumberMap, time::Timestamp,
 };
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.1
@@ -26,6 +27,8 @@ pub struct SentPacketInfo {
     pub ack_elicitation: AckElicitation,
     /// The ID of the Path the packet was sent on
     pub path_id: path::Id,
+    /// The ECN marker (if any) sent on the datagram that contained this packet
+    pub ecn: ExplicitCongestionNotification,
 }
 
 impl SentPacketInfo {
@@ -35,6 +38,7 @@ impl SentPacketInfo {
         time_sent: Timestamp,
         ack_elicitation: AckElicitation,
         path_id: path::Id,
+        ecn: ExplicitCongestionNotification,
     ) -> Self {
         debug_assert_eq!(
             sent_bytes > 0,
@@ -50,6 +54,7 @@ impl SentPacketInfo {
             time_sent,
             ack_elicitation,
             path_id,
+            ecn,
         }
     }
 }
@@ -57,7 +62,9 @@ impl SentPacketInfo {
 #[cfg(test)]
 mod test {
     use crate::{path, recovery::SentPacketInfo};
-    use s2n_quic_core::frame::ack_elicitation::AckElicitation;
+    use s2n_quic_core::{
+        frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification,
+    };
 
     #[test]
     #[should_panic]
@@ -68,6 +75,7 @@ mod test {
             s2n_quic_platform::time::now(),
             AckElicitation::Eliciting,
             path::Id::new(0),
+            ExplicitCongestionNotification::default(),
         );
     }
 

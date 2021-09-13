@@ -13,13 +13,23 @@ pub trait Provider: 'static {
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "rand")] {
-        pub use random::Provider as Default;
+        pub use random as default;
     } else {
         // TODO implement stub that panics
     }
 }
+pub use default::Provider as Default;
 
 impl_provider_utils!();
+
+impl<T: 'static + Format> Provider for T {
+    type Format = T;
+    type Error = core::convert::Infallible;
+
+    fn start(self) -> Result<Self::Format, Self::Error> {
+        Ok(self)
+    }
+}
 
 #[cfg(feature = "rand")]
 pub mod random {
@@ -42,15 +52,6 @@ pub mod random {
 
         fn start(self) -> Result<Self::Format, Self::Error> {
             Ok(self.0)
-        }
-    }
-
-    impl super::TryInto for Format {
-        type Provider = Provider;
-        type Error = Infallible;
-
-        fn try_into(self) -> Result<Self::Provider, Self::Error> {
-            Ok(Provider(self))
         }
     }
 

@@ -12,7 +12,9 @@ use core::{mem::size_of, time::Duration};
 use hash_hasher::HashHasher;
 use ring::{digest, hmac};
 use s2n_codec::{DecoderBuffer, DecoderBufferMut};
-use s2n_quic_core::{connection, inet::SocketAddress, random, time::Timestamp, token::Source};
+use s2n_quic_core::{
+    connection, event::api::SocketAddress, random, time::Timestamp, token::Source,
+};
 use std::hash::{Hash, Hasher};
 use zerocopy::{AsBytes, FromBytes, Unaligned};
 use zeroize::Zeroizing;
@@ -172,10 +174,20 @@ impl Format {
         //# packets remain constant.
         ctx.update(&token.original_destination_connection_id);
         ctx.update(&token.nonce);
-        ctx.update(context.destination_connection_id.as_bytes());
-        match context.peer_address {
-            SocketAddress::IpV4(addr) => ctx.update(addr.as_bytes()),
-            SocketAddress::IpV6(addr) => ctx.update(addr.as_bytes()),
+        ctx.update(context.peer_connection_id);
+        match context.remote_address {
+            SocketAddress::IpV4 { ip, port, .. } => {
+                ctx.update(ip);
+                ctx.update(&port.to_be_bytes());
+            }
+            SocketAddress::IpV6 { ip, port, .. } => {
+                ctx.update(ip);
+                ctx.update(&port.to_be_bytes());
+            }
+            _ => {
+                // we are unable to hash the address so bail
+                return None;
+            }
         };
 
         Some(ctx.sign())
@@ -454,6 +466,7 @@ impl Token {
 mod tests {
     use super::*;
     use s2n_quic_core::{
+        inet::SocketAddress,
         random,
         token::{Context, Format as FormatTrait, Source},
     };

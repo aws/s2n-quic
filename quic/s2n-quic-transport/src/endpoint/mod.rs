@@ -7,7 +7,7 @@ use crate::{
     acceptor::Acceptor,
     connection::{
         self, ConnectionContainer, ConnectionContainerIterationResult, ConnectionIdMapper,
-        InternalConnectionId, InternalConnectionIdGenerator, Trait as _,
+        InternalConnectionId, InternalConnectionIdGenerator, ProcessingError, Trait as _,
     },
     unbounded_channel,
     wakeup_queue::WakeupQueue,
@@ -16,14 +16,18 @@ use alloc::collections::VecDeque;
 use core::task::{self, Poll};
 use s2n_codec::{DecoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{
-    connection::id::Generator,
-    crypto::{tls, CryptoSuite},
-    endpoint::{limits::Outcome, Limits},
-    event::Publisher as _,
+    connection::{
+        id::{ConnectionInfo, Generator},
+        LocalId,
+    },
+    crypto::{tls, tls::Endpoint as _, CryptoSuite},
+    endpoint::{limits::Outcome, Limiter as _},
+    event::{self, EndpointPublisher as _},
     inet::{datagram, DatagramInfo},
     io::{rx, tx},
     packet::{initial::ProtectedInitial, ProtectedPacket},
-    stateless_reset::token::LEN as StatelessResetTokenLen,
+    path::{Handle as _, MaxMtu},
+    stateless_reset::token::{Generator as _, LEN as StatelessResetTokenLen},
     time::{Clock, Timestamp},
     token::{self, Format},
 };
@@ -35,18 +39,10 @@ mod retry;
 mod stateless_reset;
 mod version;
 
-use crate::connection::ProcessingError;
+// exports
 pub use config::{Config, Context};
-use connection::id::ConnectionInfo;
 pub use packet_buffer::Buffer as PacketBuffer;
 pub use s2n_quic_core::endpoint::*;
-use s2n_quic_core::{
-    connection::LocalId,
-    crypto::tls::Endpoint as _,
-    event,
-    path::{Handle as _, MaxMtu},
-    stateless_reset::token::Generator as _,
-};
 
 const DEFAULT_MAX_PEERS: usize = 1024;
 
@@ -63,7 +59,7 @@ pub struct Endpoint<Cfg: Config> {
     /// Allows to wakeup the endpoint task which might be blocked on waiting for packets
     /// from application tasks (which e.g. enqueued new data to send).
     wakeup_queue: WakeupQueue<InternalConnectionId>,
-    /// This queue contains wakeups we retrieved from the [`wakeup_queue`] earlier.
+    /// This queue contains wakeups we retrieved from the [`Self::wakeup_queue`] earlier.
     /// This is not a local variable in order to reuse the allocated queue capacity in between
     /// [`Endpoint`] interactions.
     dequeued_wakeups: VecDeque<InternalConnectionId>,
@@ -122,31 +118,11 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         let mut transmit_result = Ok(());
         let endpoint_context = self.config.context();
 
-        let mut now: Option<Timestamp> = None;
+        let timestamp = clock.get_time();
 
         self.connections.iterate_transmission_list(|connection| {
-            let timestamp = match now {
-                Some(now) => now,
-                _ => {
-                    let time = clock.get_time();
-                    now = Some(time);
-                    time
-                }
-            };
-
-            let mut publisher = event::PublisherSubscriber::new(
-                event::builders::Meta {
-                    endpoint_type: Cfg::ENDPOINT_TYPE,
-                    subject: event::common::Subject::Connection(
-                        connection.internal_connection_id().into(),
-                    ),
-                    timestamp,
-                },
-                Some(connection.quic_version()),
-                endpoint_context.event_subscriber,
-            );
-
-            transmit_result = connection.on_transmit(queue, timestamp, &mut publisher);
+            transmit_result =
+                connection.on_transmit(queue, timestamp, endpoint_context.event_subscriber);
             if transmit_result.is_err() {
                 // If one connection fails, return
                 ConnectionContainerIterationResult::BreakAndInsertAtBack
@@ -156,9 +132,18 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         });
 
         if transmit_result.is_ok() {
-            self.version_negotiator.on_transmit(queue);
-            self.retry_dispatch.on_transmit(queue);
-            self.stateless_reset_dispatch.on_transmit(queue);
+            let mut publisher = event::EndpointPublisherSubscriber::new(
+                event::builder::EndpointMeta {
+                    endpoint_type: Cfg::ENDPOINT_TYPE,
+                    timestamp,
+                },
+                None,
+                endpoint_context.event_subscriber,
+            );
+            self.version_negotiator.on_transmit(queue, &mut publisher);
+            self.retry_dispatch.on_transmit(queue, &mut publisher);
+            self.stateless_reset_dispatch
+                .on_transmit(queue, &mut publisher);
         }
     }
 
@@ -190,25 +175,13 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                     }
                 };
 
-                let mut publisher = event::PublisherSubscriber::new(
-                    event::builders::Meta {
-                        endpoint_type: Cfg::ENDPOINT_TYPE,
-                        subject: event::common::Subject::Connection(
-                            conn.internal_connection_id().into(),
-                        ),
-                        timestamp,
-                    },
-                    Some(conn.quic_version()),
-                    endpoint_context.event_subscriber,
-                );
-
                 if let Err(error) = conn.on_wakeup(timestamp) {
                     conn.close(
                         error,
                         endpoint_context.connection_close_formatter,
                         close_packet_buffer,
                         timestamp,
-                        &mut publisher,
+                        endpoint_context.event_subscriber,
                     );
                 }
             });
@@ -303,9 +276,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     context.random_generator,
                     context.token
                 );
+
                 None
             }
-            Outcome::Drop => None,
             #[allow(unused_variables)]
             Outcome::Close { delay } => {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
@@ -315,6 +288,17 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 //# Initial packet containing a CONNECTION_CLOSE frame with error code
                 //# CONNECTION_REFUSED.
 
+                // TODO emit event
+
+                None
+            }
+            Outcome::Drop => {
+                // TODO emit drop event
+                None
+            }
+            _ => {
+                // Outcome is non_exhaustive so drop on things we don't understand
+                // TODO emit drop event
                 None
             }
         }
@@ -328,7 +312,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
         timestamp: Timestamp,
     ) {
         let endpoint_context = self.config.context();
-        let close_packet_buffer = &mut self.close_packet_buffer;
 
         let remote_address = header.path.remote_address();
 
@@ -356,27 +339,26 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
             if internal_connection_id.is_none() {
                 // The packet didn't contain a valid stateless token
-                let mut publisher = event::PublisherSubscriber::new(
-                    event::builders::Meta {
+                let mut publisher = event::EndpointPublisherSubscriber::new(
+                    event::builder::EndpointMeta {
                         endpoint_type: Cfg::ENDPOINT_TYPE,
-                        subject: event::common::Subject::Endpoint,
                         timestamp,
                     },
                     None,
                     self.config.context().event_subscriber,
                 );
-                publisher.on_datagram_dropped(event::builders::DatagramDropped {
+                publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
                     len: payload_len as u16,
+                    reason: event::builder::DropReason::DecodingFailed,
                 });
             }
 
             return;
         };
 
-        let mut publisher = event::PublisherSubscriber::new(
-            event::builders::Meta {
+        let mut publisher = event::EndpointPublisherSubscriber::new(
+            event::builder::EndpointMeta {
                 endpoint_type: Cfg::ENDPOINT_TYPE,
-                subject: event::common::Subject::Endpoint,
                 timestamp,
             },
             packet.version(),
@@ -391,6 +373,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .on_packet(&header.path, payload_len, &packet, &mut publisher)
             .is_err()
         {
+            publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
+                len: payload_len as u16,
+                reason: event::builder::DropReason::UnsupportedVersion,
+            });
             return;
         }
 
@@ -399,7 +385,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 Some(connection_id) => connection_id,
                 None => {
                     // Ignore the datagram
-                    dbg!("packet with invalid connection ID received");
+                    publisher.on_endpoint_datagram_dropped(
+                        event::builder::EndpointDatagramDropped {
+                            len: payload_len as u16,
+                            reason: event::builder::DropReason::InvalidDestinationConnectionId,
+                        },
+                    );
                     return;
                 }
             };
@@ -412,6 +403,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         };
 
         // TODO validate the connection ID before looking up the connection in the map
+        let close_packet_buffer = &mut self.close_packet_buffer;
 
         // Try to lookup the internal connection ID and dispatch the packet
         // to the Connection
@@ -423,18 +415,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             let max_mtu = self.max_mtu;
 
             let _ = self.connections.with_connection(internal_id, |conn| {
-                let mut publisher = event::PublisherSubscriber::new(
-                    event::builders::Meta {
-                        endpoint_type: Cfg::ENDPOINT_TYPE,
-                        subject: event::common::Subject::Connection(
-                            conn.internal_connection_id().into(),
-                        ),
-                        timestamp,
-                    },
-                    Some(conn.quic_version()),
-                    endpoint_context.event_subscriber,
-                );
-
                 // The path `Id` needs to be passed around instead of the path to get around `&mut self` and
                 // `&mut self.path_manager` being borrowed at the same time
                 let path_id = conn
@@ -444,7 +424,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         endpoint_context.congestion_controller,
                         endpoint_context.random_generator,
                         max_mtu,
-                        &mut publisher,
+                        endpoint_context.event_subscriber,
                     )
                     .map_err(|_| {
                         // TODO https://github.com/awslabs/s2n-quic/issues/669
@@ -472,8 +452,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     datagram,
                     path_id,
                     packet,
-                    &mut publisher,
                     endpoint_context.random_generator,
+                    endpoint_context.event_subscriber,
                 ) {
                     match err {
                         ProcessingError::DuplicatePacket => {
@@ -485,7 +465,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                                 endpoint_context.connection_close_formatter,
                                 close_packet_buffer,
                                 datagram.timestamp,
-                                &mut publisher,
+                                endpoint_context.event_subscriber,
                             );
                             return Err(());
                         }
@@ -510,15 +490,15 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     path_id,
                     endpoint_context.connection_id_format,
                     remaining,
-                    &mut publisher,
                     endpoint_context.random_generator,
+                    endpoint_context.event_subscriber,
                 ) {
                     conn.close(
                         err,
                         endpoint_context.connection_close_formatter,
                         close_packet_buffer,
                         datagram.timestamp,
-                        &mut publisher,
+                        endpoint_context.event_subscriber,
                     );
                     return Err(());
                 }
@@ -540,7 +520,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         match connection::PeerId::try_from_bytes(packet.source_connection_id()) {
                             Some(connection_id) => connection_id,
                             None => {
-                                dbg!("Could not decode source connection id");
+                                publisher.on_endpoint_datagram_dropped(
+                                    event::builder::EndpointDatagramDropped {
+                                        len: payload_len as u16,
+                                        reason:
+                                            event::builder::DropReason::InvalidSourceConnectionId,
+                                    },
+                                );
                                 return;
                             }
                         };
@@ -585,7 +571,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             //# Instead, the
                             //# server SHOULD immediately close (Section 10.2) the connection with an
                             //# INVALID_TOKEN error.
-                            dbg!("Invalid token");
+                            publisher.on_endpoint_datagram_dropped(
+                                event::builder::EndpointDatagramDropped {
+                                    len: payload_len as u16,
+                                    reason: event::builder::DropReason::InvalidRetryToken,
+                                },
+                            );
 
                             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
                             //# Servers MAY
@@ -598,7 +589,22 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         //# address validation by sending a Retry packet (Section 17.2.5)
                         //# containing a token.
                         if self.connection_allowed(header, &packet).is_none() {
-                            dbg!("Connection not allowed");
+                            let mut publisher = event::EndpointPublisherSubscriber::new(
+                                event::builder::EndpointMeta {
+                                    endpoint_type: Cfg::ENDPOINT_TYPE,
+                                    timestamp,
+                                },
+                                None,
+                                self.config.context().event_subscriber,
+                            );
+
+                            publisher.on_endpoint_datagram_dropped(
+                                event::builder::EndpointDatagramDropped {
+                                    len: payload_len as u16,
+                                    reason: event::builder::DropReason::ConnectionNotAllowed,
+                                },
+                            );
+
                             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.1
                             //# A server MUST NOT send more than one Retry
                             //# packet in response to a single UDP datagram.
@@ -616,6 +622,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         retry_token_dcid,
                     ) {
                         // TODO send a minimal connection close frame
+                        // TODO emit event
                         dbg!(err);
                     }
                 }
@@ -677,7 +684,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .config
             .context()
             .stateless_reset_token_generator
-            .generate(destination_connection_id);
+            .generate(destination_connection_id.as_bytes());
         let max_tag_length = self.config.context().tls.max_tag_length();
         // The datagram payload length is used as the packet length since
         // a stateless reset is only sent if the first packet in a datagram is
@@ -698,7 +705,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
     /// will be returned.
     fn close_on_matching_stateless_reset(
         &mut self,
-        payload: &mut [u8],
+        payload: &[u8],
         timestamp: Timestamp,
     ) -> Option<InternalConnectionId> {
         let buffer = DecoderBuffer::new(payload);
@@ -711,10 +718,27 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let token_index = payload.len().checked_sub(StatelessResetTokenLen)?;
         let buffer = buffer.skip(token_index).ok()?;
         let (token, _) = buffer.decode().ok()?;
+        let endpoint_context = self.config.context();
         let internal_id = self
             .connection_id_mapper
             .remove_internal_connection_id_by_stateless_reset_token(&token)?;
-        let endpoint_context = self.config.context();
+
+        let mut publisher = event::EndpointPublisherSubscriber::new(
+            event::builder::EndpointMeta {
+                endpoint_type: Cfg::ENDPOINT_TYPE,
+                timestamp,
+            },
+            None,
+            endpoint_context.event_subscriber,
+        );
+
+        publisher.on_endpoint_packet_received(event::builder::EndpointPacketReceived {
+            packet_header: event::builder::PacketHeader {
+                packet_type: event::builder::PacketType::StatelessReset {},
+                version: publisher.quic_version(),
+            },
+        });
+
         let close_packet_buffer = &mut self.close_packet_buffer;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
@@ -722,23 +746,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
         //# Stateless Reset Token, the endpoint MUST enter the draining period
         //# and not send any further packets on this connection.
         self.connections.with_connection(internal_id, |conn| {
-            let mut publisher = event::PublisherSubscriber::new(
-                event::builders::Meta {
-                    endpoint_type: Cfg::ENDPOINT_TYPE,
-                    subject: event::common::Subject::Connection(
-                        conn.internal_connection_id().into(),
-                    ),
-                    timestamp,
-                },
-                Some(conn.quic_version()),
-                endpoint_context.event_subscriber,
-            );
             conn.close(
                 connection::Error::StatelessReset,
                 endpoint_context.connection_close_formatter,
                 close_packet_buffer,
                 timestamp,
-                &mut publisher,
+                endpoint_context.event_subscriber,
             );
         });
 
@@ -751,25 +764,17 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let endpoint_context = self.config.context();
 
         self.connections.iterate_timeout_list(timestamp, |conn| {
-            let mut publisher = event::PublisherSubscriber::new(
-                event::builders::Meta {
-                    endpoint_type: Cfg::ENDPOINT_TYPE,
-                    subject: event::common::Subject::Connection(
-                        conn.internal_connection_id().into(),
-                    ),
-                    timestamp,
-                },
-                Some(conn.quic_version()),
+            if let Err(error) = conn.on_timeout(
+                connection_id_mapper,
+                timestamp,
                 endpoint_context.event_subscriber,
-            );
-
-            if let Err(error) = conn.on_timeout(connection_id_mapper, timestamp, &mut publisher) {
+            ) {
                 conn.close(
                     error,
                     endpoint_context.connection_close_formatter,
                     close_packet_buffer,
                     timestamp,
-                    &mut publisher,
+                    endpoint_context.event_subscriber,
                 );
             }
         });
@@ -855,7 +860,7 @@ pub mod testing {
     #[derive(Debug)]
     pub struct Limits;
 
-    impl endpoint::Limits for Limits {
+    impl endpoint::Limiter for Limits {
         fn on_connection_attempt(
             &mut self,
             _attempt: &endpoint::limits::ConnectionAttempt,

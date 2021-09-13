@@ -3,7 +3,7 @@
 
 //! Defines the Stream objects that applications are interacting with
 
-use crate::connection::ConnectionApi;
+use crate::connection::Connection;
 use bytes::Bytes;
 use core::{
     fmt,
@@ -18,14 +18,14 @@ pub use s2n_quic_core::{
 
 #[derive(Clone)]
 struct State {
-    connection: ConnectionApi,
+    connection: Connection,
     stream_id: StreamId,
     is_rx_open: bool,
     is_tx_open: bool,
 }
 
 impl State {
-    fn new(connection: ConnectionApi, stream_id: StreamId) -> Self {
+    fn new(connection: Connection, stream_id: StreamId) -> Self {
         Self {
             connection,
             stream_id,
@@ -321,12 +321,16 @@ impl Stream {
     /// Creates a `Stream` instance, which represents a QUIC stream with the
     /// given ID. All interactions with the `Stream` will be performed through
     /// the provided [`SynchronizedSharedConnectionState`].
-    pub(crate) fn new(shared_state: ConnectionApi, stream_id: StreamId) -> Self {
-        Self(State::new(shared_state, stream_id))
+    pub(crate) fn new(connection: Connection, stream_id: StreamId) -> Self {
+        Self(State::new(connection, stream_id))
     }
 
     pub fn id(&self) -> StreamId {
         self.0.stream_id
+    }
+
+    pub fn connection(&self) -> &Connection {
+        &self.0.connection
     }
 
     pub fn request(&mut self) -> Request {
@@ -390,6 +394,10 @@ impl SendStream {
         self.0.stream_id
     }
 
+    pub fn connection(&self) -> &Connection {
+        &self.0.connection
+    }
+
     pub fn tx_request(&mut self) -> Result<TxRequest, StreamError> {
         Ok(TxRequest {
             state: &mut self.0,
@@ -428,6 +436,10 @@ impl fmt::Debug for ReceiveStream {
 impl ReceiveStream {
     pub fn id(&self) -> StreamId {
         self.0.stream_id
+    }
+
+    pub fn connection(&self) -> &Connection {
+        &self.0.connection
     }
 
     pub fn rx_request(&mut self) -> Result<RxRequest, StreamError> {

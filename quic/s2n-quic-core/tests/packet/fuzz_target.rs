@@ -5,11 +5,12 @@ use bolero::check;
 use s2n_codec::{DecoderBufferMut, Encoder, EncoderBuffer};
 use s2n_quic_core::{
     connection::id::ConnectionInfo,
-    crypto::{key::testing, CryptoError},
+    crypto::key::testing,
     inet::SocketAddress,
     packet::{
         encoding::PacketEncoder, number::PacketNumberSpace, CleartextPacket, ProtectedPacket,
     },
+    transport,
 };
 
 fn main() {
@@ -35,7 +36,7 @@ fn main() {
     });
 }
 
-fn decrypt_packet(packet: ProtectedPacket) -> Result<CleartextPacket, CryptoError> {
+fn decrypt_packet(packet: ProtectedPacket) -> Result<CleartextPacket, transport::Error> {
     use ProtectedPacket::*;
     match packet {
         Handshake(packet) => {

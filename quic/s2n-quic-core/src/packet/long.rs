@@ -174,6 +174,7 @@ impl From<PacketType> for u8 {
 //# Reserved Bits:  Two bits (those with a mask of 0x0c) of byte 0 are
 //#    reserved across multiple packet types.  These bits are protected
 //#    using header protection; see Section 5.4 of [QUIC-TLS].
+pub const RESERVED_BITS_MASK: u8 = 0x0c;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
 //# Packet Number Length:  In packet types that contain a Packet Number

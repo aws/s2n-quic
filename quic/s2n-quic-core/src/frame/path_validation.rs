@@ -17,6 +17,18 @@ impl Probe {
     }
 }
 
+impl Default for Probe {
+    /// A packet is Probing only if all frames within the packet are
+    /// also Probing.
+    ///
+    /// This coupled with the Bit-Or logic makes `Probing` a good default:
+    /// Probing | Probing = Probing
+    /// Probing | NonProbing = NonProbing
+    fn default() -> Self {
+        Self::Probing
+    }
+}
+
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.1
 //# A packet containing only probing frames is a "probing packet", and a
 //# packet containing any other frame is a "non-probing packet".

@@ -22,7 +22,7 @@ use s2n_quic_core::{
     transport::{self, parameters::ClientTransportParameters},
 };
 
-pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::Publisher> {
+pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> {
     pub now: Timestamp,
     pub path: &'a Path<Config>,
     pub initial: &'a mut Option<Box<InitialSpace<Config>>>,
@@ -37,7 +37,7 @@ pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::Publisher> {
     pub publisher: &'a mut Pub,
 }
 
-impl<'a, Config: endpoint::Config, Pub: event::Publisher>
+impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
     tls::Context<<Config::TLSEndpoint as tls::Endpoint>::Session>
     for SessionContext<'a, Config, Pub>
 {
@@ -66,8 +66,8 @@ impl<'a, Config: endpoint::Config, Pub: event::Publisher>
             ack_manager,
         )));
 
-        self.publisher.on_key_update(event::builders::KeyUpdate {
-            key_type: event::common::KeyType::Handshake,
+        self.publisher.on_key_update(event::builder::KeyUpdate {
+            key_type: event::builder::KeyType::Handshake,
         });
         Ok(())
     }
@@ -86,8 +86,8 @@ impl<'a, Config: endpoint::Config, Pub: event::Publisher>
         // TODO: also store the header_key https://github.com/awslabs/s2n-quic/issues/319
         *self.zero_rtt_crypto = Some(Box::new(key));
 
-        self.publisher.on_key_update(event::builders::KeyUpdate {
-            key_type: event::common::KeyType::ZeroRtt,
+        self.publisher.on_key_update(event::builder::KeyUpdate {
+            key_type: event::builder::KeyType::ZeroRtt,
         });
         Ok(())
     }
@@ -140,13 +140,22 @@ impl<'a, Config: endpoint::Config, Pub: event::Publisher>
         //# Connection ID fields of Initial packets that it sent.
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3
-        //= type=TODO
-        //= feature=Transport parameter ID validation
-        //= tracking-issue=353
         //# An endpoint MUST treat absence of the initial_source_connection_id
         //# transport parameter from either endpoint or absence of the
         //# original_destination_connection_id transport parameter from the
         //# server as a connection error of type TRANSPORT_PARAMETER_ERROR.
+        if peer_parameters.initial_source_connection_id.is_none() {
+            return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
+                .with_reason("missing initial_source_connection_id"));
+        }
+
+        // TODO uncomment when the client is implemented
+        //if Config::ENDPOINT_TYPE.is_client()
+        //    && peer_parameters.original_destination_connection_id.is_none()
+        //{
+        //    return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
+        //        .with_reason("missing original_destination_connection_id"));
+        //}
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3
         //= type=TODO
@@ -174,8 +183,15 @@ impl<'a, Config: endpoint::Config, Pub: event::Publisher>
 
         // TODO use interning for these values
         // issue: https://github.com/awslabs/s2n-quic/issues/248
-        let sni = application_parameters.sni.map(Bytes::copy_from_slice);
+        let sni = application_parameters.sni;
         let alpn = Bytes::copy_from_slice(application_parameters.alpn_protocol);
+
+        self.publisher
+            .on_alpn_information(event::builder::AlpnInformation { chosen_alpn: &alpn });
+        if let Some(chosen_sni) = &sni {
+            self.publisher
+                .on_sni_information(event::builder::SniInformation { chosen_sni });
+        };
 
         *self.application = Some(Box::new(ApplicationSpace::new(
             key,
@@ -186,8 +202,8 @@ impl<'a, Config: endpoint::Config, Pub: event::Publisher>
             sni,
             alpn,
         )));
-        self.publisher.on_key_update(event::builders::KeyUpdate {
-            key_type: event::common::KeyType::OneRtt { generation: 0 },
+        self.publisher.on_key_update(event::builder::KeyUpdate {
+            key_type: event::builder::KeyType::OneRtt { generation: 0 },
         });
 
         self.local_id_registry

@@ -49,13 +49,8 @@ pub mod server;
 pub mod stream;
 
 pub mod application {
-    pub use s2n_quic_core::application::Error;
+    pub use s2n_quic_core::application::{Error, Sni};
 }
 
 pub use connection::Connection;
 pub use server::Server;
-
-#[cfg(feature = "protocol-extensions")]
-mod extensions;
-#[cfg(feature = "protocol-extensions")]
-pub use extensions::Extensions;

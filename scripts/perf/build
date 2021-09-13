@@ -15,7 +15,7 @@ if [ ! -f target/perf/quinn/bin/perf_client ]; then
   mkdir -p target/perf/quinn
   cargo +stable install \
     --git https://github.com/quinn-rs/quinn \
-    --rev f97cb904c2194c6b392470022fa532b65b8c7eee \
+    --rev 2d30749e9728121df317ec7519f06a75644ba93d \
     --bin perf_client \
     --root target/perf/quinn \
     --target-dir target/perf/quinn \

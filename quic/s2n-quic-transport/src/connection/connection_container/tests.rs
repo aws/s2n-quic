@@ -15,7 +15,7 @@ use bytes::Bytes;
 use core::task::{Context, Poll};
 use s2n_quic_core::{
     application, event,
-    inet::DatagramInfo,
+    inet::{DatagramInfo, SocketAddress},
     io::tx,
     packet::{
         handshake::ProtectedHandshake,
@@ -52,10 +52,7 @@ impl Default for TestConnection {
 impl connection::Trait for TestConnection {
     type Config = crate::endpoint::testing::Server;
 
-    fn new<Pub: event::Publisher>(
-        _params: connection::Parameters<Self::Config>,
-        _: &mut Pub,
-    ) -> Self {
+    fn new(_params: connection::Parameters<Self::Config>) -> Self {
         Self::default()
     }
 
@@ -67,16 +64,13 @@ impl connection::Trait for TestConnection {
         self.is_handshaking
     }
 
-    fn close<'sub>(
+    fn close(
         &mut self,
         _error: connection::Error,
         _close_formatter: &<Self::Config as endpoint::Config>::ConnectionCloseFormatter,
         _packet_buffer: &mut endpoint::PacketBuffer,
         _timestamp: Timestamp,
-        _publisher: &mut event::PublisherSubscriber<
-            'sub,
-            <Self::Config as endpoint::Config>::EventSubscriber,
-        >,
+        _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) {
         assert!(!self.is_closed);
         self.is_closed = true;
@@ -100,23 +94,20 @@ impl connection::Trait for TestConnection {
         Ok(())
     }
 
-    fn on_transmit<'sub, Tx: tx::Queue>(
+    fn on_transmit<Tx: tx::Queue>(
         &mut self,
         _queue: &mut Tx,
         _timestamp: Timestamp,
-        _publisher: &mut event::PublisherSubscriber<
-            'sub,
-            <Self::Config as endpoint::Config>::EventSubscriber,
-        >,
+        _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), crate::contexts::ConnectionOnTransmitError> {
         Ok(())
     }
 
-    fn on_timeout<Pub: event::Publisher>(
+    fn on_timeout(
         &mut self,
         _connection_id_mapper: &mut connection::ConnectionIdMapper,
         _timestamp: Timestamp,
-        _publisher: &mut Pub,
+        _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), connection::Error> {
         Ok(())
     }
@@ -125,49 +116,49 @@ impl connection::Trait for TestConnection {
         Ok(())
     }
 
-    fn handle_initial_packet<Pub: event::Publisher, Rnd: random::Generator>(
+    fn handle_initial_packet<Rnd: random::Generator>(
         &mut self,
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedInitial,
-        _publisher: &mut Pub,
         _random_generator: &mut Rnd,
+        _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
 
     /// Is called when an unprotected initial packet had been received
-    fn handle_cleartext_initial_packet<Pub: event::Publisher, Rnd: random::Generator>(
+    fn handle_cleartext_initial_packet<Rnd: random::Generator>(
         &mut self,
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: CleartextInitial,
-        _publisher: &mut Pub,
         _random_generator: &mut Rnd,
+        _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
 
     /// Is called when a handshake packet had been received
-    fn handle_handshake_packet<Pub: event::Publisher, Rnd: random::Generator>(
+    fn handle_handshake_packet<Rnd: random::Generator>(
         &mut self,
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedHandshake,
-        _publisher: &mut Pub,
         _random_generator: &mut Rnd,
+        _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
 
     /// Is called when a short packet had been received
-    fn handle_short_packet<Pub: event::Publisher, Rnd: random::Generator>(
+    fn handle_short_packet<Rnd: random::Generator>(
         &mut self,
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedShort,
-        _publisher: &mut Pub,
         _random_generator: &mut Rnd,
+        _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
@@ -178,6 +169,7 @@ impl connection::Trait for TestConnection {
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedVersionNegotiation,
+        _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
@@ -188,6 +180,7 @@ impl connection::Trait for TestConnection {
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedZeroRtt,
+        _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
@@ -198,19 +191,20 @@ impl connection::Trait for TestConnection {
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedRetry,
+        _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
 
     /// Notifies a connection it has received a datagram from a peer
-    fn on_datagram_received<Pub: event::Publisher>(
+    fn on_datagram_received(
         &mut self,
         _path: &<Self::Config as endpoint::Config>::PathHandle,
         _datagram: &DatagramInfo,
         _congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
         _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _max_mtu: MaxMtu,
-        _publisher: &mut Pub,
+        _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<path::Id, connection::Error> {
         todo!()
     }
@@ -254,7 +248,7 @@ impl connection::Trait for TestConnection {
         // no-op
     }
 
-    fn sni(&self) -> Option<Bytes> {
+    fn sni(&self) -> Option<Sni> {
         todo!()
     }
 
@@ -263,6 +257,22 @@ impl connection::Trait for TestConnection {
     }
 
     fn ping(&mut self) -> Result<(), connection::Error> {
+        todo!()
+    }
+
+    fn local_address(&self) -> Result<SocketAddress, connection::Error> {
+        todo!()
+    }
+
+    fn remote_address(&self) -> Result<SocketAddress, connection::Error> {
+        todo!()
+    }
+
+    fn query_event_context(&self, _query: &mut dyn event::query::Query) {
+        todo!()
+    }
+
+    fn query_event_context_mut(&mut self, _query: &mut dyn event::query::QueryMut) {
         todo!()
     }
 }

@@ -9,7 +9,6 @@ license = "Apache-2.0"
 default = [
     "default-tls-provider",
     "default-token-provider",
-    "protocol-extensions",
     "rand-provider",
     "std",
     "tokio-runtime",
@@ -19,7 +18,6 @@ connection-close-debug = []
 connection-migration = ["s2n-quic-transport/connection-migration"]
 default-token-provider = ["ring", "zerocopy", "zerocopy-derive"]
 default-tls-provider = ["s2n-quic-tls-default"]
-protocol-extensions = []
 rand-provider = ["rand", "rand_chacha"]
 rustls = ["s2n-quic-rustls"]
 s2n-tls = ["s2n-quic-tls"]

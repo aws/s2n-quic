@@ -20,7 +20,14 @@ use core::{
 use intrusive_collections::{
     intrusive_adapter, KeyAdapter, LinkedList, LinkedListLink, RBTree, RBTreeLink,
 };
-use s2n_quic_core::{application, recovery::K_GRANULARITY, time::Timestamp};
+use s2n_quic_core::{
+    application,
+    application::Sni,
+    event::query::{Query, QueryMut},
+    inet::SocketAddress,
+    recovery::K_GRANULARITY,
+    time::Timestamp,
+};
 
 // Intrusive list adapter for managing the list of `done` connections
 intrusive_adapter!(DoneConnectionsAdapter<C, L> = Arc<ConnectionNode<C, L>>: ConnectionNode<C, L> {
@@ -205,7 +212,9 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
             Poll::Ready(Err(e)) => Err(e).into(),
             Poll::Ready(Ok(None)) => Ok(None).into(),
             Poll::Ready(Ok(Some(stream_id))) => {
-                let stream = stream::Stream::new(arc_self.clone(), stream_id);
+                let connection = arc_self.clone();
+                let connection = Connection::new(connection);
+                let stream = stream::Stream::new(connection, stream_id);
 
                 Ok(Some(stream)).into()
             }
@@ -224,7 +233,9 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
             Poll::Pending => Poll::Pending,
             Poll::Ready(Err(e)) => Err(e).into(),
             Poll::Ready(Ok(stream_id)) => {
-                let stream = stream::Stream::new(arc_self.clone(), stream_id);
+                let connection = arc_self.clone();
+                let connection = Connection::new(connection);
+                let stream = stream::Stream::new(connection, stream_id);
 
                 Ok(stream).into()
             }
@@ -238,7 +249,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
         });
     }
 
-    fn sni(&self) -> Result<Option<Bytes>, connection::Error> {
+    fn sni(&self) -> Result<Option<Sni>, connection::Error> {
         self.api_read_call(|conn| Ok(conn.sni()))
     }
 
@@ -252,6 +263,30 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
 
     fn ping(&self) -> Result<(), connection::Error> {
         self.api_write_call(|conn| conn.ping())
+    }
+
+    fn local_address(&self) -> Result<SocketAddress, connection::Error> {
+        self.api_read_call(|conn| conn.local_address())
+    }
+
+    fn remote_address(&self) -> Result<SocketAddress, connection::Error> {
+        self.api_read_call(|conn| conn.remote_address())
+    }
+
+    #[inline]
+    fn query_event_context(&self, query: &mut dyn Query) -> Result<(), connection::Error> {
+        self.api_read_call(|conn| {
+            conn.query_event_context(query);
+            Ok(())
+        })
+    }
+
+    #[inline]
+    fn query_event_context_mut(&self, query: &mut dyn QueryMut) -> Result<(), connection::Error> {
+        self.api_write_call(|conn| {
+            conn.query_event_context_mut(query);
+            Ok(())
+        })
     }
 }
 
