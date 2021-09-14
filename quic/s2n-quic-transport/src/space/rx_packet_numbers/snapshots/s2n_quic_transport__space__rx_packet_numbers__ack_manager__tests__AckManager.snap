@@ -1,5 +1,6 @@
 ---
 source: quic/s2n-quic-transport/src/space/rx_packet_numbers/ack_manager.rs
 expression: "size_of::<AckManager>()"
+
 ---
-144
+168
