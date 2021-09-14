@@ -34,10 +34,10 @@ tracing-provider = ["tracing"]
 
 [dependencies]
 bytes = { version = "1", default-features = false }
-cfg-if = "1.0"
+cfg-if = "1"
 cuckoofilter = "0.5"
 futures = { version = "0.3", default-features = false, features = ["async-await"] }
-hash_hasher = "2.0"
+hash_hasher = "2"
 rand = { version = "0.8", optional = true }
 rand_chacha = { version = "0.3", optional = true }
 ring = { version = "0.16", optional = true, default-features = false }
@@ -48,11 +48,11 @@ s2n-quic-rustls = { version = "0.1", path = "../s2n-quic-rustls", optional = tru
 s2n-quic-tls = { version = "0.1", path = "../s2n-quic-tls", optional = true }
 s2n-quic-tls-default = { version = "0.1", path = "../s2n-quic-tls-default", optional = true }
 s2n-quic-transport = { version = "0.1", path = "../s2n-quic-transport", default-features = false }
-thiserror = { version = "1.0", optional = true }
+thiserror = { version = "1", optional = true }
 tokio = { version = "1", optional = true, default-features = false }
 zerocopy = { version = "0.6", optional = true }
 zerocopy-derive = { version = "0.3", optional = true }
-zeroize = { version = "=1.2", default-features = false }
+zeroize = { version = "1", default-features = false }
 tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]
