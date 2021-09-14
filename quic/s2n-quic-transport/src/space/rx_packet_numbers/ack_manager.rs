@@ -356,6 +356,7 @@ mod tests {
     use s2n_quic_core::{
         ack, connection, endpoint,
         frame::{ack_elicitation::AckElicitation, ping, Frame},
+        inet::ExplicitCongestionNotification,
         time::{Clock, NoopClock},
     };
 
@@ -383,6 +384,65 @@ mod tests {
 
         // Expectation:
         assert!(manager.transmission_state.is_active());
+    }
+
+    #[test]
+    fn ecn_counts() {
+        // Setup:
+        let mut manager =
+            AckManager::new(PacketNumberSpace::ApplicationData, ack::Settings::default());
+
+        assert_eq!(0, manager.ecn_counts.ect_0_count.as_u64());
+        assert_eq!(0, manager.ecn_counts.ect_1_count.as_u64());
+        assert_eq!(0, manager.ecn_counts.ce_count.as_u64());
+
+        // Process a packet in an Ect0 datagram
+        let pn = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(1));
+        let datagram = helper_datagram_info(ExplicitCongestionNotification::Ect0);
+        manager.on_processed_packet(&ProcessedPacket::new(pn, &datagram));
+
+        assert_eq!(1, manager.ecn_counts.ect_0_count.as_u64());
+        assert_eq!(0, manager.ecn_counts.ect_1_count.as_u64());
+        assert_eq!(0, manager.ecn_counts.ce_count.as_u64());
+
+        // Process a couple packets in an Ect1 datagram
+        let pn1 = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(2));
+        let pn2 = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(3));
+        let datagram = helper_datagram_info(ExplicitCongestionNotification::Ect1);
+        manager.on_processed_packet(&ProcessedPacket::new(pn1, &datagram));
+        manager.on_processed_packet(&ProcessedPacket::new(pn2, &datagram));
+
+        assert_eq!(1, manager.ecn_counts.ect_0_count.as_u64());
+        assert_eq!(2, manager.ecn_counts.ect_1_count.as_u64());
+        assert_eq!(0, manager.ecn_counts.ce_count.as_u64());
+
+        // Process a packet in an Ce datagram
+        let pn = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(4));
+        let datagram = helper_datagram_info(ExplicitCongestionNotification::Ce);
+        manager.on_processed_packet(&ProcessedPacket::new(pn, &datagram));
+
+        assert_eq!(1, manager.ecn_counts.ect_0_count.as_u64());
+        assert_eq!(2, manager.ecn_counts.ect_1_count.as_u64());
+        assert_eq!(1, manager.ecn_counts.ce_count.as_u64());
+
+        // Process a packet in a NotEct datagram
+        let pn = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(5));
+        let datagram = helper_datagram_info(ExplicitCongestionNotification::NotEct);
+        manager.on_processed_packet(&ProcessedPacket::new(pn, &datagram));
+
+        assert_eq!(1, manager.ecn_counts.ect_0_count.as_u64());
+        assert_eq!(2, manager.ecn_counts.ect_1_count.as_u64());
+        assert_eq!(1, manager.ecn_counts.ce_count.as_u64());
+    }
+
+    /// Helper function to construct `DatagramInfo` with the given `ExplicitCongestionNotification`
+    fn helper_datagram_info(ecn: ExplicitCongestionNotification) -> DatagramInfo {
+        DatagramInfo {
+            ecn,
+            payload_len: 1200,
+            timestamp: NoopClock {}.get_time(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        }
     }
 
     #[test]
