@@ -14,7 +14,7 @@ use crate::{
 use s2n_quic_core::{
     ack,
     counter::{Counter, Saturating},
-    frame::{Ack, Ping},
+    frame::{ack::EcnCounts, Ack, Ping},
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
     time::{timer, Timer, Timestamp},
@@ -65,6 +65,9 @@ pub struct AckManager {
 
     /// Used to transition through transmission/retransmission states
     transmission_state: AckTransmissionState,
+
+    /// Explicit Congestion Notification counts from processed packets
+    ecn_counts: EcnCounts,
 }
 
 impl AckManager {
@@ -80,6 +83,7 @@ impl AckManager {
             processed_packets_since_transmission: Counter::new(0),
             transmissions_since_elicitation: Counter::new(0),
             transmission_state: AckTransmissionState::default(),
+            ecn_counts: EcnCounts::default(),
         }
     }
 
@@ -93,14 +97,12 @@ impl AckManager {
         }
 
         let ack_delay = self.ack_delay(context.current_time());
-        // TODO retrieve ECN counts from current path
-        let ecn_counts = Default::default();
 
         context
             .write_frame(&Ack {
                 ack_delay,
                 ack_ranges: &self.ack_ranges,
-                ecn_counts,
+                ecn_counts: Some(self.ecn_counts),
             })
             .is_some()
     }
@@ -210,6 +212,13 @@ impl AckManager {
         if !self.ack_ranges.insert_packet_number(packet_number) {
             return;
         }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.4.1
+        //# ECN counts are only incremented when QUIC packets from the received
+        //# IP packet are processed.  As such, duplicate QUIC packets are not
+        //# processed and do not increase ECN counts; see Section 21.9 for
+        //# relevant security concerns.
+        self.ecn_counts.increment(processed_packet.datagram.ecn);
 
         // Notify the state that the ack_ranges have changed
         self.transmission_state.on_update(&self.ack_ranges);

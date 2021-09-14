@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{frame::Tag, varint::VarInt};
+use crate::{frame::Tag, inet::ExplicitCongestionNotification, varint::VarInt};
 use core::{convert::TryInto, ops::RangeInclusive};
 use s2n_codec::{
     decoder_parameterized_value, decoder_value, DecoderBuffer, DecoderError, Encoder, EncoderValue,
@@ -429,7 +429,7 @@ const ACK_RANGE_DECODING_ERROR: DecoderError =
 //#
 //# ECN counts are maintained separately for each packet number space.
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct EcnCounts {
     /// A variable-length integer representing the total number of packets
     /// received with the ECT(0) codepoint.
@@ -442,6 +442,18 @@ pub struct EcnCounts {
     /// A variable-length integer representing the total number of packets
     /// received with the CE codepoint.
     pub ce_count: VarInt,
+}
+
+impl EcnCounts {
+    /// Increment the count for the given `ExplicitCongestionNotification`
+    pub fn increment(&mut self, ecn: ExplicitCongestionNotification) {
+        match ecn {
+            ExplicitCongestionNotification::Ect0 => self.ect_0_count += 1,
+            ExplicitCongestionNotification::Ect1 => self.ect_1_count += 1,
+            ExplicitCongestionNotification::Ce => self.ce_count += 1,
+            ExplicitCongestionNotification::NotEct => {}
+        }
+    }
 }
 
 decoder_value!(
