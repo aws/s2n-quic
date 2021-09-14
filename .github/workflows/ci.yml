@@ -236,11 +236,6 @@ jobs:
           override: true
           components: miri, rust-src
 
-      - name: Install xargo
-        uses: camshaft/install@v1
-        with:
-          crate: xargo
-
       - uses: camshaft/rust-cache@v1
         with:
           key: ${{ matrix.crate }}

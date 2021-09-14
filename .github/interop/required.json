@@ -58,7 +58,7 @@
   "longrtt": {
     "aioquic": ["client"],
     "kwik": [],
-    "lsquic": ["client"],
+    "lsquic": [],
     "msquic": [],
     "mvfst": [],
     "neqo": ["client"],
@@ -86,7 +86,7 @@
   "multiplexing": {
     "aioquic": ["client"],
     "kwik": [],
-    "lsquic": ["client"],
+    "lsquic": [],
     "msquic": [],
     "mvfst": [],
     "neqo": [],
