@@ -35,6 +35,7 @@ impl IpV4Address {
     ///
     /// assert_eq!(IpV4Address::from([0, 0, 0, 0]).range_type(), Unspecified);
     /// assert_eq!(IpV4Address::from([127, 0, 0, 1]).range_type(), Loopback);
+    /// assert_eq!(IpV4Address::from([127, 1, 1, 1]).range_type(), Loopback);
     /// assert_eq!(IpV4Address::from([10, 0, 0, 1]).range_type(), Private);
     /// assert_eq!(IpV4Address::from([100, 64, 0, 1]).range_type(), Shared);
     /// assert_eq!(IpV4Address::from([169, 254, 1, 2]).range_type(), LinkLocal);
@@ -43,15 +44,21 @@ impl IpV4Address {
     /// assert_eq!(IpV4Address::from([192, 0, 0, 10]).range_type(), Global);
     /// assert_eq!(IpV4Address::from([192, 0, 2, 1]).range_type(), Documentation);
     /// assert_eq!(IpV4Address::from([198, 18, 0, 0]).range_type(), Benchmarking);
+    /// assert_eq!(IpV4Address::from([198, 19, 1, 1]).range_type(), Benchmarking);
     /// assert_eq!(IpV4Address::from([255, 255, 255, 255]).range_type(), Broadcast);
     /// assert_eq!(IpV4Address::from([240, 255, 255, 255]).range_type(), Reserved);
+    /// assert_eq!(IpV4Address::from([92, 88, 99, 123]).range_type(), Global);
     /// assert_eq!(IpV4Address::from([168, 254, 169, 253]).range_type(), Global);
+    /// assert_eq!(IpV4Address::from([224, 0, 0, 1]).range_type(), Global);
     /// ```
     #[inline]
     pub const fn range_type(self) -> ip::RangeType {
         use ip::RangeType::*;
 
         // https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
+        //
+        // NOTE: Even though 92.88.99.0/24 is reserved for "6to4 Relay Anycast", it has been
+        //       deprecated so this code considers it as `Global`.
         match self.octets {
             // NOTE: this RFC doesn't quite follow modern formatting so it doesn't parse with the
             // compliance tool
