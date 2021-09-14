@@ -5,7 +5,6 @@ use structopt::StructOpt;
 
 mod annotation;
 mod extract;
-mod object;
 mod parser;
 mod pattern;
 mod project;
