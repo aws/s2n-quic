@@ -15,6 +15,6 @@ s2n-quic-ring = { version = "0.1", path = "../s2n-quic-ring", default-features =
 s2n-tls = { version = "0.1", path = "../../tls/s2n-tls", features = ["quic"] }
 
 [dev-dependencies]
-checkers = "0.5"
+checkers = "0.6"
 s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", features = ["testing"] }
 s2n-quic-rustls = { version = "0.1", path = "../s2n-quic-rustls" }
