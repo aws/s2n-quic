@@ -3,7 +3,7 @@
 
 #![allow(dead_code)]
 
-use crate::TLSError as Error;
+use rustls::Error;
 
 macro_rules! cert_type {
     ($name:ident, $trait:ident, $method:ident, $inner:ty) => {
@@ -90,7 +90,8 @@ mod pem {
 
     pub fn into_certificate(contents: &[u8]) -> Result<Vec<rustls::Certificate>, Error> {
         let mut cursor = std::io::Cursor::new(contents);
-        let certs = rustls::internal::pemfile::certs(&mut cursor)
+        let certs = rustls_pemfile::certs(&mut cursor)
+            .map(|certs| certs.into_iter().map(rustls::Certificate).collect())
             .map_err(|_| Error::General("Could not read certificate".to_string()))?;
         Ok(certs)
     }
@@ -99,8 +100,8 @@ mod pem {
         let mut cursor = std::io::Cursor::new(contents);
 
         let parsers = [
-            rustls::internal::pemfile::rsa_private_keys,
-            rustls::internal::pemfile::pkcs8_private_keys,
+            rustls_pemfile::rsa_private_keys,
+            rustls_pemfile::pkcs8_private_keys,
         ];
 
         for parser in parsers.iter() {
@@ -108,7 +109,9 @@ mod pem {
 
             match parser(&mut cursor) {
                 Ok(keys) if keys.is_empty() => continue,
-                Ok(mut keys) if keys.len() == 1 => return Ok(keys.pop().unwrap()),
+                Ok(mut keys) if keys.len() == 1 => {
+                    return Ok(rustls::PrivateKey(keys.pop().unwrap()))
+                }
                 Ok(keys) => {
                     return Err(Error::General(format!(
                         "Unexpected number of keys: {} (only 1 supported)",
