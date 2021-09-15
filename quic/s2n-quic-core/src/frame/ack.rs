@@ -448,9 +448,15 @@ impl EcnCounts {
     /// Increment the count for the given `ExplicitCongestionNotification`
     pub fn increment(&mut self, ecn: ExplicitCongestionNotification) {
         match ecn {
-            ExplicitCongestionNotification::Ect0 => self.ect_0_count += 1,
-            ExplicitCongestionNotification::Ect1 => self.ect_1_count += 1,
-            ExplicitCongestionNotification::Ce => self.ce_count += 1,
+            ExplicitCongestionNotification::Ect0 => {
+                self.ect_0_count = self.ect_0_count.saturating_add(VarInt::from_u8(1))
+            }
+            ExplicitCongestionNotification::Ect1 => {
+                self.ect_1_count = self.ect_1_count.saturating_add(VarInt::from_u8(1))
+            }
+            ExplicitCongestionNotification::Ce => {
+                self.ce_count = self.ce_count.saturating_add(VarInt::from_u8(1))
+            }
             ExplicitCongestionNotification::NotEct => {}
         }
     }
