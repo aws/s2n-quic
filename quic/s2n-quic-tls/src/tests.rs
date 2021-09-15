@@ -35,6 +35,9 @@ fn s2n_client_s2n_server_test() {
 
 #[test]
 #[cfg_attr(miri, ignore)]
+// rustls is using the draft quic_transport_params extension IANA,
+// but S2N-TLS is using the final IANA.
+#[should_panic(expected = "INTERNAL_ERROR")]
 fn rustls_client_s2n_server_test() {
     let mut client_endpoint = s2n_quic_rustls::client::Builder::default()
         .with_certificate(CERT_PEM)
@@ -48,6 +51,9 @@ fn rustls_client_s2n_server_test() {
 
 #[test]
 #[cfg_attr(miri, ignore)]
+// rustls is using the draft quic_transport_params extension IANA,
+// but S2N-TLS is using the final IANA.
+#[should_panic(expected = "MISSING_EXTENSION")]
 fn s2n_client_rustls_server_test() {
     let mut client_endpoint = s2n_client();
     let mut server_endpoint = s2n_quic_rustls::server::Builder::default()

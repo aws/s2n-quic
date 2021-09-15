@@ -5,7 +5,7 @@ authors = ["Cameron Bytheway <bytheway.cameron@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-bindgen = "0.56"
+bindgen = "0.58"
 heck = "0.3"
 
 [workspace]
