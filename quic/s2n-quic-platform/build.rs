@@ -20,9 +20,11 @@ fn main() -> Result<(), Error> {
         "linux" => {
             supports("gso");
             supports("pktinfo");
+            supports("tos");
         }
         "macos" => {
             supports("pktinfo");
+            supports("tos");
         }
         _ => {
             // TODO others

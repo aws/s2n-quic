@@ -169,7 +169,7 @@ impl Io {
         }
 
         // Set up the RX socket to pass ECN information
-        #[cfg(target_os = "linux")]
+        #[cfg(s2n_quic_platform_tos)]
         {
             use std::os::unix::io::AsRawFd;
             let enabled: libc::c_int = 1;
