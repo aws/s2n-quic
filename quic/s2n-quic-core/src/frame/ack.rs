@@ -460,6 +460,16 @@ impl EcnCounts {
             ExplicitCongestionNotification::NotEct => {}
         }
     }
+
+    /// Gets the `EcnCounts` as an Option that will be `None` if none of the `EcnCounts` have
+    /// been incremented.
+    pub fn as_option(&self) -> Option<EcnCounts> {
+        if *self == Default::default() {
+            return None;
+        }
+
+        Some(*self)
+    }
 }
 
 decoder_value!(
@@ -485,5 +495,28 @@ impl EncoderValue for EcnCounts {
         buffer.encode(&self.ect_0_count);
         buffer.encode(&self.ect_1_count);
         buffer.encode(&self.ce_count);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{frame::ack::EcnCounts, inet::ExplicitCongestionNotification};
+
+    #[test]
+    fn as_option() {
+        let mut ecn_counts = EcnCounts::default();
+
+        assert_eq!(None, ecn_counts.as_option());
+
+        ecn_counts.increment(ExplicitCongestionNotification::Ect0);
+        assert!(ecn_counts.as_option().is_some());
+
+        let mut ecn_counts = EcnCounts::default();
+        ecn_counts.increment(ExplicitCongestionNotification::Ect1);
+        assert!(ecn_counts.as_option().is_some());
+
+        let mut ecn_counts = EcnCounts::default();
+        ecn_counts.increment(ExplicitCongestionNotification::Ce);
+        assert!(ecn_counts.as_option().is_some());
     }
 }

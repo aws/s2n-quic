@@ -102,7 +102,7 @@ impl AckManager {
             .write_frame(&Ack {
                 ack_delay,
                 ack_ranges: &self.ack_ranges,
-                ecn_counts: Some(self.ecn_counts),
+                ecn_counts: self.ecn_counts.as_option(),
             })
             .is_some()
     }
