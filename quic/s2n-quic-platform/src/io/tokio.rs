@@ -168,6 +168,29 @@ impl Io {
             ))?;
         }
 
+        // Set up the RX socket to pass ECN information
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::unix::io::AsRawFd;
+            let enabled: libc::c_int = 1;
+
+            libc!(setsockopt(
+                rx_socket.as_raw_fd(),
+                libc::IPPROTO_IP,
+                libc::IP_RECVTOS,
+                &enabled as *const _ as _,
+                core::mem::size_of_val(&enabled) as _,
+            ))?;
+            #[cfg(feature = "ipv6")]
+            libc!(setsockopt(
+                rx_socket.as_raw_fd(),
+                libc::IPPROTO_IPV6,
+                libc::IPV6_RECVTCLASS,
+                &enabled as *const _ as _,
+                core::mem::size_of_val(&enabled) as _,
+            ))?;
+        }
+
         // Set up the RX socket to pass information about the local address and interface
         #[cfg(s2n_quic_platform_pktinfo)]
         {
