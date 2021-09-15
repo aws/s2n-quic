@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{frame::Tag, varint::VarInt};
+use crate::{frame::Tag, inet::ExplicitCongestionNotification, varint::VarInt};
 use core::{convert::TryInto, ops::RangeInclusive};
 use s2n_codec::{
     decoder_parameterized_value, decoder_value, DecoderBuffer, DecoderError, Encoder, EncoderValue,
@@ -429,7 +429,7 @@ const ACK_RANGE_DECODING_ERROR: DecoderError =
 //#
 //# ECN counts are maintained separately for each packet number space.
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct EcnCounts {
     /// A variable-length integer representing the total number of packets
     /// received with the ECT(0) codepoint.
@@ -442,6 +442,34 @@ pub struct EcnCounts {
     /// A variable-length integer representing the total number of packets
     /// received with the CE codepoint.
     pub ce_count: VarInt,
+}
+
+impl EcnCounts {
+    /// Increment the count for the given `ExplicitCongestionNotification`
+    pub fn increment(&mut self, ecn: ExplicitCongestionNotification) {
+        match ecn {
+            ExplicitCongestionNotification::Ect0 => {
+                self.ect_0_count = self.ect_0_count.saturating_add(VarInt::from_u8(1))
+            }
+            ExplicitCongestionNotification::Ect1 => {
+                self.ect_1_count = self.ect_1_count.saturating_add(VarInt::from_u8(1))
+            }
+            ExplicitCongestionNotification::Ce => {
+                self.ce_count = self.ce_count.saturating_add(VarInt::from_u8(1))
+            }
+            ExplicitCongestionNotification::NotEct => {}
+        }
+    }
+
+    /// Gets the `EcnCounts` as an Option that will be `None` if none of the `EcnCounts` have
+    /// been incremented.
+    pub fn as_option(&self) -> Option<EcnCounts> {
+        if *self == Default::default() {
+            return None;
+        }
+
+        Some(*self)
+    }
 }
 
 decoder_value!(
@@ -467,5 +495,28 @@ impl EncoderValue for EcnCounts {
         buffer.encode(&self.ect_0_count);
         buffer.encode(&self.ect_1_count);
         buffer.encode(&self.ce_count);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{frame::ack::EcnCounts, inet::ExplicitCongestionNotification};
+
+    #[test]
+    fn as_option() {
+        let mut ecn_counts = EcnCounts::default();
+
+        assert_eq!(None, ecn_counts.as_option());
+
+        ecn_counts.increment(ExplicitCongestionNotification::Ect0);
+        assert!(ecn_counts.as_option().is_some());
+
+        let mut ecn_counts = EcnCounts::default();
+        ecn_counts.increment(ExplicitCongestionNotification::Ect1);
+        assert!(ecn_counts.as_option().is_some());
+
+        let mut ecn_counts = EcnCounts::default();
+        ecn_counts.increment(ExplicitCongestionNotification::Ce);
+        assert!(ecn_counts.as_option().is_some());
     }
 }

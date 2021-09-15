@@ -15,7 +15,7 @@ env:
   RUST_BACKTRACE: 1
   # Pin the nightly toolchain to prevent breakage.
   # This should be occasionally updated.
-  RUST_NIGHTLY_TOOLCHAIN: nightly-2021-06-21
+  RUST_NIGHTLY_TOOLCHAIN: nightly-2021-09-12
   CDN: https://dnglbrstg7yg.cloudfront.net
 
 jobs:
@@ -234,14 +234,15 @@ jobs:
         with:
           toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
           override: true
-          components: miri
+          components: miri, rust-src
 
       - uses: camshaft/rust-cache@v1
         with:
           key: ${{ matrix.crate }}
 
       - name: ${{ matrix.crate }}
-        run: cd ${{ matrix.crate }} && cargo miri test
+        # Disabling capture speeds up miri execution: https://github.com/rust-lang/miri/issues/1780#issuecomment-830664528
+        run: cd ${{ matrix.crate }} && cargo miri test -- --nocapture
         env:
           # needed to read corpus files from filesystem
           MIRIFLAGS: -Zmiri-disable-isolation

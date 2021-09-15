@@ -8,7 +8,6 @@ license = "Apache-2.0"
 [dependencies]
 anyhow = "1"
 fnv = { version = "1", default-features = false }
-goblin = "0.3"
 glob = "0.3"
 lazy_static = "1"
 pathdiff = "0.2"
@@ -19,9 +18,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 structopt = "0.3"
 toml = "0.5"
-triple_accel = "0.3"
+triple_accel = "0.4"
 url = "2"
 v_jsonescape = "0.5"
 
 [dev-dependencies]
-insta = "1.0"
+insta = "1"
