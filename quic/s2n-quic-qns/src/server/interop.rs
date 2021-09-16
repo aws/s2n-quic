@@ -243,7 +243,7 @@ impl Interop {
             Some("multiconnect") => true,
             Some("handshakecorruption") => true,
             Some("transfercorruption") => true,
-            Some("ecn") => false,
+            Some("ecn") => true,
             Some("crosstraffic") => true,
             Some("rebind-addr") => true,
             Some("rebind-port") => true,
