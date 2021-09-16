@@ -42,10 +42,6 @@ impl MessageTrait for Message {
     fn set_remote_address(&mut self, remote_address: &SocketAddress) {
         let remote_address = *remote_address;
 
-        // macos doesn't like sending ipv4 addresses on ipv6 sockets
-        #[cfg(all(target_os = "macos", feature = "ipv6"))]
-        let remote_address = remote_address.to_ipv6_mapped().into();
-
         self.address = remote_address;
     }
 

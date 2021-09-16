@@ -18,7 +18,6 @@ use s2n_quic_core::{
     path::{self, LocalAddress, RemoteAddress},
 };
 
-#[cfg(feature = "ipv6")]
 use s2n_quic_core::inet::{IpV6Address, SocketAddressV6};
 
 #[repr(transparent)]
@@ -230,7 +229,6 @@ impl MessageTrait for msghdr {
                 let addr: IpV4Address = sockaddr.sin_addr.s_addr.to_ne_bytes().into();
                 Some(SocketAddressV4::new(addr, port).into())
             }
-            #[cfg(feature = "ipv6")]
             size if size == size_of::<sockaddr_in6>() as _ => {
                 let sockaddr: &sockaddr_in6 = unsafe { &*(self.msg_name as *const _) };
                 let port = sockaddr.sin6_port.to_be();
@@ -244,10 +242,6 @@ impl MessageTrait for msghdr {
     #[inline]
     fn set_remote_address(&mut self, remote_address: &SocketAddress) {
         debug_assert!(!self.msg_name.is_null());
-
-        // macos doesn't like sending ipv4 addresses on ipv6 sockets
-        #[cfg(all(target_os = "macos", feature = "ipv6"))]
-        let remote_address = remote_address.to_ipv6_mapped().into();
 
         match remote_address {
             SocketAddress::IpV4(addr) => {
@@ -567,10 +561,7 @@ mod tests {
     use super::*;
     use bolero::check;
 
-    #[cfg(feature = "ipv6")]
     use s2n_quic_core::inet::SocketAddress;
-    #[cfg(not(feature = "ipv6"))]
-    use s2n_quic_core::inet::SocketAddressV4 as SocketAddress;
 
     #[test]
     fn address_inverse_pair_test() {
@@ -591,15 +582,10 @@ mod tests {
             .with_type::<SocketAddress>()
             .cloned()
             .for_each(|addr| {
-                #[cfg(not(feature = "ipv6"))]
-                let addr = addr.into();
                 unsafe {
                     message.reset(0);
                 }
                 message.set_remote_address(&addr);
-
-                #[cfg(all(target_os = "macos", feature = "ipv6"))]
-                let addr = addr.to_ipv6_mapped().into();
 
                 assert_eq!(message.remote_address(), Some(addr));
             });

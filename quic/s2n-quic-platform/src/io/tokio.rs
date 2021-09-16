@@ -103,16 +103,19 @@ impl Io {
 
         let rx_socket = if let Some(rx_socket) = rx_socket {
             rx_socket
-        } else if !recv_addr.is_empty() {
-            bind(&recv_addr[..])?
+        } else if let Some(recv_addr) = recv_addr {
+            bind(recv_addr)?
         } else {
-            bind(("::", 0))?
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "missing bind address",
+            ));
         };
 
         let tx_socket = if let Some(tx_socket) = tx_socket {
             tx_socket
-        } else if !send_addr.is_empty() {
-            bind(&send_addr[..])?
+        } else if let Some(send_addr) = send_addr {
+            bind(send_addr)?
         } else {
             // No tx_socket or send address was specified, so the tx socket
             // will be a handle to the rx socket.
@@ -126,6 +129,18 @@ impl Io {
         if let Some(size) = recv_buffer_size {
             rx_socket.set_recv_buffer_size(size)?;
         }
+
+        fn convert_addr_to_std(addr: socket2::SockAddr) -> io::Result<std::net::SocketAddr> {
+            addr.as_socket().ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidInput, "invalid domain for socket")
+            })
+        }
+
+        #[allow(unused_variables)] // some platform builds won't use these so ignore warnings
+        let (tx_addr, rx_addr) = (
+            convert_addr_to_std(tx_socket.local_addr()?)?,
+            convert_addr_to_std(rx_socket.local_addr()?)?,
+        );
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14
         //# UDP datagrams MUST NOT be fragmented at the IP layer.
@@ -144,28 +159,30 @@ impl Io {
         //# processing of outgoing packets that enforces a PMTU
         //# [RFC1191][RFC8201] for each flow utilizing DPLPMTUD and instead use
         //# DPLPMTUD to control the size of packets that are sent by a flow.
-        #[cfg(target_os = "linux")]
+        #[cfg(s2n_quic_platform_mtu_disc)]
         {
             use std::os::unix::io::AsRawFd;
-            // IP_PMTUDISC_PROBE setting will set the DF (Don't Fragment) flag
-            // while also ignoring the Path MTU. This means packets will not
-            // be fragmented, and the EMSGSIZE error will not be returned for
-            // packets larger than the Path MTU according to the kernel.
-            libc!(setsockopt(
-                tx_socket.as_raw_fd(),
-                libc::IPPROTO_IP,
-                libc::IP_MTU_DISCOVER,
-                &libc::IP_PMTUDISC_PROBE as *const _ as _,
-                core::mem::size_of_val(&libc::IP_PMTUDISC_PROBE) as _,
-            ))?;
-            #[cfg(feature = "ipv6")]
-            libc!(setsockopt(
-                tx_socket.as_raw_fd(),
-                libc::IPPROTO_IPV6,
-                libc::IPV6_MTU_DISCOVER,
-                &libc::IP_PMTUDISC_PROBE as *const _ as _,
-                core::mem::size_of_val(&libc::IP_PMTUDISC_PROBE) as _,
-            ))?;
+            if tx_addr.is_ipv4() {
+                // IP_PMTUDISC_PROBE setting will set the DF (Don't Fragment) flag
+                // while also ignoring the Path MTU. This means packets will not
+                // be fragmented, and the EMSGSIZE error will not be returned for
+                // packets larger than the Path MTU according to the kernel.
+                libc!(setsockopt(
+                    tx_socket.as_raw_fd(),
+                    libc::IPPROTO_IP,
+                    libc::IP_MTU_DISCOVER,
+                    &libc::IP_PMTUDISC_PROBE as *const _ as _,
+                    core::mem::size_of_val(&libc::IP_PMTUDISC_PROBE) as _,
+                ))?;
+            } else {
+                libc!(setsockopt(
+                    tx_socket.as_raw_fd(),
+                    libc::IPPROTO_IPV6,
+                    libc::IPV6_MTU_DISCOVER,
+                    &libc::IP_PMTUDISC_PROBE as *const _ as _,
+                    core::mem::size_of_val(&libc::IP_PMTUDISC_PROBE) as _,
+                ))?;
+            }
         }
 
         // Set up the RX socket to pass ECN information
@@ -174,21 +191,23 @@ impl Io {
             use std::os::unix::io::AsRawFd;
             let enabled: libc::c_int = 1;
 
-            libc!(setsockopt(
-                rx_socket.as_raw_fd(),
-                libc::IPPROTO_IP,
-                libc::IP_RECVTOS,
-                &enabled as *const _ as _,
-                core::mem::size_of_val(&enabled) as _,
-            ))?;
-            #[cfg(feature = "ipv6")]
-            libc!(setsockopt(
-                rx_socket.as_raw_fd(),
-                libc::IPPROTO_IPV6,
-                libc::IPV6_RECVTCLASS,
-                &enabled as *const _ as _,
-                core::mem::size_of_val(&enabled) as _,
-            ))?;
+            if rx_addr.is_ipv4() {
+                libc!(setsockopt(
+                    rx_socket.as_raw_fd(),
+                    libc::IPPROTO_IP,
+                    libc::IP_RECVTOS,
+                    &enabled as *const _ as _,
+                    core::mem::size_of_val(&enabled) as _,
+                ))?;
+            } else {
+                libc!(setsockopt(
+                    rx_socket.as_raw_fd(),
+                    libc::IPPROTO_IPV6,
+                    libc::IPV6_RECVTCLASS,
+                    &enabled as *const _ as _,
+                    core::mem::size_of_val(&enabled) as _,
+                ))?;
+            }
         }
 
         // Set up the RX socket to pass information about the local address and interface
@@ -197,19 +216,19 @@ impl Io {
             use std::os::unix::io::AsRawFd;
             let enabled: libc::c_int = 1;
 
-            if cfg!(feature = "ipv6") {
+            if rx_addr.is_ipv4() {
                 libc!(setsockopt(
                     rx_socket.as_raw_fd(),
-                    libc::IPPROTO_IPV6,
-                    libc::IPV6_RECVPKTINFO,
+                    libc::IPPROTO_IP,
+                    libc::IP_PKTINFO,
                     &enabled as *const _ as _,
                     core::mem::size_of_val(&enabled) as _,
                 ))?;
             } else {
                 libc!(setsockopt(
                     rx_socket.as_raw_fd(),
-                    libc::IPPROTO_IP,
-                    libc::IP_PKTINFO,
+                    libc::IPPROTO_IPV6,
+                    libc::IPV6_RECVPKTINFO,
                     &enabled as *const _ as _,
                     core::mem::size_of_val(&enabled) as _,
                 ))?;
@@ -240,11 +259,14 @@ impl Io {
 fn bind<A: std::net::ToSocketAddrs>(addr: A) -> io::Result<socket2::Socket> {
     use socket2::{Domain, Protocol, Socket, Type};
 
-    let domain = if cfg!(feature = "ipv6") {
-        Domain::IPV6
-    } else {
-        Domain::IPV4
-    };
+    let addr = addr.to_socket_addrs()?.next().ok_or_else(|| {
+        std::io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "the provided bind address was empty",
+        )
+    })?;
+
+    let domain = Domain::for_address(addr);
     let socket_type = Type::DGRAM;
     let protocol = Some(Protocol::UDP);
 
@@ -268,33 +290,17 @@ fn bind<A: std::net::ToSocketAddrs>(addr: A) -> io::Result<socket2::Socket> {
         }
     };
 
-    #[cfg(feature = "ipv6")]
-    socket.set_only_v6(false)?;
+    // allow ipv4 to also connect
+    if addr.is_ipv6() {
+        socket.set_only_v6(false)?;
+    }
 
     socket.set_reuse_address(true)?;
 
     #[cfg(unix)]
     socket.set_reuse_port(true)?;
 
-    let addr = addr.to_socket_addrs()?.next().ok_or_else(|| {
-        std::io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "the provided bind address was empty",
-        )
-    })?;
-
-    let addr = if cfg!(feature = "ipv6") {
-        use ::std::net::SocketAddr;
-
-        let addr: SocketAddress = addr.into();
-        let addr: SocketAddr = addr.to_ipv6_mapped().into();
-        addr
-    } else {
-        addr
-    }
-    .into();
-
-    socket.bind(&addr)?;
+    socket.bind(&addr.into())?;
 
     Ok(socket)
 }
@@ -304,8 +310,8 @@ pub struct Builder {
     handle: Option<Handle>,
     rx_socket: Option<socket2::Socket>,
     tx_socket: Option<socket2::Socket>,
-    recv_addr: Vec<std::net::SocketAddr>,
-    send_addr: Vec<std::net::SocketAddr>,
+    recv_addr: Option<std::net::SocketAddr>,
+    send_addr: Option<std::net::SocketAddr>,
     recv_buffer_size: Option<usize>,
     send_buffer_size: Option<usize>,
     max_mtu: MaxMtu,
@@ -323,7 +329,7 @@ impl Builder {
     /// NOTE: this method is mutually exclusive with `with_rx_socket`
     pub fn with_receive_address(mut self, addr: std::net::SocketAddr) -> io::Result<Self> {
         debug_assert!(self.rx_socket.is_none(), "rx socket has already been set");
-        self.recv_addr.push(addr);
+        self.recv_addr = Some(addr);
         Ok(self)
     }
 
@@ -333,7 +339,7 @@ impl Builder {
     /// NOTE: this method is mutually exclusive with `with_tx_socket`
     pub fn with_send_address(mut self, addr: std::net::SocketAddr) -> io::Result<Self> {
         debug_assert!(self.tx_socket.is_none(), "tx socket has already been set");
-        self.send_addr.push(addr);
+        self.send_addr = Some(addr);
         Ok(self)
     }
 
@@ -343,7 +349,7 @@ impl Builder {
     /// NOTE: this method is mutually exclusive with `with_receive_address`
     pub fn with_rx_socket(mut self, socket: std::net::UdpSocket) -> io::Result<Self> {
         debug_assert!(
-            self.recv_addr.is_empty(),
+            self.recv_addr.is_none(),
             "recv address has already been set"
         );
         self.rx_socket = Some(socket.into());
@@ -356,7 +362,7 @@ impl Builder {
     /// NOTE: this method is mutually exclusive with `with_send_address`
     pub fn with_tx_socket(mut self, socket: std::net::UdpSocket) -> io::Result<Self> {
         debug_assert!(
-            self.send_addr.is_empty(),
+            self.send_addr.is_none(),
             "send address has already been set"
         );
         self.tx_socket = Some(socket.into());
@@ -802,7 +808,6 @@ mod tests {
         test("127.0.0.1:0", Some("127.0.0.1:0")).await
     }
 
-    #[cfg(feature = "ipv6")]
     #[tokio::test]
     async fn ipv6_test() -> io::Result<()> {
         match test(("::1", 0), None).await {
@@ -814,7 +819,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "ipv6")]
     #[tokio::test]
     async fn ipv6_two_socket_test() -> io::Result<()> {
         match test(("::1", 0), Some(("::1", 0))).await {
