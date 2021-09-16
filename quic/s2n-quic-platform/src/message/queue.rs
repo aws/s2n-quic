@@ -188,13 +188,7 @@ mod tests {
     }
 
     fn gen_address() -> impl ValueGenerator<Output = inet::SocketAddress> {
-        #[cfg(feature = "ipv6")]
-        let generator = gen();
-
-        #[cfg(not(feature = "ipv6"))]
-        let generator = gen::<inet::SocketAddressV4>().map(|addr| addr.into());
-
-        generator
+        gen()
     }
 
     #[derive(Clone, Copy, Debug, TypeGenerator)]
@@ -280,9 +274,6 @@ mod tests {
 
             for (message, (address, len, value)) in occupied.iter().zip(oracle.iter()) {
                 let address = *address;
-
-                #[cfg(all(target_os = "macos", feature = "ipv6"))]
-                let address = address.to_ipv6_mapped().into();
 
                 assert_eq!(message.remote_address(), Some(address));
                 assert_eq!(message.payload_len(), *len);
