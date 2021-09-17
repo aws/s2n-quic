@@ -108,6 +108,9 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         self.active = new_path_id.as_u8();
 
+        // Restart ECN validation to check that the path still supports ECN
+        self.active_path_mut().ecn_controller.restart();
+
         publisher.on_active_path_updated(event::builder::ActivePathUpdated {
             previous: event::builder::Path {
                 local_addr: self[prev_path_id].local_address().into_event(),

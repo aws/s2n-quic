@@ -470,6 +470,15 @@ impl EcnCounts {
 
         Some(*self)
     }
+
+    /// Return `EcnCounts` containing the maximum of each individual ECN count
+    pub fn max(self, other: Self) -> Self {
+        EcnCounts {
+            ect_0_count: self.ect_0_count.max(other.ect_0_count),
+            ect_1_count: self.ect_1_count.max(other.ect_1_count),
+            ce_count: self.ce_count.max(other.ce_count),
+        }
+    }
 }
 
 decoder_value!(

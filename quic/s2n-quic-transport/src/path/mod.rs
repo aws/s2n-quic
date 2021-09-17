@@ -55,6 +55,8 @@ pub struct Path<Config: endpoint::Config> {
     state: State,
     /// Controller for determining the maximum transmission unit of the path
     pub mtu_controller: mtu::Controller,
+    /// Controller for determining the ECN capability of the path
+    pub ecn_controller: ecn::Controller,
 
     /// True if the path has been validated by the peer
     peer_validated: bool,
@@ -77,6 +79,7 @@ impl<Config: endpoint::Config> Clone for Path<Config> {
             pto_backoff: self.pto_backoff,
             state: self.state,
             mtu_controller: self.mtu_controller.clone(),
+            ecn_controller: self.ecn_controller.clone(),
             peer_validated: self.peer_validated,
             challenge: self.challenge.clone(),
             response_data: self.response_data,
@@ -113,6 +116,7 @@ impl<Config: endpoint::Config> Path<Config> {
                 rx_bytes: 0,
             },
             mtu_controller: mtu::Controller::new(max_mtu, &peer_socket_address),
+            ecn_controller: ecn::Controller::new(),
             peer_validated,
             challenge: Challenge::disabled(),
             response_data: None,
