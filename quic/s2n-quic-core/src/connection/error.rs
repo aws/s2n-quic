@@ -65,7 +65,7 @@ impl fmt::Display for Error {
             ),
             Self::Application { error, initiator } => write!(
                 f,
-                "The connection was closed on the transport level with error {:?} by {}",
+                "The connection was closed on the application level with error {:?} by {}",
                 error, initiator
             ),
             Self::StatelessReset => write!(
