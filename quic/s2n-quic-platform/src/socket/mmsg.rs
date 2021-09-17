@@ -8,6 +8,8 @@ use crate::{
         queue,
     },
 };
+use errno::errno;
+use s2n_quic_core::event;
 use std::{io, os::unix::io::AsRawFd};
 
 #[derive(Debug, Default)]
@@ -30,7 +32,11 @@ impl<B: Buffer> Queue<B> {
         self.0.occupied_len()
     }
 
-    pub fn tx<Socket: AsRawFd>(&mut self, socket: &Socket) -> io::Result<usize> {
+    pub fn tx<Socket: AsRawFd, Publisher: event::EndpointPublisher>(
+        &mut self,
+        socket: &Socket,
+        publisher: &mut Publisher,
+    ) -> io::Result<usize> {
         let mut entries = self.0.occupied_mut();
 
         // Safety: calling a libc function is inherently unsafe as rust cannot
@@ -79,6 +85,9 @@ impl<B: Buffer> Queue<B> {
             Ok(status) => {
                 let count = status as usize;
                 entries.finish(count);
+
+                publisher.on_platform_tx(event::builder::PlatformTx { count });
+
                 Ok(count)
             }
             Err(err) if err.kind() == io::ErrorKind::Interrupted => {
@@ -91,18 +100,29 @@ impl<B: Buffer> Queue<B> {
             }
             // check to see if we need to disable GSO
             #[cfg(s2n_quic_platform_gso)]
-            Err(err) if unsafe { *libc::__errno_location() } == libc::EIO => {
+            Err(_) if errno().0 == libc::EIO => {
+                // unfortunately we've already assembled GSO packets so just drop them
+                // and wait for a retransmission
                 let count = vlen as usize;
                 entries.finish(count);
 
+                publisher.on_platform_tx_error(event::builder::PlatformTxError {
+                    errno: libc::EIO as _,
+                });
+
                 if self.0.max_gso() > 1 {
                     self.0.disable_gso();
-                    // unfortunately we've already assembled GSO packets so just drop them
-                    // and wait for a retransmission
-                    Ok(count)
-                } else {
-                    Err(err)
+
+                    publisher.on_platform_feature_configured(
+                        event::builder::PlatformFeatureConfigured {
+                            configuration: event::builder::PlatformFeatureConfiguration::Gso {
+                                max_segments: self.0.max_gso(),
+                            },
+                        },
+                    );
                 }
+
+                Ok(count)
             }
             Err(_) => {
                 // Ignore other transmission errors
@@ -110,8 +130,8 @@ impl<B: Buffer> Queue<B> {
                 //   rules. Those can be changed while the application is running.
                 // - Network unreachable errors can be observed for certain
                 //   destination addresses.
-                //
-                // TODO: This error should potentially be logged - but in a debounced fashion
+                publisher
+                    .on_platform_tx_error(event::builder::PlatformTxError { errno: errno().0 });
 
                 // According to the ERRORS section in https://man7.org/linux/man-pages/man2/sendmmsg.2.html
                 // an error will only be returned if no message could be transmitted
@@ -124,7 +144,11 @@ impl<B: Buffer> Queue<B> {
         }
     }
 
-    pub fn rx<Socket: AsRawFd>(&mut self, socket: &Socket) -> io::Result<usize> {
+    pub fn rx<Socket: AsRawFd, Publisher: event::EndpointPublisher>(
+        &mut self,
+        socket: &Socket,
+        publisher: &mut Publisher,
+    ) -> io::Result<usize> {
         let mut entries = self.0.free_mut();
 
         if entries.is_empty() {
@@ -179,14 +203,25 @@ impl<B: Buffer> Queue<B> {
             Ok(status) => {
                 let count = status as usize;
                 entries.finish(count);
+
+                publisher.on_platform_rx(event::builder::PlatformRx { count });
+
                 Ok(count)
             }
             Err(err) if err.kind() == io::ErrorKind::Interrupted => {
                 entries.cancel(0);
                 Ok(0)
             }
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+                entries.cancel(0);
+                Err(err)
+            }
             Err(err) => {
                 entries.cancel(0);
+
+                publisher
+                    .on_platform_rx_error(event::builder::PlatformRxError { errno: errno().0 });
+
                 Err(err)
             }
         }
