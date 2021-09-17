@@ -186,6 +186,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
 
                     publisher.on_endpoint_datagram_sent(event::builder::EndpointDatagramSent {
                         len: len as u16,
+                        gso_offset: 0,
                     });
                 }
                 Err(_) => {
@@ -269,7 +270,7 @@ impl<Path: path::Handle> tx::Message for &Transmission<Path> {
     }
 
     #[inline]
-    fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
+    fn write_payload(&mut self, buffer: &mut [u8], _gso_offset: usize) -> usize {
         let packet = self.as_ref();
         buffer[..packet.len()].copy_from_slice(packet);
         packet.len()

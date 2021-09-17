@@ -129,6 +129,13 @@ struct DuplicatePacket {
 /// Datagram sent by a connection
 struct DatagramSent {
     len: u16,
+    /// The GSO offset at which this datagram was written
+    ///
+    /// If this value is greater than 0, it indicates that this datagram has been sent with other
+    /// segments in a single buffer.
+    ///
+    /// See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads.html#generic-segmentation-offload) for more details.
+    gso_offset: usize,
 }
 
 #[event("transport:datagram_received")]

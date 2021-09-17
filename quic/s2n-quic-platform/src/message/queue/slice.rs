@@ -182,7 +182,7 @@ impl<'a, Message: message::Message, B> Slice<'a, Message, B> {
         // allow the message to write up to `gso.size` bytes
         let buffer = &mut message::Message::payload_mut(prev_message)[payload_len..];
 
-        match message.write_payload(buffer) {
+        match message.write_payload(buffer, gso.count) {
             0 => {
                 unsafe {
                     // revert the len to what it was before
