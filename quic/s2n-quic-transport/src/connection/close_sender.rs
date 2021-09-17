@@ -157,7 +157,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> tx::Message
     }
 
     #[inline]
-    fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
+    fn write_payload(&mut self, buffer: &mut [u8], gso_offset: usize) -> usize {
         let len = self.packet.len();
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.1
@@ -173,7 +173,10 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> tx::Message
         *self.transmission = TransmissionState::Idle;
 
         self.publisher
-            .on_datagram_sent(event::builder::DatagramSent { len: len as u16 });
+            .on_datagram_sent(event::builder::DatagramSent {
+                len: len as u16,
+                gso_offset,
+            });
 
         len
     }
@@ -352,7 +355,7 @@ mod tests {
                 assert!(sender.can_transmit(path.transmission_constraint()));
                 sender
                     .transmission(&mut path, &mut Publisher::default())
-                    .write_payload(&mut buffer);
+                    .write_payload(&mut buffer, 0);
 
                 for (gap, packet_size) in events {
                     // get the next timer event
@@ -374,7 +377,7 @@ mod tests {
                         if interest.can_transmit(path.transmission_constraint()) {
                             sender
                                 .transmission(&mut path, &mut Publisher::default())
-                                .write_payload(&mut buffer);
+                                .write_payload(&mut buffer, 0);
                             transmission_count += 1;
                         }
                     }

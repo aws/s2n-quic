@@ -99,7 +99,7 @@ pub trait Message {
     fn can_gso(&self) -> bool;
 
     /// Writes the payload of the message to an output buffer
-    fn write_payload(&mut self, buffer: &mut [u8]) -> usize;
+    fn write_payload(&mut self, buffer: &mut [u8], gso_offset: usize) -> usize;
 }
 
 impl<Handle: path::Handle, Payload: AsRef<[u8]>> Message for (Handle, Payload) {
@@ -125,7 +125,7 @@ impl<Handle: path::Handle, Payload: AsRef<[u8]>> Message for (Handle, Payload) {
         true
     }
 
-    fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
+    fn write_payload(&mut self, buffer: &mut [u8], _gso_offset: usize) -> usize {
         let payload = self.1.as_ref();
         let len = payload.len();
         if let Some(buffer) = buffer.get_mut(..len) {
@@ -158,9 +158,9 @@ mod tests {
         assert_eq!(message.ecn(), Default::default());
         assert_eq!(message.delay(), Default::default());
         assert_eq!(message.ipv6_flow_label(), 0);
-        assert_eq!(message.write_payload(&mut buffer[..]), 3);
+        assert_eq!(message.write_payload(&mut buffer[..], 0), 3);
 
         // assert an empty buffer doesn't panic
-        assert_eq!(message.write_payload(&mut [][..]), 0);
+        assert_eq!(message.write_payload(&mut [][..], 0), 0);
     }
 }

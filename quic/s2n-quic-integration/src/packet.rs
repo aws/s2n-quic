@@ -31,7 +31,7 @@ impl tx::Entry for Packet {
         self.ecn = message.ecn();
         self.ipv6_flow_label = message.ipv6_flow_label();
 
-        let len = message.write_payload(&mut self.payload[..]);
+        let len = message.write_payload(&mut self.payload[..], 0);
 
         if len == 0 {
             return Err(tx::Error::EmptyPayload);

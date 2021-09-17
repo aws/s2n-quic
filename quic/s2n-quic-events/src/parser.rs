@@ -371,24 +371,30 @@ impl Field {
     }
 
     fn api(&self) -> TokenStream {
-        let Self { ident, ty, .. } = self;
+        let Self { attrs, ident, ty } = self;
+        let attrs = &attrs.extra;
         if let Some(name) = ident {
             quote!(
+                #attrs
                 pub #name: #ty,
             )
         } else {
-            quote!(pub #ty,)
+            quote!(#attrs pub #ty,)
         }
     }
 
     fn enum_api(&self) -> TokenStream {
-        let Self { ident, ty, .. } = self;
+        let Self {
+            attrs, ident, ty, ..
+        } = self;
+        let attrs = &attrs.extra;
         if let Some(name) = ident {
             quote!(
+                #attrs
                 #name: #ty,
             )
         } else {
-            quote!(#ty,)
+            quote!(#attrs #ty,)
         }
     }
 
@@ -398,22 +404,24 @@ impl Field {
     }
 
     fn builder(&self) -> TokenStream {
-        let Self { ident, .. } = self;
+        let Self { attrs, ident, .. } = self;
+        let attrs = &attrs.extra;
         let ty = self.builder_type();
         if let Some(name) = ident {
-            quote!(pub #name: #ty,)
+            quote!(#attrs pub #name: #ty,)
         } else {
-            quote!(pub #ty,)
+            quote!(#attrs pub #ty,)
         }
     }
 
     fn enum_builder(&self) -> TokenStream {
-        let Self { ident, .. } = self;
+        let Self { attrs, ident, .. } = self;
+        let attrs = &attrs.extra;
         let ty = self.builder_type();
         if let Some(name) = ident {
-            quote!(#name: #ty,)
+            quote!(#attrs #name: #ty,)
         } else {
-            quote!(#ty,)
+            quote!(#attrs #ty,)
         }
     }
 

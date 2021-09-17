@@ -334,6 +334,13 @@ pub mod api {
     #[doc = " Datagram sent by a connection"]
     pub struct DatagramSent {
         pub len: u16,
+        #[doc = " The GSO offset at which this datagram was written"]
+        #[doc = ""]
+        #[doc = " If this value is greater than 0, it indicates that this datagram has been sent with other"]
+        #[doc = " segments in a single buffer."]
+        #[doc = ""]
+        #[doc = " See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads.html#generic-segmentation-offload) for more details."]
+        pub gso_offset: usize,
     }
     impl Event for DatagramSent {
         const NAME: &'static str = "transport:datagram_sent";
@@ -362,6 +369,7 @@ pub mod api {
     #[doc = " ConnectionId updated"]
     pub struct ConnectionIdUpdated<'a> {
         pub path_id: u64,
+        #[doc = " The endpoint that updated its connection id"]
         pub cid_consumer: Location,
         pub previous: ConnectionId<'a>,
         pub current: ConnectionId<'a>,
@@ -403,6 +411,13 @@ pub mod api {
     #[doc = " Datagram sent by the endpoint"]
     pub struct EndpointDatagramSent {
         pub len: u16,
+        #[doc = " The GSO offset at which this datagram was written"]
+        #[doc = ""]
+        #[doc = " If this value is greater than 0, it indicates that this datagram has been sent with other"]
+        #[doc = " segments in a single buffer."]
+        #[doc = ""]
+        #[doc = " See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads.html#generic-segmentation-offload) for more details."]
+        pub gso_offset: usize,
     }
     impl Event for EndpointDatagramSent {
         const NAME: &'static str = "transport:datagram_sent";
@@ -1288,13 +1303,21 @@ pub mod builder {
     #[doc = " Datagram sent by a connection"]
     pub struct DatagramSent {
         pub len: u16,
+        #[doc = " The GSO offset at which this datagram was written"]
+        #[doc = ""]
+        #[doc = " If this value is greater than 0, it indicates that this datagram has been sent with other"]
+        #[doc = " segments in a single buffer."]
+        #[doc = ""]
+        #[doc = " See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads.html#generic-segmentation-offload) for more details."]
+        pub gso_offset: usize,
     }
     impl IntoEvent<api::DatagramSent> for DatagramSent {
         #[inline]
         fn into_event(self) -> api::DatagramSent {
-            let DatagramSent { len } = self;
+            let DatagramSent { len, gso_offset } = self;
             api::DatagramSent {
                 len: len.into_event(),
+                gso_offset: gso_offset.into_event(),
             }
         }
     }
@@ -1332,6 +1355,7 @@ pub mod builder {
     #[doc = " ConnectionId updated"]
     pub struct ConnectionIdUpdated<'a> {
         pub path_id: u64,
+        #[doc = " The endpoint that updated its connection id"]
         pub cid_consumer: crate::endpoint::Location,
         pub previous: ConnectionId<'a>,
         pub current: ConnectionId<'a>,
@@ -1407,13 +1431,21 @@ pub mod builder {
     #[doc = " Datagram sent by the endpoint"]
     pub struct EndpointDatagramSent {
         pub len: u16,
+        #[doc = " The GSO offset at which this datagram was written"]
+        #[doc = ""]
+        #[doc = " If this value is greater than 0, it indicates that this datagram has been sent with other"]
+        #[doc = " segments in a single buffer."]
+        #[doc = ""]
+        #[doc = " See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads.html#generic-segmentation-offload) for more details."]
+        pub gso_offset: usize,
     }
     impl IntoEvent<api::EndpointDatagramSent> for EndpointDatagramSent {
         #[inline]
         fn into_event(self) -> api::EndpointDatagramSent {
-            let EndpointDatagramSent { len } = self;
+            let EndpointDatagramSent { len, gso_offset } = self;
             api::EndpointDatagramSent {
                 len: len.into_event(),
+                gso_offset: gso_offset.into_event(),
             }
         }
     }

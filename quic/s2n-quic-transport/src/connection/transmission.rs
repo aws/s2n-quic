@@ -79,7 +79,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
         !self.context.transmission_mode.is_mtu_probing()
     }
 
-    fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
+    fn write_payload(&mut self, buffer: &mut [u8], gso_offset: usize) -> usize {
         let space_manager = &mut self.space_manager;
 
         let mtu = self
@@ -367,6 +367,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 .publisher
                 .on_datagram_sent(event::builder::DatagramSent {
                     len: datagram_len as u16,
+                    gso_offset,
                 });
         }
 
