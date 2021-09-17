@@ -5,7 +5,7 @@ use s2n_quic_core::{
     counter::{Counter, Saturating},
     frame::ack::EcnCounts,
     inet::ExplicitCongestionNotification,
-    time::Timestamp,
+    time::{Duration, Timer, Timestamp},
     transmission,
 };
 
@@ -15,6 +15,10 @@ use s2n_quic_core::{
 //# ECT codepoint for only the first ten outgoing packets on a path, or for
 //# a period of three PTOs
 const TESTING_PACKET_THRESHOLD: u8 = 10;
+
+// After a failure has been detected, the ecn::Controller will wait this duration
+// before testing for ECN support again.
+const RETEST_COOL_OFF_DURATION: Duration = Duration::from_secs(60);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum State {
@@ -39,6 +43,8 @@ pub struct Controller {
     last_acked_ecn_packet_timestamp: Option<Timestamp>,
     // The running total of ECN markings on sent packets
     sent_packet_ecn_counts: EcnCounts,
+    // Timer for re-testing the path for ECN capability after failure
+    retest_timer: Timer,
 }
 
 impl Default for Controller {
@@ -55,6 +61,7 @@ impl Controller {
             black_hole_counter: Default::default(),
             last_acked_ecn_packet_timestamp: None,
             sent_packet_ecn_counts: Default::default(),
+            retest_timer: Default::default(),
         }
     }
 
@@ -94,6 +101,7 @@ impl Controller {
         expected_ecn_counts: EcnCounts,
         latest_ecn_counts: EcnCounts,
         ack_frame_ecn_counts: Option<EcnCounts>,
+        now: Timestamp,
     ) {
         if matches!(self.state, State::Failed) {
             // Validation had already failed
@@ -107,7 +115,7 @@ impl Controller {
             //# corresponding ECN counts are not present in the ACK frame. This check
             //# detects a network element that zeroes the ECN field or a peer that does
             //# not report ECN markings.
-            self.state = State::Failed;
+            self.fail(now);
             return;
         }
 
@@ -119,7 +127,7 @@ impl Controller {
             let ect_0_increase = (ack_frame_ecn_counts.ect_0_count + ack_frame_ecn_counts.ce_count)
                 .saturating_sub(latest_ecn_counts.ect_0_count + latest_ecn_counts.ce_count);
             if ect_0_increase < expected_ecn_counts.ect_0_count {
-                self.state = State::Failed;
+                self.fail(now);
                 return;
             }
 
@@ -129,7 +137,7 @@ impl Controller {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
                 //# ECN validation can fail if the received total count for either ECT(0) or ECT(1)
                 //# exceeds the total number of packets sent with each corresponding ECT codepoint.
-                self.state = State::Failed;
+                self.fail(now);
                 return;
             }
         } else {
@@ -179,7 +187,12 @@ impl Controller {
     }
 
     /// This method gets called when a packet loss is reported
-    pub fn on_packet_loss(&mut self, time_sent: Timestamp, ecn: ExplicitCongestionNotification) {
+    pub fn on_packet_loss(
+        &mut self,
+        time_sent: Timestamp,
+        ecn: ExplicitCongestionNotification,
+        now: Timestamp,
+    ) {
         if matches!(self.state, State::Failed) {
             return;
         }
@@ -195,9 +208,15 @@ impl Controller {
         }
 
         if self.black_hole_counter > TESTING_PACKET_THRESHOLD {
-            self.state = State::Failed;
-            //TODO:  Set black hole timer
+            self.fail(now);
         }
+    }
+
+    /// Set the state to Failed and arm the retest timer
+    fn fail(&mut self, now: Timestamp) {
+        self.state = State::Failed;
+        self.retest_timer.set(now + RETEST_COOL_OFF_DURATION);
+        self.black_hole_counter = Default::default();
     }
 }
 

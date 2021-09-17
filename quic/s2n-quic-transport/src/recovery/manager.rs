@@ -532,8 +532,12 @@ impl<Config: endpoint::Config> Manager<Config> {
         datagram: &DatagramInfo,
         path: &mut Path<Config>,
     ) {
-        path.ecn_controller
-            .validate(expected_ecn_counts, self.ecn_counts, ack_frame_ecn_counts);
+        path.ecn_controller.validate(
+            expected_ecn_counts,
+            self.ecn_counts,
+            ack_frame_ecn_counts,
+            datagram.timestamp,
+        );
 
         if let Some(ack_frame_ecn_counts) = ack_frame_ecn_counts {
             if path.ecn_controller.is_capable()
@@ -829,7 +833,7 @@ impl<Config: endpoint::Config> Manager<Config> {
 
             // Notify the ECN controller of packet loss for blackhole detection.
             path.ecn_controller
-                .on_packet_loss(sent_info.time_sent, sent_info.ecn);
+                .on_packet_loss(sent_info.time_sent, sent_info.ecn, now);
 
             if persistent_congestion {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
