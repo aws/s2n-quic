@@ -98,6 +98,10 @@ impl AckManager {
 
         let ack_delay = self.ack_delay(context.current_time());
 
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.1
+        //# Even if an endpoint does not set an ECT field on packets it sends,
+        //# the endpoint MUST provide feedback about ECN markings it receives, if
+        //# these are accessible.
         context
             .write_frame(&Ack {
                 ack_delay,

@@ -84,7 +84,16 @@ impl Controller {
             //# On paths with a "testing" or "capable" state, the endpoint
             //# sends packets with an ECT marking -- ECT(0) by default;
             //# otherwise, the endpoint sends unmarked packets.
+
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
+            //# Upon successful validation, an endpoint MAY continue to set an ECT
+            //# codepoint in subsequent packets it sends, with the expectation that
+            //# the path is ECN-capable.
             State::Testing(_) | State::Capable => ExplicitCongestionNotification::Ect0,
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
+            //# If validation fails, then the endpoint MUST disable ECN. It stops setting the ECT
+            //# codepoint in IP packets that it sends, assuming that either the network path or
+            //# the peer does not support ECN.
             _ => ExplicitCongestionNotification::NotEct,
         }
     }
@@ -94,6 +103,9 @@ impl Controller {
         matches!(self.state, State::Capable)
     }
 
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
+    //# Network routing and path elements can change mid-connection; an endpoint
+    //# MUST disable ECN if validation later fails.
     /// Validate the given `EcnCounts`, updating the current validation state based on the
     /// validation outcome.
     pub fn validate(
@@ -215,8 +227,11 @@ impl Controller {
     /// Set the state to Failed and arm the retest timer
     fn fail(&mut self, now: Timestamp) {
         self.state = State::Failed;
-        self.retest_timer.set(now + RETEST_COOL_OFF_DURATION);
         self.black_hole_counter = Default::default();
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
+        //# Even if validation fails, an endpoint MAY revalidate ECN for the same path at any later
+        //# time in the connection. An endpoint could continue to periodically attempt validation.
+        self.retest_timer.set(now + RETEST_COOL_OFF_DURATION);
     }
 }
 
