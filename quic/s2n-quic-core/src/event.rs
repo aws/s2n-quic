@@ -42,7 +42,21 @@ macro_rules! borrowed_into_event {
     };
 }
 
-ident_into_event!(u8, u16, u32, u64, usize, Duration, bool, connection::Error);
+ident_into_event!(
+    u8,
+    i8,
+    u16,
+    i16,
+    u32,
+    i32,
+    u64,
+    i64,
+    usize,
+    isize,
+    Duration,
+    bool,
+    connection::Error
+);
 borrowed_into_event!([u8; 4], [u8; 16], [u8], [u32], [&'a [u8]]);
 
 impl<T: IntoEvent<U>, U> IntoEvent<Option<U>> for Option<T> {

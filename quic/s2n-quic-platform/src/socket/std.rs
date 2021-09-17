@@ -9,7 +9,8 @@ use crate::{
         Message as _,
     },
 };
-use s2n_quic_core::inet::SocketAddress;
+use errno::errno;
+use s2n_quic_core::{event, inet::SocketAddress};
 
 pub use simple::Handle;
 
@@ -79,7 +80,11 @@ impl<B: Buffer> Queue<B> {
         self.0.occupied_len()
     }
 
-    pub fn tx<S: Socket>(&mut self, socket: &S) -> Result<usize, S::Error> {
+    pub fn tx<S: Socket, Publisher: event::EndpointPublisher>(
+        &mut self,
+        socket: &S,
+        publisher: &mut Publisher,
+    ) -> Result<usize, S::Error> {
         let mut count = 0;
         let mut entries = self.0.occupied_mut();
 
@@ -88,6 +93,8 @@ impl<B: Buffer> Queue<B> {
                 match socket.send_to(entry.payload_mut(), &remote_address) {
                     Ok(_) => {
                         count += 1;
+
+                        publisher.on_platform_tx(event::builder::PlatformTx { count: 1 });
                     }
                     Err(err) if count > 0 && err.would_block() => {
                         break;
@@ -97,6 +104,11 @@ impl<B: Buffer> Queue<B> {
                     }
                     Err(err) => {
                         entries.finish(count);
+
+                        publisher.on_platform_rx_error(event::builder::PlatformRxError {
+                            errno: errno().0,
+                        });
+
                         return Err(err);
                     }
                 }
@@ -108,7 +120,11 @@ impl<B: Buffer> Queue<B> {
         Ok(count)
     }
 
-    pub fn rx<S: Socket>(&mut self, socket: &S) -> Result<usize, S::Error> {
+    pub fn rx<S: Socket, Publisher: event::EndpointPublisher>(
+        &mut self,
+        socket: &S,
+        publisher: &mut Publisher,
+    ) -> Result<usize, S::Error> {
         let mut count = 0;
         let mut entries = self.0.free_mut();
 
@@ -125,7 +141,10 @@ impl<B: Buffer> Queue<B> {
 
                         entry.set_payload_len(payload_len);
                     }
+
                     count += 1;
+
+                    publisher.on_platform_rx(event::builder::PlatformRx { count: 1 });
                 }
                 Ok((_payload_len, None)) => {}
                 Err(err) if count > 0 && err.would_block() => {
@@ -136,6 +155,10 @@ impl<B: Buffer> Queue<B> {
                 }
                 Err(err) => {
                     entries.finish(count);
+
+                    publisher
+                        .on_platform_rx_error(event::builder::PlatformRxError { errno: errno().0 });
+
                     return Err(err);
                 }
             }

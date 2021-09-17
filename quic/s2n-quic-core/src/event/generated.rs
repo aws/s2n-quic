@@ -426,6 +426,52 @@ pub mod api {
     impl Event for EndpointDatagramDropped {
         const NAME: &'static str = "transport:datagram_dropped";
     }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Emitted when the platform sends at least one packet"]
+    pub struct PlatformTx {
+        pub count: usize,
+    }
+    impl Event for PlatformTx {
+        const NAME: &'static str = "platform:tx";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Emitted when the platform returns an error while sending datagrams"]
+    pub struct PlatformTxError {
+        pub errno: i32,
+    }
+    impl Event for PlatformTxError {
+        const NAME: &'static str = "platform:tx_error";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Emitted when the platform receives at least one packet"]
+    pub struct PlatformRx {
+        pub count: usize,
+    }
+    impl Event for PlatformRx {
+        const NAME: &'static str = "platform:rx";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Emitted when the platform returns an error while receiving datagrams"]
+    pub struct PlatformRxError {
+        pub errno: i32,
+    }
+    impl Event for PlatformRxError {
+        const NAME: &'static str = "platform:rx_error";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Emitted when GSO has been disabled due to a platform error"]
+    pub struct PlatformGsoDisabled {
+        pub previous_max_segments: usize,
+        pub discarded_packets: usize,
+    }
+    impl Event for PlatformGsoDisabled {
+        const NAME: &'static str = "platform:gso_disabled";
+    }
     macro_rules! impl_conn_id {
         ($name:ident) => {
             impl<'a> IntoEvent<builder::ConnectionId<'a>> for &'a crate::connection::id::$name {
@@ -676,6 +722,18 @@ pub mod api {
                 Self::Client => builder::EndpointType::Client {},
                 Self::Server => builder::EndpointType::Server {},
             }
+        }
+    }
+    #[cfg(feature = "std")]
+    impl From<PlatformTxError> for std::io::Error {
+        fn from(error: PlatformTxError) -> Self {
+            Self::from_raw_os_error(error.errno)
+        }
+    }
+    #[cfg(feature = "std")]
+    impl From<PlatformRxError> for std::io::Error {
+        fn from(error: PlatformRxError) -> Self {
+            Self::from_raw_os_error(error.errno)
         }
     }
 }
@@ -1447,6 +1505,81 @@ pub mod builder {
             }
         }
     }
+    #[derive(Clone, Debug)]
+    #[doc = " Emitted when the platform sends at least one packet"]
+    pub struct PlatformTx {
+        pub count: usize,
+    }
+    impl IntoEvent<api::PlatformTx> for PlatformTx {
+        #[inline]
+        fn into_event(self) -> api::PlatformTx {
+            let PlatformTx { count } = self;
+            api::PlatformTx {
+                count: count.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Emitted when the platform returns an error while sending datagrams"]
+    pub struct PlatformTxError {
+        pub errno: i32,
+    }
+    impl IntoEvent<api::PlatformTxError> for PlatformTxError {
+        #[inline]
+        fn into_event(self) -> api::PlatformTxError {
+            let PlatformTxError { errno } = self;
+            api::PlatformTxError {
+                errno: errno.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Emitted when the platform receives at least one packet"]
+    pub struct PlatformRx {
+        pub count: usize,
+    }
+    impl IntoEvent<api::PlatformRx> for PlatformRx {
+        #[inline]
+        fn into_event(self) -> api::PlatformRx {
+            let PlatformRx { count } = self;
+            api::PlatformRx {
+                count: count.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Emitted when the platform returns an error while receiving datagrams"]
+    pub struct PlatformRxError {
+        pub errno: i32,
+    }
+    impl IntoEvent<api::PlatformRxError> for PlatformRxError {
+        #[inline]
+        fn into_event(self) -> api::PlatformRxError {
+            let PlatformRxError { errno } = self;
+            api::PlatformRxError {
+                errno: errno.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Emitted when GSO has been disabled due to a platform error"]
+    pub struct PlatformGsoDisabled {
+        pub previous_max_segments: usize,
+        pub discarded_packets: usize,
+    }
+    impl IntoEvent<api::PlatformGsoDisabled> for PlatformGsoDisabled {
+        #[inline]
+        fn into_event(self) -> api::PlatformGsoDisabled {
+            let PlatformGsoDisabled {
+                previous_max_segments,
+                discarded_packets,
+            } = self;
+            api::PlatformGsoDisabled {
+                previous_max_segments: previous_max_segments.into_event(),
+                discarded_packets: discarded_packets.into_event(),
+            }
+        }
+    }
 }
 pub use traits::*;
 mod traits {
@@ -1794,6 +1927,36 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `PlatformTx` event is triggered"]
+        #[inline]
+        fn on_platform_tx(&mut self, meta: &EndpointMeta, event: &PlatformTx) {
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `PlatformTxError` event is triggered"]
+        #[inline]
+        fn on_platform_tx_error(&mut self, meta: &EndpointMeta, event: &PlatformTxError) {
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `PlatformRx` event is triggered"]
+        #[inline]
+        fn on_platform_rx(&mut self, meta: &EndpointMeta, event: &PlatformRx) {
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `PlatformRxError` event is triggered"]
+        #[inline]
+        fn on_platform_rx_error(&mut self, meta: &EndpointMeta, event: &PlatformRxError) {
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `PlatformGsoDisabled` event is triggered"]
+        #[inline]
+        fn on_platform_gso_disabled(&mut self, meta: &EndpointMeta, event: &PlatformGsoDisabled) {
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = r" Called for each event that relates to the endpoint and all connections"]
         #[inline]
         fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
@@ -2069,6 +2232,31 @@ mod traits {
             (self.1).on_endpoint_datagram_dropped(meta, event);
         }
         #[inline]
+        fn on_platform_tx(&mut self, meta: &EndpointMeta, event: &PlatformTx) {
+            (self.0).on_platform_tx(meta, event);
+            (self.1).on_platform_tx(meta, event);
+        }
+        #[inline]
+        fn on_platform_tx_error(&mut self, meta: &EndpointMeta, event: &PlatformTxError) {
+            (self.0).on_platform_tx_error(meta, event);
+            (self.1).on_platform_tx_error(meta, event);
+        }
+        #[inline]
+        fn on_platform_rx(&mut self, meta: &EndpointMeta, event: &PlatformRx) {
+            (self.0).on_platform_rx(meta, event);
+            (self.1).on_platform_rx(meta, event);
+        }
+        #[inline]
+        fn on_platform_rx_error(&mut self, meta: &EndpointMeta, event: &PlatformRxError) {
+            (self.0).on_platform_rx_error(meta, event);
+            (self.1).on_platform_rx_error(meta, event);
+        }
+        #[inline]
+        fn on_platform_gso_disabled(&mut self, meta: &EndpointMeta, event: &PlatformGsoDisabled) {
+            (self.0).on_platform_gso_disabled(meta, event);
+            (self.1).on_platform_gso_disabled(meta, event);
+        }
+        #[inline]
         fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
             self.0.on_event(meta, event);
             self.1.on_event(meta, event);
@@ -2117,6 +2305,16 @@ mod traits {
         fn on_endpoint_datagram_received(&mut self, event: builder::EndpointDatagramReceived);
         #[doc = "Publishes a `EndpointDatagramDropped` event to the publisher's subscriber"]
         fn on_endpoint_datagram_dropped(&mut self, event: builder::EndpointDatagramDropped);
+        #[doc = "Publishes a `PlatformTx` event to the publisher's subscriber"]
+        fn on_platform_tx(&mut self, event: builder::PlatformTx);
+        #[doc = "Publishes a `PlatformTxError` event to the publisher's subscriber"]
+        fn on_platform_tx_error(&mut self, event: builder::PlatformTxError);
+        #[doc = "Publishes a `PlatformRx` event to the publisher's subscriber"]
+        fn on_platform_rx(&mut self, event: builder::PlatformRx);
+        #[doc = "Publishes a `PlatformRxError` event to the publisher's subscriber"]
+        fn on_platform_rx_error(&mut self, event: builder::PlatformRxError);
+        #[doc = "Publishes a `PlatformGsoDisabled` event to the publisher's subscriber"]
+        fn on_platform_gso_disabled(&mut self, event: builder::PlatformGsoDisabled);
         #[doc = r" Returns the QUIC version, if any"]
         fn quic_version(&self) -> Option<u32>;
     }
@@ -2186,6 +2384,36 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_endpoint_datagram_dropped(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_platform_tx(&mut self, event: builder::PlatformTx) {
+            let event = event.into_event();
+            self.subscriber.on_platform_tx(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_platform_tx_error(&mut self, event: builder::PlatformTxError) {
+            let event = event.into_event();
+            self.subscriber.on_platform_tx_error(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_platform_rx(&mut self, event: builder::PlatformRx) {
+            let event = event.into_event();
+            self.subscriber.on_platform_rx(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_platform_rx_error(&mut self, event: builder::PlatformRxError) {
+            let event = event.into_event();
+            self.subscriber.on_platform_rx_error(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_platform_gso_disabled(&mut self, event: builder::PlatformGsoDisabled) {
+            let event = event.into_event();
+            self.subscriber.on_platform_gso_disabled(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -2461,6 +2689,11 @@ pub mod testing {
         pub endpoint_datagram_sent: u32,
         pub endpoint_datagram_received: u32,
         pub endpoint_datagram_dropped: u32,
+        pub platform_tx: u32,
+        pub platform_tx_error: u32,
+        pub platform_rx: u32,
+        pub platform_rx_error: u32,
+        pub platform_gso_disabled: u32,
     }
     impl super::Subscriber for Subscriber {
         type ConnectionContext = ();
@@ -2656,6 +2889,33 @@ pub mod testing {
         ) {
             self.endpoint_datagram_dropped += 1;
         }
+        fn on_platform_tx(&mut self, _meta: &api::EndpointMeta, _event: &api::PlatformTx) {
+            self.platform_tx += 1;
+        }
+        fn on_platform_tx_error(
+            &mut self,
+            _meta: &api::EndpointMeta,
+            _event: &api::PlatformTxError,
+        ) {
+            self.platform_tx_error += 1;
+        }
+        fn on_platform_rx(&mut self, _meta: &api::EndpointMeta, _event: &api::PlatformRx) {
+            self.platform_rx += 1;
+        }
+        fn on_platform_rx_error(
+            &mut self,
+            _meta: &api::EndpointMeta,
+            _event: &api::PlatformRxError,
+        ) {
+            self.platform_rx_error += 1;
+        }
+        fn on_platform_gso_disabled(
+            &mut self,
+            _meta: &api::EndpointMeta,
+            _event: &api::PlatformGsoDisabled,
+        ) {
+            self.platform_gso_disabled += 1;
+        }
     }
     #[derive(Copy, Clone, Debug, Default)]
     pub struct Publisher {
@@ -2683,6 +2943,11 @@ pub mod testing {
         pub endpoint_datagram_sent: u32,
         pub endpoint_datagram_received: u32,
         pub endpoint_datagram_dropped: u32,
+        pub platform_tx: u32,
+        pub platform_tx_error: u32,
+        pub platform_rx: u32,
+        pub platform_rx_error: u32,
+        pub platform_gso_disabled: u32,
     }
     impl super::EndpointPublisher for Publisher {
         fn on_version_information(&mut self, _event: builder::VersionInformation) {
@@ -2702,6 +2967,21 @@ pub mod testing {
         }
         fn on_endpoint_datagram_dropped(&mut self, _event: builder::EndpointDatagramDropped) {
             self.endpoint_datagram_dropped += 1;
+        }
+        fn on_platform_tx(&mut self, _event: builder::PlatformTx) {
+            self.platform_tx += 1;
+        }
+        fn on_platform_tx_error(&mut self, _event: builder::PlatformTxError) {
+            self.platform_tx_error += 1;
+        }
+        fn on_platform_rx(&mut self, _event: builder::PlatformRx) {
+            self.platform_rx += 1;
+        }
+        fn on_platform_rx_error(&mut self, _event: builder::PlatformRxError) {
+            self.platform_rx_error += 1;
+        }
+        fn on_platform_gso_disabled(&mut self, _event: builder::PlatformGsoDisabled) {
+            self.platform_gso_disabled += 1;
         }
         fn quic_version(&self) -> Option<u32> {
             Some(1)

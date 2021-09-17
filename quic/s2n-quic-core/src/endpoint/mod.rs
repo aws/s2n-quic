@@ -79,6 +79,9 @@ impl Location {
 /// The main interface for a QUIC endpoint
 pub trait Endpoint: 'static + Send + Sized {
     type PathHandle: path::Handle;
+    type Subscriber: crate::event::Subscriber;
+
+    const ENDPOINT_TYPE: Type;
 
     /// Receives and processes datagrams for the Rx queue
     fn receive<Rx, C>(&mut self, rx: &mut Rx, clock: &C)
@@ -116,6 +119,9 @@ pub trait Endpoint: 'static + Send + Sized {
 
     /// Sets the largest maximum transmission unit (MTU) that can be sent on a path
     fn set_max_mtu(&mut self, max_mtu: MaxMtu);
+
+    /// Returns the endpoint's event subscriber
+    fn subscriber(&mut self) -> &mut Self::Subscriber;
 }
 
 /// A future which polls an endpoint for application-space wakeups
