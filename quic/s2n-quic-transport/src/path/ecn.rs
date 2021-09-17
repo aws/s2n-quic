@@ -255,6 +255,7 @@ impl timer::Provider for Controller {
 #[cfg(test)]
 mod test {
     use super::*;
+    use s2n_quic_core::time::timer::Provider;
     use std::ops::Deref;
 
     #[test]
@@ -367,5 +368,144 @@ mod test {
         let mut controller = Controller::new();
         controller.state = State::Capable;
         assert!(controller.is_capable());
+    }
+
+    #[test]
+    fn validate_already_failed() {
+        let mut controller = Controller::new();
+        let now = s2n_quic_platform::time::now();
+        controller.fail(now);
+        controller.validate(
+            EcnCounts::default(),
+            EcnCounts::default(),
+            None,
+            now + Duration::from_secs(5),
+        );
+
+        assert_eq!(State::Failed, controller.state);
+        assert_eq!(
+            controller.next_expiration(),
+            Some(now + RETEST_COOL_OFF_DURATION)
+        );
+    }
+
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
+    //= type=test
+    //# If an ACK frame newly acknowledges a packet that the endpoint sent with
+    //# either the ECT(0) or ECT(1) codepoint set, ECN validation fails if the
+    //# corresponding ECN counts are not present in the ACK frame. This check
+    //# detects a network element that zeroes the ECN field or a peer that does
+    //# not report ECN markings.
+    #[test]
+    fn validate_ecn_counts_not_in_ack() {
+        let mut controller = Controller::new();
+        let now = s2n_quic_platform::time::now();
+        let mut expected_ecn_counts = EcnCounts::default();
+        expected_ecn_counts.increment(ExplicitCongestionNotification::Ect0);
+        controller.validate(expected_ecn_counts, EcnCounts::default(), None, now);
+
+        assert_eq!(State::Failed, controller.state);
+    }
+
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
+    //= type=test
+    //# ECN validation also fails if the sum of the increase in ECT(0)
+    //# and ECN-CE counts is less than the number of newly acknowledged
+    //# packets that were originally sent with an ECT(0) marking.
+    #[test]
+    fn validate_ecn_ce_remarking() {
+        let mut controller = Controller::new();
+        let now = s2n_quic_platform::time::now();
+        let mut expected_ecn_counts = EcnCounts::default();
+        expected_ecn_counts.increment(ExplicitCongestionNotification::Ect0);
+        controller.on_packet_sent(ExplicitCongestionNotification::Ect0);
+        controller.validate(
+            expected_ecn_counts,
+            EcnCounts::default(),
+            Some(EcnCounts::default()),
+            now,
+        );
+
+        assert_eq!(State::Failed, controller.state);
+    }
+
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
+    //= type=test
+    //# ECN validation can fail if the received total count for either ECT(0) or ECT(1)
+    //# exceeds the total number of packets sent with each corresponding ECT codepoint.
+    #[test]
+    fn validate_ect_0_remarking() {
+        let mut controller = Controller::new();
+        let now = s2n_quic_platform::time::now();
+        let mut expected_ecn_counts = EcnCounts::default();
+        expected_ecn_counts.increment(ExplicitCongestionNotification::Ect0);
+        controller.on_packet_sent(ExplicitCongestionNotification::Ect0);
+        let mut ack_frame_ecn_counts = EcnCounts::default();
+        ack_frame_ecn_counts.increment(ExplicitCongestionNotification::Ect1);
+        controller.validate(
+            expected_ecn_counts,
+            EcnCounts::default(),
+            Some(ack_frame_ecn_counts),
+            now,
+        );
+
+        assert_eq!(State::Failed, controller.state);
+    }
+
+    #[test]
+    fn validate_no_ecn_counts() {
+        let mut controller = Controller::new();
+        controller.state = State::Unknown;
+        let now = s2n_quic_platform::time::now();
+        controller.validate(EcnCounts::default(), EcnCounts::default(), None, now);
+
+        assert_eq!(State::Unknown, controller.state);
+    }
+
+    #[test]
+    fn validate_capable() {
+        let mut controller = Controller::new();
+        controller.state = State::Unknown;
+        let now = s2n_quic_platform::time::now();
+        let mut expected_ecn_counts = EcnCounts::default();
+        expected_ecn_counts.increment(ExplicitCongestionNotification::Ect0);
+        expected_ecn_counts.increment(ExplicitCongestionNotification::Ect0);
+        let mut ack_frame_ecn_counts = EcnCounts::default();
+        ack_frame_ecn_counts.increment(ExplicitCongestionNotification::Ce);
+        ack_frame_ecn_counts.increment(ExplicitCongestionNotification::Ect0);
+        controller.on_packet_sent(ExplicitCongestionNotification::Ect0);
+        controller.on_packet_sent(ExplicitCongestionNotification::Ect0);
+        controller.validate(
+            expected_ecn_counts,
+            EcnCounts::default(),
+            Some(ack_frame_ecn_counts),
+            now,
+        );
+
+        assert_eq!(State::Capable, controller.state);
+
+        // Additional ECN counts are still valid since they may be the result
+        // of lost Ack frames
+        ack_frame_ecn_counts.increment(ExplicitCongestionNotification::Ect0);
+        controller.validate(
+            expected_ecn_counts,
+            EcnCounts::default(),
+            Some(ack_frame_ecn_counts),
+            now,
+        );
+
+        assert_eq!(State::Capable, controller.state);
+
+        // Successful validation when not in the Unknown state does nothing
+        for state in vec![State::Testing(0), State::Capable, State::Failed] {
+            controller.state = state.clone();
+            controller.validate(
+                expected_ecn_counts,
+                EcnCounts::default(),
+                Some(ack_frame_ecn_counts),
+                now,
+            );
+            assert_eq!(state, controller.state);
+        }
     }
 }
