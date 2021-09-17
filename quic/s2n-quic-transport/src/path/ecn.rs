@@ -183,10 +183,10 @@ impl Controller {
 
         self.sent_packet_ecn_counts.increment(ecn);
 
-        if let (true, State::Testing(mut packet_count)) = (ecn.using_ecn(), &self.state) {
-            packet_count += 1;
+        if let (true, State::Testing(ref mut packet_count)) = (ecn.using_ecn(), &mut self.state) {
+            *packet_count += 1;
 
-            if packet_count >= TESTING_PACKET_THRESHOLD {
+            if *packet_count >= TESTING_PACKET_THRESHOLD {
                 self.state = State::Unknown
             }
         }
@@ -507,5 +507,18 @@ mod test {
             );
             assert_eq!(state, controller.state);
         }
+    }
+
+    #[test]
+    fn on_packet_sent() {
+        let mut controller = Controller::new();
+        controller.state = State::Testing(0);
+
+        for i in 0..TESTING_PACKET_THRESHOLD {
+            assert_eq!(State::Testing(i), controller.state);
+            controller.on_packet_sent(ExplicitCongestionNotification::Ect0);
+        }
+
+        assert_eq!(State::Unknown, controller.state);
     }
 }
