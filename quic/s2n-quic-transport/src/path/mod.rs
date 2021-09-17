@@ -185,6 +185,7 @@ impl<Config: endpoint::Config> Path<Config> {
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
         self.challenge.on_timeout(timestamp);
         self.mtu_controller.on_timeout(timestamp);
+        self.ecn_controller.on_timeout(timestamp);
     }
 
     /// Only PATH_CHALLENGE and PATH_RESPONSE frames should be transmitted here.
@@ -455,6 +456,7 @@ impl<Config: endpoint::Config> timer::Provider for Path<Config> {
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
         self.challenge.timers(query)?;
         self.mtu_controller.timers(query)?;
+        self.ecn_controller.timers(query)?;
 
         Ok(())
     }

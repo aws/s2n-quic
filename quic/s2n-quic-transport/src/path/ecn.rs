@@ -5,7 +5,7 @@ use s2n_quic_core::{
     counter::{Counter, Saturating},
     frame::ack::EcnCounts,
     inet::ExplicitCongestionNotification,
-    time::{Duration, Timer, Timestamp},
+    time::{timer, Duration, Timer, Timestamp},
     transmission,
 };
 
@@ -69,6 +69,14 @@ impl Controller {
     pub fn restart(&mut self) {
         self.state = State::Testing(0);
         self.black_hole_counter = Default::default();
+        self.retest_timer.cancel();
+    }
+
+    /// Called when the connection timer expires
+    pub fn on_timeout(&mut self, now: Timestamp) {
+        if self.retest_timer.poll_expiration(now).is_ready() {
+            self.restart();
+        }
     }
 
     /// Gets the ECN marking to use on packets sent to the peer
@@ -232,6 +240,15 @@ impl Controller {
         //# Even if validation fails, an endpoint MAY revalidate ECN for the same path at any later
         //# time in the connection. An endpoint could continue to periodically attempt validation.
         self.retest_timer.set(now + RETEST_COOL_OFF_DURATION);
+    }
+}
+
+impl timer::Provider for Controller {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.retest_timer.timers(query)?;
+
+        Ok(())
     }
 }
 
