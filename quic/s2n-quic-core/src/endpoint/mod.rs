@@ -7,6 +7,7 @@ use crate::{
     time::{Clock, Timestamp},
 };
 use core::{
+    fmt,
     future::Future,
     task::{Context, Poll},
 };
@@ -52,6 +53,15 @@ pub enum Location {
     Local,
     /// The remote endpoint
     Remote,
+}
+
+impl fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Local => write!(f, "the local endpoint"),
+            Self::Remote => write!(f, "the remote endpoint"),
+        }
+    }
 }
 
 impl Location {

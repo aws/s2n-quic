@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{application, connection, frame::ConnectionClose, transport};
+use core::fmt;
 
 /// Errors that a stream can encounter.
-#[derive(PartialEq, Debug, Copy, Clone, displaydoc::Display)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 #[non_exhaustive]
 pub enum StreamError {
@@ -40,6 +41,35 @@ pub enum StreamError {
     /// The application should ensure only empty buffers are provided to receive calls,
     /// otherwise it can lead to data loss on the stream.
     NonEmptyOutput,
+}
+
+impl fmt::Display for StreamError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::InvalidStream => write!(f, "The Stream ID which was referenced is invalid"),
+            Self::StreamReset(error) => write!(
+                f,
+                "The Stream had been reset with the error {:?} by {}",
+                error,
+                crate::endpoint::Location::Remote,
+            ),
+            Self::SendAfterFinish => write!(
+                f,
+                "A send attempt had been performed on a Stream after it was closed"
+            ),
+            Self::MaxStreamDataSizeExceeded => {
+                write!(f, "Attempting to write data would exceed the stream limit")
+            }
+            Self::ConnectionError(error) => error.fmt(f),
+            Self::NonReadable => write!(f, "The stream is not readable"),
+            Self::NonWritable => write!(f, "The stream is not writable"),
+            Self::SendingBlocked => write!(f, "The stream is blocked on writing data"),
+            Self::NonEmptyOutput => write!(
+                f,
+                "The stream was provided a non-empty placeholder buffer for receiving data."
+            ),
+        }
+    }
 }
 
 impl application::error::TryInto for StreamError {
