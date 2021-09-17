@@ -110,14 +110,13 @@ impl<B: Buffer> Queue<B> {
                     errno: libc::EIO as _,
                 });
 
-                let max_gso = self.0.max_gso();
-                if max_gso > 1 {
+                if self.0.max_gso() > 1 {
                     self.0.disable_gso();
 
                     publisher.on_platform_feature_configured(
                         event::builder::PlatformFeatureConfigured {
                             configuration: event::builder::PlatformFeatureConfiguration::Gso {
-                                max_segments: max_gso,
+                                max_segments: self.0.max_gso(),
                             },
                         },
                     );
