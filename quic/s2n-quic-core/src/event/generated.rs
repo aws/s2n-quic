@@ -445,6 +445,7 @@ pub mod api {
     #[non_exhaustive]
     #[doc = " Emitted when the platform sends at least one packet"]
     pub struct PlatformTx {
+        #[doc = " The number of packets sent"]
         pub count: usize,
     }
     impl Event for PlatformTx {
@@ -454,6 +455,7 @@ pub mod api {
     #[non_exhaustive]
     #[doc = " Emitted when the platform returns an error while sending datagrams"]
     pub struct PlatformTxError {
+        #[doc = " The error code returned by the platform"]
         pub errno: i32,
     }
     impl Event for PlatformTxError {
@@ -463,6 +465,7 @@ pub mod api {
     #[non_exhaustive]
     #[doc = " Emitted when the platform receives at least one packet"]
     pub struct PlatformRx {
+        #[doc = " The number of packets received"]
         pub count: usize,
     }
     impl Event for PlatformRx {
@@ -472,6 +475,7 @@ pub mod api {
     #[non_exhaustive]
     #[doc = " Emitted when the platform returns an error while receiving datagrams"]
     pub struct PlatformRxError {
+        #[doc = " The error code returned by the platform"]
         pub errno: i32,
     }
     impl Event for PlatformRxError {
@@ -490,7 +494,12 @@ pub mod api {
     #[non_exhaustive]
     pub enum PlatformFeatureConfiguration {
         #[non_exhaustive]
-        Gso { max_segments: usize },
+        Gso {
+            #[doc = " The maximum number of segments that can be sent in a single GSO packet"]
+            #[doc = ""]
+            #[doc = " If this value not greater than 1, GSO is disabled."]
+            max_segments: usize,
+        },
         #[non_exhaustive]
         Ecn { enabled: bool },
         #[non_exhaustive]
@@ -1549,6 +1558,7 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Emitted when the platform sends at least one packet"]
     pub struct PlatformTx {
+        #[doc = " The number of packets sent"]
         pub count: usize,
     }
     impl IntoEvent<api::PlatformTx> for PlatformTx {
@@ -1563,6 +1573,7 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Emitted when the platform returns an error while sending datagrams"]
     pub struct PlatformTxError {
+        #[doc = " The error code returned by the platform"]
         pub errno: i32,
     }
     impl IntoEvent<api::PlatformTxError> for PlatformTxError {
@@ -1577,6 +1588,7 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Emitted when the platform receives at least one packet"]
     pub struct PlatformRx {
+        #[doc = " The number of packets received"]
         pub count: usize,
     }
     impl IntoEvent<api::PlatformRx> for PlatformRx {
@@ -1591,6 +1603,7 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Emitted when the platform returns an error while receiving datagrams"]
     pub struct PlatformRxError {
+        #[doc = " The error code returned by the platform"]
         pub errno: i32,
     }
     impl IntoEvent<api::PlatformRxError> for PlatformRxError {
@@ -1618,9 +1631,18 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub enum PlatformFeatureConfiguration {
-        Gso { max_segments: usize },
-        Ecn { enabled: bool },
-        MaxMtu { mtu: u16 },
+        Gso {
+            #[doc = " The maximum number of segments that can be sent in a single GSO packet"]
+            #[doc = ""]
+            #[doc = " If this value not greater than 1, GSO is disabled."]
+            max_segments: usize,
+        },
+        Ecn {
+            enabled: bool,
+        },
+        MaxMtu {
+            mtu: u16,
+        },
     }
     impl IntoEvent<api::PlatformFeatureConfiguration> for PlatformFeatureConfiguration {
         #[inline]
