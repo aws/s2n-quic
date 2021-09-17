@@ -521,4 +521,56 @@ mod test {
 
         assert_eq!(State::Unknown, controller.state);
     }
+
+    #[test]
+    fn on_packet_loss() {
+        for state in vec![State::Testing(0), State::Capable, State::Unknown] {
+            let mut controller = Controller::new();
+            controller.state = state;
+            let now = s2n_quic_platform::time::now();
+            let time_sent = now + Duration::from_secs(1);
+
+            controller.last_acked_ecn_packet_timestamp = Some(now);
+
+            for i in 0..TESTING_PACKET_THRESHOLD + 1 {
+                assert_eq!(i, *controller.black_hole_counter.deref());
+                assert_ne!(State::Failed, controller.state);
+                controller.on_packet_loss(
+                    time_sent,
+                    ExplicitCongestionNotification::Ect0,
+                    time_sent,
+                );
+            }
+
+            assert_eq!(State::Failed, controller.state);
+            assert_eq!(
+                Some(time_sent + RETEST_COOL_OFF_DURATION),
+                controller.next_expiration()
+            );
+            assert_eq!(0, *controller.black_hole_counter.deref());
+        }
+    }
+
+    #[test]
+    fn on_packet_loss_already_failed() {
+        let mut controller = Controller::new();
+        let now = s2n_quic_platform::time::now();
+        let time_sent = now + Duration::from_secs(1);
+
+        controller.last_acked_ecn_packet_timestamp = Some(now);
+        controller.fail(now);
+
+        for _i in 0..TESTING_PACKET_THRESHOLD + 1 {
+            assert_eq!(0, *controller.black_hole_counter.deref());
+            assert_eq!(State::Failed, controller.state);
+            controller.on_packet_loss(time_sent, ExplicitCongestionNotification::Ect0, time_sent);
+        }
+
+        assert_eq!(State::Failed, controller.state);
+        assert_eq!(
+            Some(now + RETEST_COOL_OFF_DURATION),
+            controller.next_expiration()
+        );
+        assert_eq!(0, *controller.black_hole_counter.deref());
+    }
 }
