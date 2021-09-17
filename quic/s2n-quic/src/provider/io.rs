@@ -33,7 +33,7 @@ impl TryInto for u16 {
     type Provider = Default;
 
     fn try_into(self) -> io::Result<Self::Provider> {
-        Default::new(("0.0.0.0", self))
+        Default::new(("::", self))
     }
 }
 
@@ -51,6 +51,9 @@ macro_rules! impl_socket_addrs {
 }
 
 impl_socket_addrs!((&str, u16));
+impl_socket_addrs!((std::net::IpAddr, u16));
+impl_socket_addrs!((std::net::Ipv4Addr, u16));
+impl_socket_addrs!((std::net::Ipv6Addr, u16));
 impl_socket_addrs!(&str);
 impl_socket_addrs!(std::net::SocketAddr);
 impl_socket_addrs!(std::net::SocketAddrV4);

@@ -6,8 +6,7 @@ edition = "2018"
 license = "Apache-2.0"
 
 [features]
-default = ["ipv6", "std", "tokio-runtime", "wipe"]
-ipv6 = []
+default = ["std", "tokio-runtime", "wipe"]
 std = ["s2n-quic-core/std", "socket2", "lazy_static"]
 testing = ["std"] # Testing allows to overwrite the system time
 tokio-runtime = ["futures", "pin-project", "tokio"]

@@ -113,7 +113,6 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
             (libc::IPPROTO_IP, libc::IP_TOS) | (libc::IPPROTO_IP, libc::IP_RECVTOS) => unsafe {
                 result.ecn = ExplicitCongestionNotification::new(decode_value::<u8>(cmsg));
             },
-            #[cfg(feature = "ipv6")]
             (libc::IPPROTO_IPV6, libc::IPV6_TCLASS) => unsafe {
                 result.ecn =
                     ExplicitCongestionNotification::new(decode_value::<libc::c_int>(cmsg) as u8);
@@ -129,7 +128,7 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
                 result.local_address = local_address.into();
                 result.local_interface = Some(pkt_info.ipi_ifindex as _);
             },
-            #[cfg(all(s2n_quic_platform_pktinfo, feature = "ipv6"))]
+            #[cfg(s2n_quic_platform_pktinfo)]
             (libc::IPPROTO_IPV6, libc::IPV6_PKTINFO) => unsafe {
                 let pkt_info = decode_value::<libc::in6_pktinfo>(cmsg);
                 let local_address = pkt_info.ipi6_addr.s6_addr;
