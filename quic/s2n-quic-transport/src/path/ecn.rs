@@ -41,6 +41,12 @@ pub struct Controller {
     sent_packet_ecn_counts: EcnCounts,
 }
 
+impl Default for Controller {
+    fn default() -> Self {
+        Controller::new()
+    }
+}
+
 impl Controller {
     /// Construct a new ecn::Controller in the `Testing` state.
     pub fn new() -> Self {

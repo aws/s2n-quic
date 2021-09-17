@@ -436,6 +436,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn process_new_acked_packets<
         A: frame::ack::AckRanges,
         Ctx: Context<Config>,
