@@ -254,5 +254,118 @@ impl timer::Provider for Controller {
 
 #[cfg(test)]
 mod test {
-    //TODO
+    use super::*;
+    use std::ops::Deref;
+
+    #[test]
+    fn new() {
+        let controller = Controller::new();
+        assert_eq!(0, *controller.black_hole_counter.deref());
+        assert!(!controller.retest_timer.is_armed());
+        assert_eq!(State::Testing(0), controller.state);
+        assert_eq!(EcnCounts::default(), controller.sent_packet_ecn_counts);
+        assert_eq!(None, controller.last_acked_ecn_packet_timestamp);
+    }
+
+    #[test]
+    fn restart() {
+        let mut controller = Controller::new();
+        let now = s2n_quic_platform::time::now();
+        controller.state = State::Failed;
+        controller.retest_timer.set(now);
+        controller.black_hole_counter += 1;
+
+        controller.restart();
+
+        assert_eq!(State::Testing(0), controller.state);
+        assert!(!controller.retest_timer.is_armed());
+        assert_eq!(0, *controller.black_hole_counter.deref());
+    }
+
+    #[test]
+    fn on_timeout() {
+        let mut controller = Controller::new();
+        let now = s2n_quic_platform::time::now();
+        controller.fail(now);
+
+        assert_eq!(State::Failed, controller.state);
+        assert_eq!(0, *controller.black_hole_counter.deref());
+        assert!(controller.retest_timer.is_armed());
+
+        let now = now + RETEST_COOL_OFF_DURATION - Duration::from_secs(1);
+
+        // Too soon
+        controller.on_timeout(now);
+
+        assert_eq!(State::Failed, controller.state);
+        assert_eq!(0, *controller.black_hole_counter.deref());
+        assert!(controller.retest_timer.is_armed());
+
+        let now = now + Duration::from_secs(1);
+        controller.on_timeout(now);
+
+        assert_eq!(State::Testing(0), controller.state);
+        assert!(!controller.retest_timer.is_armed());
+        assert_eq!(0, *controller.black_hole_counter.deref());
+    }
+
+    #[test]
+    fn ecn() {
+        for transmission_mode in vec![
+            transmission::Mode::Normal,
+            transmission::Mode::MtuProbing,
+            transmission::Mode::PathValidationOnly,
+        ] {
+            let mut controller = Controller::new();
+            assert!(controller.ecn(transmission_mode).using_ecn());
+
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
+            //= type=test
+            //# Upon successful validation, an endpoint MAY continue to set an ECT
+            //# codepoint in subsequent packets it sends, with the expectation that
+            //# the path is ECN-capable.
+            controller.state = State::Capable;
+            assert!(controller.ecn(transmission_mode).using_ecn());
+
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
+            //= type=test
+            //# If validation fails, then the endpoint MUST disable ECN. It stops setting the ECT
+            //# codepoint in IP packets that it sends, assuming that either the network path or
+            //# the peer does not support ECN.
+            controller.fail(s2n_quic_platform::time::now());
+            assert!(!controller.ecn(transmission_mode).using_ecn());
+
+            controller.state = State::Unknown;
+            assert!(!controller.ecn(transmission_mode).using_ecn());
+        }
+    }
+
+    #[test]
+    fn ecn_loss_recovery_probing() {
+        for state in vec![
+            State::Capable,
+            State::Testing(0),
+            State::Unknown,
+            State::Failed,
+        ] {
+            let mut controller = Controller::new();
+            controller.state = state;
+            assert!(!controller
+                .ecn(transmission::Mode::LossRecoveryProbing)
+                .using_ecn());
+        }
+    }
+
+    #[test]
+    fn is_capable() {
+        for state in vec![State::Testing(0), State::Unknown, State::Failed] {
+            let mut controller = Controller::new();
+            controller.state = state;
+            assert!(!controller.is_capable());
+        }
+
+        let mut controller = Controller::new();
+        controller.state = State::Capable;
+        assert!(controller.is_capable());
+    }
 }
