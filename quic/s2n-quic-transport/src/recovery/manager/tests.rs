@@ -823,7 +823,7 @@ fn process_new_acked_packets_process_ecn() {
     }
 
     // Trigger 1:
-    // Ack packet first_path
+    // Ack packets 2-10
     let ack_receive_time = time_sent + Duration::from_millis(500);
     let ack_ecn_counts = EcnCounts {
         ect_0_count: VarInt::from_u8(9),
@@ -867,6 +867,64 @@ fn process_new_acked_packets_process_ecn() {
     // Expectation 2:
     assert_eq!(ack_ecn_counts, manager.ecn_counts);
     assert!(context.path().ecn_controller.is_capable());
+}
+
+#[test]
+// Increase in ECN CE count should not cause congestion event if ECN validation fails
+//
+// Setup 1:
+// - Send 10 ECT0 marked packets
+//
+// Trigger 1:
+// - Acknowledge the packets with invalid ECN counts
+//
+// Expectation 1:
+// - No Congestion Event recorded
+fn process_new_acked_packets_failed_ecn_validation_does_not_cause_congestion_event() {
+    // Setup:
+    let space = PacketNumberSpace::ApplicationData;
+    let mut manager = Manager::new(space, Duration::from_millis(100));
+    let packet_bytes = 128;
+    let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+    let mut context = MockContext::new(&mut path_manager);
+    let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
+
+    // Send 10 ECT0 marked packets
+    for i in 1..=10 {
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(i)),
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: packet_bytes,
+                packet_number: space.new_packet_number(VarInt::from_u8(1)),
+            },
+            time_sent,
+            ExplicitCongestionNotification::Ect0,
+            &mut context,
+        );
+    }
+
+    // Trigger 1:
+    // Ack packets with bad ECN counts
+    let ack_receive_time = time_sent + Duration::from_millis(500);
+    let ack_ecn_counts = EcnCounts {
+        ect_0_count: VarInt::from_u8(8),
+        ect_1_count: VarInt::from_u8(1), // We never send ECT1 so this is invalid
+        ce_count: VarInt::from_u8(1),
+    };
+    ack_packets(
+        1..=10,
+        ack_receive_time,
+        &mut context,
+        &mut manager,
+        Some(ack_ecn_counts),
+    );
+
+    // Expectation 1:
+    assert_eq!(ack_ecn_counts, manager.ecn_counts);
+    assert_eq!(0, context.path().congestion_controller.congestion_events);
+    assert!(!context.path().ecn_controller.is_capable());
 }
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
