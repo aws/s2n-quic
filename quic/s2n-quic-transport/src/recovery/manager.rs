@@ -506,6 +506,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         );
         let path = context.path_mut();
 
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
         //# Validating ECN counts from reordered ACK frames can result in failure.
         //# An endpoint MUST NOT fail ECN validation as a result of processing an
         //# ACK frame that does not increase the largest acknowledged packet number.
