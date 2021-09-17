@@ -110,12 +110,19 @@ impl<B: Buffer> Queue<B> {
                     errno: libc::EIO as _,
                 });
 
-                publisher.on_platform_gso_disabled(event::builder::PlatformGsoDisabled {
-                    previous_max_segments: self.0.max_gso(),
-                    discarded_packets: count,
-                });
+                let max_gso = self.0.max_gso();
+                if max_gso > 1 {
+                    self.0.disable_gso();
 
-                self.0.disable_gso();
+                    publisher.on_platform_feature_configured(
+                        event::builder::PlatformFeatureConfigured {
+                            configuration: event::builder::PlatformFeatureConfiguration::Gso {
+                                max_segments: max_gso,
+                            },
+                        },
+                    );
+                }
+
                 Ok(count)
             }
             Err(_) => {

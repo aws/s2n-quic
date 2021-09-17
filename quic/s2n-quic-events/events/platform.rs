@@ -47,12 +47,23 @@ impl From<PlatformRxError> for std::io::Error {
     }
 }
 
-#[event("platform:gso_disabled")]
+#[event("platform:feature_configured")]
 #[subject(endpoint)]
-/// Emitted when GSO has been disabled due to a platform error
-struct PlatformGsoDisabled {
-    /// The previously configured max_segments before GSO was disabled
-    previous_max_segments: usize,
-    /// The number of packets that were discarded as a result of the error
-    discarded_packets: usize,
+/// Emitted when a platform feature is configured
+struct PlatformFeatureConfigured {
+    configuration: PlatformFeatureConfiguration,
+}
+
+enum PlatformFeatureConfiguration {
+    /// Emitted when segment offload was configured
+    Gso {
+        /// The maximum number of segments that can be sent in a single GSO packet
+        ///
+        /// If this value not greater than 1, GSO is disabled.
+        max_segments: usize,
+    },
+    /// Emitted when ECN support is configured
+    Ecn { enabled: bool },
+    /// Emitted when the maximum transmission unit is configured
+    MaxMtu { mtu: u16 },
 }

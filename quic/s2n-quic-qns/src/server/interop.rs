@@ -303,4 +303,12 @@ impl Subscriber for EventSubscriber {
     ) {
         context.packet_sent += 1;
     }
+
+    fn on_platform_feature_configured(
+        &mut self,
+        _meta: &events::EndpointMeta,
+        event: &events::PlatformFeatureConfigured,
+    ) {
+        info!("{:?}", event.configuration)
+    }
 }

@@ -464,13 +464,22 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    #[doc = " Emitted when GSO has been disabled due to a platform error"]
-    pub struct PlatformGsoDisabled {
-        pub previous_max_segments: usize,
-        pub discarded_packets: usize,
+    #[doc = " Emitted when a platform feature is configured"]
+    pub struct PlatformFeatureConfigured {
+        pub configuration: PlatformFeatureConfiguration,
     }
-    impl Event for PlatformGsoDisabled {
-        const NAME: &'static str = "platform:gso_disabled";
+    impl Event for PlatformFeatureConfigured {
+        const NAME: &'static str = "platform:feature_configured";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub enum PlatformFeatureConfiguration {
+        #[non_exhaustive]
+        Gso { max_segments: usize },
+        #[non_exhaustive]
+        Ecn { enabled: bool },
+        #[non_exhaustive]
+        MaxMtu { mtu: u16 },
     }
     macro_rules! impl_conn_id {
         ($name:ident) => {
@@ -1562,21 +1571,39 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Emitted when GSO has been disabled due to a platform error"]
-    pub struct PlatformGsoDisabled {
-        pub previous_max_segments: usize,
-        pub discarded_packets: usize,
+    #[doc = " Emitted when a platform feature is configured"]
+    pub struct PlatformFeatureConfigured {
+        pub configuration: PlatformFeatureConfiguration,
     }
-    impl IntoEvent<api::PlatformGsoDisabled> for PlatformGsoDisabled {
+    impl IntoEvent<api::PlatformFeatureConfigured> for PlatformFeatureConfigured {
         #[inline]
-        fn into_event(self) -> api::PlatformGsoDisabled {
-            let PlatformGsoDisabled {
-                previous_max_segments,
-                discarded_packets,
-            } = self;
-            api::PlatformGsoDisabled {
-                previous_max_segments: previous_max_segments.into_event(),
-                discarded_packets: discarded_packets.into_event(),
+        fn into_event(self) -> api::PlatformFeatureConfigured {
+            let PlatformFeatureConfigured { configuration } = self;
+            api::PlatformFeatureConfigured {
+                configuration: configuration.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub enum PlatformFeatureConfiguration {
+        Gso { max_segments: usize },
+        Ecn { enabled: bool },
+        MaxMtu { mtu: u16 },
+    }
+    impl IntoEvent<api::PlatformFeatureConfiguration> for PlatformFeatureConfiguration {
+        #[inline]
+        fn into_event(self) -> api::PlatformFeatureConfiguration {
+            use api::PlatformFeatureConfiguration::*;
+            match self {
+                Self::Gso { max_segments } => Gso {
+                    max_segments: max_segments.into_event(),
+                },
+                Self::Ecn { enabled } => Ecn {
+                    enabled: enabled.into_event(),
+                },
+                Self::MaxMtu { mtu } => MaxMtu {
+                    mtu: mtu.into_event(),
+                },
             }
         }
     }
@@ -1951,9 +1978,13 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
-        #[doc = "Called when the `PlatformGsoDisabled` event is triggered"]
+        #[doc = "Called when the `PlatformFeatureConfigured` event is triggered"]
         #[inline]
-        fn on_platform_gso_disabled(&mut self, meta: &EndpointMeta, event: &PlatformGsoDisabled) {
+        fn on_platform_feature_configured(
+            &mut self,
+            meta: &EndpointMeta,
+            event: &PlatformFeatureConfigured,
+        ) {
             let _ = meta;
             let _ = event;
         }
@@ -2252,9 +2283,13 @@ mod traits {
             (self.1).on_platform_rx_error(meta, event);
         }
         #[inline]
-        fn on_platform_gso_disabled(&mut self, meta: &EndpointMeta, event: &PlatformGsoDisabled) {
-            (self.0).on_platform_gso_disabled(meta, event);
-            (self.1).on_platform_gso_disabled(meta, event);
+        fn on_platform_feature_configured(
+            &mut self,
+            meta: &EndpointMeta,
+            event: &PlatformFeatureConfigured,
+        ) {
+            (self.0).on_platform_feature_configured(meta, event);
+            (self.1).on_platform_feature_configured(meta, event);
         }
         #[inline]
         fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
@@ -2313,8 +2348,8 @@ mod traits {
         fn on_platform_rx(&mut self, event: builder::PlatformRx);
         #[doc = "Publishes a `PlatformRxError` event to the publisher's subscriber"]
         fn on_platform_rx_error(&mut self, event: builder::PlatformRxError);
-        #[doc = "Publishes a `PlatformGsoDisabled` event to the publisher's subscriber"]
-        fn on_platform_gso_disabled(&mut self, event: builder::PlatformGsoDisabled);
+        #[doc = "Publishes a `PlatformFeatureConfigured` event to the publisher's subscriber"]
+        fn on_platform_feature_configured(&mut self, event: builder::PlatformFeatureConfigured);
         #[doc = r" Returns the QUIC version, if any"]
         fn quic_version(&self) -> Option<u32>;
     }
@@ -2411,9 +2446,10 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
-        fn on_platform_gso_disabled(&mut self, event: builder::PlatformGsoDisabled) {
+        fn on_platform_feature_configured(&mut self, event: builder::PlatformFeatureConfigured) {
             let event = event.into_event();
-            self.subscriber.on_platform_gso_disabled(&self.meta, &event);
+            self.subscriber
+                .on_platform_feature_configured(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -2693,7 +2729,7 @@ pub mod testing {
         pub platform_tx_error: u32,
         pub platform_rx: u32,
         pub platform_rx_error: u32,
-        pub platform_gso_disabled: u32,
+        pub platform_feature_configured: u32,
     }
     impl super::Subscriber for Subscriber {
         type ConnectionContext = ();
@@ -2909,12 +2945,12 @@ pub mod testing {
         ) {
             self.platform_rx_error += 1;
         }
-        fn on_platform_gso_disabled(
+        fn on_platform_feature_configured(
             &mut self,
             _meta: &api::EndpointMeta,
-            _event: &api::PlatformGsoDisabled,
+            _event: &api::PlatformFeatureConfigured,
         ) {
-            self.platform_gso_disabled += 1;
+            self.platform_feature_configured += 1;
         }
     }
     #[derive(Copy, Clone, Debug, Default)]
@@ -2947,7 +2983,7 @@ pub mod testing {
         pub platform_tx_error: u32,
         pub platform_rx: u32,
         pub platform_rx_error: u32,
-        pub platform_gso_disabled: u32,
+        pub platform_feature_configured: u32,
     }
     impl super::EndpointPublisher for Publisher {
         fn on_version_information(&mut self, _event: builder::VersionInformation) {
@@ -2980,8 +3016,8 @@ pub mod testing {
         fn on_platform_rx_error(&mut self, _event: builder::PlatformRxError) {
             self.platform_rx_error += 1;
         }
-        fn on_platform_gso_disabled(&mut self, _event: builder::PlatformGsoDisabled) {
-            self.platform_gso_disabled += 1;
+        fn on_platform_feature_configured(&mut self, _event: builder::PlatformFeatureConfigured) {
+            self.platform_feature_configured += 1;
         }
         fn quic_version(&self) -> Option<u32> {
             Some(1)

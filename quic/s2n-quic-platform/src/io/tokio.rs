@@ -13,7 +13,7 @@ use futures::future::{Fuse, FutureExt};
 use pin_project::pin_project;
 use s2n_quic_core::{
     endpoint::{CloseError, Endpoint},
-    event,
+    event::{self, EndpointPublisher as _},
     inet::SocketAddress,
     path::MaxMtu,
     time::{self, Clock as ClockTrait},
@@ -93,6 +93,29 @@ impl Io {
         } = self.builder;
 
         endpoint.set_max_mtu(max_mtu);
+
+        let clock = Clock::default();
+
+        let mut publisher = event::EndpointPublisherSubscriber::new(
+            event::builder::EndpointMeta {
+                endpoint_type: E::ENDPOINT_TYPE,
+                timestamp: clock.get_time(),
+            },
+            None,
+            endpoint.subscriber(),
+        );
+
+        publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
+            configuration: event::builder::PlatformFeatureConfiguration::MaxMtu {
+                mtu: max_mtu.into(),
+            },
+        });
+
+        publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
+            configuration: event::builder::PlatformFeatureConfiguration::Gso {
+                max_segments: crate::features::get().gso.default_max_segments(),
+            },
+        });
 
         let handle = if let Some(handle) = handle {
             handle
@@ -214,6 +237,11 @@ impl Io {
                 ))?;
             }
         }
+        publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
+            configuration: event::builder::PlatformFeatureConfiguration::Ecn {
+                enabled: cfg!(s2n_quic_platform_tos),
+            },
+        });
 
         // Set up the RX socket to pass information about the local address and interface
         #[cfg(s2n_quic_platform_pktinfo)]
@@ -241,7 +269,7 @@ impl Io {
         }
 
         let instance = Instance {
-            clock: Clock::default(),
+            clock,
             rx_socket: rx_socket.into(),
             tx_socket: tx_socket.into(),
             rx: Default::default(),
