@@ -11,14 +11,12 @@ use core::{
 use libc::{c_void, iovec, msghdr, sockaddr_in, sockaddr_in6, AF_INET, AF_INET6};
 use s2n_quic_core::{
     inet::{
-        datagram, AncillaryData, ExplicitCongestionNotification, IpV4Address, SocketAddress,
-        SocketAddressV4,
+        datagram, AncillaryData, ExplicitCongestionNotification, IpV4Address, IpV6Address,
+        SocketAddress, SocketAddressV4, SocketAddressV6,
     },
     io::{rx, tx},
     path::{self, LocalAddress, RemoteAddress},
 };
-
-use s2n_quic_core::inet::{IpV6Address, SocketAddressV6};
 
 #[repr(transparent)]
 pub struct Message(pub(crate) msghdr);
