@@ -58,7 +58,7 @@ fn on_timeout() {
 
 #[test]
 fn ecn() {
-    for transmission_mode in vec![
+    for &transmission_mode in &[
         transmission::Mode::Normal,
         transmission::Mode::MtuProbing,
         transmission::Mode::PathValidationOnly,
