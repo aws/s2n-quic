@@ -120,7 +120,7 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
             #[cfg(s2n_quic_platform_pktinfo)]
             (libc::IPPROTO_IP, libc::IP_PKTINFO) => unsafe {
                 let pkt_info = decode_value::<libc::in_pktinfo>(cmsg);
-                let local_address = pkt_info.ipi_addr.s_addr.to_ne_bytes();
+                let local_address = pkt_info.ipi_spec_dst.s_addr.to_ne_bytes();
                 // TODO set the correct port
                 //      https://github.com/awslabs/s2n-quic/issues/816
                 let port = 0;
