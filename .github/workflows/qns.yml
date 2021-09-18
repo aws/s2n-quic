@@ -297,7 +297,7 @@ jobs:
         if: github.event.pull_request
         run: |
           curl \
-          --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/interop.yml/runs?branch=main&status=success&per_page=1" \
+          --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/qns.yml/runs?branch=main&status=success&per_page=1" \
           --header "authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
           --header "Accept: application/vnd.github.v3+json" > latest_workflow_run.json
           MAIN_SHA=$(jq --raw-output '.workflow_runs[0] | .head_sha' latest_workflow_run.json)
