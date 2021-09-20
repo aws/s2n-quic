@@ -24,6 +24,17 @@ pub enum IpAddress {
     Ipv6(IpV6Address),
 }
 
+impl IpAddress {
+    /// Converts the IP address into IPv4 if it is mapped, otherwise the address is unchanged
+    #[inline]
+    pub fn unmap(self) -> Self {
+        match self {
+            Self::Ipv4(_) => self,
+            Self::Ipv6(addr) => addr.unmap(),
+        }
+    }
+}
+
 impl From<IpV4Address> for IpAddress {
     fn from(ip: IpV4Address) -> Self {
         Self::Ipv4(ip)
