@@ -839,7 +839,7 @@ fn process_new_acked_packets_process_ecn() {
     );
 
     // Expectation 1:
-    assert_eq!(ack_ecn_counts, manager.ecn_counts);
+    assert_eq!(ack_ecn_counts, manager.ack_frame_ecn_counts);
     assert_eq!(1, context.path().congestion_controller.congestion_events);
     assert!(context.path().ecn_controller.is_capable());
 
@@ -865,7 +865,7 @@ fn process_new_acked_packets_process_ecn() {
     );
 
     // Expectation 2:
-    assert_eq!(ack_ecn_counts, manager.ecn_counts);
+    assert_eq!(ack_ecn_counts, manager.ack_frame_ecn_counts);
     assert!(context.path().ecn_controller.is_capable());
 }
 
@@ -922,7 +922,7 @@ fn process_new_acked_packets_failed_ecn_validation_does_not_cause_congestion_eve
     );
 
     // Expectation 1:
-    assert_eq!(ack_ecn_counts, manager.ecn_counts);
+    assert_eq!(ack_ecn_counts, manager.ack_frame_ecn_counts);
     assert_eq!(0, context.path().congestion_controller.congestion_events);
     assert!(!context.path().ecn_controller.is_capable());
 }

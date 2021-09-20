@@ -63,7 +63,10 @@ pub struct Manager<Config: endpoint::Config> {
 
     // The ECN counts from the last successfully processed Ack frame. These counts are used
     // to validate new ECN counts and to detect increases in the reported ECN-CE counter.
-    ecn_counts: EcnCounts,
+    ack_frame_ecn_counts: EcnCounts,
+
+    // The running total of ECN markings on sent packets
+    sent_packet_ecn_counts: EcnCounts,
 
     config: PhantomData<Config>,
 }
@@ -92,7 +95,8 @@ impl<Config: endpoint::Config> Manager<Config> {
             loss_timer: Timer::default(),
             pto: Pto::new(max_ack_delay),
             time_of_last_ack_eliciting_packet: None,
-            ecn_counts: Default::default(),
+            ack_frame_ecn_counts: Default::default(),
+            sent_packet_ecn_counts: Default::default(),
             config: PhantomData,
         }
     }
@@ -170,6 +174,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         );
 
         context.path_mut().ecn_controller.on_packet_sent(ecn);
+        self.sent_packet_ecn_counts.increment(ecn);
 
         if outcome.is_congestion_controlled {
             if outcome.ack_elicitation.is_ack_eliciting() {
@@ -535,14 +540,15 @@ impl<Config: endpoint::Config> Manager<Config> {
     ) {
         path.ecn_controller.validate(
             expected_ecn_counts,
-            self.ecn_counts,
+            self.ack_frame_ecn_counts,
             ack_frame_ecn_counts,
+            self.sent_packet_ecn_counts,
             datagram.timestamp,
         );
 
         if let Some(ack_frame_ecn_counts) = ack_frame_ecn_counts {
             if path.ecn_controller.is_capable()
-                && ack_frame_ecn_counts.ce_count > self.ecn_counts.ce_count
+                && ack_frame_ecn_counts.ce_count > self.ack_frame_ecn_counts.ce_count
             {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.1
                 //# If a path has been validated to support ECN ([RFC3168], [RFC8311]),
@@ -552,7 +558,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     .on_congestion_event(datagram.timestamp);
             }
 
-            self.ecn_counts = self.ecn_counts.max(ack_frame_ecn_counts);
+            self.ack_frame_ecn_counts = self.ack_frame_ecn_counts.max(ack_frame_ecn_counts);
         }
     }
 

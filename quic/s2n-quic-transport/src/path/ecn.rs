@@ -41,8 +41,6 @@ pub struct Controller {
     // The largest acknowledged packet sent with an ECN marking. Used when tracking
     // packets that have been lost for the purpose of detecting a black hole.
     last_acked_ecn_packet_timestamp: Option<Timestamp>,
-    // The running total of ECN markings on sent packets
-    sent_packet_ecn_counts: EcnCounts,
     // Timer for re-testing the path for ECN capability after failure
     retest_timer: Timer,
 }
@@ -60,7 +58,6 @@ impl Controller {
             state: State::Testing(0),
             black_hole_counter: Default::default(),
             last_acked_ecn_packet_timestamp: None,
-            sent_packet_ecn_counts: Default::default(),
             retest_timer: Default::default(),
         }
     }
@@ -121,6 +118,7 @@ impl Controller {
         expected_ecn_counts: EcnCounts,
         latest_ecn_counts: EcnCounts,
         ack_frame_ecn_counts: Option<EcnCounts>,
+        sent_packet_ecn_counts: EcnCounts,
         now: Timestamp,
     ) {
         if matches!(self.state, State::Failed) {
@@ -151,8 +149,8 @@ impl Controller {
                 return;
             }
 
-            if ack_frame_ecn_counts.ect_0_count > self.sent_packet_ecn_counts.ect_0_count
-                || ack_frame_ecn_counts.ect_1_count > self.sent_packet_ecn_counts.ect_1_count
+            if ack_frame_ecn_counts.ect_0_count > sent_packet_ecn_counts.ect_0_count
+                || ack_frame_ecn_counts.ect_1_count > sent_packet_ecn_counts.ect_1_count
             {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
                 //# ECN validation can fail if the received total count for either ECT(0) or ECT(1)
@@ -180,8 +178,6 @@ impl Controller {
             !matches!(ecn, ExplicitCongestionNotification::Ce),
             "Endpoints should not mark packets as Ce"
         );
-
-        self.sent_packet_ecn_counts.increment(ecn);
 
         if let (true, State::Testing(ref mut packet_count)) = (ecn.using_ecn(), &mut self.state) {
             *packet_count += 1;

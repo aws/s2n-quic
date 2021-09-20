@@ -10,7 +10,6 @@ fn new() {
     assert_eq!(0, *controller.black_hole_counter.deref());
     assert!(!controller.retest_timer.is_armed());
     assert_eq!(State::Testing(0), controller.state);
-    assert_eq!(EcnCounts::default(), controller.sent_packet_ecn_counts);
     assert_eq!(None, controller.last_acked_ecn_packet_timestamp);
 }
 
@@ -125,6 +124,7 @@ fn validate_already_failed() {
         EcnCounts::default(),
         EcnCounts::default(),
         None,
+        EcnCounts::default(),
         now + Duration::from_secs(5),
     );
 
@@ -148,7 +148,13 @@ fn validate_ecn_counts_not_in_ack() {
     let now = s2n_quic_platform::time::now();
     let mut expected_ecn_counts = EcnCounts::default();
     expected_ecn_counts.increment(ExplicitCongestionNotification::Ect0);
-    controller.validate(expected_ecn_counts, EcnCounts::default(), None, now);
+    controller.validate(
+        expected_ecn_counts,
+        EcnCounts::default(),
+        None,
+        EcnCounts::default(),
+        now,
+    );
 
     assert_eq!(State::Failed, controller.state);
 }
@@ -163,12 +169,14 @@ fn validate_ecn_ce_remarking() {
     let mut controller = Controller::new();
     let now = s2n_quic_platform::time::now();
     let mut expected_ecn_counts = EcnCounts::default();
+    let mut sent_packet_ecn_counts = EcnCounts::default();
     expected_ecn_counts.increment(ExplicitCongestionNotification::Ect0);
-    controller.on_packet_sent(ExplicitCongestionNotification::Ect0);
+    sent_packet_ecn_counts.increment(ExplicitCongestionNotification::Ect0);
     controller.validate(
         expected_ecn_counts,
         EcnCounts::default(),
         Some(EcnCounts::default()),
+        sent_packet_ecn_counts,
         now,
     );
 
@@ -184,14 +192,16 @@ fn validate_ect_0_remarking() {
     let mut controller = Controller::new();
     let now = s2n_quic_platform::time::now();
     let mut expected_ecn_counts = EcnCounts::default();
+    let mut sent_packet_ecn_counts = EcnCounts::default();
     expected_ecn_counts.increment(ExplicitCongestionNotification::Ect0);
-    controller.on_packet_sent(ExplicitCongestionNotification::Ect0);
+    sent_packet_ecn_counts.increment(ExplicitCongestionNotification::Ect0);
     let mut ack_frame_ecn_counts = EcnCounts::default();
     ack_frame_ecn_counts.increment(ExplicitCongestionNotification::Ect1);
     controller.validate(
         expected_ecn_counts,
         EcnCounts::default(),
         Some(ack_frame_ecn_counts),
+        sent_packet_ecn_counts,
         now,
     );
 
@@ -203,7 +213,13 @@ fn validate_no_ecn_counts() {
     let mut controller = Controller::new();
     controller.state = State::Unknown;
     let now = s2n_quic_platform::time::now();
-    controller.validate(EcnCounts::default(), EcnCounts::default(), None, now);
+    controller.validate(
+        EcnCounts::default(),
+        EcnCounts::default(),
+        None,
+        EcnCounts::default(),
+        now,
+    );
 
     assert_eq!(State::Unknown, controller.state);
 }
@@ -214,17 +230,19 @@ fn validate_capable() {
     controller.state = State::Unknown;
     let now = s2n_quic_platform::time::now();
     let mut expected_ecn_counts = EcnCounts::default();
+    let mut sent_packet_ecn_counts = EcnCounts::default();
     expected_ecn_counts.increment(ExplicitCongestionNotification::Ect0);
     expected_ecn_counts.increment(ExplicitCongestionNotification::Ect0);
     let mut ack_frame_ecn_counts = EcnCounts::default();
     ack_frame_ecn_counts.increment(ExplicitCongestionNotification::Ce);
     ack_frame_ecn_counts.increment(ExplicitCongestionNotification::Ect0);
-    controller.on_packet_sent(ExplicitCongestionNotification::Ect0);
-    controller.on_packet_sent(ExplicitCongestionNotification::Ect0);
+    sent_packet_ecn_counts.increment(ExplicitCongestionNotification::Ect0);
+    sent_packet_ecn_counts.increment(ExplicitCongestionNotification::Ect0);
     controller.validate(
         expected_ecn_counts,
         EcnCounts::default(),
         Some(ack_frame_ecn_counts),
+        sent_packet_ecn_counts,
         now,
     );
 
@@ -237,6 +255,7 @@ fn validate_capable() {
         expected_ecn_counts,
         EcnCounts::default(),
         Some(ack_frame_ecn_counts),
+        sent_packet_ecn_counts,
         now,
     );
 
@@ -249,6 +268,7 @@ fn validate_capable() {
             expected_ecn_counts,
             EcnCounts::default(),
             Some(ack_frame_ecn_counts),
+            sent_packet_ecn_counts,
             now,
         );
         assert_eq!(state, controller.state);
