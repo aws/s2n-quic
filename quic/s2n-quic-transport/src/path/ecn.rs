@@ -22,6 +22,8 @@ const RETEST_COOL_OFF_DURATION: Duration = Duration::from_secs(60);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum State {
+    // ECN capability testing has been restarted, but baseline ECN counts are needed
+    PendingBaseline,
     // ECN capability is being tested, tracking the number of ECN marked packets sent
     Testing(u8),
     // ECN capability has been tested, but not validated yet
@@ -41,6 +43,8 @@ pub struct Controller {
     // The largest acknowledged packet sent with an ECN marking. Used when tracking
     // packets that have been lost for the purpose of detecting a black hole.
     last_acked_ecn_packet_timestamp: Option<Timestamp>,
+    // ECN Counts at the beginning of the testing period or after successful validation
+    baseline_ecn_counts: EcnCounts,
     // Timer for re-testing the path for ECN capability after failure
     retest_timer: Timer,
 }
@@ -58,13 +62,14 @@ impl Controller {
             state: State::Testing(0),
             black_hole_counter: Default::default(),
             last_acked_ecn_packet_timestamp: None,
+            baseline_ecn_counts: EcnCounts::default(),
             retest_timer: Default::default(),
         }
     }
 
     /// Restart testing of ECN capability
     pub fn restart(&mut self) {
-        self.state = State::Testing(0);
+        self.state = State::PendingBaseline;
         self.black_hole_counter = Default::default();
         self.retest_timer.cancel();
     }
@@ -118,7 +123,6 @@ impl Controller {
         expected_ecn_counts: EcnCounts,
         latest_ecn_counts: EcnCounts,
         ack_frame_ecn_counts: Option<EcnCounts>,
-        sent_packet_ecn_counts: EcnCounts,
         now: Timestamp,
     ) {
         if matches!(self.state, State::Failed) {
@@ -149,8 +153,14 @@ impl Controller {
                 return;
             }
 
-            if ack_frame_ecn_counts.ect_0_count > sent_packet_ecn_counts.ect_0_count
-                || ack_frame_ecn_counts.ect_1_count > sent_packet_ecn_counts.ect_1_count
+            if ack_frame_ecn_counts.ect_0_count
+                > expected_ecn_counts
+                    .ect_0_count
+                    .saturating_add(self.baseline_ecn_counts.ect_0_count)
+                || ack_frame_ecn_counts.ect_1_count
+                    > expected_ecn_counts
+                        .ect_1_count
+                        .saturating_add(self.baseline_ecn_counts.ect_1_count)
             {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
                 //# ECN validation can fail if the received total count for either ECT(0) or ECT(1)
@@ -158,6 +168,9 @@ impl Controller {
                 self.fail(now);
                 return;
             }
+
+            // The ECN counts are valid so they become the new baseline
+            self.baseline_ecn_counts = ack_frame_ecn_counts;
         } else {
             // No ECN counts to validate
             return;
@@ -189,7 +202,17 @@ impl Controller {
     }
 
     /// This method gets called when a packet delivery got acknowledged
-    pub fn on_packet_ack(&mut self, time_sent: Timestamp, ecn: ExplicitCongestionNotification) {
+    pub fn on_packet_ack(
+        &mut self,
+        time_sent: Timestamp,
+        ecn: ExplicitCongestionNotification,
+        ack_frame_ecn_counts: Option<EcnCounts>,
+    ) {
+        if matches!(self.state, State::PendingBaseline) {
+            self.baseline_ecn_counts = ack_frame_ecn_counts.unwrap_or_default();
+            self.state = State::Testing(0);
+        }
+
         if ecn.using_ecn()
             && self
                 .last_acked_ecn_packet_timestamp

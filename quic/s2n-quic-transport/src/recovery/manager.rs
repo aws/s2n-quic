@@ -65,9 +65,6 @@ pub struct Manager<Config: endpoint::Config> {
     // to validate new ECN counts and to detect increases in the reported ECN-CE counter.
     ack_frame_ecn_counts: EcnCounts,
 
-    // The running total of ECN markings on sent packets
-    sent_packet_ecn_counts: EcnCounts,
-
     config: PhantomData<Config>,
 }
 
@@ -96,7 +93,6 @@ impl<Config: endpoint::Config> Manager<Config> {
             pto: Pto::new(max_ack_delay),
             time_of_last_ack_eliciting_packet: None,
             ack_frame_ecn_counts: Default::default(),
-            sent_packet_ecn_counts: Default::default(),
             config: PhantomData,
         }
     }
@@ -174,7 +170,6 @@ impl<Config: endpoint::Config> Manager<Config> {
         );
 
         context.path_mut().ecn_controller.on_packet_sent(ecn);
-        self.sent_packet_ecn_counts.increment(ecn);
 
         if outcome.is_congestion_controlled {
             if outcome.ack_elicitation.is_ack_eliciting() {
@@ -379,8 +374,11 @@ impl<Config: endpoint::Config> Manager<Config> {
                     acked_packet_info.sent_bytes,
                     &mut path.congestion_controller,
                 );
-                path.ecn_controller
-                    .on_packet_ack(acked_packet_info.time_sent, acked_packet_info.ecn);
+                path.ecn_controller.on_packet_ack(
+                    acked_packet_info.time_sent,
+                    acked_packet_info.ecn,
+                    frame.ecn_counts,
+                );
             }
 
             if let Some((start, end)) = newly_acked_range {
@@ -542,7 +540,6 @@ impl<Config: endpoint::Config> Manager<Config> {
             expected_ecn_counts,
             self.ack_frame_ecn_counts,
             ack_frame_ecn_counts,
-            self.sent_packet_ecn_counts,
             datagram.timestamp,
         );
 
