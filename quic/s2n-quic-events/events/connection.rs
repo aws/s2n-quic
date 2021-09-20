@@ -20,23 +20,20 @@ struct SniInformation<'a> {
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.5
 /// Packet was sent by a connection
 struct PacketSent {
-    packet_header: PacketHeader,
+    packet_header: ConnectionPacketHeader,
 }
 
 #[event("transport:packet_received")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.6
 /// Packet was received by a connection
 struct PacketReceived {
-    packet_header: PacketHeader,
+    packet_header: ConnectionPacketHeader,
 }
 
 #[event("connectivity:active_path_updated")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.8
 /// Active path was updated
 struct ActivePathUpdated<'a> {
-    // TODO: many events seem to require PacketHeader. Make it more ergonomic
-    // to include this field.
-    // packet_header: PacketHeader,
     previous: Path<'a>,
     active: Path<'a>,
 }
@@ -54,7 +51,7 @@ struct PathCreated<'a> {
 // packet events.
 /// Frame was sent
 struct FrameSent {
-    packet_header: PacketHeader,
+    packet_header: ConnectionPacketHeader,
     path_id: u64,
     frame: Frame,
 }
@@ -65,7 +62,7 @@ struct FrameSent {
 // packet events.
 /// Frame was received
 struct FrameReceived {
-    packet_header: PacketHeader,
+    packet_header: ConnectionPacketHeader,
     path_id: u64,
     frame: Frame,
 }
@@ -74,7 +71,7 @@ struct FrameReceived {
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.4.5
 /// Packet was lost
 struct PacketLost<'a> {
-    packet_header: PacketHeader,
+    packet_header: ConnectionPacketHeader,
     path: Path<'a>,
     bytes_lost: u16,
     is_mtu_probe: bool,
@@ -119,7 +116,7 @@ struct ConnectionClosed {
 #[event("transport:duplicate_packet")]
 /// Duplicate packet received
 struct DuplicatePacket {
-    packet_header: PacketHeader,
+    packet_header: ConnectionPacketHeader,
     path_id: u64,
     error: DuplicatePacketError,
 }
@@ -163,4 +160,41 @@ struct ConnectionIdUpdated<'a> {
     cid_consumer: Location,
     previous: ConnectionId<'a>,
     current: ConnectionId<'a>,
+}
+
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.2
+//
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
+enum ConnectionPacketHeader {
+    Initial { number: u64, version: u32 },
+    Handshake { number: u64, version: u32 },
+    ZeroRtt { number: u64, version: u32 },
+    OneRtt { number: u64, version: u32 },
+    Retry { version: u32 },
+    VersionNegotiation { version: u32 },
+    StatelessReset { version: u32 },
+}
+
+impl builder::ConnectionPacketHeader {
+    // This constructor is required since a `version` is required and needs
+    // to be passed in.
+    pub fn new(packet_number: crate::packet::number::PacketNumber, version: u32) -> Self {
+        use crate::packet::number::PacketNumberSpace;
+        use builder::ConnectionPacketHeader;
+
+        match packet_number.space() {
+            PacketNumberSpace::Initial => ConnectionPacketHeader::Initial {
+                number: packet_number.as_u64(),
+                version,
+            },
+            PacketNumberSpace::Handshake => ConnectionPacketHeader::Handshake {
+                number: packet_number.as_u64(),
+                version,
+            },
+            PacketNumberSpace::ApplicationData => ConnectionPacketHeader::OneRtt {
+                number: packet_number.as_u64(),
+                version,
+            },
+        }
+    }
 }

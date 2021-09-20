@@ -852,10 +852,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             let packet = space.validate_and_decrypt_packet(packet, path_id, &mut publisher)?;
 
             publisher.on_packet_received(event::builder::PacketReceived {
-                packet_header: event::builder::PacketHeader {
-                    packet_type: packet.packet_number.into_event(),
-                    version: Some(packet.version),
-                },
+                packet_header: event::builder::ConnectionPacketHeader::new(
+                    packet.packet_number,
+                    packet.version,
+                ),
             });
 
             self.handle_cleartext_initial_packet(
@@ -949,10 +949,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             let packet = space.validate_and_decrypt_packet(packet, path_id, &mut publisher)?;
 
             publisher.on_packet_received(event::builder::PacketReceived {
-                packet_header: event::builder::PacketHeader {
-                    packet_type: packet.packet_number.into_event(),
-                    version: Some(packet.version),
-                },
+                packet_header: event::builder::ConnectionPacketHeader::new(
+                    packet.packet_number,
+                    packet.version,
+                ),
             });
 
             space.handle_cleartext_payload(
@@ -1081,10 +1081,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
             publisher.on_packet_received(event::builder::PacketReceived {
-                packet_header: event::builder::PacketHeader {
-                    packet_type: packet.packet_number.into_event(),
-                    version: Some(publisher.quic_version()),
-                },
+                packet_header: event::builder::ConnectionPacketHeader::new(
+                    packet.packet_number,
+                    publisher.quic_version(),
+                ),
             });
         }
 
@@ -1102,9 +1102,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
         publisher.on_packet_received(event::builder::PacketReceived {
-            packet_header: event::builder::PacketHeader {
-                packet_type: event::builder::PacketType::VersionNegotiation {},
-                version: Some(publisher.quic_version()),
+            packet_header: event::builder::ConnectionPacketHeader::VersionNegotiation {
+                version: publisher.quic_version(),
             },
         });
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.2
@@ -1145,13 +1144,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
         publisher.on_packet_received(event::builder::PacketReceived {
-            packet_header: event::builder::PacketHeader {
-                // FIXME: remove when we support zero-rtt. Since there is a
-                // `IntoEvent<PacketType>` for PacketNumber` this can be replaced
-                // wih `packet_number.into_event()` once the packet number is
-                // available.
-                packet_type: event::builder::PacketType::ZeroRtt { number: 0 },
-                version: Some(publisher.quic_version()),
+            // FIXME: replace with ConnectionPacketHeader::new when we support zero-rtt.
+            packet_header: event::builder::ConnectionPacketHeader::ZeroRtt {
+                number: 0,
+                version: publisher.quic_version(),
             },
         });
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
@@ -1176,9 +1172,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
         publisher.on_packet_received(event::builder::PacketReceived {
-            packet_header: event::builder::PacketHeader {
-                packet_type: event::builder::PacketType::Retry {},
-                version: Some(publisher.quic_version()),
+            packet_header: event::builder::ConnectionPacketHeader::Retry {
+                version: publisher.quic_version(),
             },
         });
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3

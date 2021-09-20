@@ -206,7 +206,7 @@ pub mod api {
     #[non_exhaustive]
     #[doc = " Packet was sent by a connection"]
     pub struct PacketSent {
-        pub packet_header: PacketHeader,
+        pub packet_header: ConnectionPacketHeader,
     }
     impl Event for PacketSent {
         const NAME: &'static str = "transport:packet_sent";
@@ -215,7 +215,7 @@ pub mod api {
     #[non_exhaustive]
     #[doc = " Packet was received by a connection"]
     pub struct PacketReceived {
-        pub packet_header: PacketHeader,
+        pub packet_header: ConnectionPacketHeader,
     }
     impl Event for PacketReceived {
         const NAME: &'static str = "transport:packet_received";
@@ -244,7 +244,7 @@ pub mod api {
     #[non_exhaustive]
     #[doc = " Frame was sent"]
     pub struct FrameSent {
-        pub packet_header: PacketHeader,
+        pub packet_header: ConnectionPacketHeader,
         pub path_id: u64,
         pub frame: Frame,
     }
@@ -255,7 +255,7 @@ pub mod api {
     #[non_exhaustive]
     #[doc = " Frame was received"]
     pub struct FrameReceived {
-        pub packet_header: PacketHeader,
+        pub packet_header: ConnectionPacketHeader,
         pub path_id: u64,
         pub frame: Frame,
     }
@@ -266,7 +266,7 @@ pub mod api {
     #[non_exhaustive]
     #[doc = " Packet was lost"]
     pub struct PacketLost<'a> {
-        pub packet_header: PacketHeader,
+        pub packet_header: ConnectionPacketHeader,
         pub path: Path<'a>,
         pub bytes_lost: u16,
         pub is_mtu_probe: bool,
@@ -322,7 +322,7 @@ pub mod api {
     #[non_exhaustive]
     #[doc = " Duplicate packet received"]
     pub struct DuplicatePacket {
-        pub packet_header: PacketHeader,
+        pub packet_header: ConnectionPacketHeader,
         pub path_id: u64,
         pub error: DuplicatePacketError,
     }
@@ -379,6 +379,24 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub enum ConnectionPacketHeader {
+        #[non_exhaustive]
+        Initial { number: u64, version: u32 },
+        #[non_exhaustive]
+        Handshake { number: u64, version: u32 },
+        #[non_exhaustive]
+        ZeroRtt { number: u64, version: u32 },
+        #[non_exhaustive]
+        OneRtt { number: u64, version: u32 },
+        #[non_exhaustive]
+        Retry { version: u32 },
+        #[non_exhaustive]
+        VersionNegotiation { version: u32 },
+        #[non_exhaustive]
+        StatelessReset { version: u32 },
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " QUIC version"]
     pub struct VersionInformation<'a> {
         pub server_versions: &'a [u32],
@@ -392,7 +410,7 @@ pub mod api {
     #[non_exhaustive]
     #[doc = " Packet was sent by the endpoint"]
     pub struct EndpointPacketSent {
-        pub packet_header: PacketHeader,
+        pub packet_header: EndpointPacketHeader,
     }
     impl Event for EndpointPacketSent {
         const NAME: &'static str = "transport:packet_sent";
@@ -401,7 +419,7 @@ pub mod api {
     #[non_exhaustive]
     #[doc = " Packet was received by the endpoint"]
     pub struct EndpointPacketReceived {
-        pub packet_header: PacketHeader,
+        pub packet_header: EndpointPacketHeader,
     }
     impl Event for EndpointPacketReceived {
         const NAME: &'static str = "transport:packet_received";
@@ -440,6 +458,16 @@ pub mod api {
     }
     impl Event for EndpointDatagramDropped {
         const NAME: &'static str = "transport:datagram_dropped";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub enum EndpointPacketHeader {
+        #[non_exhaustive]
+        Retry { version: Option<u32> },
+        #[non_exhaustive]
+        VersionNegotiation { version: Option<u32> },
+        #[non_exhaustive]
+        StatelessReset { version: Option<u32> },
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -754,6 +782,26 @@ pub mod api {
             match self {
                 Self::Client => builder::EndpointType::Client {},
                 Self::Server => builder::EndpointType::Server {},
+            }
+        }
+    }
+    impl builder::ConnectionPacketHeader {
+        pub fn new(packet_number: crate::packet::number::PacketNumber, version: u32) -> Self {
+            use crate::packet::number::PacketNumberSpace;
+            use builder::ConnectionPacketHeader;
+            match packet_number.space() {
+                PacketNumberSpace::Initial => ConnectionPacketHeader::Initial {
+                    number: packet_number.as_u64(),
+                    version,
+                },
+                PacketNumberSpace::Handshake => ConnectionPacketHeader::Handshake {
+                    number: packet_number.as_u64(),
+                    version,
+                },
+                PacketNumberSpace::ApplicationData => ConnectionPacketHeader::OneRtt {
+                    number: packet_number.as_u64(),
+                    version,
+                },
             }
         }
     }
@@ -1145,7 +1193,7 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Packet was sent by a connection"]
     pub struct PacketSent {
-        pub packet_header: PacketHeader,
+        pub packet_header: ConnectionPacketHeader,
     }
     impl IntoEvent<api::PacketSent> for PacketSent {
         #[inline]
@@ -1159,7 +1207,7 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Packet was received by a connection"]
     pub struct PacketReceived {
-        pub packet_header: PacketHeader,
+        pub packet_header: ConnectionPacketHeader,
     }
     impl IntoEvent<api::PacketReceived> for PacketReceived {
         #[inline]
@@ -1205,7 +1253,7 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Frame was sent"]
     pub struct FrameSent {
-        pub packet_header: PacketHeader,
+        pub packet_header: ConnectionPacketHeader,
         pub path_id: u64,
         pub frame: Frame,
     }
@@ -1227,7 +1275,7 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Frame was received"]
     pub struct FrameReceived {
-        pub packet_header: PacketHeader,
+        pub packet_header: ConnectionPacketHeader,
         pub path_id: u64,
         pub frame: Frame,
     }
@@ -1249,7 +1297,7 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Packet was lost"]
     pub struct PacketLost<'a> {
-        pub packet_header: PacketHeader,
+        pub packet_header: ConnectionPacketHeader,
         pub path: Path<'a>,
         pub bytes_lost: u16,
         pub is_mtu_probe: bool,
@@ -1356,7 +1404,7 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Duplicate packet received"]
     pub struct DuplicatePacket {
-        pub packet_header: PacketHeader,
+        pub packet_header: ConnectionPacketHeader,
         pub path_id: u64,
         pub error: DuplicatePacketError,
     }
@@ -1454,6 +1502,49 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub enum ConnectionPacketHeader {
+        Initial { number: u64, version: u32 },
+        Handshake { number: u64, version: u32 },
+        ZeroRtt { number: u64, version: u32 },
+        OneRtt { number: u64, version: u32 },
+        Retry { version: u32 },
+        VersionNegotiation { version: u32 },
+        StatelessReset { version: u32 },
+    }
+    impl IntoEvent<api::ConnectionPacketHeader> for ConnectionPacketHeader {
+        #[inline]
+        fn into_event(self) -> api::ConnectionPacketHeader {
+            use api::ConnectionPacketHeader::*;
+            match self {
+                Self::Initial { number, version } => Initial {
+                    number: number.into_event(),
+                    version: version.into_event(),
+                },
+                Self::Handshake { number, version } => Handshake {
+                    number: number.into_event(),
+                    version: version.into_event(),
+                },
+                Self::ZeroRtt { number, version } => ZeroRtt {
+                    number: number.into_event(),
+                    version: version.into_event(),
+                },
+                Self::OneRtt { number, version } => OneRtt {
+                    number: number.into_event(),
+                    version: version.into_event(),
+                },
+                Self::Retry { version } => Retry {
+                    version: version.into_event(),
+                },
+                Self::VersionNegotiation { version } => VersionNegotiation {
+                    version: version.into_event(),
+                },
+                Self::StatelessReset { version } => StatelessReset {
+                    version: version.into_event(),
+                },
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " QUIC version"]
     pub struct VersionInformation<'a> {
         pub server_versions: &'a [u32],
@@ -1478,7 +1569,7 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Packet was sent by the endpoint"]
     pub struct EndpointPacketSent {
-        pub packet_header: PacketHeader,
+        pub packet_header: EndpointPacketHeader,
     }
     impl IntoEvent<api::EndpointPacketSent> for EndpointPacketSent {
         #[inline]
@@ -1492,7 +1583,7 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Packet was received by the endpoint"]
     pub struct EndpointPacketReceived {
-        pub packet_header: PacketHeader,
+        pub packet_header: EndpointPacketHeader,
     }
     impl IntoEvent<api::EndpointPacketReceived> for EndpointPacketReceived {
         #[inline]
@@ -1552,6 +1643,29 @@ pub mod builder {
             api::EndpointDatagramDropped {
                 len: len.into_event(),
                 reason: reason.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub enum EndpointPacketHeader {
+        Retry { version: Option<u32> },
+        VersionNegotiation { version: Option<u32> },
+        StatelessReset { version: Option<u32> },
+    }
+    impl IntoEvent<api::EndpointPacketHeader> for EndpointPacketHeader {
+        #[inline]
+        fn into_event(self) -> api::EndpointPacketHeader {
+            use api::EndpointPacketHeader::*;
+            match self {
+                Self::Retry { version } => Retry {
+                    version: version.into_event(),
+                },
+                Self::VersionNegotiation { version } => VersionNegotiation {
+                    version: version.into_event(),
+                },
+                Self::StatelessReset { version } => StatelessReset {
+                    version: version.into_event(),
+                },
             }
         }
     }

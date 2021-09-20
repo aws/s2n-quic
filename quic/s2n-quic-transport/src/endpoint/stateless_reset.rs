@@ -54,8 +54,7 @@ impl<Path: path::Handle> Dispatch<Path> {
             match queue.push(&transmission) {
                 Ok(tx::Outcome { len, .. }) => {
                     publisher.on_endpoint_packet_sent(event::builder::EndpointPacketSent {
-                        packet_header: event::builder::PacketHeader {
-                            packet_type: event::builder::PacketType::StatelessReset,
+                        packet_header: event::builder::EndpointPacketHeader::StatelessReset {
                             version: publisher.quic_version(),
                         },
                     });

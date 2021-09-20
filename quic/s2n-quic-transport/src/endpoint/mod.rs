@@ -751,8 +751,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         );
 
         publisher.on_endpoint_packet_received(event::builder::EndpointPacketReceived {
-            packet_header: event::builder::PacketHeader {
-                packet_type: event::builder::PacketType::StatelessReset {},
+            packet_header: event::builder::EndpointPacketHeader::StatelessReset {
                 version: publisher.quic_version(),
             },
         });

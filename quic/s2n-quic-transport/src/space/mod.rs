@@ -345,10 +345,10 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                                 context
                                     .publisher
                                     .on_packet_sent(event::builder::PacketSent {
-                                        packet_header: event::builder::PacketHeader {
-                                            packet_type: outcome.packet_number.into_event(),
-                                            version: Some(context.publisher.quic_version()),
-                                        },
+                                        packet_header: event::builder::ConnectionPacketHeader::new(
+                                            outcome.packet_number,
+                                            context.publisher.quic_version(),
+                                        ),
                                     });
                                 buffer
                             }
@@ -595,10 +595,10 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 .map_err(transport::Error::from)?;
 
             publisher.on_frame_received(event::builder::FrameReceived {
-                packet_header: event::builder::PacketHeader {
-                    packet_type: packet_number.into_event(),
-                    version: Some(publisher.quic_version()),
-                },
+                packet_header: event::builder::ConnectionPacketHeader::new(
+                    packet_number,
+                    publisher.quic_version(),
+                ),
                 path_id: path_id.into_event(),
                 frame: frame.into_event(),
             });

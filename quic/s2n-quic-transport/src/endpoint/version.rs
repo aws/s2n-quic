@@ -178,8 +178,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
             match queue.push(&transmission) {
                 Ok(tx::Outcome { len, .. }) => {
                     publisher.on_endpoint_packet_sent(event::builder::EndpointPacketSent {
-                        packet_header: event::builder::PacketHeader {
-                            packet_type: event::builder::PacketType::VersionNegotiation {},
+                        packet_header: event::builder::EndpointPacketHeader::VersionNegotiation {
                             version: publisher.quic_version(),
                         },
                     });

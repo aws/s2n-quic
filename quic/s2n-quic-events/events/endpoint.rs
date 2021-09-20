@@ -18,7 +18,7 @@ struct VersionInformation<'a> {
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.5
 /// Packet was sent by the endpoint
 struct EndpointPacketSent {
-    packet_header: PacketHeader,
+    packet_header: EndpointPacketHeader,
 }
 
 #[event("transport:packet_received")]
@@ -26,7 +26,7 @@ struct EndpointPacketSent {
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.6
 /// Packet was received by the endpoint
 struct EndpointPacketReceived {
-    packet_header: PacketHeader,
+    packet_header: EndpointPacketHeader,
 }
 
 #[event("transport:datagram_sent")]
@@ -59,4 +59,13 @@ struct EndpointDatagramReceived {
 struct EndpointDatagramDropped {
     len: u16,
     reason: DropReason,
+}
+
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.2
+//
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
+enum EndpointPacketHeader {
+    Retry { version: Option<u32> },
+    VersionNegotiation { version: Option<u32> },
+    StatelessReset { version: Option<u32> },
 }
