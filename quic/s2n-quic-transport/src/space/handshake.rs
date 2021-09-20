@@ -4,7 +4,7 @@
 use crate::{
     connection::{self, ConnectionTransmissionContext, ProcessingError},
     endpoint, path,
-    path::Path,
+    path::{path_event, Path},
     processed_packet::ProcessedPacket,
     recovery,
     space::{
@@ -81,6 +81,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         &self,
         packet_number: PacketNumber,
         path_id: path::Id,
+        path: &path::Path<Config>,
         publisher: &mut Pub,
     ) -> bool {
         let packet_check = self.processed_packet_numbers.check(packet_number);
@@ -90,7 +91,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
                     packet_type: packet_number.into_event(),
                     version: Some(publisher.quic_version()),
                 },
-                path_id: path_id.into_event(),
+                path: path_event!(path, path_id),
                 error: error.into_event(),
             });
         }
@@ -311,12 +312,13 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         &self,
         protected: ProtectedHandshake<'a>,
         path_id: path::Id,
+        path: &path::Path<Config>,
         publisher: &mut Pub,
     ) -> Result<CleartextHandshake<'a>, ProcessingError> {
         let packet_number_decoder = self.packet_number_decoder();
         let packet = protected.unprotect(&self.header_key, packet_number_decoder)?;
 
-        if self.is_duplicate(packet.packet_number, path_id, publisher) {
+        if self.is_duplicate(packet.packet_number, path_id, path, publisher) {
             return Err(ProcessingError::DuplicatePacket);
         }
 

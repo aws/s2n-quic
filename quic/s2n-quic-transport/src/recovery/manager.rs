@@ -84,6 +84,28 @@ const K_PACKET_THRESHOLD: u64 = 3;
 // TODO: Determine if there is a more appropriate default
 const ACKED_PACKETS_INITIAL_CAPACITY: usize = 32;
 
+macro_rules! recovery_event {
+    ($path_id:ident, $path:ident) => {
+        event::builder::RecoveryMetrics {
+            path: event::builder::Path {
+                local_addr: $path.local_address().into_event(),
+                local_cid: $path.local_connection_id.into_event(),
+                remote_addr: $path.remote_address().into_event(),
+                remote_cid: $path.peer_connection_id.into_event(),
+                id: $path_id as u64,
+            },
+            min_rtt: $path.rtt_estimator.min_rtt(),
+            smoothed_rtt: $path.rtt_estimator.smoothed_rtt(),
+            latest_rtt: $path.rtt_estimator.latest_rtt(),
+            rtt_variance: $path.rtt_estimator.rttvar(),
+            max_ack_delay: $path.rtt_estimator.max_ack_delay(),
+            pto_count: ($path.pto_backoff as f32).log2() as u32,
+            congestion_window: $path.congestion_controller.congestion_window(),
+            bytes_in_flight: $path.congestion_controller.bytes_in_flight(),
+        }
+    };
+}
+
 impl<Config: endpoint::Config> Manager<Config> {
     /// Constructs a new `recovery::Manager`
     pub fn new(space: PacketNumberSpace, max_ack_delay: Duration) -> Self {
@@ -133,7 +155,7 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         let path_id = context.path_id().as_u8();
         let path = context.path_mut();
-        publisher.on_recovery_metrics(self.recovery_event(path_id, path));
+        publisher.on_recovery_metrics(recovery_event!(path_id, path));
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.5
@@ -323,7 +345,7 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         let path_id = context.path_id().as_u8();
         let path = context.path_mut();
-        publisher.on_recovery_metrics(self.recovery_event(path_id, path));
+        publisher.on_recovery_metrics(recovery_event!(path_id, path));
 
         Ok(())
     }
@@ -577,7 +599,8 @@ impl<Config: endpoint::Config> Manager<Config> {
     ) {
         debug_assert_ne!(self.space, PacketNumberSpace::ApplicationData);
 
-        publisher.on_recovery_metrics(self.recovery_event(path_id.as_u8(), path));
+        let path_id_idx = path_id.as_u8();
+        publisher.on_recovery_metrics(recovery_event!(path_id_idx, path));
 
         // Remove any unacknowledged packets from flight.
         let mut discarded_bytes = 0;
@@ -866,20 +889,6 @@ impl<Config: endpoint::Config> Manager<Config> {
         //# least the local timer granularity, as indicated by the kGranularity
         //# constant.
         max(time_threshold, K_GRANULARITY)
-    }
-
-    fn recovery_event(&self, path_id: u8, path: &Path<Config>) -> event::builder::RecoveryMetrics {
-        event::builder::RecoveryMetrics {
-            path_id: path_id as u64,
-            min_rtt: path.rtt_estimator.min_rtt(),
-            smoothed_rtt: path.rtt_estimator.smoothed_rtt(),
-            latest_rtt: path.rtt_estimator.latest_rtt(),
-            rtt_variance: path.rtt_estimator.rttvar(),
-            max_ack_delay: path.rtt_estimator.max_ack_delay(),
-            pto_count: (path.pto_backoff as f32).log2() as u32,
-            congestion_window: path.congestion_controller.congestion_window(),
-            bytes_in_flight: path.congestion_controller.bytes_in_flight(),
-        }
     }
 }
 

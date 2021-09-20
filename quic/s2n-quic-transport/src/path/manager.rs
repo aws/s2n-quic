@@ -108,25 +108,15 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         self.active = new_path_id.as_u8();
 
+        let prev_path = &self[prev_path_id];
+        let new_path = &self[new_path_id];
+        publisher.on_active_path_updated(event::builder::ActivePathUpdated {
+            previous: path_event!(prev_path, prev_path_id),
+            active: path_event!(new_path, new_path_id),
+        });
+
         // Restart ECN validation to check that the path still supports ECN
         self.active_path_mut().ecn_controller.restart();
-
-        publisher.on_active_path_updated(event::builder::ActivePathUpdated {
-            previous: event::builder::Path {
-                local_addr: self[prev_path_id].local_address().into_event(),
-                local_cid: self[prev_path_id].local_connection_id.into_event(),
-                remote_addr: self[prev_path_id].remote_address().into_event(),
-                remote_cid: self[prev_path_id].peer_connection_id.into_event(),
-                id: prev_path_id.into_event(),
-            },
-            active: event::builder::Path {
-                local_addr: self.active_path().local_address().into_event(),
-                local_cid: self.active_path().local_connection_id.into_event(),
-                remote_addr: self.active_path().remote_address().into_event(),
-                remote_cid: self.active_path().peer_connection_id.into_event(),
-                id: new_path_id.into_event(),
-            },
-        });
 
         Ok(())
     }
@@ -328,26 +318,18 @@ impl<Config: endpoint::Config> Manager<Config> {
             max_mtu,
         );
 
+        let unblocked = path.on_bytes_received(datagram.payload_len);
+
+        let active_path = self.active_path();
+        let active_path_id = self.active_path_id();
         publisher.on_path_created(event::builder::PathCreated {
-            active: event::builder::Path {
-                local_addr: self.active_path().local_address().into_event(),
-                local_cid: self.active_path().local_connection_id.into_event(),
-                remote_addr: self.active_path().remote_address().into_event(),
-                remote_cid: self.active_path().peer_connection_id.into_event(),
-                id: self.active_path_id().into_event(),
-            },
-            new: event::builder::Path {
-                local_addr: path.local_address().into_event(),
-                local_cid: path.local_connection_id.into_event(),
-                remote_addr: path.remote_address().into_event(),
-                remote_cid: path.peer_connection_id.into_event(),
-                id: new_path_idx as u64,
-            },
+            active: path_event!(active_path, active_path_id),
+            new: path_event!(path, new_path_id),
         });
 
-        let unblocked = path.on_bytes_received(datagram.payload_len);
         // create a new path
         self.paths.push(path);
+
         self.set_challenge(new_path_id, random_generator);
 
         Ok((new_path_id, unblocked))
@@ -718,6 +700,19 @@ impl event::IntoEvent<u64> for Id {
         self.0 as u64
     }
 }
+
+macro_rules! path_event {
+    ($path:ident, $path_id:ident) => {{
+        event::builder::Path {
+            local_addr: $path.local_address().into_event(),
+            local_cid: $path.local_connection_id.into_event(),
+            remote_addr: $path.remote_address().into_event(),
+            remote_cid: $path.peer_connection_id.into_event(),
+            id: $path_id.into_event(),
+        }
+    }};
+}
+pub(crate) use path_event;
 
 #[cfg(test)]
 mod tests;

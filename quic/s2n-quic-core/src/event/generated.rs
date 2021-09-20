@@ -262,12 +262,12 @@ pub mod api {
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     #[doc = " Frame was received"]
-    pub struct FrameReceived {
+    pub struct FrameReceived<'a> {
         pub packet_header: PacketHeader,
-        pub path_id: u64,
+        pub path: Path<'a>,
         pub frame: Frame,
     }
-    impl Event for FrameReceived {
+    impl<'a> Event for FrameReceived<'a> {
         const NAME: &'static str = "transport:frame_received";
     }
     #[derive(Clone, Debug)]
@@ -285,8 +285,8 @@ pub mod api {
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     #[doc = " Recovery metrics updated"]
-    pub struct RecoveryMetrics {
-        pub path_id: u64,
+    pub struct RecoveryMetrics<'a> {
+        pub path: Path<'a>,
         pub min_rtt: Duration,
         pub smoothed_rtt: Duration,
         pub latest_rtt: Duration,
@@ -296,7 +296,7 @@ pub mod api {
         pub congestion_window: u32,
         pub bytes_in_flight: u32,
     }
-    impl Event for RecoveryMetrics {
+    impl<'a> Event for RecoveryMetrics<'a> {
         const NAME: &'static str = "recovery:metrics_updated";
     }
     #[derive(Clone, Debug)]
@@ -329,12 +329,12 @@ pub mod api {
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     #[doc = " Duplicate packet received"]
-    pub struct DuplicatePacket {
+    pub struct DuplicatePacket<'a> {
         pub packet_header: PacketHeader,
-        pub path_id: u64,
+        pub path: Path<'a>,
         pub error: DuplicatePacketError,
     }
-    impl Event for DuplicatePacket {
+    impl<'a> Event for DuplicatePacket<'a> {
         const NAME: &'static str = "transport:duplicate_packet";
     }
     #[derive(Clone, Debug)]
@@ -1285,22 +1285,22 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     #[doc = " Frame was received"]
-    pub struct FrameReceived {
+    pub struct FrameReceived<'a> {
         pub packet_header: PacketHeader,
-        pub path_id: u64,
+        pub path: Path<'a>,
         pub frame: Frame,
     }
-    impl IntoEvent<api::FrameReceived> for FrameReceived {
+    impl<'a> IntoEvent<api::FrameReceived<'a>> for FrameReceived<'a> {
         #[inline]
-        fn into_event(self) -> api::FrameReceived {
+        fn into_event(self) -> api::FrameReceived<'a> {
             let FrameReceived {
                 packet_header,
-                path_id,
+                path,
                 frame,
             } = self;
             api::FrameReceived {
                 packet_header: packet_header.into_event(),
-                path_id: path_id.into_event(),
+                path: path.into_event(),
                 frame: frame.into_event(),
             }
         }
@@ -1332,8 +1332,8 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     #[doc = " Recovery metrics updated"]
-    pub struct RecoveryMetrics {
-        pub path_id: u64,
+    pub struct RecoveryMetrics<'a> {
+        pub path: Path<'a>,
         pub min_rtt: Duration,
         pub smoothed_rtt: Duration,
         pub latest_rtt: Duration,
@@ -1343,11 +1343,11 @@ pub mod builder {
         pub congestion_window: u32,
         pub bytes_in_flight: u32,
     }
-    impl IntoEvent<api::RecoveryMetrics> for RecoveryMetrics {
+    impl<'a> IntoEvent<api::RecoveryMetrics<'a>> for RecoveryMetrics<'a> {
         #[inline]
-        fn into_event(self) -> api::RecoveryMetrics {
+        fn into_event(self) -> api::RecoveryMetrics<'a> {
             let RecoveryMetrics {
-                path_id,
+                path,
                 min_rtt,
                 smoothed_rtt,
                 latest_rtt,
@@ -1358,7 +1358,7 @@ pub mod builder {
                 bytes_in_flight,
             } = self;
             api::RecoveryMetrics {
-                path_id: path_id.into_event(),
+                path: path.into_event(),
                 min_rtt: min_rtt.into_event(),
                 smoothed_rtt: smoothed_rtt.into_event(),
                 latest_rtt: latest_rtt.into_event(),
@@ -1414,22 +1414,22 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     #[doc = " Duplicate packet received"]
-    pub struct DuplicatePacket {
+    pub struct DuplicatePacket<'a> {
         pub packet_header: PacketHeader,
-        pub path_id: u64,
+        pub path: Path<'a>,
         pub error: DuplicatePacketError,
     }
-    impl IntoEvent<api::DuplicatePacket> for DuplicatePacket {
+    impl<'a> IntoEvent<api::DuplicatePacket<'a>> for DuplicatePacket<'a> {
         #[inline]
-        fn into_event(self) -> api::DuplicatePacket {
+        fn into_event(self) -> api::DuplicatePacket<'a> {
             let DuplicatePacket {
                 packet_header,
-                path_id,
+                path,
                 error,
             } = self;
             api::DuplicatePacket {
                 packet_header: packet_header.into_event(),
-                path_id: path_id.into_event(),
+                path: path.into_event(),
                 error: error.into_event(),
             }
         }
