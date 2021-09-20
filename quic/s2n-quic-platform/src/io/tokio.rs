@@ -219,15 +219,16 @@ impl Io {
             use std::os::unix::io::AsRawFd;
             let enabled: libc::c_int = 1;
 
-            if rx_addr.is_ipv4() {
-                libc!(setsockopt(
-                    rx_socket.as_raw_fd(),
-                    libc::IPPROTO_IP,
-                    libc::IP_RECVTOS,
-                    &enabled as *const _ as _,
-                    core::mem::size_of_val(&enabled) as _,
-                ))?;
-            } else {
+            // This option needs to be enabled regardless of domain (IPv4 vs IPv6)
+            libc!(setsockopt(
+                rx_socket.as_raw_fd(),
+                libc::IPPROTO_IP,
+                libc::IP_RECVTOS,
+                &enabled as *const _ as _,
+                core::mem::size_of_val(&enabled) as _,
+            ))?;
+
+            if rx_addr.is_ipv6() {
                 libc!(setsockopt(
                     rx_socket.as_raw_fd(),
                     libc::IPPROTO_IPV6,
