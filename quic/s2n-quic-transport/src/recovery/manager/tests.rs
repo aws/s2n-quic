@@ -783,7 +783,6 @@ fn process_new_acked_packets_pto_timer() {
 // Out of order Ack Frames should not fail ECN validation
 //
 // Setup 1:
-// - Send and acknowledge 1 packet to get an ECN baseline
 // - Send 10 ECT0 marked packets
 //
 // Trigger 1:
@@ -806,29 +805,6 @@ fn process_new_acked_packets_process_ecn() {
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let mut context = MockContext::new(&mut path_manager);
     let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
-
-    // Send and ack 1 packet to get an ECN baseline
-    manager.on_packet_sent(
-        space.new_packet_number(VarInt::from_u8(0)),
-        transmission::Outcome {
-            ack_elicitation: AckElicitation::Eliciting,
-            is_congestion_controlled: true,
-            bytes_sent: packet_bytes,
-            packet_number: space.new_packet_number(VarInt::from_u8(0)),
-        },
-        time_sent,
-        ExplicitCongestionNotification::Ect0,
-        &mut context,
-    );
-    let ack_receive_time = time_sent + Duration::from_millis(500);
-    let ack_ecn_counts = EcnCounts::default();
-    ack_packets(
-        0..=0,
-        ack_receive_time,
-        &mut context,
-        &mut manager,
-        Some(ack_ecn_counts),
-    );
 
     // Send 10 ECT0 marked packets
     for i in 1..=10 {
@@ -897,7 +873,6 @@ fn process_new_acked_packets_process_ecn() {
 // Increase in ECN CE count should not cause congestion event if ECN validation fails
 //
 // Setup 1:
-// - Send and acknowledge 1 packet to get an ECN baseline
 // - Send 10 ECT0 marked packets
 //
 // Trigger 1:
@@ -913,29 +888,6 @@ fn process_new_acked_packets_failed_ecn_validation_does_not_cause_congestion_eve
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let mut context = MockContext::new(&mut path_manager);
     let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
-
-    // Send and ack 1 packet to get an ECN baseline
-    manager.on_packet_sent(
-        space.new_packet_number(VarInt::from_u8(0)),
-        transmission::Outcome {
-            ack_elicitation: AckElicitation::Eliciting,
-            is_congestion_controlled: true,
-            bytes_sent: packet_bytes,
-            packet_number: space.new_packet_number(VarInt::from_u8(0)),
-        },
-        time_sent,
-        ExplicitCongestionNotification::Ect0,
-        &mut context,
-    );
-    let ack_receive_time = time_sent + Duration::from_millis(500);
-    let ack_ecn_counts = EcnCounts::default();
-    ack_packets(
-        0..=0,
-        ack_receive_time,
-        &mut context,
-        &mut manager,
-        Some(ack_ecn_counts),
-    );
 
     // Send 10 ECT0 marked packets
     for i in 1..=10 {
