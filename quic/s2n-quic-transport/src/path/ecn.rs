@@ -229,11 +229,7 @@ impl Controller {
 
     /// This method gets called when a packet delivery got acknowledged
     pub fn on_packet_ack(&mut self, time_sent: Timestamp, ecn: ExplicitCongestionNotification) {
-        if ecn.using_ecn()
-            && self
-                .last_acked_ecn_packet_timestamp
-                .map_or(true, |last_acked| last_acked < time_sent)
-        {
+        if self.ecn_packet_sent_after_last_acked_ecn_packet(time_sent, ecn) {
             // Reset the black hole counter since a packet with ECN marking
             // has been acknowledged, indicating the path may still be ECN-capable
             self.black_hole_counter = Default::default();
@@ -252,11 +248,7 @@ impl Controller {
             return;
         }
 
-        if ecn.using_ecn()
-            && self
-                .last_acked_ecn_packet_timestamp
-                .map_or(true, |last_acked| last_acked < time_sent)
-        {
+        if self.ecn_packet_sent_after_last_acked_ecn_packet(time_sent, ecn) {
             // An ECN marked packet that was sent after the last
             // acknowledged ECN marked packet has been lost
             self.black_hole_counter += 1;
@@ -265,6 +257,20 @@ impl Controller {
         if self.black_hole_counter > TESTING_PACKET_THRESHOLD {
             self.fail(now);
         }
+    }
+
+    /// Returns true if a packet sent at the given `time_sent` with the given ECN marking
+    /// was marked as using ECN and was sent after the last time an ECN marked packet had
+    /// been acknowledged.
+    fn ecn_packet_sent_after_last_acked_ecn_packet(
+        &mut self,
+        time_sent: Timestamp,
+        ecn: ExplicitCongestionNotification,
+    ) -> bool {
+        ecn.using_ecn()
+            && self
+                .last_acked_ecn_packet_timestamp
+                .map_or(true, |last_acked| last_acked < time_sent)
     }
 
     /// Set the state to Failed and arm the retest timer
