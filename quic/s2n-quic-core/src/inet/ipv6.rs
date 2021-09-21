@@ -1,7 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::inet::unspecified::Unspecified;
+use crate::inet::{
+    unspecified::Unspecified, IpAddress, IpV4Address, SocketAddress, SocketAddressV4,
+};
 use core::fmt;
 use s2n_codec::zerocopy::U16;
 
@@ -34,6 +36,17 @@ impl IpV6Address {
             u16::from_be_bytes([octets[12], octets[13]]),
             u16::from_be_bytes([octets[14], octets[15]]),
         ]
+    }
+
+    /// Converts the IP address into IPv4 if it is mapped, otherwise the address is unchanged
+    #[inline]
+    pub fn unmap(self) -> IpAddress {
+        match self.octets {
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, a, b, c, d] => {
+                IpV4Address::new([a, b, c, d]).into()
+            }
+            _ => self.into(),
+        }
     }
 }
 
@@ -113,6 +126,15 @@ impl SocketAddressV6 {
     #[inline]
     pub fn set_port(&mut self, port: u16) {
         self.port.set(port)
+    }
+
+    /// Converts the IP address into IPv4 if it is mapped, otherwise the address is unchanged
+    #[inline]
+    pub fn unmap(self) -> SocketAddress {
+        match self.ip.unmap() {
+            IpAddress::Ipv4(addr) => SocketAddressV4::new(addr, self.port).into(),
+            IpAddress::Ipv6(_) => self.into(),
+        }
     }
 }
 

@@ -204,7 +204,8 @@ impl MessageTrait for msghdr {
 
         let ecn = ecn as libc::c_int;
 
-        match remote_address {
+        // the remote address needs to be unmapped in order to set the appropriate cmsg
+        match remote_address.unmap() {
             SocketAddress::IpV4(_) => {
                 // FreeBSD uses an unsigned_char for IP_TOS
                 // see https://svnweb.freebsd.org/base/stable/8/sys/netinet/ip_input.c?view=markup&pathrev=247944#l1716

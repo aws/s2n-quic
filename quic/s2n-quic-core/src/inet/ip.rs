@@ -24,6 +24,17 @@ pub enum IpAddress {
     Ipv6(IpV6Address),
 }
 
+impl IpAddress {
+    /// Converts the IP address into IPv4 if it is mapped, otherwise the address is unchanged
+    #[inline]
+    pub fn unmap(self) -> Self {
+        match self {
+            Self::Ipv4(_) => self,
+            Self::Ipv6(addr) => addr.unmap(),
+        }
+    }
+}
+
 impl From<IpV4Address> for IpAddress {
     fn from(ip: IpV4Address) -> Self {
         Self::Ipv4(ip)
@@ -96,6 +107,15 @@ impl SocketAddress {
         match self {
             Self::IpV4(addr) => addr.to_ipv6_mapped(),
             Self::IpV6(addr) => addr,
+        }
+    }
+
+    /// Converts the IP address into IPv4 if it is mapped, otherwise the address is unchanged
+    #[inline]
+    pub fn unmap(self) -> Self {
+        match self {
+            Self::IpV4(_) => self,
+            Self::IpV6(addr) => addr.unmap(),
         }
     }
 }
@@ -242,6 +262,18 @@ mod tests {
             };
             let address = address.to_ipv6_mapped().into();
             assert_eq!(addr, address);
+        }
+    }
+
+    #[test]
+    fn unmap_test() {
+        for test in TESTS.iter() {
+            // assert that unmap correctly converts IPv4 mapped addresses
+            let addr: SocketAddr = test.parse().unwrap();
+            let address: SocketAddress = addr.into();
+            let actual: SocketAddress = address.to_ipv6_mapped().into();
+            let actual = actual.unmap();
+            assert_eq!(address, actual);
         }
     }
 
