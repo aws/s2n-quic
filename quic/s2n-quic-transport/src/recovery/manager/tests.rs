@@ -783,6 +783,7 @@ fn process_new_acked_packets_pto_timer() {
 // Out of order Ack Frames should not fail ECN validation
 //
 // Setup 1:
+// - Send and acknowledge 1 packet to get an ECN baseline
 // - Send 10 ECT0 marked packets
 //
 // Trigger 1:
@@ -806,6 +807,29 @@ fn process_new_acked_packets_process_ecn() {
     let mut context = MockContext::new(&mut path_manager);
     let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
 
+    // Send and ack 1 packet to get an ECN baseline
+    manager.on_packet_sent(
+        space.new_packet_number(VarInt::from_u8(0)),
+        transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: packet_bytes,
+            packet_number: space.new_packet_number(VarInt::from_u8(0)),
+        },
+        time_sent,
+        ExplicitCongestionNotification::Ect0,
+        &mut context,
+    );
+    let ack_receive_time = time_sent + Duration::from_millis(500);
+    let ack_ecn_counts = EcnCounts::default();
+    ack_packets(
+        0..=0,
+        ack_receive_time,
+        &mut context,
+        &mut manager,
+        Some(ack_ecn_counts),
+    );
+
     // Send 10 ECT0 marked packets
     for i in 1..=10 {
         manager.on_packet_sent(
@@ -814,7 +838,7 @@ fn process_new_acked_packets_process_ecn() {
                 ack_elicitation: AckElicitation::Eliciting,
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
-                packet_number: space.new_packet_number(VarInt::from_u8(1)),
+                packet_number: space.new_packet_number(VarInt::from_u8(i)),
             },
             time_sent,
             ExplicitCongestionNotification::Ect0,
@@ -839,7 +863,7 @@ fn process_new_acked_packets_process_ecn() {
     );
 
     // Expectation 1:
-    assert_eq!(ack_ecn_counts, manager.ack_frame_ecn_counts);
+    assert_eq!(ack_ecn_counts.ce_count, manager.ecn_ce_counter);
     assert_eq!(1, context.path().congestion_controller.congestion_events);
     assert!(context.path().ecn_controller.is_capable());
 
@@ -865,7 +889,7 @@ fn process_new_acked_packets_process_ecn() {
     );
 
     // Expectation 2:
-    assert_eq!(ack_ecn_counts, manager.ack_frame_ecn_counts);
+    assert_eq!(ack_ecn_counts.ce_count, manager.ecn_ce_counter);
     assert!(context.path().ecn_controller.is_capable());
 }
 
@@ -873,6 +897,7 @@ fn process_new_acked_packets_process_ecn() {
 // Increase in ECN CE count should not cause congestion event if ECN validation fails
 //
 // Setup 1:
+// - Send and acknowledge 1 packet to get an ECN baseline
 // - Send 10 ECT0 marked packets
 //
 // Trigger 1:
@@ -889,6 +914,29 @@ fn process_new_acked_packets_failed_ecn_validation_does_not_cause_congestion_eve
     let mut context = MockContext::new(&mut path_manager);
     let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
 
+    // Send and ack 1 packet to get an ECN baseline
+    manager.on_packet_sent(
+        space.new_packet_number(VarInt::from_u8(0)),
+        transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: packet_bytes,
+            packet_number: space.new_packet_number(VarInt::from_u8(0)),
+        },
+        time_sent,
+        ExplicitCongestionNotification::Ect0,
+        &mut context,
+    );
+    let ack_receive_time = time_sent + Duration::from_millis(500);
+    let ack_ecn_counts = EcnCounts::default();
+    ack_packets(
+        0..=0,
+        ack_receive_time,
+        &mut context,
+        &mut manager,
+        Some(ack_ecn_counts),
+    );
+
     // Send 10 ECT0 marked packets
     for i in 1..=10 {
         manager.on_packet_sent(
@@ -897,7 +945,7 @@ fn process_new_acked_packets_failed_ecn_validation_does_not_cause_congestion_eve
                 ack_elicitation: AckElicitation::Eliciting,
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
-                packet_number: space.new_packet_number(VarInt::from_u8(1)),
+                packet_number: space.new_packet_number(VarInt::from_u8(i)),
             },
             time_sent,
             ExplicitCongestionNotification::Ect0,
@@ -922,7 +970,7 @@ fn process_new_acked_packets_failed_ecn_validation_does_not_cause_congestion_eve
     );
 
     // Expectation 1:
-    assert_eq!(ack_ecn_counts, manager.ack_frame_ecn_counts);
+    assert_eq!(VarInt::from_u8(0), manager.ecn_ce_counter);
     assert_eq!(0, context.path().congestion_controller.congestion_events);
     assert!(!context.path().ecn_controller.is_capable());
 }
