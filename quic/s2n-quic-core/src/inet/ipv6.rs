@@ -131,10 +131,9 @@ impl SocketAddressV6 {
     /// Converts the IP address into IPv4 if it is mapped, otherwise the address is unchanged
     #[inline]
     pub fn unmap(self) -> SocketAddress {
-        let port = self.port;
         match self.ip.unmap() {
-            IpAddress::Ipv4(addr) => SocketAddressV4::new(addr, port).into(),
-            IpAddress::Ipv6(addr) => SocketAddressV6::new(addr, port).into(),
+            IpAddress::Ipv4(addr) => SocketAddressV4::new(addr, self.port).into(),
+            IpAddress::Ipv6(_) => self.into(),
         }
     }
 }
