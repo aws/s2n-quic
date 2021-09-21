@@ -13,6 +13,7 @@ use futures::future::{Fuse, FutureExt};
 use pin_project::pin_project;
 use s2n_quic_core::{
     endpoint::{CloseError, Endpoint},
+    event::{self, EndpointPublisher as _},
     inet::SocketAddress,
     path::MaxMtu,
     time::{self, Clock as ClockTrait},
@@ -93,6 +94,29 @@ impl Io {
 
         endpoint.set_max_mtu(max_mtu);
 
+        let clock = Clock::default();
+
+        let mut publisher = event::EndpointPublisherSubscriber::new(
+            event::builder::EndpointMeta {
+                endpoint_type: E::ENDPOINT_TYPE,
+                timestamp: clock.get_time(),
+            },
+            None,
+            endpoint.subscriber(),
+        );
+
+        publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
+            configuration: event::builder::PlatformFeatureConfiguration::MaxMtu {
+                mtu: max_mtu.into(),
+            },
+        });
+
+        publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
+            configuration: event::builder::PlatformFeatureConfiguration::Gso {
+                max_segments: crate::features::get().gso.default_max_segments(),
+            },
+        });
+
         let handle = if let Some(handle) = handle {
             handle
         } else {
@@ -102,6 +126,8 @@ impl Io {
         let guard = handle.enter();
 
         let rx_socket = if let Some(rx_socket) = rx_socket {
+            // ensure the socket is non-blocking
+            rx_socket.set_nonblocking(true)?;
             rx_socket
         } else if let Some(recv_addr) = recv_addr {
             bind(recv_addr)?
@@ -113,6 +139,8 @@ impl Io {
         };
 
         let tx_socket = if let Some(tx_socket) = tx_socket {
+            // ensure the socket is non-blocking
+            tx_socket.set_nonblocking(true)?;
             tx_socket
         } else if let Some(send_addr) = send_addr {
             bind(send_addr)?
@@ -191,15 +219,16 @@ impl Io {
             use std::os::unix::io::AsRawFd;
             let enabled: libc::c_int = 1;
 
-            if rx_addr.is_ipv4() {
-                libc!(setsockopt(
-                    rx_socket.as_raw_fd(),
-                    libc::IPPROTO_IP,
-                    libc::IP_RECVTOS,
-                    &enabled as *const _ as _,
-                    core::mem::size_of_val(&enabled) as _,
-                ))?;
-            } else {
+            // This option needs to be enabled regardless of domain (IPv4 vs IPv6)
+            libc!(setsockopt(
+                rx_socket.as_raw_fd(),
+                libc::IPPROTO_IP,
+                libc::IP_RECVTOS,
+                &enabled as *const _ as _,
+                core::mem::size_of_val(&enabled) as _,
+            ))?;
+
+            if rx_addr.is_ipv6() {
                 libc!(setsockopt(
                     rx_socket.as_raw_fd(),
                     libc::IPPROTO_IPV6,
@@ -209,6 +238,11 @@ impl Io {
                 ))?;
             }
         }
+        publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
+            configuration: event::builder::PlatformFeatureConfiguration::Ecn {
+                enabled: cfg!(s2n_quic_platform_tos),
+            },
+        });
 
         // Set up the RX socket to pass information about the local address and interface
         #[cfg(s2n_quic_platform_pktinfo)]
@@ -236,7 +270,7 @@ impl Io {
         }
 
         let instance = Instance {
-            clock: Clock::default(),
+            clock,
             rx_socket: rx_socket.into(),
             tx_socket: tx_socket.into(),
             rx: Default::default(),
@@ -462,15 +496,18 @@ impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
             let mut reset_clock = false;
 
             if let Ok((rx_result, tx_result, timeout_result)) = select.await {
-                if let Some(guard) = rx_result {
-                    if let Ok(result) = guard?.try_io(|socket| rx.rx(socket)) {
-                        result?;
-                    }
-                    endpoint.receive(&mut rx.rx_queue(), &clock);
-                }
+                let subscriber = endpoint.subscriber();
+                let mut publisher = event::EndpointPublisherSubscriber::new(
+                    event::builder::EndpointMeta {
+                        endpoint_type: E::ENDPOINT_TYPE,
+                        timestamp: clock.get_time(),
+                    },
+                    None,
+                    subscriber,
+                );
 
                 if let Some(guard) = tx_result {
-                    if let Ok(result) = guard?.try_io(|socket| tx.tx(socket)) {
+                    if let Ok(result) = guard?.try_io(|socket| tx.tx(socket, &mut publisher)) {
                         result?;
                     }
                 }
@@ -478,6 +515,13 @@ impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
                 // if the timer expired ensure it is reset to the default timeout
                 if timeout_result {
                     reset_clock = true;
+                }
+
+                if let Some(guard) = rx_result {
+                    if let Ok(result) = guard?.try_io(|socket| rx.rx(socket, &mut publisher)) {
+                        result?;
+                    }
+                    endpoint.receive(&mut rx.rx_queue(), &clock);
                 }
             } else {
                 // The endpoint has shut down
@@ -533,7 +577,6 @@ where
     wakeup: Fuse<Wakeup>,
     #[pin]
     sleep: Sleep,
-    is_ready: bool,
 }
 
 impl<Rx, Tx, Wakeup, Sleep> Select<Rx, Tx, Wakeup, Sleep>
@@ -552,7 +595,6 @@ where
             tx_out: None,
             wakeup: wakeup.fuse(),
             sleep,
-            is_ready: false,
         }
     }
 }
@@ -571,7 +613,7 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
 
-        let mut should_wake = *this.is_ready;
+        let mut should_wake = false;
 
         if let Poll::Ready(wakeup) = this.wakeup.poll(cx) {
             should_wake = true;
@@ -595,9 +637,6 @@ where
         if this.sleep.poll(cx).is_ready() {
             timeout_result = true;
             should_wake = true;
-            // A ready from the sleep future should not yield, as it's unlikely that any of the
-            // other tasks will yield on this loop.
-            *this.is_ready = true;
         }
 
         // if none of the subtasks are ready, return
@@ -605,14 +644,7 @@ where
             return Poll::Pending;
         }
 
-        if core::mem::replace(this.is_ready, true) {
-            Poll::Ready(Ok((this.rx_out.take(), this.tx_out.take(), timeout_result)))
-        } else {
-            // yield once so the other futures have the chance to wake up
-            // before returning
-            cx.waker().wake_by_ref();
-            Poll::Pending
-        }
+        Poll::Ready(Ok((this.rx_out.take(), this.tx_out.take(), timeout_result)))
     }
 }
 
@@ -667,7 +699,8 @@ mod tests {
     use super::*;
     use core::convert::TryInto;
     use s2n_quic_core::{
-        endpoint::CloseError,
+        endpoint::{self, CloseError},
+        event,
         inet::SocketAddress,
         io::{
             rx::{self, Entry as _},
@@ -681,6 +714,7 @@ mod tests {
         addr: SocketAddress,
         messages: BTreeMap<u32, Option<Timestamp>>,
         now: Option<Timestamp>,
+        subscriber: event::testing::Subscriber,
     }
 
     impl TestEndpoint {
@@ -690,12 +724,16 @@ mod tests {
                 addr,
                 messages,
                 now: None,
+                subscriber: Default::default(),
             }
         }
     }
 
     impl Endpoint for TestEndpoint {
         type PathHandle = PathHandle;
+        type Subscriber = event::testing::Subscriber;
+
+        const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Server;
 
         fn transmit<Tx: tx::Queue<Handle = PathHandle>, C: Clock>(
             &mut self,
@@ -770,6 +808,10 @@ mod tests {
 
         fn set_max_mtu(&mut self, _max_mtu: MaxMtu) {
             // noop
+        }
+
+        fn subscriber(&mut self) -> &mut Self::Subscriber {
+            &mut self.subscriber
         }
     }
 

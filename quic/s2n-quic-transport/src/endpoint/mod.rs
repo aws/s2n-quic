@@ -78,6 +78,9 @@ unsafe impl<Cfg: Config> Send for Endpoint<Cfg> {}
 
 impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
     type PathHandle = Cfg::PathHandle;
+    type Subscriber = Cfg::EventSubscriber;
+
+    const ENDPOINT_TYPE: s2n_quic_core::endpoint::Type = Cfg::ENDPOINT_TYPE;
 
     fn receive<Rx, C>(&mut self, queue: &mut Rx, clock: &C)
     where
@@ -194,12 +197,19 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         }
     }
 
+    #[inline]
     fn timeout(&self) -> Option<Timestamp> {
         self.connections.next_expiration()
     }
 
+    #[inline]
     fn set_max_mtu(&mut self, max_mtu: MaxMtu) {
         self.max_mtu = max_mtu
+    }
+
+    #[inline]
+    fn subscriber(&mut self) -> &mut Self::Subscriber {
+        self.config.context().event_subscriber
     }
 }
 

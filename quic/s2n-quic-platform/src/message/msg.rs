@@ -11,14 +11,12 @@ use core::{
 use libc::{c_void, iovec, msghdr, sockaddr_in, sockaddr_in6, AF_INET, AF_INET6};
 use s2n_quic_core::{
     inet::{
-        datagram, AncillaryData, ExplicitCongestionNotification, IpV4Address, SocketAddress,
-        SocketAddressV4,
+        datagram, AncillaryData, ExplicitCongestionNotification, IpV4Address, IpV6Address,
+        SocketAddress, SocketAddressV4, SocketAddressV6,
     },
     io::{rx, tx},
     path::{self, LocalAddress, RemoteAddress},
 };
-
-use s2n_quic_core::inet::{IpV6Address, SocketAddressV6};
 
 #[repr(transparent)]
 pub struct Message(pub(crate) msghdr);
@@ -206,7 +204,8 @@ impl MessageTrait for msghdr {
 
         let ecn = ecn as libc::c_int;
 
-        match remote_address {
+        // the remote address needs to be unmapped in order to set the appropriate cmsg
+        match remote_address.unmap() {
             SocketAddress::IpV4(_) => {
                 // FreeBSD uses an unsigned_char for IP_TOS
                 // see https://svnweb.freebsd.org/base/stable/8/sys/netinet/ip_input.c?view=markup&pathrev=247944#l1716
@@ -514,7 +513,7 @@ impl tx::Entry for Message {
     ) -> Result<usize, tx::Error> {
         let payload = MessageTrait::payload_mut(self);
 
-        let len = message.write_payload(payload);
+        let len = message.write_payload(payload, 0);
 
         // don't send empty payloads
         if len == 0 {

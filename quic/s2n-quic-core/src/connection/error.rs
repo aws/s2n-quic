@@ -4,9 +4,10 @@
 use crate::{
     application, connection, crypto::CryptoError, endpoint, frame::ConnectionClose, transport,
 };
+use core::fmt;
 
 /// Errors that a connection can encounter.
-#[derive(PartialEq, Debug, Copy, Clone, displaydoc::Display)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 #[non_exhaustive]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum Error {
@@ -42,11 +43,54 @@ pub enum Error {
     /// The connection was closed because there are no valid paths
     NoValidPath,
 
-    /// All Stream IDs for Streams on a given connection had been exhausted
+    /// All Stream IDs for Streams on the given connection had been exhausted
     StreamIdExhausted,
 
     /// The connection was closed due to an unspecified reason
     Unspecified,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Closed { initiator } => write!(
+                f,
+                "The connection was closed without an error by {}",
+                initiator
+            ),
+            Self::Transport { error, initiator } => write!(
+                f,
+                "The connection was closed on the transport level with error {} by {}",
+                error, initiator
+            ),
+            Self::Application { error, initiator } => write!(
+                f,
+                "The connection was closed on the application level with error {:?} by {}",
+                error, initiator
+            ),
+            Self::StatelessReset => write!(
+                f,
+                "The connection was reset by a stateless reset by {}",
+                endpoint::Location::Remote
+            ),
+            Self::IdleTimerExpired => write!(
+                f,
+                "The connection was closed because the connection's idle timer expired by {}",
+                endpoint::Location::Local
+            ),
+            Self::NoValidPath => write!(
+                f,
+                "The connection was closed because there are no valid paths"
+            ),
+            Self::StreamIdExhausted => write!(
+                f,
+                "All Stream IDs for Streams on the given connection had been exhausted"
+            ),
+            Self::Unspecified => {
+                write!(f, "The connection was closed due to an unspecified reason")
+            }
+        }
+    }
 }
 
 impl Error {
