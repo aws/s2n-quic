@@ -78,7 +78,7 @@ impl Controller {
     }
 
     /// Set the baseline ECN counts and reset the sent packet ECN counts
-    fn baseline(&mut self, ecn_counts: EcnCounts) {
+    pub fn baseline(&mut self, ecn_counts: EcnCounts) {
         if matches!(self.state, State::PendingBaseline) {
             self.state = State::Testing(0);
         }
