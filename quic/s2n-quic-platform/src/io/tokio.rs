@@ -219,14 +219,16 @@ impl Io {
             use std::os::unix::io::AsRawFd;
             let enabled: libc::c_int = 1;
 
-            // This option needs to be enabled regardless of domain (IPv4 vs IPv6)
-            libc!(setsockopt(
-                rx_socket.as_raw_fd(),
-                libc::IPPROTO_IP,
-                libc::IP_RECVTOS,
-                &enabled as *const _ as _,
-                core::mem::size_of_val(&enabled) as _,
-            ))?;
+            // This option needs to be enabled regardless of domain (IPv4 vs IPv6), except on mac
+            if rx_addr.is_ipv4() || !cfg!(any(target_os = "macos", target_os = "ios")) {
+                libc!(setsockopt(
+                    rx_socket.as_raw_fd(),
+                    libc::IPPROTO_IP,
+                    libc::IP_RECVTOS,
+                    &enabled as *const _ as _,
+                    core::mem::size_of_val(&enabled) as _,
+                ))?;
+            }
 
             if rx_addr.is_ipv6() {
                 libc!(setsockopt(
@@ -281,6 +283,9 @@ impl Io {
         let task = handle.spawn(async move {
             if let Err(err) = instance.event_loop().await {
                 eprintln!("A fatal IO error occurred ({:?}): {}", err.kind(), err);
+                if cfg!(test) {
+                    panic!();
+                }
             }
         });
 
@@ -694,7 +699,6 @@ mod async_fd_shim {
 }
 
 #[cfg(test)]
-#[cfg(not(target_os = "macos"))] // sendmsg on mac fails at the most and needs to be debugged
 mod tests {
     use super::*;
     use core::convert::TryInto;
