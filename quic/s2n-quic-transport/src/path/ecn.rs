@@ -162,15 +162,19 @@ impl Controller {
         }
 
         if let Some(ack_frame_ecn_counts) = ack_frame_ecn_counts {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
-            //# ECN validation also fails if the sum of the increase in ECT(0)
-            //# and ECN-CE counts is less than the number of newly acknowledged
-            //# packets that were originally sent with an ECT(0) marking.
-            let ect_0_increase = (ack_frame_ecn_counts.ect_0_count + ack_frame_ecn_counts.ce_count)
-                .saturating_sub(
-                    self.baseline_ecn_counts.ect_0_count + self.baseline_ecn_counts.ce_count,
-                );
+            let ect_0_baseline = self
+                .baseline_ecn_counts
+                .ect_0_count
+                .saturating_add(self.baseline_ecn_counts.ce_count);
+            let ect_0_increase = ack_frame_ecn_counts
+                .ect_0_count
+                .saturating_add(ack_frame_ecn_counts.ce_count)
+                .saturating_sub(ect_0_baseline);
             if ect_0_increase < expected_ecn_counts.ect_0_count {
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
+                //# ECN validation also fails if the sum of the increase in ECT(0)
+                //# and ECN-CE counts is less than the number of newly acknowledged
+                //# packets that were originally sent with an ECT(0) marking.
                 self.fail(now);
                 return;
             }
