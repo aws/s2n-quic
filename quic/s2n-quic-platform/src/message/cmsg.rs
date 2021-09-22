@@ -8,7 +8,7 @@ use s2n_quic_core::inet::{AncillaryData, ExplicitCongestionNotification};
 ///
 /// This should be enough for UDP_SEGMENT + IP_TOS + IP_PKTINFO. It may need to be increased
 /// to allow for future control messages.
-pub const MAX_LEN: usize = 128;
+pub const MAX_LEN: usize = 256;
 
 #[test]
 fn max_len_test() {
