@@ -18,7 +18,6 @@ use s2n_quic_core::{
     recovery::{CongestionController, RttEstimator, K_GRANULARITY},
     time::{timer, Timer, Timestamp},
     transport,
-    varint::VarInt,
 };
 use smallvec::SmallVec;
 
@@ -62,11 +61,12 @@ pub struct Manager<Config: endpoint::Config> {
     //# The time the most recent ack-eliciting packet was sent.
     time_of_last_ack_eliciting_packet: Option<Timestamp>,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#B.2
-    //# The highest value reported for the ECN-CE counter in the packet
-    //# number space by the peer in an ACK frame.  This value is used to
-    //# detect increases in the reported ECN-CE counter.
-    ecn_ce_counter: VarInt,
+    // The last processed ECN counts received in an ACK frame. Used to
+    // validate new ECN counts and to detect increases in the reported ECN-CE counter.
+    baseline_ecn_counts: EcnCounts,
+
+    // The total ecn counts for outstanding (unacknowledged) packets
+    sent_packet_ecn_counts: EcnCounts,
 
     config: PhantomData<Config>,
 }
@@ -95,7 +95,8 @@ impl<Config: endpoint::Config> Manager<Config> {
             loss_timer: Timer::default(),
             pto: Pto::new(max_ack_delay),
             time_of_last_ack_eliciting_packet: None,
-            ecn_ce_counter: VarInt::default(),
+            baseline_ecn_counts: EcnCounts::default(),
+            sent_packet_ecn_counts: EcnCounts::default(),
             config: PhantomData,
         }
     }
@@ -173,6 +174,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         );
 
         context.path_mut().ecn_controller.on_packet_sent(ecn);
+        self.sent_packet_ecn_counts.increment(ecn);
 
         if outcome.is_congestion_controlled {
             if outcome.ack_elicitation.is_ack_eliciting() {
@@ -538,13 +540,15 @@ impl<Config: endpoint::Config> Manager<Config> {
     ) {
         path.ecn_controller.validate(
             expected_ecn_counts,
+            self.sent_packet_ecn_counts,
+            self.baseline_ecn_counts,
             ack_frame_ecn_counts,
             datagram.timestamp,
         );
 
         if let Some(ack_frame_ecn_counts) = ack_frame_ecn_counts {
             if path.ecn_controller.is_capable()
-                && ack_frame_ecn_counts.ce_count > self.ecn_ce_counter
+                && ack_frame_ecn_counts.ce_count > self.baseline_ecn_counts.ce_count
             {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.1
                 //# If a path has been validated to support ECN ([RFC3168], [RFC8311]),
@@ -552,10 +556,11 @@ impl<Config: endpoint::Config> Manager<Config> {
                 //# as a signal of congestion.
                 path.congestion_controller
                     .on_congestion_event(datagram.timestamp);
-
-                self.ecn_ce_counter = ack_frame_ecn_counts.ce_count;
             }
         }
+
+        self.baseline_ecn_counts = ack_frame_ecn_counts.unwrap_or_default();
+        self.sent_packet_ecn_counts -= expected_ecn_counts;
     }
 
     /// Returns `true` if the recovery manager requires a probe packet to be sent.

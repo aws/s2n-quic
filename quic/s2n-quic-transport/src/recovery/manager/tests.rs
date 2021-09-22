@@ -823,15 +823,27 @@ fn process_new_acked_packets_process_ecn() {
     }
 
     // Trigger 1:
-    // Ack packets 2-10
+    // Ack packets 2-5 and then 6-10
     let ack_receive_time = time_sent + Duration::from_millis(500);
+    let ack_ecn_counts = EcnCounts {
+        ect_0_count: VarInt::from_u8(3),
+        ect_1_count: Default::default(),
+        ce_count: VarInt::from_u8(1),
+    };
+    ack_packets(
+        2..=5,
+        ack_receive_time,
+        &mut context,
+        &mut manager,
+        Some(ack_ecn_counts),
+    );
     let ack_ecn_counts = EcnCounts {
         ect_0_count: VarInt::from_u8(9),
         ect_1_count: Default::default(),
         ce_count: VarInt::from_u8(1),
     };
     ack_packets(
-        2..=10,
+        6..=10,
         ack_receive_time,
         &mut context,
         &mut manager,
@@ -839,7 +851,7 @@ fn process_new_acked_packets_process_ecn() {
     );
 
     // Expectation 1:
-    assert_eq!(ack_ecn_counts.ce_count, manager.ecn_ce_counter);
+    assert_eq!(ack_ecn_counts, manager.baseline_ecn_counts);
     assert_eq!(1, context.path().congestion_controller.congestion_events);
     assert!(context.path().ecn_controller.is_capable());
 
@@ -865,7 +877,7 @@ fn process_new_acked_packets_process_ecn() {
     );
 
     // Expectation 2:
-    assert_eq!(ack_ecn_counts.ce_count, manager.ecn_ce_counter);
+    assert_eq!(ack_ecn_counts, manager.baseline_ecn_counts);
     assert!(context.path().ecn_controller.is_capable());
 }
 
@@ -922,7 +934,7 @@ fn process_new_acked_packets_failed_ecn_validation_does_not_cause_congestion_eve
     );
 
     // Expectation 1:
-    assert_eq!(VarInt::from_u8(0), manager.ecn_ce_counter);
+    assert_eq!(ack_ecn_counts, manager.baseline_ecn_counts);
     assert_eq!(0, context.path().congestion_controller.congestion_events);
     assert!(!context.path().ecn_controller.is_capable());
 }

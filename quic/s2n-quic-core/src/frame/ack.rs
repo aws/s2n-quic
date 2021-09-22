@@ -1,8 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{frame::Tag, inet::ExplicitCongestionNotification, varint::VarInt};
-use core::{convert::TryInto, ops::RangeInclusive};
+use crate::{frame::Tag, inet::ExplicitCongestionNotification, number::CheckedSub, varint::VarInt};
+use core::{
+    convert::TryInto,
+    ops::{RangeInclusive, SubAssign},
+};
 use s2n_codec::{
     decoder_parameterized_value, decoder_value, DecoderBuffer, DecoderError, Encoder, EncoderValue,
 };
@@ -478,6 +481,30 @@ impl EcnCounts {
             ect_1_count: self.ect_1_count.max(other.ect_1_count),
             ce_count: self.ce_count.max(other.ce_count),
         }
+    }
+}
+
+impl SubAssign for EcnCounts {
+    fn sub_assign(&mut self, rhs: Self) {
+        self.ect_0_count = self.ect_0_count.saturating_sub(rhs.ect_0_count);
+        self.ect_1_count = self.ect_1_count.saturating_sub(rhs.ect_1_count);
+        self.ce_count = self.ce_count.saturating_sub(rhs.ce_count);
+    }
+}
+
+impl CheckedSub for EcnCounts {
+    type Output = EcnCounts;
+
+    fn checked_sub(self, rhs: Self) -> Option<Self::Output> {
+        let ect_0_count = self.ect_0_count.checked_sub(rhs.ect_0_count)?;
+        let ect_1_count = self.ect_1_count.checked_sub(rhs.ect_1_count)?;
+        let ce_count = self.ce_count.checked_sub(rhs.ce_count)?;
+
+        Some(EcnCounts {
+            ect_0_count,
+            ect_1_count,
+            ce_count,
+        })
     }
 }
 

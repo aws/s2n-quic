@@ -5,6 +5,7 @@ use s2n_quic_core::{
     counter::{Counter, Saturating},
     frame::ack::EcnCounts,
     inet::ExplicitCongestionNotification,
+    number::CheckedSub,
     time::{timer, Duration, Timer, Timestamp},
     transmission,
 };
@@ -22,8 +23,6 @@ const RETEST_COOL_OFF_DURATION: Duration = Duration::from_secs(60);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum State {
-    // ECN capability testing has been restarted, but baseline ECN counts are needed
-    PendingBaseline,
     // ECN capability is being tested, tracking the number of ECN marked packets sent
     Testing(u8),
     // ECN capability has been tested, but not validated yet
@@ -43,10 +42,6 @@ pub struct Controller {
     // The largest acknowledged packet sent with an ECN marking. Used when tracking
     // packets that have been lost for the purpose of detecting a black hole.
     last_acked_ecn_packet_timestamp: Option<Timestamp>,
-    // ECN Counts at the beginning of the testing period or after successful validation
-    baseline_ecn_counts: EcnCounts,
-    // The running total of ECN markings on sent packets since the last baseline was set
-    sent_packet_ecn_counts: EcnCounts,
     // Timer for re-testing the path for ECN capability after failure
     retest_timer: Timer,
 }
@@ -58,34 +53,21 @@ impl Default for Controller {
 }
 
 impl Controller {
-    /// Construct a new ecn::Controller in the `PendingBaseline` state.
+    /// Construct a new ecn::Controller in the `Testing` state.
     pub fn new() -> Self {
         Self {
-            state: State::PendingBaseline,
+            state: State::Testing(0),
             black_hole_counter: Default::default(),
             last_acked_ecn_packet_timestamp: None,
-            baseline_ecn_counts: EcnCounts::default(),
-            sent_packet_ecn_counts: Default::default(),
             retest_timer: Default::default(),
         }
     }
 
     /// Restart testing of ECN capability
     pub fn restart(&mut self) {
-        self.state = State::PendingBaseline;
+        self.state = State::Testing(0);
         self.black_hole_counter = Default::default();
         self.retest_timer.cancel();
-    }
-
-    /// Set the baseline ECN counts and reset the sent packet ECN counts
-    pub fn baseline(&mut self, ecn_counts: EcnCounts) {
-        if matches!(self.state, State::PendingBaseline) {
-            self.state = State::Testing(0);
-        }
-
-        self.baseline_ecn_counts = ecn_counts;
-        // Reset sent packet ECN counts since we have a new baseline
-        self.sent_packet_ecn_counts = EcnCounts::default();
     }
 
     /// Called when the connection timer expires
@@ -132,44 +114,50 @@ impl Controller {
     //# MUST disable ECN if validation later fails.
     /// Validate the given `EcnCounts`, updating the current validation state based on the
     /// validation outcome.
+    ///
+    /// * `expected_ecn_counts` - total ECN counts that were sent on packets newly acknowledged by the peer
+    /// * `sent_packet_ecn_counts` - total ECN counts for all outstanding packets, including those newly
+    ///                              acknowledged during this validation
+    /// * `baseline_ecn_counts` - the ECN counts present in the Ack frame the last time ECN counts were processed
+    /// * `ack_frame_ecn_counts` - the ECN counts present in the current Ack frame (if any)
+    /// * `now` - the time the Ack frame was received
     pub fn validate(
         &mut self,
         expected_ecn_counts: EcnCounts,
+        sent_packet_ecn_counts: EcnCounts,
+        baseline_ecn_counts: EcnCounts,
         ack_frame_ecn_counts: Option<EcnCounts>,
         now: Timestamp,
     ) {
-        match self.state {
-            State::PendingBaseline => {
-                self.baseline(ack_frame_ecn_counts.unwrap_or_default());
-                return;
-            }
-            State::Failed => {
-                // Validation had already failed
-                return;
-            }
-            _ => {}
-        }
-
-        if expected_ecn_counts.as_option().is_some() && ack_frame_ecn_counts.is_none() {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
-            //# If an ACK frame newly acknowledges a packet that the endpoint sent with
-            //# either the ECT(0) or ECT(1) codepoint set, ECN validation fails if the
-            //# corresponding ECN counts are not present in the ACK frame. This check
-            //# detects a network element that zeroes the ECN field or a peer that does
-            //# not report ECN markings.
-            self.fail(now);
+        if matches!(self.state, State::Failed) {
+            // Validation had already failed
             return;
         }
 
-        if let Some(ack_frame_ecn_counts) = ack_frame_ecn_counts {
-            let ect_0_baseline = self
-                .baseline_ecn_counts
-                .ect_0_count
-                .saturating_add(self.baseline_ecn_counts.ce_count);
-            let ect_0_increase = ack_frame_ecn_counts
-                .ect_0_count
-                .saturating_add(ack_frame_ecn_counts.ce_count)
-                .saturating_sub(ect_0_baseline);
+        if ack_frame_ecn_counts.is_none() {
+            if expected_ecn_counts.as_option().is_some() {
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
+                //# If an ACK frame newly acknowledges a packet that the endpoint sent with
+                //# either the ECT(0) or ECT(1) codepoint set, ECN validation fails if the
+                //# corresponding ECN counts are not present in the ACK frame. This check
+                //# detects a network element that zeroes the ECN field or a peer that does
+                //# not report ECN markings.
+                self.fail(now);
+                return;
+            }
+
+            if baseline_ecn_counts == EcnCounts::default() {
+                // Nothing to validate
+                return;
+            }
+        }
+
+        if let Some(incremental_ecn_counts) = ack_frame_ecn_counts
+            .unwrap_or_default()
+            .checked_sub(baseline_ecn_counts)
+        {
+            let ect_0_increase =
+                incremental_ecn_counts.ect_0_count + incremental_ecn_counts.ce_count;
             if ect_0_increase < expected_ecn_counts.ect_0_count {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
                 //# ECN validation also fails if the sum of the increase in ECT(0)
@@ -179,16 +167,8 @@ impl Controller {
                 return;
             }
 
-            if ack_frame_ecn_counts.ect_0_count
-                > self
-                    .sent_packet_ecn_counts
-                    .ect_0_count
-                    .saturating_add(self.baseline_ecn_counts.ect_0_count)
-                || ack_frame_ecn_counts.ect_1_count
-                    > self
-                        .sent_packet_ecn_counts
-                        .ect_1_count
-                        .saturating_add(self.baseline_ecn_counts.ect_1_count)
+            if incremental_ecn_counts.ect_0_count > sent_packet_ecn_counts.ect_0_count
+                || incremental_ecn_counts.ect_1_count > sent_packet_ecn_counts.ect_1_count
             {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
                 //# ECN validation can fail if the received total count for either ECT(0) or ECT(1)
@@ -196,12 +176,9 @@ impl Controller {
                 self.fail(now);
                 return;
             }
-
-            // The ECN counts are valid so they become the new baseline
-            self.baseline(ack_frame_ecn_counts);
         } else {
-            // No ECN counts to validate
-            return;
+            // ECN counts decreased from the baseline
+            self.fail(now);
         }
 
         if matches!(self.state, State::Unknown) {
@@ -219,8 +196,6 @@ impl Controller {
             !matches!(ecn, ExplicitCongestionNotification::Ce),
             "Endpoints should not mark packets as Ce"
         );
-
-        self.sent_packet_ecn_counts.increment(ecn);
 
         if let (true, State::Testing(ref mut packet_count)) = (ecn.using_ecn(), &mut self.state) {
             *packet_count += 1;

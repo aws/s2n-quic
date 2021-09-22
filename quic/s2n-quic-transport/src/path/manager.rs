@@ -13,7 +13,7 @@ use s2n_quic_core::{
     ack, connection,
     event::{self, IntoEvent},
     frame,
-    frame::{ack::EcnCounts, path_validation},
+    frame::path_validation,
     inet::DatagramInfo,
     packet::number::PacketNumberSpace,
     path::{Handle as _, MaxMtu},
@@ -50,11 +50,7 @@ pub struct Manager<Config: endpoint::Config> {
 }
 
 impl<Config: endpoint::Config> Manager<Config> {
-    pub fn new(mut initial_path: Path<Config>, peer_id_registry: PeerIdRegistry) -> Self {
-        // Baseline the initial path with default EcnCounts since the initial path would
-        // not have any ECN marked packets sent yet.
-        initial_path.ecn_controller.baseline(EcnCounts::default());
-
+    pub fn new(initial_path: Path<Config>, peer_id_registry: PeerIdRegistry) -> Self {
         Manager {
             paths: SmallVec::from_elem(initial_path, 1),
             peer_id_registry,
