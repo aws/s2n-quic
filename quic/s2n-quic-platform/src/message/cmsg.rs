@@ -111,11 +111,9 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
         match (cmsg.cmsg_level, cmsg.cmsg_type) {
             // Linux uses IP_TOS, FreeBSD uses IP_RECVTOS
             (libc::IPPROTO_IP, libc::IP_TOS) | (libc::IPPROTO_IP, libc::IP_RECVTOS) => unsafe {
-                eprintln!("decoding libc::IP_TOS {:?} ", cmsg.cmsg_type);
                 result.ecn = ExplicitCongestionNotification::new(decode_value::<u8>(cmsg));
             },
             (libc::IPPROTO_IPV6, libc::IPV6_TCLASS) => unsafe {
-                eprintln!("decoding libc::IPV6_TCLASS {:?} ", cmsg.cmsg_type);
                 result.ecn =
                     ExplicitCongestionNotification::new(decode_value::<libc::c_int>(cmsg) as u8);
             },
