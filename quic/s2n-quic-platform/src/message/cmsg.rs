@@ -8,7 +8,7 @@ use s2n_quic_core::inet::{AncillaryData, ExplicitCongestionNotification};
 ///
 /// This should be enough for UDP_SEGMENT + IP_TOS + IP_PKTINFO. It may need to be increased
 /// to allow for future control messages.
-pub const MAX_LEN: usize = 256;
+pub const MAX_LEN: usize = 128;
 
 #[test]
 fn max_len_test() {
@@ -111,9 +111,11 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
         match (cmsg.cmsg_level, cmsg.cmsg_type) {
             // Linux uses IP_TOS, FreeBSD uses IP_RECVTOS
             (libc::IPPROTO_IP, libc::IP_TOS) | (libc::IPPROTO_IP, libc::IP_RECVTOS) => unsafe {
+                eprintln!("decoding libc::IP_TOS {:?} ", cmsg.cmsg_type);
                 result.ecn = ExplicitCongestionNotification::new(decode_value::<u8>(cmsg));
             },
             (libc::IPPROTO_IPV6, libc::IPV6_TCLASS) => unsafe {
+                eprintln!("decoding libc::IPV6_TCLASS {:?} ", cmsg.cmsg_type);
                 result.ecn =
                     ExplicitCongestionNotification::new(decode_value::<libc::c_int>(cmsg) as u8);
             },
