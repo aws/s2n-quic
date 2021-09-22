@@ -194,13 +194,6 @@ fn update_path_to_active_path() {
     // Setup:
     let mut helper = helper_manager_with_paths();
     assert_eq!(helper.manager.active, helper.first_path_id.0);
-    // Initial path starts out sending Ect0 marked packets
-    assert_eq!(
-        ExplicitCongestionNotification::Ect0,
-        helper.manager[helper.zero_path_id]
-            .ecn_controller
-            .ecn(transmission::Mode::Normal)
-    );
 
     // Trigger:
     helper
@@ -214,13 +207,6 @@ fn update_path_to_active_path() {
 
     // Expectation:
     assert_eq!(helper.manager.active, helper.second_path_id.0);
-    // Second path needs to receive an ACK with baseline ECN counts before marking packets with ECT0
-    assert_eq!(
-        ExplicitCongestionNotification::NotEct,
-        helper.manager[helper.second_path_id]
-            .ecn_controller
-            .ecn(transmission::Mode::Normal)
-    );
 }
 
 #[test]
