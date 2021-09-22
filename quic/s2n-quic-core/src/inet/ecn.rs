@@ -77,6 +77,12 @@ impl Default for ExplicitCongestionNotification {
 impl ExplicitCongestionNotification {
     /// Create a ExplicitCongestionNotification from the ECN field in the IP header
     pub fn new(ecn_field: u8) -> Self {
+        debug_assert!(
+            ecn_field >> 2 == 0,
+            "{:#b} is not a valid ECN marking",
+            ecn_field
+        );
+
         match ecn_field & 0b11 {
             0b00 => ExplicitCongestionNotification::NotEct,
             0b01 => ExplicitCongestionNotification::Ect1,
@@ -89,5 +95,28 @@ impl ExplicitCongestionNotification {
     /// Returns true if congestion was experienced by the peer
     pub fn congestion_experienced(self) -> bool {
         self == Self::Ce
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new() {
+        for ecn in &[
+            ExplicitCongestionNotification::NotEct,
+            ExplicitCongestionNotification::Ect1,
+            ExplicitCongestionNotification::Ect0,
+            ExplicitCongestionNotification::Ce,
+        ] {
+            assert_eq!(*ecn, ExplicitCongestionNotification::new(*ecn as u8));
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn invalid_ecn() {
+        ExplicitCongestionNotification::new(4);
     }
 }
