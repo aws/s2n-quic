@@ -17,7 +17,6 @@ fn helper_ecn_counts(ect0: u8, ect1: u8, ce: u8) -> EcnCounts {
 fn new() {
     let controller = Controller::new();
     assert_eq!(0, *controller.black_hole_counter.deref());
-    assert!(!controller.retest_timer.is_armed());
     assert_eq!(State::Testing(0), controller.state);
     assert_eq!(None, controller.last_acked_ecn_packet_timestamp);
 }
@@ -25,15 +24,12 @@ fn new() {
 #[test]
 fn restart() {
     let mut controller = Controller::new();
-    let now = s2n_quic_platform::time::now();
-    controller.state = State::Failed;
-    controller.retest_timer.set(now);
+    controller.state = State::Failed(Timer::default());
     controller.black_hole_counter += 1;
 
     controller.restart();
 
     assert_eq!(State::Testing(0), controller.state);
-    assert!(!controller.retest_timer.is_armed());
     assert_eq!(0, *controller.black_hole_counter.deref());
 }
 
@@ -43,24 +39,31 @@ fn on_timeout() {
     let now = s2n_quic_platform::time::now();
     controller.fail(now);
 
-    assert_eq!(State::Failed, controller.state);
+    if let State::Failed(timer) = &controller.state {
+        assert!(timer.is_armed());
+    } else {
+        panic!("State should be Failed");
+    }
+
     assert_eq!(0, *controller.black_hole_counter.deref());
-    assert!(controller.retest_timer.is_armed());
 
     let now = now + RETEST_COOL_OFF_DURATION - Duration::from_secs(1);
 
     // Too soon
     controller.on_timeout(now);
 
-    assert_eq!(State::Failed, controller.state);
+    if let State::Failed(timer) = &controller.state {
+        assert!(timer.is_armed());
+    } else {
+        panic!("State should be Failed");
+    }
+
     assert_eq!(0, *controller.black_hole_counter.deref());
-    assert!(controller.retest_timer.is_armed());
 
     let now = now + Duration::from_secs(1);
     controller.on_timeout(now);
 
     assert_eq!(State::Testing(0), controller.state);
-    assert!(!controller.retest_timer.is_armed());
     assert_eq!(0, *controller.black_hole_counter.deref());
 }
 
@@ -101,7 +104,7 @@ fn ecn_loss_recovery_probing() {
         State::Capable,
         State::Testing(0),
         State::Unknown,
-        State::Failed,
+        State::Failed(Timer::default()),
     ] {
         let mut controller = Controller::new();
         controller.state = state;
@@ -113,7 +116,11 @@ fn ecn_loss_recovery_probing() {
 
 #[test]
 fn is_capable() {
-    for state in vec![State::Testing(0), State::Unknown, State::Failed] {
+    for state in vec![
+        State::Testing(0),
+        State::Unknown,
+        State::Failed(Timer::default()),
+    ] {
         let mut controller = Controller::new();
         controller.state = state;
         assert!(!controller.is_capable());
@@ -137,12 +144,16 @@ fn validate_already_failed() {
         now + Duration::from_secs(5),
     );
 
-    assert_eq!(State::Failed, controller.state);
+    if let State::Failed(timer) = &controller.state {
+        assert!(timer.is_armed());
+        assert_eq!(
+            controller.next_expiration(),
+            Some(now + RETEST_COOL_OFF_DURATION)
+        );
+    } else {
+        panic!("State should be Failed");
+    }
     assert_eq!(ValidationOutcome::Skipped, outcome);
-    assert_eq!(
-        controller.next_expiration(),
-        Some(now + RETEST_COOL_OFF_DURATION)
-    );
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
@@ -166,7 +177,7 @@ fn validate_ecn_counts_not_in_ack() {
     );
 
     assert_eq!(ValidationOutcome::Failed, outcome);
-    assert_eq!(State::Failed, controller.state);
+    assert!(matches!(controller.state, State::Failed(_)));
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
@@ -189,7 +200,7 @@ fn validate_ecn_ce_remarking() {
     );
 
     assert_eq!(ValidationOutcome::Failed, outcome);
-    assert_eq!(State::Failed, controller.state);
+    assert!(matches!(controller.state, State::Failed(_)));
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
@@ -212,7 +223,7 @@ fn validate_ect_0_remarking() {
     );
 
     assert_eq!(ValidationOutcome::Failed, outcome);
-    assert_eq!(State::Failed, controller.state);
+    assert!(matches!(controller.state, State::Failed(_)));
 }
 
 #[test]
@@ -232,7 +243,7 @@ fn validate_ect_0_remarking_after_restart() {
     );
 
     assert_eq!(ValidationOutcome::Failed, outcome);
-    assert_eq!(State::Failed, controller.state);
+    assert!(matches!(controller.state, State::Failed(_)));
 }
 
 #[test]
@@ -266,7 +277,7 @@ fn validate_ecn_decrease() {
     );
 
     assert_eq!(ValidationOutcome::Failed, outcome);
-    assert_eq!(State::Failed, controller.state);
+    assert!(matches!(controller.state, State::Failed(_)));
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9000.txt#A.4
@@ -334,7 +345,11 @@ fn validate_capable_congestion_experienced() {
 /// Successful validation when not in the Unknown state does not change the state
 #[test]
 fn validate_capable_not_in_unknown_state() {
-    for state in vec![State::Testing(0), State::Capable, State::Failed] {
+    for state in vec![
+        State::Testing(0),
+        State::Capable,
+        State::Failed(Timer::default()),
+    ] {
         let mut controller = Controller::new();
         controller.state = state;
         let now = s2n_quic_platform::time::now();
@@ -430,15 +445,20 @@ fn on_packet_loss() {
 
         for i in 0..TESTING_PACKET_THRESHOLD + 1 {
             assert_eq!(i, *controller.black_hole_counter.deref());
-            assert_ne!(State::Failed, controller.state);
+            assert!(!matches!(controller.state, State::Failed(_)));
             controller.on_packet_loss(time_sent, ExplicitCongestionNotification::Ect0, time_sent);
         }
 
-        assert_eq!(State::Failed, controller.state);
-        assert_eq!(
-            Some(time_sent + RETEST_COOL_OFF_DURATION),
-            controller.next_expiration()
-        );
+        if let State::Failed(timer) = &controller.state {
+            assert!(timer.is_armed());
+            assert_eq!(
+                Some(time_sent + RETEST_COOL_OFF_DURATION),
+                controller.next_expiration()
+            );
+        } else {
+            panic!("State should be Failed");
+        }
+
         assert_eq!(0, *controller.black_hole_counter.deref());
     }
 }
@@ -454,14 +474,19 @@ fn on_packet_loss_already_failed() {
 
     for _i in 0..TESTING_PACKET_THRESHOLD + 1 {
         assert_eq!(0, *controller.black_hole_counter.deref());
-        assert_eq!(State::Failed, controller.state);
+        assert!(matches!(controller.state, State::Failed(_)));
         controller.on_packet_loss(time_sent, ExplicitCongestionNotification::Ect0, time_sent);
     }
 
-    assert_eq!(State::Failed, controller.state);
-    assert_eq!(
-        Some(now + RETEST_COOL_OFF_DURATION),
-        controller.next_expiration()
-    );
+    if let State::Failed(timer) = &controller.state {
+        assert!(timer.is_armed());
+        assert_eq!(
+            Some(now + RETEST_COOL_OFF_DURATION),
+            controller.next_expiration()
+        );
+    } else {
+        panic!("State should be Failed");
+    }
+
     assert_eq!(0, *controller.black_hole_counter.deref());
 }

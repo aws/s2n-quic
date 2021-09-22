@@ -40,8 +40,8 @@ enum State {
     Testing(u8),
     // ECN capability has been tested, but not validated yet
     Unknown,
-    // ECN validation has failed
-    Failed,
+    // ECN validation has failed. Validation will be restarted based on the timer
+    Failed(Timer),
     // ECN validation has succeeded
     Capable,
 }
@@ -55,8 +55,6 @@ pub struct Controller {
     // The largest acknowledged packet sent with an ECN marking. Used when tracking
     // packets that have been lost for the purpose of detecting a black hole.
     last_acked_ecn_packet_timestamp: Option<Timestamp>,
-    // Timer for re-testing the path for ECN capability after failure
-    retest_timer: Timer,
 }
 
 impl Default for Controller {
@@ -72,7 +70,6 @@ impl Controller {
             state: State::Testing(0),
             black_hole_counter: Default::default(),
             last_acked_ecn_packet_timestamp: None,
-            retest_timer: Default::default(),
         }
     }
 
@@ -80,13 +77,14 @@ impl Controller {
     pub fn restart(&mut self) {
         self.state = State::Testing(0);
         self.black_hole_counter = Default::default();
-        self.retest_timer.cancel();
     }
 
     /// Called when the connection timer expires
     pub fn on_timeout(&mut self, now: Timestamp) {
-        if self.retest_timer.poll_expiration(now).is_ready() {
-            self.restart();
+        if let State::Failed(ref mut retest_timer) = &mut self.state {
+            if retest_timer.poll_expiration(now).is_ready() {
+                self.restart();
+            }
         }
     }
 
@@ -113,7 +111,7 @@ impl Controller {
             //# If validation fails, then the endpoint MUST disable ECN. It stops setting the ECT
             //# codepoint in IP packets that it sends, assuming that either the network path or
             //# the peer does not support ECN.
-            State::Failed | State::Unknown => ExplicitCongestionNotification::NotEct,
+            State::Failed(_) | State::Unknown => ExplicitCongestionNotification::NotEct,
         }
     }
 
@@ -142,7 +140,7 @@ impl Controller {
         ack_frame_ecn_counts: Option<EcnCounts>,
         now: Timestamp,
     ) -> ValidationOutcome {
-        if matches!(self.state, State::Failed) {
+        if matches!(self.state, State::Failed(_)) {
             // Validation had already failed
             return ValidationOutcome::Skipped;
         }
@@ -253,7 +251,7 @@ impl Controller {
         ecn: ExplicitCongestionNotification,
         now: Timestamp,
     ) {
-        if matches!(self.state, State::Failed) {
+        if matches!(self.state, State::Failed(_)) {
             return;
         }
 
@@ -284,19 +282,22 @@ impl Controller {
 
     /// Set the state to Failed and arm the retest timer
     fn fail(&mut self, now: Timestamp) {
-        self.state = State::Failed;
-        self.black_hole_counter = Default::default();
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
         //# Even if validation fails, an endpoint MAY revalidate ECN for the same path at any later
         //# time in the connection. An endpoint could continue to periodically attempt validation.
-        self.retest_timer.set(now + RETEST_COOL_OFF_DURATION);
+        let mut retest_timer = Timer::default();
+        retest_timer.set(now + RETEST_COOL_OFF_DURATION);
+        self.state = State::Failed(retest_timer);
+        self.black_hole_counter = Default::default();
     }
 }
 
 impl timer::Provider for Controller {
     #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
-        self.retest_timer.timers(query)?;
+        if let State::Failed(timer) = &self.state {
+            timer.timers(query)?
+        }
 
         Ok(())
     }
