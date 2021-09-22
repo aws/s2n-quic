@@ -46,7 +46,13 @@ enum State {
     Capable,
 }
 
-#[derive(Clone, Debug)]
+impl Default for State {
+    fn default() -> Self {
+        State::Testing(0)
+    }
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct Controller {
     state: State,
     // A count of the number of packets with ECN marking lost since
@@ -57,22 +63,7 @@ pub struct Controller {
     last_acked_ecn_packet_timestamp: Option<Timestamp>,
 }
 
-impl Default for Controller {
-    fn default() -> Self {
-        Controller::new()
-    }
-}
-
 impl Controller {
-    /// Construct a new ecn::Controller in the `Testing` state.
-    pub fn new() -> Self {
-        Self {
-            state: State::Testing(0),
-            black_hole_counter: Default::default(),
-            last_acked_ecn_packet_timestamp: None,
-        }
-    }
-
     /// Restart testing of ECN capability
     pub fn restart(&mut self) {
         self.state = State::Testing(0);

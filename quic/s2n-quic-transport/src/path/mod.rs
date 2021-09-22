@@ -116,7 +116,7 @@ impl<Config: endpoint::Config> Path<Config> {
                 rx_bytes: 0,
             },
             mtu_controller: mtu::Controller::new(max_mtu, &peer_socket_address),
-            ecn_controller: ecn::Controller::new(),
+            ecn_controller: ecn::Controller::default(),
             peer_validated,
             challenge: Challenge::disabled(),
             response_data: None,
