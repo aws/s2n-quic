@@ -104,42 +104,60 @@ impl Encoder for libc::msghdr {
 /// Decodes all recognized control messages in the given `msghdr` into `AncillaryData`
 #[inline]
 pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
+    use core::mem;
     let mut result = AncillaryData::default();
     let cmsg_iter = unsafe { Iter::new(msghdr) };
 
     for cmsg in cmsg_iter {
-        match (cmsg.cmsg_level, cmsg.cmsg_type) {
-            // Linux uses IP_TOS, FreeBSD uses IP_RECVTOS
-            (libc::IPPROTO_IP, libc::IP_TOS) | (libc::IPPROTO_IP, libc::IP_RECVTOS) => unsafe {
-                result.ecn = ExplicitCongestionNotification::new(decode_value::<u8>(cmsg));
-            },
-            (libc::IPPROTO_IPV6, libc::IPV6_TCLASS) => unsafe {
-                result.ecn =
-                    ExplicitCongestionNotification::new(decode_value::<libc::c_int>(cmsg) as u8);
-            },
-            #[cfg(s2n_quic_platform_pktinfo)]
-            (libc::IPPROTO_IP, libc::IP_PKTINFO) => unsafe {
-                let pkt_info = decode_value::<libc::in_pktinfo>(cmsg);
-                let local_address = pkt_info.ipi_spec_dst.s_addr.to_ne_bytes();
-                // TODO set the correct port
-                //      https://github.com/awslabs/s2n-quic/issues/816
-                let port = 0;
-                let local_address = s2n_quic_core::inet::SocketAddressV4::new(local_address, port);
-                result.local_address = local_address.into();
-                result.local_interface = Some(pkt_info.ipi_ifindex as _);
-            },
-            #[cfg(s2n_quic_platform_pktinfo)]
-            (libc::IPPROTO_IPV6, libc::IPV6_PKTINFO) => unsafe {
-                let pkt_info = decode_value::<libc::in6_pktinfo>(cmsg);
-                let local_address = pkt_info.ipi6_addr.s6_addr;
-                // TODO set the correct port
-                //      https://github.com/awslabs/s2n-quic/issues/816
-                let port = 0;
-                let local_address = s2n_quic_core::inet::SocketAddressV6::new(local_address, port);
-                result.local_address = local_address.into();
-                result.local_interface = Some(pkt_info.ipi6_ifindex as _);
-            },
-            _ => {}
+        unsafe {
+            match (cmsg.cmsg_level, cmsg.cmsg_type, cmsg.cmsg_len as usize) {
+                // Linux uses IP_TOS, FreeBSD uses IP_RECVTOS
+                (libc::IPPROTO_IP, libc::IP_TOS, cmsg_len)
+                | (libc::IPPROTO_IP, libc::IP_RECVTOS, cmsg_len)
+                    if cmsg_len == libc::CMSG_LEN(mem::size_of::<u8>() as _) as usize =>
+                {
+                    result.ecn = ExplicitCongestionNotification::new(decode_value::<u8>(cmsg));
+                }
+                (libc::IPPROTO_IP, libc::IP_TOS, cmsg_len)
+                | (libc::IPPROTO_IP, libc::IP_RECVTOS, cmsg_len)
+                    if cmsg_len == libc::CMSG_LEN(mem::size_of::<libc::c_int>() as _) as usize =>
+                {
+                    // IP_TOS cmsgs should be 1 byte, but occasionally are reported as 4 bytes
+                    result.ecn = ExplicitCongestionNotification::new(decode_value::<libc::c_int>(
+                        cmsg,
+                    ) as u8);
+                }
+                (libc::IPPROTO_IPV6, libc::IPV6_TCLASS, _) => {
+                    result.ecn = ExplicitCongestionNotification::new(decode_value::<libc::c_int>(
+                        cmsg,
+                    ) as u8);
+                }
+                #[cfg(s2n_quic_platform_pktinfo)]
+                (libc::IPPROTO_IP, libc::IP_PKTINFO, _) => {
+                    let pkt_info = decode_value::<libc::in_pktinfo>(cmsg);
+                    let local_address = pkt_info.ipi_spec_dst.s_addr.to_ne_bytes();
+                    // TODO set the correct port
+                    //      https://github.com/awslabs/s2n-quic/issues/816
+                    let port = 0;
+                    let local_address =
+                        s2n_quic_core::inet::SocketAddressV4::new(local_address, port);
+                    result.local_address = local_address.into();
+                    result.local_interface = Some(pkt_info.ipi_ifindex as _);
+                }
+                #[cfg(s2n_quic_platform_pktinfo)]
+                (libc::IPPROTO_IPV6, libc::IPV6_PKTINFO, _) => {
+                    let pkt_info = decode_value::<libc::in6_pktinfo>(cmsg);
+                    let local_address = pkt_info.ipi6_addr.s6_addr;
+                    // TODO set the correct port
+                    //      https://github.com/awslabs/s2n-quic/issues/816
+                    let port = 0;
+                    let local_address =
+                        s2n_quic_core::inet::SocketAddressV6::new(local_address, port);
+                    result.local_address = local_address.into();
+                    result.local_interface = Some(pkt_info.ipi6_ifindex as _);
+                }
+                _ => {}
+            }
         }
     }
 
