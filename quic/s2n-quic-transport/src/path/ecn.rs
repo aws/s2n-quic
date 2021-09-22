@@ -113,7 +113,7 @@ impl Controller {
             //# If validation fails, then the endpoint MUST disable ECN. It stops setting the ECT
             //# codepoint in IP packets that it sends, assuming that either the network path or
             //# the peer does not support ECN.
-            _ => ExplicitCongestionNotification::NotEct,
+            State::Failed | State::Unknown => ExplicitCongestionNotification::NotEct,
         }
     }
 
