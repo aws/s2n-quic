@@ -160,8 +160,9 @@ impl Controller {
             .unwrap_or_default()
             .checked_sub(baseline_ecn_counts)
         {
-            let ect_0_increase =
-                incremental_ecn_counts.ect_0_count + incremental_ecn_counts.ce_count;
+            let ect_0_increase = incremental_ecn_counts
+                .ect_0_count
+                .saturating_add(incremental_ecn_counts.ce_count);
             if ect_0_increase < newly_acked_ecn_counts.ect_0_count {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
                 //# ECN validation also fails if the sum of the increase in ECT(0)

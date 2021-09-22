@@ -490,3 +490,38 @@ fn on_packet_loss_already_failed() {
 
     assert_eq!(0, *controller.black_hole_counter.deref());
 }
+
+#[test]
+fn fuzz_validate() {
+    let now = s2n_quic_platform::time::now();
+
+    bolero::check!()
+        .with_type::<(EcnCounts, EcnCounts, EcnCounts, Option<EcnCounts>)>()
+        .cloned()
+        .for_each(
+            |(
+                newly_acked_ecn_counts,
+                sent_packet_ecn_counts,
+                baseline_ecn_counts,
+                ack_frame_ecn_counts,
+            )| {
+                let mut controller = Controller::default();
+                let outcome = controller.validate(
+                    newly_acked_ecn_counts,
+                    sent_packet_ecn_counts,
+                    baseline_ecn_counts,
+                    ack_frame_ecn_counts,
+                    now,
+                );
+
+                if outcome == ValidationOutcome::Failed {
+                    assert!(!controller.is_capable());
+                    assert_eq!(
+                        ExplicitCongestionNotification::NotEct,
+                        controller.ecn(transmission::Mode::Normal)
+                    );
+                    assert!(matches!(controller.state, State::Failed(_)));
+                }
+            },
+        );
+}
