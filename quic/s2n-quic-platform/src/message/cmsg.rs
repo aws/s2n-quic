@@ -111,6 +111,7 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
         match (cmsg.cmsg_level, cmsg.cmsg_type) {
             // Linux uses IP_TOS, FreeBSD uses IP_RECVTOS
             (libc::IPPROTO_IP, libc::IP_TOS) | (libc::IPPROTO_IP, libc::IP_RECVTOS) => unsafe {
+                eprintln!("Decoding IP_TOS");
                 result.ecn = ExplicitCongestionNotification::new(decode_value::<u8>(cmsg));
             },
             (libc::IPPROTO_IPV6, libc::IPV6_TCLASS) => unsafe {
@@ -154,6 +155,13 @@ unsafe fn decode_value<T: Copy>(cmsghdr: &libc::cmsghdr) -> T {
     use core::{mem, ptr};
 
     assert!(mem::align_of::<T>() <= mem::align_of::<libc::cmsghdr>());
+
+    eprintln!(
+        "mem::size_of::<libc::cmsghdr>(): {:?}",
+        mem::size_of::<libc::cmsghdr>()
+    );
+    eprintln!("mem::size_of::<T>(): {:?}", mem::size_of::<T>());
+
     debug_assert_eq!(
         cmsghdr.cmsg_len as usize,
         libc::CMSG_LEN(mem::size_of::<T>() as _) as usize

@@ -230,15 +230,15 @@ impl Io {
                 ))?;
             }
 
-            // if rx_addr.is_ipv6() {
-            //     libc!(setsockopt(
-            //         rx_socket.as_raw_fd(),
-            //         libc::IPPROTO_IPV6,
-            //         libc::IPV6_RECVTCLASS,
-            //         &enabled as *const _ as _,
-            //         core::mem::size_of_val(&enabled) as _,
-            //     ))?;
-            // }
+            if rx_addr.is_ipv6() {
+                libc!(setsockopt(
+                    rx_socket.as_raw_fd(),
+                    libc::IPPROTO_IPV6,
+                    libc::IPV6_RECVTCLASS,
+                    &enabled as *const _ as _,
+                    core::mem::size_of_val(&enabled) as _,
+                ))?;
+            }
         }
         publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
             configuration: event::builder::PlatformFeatureConfiguration::Ecn {
