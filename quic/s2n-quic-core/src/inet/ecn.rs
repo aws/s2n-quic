@@ -125,3 +125,26 @@ mod tests {
         ExplicitCongestionNotification::new(4);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new() {
+        for ecn in &[
+            ExplicitCongestionNotification::NotEct,
+            ExplicitCongestionNotification::Ect1,
+            ExplicitCongestionNotification::Ect0,
+            ExplicitCongestionNotification::Ce,
+        ] {
+            assert_eq!(*ecn, ExplicitCongestionNotification::new(*ecn as u8));
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn invalid_ecn() {
+        ExplicitCongestionNotification::new(4);
+    }
+}
