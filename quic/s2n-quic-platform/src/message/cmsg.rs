@@ -108,18 +108,21 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
     let cmsg_iter = unsafe { Iter::new(msghdr) };
 
     for cmsg in cmsg_iter {
-        match (cmsg.cmsg_level, cmsg.cmsg_type) {
+        match (cmsg.cmsg_level, cmsg.cmsg_type, cmsg.cmsg_len) {
             // Linux uses IP_TOS, FreeBSD uses IP_RECVTOS
-            (libc::IPPROTO_IP, libc::IP_TOS) | (libc::IPPROTO_IP, libc::IP_RECVTOS) => unsafe {
-                eprintln!("Decoding IP_TOS");
+            (libc::IPPROTO_IP, libc::IP_TOS, 1) | (libc::IPPROTO_IP, libc::IP_RECVTOS, 1) => unsafe {
                 result.ecn = ExplicitCongestionNotification::new(decode_value::<u8>(cmsg));
             },
-            (libc::IPPROTO_IPV6, libc::IPV6_TCLASS) => unsafe {
+            // IP_TOS cmsgs should be 1 byte, but occasionally are reported as 4 bytes
+            // IPV6_TCLASS cmsgs are always 4 bytes
+            (libc::IPPROTO_IP, libc::IP_TOS, 4)
+            | (libc::IPPROTO_IP, libc::IP_RECVTOS, 4)
+            | (libc::IPPROTO_IPV6, libc::IPV6_TCLASS, 4) => unsafe {
                 result.ecn =
                     ExplicitCongestionNotification::new(decode_value::<libc::c_int>(cmsg) as u8);
             },
             #[cfg(s2n_quic_platform_pktinfo)]
-            (libc::IPPROTO_IP, libc::IP_PKTINFO) => unsafe {
+            (libc::IPPROTO_IP, libc::IP_PKTINFO, _) => unsafe {
                 let pkt_info = decode_value::<libc::in_pktinfo>(cmsg);
                 let local_address = pkt_info.ipi_spec_dst.s_addr.to_ne_bytes();
                 // TODO set the correct port
@@ -130,7 +133,7 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
                 result.local_interface = Some(pkt_info.ipi_ifindex as _);
             },
             #[cfg(s2n_quic_platform_pktinfo)]
-            (libc::IPPROTO_IPV6, libc::IPV6_PKTINFO) => unsafe {
+            (libc::IPPROTO_IPV6, libc::IPV6_PKTINFO, _) => unsafe {
                 let pkt_info = decode_value::<libc::in6_pktinfo>(cmsg);
                 let local_address = pkt_info.ipi6_addr.s6_addr;
                 // TODO set the correct port
@@ -155,13 +158,6 @@ unsafe fn decode_value<T: Copy>(cmsghdr: &libc::cmsghdr) -> T {
     use core::{mem, ptr};
 
     assert!(mem::align_of::<T>() <= mem::align_of::<libc::cmsghdr>());
-
-    eprintln!(
-        "mem::size_of::<libc::cmsghdr>(): {:?}",
-        mem::size_of::<libc::cmsghdr>()
-    );
-    eprintln!("mem::size_of::<T>(): {:?}", mem::size_of::<T>());
-
     debug_assert_eq!(
         cmsghdr.cmsg_len as usize,
         libc::CMSG_LEN(mem::size_of::<T>() as _) as usize
