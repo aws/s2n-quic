@@ -129,7 +129,7 @@ fn validate_already_failed() {
     let mut controller = Controller::new();
     let now = s2n_quic_platform::time::now();
     controller.fail(now);
-    controller.validate(
+    let outcome = controller.validate(
         EcnCounts::default(),
         EcnCounts::default(),
         EcnCounts::default(),
@@ -138,6 +138,7 @@ fn validate_already_failed() {
     );
 
     assert_eq!(State::Failed, controller.state);
+    assert_eq!(ValidationOutcome::Skipped, outcome);
     assert_eq!(
         controller.next_expiration(),
         Some(now + RETEST_COOL_OFF_DURATION)
@@ -156,7 +157,7 @@ fn validate_ecn_counts_not_in_ack() {
     let mut controller = Controller::new();
     let now = s2n_quic_platform::time::now();
     let expected_ecn_counts = helper_ecn_counts(1, 0, 0);
-    controller.validate(
+    let outcome = controller.validate(
         expected_ecn_counts,
         EcnCounts::default(),
         EcnCounts::default(),
@@ -164,6 +165,7 @@ fn validate_ecn_counts_not_in_ack() {
         now,
     );
 
+    assert_eq!(ValidationOutcome::Failed, outcome);
     assert_eq!(State::Failed, controller.state);
 }
 
@@ -178,7 +180,7 @@ fn validate_ecn_ce_remarking() {
     let now = s2n_quic_platform::time::now();
     let expected_ecn_counts = helper_ecn_counts(1, 0, 0);
     let sent_packet_ecn_counts = helper_ecn_counts(1, 0, 0);
-    controller.validate(
+    let outcome = controller.validate(
         expected_ecn_counts,
         sent_packet_ecn_counts,
         EcnCounts::default(),
@@ -186,6 +188,7 @@ fn validate_ecn_ce_remarking() {
         now,
     );
 
+    assert_eq!(ValidationOutcome::Failed, outcome);
     assert_eq!(State::Failed, controller.state);
 }
 
@@ -200,7 +203,7 @@ fn validate_ect_0_remarking() {
     let expected_ecn_counts = helper_ecn_counts(1, 0, 0);
     let sent_packet_ecn_counts = helper_ecn_counts(1, 0, 0);
     let ack_frame_ecn_counts = helper_ecn_counts(1, 1, 0);
-    controller.validate(
+    let outcome = controller.validate(
         expected_ecn_counts,
         sent_packet_ecn_counts,
         EcnCounts::default(),
@@ -208,6 +211,7 @@ fn validate_ect_0_remarking() {
         now,
     );
 
+    assert_eq!(ValidationOutcome::Failed, outcome);
     assert_eq!(State::Failed, controller.state);
 }
 
@@ -219,7 +223,7 @@ fn validate_ect_0_remarking_after_restart() {
     let ack_frame_ecn_counts = helper_ecn_counts(0, 3, 0);
     let baseline_ecn_counts = helper_ecn_counts(0, 2, 0);
     let sent_packet_ecn_counts = helper_ecn_counts(1, 0, 0);
-    controller.validate(
+    let outcome = controller.validate(
         expected_ecn_counts,
         sent_packet_ecn_counts,
         baseline_ecn_counts,
@@ -227,6 +231,7 @@ fn validate_ect_0_remarking_after_restart() {
         now,
     );
 
+    assert_eq!(ValidationOutcome::Failed, outcome);
     assert_eq!(State::Failed, controller.state);
 }
 
@@ -235,7 +240,7 @@ fn validate_no_ecn_counts() {
     let mut controller = Controller::new();
     controller.state = State::Unknown;
     let now = s2n_quic_platform::time::now();
-    controller.validate(
+    let outcome = controller.validate(
         EcnCounts::default(),
         EcnCounts::default(),
         EcnCounts::default(),
@@ -243,6 +248,7 @@ fn validate_no_ecn_counts() {
         now,
     );
 
+    assert_eq!(ValidationOutcome::Skipped, outcome);
     assert_eq!(State::Unknown, controller.state);
 }
 
@@ -251,7 +257,7 @@ fn validate_ecn_decrease() {
     let mut controller = Controller::new();
     let now = s2n_quic_platform::time::now();
     let baseline_ecn_counts = helper_ecn_counts(1, 0, 0);
-    controller.validate(
+    let outcome = controller.validate(
         EcnCounts::default(),
         EcnCounts::default(),
         baseline_ecn_counts,
@@ -259,7 +265,30 @@ fn validate_ecn_decrease() {
         now,
     );
 
+    assert_eq!(ValidationOutcome::Failed, outcome);
     assert_eq!(State::Failed, controller.state);
+}
+
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#A.4
+//= type=test
+//# From the "unknown" state, successful validation of the ECN counts in an ACK frame
+//# (see Section 13.4.2.1) causes the ECN state for the path to become "capable",
+//# unless no marked packet has been acknowledged.
+#[test]
+fn validate_no_marked_packets_acked() {
+    let mut controller = Controller::new();
+    controller.state = State::Unknown;
+    let now = s2n_quic_platform::time::now();
+    let outcome = controller.validate(
+        EcnCounts::default(),
+        EcnCounts::default(),
+        EcnCounts::default(),
+        Some(EcnCounts::default()),
+        now,
+    );
+
+    assert_eq!(ValidationOutcome::Passed, outcome);
+    assert_eq!(State::Unknown, controller.state);
 }
 
 #[test]
@@ -268,9 +297,9 @@ fn validate_capable() {
     controller.state = State::Unknown;
     let now = s2n_quic_platform::time::now();
     let expected_ecn_counts = helper_ecn_counts(2, 0, 0);
-    let ack_frame_ecn_counts = helper_ecn_counts(1, 0, 1);
+    let ack_frame_ecn_counts = helper_ecn_counts(2, 0, 0);
     let sent_packet_ecn_counts = helper_ecn_counts(2, 0, 0);
-    controller.validate(
+    let outcome = controller.validate(
         expected_ecn_counts,
         sent_packet_ecn_counts,
         EcnCounts::default(),
@@ -278,6 +307,27 @@ fn validate_capable() {
         now,
     );
 
+    assert_eq!(ValidationOutcome::Passed, outcome);
+    assert_eq!(State::Capable, controller.state);
+}
+
+#[test]
+fn validate_capable_congestion_experienced() {
+    let mut controller = Controller::new();
+    controller.state = State::Unknown;
+    let now = s2n_quic_platform::time::now();
+    let expected_ecn_counts = helper_ecn_counts(2, 0, 0);
+    let ack_frame_ecn_counts = helper_ecn_counts(1, 0, 1);
+    let sent_packet_ecn_counts = helper_ecn_counts(2, 0, 0);
+    let outcome = controller.validate(
+        expected_ecn_counts,
+        sent_packet_ecn_counts,
+        EcnCounts::default(),
+        Some(ack_frame_ecn_counts),
+        now,
+    );
+
+    assert_eq!(ValidationOutcome::CongestionExperienced, outcome);
     assert_eq!(State::Capable, controller.state);
 }
 
@@ -320,7 +370,7 @@ fn validate_capable_lost_ack_frame() {
 
     let expected_ecn_counts = helper_ecn_counts(2, 0, 0);
 
-    controller.validate(
+    let outcome = controller.validate(
         expected_ecn_counts,
         sent_packet_ecn_counts,
         EcnCounts::default(),
@@ -328,6 +378,7 @@ fn validate_capable_lost_ack_frame() {
         now,
     );
 
+    assert_eq!(ValidationOutcome::Passed, outcome);
     assert_eq!(State::Capable, controller.state);
 }
 
@@ -342,7 +393,7 @@ fn validate_capable_after_restart() {
     // in the baseline ecn counts below, that means we've already accounted for them.
     let ack_frame_ecn_counts = helper_ecn_counts(1, 2, 1);
     let baseline_ecn_counts = helper_ecn_counts(0, 2, 0);
-    controller.validate(
+    let outcome = controller.validate(
         expected_ecn_counts,
         sent_packet_ecn_counts,
         baseline_ecn_counts,
@@ -350,6 +401,7 @@ fn validate_capable_after_restart() {
         now,
     );
 
+    assert_eq!(ValidationOutcome::CongestionExperienced, outcome);
     assert_eq!(State::Capable, controller.state);
 }
 

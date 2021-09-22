@@ -4,7 +4,7 @@
 use crate::{
     contexts::WriteContext,
     endpoint,
-    path::{self, Path},
+    path::{self, ecn::ValidationOutcome, Path},
     recovery::{SentPacketInfo, SentPackets},
     transmission,
 };
@@ -538,7 +538,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         datagram: &DatagramInfo,
         path: &mut Path<Config>,
     ) {
-        path.ecn_controller.validate(
+        let outcome = path.ecn_controller.validate(
             newly_acked_ecn_counts,
             self.sent_packet_ecn_counts,
             self.baseline_ecn_counts,
@@ -546,17 +546,13 @@ impl<Config: endpoint::Config> Manager<Config> {
             datagram.timestamp,
         );
 
-        if let Some(ack_frame_ecn_counts) = ack_frame_ecn_counts {
-            if path.ecn_controller.is_capable()
-                && ack_frame_ecn_counts.ce_count > self.baseline_ecn_counts.ce_count
-            {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.1
-                //# If a path has been validated to support ECN ([RFC3168], [RFC8311]),
-                //# QUIC treats a Congestion Experienced (CE) codepoint in the IP header
-                //# as a signal of congestion.
-                path.congestion_controller
-                    .on_congestion_event(datagram.timestamp);
-            }
+        if matches!(outcome, ValidationOutcome::CongestionExperienced) {
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.1
+            //# If a path has been validated to support ECN ([RFC3168], [RFC8311]),
+            //# QUIC treats a Congestion Experienced (CE) codepoint in the IP header
+            //# as a signal of congestion.
+            path.congestion_controller
+                .on_congestion_event(datagram.timestamp);
         }
 
         self.baseline_ecn_counts = ack_frame_ecn_counts.unwrap_or_default();

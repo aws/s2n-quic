@@ -8,6 +8,7 @@ use s2n_quic_core::{
     number::CheckedSub,
     time::{timer, Duration, Timer, Timestamp},
     transmission,
+    varint::VarInt,
 };
 
 //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2
@@ -20,6 +21,18 @@ const TESTING_PACKET_THRESHOLD: u8 = 10;
 // After a failure has been detected, the ecn::Controller will wait this duration
 // before testing for ECN support again.
 const RETEST_COOL_OFF_DURATION: Duration = Duration::from_secs(60);
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ValidationOutcome {
+    /// The path is ECN capable and congestion was experienced
+    CongestionExperienced,
+    /// The path failed validation
+    Failed,
+    /// The path passed validation
+    Passed,
+    /// Validation was not performed
+    Skipped,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum State {
@@ -128,10 +141,10 @@ impl Controller {
         baseline_ecn_counts: EcnCounts,
         ack_frame_ecn_counts: Option<EcnCounts>,
         now: Timestamp,
-    ) {
+    ) -> ValidationOutcome {
         if matches!(self.state, State::Failed) {
             // Validation had already failed
-            return;
+            return ValidationOutcome::Skipped;
         }
 
         if ack_frame_ecn_counts.is_none() {
@@ -143,14 +156,16 @@ impl Controller {
                 //# detects a network element that zeroes the ECN field or a peer that does
                 //# not report ECN markings.
                 self.fail(now);
-                return;
+                return ValidationOutcome::Failed;
             }
 
             if baseline_ecn_counts == EcnCounts::default() {
                 // Nothing to validate
-                return;
+                return ValidationOutcome::Skipped;
             }
         }
+
+        let congestion_experienced;
 
         if let Some(incremental_ecn_counts) = ack_frame_ecn_counts
             .unwrap_or_default()
@@ -164,7 +179,7 @@ impl Controller {
                 //# and ECN-CE counts is less than the number of newly acknowledged
                 //# packets that were originally sent with an ECT(0) marking.
                 self.fail(now);
-                return;
+                return ValidationOutcome::Failed;
             }
 
             if incremental_ecn_counts.ect_0_count > sent_packet_ecn_counts.ect_0_count
@@ -174,16 +189,31 @@ impl Controller {
                 //# ECN validation can fail if the received total count for either ECT(0) or ECT(1)
                 //# exceeds the total number of packets sent with each corresponding ECT codepoint.
                 self.fail(now);
-                return;
+                return ValidationOutcome::Failed;
             }
+
+            congestion_experienced = incremental_ecn_counts.ce_count > VarInt::from_u8(0);
         } else {
             // ECN counts decreased from the baseline
             self.fail(now);
+            return ValidationOutcome::Failed;
         }
 
-        if matches!(self.state, State::Unknown) {
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#A.4
+        //# From the "unknown" state, successful validation of the ECN counts in an ACK frame
+        //# (see Section 13.4.2.1) causes the ECN state for the path to become "capable",
+        //# unless no marked packet has been acknowledged.
+        if matches!(self.state, State::Unknown)
+            && newly_acked_ecn_counts.ect_0_count > VarInt::from_u8(0)
+        {
             self.state = State::Capable;
         }
+
+        if self.is_capable() && congestion_experienced {
+            return ValidationOutcome::CongestionExperienced;
+        }
+
+        ValidationOutcome::Passed
     }
 
     /// This method gets called when a packet has been sent
