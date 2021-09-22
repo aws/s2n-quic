@@ -23,8 +23,10 @@ fn default() {
 
 #[test]
 fn restart() {
-    let mut controller = Controller::default();
-    controller.state = State::Failed(Timer::default());
+    let mut controller = Controller {
+        state: State::Failed(Timer::default()),
+        ..Default::default()
+    };
     controller.black_hole_counter += 1;
 
     controller.restart();
@@ -106,8 +108,10 @@ fn ecn_loss_recovery_probing() {
         State::Unknown,
         State::Failed(Timer::default()),
     ] {
-        let mut controller = Controller::default();
-        controller.state = state;
+        let controller = Controller {
+            state,
+            ..Default::default()
+        };
         assert!(!controller
             .ecn(transmission::Mode::LossRecoveryProbing)
             .using_ecn());
@@ -121,13 +125,17 @@ fn is_capable() {
         State::Unknown,
         State::Failed(Timer::default()),
     ] {
-        let mut controller = Controller::default();
-        controller.state = state;
+        let controller = Controller {
+            state,
+            ..Default::default()
+        };
         assert!(!controller.is_capable());
     }
 
-    let mut controller = Controller::default();
-    controller.state = State::Capable;
+    let controller = Controller {
+        state: State::Capable,
+        ..Default::default()
+    };
     assert!(controller.is_capable());
 }
 
@@ -248,8 +256,10 @@ fn validate_ect_0_remarking_after_restart() {
 
 #[test]
 fn validate_no_ecn_counts() {
-    let mut controller = Controller::default();
-    controller.state = State::Unknown;
+    let mut controller = Controller {
+        state: State::Unknown,
+        ..Default::default()
+    };
     let now = s2n_quic_platform::time::now();
     let outcome = controller.validate(
         EcnCounts::default(),
@@ -287,8 +297,10 @@ fn validate_ecn_decrease() {
 //# unless no marked packet has been acknowledged.
 #[test]
 fn validate_no_marked_packets_acked() {
-    let mut controller = Controller::default();
-    controller.state = State::Unknown;
+    let mut controller = Controller {
+        state: State::Unknown,
+        ..Default::default()
+    };
     let now = s2n_quic_platform::time::now();
     let outcome = controller.validate(
         EcnCounts::default(),
@@ -304,8 +316,10 @@ fn validate_no_marked_packets_acked() {
 
 #[test]
 fn validate_capable() {
-    let mut controller = Controller::default();
-    controller.state = State::Unknown;
+    let mut controller = Controller {
+        state: State::Unknown,
+        ..Default::default()
+    };
     let now = s2n_quic_platform::time::now();
     let expected_ecn_counts = helper_ecn_counts(2, 0, 0);
     let ack_frame_ecn_counts = helper_ecn_counts(2, 0, 0);
@@ -324,8 +338,10 @@ fn validate_capable() {
 
 #[test]
 fn validate_capable_congestion_experienced() {
-    let mut controller = Controller::default();
-    controller.state = State::Unknown;
+    let mut controller = Controller {
+        state: State::Unknown,
+        ..Default::default()
+    };
     let now = s2n_quic_platform::time::now();
     let expected_ecn_counts = helper_ecn_counts(2, 0, 0);
     let ack_frame_ecn_counts = helper_ecn_counts(1, 0, 1);
@@ -350,8 +366,10 @@ fn validate_capable_not_in_unknown_state() {
         State::Capable,
         State::Failed(Timer::default()),
     ] {
-        let mut controller = Controller::default();
-        controller.state = state;
+        let mut controller = Controller {
+            state,
+            ..Default::default()
+        };
         let now = s2n_quic_platform::time::now();
         let expected_ecn_counts = helper_ecn_counts(1, 0, 0);
         let ack_frame_ecn_counts = helper_ecn_counts(1, 0, 0);
@@ -372,8 +390,10 @@ fn validate_capable_not_in_unknown_state() {
 
 #[test]
 fn validate_capable_lost_ack_frame() {
-    let mut controller = Controller::default();
-    controller.state = State::Unknown;
+    let mut controller = Controller {
+        state: State::Unknown,
+        ..Default::default()
+    };
     let now = s2n_quic_platform::time::now();
 
     // We sent three ECT0 packets
@@ -399,8 +419,10 @@ fn validate_capable_lost_ack_frame() {
 
 #[test]
 fn validate_capable_after_restart() {
-    let mut controller = Controller::default();
-    controller.state = State::Unknown;
+    let mut controller = Controller {
+        state: State::Unknown,
+        ..Default::default()
+    };
     let now = s2n_quic_platform::time::now();
     let sent_packet_ecn_counts = helper_ecn_counts(2, 0, 0);
     let expected_ecn_counts = helper_ecn_counts(2, 0, 0);
@@ -423,7 +445,6 @@ fn validate_capable_after_restart() {
 #[test]
 fn on_packet_sent() {
     let mut controller = Controller::default();
-    controller.state = State::Testing(0);
 
     for i in 0..TESTING_PACKET_THRESHOLD {
         assert_eq!(State::Testing(i), controller.state);
@@ -436,8 +457,10 @@ fn on_packet_sent() {
 #[test]
 fn on_packet_loss() {
     for state in vec![State::Testing(0), State::Capable, State::Unknown] {
-        let mut controller = Controller::default();
-        controller.state = state;
+        let mut controller = Controller {
+            state,
+            ..Default::default()
+        };
         let now = s2n_quic_platform::time::now();
         let time_sent = now + Duration::from_secs(1);
 
