@@ -115,7 +115,7 @@ impl Controller {
     /// Validate the given `EcnCounts`, updating the current validation state based on the
     /// validation outcome.
     ///
-    /// * `expected_ecn_counts` - total ECN counts that were sent on packets newly acknowledged by the peer
+    /// * `newly_acked_ecn_counts` - total ECN counts that were sent on packets newly acknowledged by the peer
     /// * `sent_packet_ecn_counts` - total ECN counts for all outstanding packets, including those newly
     ///                              acknowledged during this validation
     /// * `baseline_ecn_counts` - the ECN counts present in the Ack frame the last time ECN counts were processed
@@ -123,7 +123,7 @@ impl Controller {
     /// * `now` - the time the Ack frame was received
     pub fn validate(
         &mut self,
-        expected_ecn_counts: EcnCounts,
+        newly_acked_ecn_counts: EcnCounts,
         sent_packet_ecn_counts: EcnCounts,
         baseline_ecn_counts: EcnCounts,
         ack_frame_ecn_counts: Option<EcnCounts>,
@@ -135,7 +135,7 @@ impl Controller {
         }
 
         if ack_frame_ecn_counts.is_none() {
-            if expected_ecn_counts.as_option().is_some() {
+            if newly_acked_ecn_counts.as_option().is_some() {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
                 //# If an ACK frame newly acknowledges a packet that the endpoint sent with
                 //# either the ECT(0) or ECT(1) codepoint set, ECN validation fails if the
@@ -158,7 +158,7 @@ impl Controller {
         {
             let ect_0_increase =
                 incremental_ecn_counts.ect_0_count + incremental_ecn_counts.ce_count;
-            if ect_0_increase < expected_ecn_counts.ect_0_count {
+            if ect_0_increase < newly_acked_ecn_counts.ect_0_count {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
                 //# ECN validation also fails if the sum of the increase in ECT(0)
                 //# and ECN-CE counts is less than the number of newly acknowledged

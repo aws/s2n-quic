@@ -465,13 +465,13 @@ impl<Config: endpoint::Config> Manager<Config> {
         let current_path_id = context.path_id();
         let is_handshake_confirmed = context.is_handshake_confirmed();
         let mut current_path_acked_bytes = 0;
-        let mut ecn_counts = EcnCounts::default();
+        let mut newly_acked_ecn_counts = EcnCounts::default();
 
         for acked_packet_info in newly_acked_packets {
             let path = context.path_mut_by_id(acked_packet_info.path_id);
 
             let sent_bytes = acked_packet_info.sent_bytes as usize;
-            ecn_counts.increment(acked_packet_info.ecn);
+            newly_acked_ecn_counts.increment(acked_packet_info.ecn);
 
             if acked_packet_info.path_id == current_path_id {
                 current_path_acked_bytes += sent_bytes;
@@ -516,7 +516,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         //# An endpoint MUST NOT fail ECN validation as a result of processing an
         //# ACK frame that does not increase the largest acknowledged packet number.
         if new_largest_packet {
-            self.process_ecn(ecn_counts, frame.ecn_counts, datagram, path);
+            self.process_ecn(newly_acked_ecn_counts, frame.ecn_counts, datagram, path);
         }
 
         if current_path_acked_bytes > 0 {
@@ -533,13 +533,13 @@ impl<Config: endpoint::Config> Manager<Config> {
 
     fn process_ecn(
         &mut self,
-        expected_ecn_counts: EcnCounts,
+        newly_acked_ecn_counts: EcnCounts,
         ack_frame_ecn_counts: Option<EcnCounts>,
         datagram: &DatagramInfo,
         path: &mut Path<Config>,
     ) {
         path.ecn_controller.validate(
-            expected_ecn_counts,
+            newly_acked_ecn_counts,
             self.sent_packet_ecn_counts,
             self.baseline_ecn_counts,
             ack_frame_ecn_counts,
@@ -560,7 +560,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
 
         self.baseline_ecn_counts = ack_frame_ecn_counts.unwrap_or_default();
-        self.sent_packet_ecn_counts -= expected_ecn_counts;
+        self.sent_packet_ecn_counts -= newly_acked_ecn_counts;
     }
 
     /// Returns `true` if the recovery manager requires a probe packet to be sent.
