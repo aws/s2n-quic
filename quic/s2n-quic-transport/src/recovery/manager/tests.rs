@@ -324,7 +324,7 @@ fn on_ack_frame() {
 
     // Ack packets 1 to 3
     let ack_receive_time = time_sent + Duration::from_millis(500);
-    ack_packets(1..=3, ack_receive_time, &mut context, &mut manager);
+    ack_packets(1..=3, ack_receive_time, &mut context, &mut manager, None);
 
     assert_eq!(context.path().congestion_controller.lost_bytes, 0);
     assert_eq!(context.path().congestion_controller.on_rtt_update, 1);
@@ -349,7 +349,7 @@ fn on_ack_frame() {
 
     // Acknowledging already acked packets
     let ack_receive_time = ack_receive_time + Duration::from_secs(1);
-    ack_packets(1..=3, ack_receive_time, &mut context, &mut manager);
+    ack_packets(1..=3, ack_receive_time, &mut context, &mut manager, None);
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
     //= type=test
@@ -372,7 +372,7 @@ fn on_ack_frame() {
 
     // Ack packets 7 to 9 (4 - 6 will be considered lost)
     let ack_receive_time = ack_receive_time + Duration::from_secs(1);
-    ack_packets(7..=9, ack_receive_time, &mut context, &mut manager);
+    ack_packets(7..=9, ack_receive_time, &mut context, &mut manager, None);
 
     assert_eq!(
         context.path().congestion_controller.lost_bytes,
@@ -401,7 +401,7 @@ fn on_ack_frame() {
     );
     context.path_mut().pto_backoff = 2;
     let ack_receive_time = ack_receive_time + Duration::from_millis(500);
-    ack_packets(10..=10, ack_receive_time, &mut context, &mut manager);
+    ack_packets(10..=10, ack_receive_time, &mut context, &mut manager, None);
     assert_eq!(context.path().congestion_controller.on_rtt_update, 1);
     assert_eq!(context.path().pto_backoff, 2);
     assert_eq!(context.on_packet_ack_count, 4);
@@ -427,7 +427,7 @@ fn on_ack_frame() {
         ecn,
         &mut context,
     );
-    ack_packets(11..=11, ack_receive_time, &mut context, &mut manager);
+    ack_packets(11..=11, ack_receive_time, &mut context, &mut manager, None);
 
     assert_eq!(context.path().congestion_controller.lost_bytes, 0);
     assert_eq!(context.path().congestion_controller.on_rtt_update, 1);
@@ -515,6 +515,7 @@ fn process_new_acked_packets_update_pto_timer() {
         &mut context,
         &mut manager,
         first_addr,
+        None,
     );
 
     // Expectation 1:
@@ -537,6 +538,7 @@ fn process_new_acked_packets_update_pto_timer() {
         &mut context,
         &mut manager,
         first_addr,
+        None,
     );
 
     // Expectation 2:
@@ -617,6 +619,7 @@ fn process_new_acked_packets_congestion_controller() {
         &mut context,
         &mut manager,
         first_addr,
+        None,
     );
 
     // Expectation 1:
@@ -644,6 +647,7 @@ fn process_new_acked_packets_congestion_controller() {
         &mut context,
         &mut manager,
         first_addr,
+        None,
     );
 
     // Expectation 2:
@@ -736,6 +740,7 @@ fn process_new_acked_packets_pto_timer() {
         &mut context,
         &mut manager,
         first_addr,
+        None,
     );
 
     // Expectation 1:
@@ -766,10 +771,172 @@ fn process_new_acked_packets_pto_timer() {
         &mut context,
         &mut manager,
         second_addr,
+        None,
     );
 
     // Expectation 2:
     assert!(manager.pto.timer.is_armed());
+}
+
+#[test]
+// Increase in ECN CE count should cause congestion event
+// Out of order Ack Frames should not fail ECN validation
+//
+// Setup 1:
+// - Send 10 ECT0 marked packets
+//
+// Trigger 1:
+// - Acknowledge the packets with valid ECN counts, including
+//   an increased CE count
+//
+// Expectation 1:
+// - Congestion Event recorded
+//
+// Trigger 2:
+// - Send out of order Ack
+//
+// Expectation 2:
+// - ECN controller is still capable
+fn process_new_acked_packets_process_ecn() {
+    // Setup:
+    let space = PacketNumberSpace::ApplicationData;
+    let mut manager = Manager::new(space, Duration::from_millis(100));
+    let packet_bytes = 128;
+    let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+    let mut context = MockContext::new(&mut path_manager);
+    let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
+
+    // Send 10 ECT0 marked packets
+    for i in 1..=10 {
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(i)),
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: packet_bytes,
+                packet_number: space.new_packet_number(VarInt::from_u8(i)),
+            },
+            time_sent,
+            ExplicitCongestionNotification::Ect0,
+            &mut context,
+        );
+    }
+
+    // Trigger 1:
+    // Ack packets 2-5 and then 6-10
+    let ack_receive_time = time_sent + Duration::from_millis(500);
+    let ack_ecn_counts = EcnCounts {
+        ect_0_count: VarInt::from_u8(3),
+        ect_1_count: Default::default(),
+        ce_count: VarInt::from_u8(1),
+    };
+    ack_packets(
+        2..=5,
+        ack_receive_time,
+        &mut context,
+        &mut manager,
+        Some(ack_ecn_counts),
+    );
+    let ack_ecn_counts = EcnCounts {
+        ect_0_count: VarInt::from_u8(9),
+        ect_1_count: Default::default(),
+        ce_count: VarInt::from_u8(1),
+    };
+    ack_packets(
+        6..=10,
+        ack_receive_time,
+        &mut context,
+        &mut manager,
+        Some(ack_ecn_counts),
+    );
+
+    // Expectation 1:
+    assert_eq!(ack_ecn_counts, manager.baseline_ecn_counts);
+    assert_eq!(1, context.path().congestion_controller.congestion_events);
+    assert!(context.path().ecn_controller.is_capable());
+
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
+    //= type=test
+    //# Validating ECN counts from reordered ACK frames can result in failure.
+    //# An endpoint MUST NOT fail ECN validation as a result of processing an
+    //# ACK frame that does not increase the largest acknowledged packet number.
+
+    // Trigger 2:
+    // Out of order Ack does not fail ECN validation
+    let out_of_order_ack_ecn_counts = EcnCounts {
+        ect_0_count: VarInt::from_u8(1),
+        ect_1_count: Default::default(),
+        ce_count: VarInt::from_u8(0),
+    };
+    ack_packets(
+        1..=1,
+        ack_receive_time,
+        &mut context,
+        &mut manager,
+        Some(out_of_order_ack_ecn_counts),
+    );
+
+    // Expectation 2:
+    assert_eq!(ack_ecn_counts, manager.baseline_ecn_counts);
+    assert!(context.path().ecn_controller.is_capable());
+}
+
+#[test]
+// Increase in ECN CE count should not cause congestion event if ECN validation fails
+//
+// Setup 1:
+// - Send 10 ECT0 marked packets
+//
+// Trigger 1:
+// - Acknowledge the packets with invalid ECN counts
+//
+// Expectation 1:
+// - No Congestion Event recorded
+fn process_new_acked_packets_failed_ecn_validation_does_not_cause_congestion_event() {
+    // Setup:
+    let space = PacketNumberSpace::ApplicationData;
+    let mut manager = Manager::new(space, Duration::from_millis(100));
+    let packet_bytes = 128;
+    let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+    let mut context = MockContext::new(&mut path_manager);
+    let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
+
+    // Send 10 ECT0 marked packets
+    for i in 1..=10 {
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(i)),
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: packet_bytes,
+                packet_number: space.new_packet_number(VarInt::from_u8(i)),
+            },
+            time_sent,
+            ExplicitCongestionNotification::Ect0,
+            &mut context,
+        );
+    }
+
+    // Trigger 1:
+    // Ack packets with bad ECN counts
+    let ack_receive_time = time_sent + Duration::from_millis(500);
+    let ack_ecn_counts = EcnCounts {
+        ect_0_count: VarInt::from_u8(8),
+        ect_1_count: VarInt::from_u8(1), // We never send ECT1 so this is invalid
+        ce_count: VarInt::from_u8(1),
+    };
+    ack_packets(
+        1..=10,
+        ack_receive_time,
+        &mut context,
+        &mut manager,
+        Some(ack_ecn_counts),
+    );
+
+    // Expectation 1:
+    assert_eq!(ack_ecn_counts, manager.baseline_ecn_counts);
+    assert_eq!(0, context.path().congestion_controller.congestion_events);
+    assert!(!context.path().ecn_controller.is_capable());
 }
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
@@ -818,7 +985,7 @@ fn no_rtt_update_when_not_acknowledging_the_largest_acknowledged_packet() {
 
     // Ack packet 1
     let ack_receive_time = time_sent + Duration::from_millis(500);
-    ack_packets(1..=1, ack_receive_time, &mut context, &mut manager);
+    ack_packets(1..=1, ack_receive_time, &mut context, &mut manager, None);
 
     // New rtt estimate because the largest packet was newly acked
     assert_eq!(context.path().congestion_controller.on_rtt_update, 1);
@@ -834,7 +1001,7 @@ fn no_rtt_update_when_not_acknowledging_the_largest_acknowledged_packet() {
 
     // Ack packets 0 and 1
     let ack_receive_time = time_sent + Duration::from_millis(1500);
-    ack_packets(0..=1, ack_receive_time, &mut context, &mut manager);
+    ack_packets(0..=1, ack_receive_time, &mut context, &mut manager, None);
 
     // No new rtt estimate because the largest packet was not newly acked
     assert_eq!(context.path().congestion_controller.on_rtt_update, 1);
@@ -898,6 +1065,7 @@ fn no_rtt_update_when_receiving_packet_on_different_path() {
         &mut context,
         &mut manager,
         second_addr,
+        None,
     );
 
     // no rtt estimate because the packet was received on different path
@@ -920,6 +1088,7 @@ fn no_rtt_update_when_receiving_packet_on_different_path() {
         &mut context,
         &mut manager,
         first_addr,
+        None,
     );
 
     // rtt estimate because the packet was received on same path
@@ -1004,6 +1173,7 @@ fn rtt_update_when_receiving_ack_from_multiple_paths() {
         &mut context,
         &mut manager,
         first_addr,
+        None,
     );
 
     let first_path = context.path_by_id(first_path_id);
@@ -1535,6 +1705,7 @@ fn persistent_congestion() {
         time_zero + Duration::from_millis(1200),
         &mut context,
         &mut manager,
+        None,
     );
 
     // t=2-6: Send packets #3 - #7 (app data)
@@ -1572,6 +1743,7 @@ fn persistent_congestion() {
         time_zero + Duration::from_millis(12200),
         &mut context,
         &mut manager,
+        None,
     );
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.3
@@ -1610,6 +1782,7 @@ fn persistent_congestion() {
         time_zero + Duration::from_secs(21),
         &mut context,
         &mut manager,
+        None,
     );
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
@@ -1668,6 +1841,7 @@ fn persistent_congestion_multiple_periods() {
         time_zero + Duration::from_millis(1200),
         &mut context,
         &mut manager,
+        None,
     );
 
     // t=2-6: Send packets #3 - #7 (app data)
@@ -1716,6 +1890,7 @@ fn persistent_congestion_multiple_periods() {
         time_zero + Duration::from_millis(30200),
         &mut context,
         &mut manager,
+        None,
     );
 
     // Packets 2 though 7 and 9-10 should be lost
@@ -1789,6 +1964,7 @@ fn persistent_congestion_period_does_not_start_until_rtt_sample() {
         time_zero + Duration::from_millis(20_100),
         &mut context,
         &mut manager,
+        None,
     );
 
     // There is no persistent congestion, because the lost packets were all
@@ -2222,6 +2398,7 @@ fn ack_packets_on_path(
     context: &mut MockContext,
     manager: &mut Manager,
     remote_address: RemoteAddress,
+    ecn_counts: Option<EcnCounts>,
 ) {
     let (id, _) = context
         .path_manager
@@ -2254,7 +2431,7 @@ fn ack_packets_on_path(
     let frame = frame::Ack {
         ack_delay: VarInt::from_u8(10),
         ack_ranges: (&ack_range),
-        ecn_counts: None,
+        ecn_counts,
     };
 
     let _ = manager.on_ack_frame(&datagram, frame, context, &mut Publisher::default());
@@ -2270,9 +2447,10 @@ fn ack_packets(
     ack_receive_time: Timestamp,
     context: &mut MockContext,
     manager: &mut Manager,
+    ecn_counts: Option<EcnCounts>,
 ) {
     let addr = context.path().handle;
-    ack_packets_on_path(range, ack_receive_time, context, manager, addr)
+    ack_packets_on_path(range, ack_receive_time, context, manager, addr, ecn_counts)
 }
 
 #[test]

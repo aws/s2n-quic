@@ -4,7 +4,7 @@
 use crate::{
     contexts::WriteContext,
     endpoint,
-    path::{self, Path},
+    path::{self, ecn::ValidationOutcome, Path},
     recovery::{SentPacketInfo, SentPackets},
     transmission,
 };
@@ -12,12 +12,12 @@ use core::{cmp::max, marker::PhantomData, time::Duration};
 use s2n_quic_core::{
     event::{self, IntoEvent},
     frame,
+    frame::ack::EcnCounts,
     inet::{DatagramInfo, ExplicitCongestionNotification},
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     recovery::{CongestionController, RttEstimator, K_GRANULARITY},
     time::{timer, Timer, Timestamp},
     transport,
-    varint::VarInt,
 };
 use smallvec::SmallVec;
 
@@ -61,11 +61,12 @@ pub struct Manager<Config: endpoint::Config> {
     //# The time the most recent ack-eliciting packet was sent.
     time_of_last_ack_eliciting_packet: Option<Timestamp>,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#B.2
-    //# The highest value reported for the ECN-CE counter in the packet
-    //# number space by the peer in an ACK frame.  This value is used to
-    //# detect increases in the reported ECN-CE counter.
-    ecn_ce_counter: VarInt,
+    // The last processed ECN counts received in an ACK frame. Used to
+    // validate new ECN counts and to detect increases in the reported ECN-CE counter.
+    baseline_ecn_counts: EcnCounts,
+
+    // The total ecn counts for outstanding (unacknowledged) packets
+    sent_packet_ecn_counts: EcnCounts,
 
     config: PhantomData<Config>,
 }
@@ -94,7 +95,8 @@ impl<Config: endpoint::Config> Manager<Config> {
             loss_timer: Timer::default(),
             pto: Pto::new(max_ack_delay),
             time_of_last_ack_eliciting_packet: None,
-            ecn_ce_counter: VarInt::default(),
+            baseline_ecn_counts: EcnCounts::default(),
+            sent_packet_ecn_counts: EcnCounts::default(),
             config: PhantomData,
         }
     }
@@ -170,6 +172,9 @@ impl<Config: endpoint::Config> Manager<Config> {
                 ecn,
             ),
         );
+
+        context.path_mut().ecn_controller.on_packet_sent(ecn);
+        self.sent_packet_ecn_counts.increment(ecn);
 
         if outcome.is_congestion_controlled {
             if outcome.ack_elicitation.is_ack_eliciting() {
@@ -267,6 +272,16 @@ impl<Config: endpoint::Config> Manager<Config> {
             SmallVec::<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>::new();
 
         // Update the largest acked packet if the largest packet acked in this frame is larger
+        let new_largest_packet = if self
+            .largest_acked_packet
+            .map_or(true, |pn| pn < largest_acked_packet_number)
+        {
+            self.largest_acked_packet = Some(largest_acked_packet_number);
+            true
+        } else {
+            false
+        };
+
         self.largest_acked_packet = Some(
             self.largest_acked_packet
                 .map_or(largest_acked_packet_number, |pn| {
@@ -298,7 +313,9 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.process_new_acked_packets(
                 &newly_acked_packets,
                 largest_newly_acked_info.time_sent,
+                new_largest_packet,
                 datagram,
+                &frame,
                 context,
                 publisher,
             );
@@ -362,6 +379,8 @@ impl<Config: endpoint::Config> Manager<Config> {
                     acked_packet_info.sent_bytes,
                     &mut path.congestion_controller,
                 );
+                path.ecn_controller
+                    .on_packet_ack(acked_packet_info.time_sent, acked_packet_info.ecn);
             }
 
             if let Some((start, end)) = newly_acked_range {
@@ -420,27 +439,20 @@ impl<Config: endpoint::Config> Manager<Config> {
             // Notify components the RTT estimate was updated
             context.on_rtt_update();
         }
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.1
-        //# If a path has been validated to support ECN ([RFC3168], [RFC8311]),
-        //# QUIC treats a Congestion Experienced (CE) codepoint in the IP header
-        //# as a signal of congestion.
-        if let Some(ecn_counts) = frame.ecn_counts {
-            if ecn_counts.ce_count > self.ecn_ce_counter {
-                self.ecn_ce_counter = ecn_counts.ce_count;
-                context
-                    .path_mut_by_id(largest_newly_acked_info.path_id)
-                    .congestion_controller
-                    .on_congestion_event(datagram.timestamp);
-            }
-        }
     }
 
-    fn process_new_acked_packets<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
+    #[allow(clippy::too_many_arguments)]
+    fn process_new_acked_packets<
+        A: frame::ack::AckRanges,
+        Ctx: Context<Config>,
+        Pub: event::ConnectionPublisher,
+    >(
         &mut self,
         newly_acked_packets: &SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
         largest_newly_acked_time_sent: Timestamp,
+        new_largest_packet: bool,
         datagram: &DatagramInfo,
+        frame: &frame::Ack<A>,
         context: &mut Ctx,
         publisher: &mut Pub,
     ) {
@@ -453,11 +465,13 @@ impl<Config: endpoint::Config> Manager<Config> {
         let current_path_id = context.path_id();
         let is_handshake_confirmed = context.is_handshake_confirmed();
         let mut current_path_acked_bytes = 0;
+        let mut newly_acked_ecn_counts = EcnCounts::default();
 
         for acked_packet_info in newly_acked_packets {
             let path = context.path_mut_by_id(acked_packet_info.path_id);
 
             let sent_bytes = acked_packet_info.sent_bytes as usize;
+            newly_acked_ecn_counts.increment(acked_packet_info.ecn);
 
             if acked_packet_info.path_id == current_path_id {
                 current_path_acked_bytes += sent_bytes;
@@ -497,6 +511,14 @@ impl<Config: endpoint::Config> Manager<Config> {
         );
         let path = context.path_mut();
 
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
+        //# Validating ECN counts from reordered ACK frames can result in failure.
+        //# An endpoint MUST NOT fail ECN validation as a result of processing an
+        //# ACK frame that does not increase the largest acknowledged packet number.
+        if new_largest_packet {
+            self.process_ecn(newly_acked_ecn_counts, frame.ecn_counts, datagram, path);
+        }
+
         if current_path_acked_bytes > 0 {
             path.congestion_controller.on_packet_ack(
                 largest_newly_acked_time_sent,
@@ -507,6 +529,34 @@ impl<Config: endpoint::Config> Manager<Config> {
 
             self.update_pto_timer(path, datagram.timestamp, is_handshake_confirmed);
         }
+    }
+
+    fn process_ecn(
+        &mut self,
+        newly_acked_ecn_counts: EcnCounts,
+        ack_frame_ecn_counts: Option<EcnCounts>,
+        datagram: &DatagramInfo,
+        path: &mut Path<Config>,
+    ) {
+        let outcome = path.ecn_controller.validate(
+            newly_acked_ecn_counts,
+            self.sent_packet_ecn_counts,
+            self.baseline_ecn_counts,
+            ack_frame_ecn_counts,
+            datagram.timestamp,
+        );
+
+        if matches!(outcome, ValidationOutcome::CongestionExperienced) {
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.1
+            //# If a path has been validated to support ECN ([RFC3168], [RFC8311]),
+            //# QUIC treats a Congestion Experienced (CE) codepoint in the IP header
+            //# as a signal of congestion.
+            path.congestion_controller
+                .on_congestion_event(datagram.timestamp);
+        }
+
+        self.baseline_ecn_counts = ack_frame_ecn_counts.unwrap_or_default();
+        self.sent_packet_ecn_counts -= newly_acked_ecn_counts;
     }
 
     /// Returns `true` if the recovery manager requires a probe packet to be sent.
@@ -784,6 +834,10 @@ impl<Config: endpoint::Config> Manager<Config> {
                 now,
                 &mut path.congestion_controller,
             );
+
+            // Notify the ECN controller of packet loss for blackhole detection.
+            path.ecn_controller
+                .on_packet_loss(sent_info.time_sent, sent_info.ecn, now);
 
             if persistent_congestion {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2

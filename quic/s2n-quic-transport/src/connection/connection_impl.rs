@@ -234,7 +234,6 @@ macro_rules! transmission_context {
             path_manager: &mut $self.path_manager,
             local_id_registry: &mut $self.local_id_registry,
             outcome: $outcome,
-            ecn: Default::default(),
             min_packet_len: None,
             transmission_mode: $transmission_mode,
             publisher: &mut $self.event_context.publisher($timestamp, $subscriber),
@@ -347,7 +346,6 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
     ) -> usize {
         let mut count = 0;
         let mut pending_paths = self.path_manager.paths_pending_validation();
-        let ecn = Default::default();
         while let Some((path_id, path_manager)) = pending_paths.next_path() {
             // It is more efficient to coalesce path validation and other
             // frames for the active path so we skip PathValidationOnly
@@ -366,7 +364,6 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
                             path_manager,
                             local_id_registry: &mut self.local_id_registry,
                             outcome,
-                            ecn,
                             min_packet_len: None,
                             transmission_mode: transmission::Mode::PathValidationOnly,
                             publisher: &mut self.event_context.publisher(timestamp, subscriber),

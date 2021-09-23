@@ -17,6 +17,7 @@ use s2n_quic_core::{
 };
 
 mod challenge;
+pub(crate) mod ecn;
 mod manager;
 pub(crate) mod mtu;
 
@@ -54,6 +55,8 @@ pub struct Path<Config: endpoint::Config> {
     state: State,
     /// Controller for determining the maximum transmission unit of the path
     pub mtu_controller: mtu::Controller,
+    /// Controller for determining the ECN capability of the path
+    pub ecn_controller: ecn::Controller,
 
     /// True if the path has been validated by the peer
     peer_validated: bool,
@@ -76,6 +79,7 @@ impl<Config: endpoint::Config> Clone for Path<Config> {
             pto_backoff: self.pto_backoff,
             state: self.state,
             mtu_controller: self.mtu_controller.clone(),
+            ecn_controller: self.ecn_controller.clone(),
             peer_validated: self.peer_validated,
             challenge: self.challenge.clone(),
             response_data: self.response_data,
@@ -112,6 +116,7 @@ impl<Config: endpoint::Config> Path<Config> {
                 rx_bytes: 0,
             },
             mtu_controller: mtu::Controller::new(max_mtu, &peer_socket_address),
+            ecn_controller: ecn::Controller::default(),
             peer_validated,
             challenge: Challenge::disabled(),
             response_data: None,
@@ -180,6 +185,7 @@ impl<Config: endpoint::Config> Path<Config> {
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
         self.challenge.on_timeout(timestamp);
         self.mtu_controller.on_timeout(timestamp);
+        self.ecn_controller.on_timeout(timestamp);
     }
 
     /// Only PATH_CHALLENGE and PATH_RESPONSE frames should be transmitted here.
@@ -450,6 +456,7 @@ impl<Config: endpoint::Config> timer::Provider for Path<Config> {
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
         self.challenge.timers(query)?;
         self.mtu_controller.timers(query)?;
+        self.ecn_controller.timers(query)?;
 
         Ok(())
     }

@@ -96,6 +96,11 @@ impl ExplicitCongestionNotification {
     pub fn congestion_experienced(self) -> bool {
         self == Self::Ce
     }
+
+    /// Returns true if ECN is in use
+    pub fn using_ecn(self) -> bool {
+        self != Self::NotEct
+    }
 }
 
 #[cfg(test)]
