@@ -104,6 +104,11 @@ impl IpV6Address {
     pub const fn unicast_scope(self) -> Option<ip::UnicastScope> {
         use ip::UnicastScope::*;
 
+        // If this is an IpV4 ip, delegate to that implementation
+        if let IpAddress::Ipv4(ip) = self.unmap() {
+            return ip.unicast_scope();
+        }
+
         // https://www.iana.org/assignments/ipv6-address-space/ipv6-address-space.xhtml
         match self.segments() {
             //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.2
@@ -113,40 +118,6 @@ impl IpV6Address {
             //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.3
             //# The unicast address 0:0:0:0:0:0:0:1 is called the loopback address.
             [0, 0, 0, 0, 0, 0, 0, 1] => Some(Loopback),
-
-            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.5.1
-            //# The format of the "IPv4-Compatible IPv6 address" is as
-            //# follows:
-            //#
-            //# |                80 bits               | 16 |      32 bits        |
-            //# +--------------------------------------+--------------------------+
-            //# |0000..............................0000|0000|    IPv4 address     |
-            //# +--------------------------------------+----+---------------------+
-
-            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.5.2
-            //# The format of the "IPv4-mapped IPv6
-            //# address" is as follows:
-            //#
-            //# |                80 bits               | 16 |      32 bits        |
-            //# +--------------------------------------+--------------------------+
-            //# |0000..............................0000|FFFF|    IPv4 address     |
-            //# +--------------------------------------+----+---------------------+
-
-            //= https://www.rfc-editor.org/rfc/rfc6052.txt#2.1
-            //# This document reserves a "Well-Known Prefix" for use in an
-            //# algorithmic mapping.  The value of this IPv6 prefix is:
-            //#
-            //#   64:ff9b::/96
-            [0, 0, 0, 0, 0, 0, ab, cd]
-            | [0, 0, 0, 0, 0, 0xffff, ab, cd]
-            | [0x64, 0xff9b, 0, 0, 0, 0, ab, cd] => {
-                let [a, b] = u16::to_be_bytes(ab);
-                let [c, d] = u16::to_be_bytes(cd);
-                IpV4Address {
-                    octets: [a, b, c, d],
-                }
-                .unicast_scope()
-            }
 
             //= https://www.rfc-editor.org/rfc/rfc3849.txt#4
             //# IANA is to record the allocation of the IPv6 global unicast address
