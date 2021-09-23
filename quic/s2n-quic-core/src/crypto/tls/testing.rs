@@ -336,7 +336,7 @@ fn seal_open<S: Key, O: Key>(sealer: &S, opener: &O) {
         .encrypt(packet_number, header, &mut encrypted_payload)
         .unwrap_or_else(|err| {
             panic!(
-                "seal; opener={}, sealer={} - {:?}",
+                "encryption error; opener={}, sealer={} - {:?}",
                 opener_name, sealer_name, err
             )
         });
@@ -344,7 +344,7 @@ fn seal_open<S: Key, O: Key>(sealer: &S, opener: &O) {
         .decrypt(packet_number, header, &mut encrypted_payload)
         .unwrap_or_else(|err| {
             panic!(
-                "open; opener={}, sealer={} - {:?}",
+                "decryption error; opener={}, sealer={} - {:?}",
                 opener_name, sealer_name, err
             )
         });
