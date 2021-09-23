@@ -61,7 +61,7 @@ fn s2n_client_rustls_server_test() {
 
 /// Executes the handshake to completion
 fn run<S: Endpoint, C: Endpoint>(server: &mut S, client: &mut C) {
-    let mut pair = tls::testing::Pair::new(server, client, b"localhost");
+    let mut pair = tls::testing::Pair::new(server, client, "localhost".into());
 
     while pair.is_handshaking() {
         pair.poll().unwrap();

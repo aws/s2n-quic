@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    application::Sni,
     crypto::{tls, CryptoSuite, Key},
     transport,
 };
@@ -46,7 +47,7 @@ impl super::Endpoint for Endpoint {
     fn new_client_session<Params: EncoderValue>(
         &mut self,
         _transport_parameters: &Params,
-        _sni: &[u8],
+        _sni: Sni,
     ) -> Self::Session {
         Session
     }
@@ -83,14 +84,14 @@ pub struct Pair<S: tls::Session, C: tls::Session> {
     pub server: (S, Context<S>),
     pub client: (C, Context<C>),
     pub iterations: usize,
-    pub sni: Vec<u8>,
+    pub sni: Sni,
 }
 
 const TEST_SERVER_TRANSPORT_PARAMS: &[u8] = &[1, 2, 3];
 const TEST_CLIENT_TRANSPORT_PARAMS: &[u8] = &[3, 2, 1];
 
 impl<S: tls::Session, C: tls::Session> Pair<S, C> {
-    pub fn new<SE, CE>(server_endpoint: &mut SE, client_endpoint: &mut CE, sni: &[u8]) -> Self
+    pub fn new<SE, CE>(server_endpoint: &mut SE, client_endpoint: &mut CE, sni: Sni) -> Self
     where
         SE: tls::Endpoint<Session = S>,
         CE: tls::Endpoint<Session = C>,
@@ -99,17 +100,17 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
 
         let server = server_endpoint.new_server_session(&TEST_SERVER_TRANSPORT_PARAMS);
         let mut server_context = Context::default();
-        server_context.initial.crypto = Some(S::InitialKey::new_server(sni).0);
+        server_context.initial.crypto = Some(S::InitialKey::new_server(sni.as_bytes()).0);
 
-        let client = client_endpoint.new_client_session(&TEST_CLIENT_TRANSPORT_PARAMS, sni);
+        let client = client_endpoint.new_client_session(&TEST_CLIENT_TRANSPORT_PARAMS, sni.clone());
         let mut client_context = Context::default();
-        client_context.initial.crypto = Some(C::InitialKey::new_client(sni).0);
+        client_context.initial.crypto = Some(C::InitialKey::new_client(sni.as_bytes()).0);
 
         Self {
             server: (server, server_context),
             client: (client, client_context),
             iterations: 0,
-            sni: sni.to_vec(),
+            sni,
         }
     }
 
