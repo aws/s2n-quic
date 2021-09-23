@@ -61,9 +61,9 @@ pub mod default {
             //# destination address.
 
             // NOTE: this may cause reachability issues if a peer or NAT use different
-            //       port range types for the same connection. Additional research may
+            //       port scopes for the same connection. Additional research may
             //       be required to determine if this countermeasure needs to be relaxed.
-            if PortRangeType::new(active_addr.port()) != PortRangeType::new(packet_addr.port()) {
+            if PortScope::new(active_addr.port()) != PortScope::new(packet_addr.port()) {
                 return Outcome::Deny;
             }
 
@@ -80,24 +80,23 @@ pub mod default {
             //# a global, unique-local [RFC4193], or non-private address as a
             //# potential attempt at request forgery.
 
-            // Here, we ensure the ip range types match so peers are unable to change after
+            // Here, we ensure the ip scope match so peers are unable to change after
             // establishing a connection
-            if active_addr.range_type() == packet_addr.range_type() {
-                Outcome::Allow
-            } else {
-                Outcome::Deny
+            match (active_addr.unicast_scope(), packet_addr.unicast_scope()) {
+                (Some(a), Some(b)) if a == b => Outcome::Allow,
+                _ => Outcome::Deny,
             }
         }
     }
 
     #[derive(Debug, PartialEq, Eq)]
-    enum PortRangeType {
+    enum PortScope {
         System,
         User,
         Dynamic,
     }
 
-    impl PortRangeType {
+    impl PortScope {
         #[inline]
         pub const fn new(value: u16) -> Self {
             //= https://www.rfc-editor.org/rfc/rfc6335.txt#6

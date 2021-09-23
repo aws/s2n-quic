@@ -40,45 +40,11 @@ impl IpV6Address {
 
     /// Converts the IP address into IPv4 if it is mapped, otherwise the address is unchanged
     #[inline]
-    pub fn unmap(self) -> IpAddress {
-        match self.octets {
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, a, b, c, d] => {
-                IpV4Address::new([a, b, c, d]).into()
-            }
-            _ => self.into(),
-        }
-    }
-
-    /// Returns the [`ip::RangeType`] for the given address
-    ///
-    /// See the [IANA Registry](https://www.iana.org/assignments/ipv6-address-space/ipv6-address-space.xhtml)
-    /// for more details.
-    ///
-    /// ```
-    /// use s2n_quic_core::inet::{IpV6Address, ip::RangeType::*};
-    ///
-    /// assert_eq!(IpV6Address::from([0, 0, 0, 0, 0, 0, 0, 0]).range_type(), Unspecified);
-    /// assert_eq!(IpV6Address::from([0, 0, 0, 0, 0, 0, 0, 1]).range_type(), Loopback);
-    /// assert_eq!(IpV6Address::from([0xff0e, 0, 0, 0, 0, 0, 0, 0]).range_type(), Broadcast);
-    /// assert_eq!(IpV6Address::from([0xfe80, 0, 0, 0, 0, 0, 0, 0]).range_type(), LinkLocal);
-    /// assert_eq!(IpV6Address::from([0xfc02, 0, 0, 0, 0, 0, 0, 0]).range_type(), Private);
-    /// assert_eq!(IpV6Address::from([0x2001, 0xdb8, 0, 0, 0, 0, 0, 0]).range_type(), Documentation);
-    /// // IPv4-mapped address
-    /// assert_eq!(IpV6Address::from([0, 0, 0, 0, 0, 0xffff, 0xc00a, 0x2ff]).range_type(), Global);
-    /// ```
-    #[inline]
-    pub const fn range_type(self) -> ip::RangeType {
-        use ip::RangeType::*;
-
-        // https://www.iana.org/assignments/ipv6-address-space/ipv6-address-space.xhtml
+    pub const fn unmap(self) -> IpAddress {
         match self.segments() {
-            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.2
-            //# The address 0:0:0:0:0:0:0:0 is called the unspecified address.
-            [0, 0, 0, 0, 0, 0, 0, 0] => Unspecified,
-
-            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.3
-            //# The unicast address 0:0:0:0:0:0:0:1 is called the loopback address.
-            [0, 0, 0, 0, 0, 0, 0, 1] => Loopback,
+            // special-case unspecified and loopback
+            [0, 0, 0, 0, 0, 0, 0, 0] => IpAddress::Ipv6(self),
+            [0, 0, 0, 0, 0, 0, 0, 1] => IpAddress::Ipv6(self),
 
             //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.5.1
             //# The format of the "IPv4-Compatible IPv6 address" is as
@@ -97,19 +63,107 @@ impl IpV6Address {
             //# +--------------------------------------+--------------------------+
             //# |0000..............................0000|FFFF|    IPv4 address     |
             //# +--------------------------------------+----+---------------------+
-            [0, 0, 0, 0, 0, 0, a, b] | [0, 0, 0, 0, 0, 0xffff, a, b] => {
-                let [c, d] = u16::to_be_bytes(b);
-                let [a, b] = u16::to_be_bytes(a);
+
+            //= https://www.rfc-editor.org/rfc/rfc6052.txt#2.1
+            //# This document reserves a "Well-Known Prefix" for use in an
+            //# algorithmic mapping.  The value of this IPv6 prefix is:
+            //#
+            //#   64:ff9b::/96
+            [0, 0, 0, 0, 0, 0, ab, cd]
+            | [0, 0, 0, 0, 0, 0xffff, ab, cd]
+            | [0x64, 0xff9b, 0, 0, 0, 0, ab, cd] => {
+                let [a, b] = u16::to_be_bytes(ab);
+                let [c, d] = u16::to_be_bytes(cd);
+                IpAddress::Ipv4(IpV4Address {
+                    octets: [a, b, c, d],
+                })
+            }
+            _ => IpAddress::Ipv6(self),
+        }
+    }
+
+    /// Returns the [`ip::UnicastScope`] for the given address
+    ///
+    /// See the [IANA Registry](https://www.iana.org/assignments/ipv6-address-space/ipv6-address-space.xhtml)
+    /// for more details.
+    ///
+    /// ```
+    /// use s2n_quic_core::inet::{IpV4Address, IpV6Address, ip::UnicastScope::*};
+    ///
+    /// assert_eq!(IpV6Address::from([0, 0, 0, 0, 0, 0, 0, 0]).unicast_scope(), None);
+    /// assert_eq!(IpV6Address::from([0, 0, 0, 0, 0, 0, 0, 1]).unicast_scope(), Some(Loopback));
+    /// assert_eq!(IpV6Address::from([0xff0e, 0, 0, 0, 0, 0, 0, 0]).unicast_scope(), None);
+    /// assert_eq!(IpV6Address::from([0xfe80, 0, 0, 0, 0, 0, 0, 0]).unicast_scope(), Some(LinkLocal));
+    /// assert_eq!(IpV6Address::from([0xfc02, 0, 0, 0, 0, 0, 0, 0]).unicast_scope(), Some(Private));
+    /// // documentation
+    /// assert_eq!(IpV6Address::from([0x2001, 0xdb8, 0, 0, 0, 0, 0, 0]).unicast_scope(), None);
+    /// // IPv4-mapped address
+    /// assert_eq!(IpV4Address::from([92, 88, 99, 123]).to_ipv6_mapped().unicast_scope(), Some(Global));
+    /// ```
+    #[inline]
+    pub const fn unicast_scope(self) -> Option<ip::UnicastScope> {
+        use ip::UnicastScope::*;
+
+        // https://www.iana.org/assignments/ipv6-address-space/ipv6-address-space.xhtml
+        match self.segments() {
+            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.2
+            //# The address 0:0:0:0:0:0:0:0 is called the unspecified address.
+            [0, 0, 0, 0, 0, 0, 0, 0] => None,
+
+            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.3
+            //# The unicast address 0:0:0:0:0:0:0:1 is called the loopback address.
+            [0, 0, 0, 0, 0, 0, 0, 1] => Some(Loopback),
+
+            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.5.1
+            //# The format of the "IPv4-Compatible IPv6 address" is as
+            //# follows:
+            //#
+            //# |                80 bits               | 16 |      32 bits        |
+            //# +--------------------------------------+--------------------------+
+            //# |0000..............................0000|0000|    IPv4 address     |
+            //# +--------------------------------------+----+---------------------+
+
+            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.5.2
+            //# The format of the "IPv4-mapped IPv6
+            //# address" is as follows:
+            //#
+            //# |                80 bits               | 16 |      32 bits        |
+            //# +--------------------------------------+--------------------------+
+            //# |0000..............................0000|FFFF|    IPv4 address     |
+            //# +--------------------------------------+----+---------------------+
+
+            //= https://www.rfc-editor.org/rfc/rfc6052.txt#2.1
+            //# This document reserves a "Well-Known Prefix" for use in an
+            //# algorithmic mapping.  The value of this IPv6 prefix is:
+            //#
+            //#   64:ff9b::/96
+            [0, 0, 0, 0, 0, 0, ab, cd]
+            | [0, 0, 0, 0, 0, 0xffff, ab, cd]
+            | [0x64, 0xff9b, 0, 0, 0, 0, ab, cd] => {
+                let [a, b] = u16::to_be_bytes(ab);
+                let [c, d] = u16::to_be_bytes(cd);
                 IpV4Address {
                     octets: [a, b, c, d],
                 }
-                .range_type()
+                .unicast_scope()
             }
 
-            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.7
-            //# binary 11111111 at the start of the address identifies the address
-            //# as being a multicast address.
-            [0xff00..=0xffff, ..] => Broadcast,
+            //= https://www.rfc-editor.org/rfc/rfc3849.txt#4
+            //# IANA is to record the allocation of the IPv6 global unicast address
+            //# prefix  2001:DB8::/32 as a documentation-only prefix  in the IPv6
+            //# address registry.
+            [0x2001, 0xdb8, ..] => None,
+
+            //= https://www.rfc-editor.org/rfc/rfc4193.txt#8
+            //# The IANA has assigned the FC00::/7 prefix to "Unique Local Unicast".
+            [0xfc00..=0xfdff, ..] => {
+                //= https://www.rfc-editor.org/rfc/rfc4193.txt#1
+                //# They are not
+                //# expected to be routable on the global Internet.  They are routable
+                //# inside of a more limited area such as a site.  They may also be
+                //# routed between a limited set of sites.
+                Some(Private)
+            }
 
             //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.6
             //# Link-Local addresses have the following format:
@@ -118,20 +172,15 @@ impl IpV6Address {
             //# +----------+-------------------------+----------------------------+
             //# |1111111010|           0             |       interface ID         |
             //# +----------+-------------------------+----------------------------+
-            [0xfe80..=0xfebf, ..] => LinkLocal,
+            [0xfe80..=0xfebf, ..] => Some(LinkLocal),
 
-            //= https://www.rfc-editor.org/rfc/rfc4193.txt#8
-            //# The IANA has assigned the FC00::/7 prefix to "Unique Local Unicast".
-            [0xfc00..=0xfdff, ..] => Private,
-
-            //= https://www.rfc-editor.org/rfc/rfc3849.txt#4
-            //# IANA is to record the allocation of the IPv6 global unicast address
-            //# prefix  2001:DB8::/32 as a documentation-only prefix  in the IPv6
-            //# address registry.
-            [0x2001, 0xdb8, ..] => Documentation,
+            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.7
+            //# binary 11111111 at the start of the address identifies the address
+            //# as being a multicast address.
+            [0xff00..=0xffff, ..] => None,
 
             // Everything else is considered globally-reachable
-            _ => Global,
+            _ => Some(Global),
         }
     }
 }
@@ -224,8 +273,8 @@ impl SocketAddressV6 {
     }
 
     #[inline]
-    pub const fn range_type(&self) -> ip::RangeType {
-        self.ip.range_type()
+    pub const fn unicast_scope(&self) -> Option<ip::UnicastScope> {
+        self.ip.unicast_scope()
     }
 }
 
@@ -372,53 +421,41 @@ mod tests {
     use super::*;
     use bolero::{check, generator::*};
 
-    /// Asserts the RangeType returned matches a known implementation
+    /// Asserts the UnicastScope returned matches a known implementation
     #[test]
-    fn range_type_test() {
+    fn scope_test() {
         let g = gen::<[u8; 16]>().map_gen(IpV6Address::from);
         check!().with_generator(g).cloned().for_each(|subject| {
-            use ip::RangeType::*;
+            use ip::UnicastScope::*;
 
-            // the ipv4 ranges are tested elsewhere there so we just make sure the range types match
+            // the ipv4 scopes are tested elsewhere there so we just make sure the scopes match
             if let IpAddress::Ipv4(ipv4) = subject.unmap() {
-                // special-case loopback since ipv4 conversion doesn't check for it
-                if subject.segments() != [0, 0, 0, 0, 0, 0, 0, 1] {
-                    assert_eq!(ipv4.range_type(), subject.range_type());
-                    return;
-                }
+                assert_eq!(ipv4.unicast_scope(), subject.unicast_scope());
+                return;
             }
 
             let expected = std::net::Ipv6Addr::from(subject);
             let network = ip_network::Ipv6Network::from(expected);
 
-            match subject.range_type() {
-                Global => {
+            match subject.unicast_scope() {
+                Some(Global) => {
                     // Site-local addresses are deprecated but the `ip_network` still partitions
                     // them out
                     // See: https://datatracker.ietf.org/doc/html/rfc3879
 
-                    assert!(network.is_unicast_global() || network.is_unicast_site_local());
+                    assert!(network.is_global() || network.is_unicast_site_local());
                 }
-                Private => {
+                Some(Private) => {
                     assert!(network.is_unique_local());
                 }
-                Loopback => {
+                Some(Loopback) => {
                     assert!(expected.is_loopback());
                 }
-                LinkLocal => {
+                Some(LinkLocal) => {
                     assert!(network.is_unicast_link_local());
                 }
-                Broadcast => {
-                    assert!(expected.is_multicast());
-                }
-                Documentation => {
-                    assert!(network.is_documentation());
-                }
-                Unspecified => {
-                    assert!(expected.is_unspecified());
-                }
-                Shared | IetfProtocolAssignment | Reserved | Benchmarking | LocalId => {
-                    unreachable!("{:?} is only IpV4", subject.range_type());
+                None => {
+                    assert!(expected.is_multicast() || expected.is_unspecified());
                 }
             }
         })

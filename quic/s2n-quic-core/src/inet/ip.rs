@@ -105,10 +105,10 @@ impl SocketAddress {
     }
 
     #[inline]
-    pub const fn range_type(&self) -> RangeType {
+    pub const fn unicast_scope(&self) -> Option<UnicastScope> {
         match self {
-            Self::IpV4(addr) => addr.range_type(),
-            Self::IpV6(addr) => addr.range_type(),
+            Self::IpV4(addr) => addr.unicast_scope(),
+            Self::IpV6(addr) => addr.unicast_scope(),
         }
     }
 
@@ -185,20 +185,17 @@ impl<'a> SocketAddressRef<'a> {
     }
 }
 
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#21.5.6
+//# Similarly, endpoints could regard a change in address to a link-local
+//# address [RFC4291] or an address in a private-use range [RFC1918] from
+//# a global, unique-local [RFC4193], or non-private address as a
+//# potential attempt at request forgery.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RangeType {
-    Global,
-    Private,
+pub enum UnicastScope {
     Loopback,
     LinkLocal,
-    Broadcast,
-    Documentation,
-    Shared,
-    IetfProtocolAssignment,
-    Reserved,
-    Benchmarking,
-    LocalId,
-    Unspecified,
+    Private,
+    Global,
 }
 
 #[cfg(any(test, feature = "std"))]
