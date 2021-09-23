@@ -8,7 +8,7 @@ use crate::{
     session::Session,
 };
 use s2n_codec::EncoderValue;
-use s2n_quic_core::{crypto::tls, endpoint};
+use s2n_quic_core::{application::Sni, crypto::tls, endpoint};
 use s2n_tls::{
     config::{self, Config},
     error::Error,
@@ -127,7 +127,7 @@ impl tls::Endpoint for Server {
     fn new_client_session<Params: EncoderValue>(
         &mut self,
         _transport_parameters: &Params,
-        _sni: &[u8],
+        _sni: Sni,
     ) -> Self::Session {
         panic!("cannot create a client session from a server config");
     }

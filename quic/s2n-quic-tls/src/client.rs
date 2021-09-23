@@ -3,7 +3,7 @@
 
 use crate::{certificate::IntoCertificate, keylog::KeyLogHandle, params::Params, session::Session};
 use s2n_codec::EncoderValue;
-use s2n_quic_core::{crypto::tls, endpoint};
+use s2n_quic_core::{application::Sni, crypto::tls, endpoint};
 use s2n_tls::{
     config::{self, Config},
     error::Error,
@@ -109,12 +109,15 @@ impl tls::Endpoint for Client {
     fn new_client_session<Params: EncoderValue>(
         &mut self,
         params: &Params,
-        sni: &[u8],
+        sni: Sni,
     ) -> Self::Session {
         let config = self.config.clone();
         self.params.with(params, |params| {
             let mut session = Session::new(endpoint::Type::Client, config, params).unwrap();
-            session.connection.set_sni(sni).expect("invalid sni value");
+            session
+                .connection
+                .set_sni(sni.as_bytes())
+                .expect("invalid sni value");
             session
         })
     }

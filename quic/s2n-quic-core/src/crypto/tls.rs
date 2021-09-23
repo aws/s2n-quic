@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{crypto::CryptoSuite, transport};
+use crate::{application::Sni, crypto::CryptoSuite, transport};
 pub use bytes::{Bytes, BytesMut};
 use core::fmt::Debug;
 use s2n_codec::EncoderValue;
@@ -89,7 +89,7 @@ pub trait Endpoint: 'static + Sized + Send {
     fn new_client_session<Params: EncoderValue>(
         &mut self,
         transport_parameters: &Params,
-        sni: &[u8],
+        sni: Sni,
     ) -> Self::Session;
 
     /// The maximum length of a tag for any algorithm that may be negotiated

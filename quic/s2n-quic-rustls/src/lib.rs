@@ -463,7 +463,7 @@ pub mod server {
         fn new_client_session<Params: EncoderValue>(
             &mut self,
             _transport_parameters: &Params,
-            _sni: &[u8],
+            _sni: Sni,
         ) -> Self::Session {
             panic!("cannot create a client session from a server config");
         }
@@ -519,10 +519,10 @@ pub mod client {
         fn new_client_session<Params: EncoderValue>(
             &mut self,
             params: &Params,
-            sni: &[u8],
+            sni: Sni,
         ) -> Self::Session {
             let params = encode_transport_params(params);
-            let sni = DNSNameRef::try_from_ascii(sni).expect("sni hostname should be valid");
+            let sni = DNSNameRef::try_from_ascii_str(&*sni).expect("sni hostname should be valid");
             let session = rustls::ClientSession::new_quic(&self.config, sni, params);
             Self::Session::new(session)
         }
@@ -679,7 +679,7 @@ fn client_server_test() {
         .build()
         .unwrap();
 
-    let mut pair = tls::testing::Pair::new(&mut server, &mut client, b"localhost");
+    let mut pair = tls::testing::Pair::new(&mut server, &mut client, "localhost".into());
 
     while pair.is_handshaking() {
         pair.poll().unwrap();
