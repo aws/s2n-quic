@@ -138,7 +138,7 @@ impl Builder {
             builder.with_cert_resolver(cert_resolver)
         } else {
             return Err(rustls::Error::General(
-                "Missing certificate resolver".to_string(),
+                "Missing certificate or certificate resolver".to_string(),
             ));
         };
 

@@ -26,9 +26,10 @@ impl Client {
 
 impl Default for Client {
     fn default() -> Self {
+        // TODO this will currently panic since there is no default root cert
         Self::builder()
             .build()
-            .expect("could not create default server")
+            .expect("could not create default client")
     }
 }
 
@@ -126,6 +127,7 @@ impl Builder {
     }
 
     pub fn build(self) -> Result<Client, rustls::Error> {
+        // TODO load system root store?
         if self.cert_store.is_empty() {
             //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.4
             //# A client MUST authenticate the identity of the server.
