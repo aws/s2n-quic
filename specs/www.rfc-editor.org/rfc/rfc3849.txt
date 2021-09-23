@@ -1,0 +1,227 @@
+
+
+
+
+
+
+Network Working Group                                          G. Huston
+Request for Comments: 3849                                       Telstra
+Category: Informational                                          A. Lord
+                                                                   APNIC
+                                                                P. Smith
+                                                                   Cisco
+                                                               July 2004
+
+
+             IPv6 Address Prefix Reserved for Documentation
+
+Status of this Memo
+
+   This memo provides information for the Internet community.  It does
+   not specify an Internet standard of any kind.  Distribution of this
+   memo is unlimited.
+
+Copyright Notice
+
+   Copyright (C) The Internet Society (2004).
+
+Abstract
+
+   To reduce the likelihood of conflict and confusion when relating
+   documented examples to deployed systems, an IPv6 unicast address
+   prefix is reserved for use in examples in RFCs, books, documentation,
+   and the like.  Since site-local and link-local unicast addresses have
+   special meaning in IPv6, these addresses cannot be used in many
+   example situations.  The document describes the use of the IPv6
+   address prefix 2001:DB8::/32 as a reserved prefix for use in
+   documentation.
+
+1.  Introduction
+
+   The address architecture for IPv6 [1] does not specifically allocate
+   an IPv6 address prefix for use for documentation purposes.
+   Documentation material is currently using address prefixes drawn from
+   address blocks already allocated or assigned to existing
+   organizations or to well known ISPs, or drawn from the currently
+   unallocated address pool.  Such use conflicts with existing or future
+   allocations or assignments of IPv6 address space.
+
+   The problems such conflicts may cause have already been encountered
+   with IPv4 where literal use of documented examples in a production
+   environment causes address and routing conflicts with existing
+   services.  In making an explicit allocation of a documentation
+   address prefix, it is intended that such operational problems may be
+   avoided for IPv6.
+
+
+
+Huston, et al.               Informational                      [Page 1]
+
+RFC 3849               IPv6 Documentation Address              July 2004
+
+
+   Similar, but different, discussion also applies to top level domain
+   names and some have been reserved for similar purposes [2].
+
+2.  Documentation IPv6 Address Prefix
+
+   To allow documentation to accurately describe deployment examples,
+   the use of site local or link local addresses is inappropriate, and a
+   unicast address block is required.  All IPv6 unicast address space is
+   currently marked as reserved, unassigned or has been assigned to the
+   Internet Assigned Numbers Authority (IANA) for further redistribution
+   to the Regional Internet Registries (RIRs) [1], but no unicast
+   address space has been specifically nominated for the purposes of use
+   in documented examples.
+
+   Following acceptance within the Asia Pacific regional addressing
+   community of a proposal for a block of IPv6 address space to be
+   reserved for documentation purposes, the Asia Pacific Network
+   Information Centre (APNIC) allocated a unicast address prefix for
+   documentation purposes.  The address block is within the range of a
+   conventional allocation size, so that documentation can accurately
+   match deployment scenarios.
+
+   The documentation prefix described in this memo can also be used to
+   generate multicast addresses for documentation, using the Unicast
+   prefix-based proposal [3].  Representing other kinds of multicast
+   addresses in documentation is outside the scope of this memo.
+
+   The prefix allocated for documentation purposes is 2001:DB8::/32
+
+3.  Operational Implications
+
+   This assignment implies that IPv6 network operators should add this
+   address prefix to the list of non-routeable IPv6 address space, and
+   if packet filters are deployed, then this address prefix should be
+   added to packet filters.
+
+   This is not a local-use address prefix, and the filters may be used
+   in both local and public contexts.
+
+4.  IANA Considerations
+
+   IANA is to record the allocation of the IPv6 global unicast address
+   prefix  2001:DB8::/32 as a documentation-only prefix  in the IPv6
+   address registry.  No end party is to be assigned this address.
+
+
+
+
+
+
+
+Huston, et al.               Informational                      [Page 2]
+
+RFC 3849               IPv6 Documentation Address              July 2004
+
+
+5.  Security Considerations
+
+   IPv6 addressing documents do not have any direct impact on Internet
+   infrastructure security.
+
+6.  Acknowledgements
+
+   The authors acknowledge the work of Marc Blanchet, assisted by Alain
+   Durand, Robert Elz, Bob Fink, and Dave Thaler, in authoring a
+   previous proposal for a V6 documentation prefix.
+
+7.  References
+
+7.1.  Normative References
+
+   [1]  Hinden, R. and S. Deering, "Internet Protocol Version 6 (IPv6)
+        Addressing Architecture", RFC 3513, April 2003.
+
+7.2.  Informative References
+
+   [2]  Eastlake 3rd, D. and A. Panitz, "Reserved Top Level DNS Names",
+        BCP 32, RFC 2606, June 1999.
+
+   [3]  Haberman, B. and D. Thaler, "Unicast-Prefix-based IPv6 Multicast
+        Addresses", RFC 3306, August 2002.
+
+Authors' Addresses
+
+   Geoff Huston
+   Telstra
+
+   EMail: gih@apnic.net
+
+
+   Anne Lord
+   Asia Pacific Network Information Centre
+
+   EMail: anne@apnic.net
+
+
+   Philip Smith
+   Cisco Systems
+
+   EMail: pfs@cisco.com
+
+
+
+
+
+
+
+Huston, et al.               Informational                      [Page 3]
+
+RFC 3849               IPv6 Documentation Address              July 2004
+
+
+Full Copyright Statement
+
+   Copyright (C) The Internet Society (2004).  This document is subject
+   to the rights, licenses and restrictions contained in BCP 78, and
+   except as set forth therein, the authors retain all their rights.
+
+   This document and the information contained herein are provided on an
+   "AS IS" basis and THE CONTRIBUTOR, THE ORGANIZATION HE/SHE REPRESENTS
+   OR IS SPONSORED BY (IF ANY), THE INTERNET SOCIETY AND THE INTERNET
+   ENGINEERING TASK FORCE DISCLAIM ALL WARRANTIES, EXPRESS OR IMPLIED,
+   INCLUDING BUT NOT LIMITED TO ANY WARRANTY THAT THE USE OF THE
+   INFORMATION HEREIN WILL NOT INFRINGE ANY RIGHTS OR ANY IMPLIED
+   WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+
+Intellectual Property
+
+   The IETF takes no position regarding the validity or scope of any
+   Intellectual Property Rights or other rights that might be claimed to
+   pertain to the implementation or use of the technology described in
+   this document or the extent to which any license under such rights
+   might or might not be available; nor does it represent that it has
+   made any independent effort to identify any such rights.  Information
+   on the procedures with respect to rights in RFC documents can be
+   found in BCP 78 and BCP 79.
+
+   Copies of IPR disclosures made to the IETF Secretariat and any
+   assurances of licenses to be made available, or the result of an
+   attempt made to obtain a general license or permission for the use of
+   such proprietary rights by implementers or users of this
+   specification can be obtained from the IETF on-line IPR repository at
+   http://www.ietf.org/ipr.
+
+   The IETF invites any interested party to bring to its attention any
+   copyrights, patents or patent applications, or other proprietary
+   rights that may cover technology that may be required to implement
+   this standard.  Please address the information to the IETF at ietf-
+   ipr@ietf.org.
+
+Acknowledgement
+
+   Funding for the RFC Editor function is currently provided by the
+   Internet Society.
+
+
+
+
+
+
+
+
+
+Huston, et al.               Informational                      [Page 4]
+

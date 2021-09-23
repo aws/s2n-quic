@@ -840,6 +840,7 @@ pub mod testing {
         type Stream = crate::stream::StreamImpl;
         type ConnectionCloseFormatter = s2n_quic_core::connection::close::Development;
         type EventSubscriber = Subscriber;
+        type PathMigrationValidator = path::migration::default::Validator;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()
@@ -867,6 +868,7 @@ pub mod testing {
         type Stream = crate::stream::StreamImpl;
         type ConnectionCloseFormatter = s2n_quic_core::connection::close::Development;
         type EventSubscriber = Subscriber;
+        type PathMigrationValidator = path::migration::default::Validator;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()

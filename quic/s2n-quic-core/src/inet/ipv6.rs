@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::inet::{
-    unspecified::Unspecified, IpAddress, IpV4Address, SocketAddress, SocketAddressV4,
+    ip, ipv4::IpV4Address, unspecified::Unspecified, IpAddress, SocketAddress, SocketAddressV4,
 };
 use core::fmt;
 use s2n_codec::zerocopy::U16;
@@ -24,7 +24,7 @@ impl IpV6Address {
     };
 
     #[inline]
-    pub fn segments(&self) -> [u16; 8] {
+    pub const fn segments(&self) -> [u16; 8] {
         let octets = &self.octets;
         [
             u16::from_be_bytes([octets[0], octets[1]]),
@@ -40,12 +40,118 @@ impl IpV6Address {
 
     /// Converts the IP address into IPv4 if it is mapped, otherwise the address is unchanged
     #[inline]
-    pub fn unmap(self) -> IpAddress {
-        match self.octets {
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, a, b, c, d] => {
-                IpV4Address::new([a, b, c, d]).into()
+    pub const fn unmap(self) -> IpAddress {
+        match self.segments() {
+            // special-case unspecified and loopback
+            [0, 0, 0, 0, 0, 0, 0, 0] => IpAddress::Ipv6(self),
+            [0, 0, 0, 0, 0, 0, 0, 1] => IpAddress::Ipv6(self),
+
+            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.5.1
+            //# The format of the "IPv4-Compatible IPv6 address" is as
+            //# follows:
+            //#
+            //# |                80 bits               | 16 |      32 bits        |
+            //# +--------------------------------------+--------------------------+
+            //# |0000..............................0000|0000|    IPv4 address     |
+            //# +--------------------------------------+----+---------------------+
+
+            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.5.2
+            //# The format of the "IPv4-mapped IPv6
+            //# address" is as follows:
+            //#
+            //# |                80 bits               | 16 |      32 bits        |
+            //# +--------------------------------------+--------------------------+
+            //# |0000..............................0000|FFFF|    IPv4 address     |
+            //# +--------------------------------------+----+---------------------+
+
+            //= https://www.rfc-editor.org/rfc/rfc6052.txt#2.1
+            //# This document reserves a "Well-Known Prefix" for use in an
+            //# algorithmic mapping.  The value of this IPv6 prefix is:
+            //#
+            //#   64:ff9b::/96
+            [0, 0, 0, 0, 0, 0, ab, cd]
+            | [0, 0, 0, 0, 0, 0xffff, ab, cd]
+            | [0x64, 0xff9b, 0, 0, 0, 0, ab, cd] => {
+                let [a, b] = u16::to_be_bytes(ab);
+                let [c, d] = u16::to_be_bytes(cd);
+                IpAddress::Ipv4(IpV4Address {
+                    octets: [a, b, c, d],
+                })
             }
-            _ => self.into(),
+            _ => IpAddress::Ipv6(self),
+        }
+    }
+
+    /// Returns the [`ip::UnicastScope`] for the given address
+    ///
+    /// See the [IANA Registry](https://www.iana.org/assignments/ipv6-address-space/ipv6-address-space.xhtml)
+    /// for more details.
+    ///
+    /// ```
+    /// use s2n_quic_core::inet::{IpV4Address, IpV6Address, ip::UnicastScope::*};
+    ///
+    /// assert_eq!(IpV6Address::from([0, 0, 0, 0, 0, 0, 0, 0]).unicast_scope(), None);
+    /// assert_eq!(IpV6Address::from([0, 0, 0, 0, 0, 0, 0, 1]).unicast_scope(), Some(Loopback));
+    /// assert_eq!(IpV6Address::from([0xff0e, 0, 0, 0, 0, 0, 0, 0]).unicast_scope(), None);
+    /// assert_eq!(IpV6Address::from([0xfe80, 0, 0, 0, 0, 0, 0, 0]).unicast_scope(), Some(LinkLocal));
+    /// assert_eq!(IpV6Address::from([0xfc02, 0, 0, 0, 0, 0, 0, 0]).unicast_scope(), Some(Private));
+    /// // documentation
+    /// assert_eq!(IpV6Address::from([0x2001, 0xdb8, 0, 0, 0, 0, 0, 0]).unicast_scope(), None);
+    /// // IPv4-mapped address
+    /// assert_eq!(IpV4Address::from([92, 88, 99, 123]).to_ipv6_mapped().unicast_scope(), Some(Global));
+    /// ```
+    #[inline]
+    pub const fn unicast_scope(self) -> Option<ip::UnicastScope> {
+        use ip::UnicastScope::*;
+
+        // If this is an IpV4 ip, delegate to that implementation
+        if let IpAddress::Ipv4(ip) = self.unmap() {
+            return ip.unicast_scope();
+        }
+
+        // https://www.iana.org/assignments/ipv6-address-space/ipv6-address-space.xhtml
+        match self.segments() {
+            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.2
+            //# The address 0:0:0:0:0:0:0:0 is called the unspecified address.
+            [0, 0, 0, 0, 0, 0, 0, 0] => None,
+
+            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.3
+            //# The unicast address 0:0:0:0:0:0:0:1 is called the loopback address.
+            [0, 0, 0, 0, 0, 0, 0, 1] => Some(Loopback),
+
+            //= https://www.rfc-editor.org/rfc/rfc3849.txt#4
+            //# IANA is to record the allocation of the IPv6 global unicast address
+            //# prefix  2001:DB8::/32 as a documentation-only prefix  in the IPv6
+            //# address registry.
+            [0x2001, 0xdb8, ..] => None,
+
+            //= https://www.rfc-editor.org/rfc/rfc4193.txt#8
+            //# The IANA has assigned the FC00::/7 prefix to "Unique Local Unicast".
+            [0xfc00..=0xfdff, ..] => {
+                //= https://www.rfc-editor.org/rfc/rfc4193.txt#1
+                //# They are not
+                //# expected to be routable on the global Internet.  They are routable
+                //# inside of a more limited area such as a site.  They may also be
+                //# routed between a limited set of sites.
+                Some(Private)
+            }
+
+            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.6
+            //# Link-Local addresses have the following format:
+            //# |   10     |
+            //# |  bits    |         54 bits         |          64 bits           |
+            //# +----------+-------------------------+----------------------------+
+            //# |1111111010|           0             |       interface ID         |
+            //# +----------+-------------------------+----------------------------+
+            [0xfe80..=0xfebf, ..] => Some(LinkLocal),
+
+            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.7
+            //# binary 11111111 at the start of the address identifies the address
+            //# as being a multicast address.
+            [0xff00..=0xffff, ..] => None,
+
+            // Everything else is considered globally-reachable
+            _ => Some(Global),
         }
     }
 }
@@ -136,6 +242,11 @@ impl SocketAddressV6 {
             IpAddress::Ipv6(_) => self.into(),
         }
     }
+
+    #[inline]
+    pub const fn unicast_scope(&self) -> Option<ip::UnicastScope> {
+        self.ip.unicast_scope()
+    }
 }
 
 impl fmt::Debug for SocketAddressV6 {
@@ -166,10 +277,40 @@ impl From<[u8; IPV6_LEN]> for IpV6Address {
     }
 }
 
+impl From<[u16; IPV6_LEN / 2]> for IpV6Address {
+    #[inline]
+    fn from(octets: [u16; IPV6_LEN / 2]) -> Self {
+        macro_rules! convert {
+            ($($segment:ident),*) => {{
+                let [$($segment),*] = octets;
+                $(
+                    let $segment = u16::to_be_bytes($segment);
+                )*
+                Self {
+                    octets: [
+                        $(
+                            $segment[0],
+                            $segment[1],
+                        )*
+                    ]
+                }
+            }}
+        }
+        convert!(a, b, c, d, e, f, g, h)
+    }
+}
+
 impl From<IpV6Address> for [u8; IPV6_LEN] {
     #[inline]
     fn from(v: IpV6Address) -> Self {
         v.octets
+    }
+}
+
+impl From<IpV6Address> for [u16; IPV6_LEN / 2] {
+    #[inline]
+    fn from(v: IpV6Address) -> Self {
+        v.segments()
     }
 }
 
@@ -243,5 +384,51 @@ mod std_conversion {
             let addr = net::SocketAddrV6::new(ip, port, 0, 0);
             Ok(std::iter::once(addr.into()))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bolero::{check, generator::*};
+
+    /// Asserts the UnicastScope returned matches a known implementation
+    #[test]
+    fn scope_test() {
+        let g = gen::<[u8; 16]>().map_gen(IpV6Address::from);
+        check!().with_generator(g).cloned().for_each(|subject| {
+            use ip::UnicastScope::*;
+
+            // the ipv4 scopes are tested elsewhere there so we just make sure the scopes match
+            if let IpAddress::Ipv4(ipv4) = subject.unmap() {
+                assert_eq!(ipv4.unicast_scope(), subject.unicast_scope());
+                return;
+            }
+
+            let expected = std::net::Ipv6Addr::from(subject);
+            let network = ip_network::Ipv6Network::from(expected);
+
+            match subject.unicast_scope() {
+                Some(Global) => {
+                    // Site-local addresses are deprecated but the `ip_network` still partitions
+                    // them out
+                    // See: https://datatracker.ietf.org/doc/html/rfc3879
+
+                    assert!(network.is_global() || network.is_unicast_site_local());
+                }
+                Some(Private) => {
+                    assert!(network.is_unique_local());
+                }
+                Some(Loopback) => {
+                    assert!(expected.is_loopback());
+                }
+                Some(LinkLocal) => {
+                    assert!(network.is_unicast_link_local());
+                }
+                None => {
+                    assert!(expected.is_multicast() || expected.is_unspecified());
+                }
+            }
+        })
     }
 }

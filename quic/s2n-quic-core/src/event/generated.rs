@@ -521,6 +521,22 @@ pub mod api {
     impl_conn_id!(PeerId);
     impl_conn_id!(UnboundedId);
     impl_conn_id!(InitialId);
+    impl<'a> SocketAddress<'a> {
+        #[inline]
+        pub fn ip(&self) -> &'a [u8] {
+            match self {
+                Self::IpV4 { ip, .. } => &ip[..],
+                Self::IpV6 { ip, .. } => &ip[..],
+            }
+        }
+        #[inline]
+        pub fn port(&self) -> u16 {
+            match self {
+                Self::IpV4 { port, .. } => *port,
+                Self::IpV6 { port, .. } => *port,
+            }
+        }
+    }
     impl<'a> IntoEvent<api::SocketAddress<'a>> for &'a crate::inet::SocketAddress {
         #[inline]
         fn into_event(self) -> api::SocketAddress<'a> {

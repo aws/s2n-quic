@@ -1,0 +1,1851 @@
+
+
+
+
+
+
+Internet Engineering Task Force (IETF)                         M. Cotton
+Request for Comments: 6335                                         ICANN
+BCP: 165                                                       L. Eggert
+Updates: 2780, 2782, 3828, 4340, 4960, 5595                        Nokia
+Category: Best Current Practice                                 J. Touch
+ISSN: 2070-1721                                                  USC/ISI
+                                                           M. Westerlund
+                                                                Ericsson
+                                                             S. Cheshire
+                                                                   Apple
+                                                             August 2011
+
+
+Internet Assigned Numbers Authority (IANA) Procedures for the Management
+    of the Service Name and Transport Protocol Port Number Registry
+
+Abstract
+
+   This document defines the procedures that the Internet Assigned
+   Numbers Authority (IANA) uses when handling assignment and other
+   requests related to the Service Name and Transport Protocol Port
+   Number registry.  It also discusses the rationale and principles
+   behind these procedures and how they facilitate the long-term
+   sustainability of the registry.
+
+   This document updates IANA's procedures by obsoleting the previous
+   UDP and TCP port assignment procedures defined in Sections 8 and 9.1
+   of the IANA Allocation Guidelines, and it updates the IANA service
+   name and port assignment procedures for UDP-Lite, the Datagram
+   Congestion Control Protocol (DCCP), and the Stream Control
+   Transmission Protocol (SCTP).  It also updates the DNS SRV
+   specification to clarify what a service name is and how it is
+   registered.
+
+Status of This Memo
+
+   This memo documents an Internet Best Current Practice.
+
+   This document is a product of the Internet Engineering Task Force
+   (IETF).  It represents the consensus of the IETF community.  It has
+   received public review and has been approved for publication by the
+   Internet Engineering Steering Group (IESG).  Further information on
+   BCPs is available in Section 2 of RFC 5741.
+
+   Information about the current status of this document, any errata,
+   and how to provide feedback on it may be obtained at
+   http://www.rfc-editor.org/info/rfc6335.
+
+
+
+
+Cotton, et al.            Best Current Practice                 [Page 1]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+Copyright Notice
+
+   Copyright (c) 2011 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents
+   (http://trustee.ietf.org/license-info) in effect on the date of
+   publication of this document.  Please review these documents
+   carefully, as they describe your rights and restrictions with respect
+   to this document.  Code Components extracted from this document must
+   include Simplified BSD License text as described in Section 4.e of
+   the Trust Legal Provisions and are provided without warranty as
+   described in the Simplified BSD License.
+
+   This document may contain material from IETF Documents or IETF
+   Contributions published or made publicly available before November
+   10, 2008.  The person(s) controlling the copyright in some of this
+   material may not have granted the IETF Trust the right to allow
+   modifications of such material outside the IETF Standards Process.
+   Without obtaining an adequate license from the person(s) controlling
+   the copyright in such materials, this document may not be modified
+   outside the IETF Standards Process, and derivative works of it may
+   not be created outside the IETF Standards Process, except to format
+   it for publication as an RFC or to translate it into languages other
+   than English.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                 [Page 2]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+Table of Contents
+
+   1.  Introduction . . . . . . . . . . . . . . . . . . . . . . . . .  4
+   2.  Motivation . . . . . . . . . . . . . . . . . . . . . . . . . .  5
+   3.  Background . . . . . . . . . . . . . . . . . . . . . . . . . .  6
+   4.  Conventions Used in This Document  . . . . . . . . . . . . . .  8
+   5.  Service Names  . . . . . . . . . . . . . . . . . . . . . . . .  8
+     5.1.  Service Name Syntax  . . . . . . . . . . . . . . . . . . .  9
+     5.2.  Service Name Usage in DNS SRV Records  . . . . . . . . . . 10
+   6.  Port Number Ranges . . . . . . . . . . . . . . . . . . . . . . 11
+     6.1.  Service Names and Port Numbers for Experimentation . . . . 12
+   7.  Principles for Service Name and Transport Protocol Port
+       Number Registry Management . . . . . . . . . . . . . . . . . . 12
+     7.1.  Past Principles  . . . . . . . . . . . . . . . . . . . . . 13
+     7.2.  Updated Principles . . . . . . . . . . . . . . . . . . . . 13
+   8.  IANA Procedures for Managing the Service Name and
+       Transport Protocol Port Number Registry  . . . . . . . . . . . 16
+     8.1.  Service Name and Port Number Assignment  . . . . . . . . . 16
+     8.2.  Service Name and Port Number De-Assignment . . . . . . . . 21
+     8.3.  Service Name and Port Number Reuse . . . . . . . . . . . . 21
+     8.4.  Service Name and Port Number Revocation  . . . . . . . . . 22
+     8.5.  Service Name and Port Number Transfers . . . . . . . . . . 22
+     8.6.  Maintenance Issues . . . . . . . . . . . . . . . . . . . . 23
+     8.7.  Disagreements  . . . . . . . . . . . . . . . . . . . . . . 23
+   9.  Security Considerations  . . . . . . . . . . . . . . . . . . . 23
+   10. IANA Considerations  . . . . . . . . . . . . . . . . . . . . . 24
+     10.1. Service Name Consistency . . . . . . . . . . . . . . . . . 24
+     10.2. Port Numbers for SCTP and DCCP Experimentation . . . . . . 26
+     10.3. Updates to DCCP Registries . . . . . . . . . . . . . . . . 27
+   11. Contributors . . . . . . . . . . . . . . . . . . . . . . . . . 28
+   12. Acknowledgments  . . . . . . . . . . . . . . . . . . . . . . . 28
+   13. References . . . . . . . . . . . . . . . . . . . . . . . . . . 29
+     13.1. Normative References . . . . . . . . . . . . . . . . . . . 29
+     13.2. Informative References . . . . . . . . . . . . . . . . . . 30
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                 [Page 3]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+1.  Introduction
+
+   For many years, the assignment of new service names and port number
+   values for use with the Transmission Control Protocol (TCP) [RFC0793]
+   and the User Datagram Protocol (UDP) [RFC0768] has had less than
+   clear guidelines.  New transport protocols have been added -- the
+   Stream Control Transmission Protocol (SCTP) [RFC4960] and the
+   Datagram Congestion Control Protocol (DCCP) [RFC4342] -- and new
+   mechanisms like DNS SRV records [RFC2782] have been developed, each
+   with separate registries and separate guidelines.  The community also
+   recognized the need for additional procedures beyond just assignment;
+   notably modification, revocation, and release.
+
+   A key element of the procedural streamlining specified in this
+   document is to establish identical assignment procedures for all IETF
+   transport protocols.  This document brings the IANA procedures for
+   TCP and UDP in line with those for SCTP and DCCP, resulting in a
+   single process that requesters and IANA follow for all requests for
+   all transport protocols, including future protocols not yet defined.
+
+   In addition to detailing the IANA procedures for the initial
+   assignment of service names and port numbers, this document also
+   specifies post-assignment procedures that until now have been handled
+   in an ad hoc manner.  These include procedures to de-assign a port
+   number that is no longer in use, to take a port number assigned for
+   one service that is no longer in use and reuse it for another
+   service, and the procedure by which IANA can unilaterally revoke a
+   prior port number assignment.  Section 8 discusses the specifics of
+   these procedures and processes that requesters and IANA follow for
+   all requests for all current and future transport protocols.
+
+   IANA is the authority for assigning service names and port numbers.
+   The registries that are created to store these assignments are
+   maintained by IANA.  For protocols developed by IETF working groups,
+   IANA now also offers a method for the "early assignment" [RFC4020] of
+   service names and port numbers, as described in Section 8.1.
+
+   This document updates IANA's procedures for UDP and TCP port numbers
+   by obsoleting Sections 8 and 9.1 of the IANA Allocation Guidelines
+   [RFC2780].  (Note that other sections of the IANA Allocation
+   Guidelines, relating to the protocol field values in IPv4 headers,
+   were also updated in February 2008 [RFC5237].)  This document also
+   updates the IANA assignment procedures for DCCP [RFC4340] [RFC5595]
+   and SCTP [RFC4960].
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                 [Page 4]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+   The Lightweight User Datagram Protocol (UDP-Lite) shares the port
+   space with UDP.  The UDP-Lite specification [RFC3828] says: "UDP-Lite
+   uses the same set of port number values assigned by the IANA for use
+   by UDP".  An update of the UDP procedures therefore also results in a
+   corresponding update of the UDP-Lite procedures.
+
+   This document also clarifies what a service name is and how it is
+   assigned.  This will impact the DNS SRV specification [RFC2782],
+   because that specification merely makes a brief mention that the
+   symbolic names of services are defined in "Assigned Numbers"
+   [RFC1700], without stating to which section it refers within that
+   230-page document.  The DNS SRV specification may have been referring
+   to the list of Port Assignments (known as /etc/services on Unix), or
+   to the "Protocol And Service Names" section, or to both, or to some
+   other section.  Furthermore, "Assigned Numbers" [RFC1700] has been
+   obsoleted [RFC3232] and has been replaced by on-line registries
+   [PORTREG] [PROTSERVREG].
+
+   The development of new transport protocols is a major effort that the
+   IETF does not undertake very often.  If a new transport protocol is
+   standardized in the future, it is expected to follow these guidelines
+   and practices around using service names and port numbers as much as
+   possible, for consistency.
+
+   At the time of writing of this document, the internal procedures of
+   "Expert Review" teams, including that of IANA's port review team, are
+   not documented in any RFC and this document doesn't change that.
+
+2.  Motivation
+
+   Information about the assignment procedures for the port registry has
+   existed in three locations: the forms for requesting port number
+   assignments on the IANA web site [SYSFORM] [USRFORM], an introductory
+   text section in the file listing the port number assignments
+   themselves (known as the port numbers registry) [PORTREG], and two
+   brief sections of the IANA Allocation Guidelines [RFC2780].
+
+   Similarly, the procedures surrounding service names have been
+   historically unclear.  Service names were originally created as
+   mnemonic identifiers for port numbers without a well-defined syntax,
+   apart from the 14-character limit mentioned on the IANA website
+   [SYSFORM] [USRFORM].  Even that length limit has not been
+   consistently applied, and some assigned service names are 15
+   characters long.  When service identification via DNS SRV Resource
+   Records (RRs) was introduced [RFC2782], it became useful to start
+   assigning service names alone, and because IANA had no procedure for
+   assigning a service name without an associated port number, this led
+
+
+
+
+Cotton, et al.            Best Current Practice                 [Page 5]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+   to the creation of an informal temporary service name registry
+   outside of the control of IANA, which now contains roughly 500
+   service names [SRVREG].
+
+   This document aggregates all this scattered information into a single
+   reference that aligns and clearly defines the management procedures
+   for both service names and port numbers.  It gives more detailed
+   guidance to prospective requesters of service names and ports than
+   the existing documentation, and it streamlines the IANA procedures
+   for the management of the registry, so that requests can be completed
+   in a timely manner.
+
+   This document defines rules for assignment of service names without
+   associated port numbers, for such usages as DNS SRV records
+   [RFC2782], which was not possible under the previous IANA procedures.
+   The document also merges service name assignments from the non-IANA
+   ad hoc registry [SRVREG] and from the IANA Protocol and Service Names
+   registry [PROTSERVREG] into the IANA Service Name and Transport
+   Protocol Port Number registry [PORTREG], which from here on is the
+   single authoritative registry for service names and port numbers.
+
+   An additional purpose of this document is to describe the principles
+   that guide the IETF and IANA in their role as the long-term joint
+   stewards of the service name and port number registry.  TCP and UDP
+   have had remarkable success over the last decades.  Thousands of
+   applications and application-level protocols have service names and
+   port numbers assigned for their use, and there is every reason to
+   believe that this trend will continue into the future.  It is hence
+   extremely important that management of the registry follow principles
+   that ensure its long-term usefulness as a shared resource.  Section 7
+   discusses these principles in detail.
+
+3.  Background
+
+   The Transmission Control Protocol (TCP) [RFC0793] and the User
+   Datagram Protocol (UDP) [RFC0768] have enjoyed a remarkable success
+   over the decades as the two most widely used transport protocols on
+   the Internet.  They have relied on the concept of "ports" as logical
+   entities for Internet communication.  Ports serve two purposes:
+   first, they provide a demultiplexing identifier to differentiate
+   transport sessions between the same pair of endpoints, and second,
+   they may also identify the application protocol and associated
+   service to which processes connect.  Newer transport protocols, such
+   as the Stream Control Transmission Protocol (SCTP) [RFC4960] and the
+   Datagram Congestion Control Protocol (DCCP) [RFC4342], have also
+   adopted the concept of ports for their communication sessions and use
+   16-bit port numbers in the same way as TCP and UDP (and UDP-Lite
+   [RFC3828], a variant of UDP).
+
+
+
+Cotton, et al.            Best Current Practice                 [Page 6]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+   Port numbers are the original and most widely used means for
+   application and service identification on the Internet.  Ports are
+   16-bit numbers, and the combination of source and destination port
+   numbers together with the IP addresses of the communicating end
+   systems uniquely identifies a session of a given transport protocol.
+   Port numbers are also known by their associated service names such as
+   "telnet" for port number 23 and "http" (as well as "www" and
+   "www-http") for port number 80.
+
+   All involved parties -- hosts running services, hosts accessing
+   services on other hosts, and intermediate devices (such as firewalls
+   and NATs) that restrict services -- need to agree on which service
+   corresponds to a particular destination port.  Although this is
+   ultimately a local decision with meaning only between the endpoints
+   of a connection, it is common for many services to have a default
+   port upon which those servers usually listen, when possible, and
+   these ports are recorded by the Internet Assigned Numbers Authority
+   (IANA) through the service name and port number registry [PORTREG].
+
+   Over time, the assumption that a particular port number necessarily
+   implies a particular service may become less true.  For example,
+   multiple instances of the same service on the same host cannot
+   generally listen on the same port, and multiple hosts behind the same
+   NAT gateway cannot all have a mapping for the same port on the
+   external side of the NAT gateway, whether using static port mappings
+   configured by hand by the user, or dynamic port mappings configured
+   automatically using a port mapping protocol like the NAT Port Mapping
+   Protocol [NAT-PMP] or Internet Gateway Device [IGD].
+
+   Applications may use port numbers directly, look up port numbers
+   based on service names via system calls such as getservbyname() on
+   UNIX, look up port numbers by performing queries for DNS SRV records
+   [RFC2782] [DNS-SD], or determine port numbers in a variety of other
+   ways like the TCP Port Service Multiplexer (TCPMUX) [RFC1078].
+
+   Designers of applications and application-level protocols may apply
+   to IANA for an assigned service name and port number for a specific
+   application, and may -- after assignment -- assume that no other
+   application will use that service name or port number for its
+   communication sessions.  Application designers also have the option
+   of requesting only an assigned service name without a corresponding
+   fixed port number if their application does not require one, such as
+   applications that use DNS SRV records to look up port numbers
+   dynamically at run-time.  Because the port number space is finite
+   (and therefore conservation is an important goal), the alternative of
+   using service names instead of port numbers is RECOMMENDED whenever
+   possible.
+
+
+
+
+Cotton, et al.            Best Current Practice                 [Page 7]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+4.  Conventions Used in This Document
+
+   The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+   "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+   "OPTIONAL" in this document are to be interpreted as described in
+   "Key words for use in RFCs to Indicate Requirement Levels" [RFC2119].
+
+   This document uses the term "assignment" to refer to the procedure by
+   which IANA provides service names and/or port numbers to requesting
+   parties; other RFCs refer to this as "allocation" or "registration".
+   This document assumes that all these terms have the same meaning, and
+   will use terms other than "assignment" only when quoting from or
+   referring to text in these other documents.
+
+5.  Service Names
+
+   Service names are the unique key in the Service Name and Transport
+   Protocol Port Number registry.  This unique symbolic name for a
+   service may also be used for other purposes, such as in DNS SRV
+   records [RFC2782].  Within the registry, this unique key ensures that
+   different services can be unambiguously distinguished, thus
+   preventing name collisions and avoiding confusion about who is the
+   Assignee for a particular entry.
+
+   There may be more than one service name associated with a particular
+   transport protocol and port.  There are three ways that such port
+   number overloading can occur:
+
+   o  Overloading occurs when one service is an extension of another
+      service, and an in-band mechanism exists for determining if the
+      extension is present or not.  One example is port 3478, which has
+      the service name aliases "stun" and "turn".  Traversal Using
+      Relays around NAT (TURN) [RFC5766] is an extension to the Session
+      Traversal Utilities for NAT (STUN) [RFC5389] service.  TURN-
+      enabled clients wishing to locate TURN servers could attempt to
+      discover "stun" services and then check in-band if the server also
+      supports TURN, but this would be inefficient.  Enabling them to
+      directly query for "turn" servers by name is a better approach.
+      (Note that TURN servers in this case should also be locatable via
+      a "stun" discovery, because every TURN server is also a STUN
+      server.)
+
+   o  By historical accident, the service name "http" has two synonyms
+      "www" and "www-http".  When used in SRV records [RFC2782] and
+      similar service discovery mechanisms, only the service name "http"
+      should be used, not these additional names.  If a server were to
+      advertise "www", it would not be discovered by clients browsing
+      for "http".  Advertising or browsing for the aliases as well as
+
+
+
+Cotton, et al.            Best Current Practice                 [Page 8]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+      the primary service name is inefficient, and achieves nothing that
+      is not already achieved by using the service name "http"
+      exclusively.
+
+   o  As indicated in this document in Section 10.1, overloading has
+      been used to create replacement names that are consistent with the
+      syntax this document prescribes for legacy names that do not
+      conform to this syntax already.  For such cases, only the new name
+      should be used in SRV records, to avoid the same issues as with
+      historical cases of multiple names, and also because the legacy
+      names are incompatible with SRV record use.
+
+   Assignment requests for new names for existing registered services
+   will be rejected, as a result.  Implementers are requested to inform
+   IANA if they discover other cases where a single service has multiple
+   names, so that one name may be recorded as the primary name for
+   service discovery purposes.
+
+   Service names are assigned on a "first come, first served" basis, as
+   described in Section 8.1.  Names should be brief and informative,
+   avoiding words or abbreviations that are redundant in the context of
+   the registry (e.g., "port", "service", "protocol", etc.)  Names
+   referring to discovery services, e.g., using multicast or broadcast
+   to identify endpoints capable of a given service, SHOULD use an
+   easily identifiable suffix (e.g., "-disc").
+
+5.1.  Service Name Syntax
+
+   Valid service names are hereby normatively defined as follows:
+
+   o  MUST be at least 1 character and no more than 15 characters long
+
+   o  MUST contain only US-ASCII [ANSI.X3.4-1986] letters 'A' - 'Z' and
+      'a' - 'z', digits '0' - '9', and hyphens ('-', ASCII 0x2D or
+      decimal 45)
+
+   o  MUST contain at least one letter ('A' - 'Z' or 'a' - 'z')
+
+   o  MUST NOT begin or end with a hyphen
+
+   o  hyphens MUST NOT be adjacent to other hyphens
+
+   The reason for requiring at least one letter is to avoid service
+   names like "23" (could be confused with a numeric port) or "6000-
+   6063" (could be confused with a numeric port range).  Although
+   service names may contain both upper-case and lower-case letters,
+   case is ignored for comparison purposes, so both "http" and "HTTP"
+   denote the same service.
+
+
+
+Cotton, et al.            Best Current Practice                 [Page 9]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+   Service names are purely opaque identifiers, and no semantics are
+   implied by any superficial structure that a given service name may
+   appear to have.  For example, a company called "Example" may choose
+   to register service names "Example-Foo" and "Example-Bar" for its
+   "Foo" and "Bar" products, but the "Example" company cannot claim to
+   "own" all service names beginning with "Example-"; they cannot
+   prevent someone else from registering "Example-Baz" for a different
+   service, and they cannot prevent other developers from using the
+   "Example-Foo" and "Example-Bar" service types in order to
+   interoperate with the "Foo" and "Bar" products.  Technically
+   speaking, in service discovery protocols, service names are merely a
+   series of byte values on the wire; for the mnemonic convenience of
+   human developers, it can be convenient to interpret those byte values
+   as human-readable ASCII characters, but software should treat them as
+   purely opaque identifiers and not attempt to parse them for any
+   additional embedded meaning.
+
+   As of August 5, 2009, approximately 98% of the so-called "Short
+   Names" [SYSFORM] [USRFORM] for existing port number assignments
+   [PORTREG] already met the rules for legal service names stated in
+   Section 8.1, and hence for these services their service name is
+   exactly the same as their historical "Short Name".  In approximately
+   2% of cases, the new "service name" is derived based on the old
+   "Short Name" as described below in Section 10.1.
+
+   The rules for valid service names, excepting the limit of 15
+   characters maximum, are also expressed below (as a non-normative
+   convenience) using ABNF [RFC5234].
+
+      SRVNAME = *(1*DIGIT [HYPHEN]) ALPHA *([HYPHEN] ALNUM)
+      ALNUM   = ALPHA / DIGIT     ; A-Z, a-z, 0-9
+      HYPHEN  = %x2D              ; "-"
+      ALPHA   = %x41-5A / %x61-7A ; A-Z / a-z [RFC5234]
+      DIGIT   = %x30-39           ; 0-9       [RFC5234]
+
+5.2.  Service Name Usage in DNS SRV Records
+
+   The DNS SRV specification [RFC2782] states that the Service Label
+   part of the owner name of a DNS SRV record includes a "Service"
+   element, described as "the symbolic name of the desired service", but
+   as discussed above, it is not clear precisely what this means.
+
+   This document clarifies that the Service Label MUST be a service name
+   as defined herein with an underscore prepended.  The service name
+   SHOULD be registered with IANA and recorded in the Service Name and
+   Transport Protocol Port Number registry [PORTREG].
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 10]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+   The details of using Service Names in SRV Service Labels are
+   specified in the DNS SRV specification [RFC2782].
+
+6.  Port Number Ranges
+
+   TCP, UDP, UDP-Lite, SCTP, and DCCP use 16-bit namespaces for their
+   port number registries.  The port registries for all of these
+   transport protocols are subdivided into three ranges of numbers
+   [RFC1340], and Section 8.1.2 describes the IANA procedures for each
+   range in detail:
+
+   o  the System Ports, also known as the Well Known Ports, from 0-1023
+      (assigned by IANA)
+
+   o  the User Ports, also known as the Registered Ports, from 1024-
+      49151 (assigned by IANA)
+
+   o  the Dynamic Ports, also known as the Private or Ephemeral Ports,
+      from 49152-65535 (never assigned)
+
+   Of the assignable port ranges (System Ports and User Ports, i.e.,
+   port numbers 0-49151), individual port numbers are in one of three
+   states at any given time:
+
+   o  Assigned: Assigned port numbers are currently assigned to the
+      service indicated in the registry.
+
+   o  Unassigned: Unassigned port numbers are currently available for
+      assignment upon request, as per the procedures outlined in this
+      document.
+
+   o  Reserved: Reserved port numbers are not available for regular
+      assignment; they are "assigned to IANA" for special purposes.
+      Reserved port numbers include values at the edges of each range,
+      e.g., 0, 1023, 1024, etc., which may be used to extend these
+      ranges or the overall port number space in the future.
+
+   In order to keep the size of the registry manageable, IANA typically
+   only records the Assigned and Reserved service names and port numbers
+   in the registry.  Unassigned values are typically not explicitly
+   listed.  (There are very many Unassigned service names and
+   enumerating them all would not be practical.)
+
+   As a data point, when this document was written, approximately 76% of
+   the TCP and UDP System Ports were assigned, and approximately 9% of
+   the User Ports were assigned.  (As noted, Dynamic Ports are never
+   assigned.)
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 11]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+6.1.  Service Names and Port Numbers for Experimentation
+
+   Of the System Ports, two TCP and UDP port numbers (1021 and 1022),
+   together with their respective service names ("exp1" and "exp2"),
+   have been assigned for experimentation with new applications and
+   application-layer protocols that require a port number in the
+   assigned ports range [RFC4727].
+
+   Please refer to Sections 1 and 1.1 of "Assigning Experimental and
+   Testing Numbers Considered Useful" [RFC3692] for how these
+   experimental port numbers are to be used.
+
+   This document assigns the same two service names and port numbers for
+   experimentation with new application-layer protocols over SCTP and
+   DCCP in Section 10.2.
+
+   Unfortunately, it can be difficult to limit access to these ports.
+   Users SHOULD take measures to ensure that experimental ports are
+   connecting to the intended process.  For example, users of these
+   experimental ports might include a 64-bit nonce, once on each segment
+   of a message-oriented channel (e.g., UDP), or once at the beginning
+   of a byte-stream (e.g., TCP), which is used to confirm that the port
+   is being used as intended.  Such confirmation of intended use is
+   especially important when these ports are associated with privileged
+   (e.g., system or administrator) processes.
+
+7.  Principles for Service Name and Transport Protocol Port Number
+    Registry Management
+
+   Management procedures for the Service Name and Transport Protocol
+   Port Number registry include assignment of service names and port
+   numbers upon request, as well as management of information about
+   existing assignments.  The latter includes maintaining contact and
+   description information about assignments, revoking abandoned
+   assignments, and redefining assignments when needed.  Of these
+   procedures, careful port number assignment is most critical, in order
+   to continue to conserve the remaining port numbers.
+
+   As noted earlier, only about 9% of the User Port space is currently
+   assigned.  The current rate of assignment is approximately 400 ports
+   per year, and has remained steady for the past 8 years.  At that
+   rate, if similar conservation continues, this resource will sustain
+   another 85 years of assignment - without the need to resort to
+   reassignment of released values or revocation.  The namespace
+   available for service names is much larger, which allows for simpler
+   management procedures.
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 12]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+7.1.  Past Principles
+
+   The principles for service name and port number management are based
+   on the recommendations of the IANA "Expert Review" team.  Until
+   recently, that team followed a set of informal guidelines developed
+   based on the review experience from previous assignment requests.
+   These original guidelines, although informal, had never been publicly
+   documented.  They are recorded here for historical purposes only; the
+   current guidelines are described in Section 7.2.  These guidelines
+   previously were:
+
+   o  TCP and UDP ports were simultaneously assigned when either was
+      requested
+
+   o  Port numbers were the primary assignment; service names were
+      informative only, and did not have a well-defined syntax
+
+   o  Port numbers were conserved informally, and sometimes
+      inconsistently (e.g., some services were assigned ranges of many
+      port numbers even where not strictly necessary)
+
+   o  SCTP and DCCP service name and port number registries were managed
+      separately from the TCP/UDP registries
+
+   o  Service names could not be assigned in the old ports registry
+      without assigning an associated port number at the same time
+
+7.2.  Updated Principles
+
+   This section summarizes the current principles by which IANA both
+   handles the Service Name and Transport Protocol Port Number registry
+   and attempts to conserve the port number space.  This description is
+   intended to inform applicants requesting service names and port
+   numbers.  IANA has flexibility beyond these principles when handling
+   assignment requests; other factors may come into play, and exceptions
+   may be made to best serve the needs of the Internet.  Applicants
+   should be aware that IANA decisions are not required to be bound to
+   these principles.  These principles and general advice to users on
+   port use are expected to change over time.
+
+   IANA strives to assign service names that do not request an
+   associated port number assignment under a simple "First Come First
+   Served" policy [RFC5226].  IANA MAY, at its discretion, refer service
+   name requests to "Expert Review" in cases of mass assignment requests
+   or other situations where IANA believes "Expert Review" is advisable
+   [RFC5226]; use of the "Expert Review" helps advise IANA informally in
+   cases where "IETF Review" or "IESG Approval" is used, as with most
+   IETF protocols.
+
+
+
+Cotton, et al.            Best Current Practice                [Page 13]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+   The basic principle of service name and port number registry
+   management is to conserve use of the port space where possible.
+   Extensions to support larger port number spaces would require
+   changing many core protocols of the current Internet in a way that
+   would not be backward compatible and interfere with both current and
+   legacy applications.
+
+   Conservation of the port number space is required because this space
+   is a limited resource, so applications are expected to participate in
+   the traffic demultiplexing process where feasible.  The port numbers
+   are expected to encode as little information as possible that will
+   still enable an application to perform further demultiplexing by
+   itself.  In particular, the principles form a goal that IANA strives
+   to achieve for new applications (with exceptions as deemed
+   appropriate, especially as for extensions to legacy services) as
+   follows:
+
+   o  IANA strives to assign only one assigned port number per service
+      or application.
+
+      Note: At the time of writing of this document, there is no IETF
+      consensus on when it is appropriate to use a second port for an
+      insecure version of a protocol.
+
+   o  IANA strives to assign only one assigned port number for all
+      variants of a service (e.g., for updated versions of a service).
+
+   o  IANA strives to encourage the deployment of secure protocols.
+
+   o  IANA strives to assign only one assigned port number for all
+      different types of devices using or participating in the same
+      service.
+
+   o  IANA strives to assign port numbers only for the transport
+      protocol(s) explicitly named in an assignment request.
+
+   o  IANA may recover unused port numbers, via the new procedures of
+      de-assignment, revocation, and transfer.
+
+   Where possible, a given service is expected to demultiplex messages
+   if necessary.  For example, applications and protocols are expected
+   to include in-band version information, so that future versions of
+   the application or protocol can share the same assigned port.
+   Applications and protocols are also expected to be able to
+   efficiently use a single assigned port for multiple sessions, either
+   by demultiplexing multiple streams within one port or by using the
+   assigned port to coordinate using dynamic ports for subsequent
+   exchanges (e.g., in the spirit of FTP [RFC0959]).
+
+
+
+Cotton, et al.            Best Current Practice                [Page 14]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+   Ports are used in various ways, notably:
+
+   o  as endpoint process identifiers
+
+   o  as application protocol identifiers
+
+   o  for firewall-filtering purposes
+
+   Both the process-identifier and the protocol-identifier uses suggest
+   that anything a single process can demultiplex, or that can be
+   encoded into a single protocol, should be.  The firewall-filtering
+   use suggests that some uses that could be multiplexed or encoded
+   could instead be separated to allow for easier firewall management.
+   Note that this latter use is much less sound, because port numbers
+   have meaning only for the two endpoints involved in a connection, and
+   drawing conclusions about the service that generated a given flow
+   based on observed port numbers is not always reliable.
+
+   Effective with the publication of this document, IANA will begin
+   assigning port numbers for only those transport protocols explicitly
+   included in an assignment request.  This ends the long-standing
+   practice of automatically assigning a port number to an application
+   for both TCP and UDP, even if the request is for only one of these
+   transport protocols.  The new assignment procedure conserves
+   resources by assigning a port number to an application for only those
+   transport protocols (TCP, UDP, SCTP, and/or DCCP) it actually uses.
+   The port number will be marked as Reserved -- instead of Assigned --
+   in the port number registries of the other transport protocols.  When
+   applications start supporting the use of some of those additional
+   transport protocols, the Assignee for the assignment MUST request
+   that IANA convert these reserved ports into assignments.  An
+   application MUST NOT assume that it can use a port number assigned to
+   it for use with one transport protocol with another transport
+   protocol without IANA converting the reservation into an assignment.
+
+   When the available pool of unassigned numbers has run out in a port
+   range, it will be necessary for IANA to consider the Reserved ports
+   for assignment.  This is part of the motivation for not automatically
+   assigning ports for transport protocols other than the requested
+   one(s).  This will allow more ports to be available for assignment at
+   that point.  To help conserve ports, application developers SHOULD
+   request assignment of only those transport protocols that their
+   application currently uses.
+
+   Conservation of port numbers is improved by procedures that allow
+   previously assigned port numbers to become Unassigned, either through
+   de-assignment or through revocation, and by a procedure that lets
+   application designers transfer an assigned but unused port number to
+
+
+
+Cotton, et al.            Best Current Practice                [Page 15]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+   a new application.  Section 8 describes these procedures, which until
+   now were undocumented.  Port number conservation is also improved by
+   recommending that applications that do not require an assigned port
+   should register only a service name without an associated port
+   number.
+
+8.  IANA Procedures for Managing the Service Name and Transport Protocol
+    Port Number Registry
+
+   This section describes the process for handling requests associated
+   with IANA's management of the Service Name and Transport Protocol
+   Port Number registry.  Such requests include initial assignment, de-
+   assignment, reuse, and updates to the contact information or
+   description associated with an assignment.  Revocation is an
+   additional process, initiated by IANA.
+
+8.1.  Service Name and Port Number Assignment
+
+   Assignment refers to the process of providing service names or port
+   numbers to applicants.  All such assignments are made from service
+   names or port numbers that are Unassigned or Reserved at the time of
+   the assignment.
+
+   o  Unassigned names and numbers are assigned according to the rules
+      described in Section 8.1.2 below.
+
+   o  Reserved numbers and names are generally only assigned by a
+      "Standards Action" or "IESG Approval", and MUST be accompanied by
+      a statement explaining the reason a Reserved number or name is
+      appropriate for this action.  The only exception to this rule is
+      that the current Assignee of a port number MAY request the
+      assignment of the corresponding Reserved port number for other
+      transport protocols when needed.  IANA will initiate an "Expert
+      Review" [RFC5226] for such requests.
+
+   When an assignment for one or more transport protocols is approved,
+   the port number for any non-requested transport protocol(s) will be
+   marked as Reserved.  IANA SHOULD NOT assign that port number to any
+   other application or service until no other port numbers remain
+   Unassigned in the requested range.  It is anticipated that at such
+   time a new document will be published specifying IANA procedures for
+   assignment of such ports.
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 16]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+8.1.1.  General Assignment Procedure
+
+   A service name or port number assignment request contains the
+   following information.  The service name is the unique identifier of
+   a given service:
+
+      Service Name (REQUIRED)
+      Transport Protocol(s) (REQUIRED)
+      Assignee (REQUIRED)
+      Contact (REQUIRED)
+      Description (REQUIRED)
+      Reference (REQUIRED)
+      Port Number (OPTIONAL)
+      Service Code (REQUIRED for DCCP only)
+      Known Unauthorized Uses (OPTIONAL)
+      Assignment Notes (OPTIONAL)
+
+   o  Service Name: A desired unique service name for the service
+      associated with the assignment request MUST be provided.  This
+      name may be used with various service selection and discovery
+      mechanisms (including, but not limited to, DNS SRV records
+      [RFC2782]).  The name MUST be compliant with the syntax defined in
+      Section 5.1.  In order to be unique, they MUST NOT be identical to
+      any currently assigned service name in the IANA registry
+      [PORTREG].  Service names are case-insensitive; they may be
+      provided and entered into the registry with mixed case for
+      clarity, but case is ignored otherwise.
+
+   o  Transport Protocol(s): The transport protocol(s) for which an
+      assignment is requested MUST be provided.  This field is currently
+      limited to one or more of TCP, UDP, SCTP, and DCCP.  Requests
+      without any port assignment and only a service name are still
+      required to indicate which protocol the service uses.
+
+   o  Assignee: Name and email address of the party to whom the
+      assignment is made.  This is REQUIRED.  The Assignee is the
+      organization, company or individual person responsible for the
+      initial assignment.  For assignments done through RFCs published
+      via the "IETF Document Stream" [RFC4844], the Assignee will be the
+      IESG <iesg@ietf.org>.
+
+   o  Contact: Name and email address of the Contact person for the
+      assignment.  This is REQUIRED.  The Contact person is the
+      responsible person for the Internet community to send questions
+      to.  This person is also authorized to submit changes on behalf of
+      the Assignee; in cases of conflict between the Assignee and the
+      Contact, the Assignee decisions take precedence.  Additional
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 17]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+      address information MAY be provided.  For assignments done through
+      RFCs published via the "IETF Document Stream" [RFC4844], the
+      Contact will be the IETF Chair <chair@ietf.org>.
+
+   o  Description: A short description of the service associated with
+      the assignment request is REQUIRED.  It should avoid all but the
+      most well-known acronyms.
+
+   o  Reference: A description of (or a reference to a document
+      describing) the protocol or application using this port.  This is
+      REQUIRED.  The description must state whether the protocol uses
+      IP-layer broadcast, multicast, or anycast communication.
+
+      For assignments requesting only a Service Name, or a Service Name
+      and User Port, a statement that the protocol is proprietary and
+      not publicly documented is also acceptable, provided that the
+      required information regarding the use of IP broadcast, multicast,
+      or anycast is given.
+
+      For any assignment request that includes a User Port, the
+      assignment request MUST explain why a port number in the Dynamic
+      Ports range (discovered by clients dynamically at run-time) is
+      unsuitable for the given application.
+
+      For any assignment request that includes a System Port, the
+      assignment request MUST explain why a port number in the User
+      Ports or Dynamic Ports ranges is unsuitable, and a reference to a
+      stable protocol specification document MUST be provided.
+
+      IANA MAY accept early assignment [RFC4020] requests (known as
+      "early allocation" therein) from IETF working groups that
+      reference a sufficiently stable Internet-Draft instead of a
+      published Standards-Track RFC.
+
+   o  Port Number: If assignment of a port number is desired, either the
+      port number the requester suggests for assignment or indication of
+      port range (user or system) MUST be provided.  If only a service
+      name is to be assigned, this field is left empty.  If a specific
+      port number is requested, IANA is encouraged to assign the
+      requested number.  If a range is specified, IANA will choose a
+      suitable number from the User or System Ports ranges.  Note that
+      the applicant MUST NOT use the requested port in implementations
+      deployed for use on the public Internet prior to the completion of
+      the assignment, because there is no guarantee that IANA will
+      assign the requested port.
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 18]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+   o  Service Code: If the assignment request includes DCCP as a
+      transport protocol, then the request MUST include a desired unique
+      DCCP service code [RFC5595], and MUST NOT include a requested DCCP
+      service code otherwise.  Section 19.8 of the DCCP specification
+      [RFC4340] defines requirements and rules for assignment, updated
+      by this document.  Note that, as per the DCCP Service Codes
+      document [RFC5595], some service codes are not assigned; zero
+      (absence of a meaningful service code) and 4294967295 (0xFFFFFFFF;
+      invalid service code) are permanently reserved, and the Private
+      service codes 1056964608-1073741823 (0x3F000000-0x3FFFFFFF; i.e.,
+      32-bit values with the high-order byte equal to a value of 63
+      (0x3F), corresponding to the ASCII character '?') are not
+      centrally assigned.
+
+   o  Known Unauthorized Uses: A list of uses by applications or
+      organizations who are not the Assignee.  This is OPTIONAL.  This
+      list may be augmented by IANA after assignment when unauthorized
+      uses are reported.
+
+   o  Assignment Notes: Indications of owner/name change, or any other
+      assignment process issue.  This is OPTIONAL.  This list may be
+      updated by IANA after assignment to help track changes to an
+      assignment, e.g., de-assignment, owner/name changes, etc.
+
+   If the assignment request is for the addition of a new transport
+   protocol to a previously assigned service name and the requester is
+   not the Assignee or Contact for the previously assigned service name,
+   IANA needs to confirm with the Assignee for the existing assignment
+   whether this addition is appropriate.
+
+   If the assignment request is for a new service name sharing the same
+   port as a previously assigned service name (see port number
+   overloading in Section 5), IANA needs to confirm with the Assignee
+   for the existing service name and other appropriate experts whether
+   the overloading is appropriate.
+
+   When IANA receives an assignment request -- containing the above
+   information -- that is requesting a port number, IANA SHALL initiate
+   an "Expert Review" [RFC5226] in order to determine whether an
+   assignment should be made.  For requests that are not seeking a port
+   number, IANA SHOULD assign the service name under a simple "First
+   Come First Served" policy [RFC5226].
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 19]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+8.1.2.  Variances for Specific Port Number Ranges
+
+   Section 6 describes the different port number ranges.  It is
+   important to note that IANA applies slightly different procedures
+   when managing the different port ranges of the service name and port
+   number registry:
+
+   o  Ports in the Dynamic Ports range (49152-65535) have been
+      specifically set aside for local and dynamic use and cannot be
+      assigned through IANA.  Application software may simply use any
+      dynamic port that is available on the local host, without any sort
+      of assignment.  On the other hand, application software MUST NOT
+      assume that a specific port number in the Dynamic Ports range will
+      always be available for communication at all times, and a port
+      number in that range hence MUST NOT be used as a service
+      identifier.
+
+   o  Ports in the User Ports range (1024-49151) are available for
+      assignment through IANA, and MAY be used as service identifiers
+      upon successful assignment.  Because assigning a port number for a
+      specific application consumes a fraction of the shared resource
+      that is the port number registry, IANA will require the requester
+      to document the intended use of the port number.  For most IETF
+      protocols, ports in the User Ports range will be assigned under
+      the "IETF Review" or "IESG Approval" procedures [RFC5226] and no
+      further documentation is required.  Where these procedures do not
+      apply, then the requester must input the documentation to the
+      "Expert Review" procedure [RFC5226], by which IANA will have a
+      technical expert review the request to determine whether to grant
+      the assignment.  Regardless of the path ("IETF Review", "IESG
+      Approval", or "Expert Review"), the submitted documentation is
+      expected to be the same, as described in this section, and MUST
+      explain why using a port number in the Dynamic Ports range is
+      unsuitable for the given application.  Further, IANA MAY utilize
+      the "Expert Review" process informally to inform their position in
+      participating in "IETF Review" and "IESG Approval".
+
+   o  Ports in the System Ports range (0-1023) are also available for
+      assignment through IANA.  Because the System Ports range is both
+      the smallest and the most densely assigned, the requirements for
+      new assignments are more strict than those for the User Ports
+      range, and will only be granted under the "IETF Review" or "IESG
+      Approval" procedures [RFC5226].  A request for a System Port
+      number MUST document *both* why using a port number from the
+      Dynamic Ports range is unsuitable *and* why using a port number
+      from the User Ports range is unsuitable for that application.
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 20]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+8.2.  Service Name and Port Number De-Assignment
+
+   The Assignee of a granted port number assignment can return the port
+   number to IANA at any time if they no longer have a need for it.  The
+   port number will be de-assigned and will be marked as Reserved.  IANA
+   should not reassign port numbers that have been de-assigned until all
+   unassigned port numbers in the specific range have been assigned.
+
+   Before proceeding with a port number de-assignment, IANA needs to
+   reasonably establish that the value is actually no longer in use.
+
+   Because there is much less danger of exhausting the service name
+   space compared to the port number space, it is RECOMMENDED that a
+   given service name remain assigned even after all associated port
+   number assignments have become de-assigned.  Under this policy, it
+   will appear in the registry as if it had been created through a
+   service name assignment request that did not include any port
+   numbers.
+
+   On rare occasions, it may still be useful to de-assign a service
+   name.  In such cases, IANA will mark the service name as Reserved.
+   IANA will involve their IESG-appointed expert in such cases.
+
+   IANA will include a comment in the registry when de-assignment
+   happens to indicate its historic usage.
+
+8.3.  Service Name and Port Number Reuse
+
+   If the Assignee of a granted port number assignment no longer has a
+   need for the assigned number, but would like to reuse it for a
+   different application, they can submit a request to IANA to do so.
+
+   Logically, port number reuse is to be thought of as a de-assignment
+   (Section 8.2) followed by an immediate (re-)assignment (Section 8.1)
+   of the same port number for a new application.  Consequently, the
+   information that needs to be provided about the proposed new use of
+   the port number is identical to what would need to be provided for a
+   new port number assignment for the specific ports range.
+
+   Because there is much less danger of exhausting the service name
+   space compared to the port number space, it is RECOMMENDED that the
+   original service name associated with the prior use of the port
+   number remains assigned, and a new service name be created and
+   associated with the port number.  This is again consistent with
+   viewing a reuse request as a de-assignment followed by an immediate
+   (re-)assignment.  Reusing an assigned service name for a different
+   application is NOT RECOMMENDED.
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 21]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+   IANA needs to carefully review such requests before approving them.
+   In some instances, the Expert Reviewer will determine that the
+   application the port number was assigned to has found usage beyond
+   the original Assignee, or that there is a concern that it may have
+   such users.  This determination MUST be made quickly.  A community
+   call concerning revocation of a port number (see below) MAY be
+   considered, if a broader use of the port number is suspected.
+
+8.4.  Service Name and Port Number Revocation
+
+   A port number revocation can be thought of as an IANA-initiated de-
+   assignment (Section 8.2), and has exactly the same effect on the
+   registry.
+
+   Sometimes, it will be clear that a specific port number is no longer
+   in use and that IANA can revoke it and mark it as Reserved.  At other
+   times, it may be unclear whether a given assigned port number is
+   still in use somewhere in the Internet.  In those cases, IANA must
+   carefully consider the consequences of revoking the port number, and
+   SHOULD only do so if there is an overwhelming need.
+
+   With the help of their IESG-appointed Expert Reviewer, IANA SHALL
+   formulate a request to the IESG to issue a four-week community call
+   concerning the pending port number revocation.  The IESG and IANA,
+   with the Expert Reviewer's support, SHALL determine promptly after
+   the end of the community call whether revocation should proceed, and
+   then communicate their decision to the community.  This procedure
+   typically involves similar steps to de-assignment except that it is
+   initiated by IANA.
+
+   Because there is much less danger of exhausting the service name
+   space compared to the port number space, revoking service names is
+   NOT RECOMMENDED.
+
+8.5.  Service Name and Port Number Transfers
+
+   The value of service names and port numbers is defined by their
+   careful management as a shared Internet resource, whereas enabling
+   transfer allows the potential for associated monetary exchanges.  As
+   a result, the IETF does not permit service name or port number
+   assignments to be transferred between parties, even when they are
+   mutually consenting.
+
+   The appropriate alternate procedure is a coordinated de-assignment
+   and assignment: The new party requests the service name or port
+   number via an assignment and the previous party releases its
+   assignment via the de-assignment procedure outlined above.
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 22]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+   With the help of their IESG-appointed Expert Reviewer, IANA SHALL
+   carefully determine if there is a valid technical, operational, or
+   managerial reason to grant the requested new assignment.
+
+8.6.  Maintenance Issues
+
+   In addition to the formal procedures described above, updates to the
+   Description and Contact information are coordinated by IANA in an
+   informal manner, and may be initiated by either the Assignee or by
+   IANA, e.g., by the latter requesting an update to current Contact
+   information.  (Note that the Assignee cannot be changed as a separate
+   procedure; see instead Section 8.5 above.)
+
+8.7.  Disagreements
+
+   In the case of disagreements around any request, there is the
+   possibility of appeal following the normal appeals process for IANA
+   assignments as defined by Section 7 of "Guidelines for Writing an
+   IANA Considerations Section in RFCs" [RFC5226].
+
+9.  Security Considerations
+
+   The IANA guidelines described in this document do not change the
+   security properties of UDP, TCP, SCTP, or DCCP.
+
+   Assignment of a service name or port number does not in any way imply
+   an endorsement of an application or product, and the fact that
+   network traffic is flowing to or from an assigned port number does
+   not mean that it is "good" traffic, or even that it is used by the
+   assigned service.  Firewall and system administrators should choose
+   how to configure their systems based on their knowledge of the
+   traffic in question, not based on whether or not there is an assigned
+   service name or port number.
+
+   Services are expected to include support for security, either as
+   default or dynamically negotiated in-band.  The use of separate
+   service name or port number assignments for secure and insecure
+   variants of the same service is to be avoided in order to discourage
+   the deployment of insecure services.
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 23]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+10.  IANA Considerations
+
+   This document obsoletes Sections 8 and 9.1 of the March 2000 IANA
+   Allocation Guidelines [RFC2780].
+
+   Upon approval of this document for publication as an RFC, IANA worked
+   with Stuart Cheshire, maintainer of the independent service name
+   registry [SRVREG], to merge the contents of that private registry
+   into the official IANA registry.  The independent registry web page
+   has been updated with pointers to the IANA registry and to this RFC.
+
+   IANA created a new service name entry in the service name and port
+   number registry [PORTREG] for all entries in the Protocol and Service
+   Names registry [PROTSERVREG] that did not already have one assigned.
+
+   IANA also indicates in the Assignment Notes for "www" and "www-http"
+   that they are duplicate terms that refer to the "http" service, and
+   should not be used for discovery purposes.  For this conceptual
+   service (human-readable web pages served over HTTP), the correct
+   service name to use for service discovery purposes is "http" (see
+   Section 5).
+
+10.1.  Service Name Consistency
+
+   Section 8.1 defines which character strings are well-formed service
+   names, which until now had not been clearly defined.  The definition
+   in Section 8.1 was chosen to allow maximum compatibility of service
+   names with current and future service discovery mechanisms.
+
+   As of August 5, 2009, approximately 98% of the so-called "Short
+   Names" from existing port number assignments [PORTREG] met the rules
+   for legal service names stated in Section 8.1, and hence for these
+   services their service name is exactly the same as their "Short
+   Name".
+
+   The remaining approximately 2% of the existing "Short Names" are not
+   suitable to be used directly as well-formed service names because
+   they contain illegal characters such as asterisks, dots, pluses,
+   slashes, or underscores.  All existing "Short Names" conform to the
+   length requirement of 15 characters or fewer.  For these 96
+   unsuitable "Short Names", listed in the table below, the service name
+   is the Short Name with any illegal characters replaced by hyphens.
+   IANA added an entry to the registry that uses the new well-formed
+   primary service name for the existing service and that otherwise
+   duplicates the original assignment information.  In the description
+   field of this new entry giving the primary service name, IANA
+   recorded that it has assigned a well-formed service name for the
+   previous service and references the original assignment.  In the
+
+
+
+Cotton, et al.            Best Current Practice                [Page 24]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+   Assignment Notes field of the original assignment, IANA added a note
+   that this entry is an alias to the new well-formed service name, and
+   that the old service name is historic, not usable for use with many
+   common service discovery mechanisms.
+
+   96 names containing illegal characters to be replaced by hyphens:
+
+          +----------------+-----------------+-----------------+
+          | 914c/g         | acmaint_dbd     | acmaint_transd  |
+          | atex_elmd      | avanti_cdp      | badm_priv       |
+          | badm_pub       | bdir_priv       | bdir_pub        |
+          | bmc_ctd_ldap   | bmc_patroldb    | boks_clntd      |
+          | boks_servc     | boks_servm      | broker_service  |
+          | bues_service   | canit_store     | cedros_fds      |
+          | cl/1           | contamac_icm    | corel_vncadmin  |
+          | csc_proxy      | cvc_hostd       | dbcontrol_agent |
+          | dec_dlm        | dl_agent        | documentum_s    |
+          | dsmeter_iatc   | dsx_monitor     | elpro_tunnel    |
+          | elvin_client   | elvin_server    | encrypted_admin |
+          | erunbook_agent | erunbook_server | esri_sde        |
+          | EtherNet/IP-1  | EtherNet/IP-2   | event_listener  |
+          | flr_agent      | gds_db          | ibm_wrless_lan  |
+          | iceedcp_rx     | iceedcp_tx      | iclcnet_svinfo  |
+          | idig_mux       | ife_icorp       | instl_bootc     |
+          | instl_boots    | intel_rci       | interhdl_elmd   |
+          | lan900_remote  | LiebDevMgmt_A   | LiebDevMgmt_C   |
+          | LiebDevMgmt_DM | mapper-ws_ethd  | matrix_vnet     |
+          | mdbs_daemon    | menandmice_noh  | msl_lmd         |
+          | nburn_id       | ncr_ccl         | nds_sso         |
+          | netmap_lm      | nms_topo_serv   | notify_srvr     |
+          | novell-lu6.2   | nuts_bootp      | nuts_dem        |
+          | ocs_amu        | ocs_cmu         | pipe_server     |
+          | pra_elmd       | printer_agent   | redstorm_diag   |
+          | redstorm_find  | redstorm_info   | redstorm_join   |
+          | resource_mgr   | rmonitor_secure | rsvp_tunnel     |
+          | sai_sentlm     | sge_execd       | sge_qmaster     |
+          | shiva_confsrvr | sql*net         | srvc_registry   |
+          | stm_pproc      | subntbcst_tftp  | udt_os          |
+          | universe_suite | veritas_pbx     | vision_elmd     |
+          | vision_server  | wrs_registry    | z39.50          |
+          +----------------+-----------------+-----------------+
+
+   In addition to the 96 names listed above, the service name for
+   "whois++" is "whoispp", following the example set by the
+   "application/whoispp-query" MIME Content-Type [RFC2957].
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 25]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+   There were four names recorded in IANA's Port Number Registry
+   [PORTREG] that conflicted with names previously recorded in the ad
+   hoc SRV name registry [SRVREG]: esp, hydra, recipe, and xmp.
+
+   The name conflicts were resolved amicably:
+
+   The IANA Port Number Registry Short Name "esp" had been registered by
+   Andrew Chernow, and he informed the authors that the port was no
+   longer in use and the registration was no longer required.  The SRV
+   registry entry for "esp" remains in effect.
+
+   The SRV name "hydra" for SubEthaEdit had already been retired in
+   favor of the new SRV name "see".  The IANA Port Number Registry entry
+   for "hydra" remains in effect.
+
+   The SRV name "recipe" was in use in an open source project that had
+   not yet been packaged for distribution, and the registrant Daniel
+   Taylor was willing to change to a different service name.  Thanks to
+   Daniel Taylor for accommodating this change.  The IANA Port Number
+   Registry entry for "recipe" remains in effect.
+
+   The IANA Port Number Registry Short Name "xmp" had been registered by
+   Bobby Krupczak, but since his registration included an assigned port
+   number (which is still in use and remains unaffected by this change),
+   he was willing to switch to a different service name.  Thanks to
+   Bobby Krupczak for accommodating this change.  The SRV registry entry
+   for "xmp" remains in effect.
+
+10.2.  Port Numbers for SCTP and DCCP Experimentation
+
+   Two System UDP and TCP ports, 1021 and 1022, have been reserved for
+   experimental use [RFC4727].  This document assigns the same port
+   numbers for SCTP and DCCP, updates the TCP and UDP assignments, and
+   also instructs IANA to automatically assign these two port numbers
+   for any future transport protocol with a similar 16-bit port number
+   namespace.
+
+   Note that these port numbers are meant for temporary experimentation
+   and development in controlled environments.  Before using these port
+   numbers, carefully consider the advice in Section 6.1 in this
+   document, as well as in Sections 1 and 1.1 of "Assigning Experimental
+   and Testing Numbers Considered Useful" [RFC3692].  Most importantly,
+   application developers must request a permanent port number
+   assignment from IANA as described in Section 8.1 before any kind of
+   non-experimental deployment.
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 26]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+           +--------------------+-----------------------------+
+           | Service Name       | exp1                        |
+           | Transport Protocol | DCCP, SCTP, TCP, UDP        |
+           | Assignee           | IESG <iesg@ietf.org>        |
+           | Contact            | IETF Chair <chair@ietf.org> |
+           | Description        | RFC3692-style Experiment 1  |
+           | Reference          | [RFC4727] [RFC6335]         |
+           | Port Number        | 1021                        |
+           +--------------------+-----------------------------+
+
+           +--------------------+-----------------------------+
+           | Service Name       | exp2                        |
+           | Transport Protocol | DCCP, SCTP, TCP, UDP        |
+           | Assignee           | IESG <iesg@ietf.org>        |
+           | Contact            | IETF Chair <chair@ietf.org> |
+           | Description        | RFC3692-style Experiment 2  |
+           | Reference          | [RFC4727] [RFC6335]         |
+           | Port Number        | 1022                        |
+           +--------------------+-----------------------------+
+
+10.3.  Updates to DCCP Registries
+
+   This document updates the IANA assignment procedures for the DCCP
+   Port Number and DCCP Service Codes Registries [RFC4340].
+
+10.3.1.  DCCP Service Code Registry
+
+   Service codes are assigned on a "first come, first served" basis
+   according to Section 19.8 of the DCCP specification [RFC4340].  This
+   document updates that section by extending the guidelines given there
+   in the following ways:
+
+   o  IANA MAY assign new service codes without seeking "Expert Review"
+      using their discretion, but SHOULD seek "Expert Review" if a
+      request asks for more than five service codes.
+
+   o  IANA should feel free to contact the DCCP Expert Reviewer with any
+      questions related to requests for DCCP-related codepoints.
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 27]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+10.3.2.  DCCP Port Numbers Registry
+
+   The DCCP ports registry is defined by Section 19.9 of the DCCP
+   specification [RFC4340].  Assignments in this registry require prior
+   assignment of a service code.  Not all service codes require IANA-
+   assigned ports.  This document updates that section by extending the
+   guidelines given there in the following way:
+
+   o  IANA should normally assign a value in the range 1024-49151 to a
+      DCCP server port.  IANA requests to assign port numbers in the
+      System Ports range (0 through 1023) require an "IETF Review"
+      [RFC5226] prior to assignment by IANA [RFC4340].
+
+   o  IANA MUST NOT assign more than one DCCP server port to a single
+      service code value.
+
+   o  The assignment of multiple service codes to the same DCCP port is
+      allowed, but subject to "Expert Review".
+
+   o  The set of service code values associated with a DCCP server port
+      should be recorded in the service name and port number registry.
+
+   o  A request for additional service codes to be associated with an
+      already assigned port number requires "Expert Review".  These
+      requests will normally be accepted when they originate from the
+      contact associated with the port assignment.  In other cases,
+      these applications will be expected to use an unassigned port,
+      when this is available.
+
+   The DCCP specification [RFC4340] notes that a short port name MUST be
+   associated with each DCCP server port that has been assigned.  This
+   document clarifies that this short port name is the service name as
+   defined here, and this name MUST be unique.
+
+11.  Contributors
+
+   Alfred Hoenes (ah@tr-sys.de) and Allison Mankin (mankin@psg.com) have
+   contributed text and ideas to this document.
+
+12.  Acknowledgments
+
+   The text in Section 10.3 is based on a suggestion originally proposed
+   as a part of the DCCP Service Codes document [RFC5595] by Gorry
+   Fairhurst.
+
+   Lars Eggert is partly funded by the Trilogy Project [TRILOGY], a
+   research project supported by the European Commission under its
+   Seventh Framework Program.
+
+
+
+Cotton, et al.            Best Current Practice                [Page 28]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+13.  References
+
+13.1.  Normative References
+
+   [ANSI.X3.4-1986]  American National Standards Institute, "Coded
+                     Character Set - 7-bit American Standard Code for
+                     Information Interchange", ANSI X3.4, 1986.
+
+   [RFC0768]         Postel, J., "User Datagram Protocol", STD 6,
+                     RFC 768, August 1980.
+
+   [RFC0793]         Postel, J., "Transmission Control Protocol", STD 7,
+                     RFC 793, September 1981.
+
+   [RFC2119]         Bradner, S., "Key words for use in RFCs to Indicate
+                     Requirement Levels", BCP 14, RFC 2119, March 1997.
+
+   [RFC2780]         Bradner, S. and V. Paxson, "IANA Allocation
+                     Guidelines For Values In the Internet Protocol and
+                     Related Headers", BCP 37, RFC 2780, March 2000.
+
+   [RFC2782]         Gulbrandsen, A., Vixie, P., and L. Esibov, "A DNS
+                     RR for specifying the location of services (DNS
+                     SRV)", RFC 2782, February 2000.
+
+   [RFC3828]         Larzon, L-A., Degermark, M., Pink, S., Jonsson,
+                     L-E., and G. Fairhurst, "The Lightweight User
+                     Datagram Protocol (UDP-Lite)", RFC 3828, July 2004.
+
+   [RFC4020]         Kompella, K. and A. Zinin, "Early IANA Allocation
+                     of Standards Track Code Points", BCP 100, RFC 4020,
+                     February 2005.
+
+   [RFC4340]         Kohler, E., Handley, M., and S. Floyd, "Datagram
+                     Congestion Control Protocol (DCCP)", RFC 4340,
+                     March 2006.
+
+   [RFC4727]         Fenner, B., "Experimental Values In IPv4, IPv6,
+                     ICMPv4, ICMPv6, UDP, and TCP Headers", RFC 4727,
+                     November 2006.
+
+   [RFC4960]         Stewart, R., "Stream Control Transmission
+                     Protocol", RFC 4960, September 2007.
+
+   [RFC5226]         Narten, T. and H. Alvestrand, "Guidelines for
+                     Writing an IANA Considerations Section in RFCs",
+                     BCP 26, RFC 5226, May 2008.
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 29]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+   [RFC5234]         Crocker, D. and P. Overell, "Augmented BNF for
+                     Syntax Specifications: ABNF", STD 68, RFC 5234,
+                     January 2008.
+
+   [RFC5595]         Fairhurst, G., "The Datagram Congestion Control
+                     Protocol (DCCP) Service Codes", RFC 5595,
+                     September 2009.
+
+13.2.  Informative References
+
+   [DNS-SD]          Cheshire, S. and M. Krochmal, "DNS-Based Service
+                     Discovery", Work in Progress, February 2011.
+
+   [IGD]             UPnP Forum, "Internet Gateway Device (IGD) V 1.0",
+                     November 2001.
+
+   [NAT-PMP]         Cheshire, S., "NAT Port Mapping Protocol (NAT-
+                     PMP)", Work in Progress, April 2008.
+
+   [PORTREG]         Internet Assigned Numbers Authority (IANA),
+                     "Service Name and Transport Protocol Port Number
+                     Registry",
+                     <http://www.iana.org/assignments/port-numbers>.
+
+   [PROTSERVREG]     Internet Assigned Numbers Authority (IANA),
+                     "Protocol and Service Names Registry",
+                     <http://www.iana.org/assignments/service-names>.
+
+   [RFC0959]         Postel, J. and J. Reynolds, "File Transfer
+                     Protocol", STD 9, RFC 959, October 1985.
+
+   [RFC1078]         Lottor, M., "TCP port service Multiplexer
+                     (TCPMUX)", RFC 1078, November 1988.
+
+   [RFC1340]         Reynolds, J. and J. Postel, "Assigned Numbers",
+                     RFC 1340, July 1992.
+
+   [RFC1700]         Reynolds, J. and J. Postel, "Assigned Numbers",
+                     RFC 1700, October 1994.
+
+   [RFC2957]         Daigle, L. and P. Faltstrom, "The application/
+                     whoispp-query Content-Type", RFC 2957,
+                     October 2000.
+
+   [RFC3232]         Reynolds, J., "Assigned Numbers: RFC 1700 is
+                     Replaced by an On-line Database", RFC 3232,
+                     January 2002.
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 30]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+   [RFC3692]         Narten, T., "Assigning Experimental and Testing
+                     Numbers Considered Useful", BCP 82, RFC 3692,
+                     January 2004.
+
+   [RFC4342]         Floyd, S., Kohler, E., and J. Padhye, "Profile for
+                     Datagram Congestion Control Protocol (DCCP)
+                     Congestion Control ID 3: TCP-Friendly Rate Control
+                     (TFRC)", RFC 4342, March 2006.
+
+   [RFC4844]         Daigle, L. and Internet Architecture Board, "The
+                     RFC Series and RFC Editor", RFC 4844, July 2007.
+
+   [RFC5237]         Arkko, J. and S. Bradner, "IANA Allocation
+                     Guidelines for the Protocol Field", BCP 37,
+                     RFC 5237, February 2008.
+
+   [RFC5389]         Rosenberg, J., Mahy, R., Matthews, P., and D. Wing,
+                     "Session Traversal Utilities for NAT (STUN)",
+                     RFC 5389, October 2008.
+
+   [RFC5766]         Mahy, R., Matthews, P., and J. Rosenberg,
+                     "Traversal Using Relays around NAT (TURN): Relay
+                     Extensions to Session Traversal Utilities for NAT
+                     (STUN)", RFC 5766, April 2010.
+
+   [SRVREG]          "DNS SRV Service Types Registry",
+                     <http://www.dns-sd.org/ServiceTypes.html>.
+
+   [SYSFORM]         Internet Assigned Numbers Authority (IANA),
+                     "Application for System (Well Known) Port Number",
+                     <http://www.iana.org/>.
+
+   [TRILOGY]         "Trilogy Project",
+                     <http://www.trilogy-project.org/>.
+
+   [USRFORM]         Internet Assigned Numbers Authority (IANA),
+                     "Application for User (Registered) Port Number",
+                     <http://www.iana.org/>.
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 31]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+Authors' Addresses
+
+   Michelle Cotton
+   Internet Corporation for Assigned Names and Numbers
+   4676 Admiralty Way, Suite 330
+   Marina del Rey, CA  90292
+   USA
+
+   Phone: +1 310 823 9358
+   EMail: michelle.cotton@icann.org
+   URI:   http://www.iana.org/
+
+
+   Lars Eggert
+   Nokia Research Center
+   P.O. Box 407
+   Nokia Group  00045
+   Finland
+
+   Phone: +358 50 48 24461
+   EMail: lars.eggert@nokia.com
+   URI:   http://research.nokia.com/people/lars_eggert/
+
+
+   Joe Touch
+   USC/ISI
+   4676 Admiralty Way
+   Marina del Rey, CA  90292
+   USA
+
+   Phone: +1 310 448 9151
+   EMail: touch@isi.edu
+   URI:   http://www.isi.edu/touch
+
+
+   Magnus Westerlund
+   Ericsson
+   Farogatan 6
+   Stockholm  164 80
+   Sweden
+
+   Phone: +46 8 719 0000
+   EMail: magnus.westerlund@ericsson.com
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 32]
+
+RFC 6335         Service Name and Port Number Procedures     August 2011
+
+
+   Stuart Cheshire
+   Apple Inc.
+   1 Infinite Loop
+   Cupertino, CA  95014
+   USA
+
+   Phone: +1 408 974 3207
+   EMail: cheshire@apple.com
+   URI:   http://stuartcheshire.org/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cotton, et al.            Best Current Practice                [Page 33]
+

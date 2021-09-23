@@ -1,0 +1,339 @@
+
+
+
+
+
+
+Internet Engineering Task Force (IETF)                         R. Bonica
+Request for Comments: 8190                              Juniper Networks
+BCP: 153                                                       M. Cotton
+Updates: 6890                                                        PTI
+Category: Best Current Practice                              B. Haberman
+ISSN: 2070-1721                                 Johns Hopkins University
+                                                               L. Vegoda
+                                                                   ICANN
+                                                               June 2017
+
+
+          Updates to the Special-Purpose IP Address Registries
+
+Abstract
+
+   This memo updates the IANA IPv4 and IPv6 Special-Purpose Address
+   Registries to address issues raised by the definition of a "global"
+   prefix.  It also corrects several errors in registry entries to
+   ensure the integrity of the IANA Special-Purpose Address Registries.
+
+   This memo updates RFC 6890.
+
+Status of This Memo
+
+   This memo documents an Internet Best Current Practice.
+
+   This document is a product of the Internet Engineering Task Force
+   (IETF).  It represents the consensus of the IETF community.  It has
+   received public review and has been approved for publication by the
+   Internet Engineering Steering Group (IESG).  Further information on
+   BCPs is available in Section 2 of RFC 7841.
+
+   Information about the current status of this document, any errata,
+   and how to provide feedback on it may be obtained at
+   http://www.rfc-editor.org/info/rfc8190.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Bonica, et al.            Best Current Practice                 [Page 1]
+
+RFC 8190           Special-Purpose Address Registries          June 2017
+
+
+Copyright Notice
+
+   Copyright (c) 2017 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents
+   (http://trustee.ietf.org/license-info) in effect on the date of
+   publication of this document.  Please review these documents
+   carefully, as they describe your rights and restrictions with respect
+   to this document.  Code Components extracted from this document must
+   include Simplified BSD License text as described in Section 4.e of
+   the Trust Legal Provisions and are provided without warranty as
+   described in the Simplified BSD License.
+
+Table of Contents
+
+   1.  Introduction  . . . . . . . . . . . . . . . . . . . . . . . .   3
+   2.  IANA Considerations . . . . . . . . . . . . . . . . . . . . .   3
+     2.1.  Definition of Globally Reachable  . . . . . . . . . . . .   3
+     2.2.  Updates to the IPv4 Special-Purpose Address Registry  . .   4
+     2.3.  Updates to the IPv6 Special-Purpose Address Registry  . .   4
+   3.  Security Considerations . . . . . . . . . . . . . . . . . . .   4
+   4.  References  . . . . . . . . . . . . . . . . . . . . . . . . .   5
+     4.1.  Normative References  . . . . . . . . . . . . . . . . . .   5
+     4.2.  Informative References  . . . . . . . . . . . . . . . . .   5
+   Acknowledgements  . . . . . . . . . . . . . . . . . . . . . . . .   5
+   Authors' Addresses  . . . . . . . . . . . . . . . . . . . . . . .   6
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Bonica, et al.            Best Current Practice                 [Page 2]
+
+RFC 8190           Special-Purpose Address Registries          June 2017
+
+
+1.  Introduction
+
+   In order to support new protocols and practices, the IETF
+   occasionally reserves an address block for a special purpose.  For
+   example, [RFC1122] reserves an IPv4 address block (0.0.0.0/8) to
+   represent the local (i.e., "this") network.  Likewise, [RFC4291]
+   reserves an IPv6 address block (fe80::/10) for link-local unicast
+   addresses.
+
+   Several issues have been raised with the documentation of some of the
+   special-purpose address blocks in [RFC6890].  Specifically, the
+   definition of "global" provided in [RFC6890] was misleading as it
+   slightly differed from the generally accepted definition of "global
+   scope" (i.e., the ability to forward beyond the boundaries of an
+   administrative domain, described as "global unicast" in the IPv6
+   addressing architecture [RFC4291]).
+
+   This memo updates the definition of "global" from [RFC6890] for the
+   IPv4 and IPv6 Special-Purpose Address Registries, augments the fields
+   contained within the registries in order to address the confusion
+   raised by the definition of "global", and corrects some errors in
+   some of the entries in the Special-Purpose Address Registries.
+
+   This memo updates [RFC6890].
+
+2.  IANA Considerations
+
+2.1.  Definition of Globally Reachable
+
+   [RFC6890] defined the term "global" without taking into consideration
+   the multiple uses of the term.  Specifically, IP addresses can be
+   global in terms of allocation scope as well as global in terms of
+   routing/reachability.  To address this ambiguity, the use of the term
+   "global" defined in [RFC6890] is replaced with "globally reachable".
+   The following definition replaces the definition of "global" in the
+   IANA Special-Purpose Address Registries:
+
+   o  Globally Reachable - A boolean value indicating whether an IP
+      datagram whose destination address is drawn from the allocated
+      special-purpose address block is forwardable beyond a specified
+      administrative domain.
+
+   The same relationship between the value of "Destination" and the
+   values of "Forwardable" and "Global" described in [RFC6890] holds for
+   "Globally Reachable".  If the value of "Destination" is FALSE, the
+   values of "Forwardable" and "Globally Reachable" must also be FALSE.
+
+
+
+
+
+Bonica, et al.            Best Current Practice                 [Page 3]
+
+RFC 8190           Special-Purpose Address Registries          June 2017
+
+
+   The "Global" columns in the IPv4 Special-Purpose Address Registry
+   (https://www.iana.org/assignments/iana-ipv4-special-registry) and the
+   IPv6 Special-Purpose Address Registry
+   (https://www.iana.org/assignments/iana-ipv6-special-registry) have
+   been renamed to "Globally Reachable".
+
+2.2.  Updates to the IPv4 Special-Purpose Address Registry
+
+   o  Limited Broadcast prefix (255.255.255.255/32) - The Reserved-by-
+      Protocol value has changed from False to True.  This change was
+      made to align the registry with reservation of the limited
+      broadcast address with Section 7 of [RFC919].
+
+2.3.  Updates to the IPv6 Special-Purpose Address Registry
+
+   The following changes to the "IPv6 Special-Purpose Address Registry"
+   involved the insertion of two new footnotes.  These additions
+   required that the footnotes be renumbered.
+
+   o  TEREDO prefix (2001::/32) - The Globally Reachable value has
+      changed from False to "N/A [2]".  The [2] footnote now states:
+
+      *  See Section 5 of [RFC4380] for details.
+
+   o  EID Space for LISP (2001:5::/32) - All footnotes have been
+      incremented by 1.
+
+   o  6to4 (2002::/16) - All footnotes have been incremented by 1.
+
+   o  Unique-Local (fc00::/7) - The Globally Reachable value has changed
+      from False to "False [7]".  The [7] footnote now states:
+
+      *  See [RFC4193] for more details on the routability of Unique-
+         Local addresses.  The Unique-Local prefix is drawn from the
+         IPv6 Global Unicast Address range but is specified as not
+         globally routed.
+
+3.  Security Considerations
+
+   This document does not raise any security issues beyond those
+   discussed in [RFC6890].
+
+
+
+
+
+
+
+
+
+
+Bonica, et al.            Best Current Practice                 [Page 4]
+
+RFC 8190           Special-Purpose Address Registries          June 2017
+
+
+4.  References
+
+4.1.  Normative References
+
+   [RFC6890]  Cotton, M., Vegoda, L., Bonica, R., Ed., and B. Haberman,
+              "Special-Purpose IP Address Registries", BCP 153,
+              RFC 6890, DOI 10.17487/RFC6890, April 2013,
+              <http://www.rfc-editor.org/info/rfc6890>.
+
+4.2.  Informative References
+
+   [RFC919]   Mogul, J., "Broadcasting Internet Datagrams", STD 5,
+              RFC 919, DOI 10.17487/RFC0919, October 1984,
+              <http://www.rfc-editor.org/info/rfc919>.
+
+   [RFC1122]  Braden, R., Ed., "Requirements for Internet Hosts -
+              Communication Layers", STD 3, RFC 1122,
+              DOI 10.17487/RFC1122, October 1989,
+              <http://www.rfc-editor.org/info/rfc1122>.
+
+   [RFC4193]  Hinden, R. and B. Haberman, "Unique Local IPv6 Unicast
+              Addresses", RFC 4193, DOI 10.17487/RFC4193, October 2005,
+              <http://www.rfc-editor.org/info/rfc4193>.
+
+   [RFC4291]  Hinden, R. and S. Deering, "IP Version 6 Addressing
+              Architecture", RFC 4291, DOI 10.17487/RFC4291, February
+              2006, <http://www.rfc-editor.org/info/rfc4291>.
+
+   [RFC4380]  Huitema, C., "Teredo: Tunneling IPv6 over UDP through
+              Network Address Translations (NATs)", RFC 4380,
+              DOI 10.17487/RFC4380, February 2006,
+              <http://www.rfc-editor.org/info/rfc4380>.
+
+Acknowledgements
+
+   Brian Carpenter and C.M. Heard provided useful comments on initial
+   draft versions of this document.  Daniel Migault provided an in-depth
+   review that helped strengthen the text within the document.  Amanda
+   Baber and Sabrina Tanamal asked questions which resulted in the
+   authors simplifying the document.
+
+
+
+
+
+
+
+
+
+
+
+Bonica, et al.            Best Current Practice                 [Page 5]
+
+RFC 8190           Special-Purpose Address Registries          June 2017
+
+
+Authors' Addresses
+
+   Ronald Bonica
+   Juniper Networks
+
+   Email: rbonica@juniper.net
+
+
+   Michelle Cotton
+   PTI, an affiliate of ICANN
+   12025 Waterfront Drive, Suite 300
+   Los Angeles, CA  90094-2536
+   United States of America
+
+   Phone: +1-424-254-5300
+   Email: michelle.cotton@iana.org
+
+
+   Brian Haberman
+   Johns Hopkins University
+
+   Email: brian@innovationslab.net
+
+
+   Leo Vegoda
+   ICANN
+
+   Email: leo.vegoda@icann.org
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Bonica, et al.            Best Current Practice                 [Page 6]
+

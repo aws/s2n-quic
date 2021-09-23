@@ -1,0 +1,227 @@
+
+
+
+
+
+
+Internet Engineering Task Force (IETF)                          J. Arkko
+Request for Comments: 5737                                      Ericsson
+Updates: 1166                                                  M. Cotton
+Category: Informational                                        L. Vegoda
+ISSN: 2070-1721                                                    ICANN
+                                                            January 2010
+
+
+             IPv4 Address Blocks Reserved for Documentation
+
+Abstract
+
+   Three IPv4 unicast address blocks are reserved for use in examples in
+   specifications and other documents.  This document describes the use
+   of these blocks.
+
+Status of This Memo
+
+   This document is not an Internet Standards Track specification; it is
+   published for informational purposes.
+
+   This document is a product of the Internet Engineering Task Force
+   (IETF).  It represents the consensus of the IETF community.  It has
+   received public review and has been approved for publication by the
+   Internet Engineering Steering Group (IESG).  Not all documents
+   approved by the IESG are a candidate for any level of Internet
+   Standard; see Section 2 of RFC 5741.
+
+   Information about the current status of this document, any errata,
+   and how to provide feedback on it may be obtained at
+   http://www.rfc-editor.org/info/rfc5737.
+
+Copyright Notice
+
+   Copyright (c) 2010 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents
+   (http://trustee.ietf.org/license-info) in effect on the date of
+   publication of this document.  Please review these documents
+   carefully, as they describe your rights and restrictions with respect
+   to this document.  Code Components extracted from this document must
+   include Simplified BSD License text as described in Section 4.e of
+   the Trust Legal Provisions and are provided without warranty as
+   described in the Simplified BSD License.
+
+
+
+
+
+Arkko, et al.                Informational                      [Page 1]
+
+RFC 5737                     IPv4 Examples                  January 2010
+
+
+1.  Introduction
+
+   This document describes three IPv4 address blocks that are provided
+   for use in documentation.  The use of designated address ranges for
+   documentation and examples reduces the likelihood of conflicts and
+   confusion arising from the use of addresses assigned for some other
+   purpose.
+
+   [RFC1166] reserves the first of the three address blocks,
+   192.0.2.0/24.  The other two address blocks have recently been
+   allocated for this purpose, primarily to ease the writing of examples
+   involving addresses from multiple networks.
+
+   Other documentation ranges have been defined in the IETF, including
+   the IPv6 documentation prefix [RFC3849] and example domain names
+   [RFC2606].  Documentation also makes use of the ranges reserved in
+   [RFC1918].
+
+2.  Terminology
+
+   The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+   "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+   document are to be interpreted as described in BCP 14, [RFC2119].
+
+3.  Documentation Address Blocks
+
+   The blocks 192.0.2.0/24 (TEST-NET-1), 198.51.100.0/24 (TEST-NET-2),
+   and 203.0.113.0/24 (TEST-NET-3) are provided for use in
+   documentation.
+
+4.  Operational Implications
+
+   Addresses within the TEST-NET-1, TEST-NET-2, and TEST-NET-3 blocks
+   SHOULD NOT appear on the public Internet and are used without any
+   coordination with IANA or an Internet registry [RFC2050].  Network
+   operators SHOULD add these address blocks to the list of non-
+   routeable address spaces, and if packet filters are deployed, then
+   this address block SHOULD be added to packet filters.
+
+   These blocks are not for local use, and the filters may be used in
+   both local and public contexts.
+
+
+
+
+
+
+
+
+
+
+Arkko, et al.                Informational                      [Page 2]
+
+RFC 5737                     IPv4 Examples                  January 2010
+
+
+5.  The Status of 128.66.0.0/16
+
+   Note that 128.66.0.0/16 has been used for some examples in the past.
+   However, this block did not appear in the list of special prefixes in
+   [RFC3330] or its successors, and the block is therefore not reserved
+   for any special purpose.  The block can be used for regular address
+   assignments with caution.
+
+6.  Security Considerations
+
+   This document has no security implications.
+
+7.  IANA Considerations
+
+   IANA has recorded the allocation of the three address blocks in the
+   IPv4 address registry.  No end party is to be assigned these
+   addresses.
+
+8.  References
+
+8.1.  Normative References
+
+   [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
+              Requirement Levels", BCP 14, RFC 2119, March 1997.
+
+8.2.  Informative References
+
+   [RFC1166]  Kirkpatrick, S., Stahl, M., and M. Recker, "Internet
+              numbers", RFC 1166, July 1990.
+
+   [RFC1918]  Rekhter, Y., Moskowitz, R., Karrenberg, D., Groot, G., and
+              E. Lear, "Address Allocation for Private Internets",
+              BCP 5, RFC 1918, February 1996.
+
+   [RFC2050]  Hubbard, K., Kosters, M., Conrad, D., Karrenberg, D., and
+              J. Postel, "INTERNET REGISTRY IP ALLOCATION GUIDELINES",
+              BCP 12, RFC 2050, November 1996.
+
+   [RFC2606]  Eastlake, D. and A. Panitz, "Reserved Top Level DNS
+              Names", BCP 32, RFC 2606, June 1999.
+
+   [RFC3330]  IANA, "Special-Use IPv4 Addresses", RFC 3330,
+              September 2002.
+
+   [RFC3849]  Huston, G., Lord, A., and P. Smith, "IPv6 Address Prefix
+              Reserved for Documentation", RFC 3849, July 2004.
+
+
+
+
+
+Arkko, et al.                Informational                      [Page 3]
+
+RFC 5737                     IPv4 Examples                  January 2010
+
+
+Appendix A.  Acknowledgments
+
+   The authors would like to offer a special note of thanks to APNIC,
+   which nominated 198.51.100.0/24 and 203.0.113.0/24 for this purpose.
+   The authors would also like to acknowledge that this document
+   inherits material from [RFC3849].
+
+   The authors would also like to thank Geoff Huston, Peter Koch, Ulf
+   Olsson, John Klensin, and others for interesting discussions of this
+   topic.
+
+Authors' Addresses
+
+   Jari Arkko
+   Ericsson
+   Jorvas  02420
+   Finland
+
+   EMail: jari.arkko@piuha.net
+
+
+   Michelle Cotton
+   Internet Corporation for Assigned Names and Numbers
+   4676 Admiralty Way, Suite 330
+   Marina del Rey  90292
+   United States of America
+
+   Phone: +1-310-823-9358
+   EMail: michelle.cotton@icann.org
+   URI:   http://www.iana.org/
+
+
+   Leo Vegoda
+   Internet Corporation for Assigned Names and Numbers
+   4676 Admiralty Way, Suite 330
+   Marina del Rey  90292
+   United States of America
+
+   Phone: +1-310-823-9358
+   EMail: leo.vegoda@icann.org
+   URI:   http://www.iana.org/
+
+
+
+
+
+
+
+
+
+
+Arkko, et al.                Informational                      [Page 4]
+

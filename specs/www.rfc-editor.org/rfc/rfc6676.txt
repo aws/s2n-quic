@@ -1,0 +1,395 @@
+
+
+
+
+
+
+Internet Engineering Task Force (IETF)                         S. Venaas
+Request for Comments: 6676                                     R. Parekh
+Category: Informational                                  G. Van de Velde
+ISSN: 2070-1721                                            Cisco Systems
+                                                                T. Chown
+                                               University of Southampton
+                                                              M. Eubanks
+                                                 Iformata Communications
+                                                             August 2012
+
+
+                 Multicast Addresses for Documentation
+
+Abstract
+
+   This document discusses which multicast addresses should be used for
+   documentation purposes and reserves multicast addresses for such use.
+   Some multicast addresses are derived from AS numbers or unicast
+   addresses.  This document also explains how these can be used for
+   documentation purposes.
+
+Status of This Memo
+
+   This document is not an Internet Standards Track specification; it is
+   published for informational purposes.
+
+   This document is a product of the Internet Engineering Task Force
+   (IETF).  It represents the consensus of the IETF community.  It has
+   received public review and has been approved for publication by the
+   Internet Engineering Steering Group (IESG).  Not all documents
+   approved by the IESG are a candidate for any level of Internet
+   Standard; see Section 2 of RFC 5741.
+
+   Information about the current status of this document, any errata,
+   and how to provide feedback on it may be obtained at
+   http://www.rfc-editor.org/info/rfc6676.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Venaas, et al.                Informational                     [Page 1]
+
+RFC 6676          Multicast Addresses for Documentation      August 2012
+
+
+Copyright Notice
+
+   Copyright (c) 2012 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents
+   (http://trustee.ietf.org/license-info) in effect on the date of
+   publication of this document.  Please review these documents
+   carefully, as they describe your rights and restrictions with respect
+   to this document.  Code Components extracted from this document must
+   include Simplified BSD License text as described in Section 4.e of
+   the Trust Legal Provisions and are provided without warranty as
+   described in the Simplified BSD License.
+
+Table of Contents
+
+   1. Introduction ....................................................2
+   2. IPv4 Multicast Documentation Addresses ..........................3
+      2.1. Administratively Scoped IPv4 Multicast Addresses ...........3
+      2.2. GLOP Multicast Addresses ...................................3
+      2.3. Unicast Prefix-Based IPv4 Multicast Addresses ..............4
+   3. IPv6 Multicast Documentation Addresses ..........................4
+      3.1. Unicast Prefix-Based IPv6 Multicast Addresses ..............5
+      3.2. Embedded-RP IPv6 Multicast Addresses .......................5
+   4. Security Considerations .........................................5
+   5. IANA Considerations .............................................5
+   6. Acknowledgments .................................................6
+   7. Informative References ..........................................6
+
+1.  Introduction
+
+   It is often useful in documentation, IETF documents, etc., to provide
+   examples containing IP multicast addresses.  For documentation where
+   examples of general purpose multicast addresses are needed, one
+   should use multicast addresses that will never be assigned or in
+   actual use.  There is a risk that addresses used in examples may
+   accidentally be used.  It is then important that the same addresses
+   not be used by other multicast applications or services.  It may also
+   be beneficial to filter out such addresses from multicast signalling
+   and to filter out multicast data sent to such addresses.
+
+   For unicast, there are both IPv4 and IPv6 addresses reserved for this
+   purpose; see [RFC5737] and [RFC3849], respectively.  This document
+   reserves multicast addresses for this same purpose.
+
+
+
+
+
+
+Venaas, et al.                Informational                     [Page 2]
+
+RFC 6676          Multicast Addresses for Documentation      August 2012
+
+
+   There are also some multicast addresses that are derived from AS
+   numbers or unicast addresses.  For examples where such addresses are
+   desired, one should derive them from the AS numbers and unicast
+   addresses reserved for documentation purposes.  This document also
+   discusses the use of these.
+
+2.  IPv4 Multicast Documentation Addresses
+
+   For Any-Source Multicast (ASM), the IPv4 multicast addresses
+   allocated for documentation purposes are 233.252.0.0 - 233.252.0.255
+   (233.252.0.0/24).
+
+   For Source-Specific Multicast (SSM), it is less important which
+   multicast addresses are used, since a host/application joins a
+   channel identified by both source and group.  Any source addresses
+   used in SSM examples should be unicast addresses reserved for
+   documentation purposes.  There are three unicast address ranges
+   provided for documentation use in [RFC5737].  The ranges are
+   192.0.2.0/24, 198.51.100.0/24 and 203.0.113.0/24.
+
+   Sometimes one wants to give examples where a specific type of address
+   is desired.  For example, for text about multicast scoping, one might
+   want the examples to use addresses that are to be used for
+   administrative scoping.  See below for guidance on how to construct
+   specific types of example addresses.
+
+2.1.  Administratively Scoped IPv4 Multicast Addresses
+
+   Administratively scoped IPv4 multicast addresses [RFC2365] are
+   reserved for scoped multicast.  They can be used within a site or an
+   organization.  Apart from a small set of scope-relative addresses,
+   these addresses are not assigned.  The high order /24 in every scope
+   is reserved for relative assignments.  A relative assignment is an
+   integer offset from the highest address in the scope and represents
+   an IPv4 address.  For documentation purposes, the integer offset is
+   10.  This provides one multicast address per scope.
+
+   For example in the Local Scope 239.255.0.0/16, the multicast address
+   for documentation purposes is 239.255.255.245.
+
+2.2.  GLOP Multicast Addresses
+
+   GLOP [RFC3180] is a method for deriving IPv4 multicast group
+   addresses from 16-bit AS numbers.  For examples where GLOP addresses
+   are desired, the addresses should be derived from the AS numbers
+   reserved for documentation use.
+
+
+
+
+
+Venaas, et al.                Informational                     [Page 3]
+
+RFC 6676          Multicast Addresses for Documentation      August 2012
+
+
+   The 16-bit AS numbers reserved for documentation use in [RFC5398] are
+   64496 - 64511.  By use of [RFC3180], we then get 16 /24 multicast
+   prefixes for documentation use.  The first one is 233.251.240.0/24,
+   and the last one is 233.251.255.0/24.
+
+2.3.  Unicast Prefix-Based IPv4 Multicast Addresses
+
+   IPv4 multicast addresses can be derived from IPv4 unicast prefixes,
+   see [RFC6034].  For examples where this type of address is desired,
+   the addresses should be derived from the unicast addresses reserved
+   for documentation purposes, see [RFC5737].
+
+   There are three unicast address ranges provided for documentation use
+   in [RFC5737].  The ranges are 192.0.2.0/24, 198.51.100.0/24, and
+   203.0.113.0/24.  Using [RFC6034], this leaves the unicast prefix-
+   based IPv4 multicast addresses 234.192.0.2, 234.198.51.100, and
+   234.203.0.113.
+
+3.  IPv6 Multicast Documentation Addresses
+
+   For Any-Source Multicast (ASM), the IPv6 multicast addresses
+   allocated for documentation purposes are FF0X::DB8:0:0/96.  This is a
+   /96 prefix so that it can be used with group IDs, according to the
+   allocation guidelines in [RFC3307].  Also note that for these
+   addresses, the transient flag, or "T-flag" as defined in [RFC4291],
+   is zero.  This is because they are permanently assigned.  There can
+   be no permanently assigned addresses for documentation purposes with
+   the transient flag set to one, since the flag set to one means that
+   they are not permanently assigned.
+
+   For Source-Specific Multicast (SSM), it is less important which
+   multicast addresses are used, since a host/application joins a
+   channel identified by both source and group.  Any source addresses
+   used in SSM examples should be unicast addresses reserved for
+   documentation purposes.  The IPv6 unicast prefix reserved for
+   documentation purposes is 2001:DB8::/32, see [RFC3849].
+
+   Sometimes one wants to give examples where a specific type of address
+   is desired.  For example, for text about multicast scoping, one might
+   want the examples to use addresses that are to be used for
+   administrative scoping.  See below for guidance on how to construct
+   specific types of example addresses.
+
+
+
+
+
+
+
+
+
+Venaas, et al.                Informational                     [Page 4]
+
+RFC 6676          Multicast Addresses for Documentation      August 2012
+
+
+3.1.  Unicast Prefix-Based IPv6 Multicast Addresses
+
+   IPv6 multicast addresses can be derived from IPv6 unicast prefixes,
+   see [RFC3306].  For examples where this type of address is desired,
+   the addresses should be derived from the unicast addresses reserved
+   for documentation purposes.
+
+   The IPv6 unicast prefix reserved for documentation purposes is 2001:
+   DB8::/32, see [RFC3849].  This allows a wide range of different IPv6
+   multicast addresses.  Using just the base /32 prefix, one gets the
+   IPv6 multicast prefixes FF3X:20:2001:DB8::/64 -- one for each
+   available scope X.  One can also produce longer prefixes from this.
+   Just as an example, one can pick a /64 prefix 2001:DB8:DEAD:
+   BEEF::/64, which gives the multicast prefixes FF3X:40:2001:DB8:DEAD:
+   BEEF::/96 -- one for each available scope X.
+
+3.2.  Embedded-RP IPv6 Multicast Addresses
+
+   There is a type of IPv6 multicast address called an "Embedded-RP"
+   address, where the IPv6 address of a Rendezvous-Point (RP) is
+   embedded inside the multicast address, see [RFC3956].  For examples
+   where this type of address is desired, the addresses should be
+   derived from the unicast addresses reserved for documentation
+   purposes, see [RFC3849].
+
+   For documentation purposes, the RP address can be any address from
+   the range 2001:DB8::/32 that follows the constraints specified in
+   [RFC3956].  One example address could be 2001:DB8::1.  The
+   Embedded-RP multicast prefixes might then be FF7X:120:2001:DB8::/96.
+   Another example could be the RP address 2001:DB8:BEEF:FEED::7, which
+   gives the prefixes FF7X:740:2001:DB8:BEEF:FEED::/96.  See also the
+   examples in [RFC3956].
+
+4.  Security Considerations
+
+   The use of specific multicast addresses for documentation purposes
+   has no negative impact on security.
+
+5.  IANA Considerations
+
+   IANA has added a reference to this document for the IPv4 MCAST-TEST-
+   NET allocation so that all the different documentation multicast
+   assignments reference this document.
+
+   IANA has assigned a scope-relative IPv4 address for documentation
+   purposes.
+
+
+
+
+
+Venaas, et al.                Informational                     [Page 5]
+
+RFC 6676          Multicast Addresses for Documentation      August 2012
+
+
+   IANA has assigned "variable-scope" IPv6 multicast addresses for
+   documentation purposes.  This is a /96 prefix.
+
+6.  Acknowledgments
+
+   The authors thank Roberta Maglione, Leonard Giuliano and Dave Thaler
+   for providing comments on this document.
+
+7.  Informative References
+
+   [RFC2365]  Meyer, D., "Administratively Scoped IP Multicast", BCP 23,
+              RFC 2365, July 1998.
+
+   [RFC3180]  Meyer, D. and P. Lothberg, "GLOP Addressing in 233/8",
+              BCP 53, RFC 3180, September 2001.
+
+   [RFC3306]  Haberman, B. and D. Thaler, "Unicast-Prefix-based IPv6
+              Multicast Addresses", RFC 3306, August 2002.
+
+   [RFC3307]  Haberman, B., "Allocation Guidelines for IPv6 Multicast
+              Addresses", RFC 3307, August 2002.
+
+   [RFC3849]  Huston, G., Lord, A., and P. Smith, "IPv6 Address Prefix
+              Reserved for Documentation", RFC 3849, July 2004.
+
+   [RFC3956]  Savola, P. and B. Haberman, "Embedding the Rendezvous
+              Point (RP) Address in an IPv6 Multicast Address",
+              RFC 3956, November 2004.
+
+   [RFC4291]  Hinden, R. and S. Deering, "IP Version 6 Addressing
+              Architecture", RFC 4291, February 2006.
+
+   [RFC5398]  Huston, G., "Autonomous System (AS) Number Reservation for
+              Documentation Use", RFC 5398, December 2008.
+
+   [RFC5737]  Arkko, J., Cotton, M., and L. Vegoda, "IPv4 Address Blocks
+              Reserved for Documentation", RFC 5737, January 2010.
+
+   [RFC6034]  Thaler, D., "Unicast-Prefix-Based IPv4 Multicast
+              Addresses", RFC 6034, October 2010.
+
+
+
+
+
+
+
+
+
+
+
+Venaas, et al.                Informational                     [Page 6]
+
+RFC 6676          Multicast Addresses for Documentation      August 2012
+
+
+Authors' Addresses
+
+   Stig Venaas
+   Cisco Systems
+   Tasman Drive
+   San Jose, CA  95134
+   USA
+   EMail: stig@cisco.com
+
+
+   Rishabh Parekh
+   Cisco Systems
+   Tasman Drive
+   San Jose, CA  95134
+   USA
+   EMail: riparekh@cisco.com
+
+
+   Gunter Van de Velde
+   Cisco Systems
+   De Kleetlaan 6a
+   Diegem  1831
+   Belgium
+   Phone: +32 476 476 022
+   EMail: gvandeve@cisco.com
+
+
+   Tim Chown
+   University of Southampton
+   Highfield
+   Southampton, Hampshire  SO17 1BJ
+   United Kingdom
+   EMail: tjc@ecs.soton.ac.uk
+
+
+   Marshall Eubanks
+   Iformata Communications
+   130 W. Second Street
+   Dayton, Ohio  45402
+   US
+   Phone: +1 703 501 4376
+   EMail: marshall.eubanks@iformata.com
+   URI:   http://www.iformata.com/
+
+
+
+
+
+
+
+
+Venaas, et al.                Informational                     [Page 7]
+

@@ -88,6 +88,7 @@ pub enum SocketAddress {
 }
 
 impl SocketAddress {
+    #[inline]
     pub fn ip(&self) -> IpAddress {
         match self {
             SocketAddress::IpV4(addr) => IpAddress::Ipv4(*addr.ip()),
@@ -95,10 +96,19 @@ impl SocketAddress {
         }
     }
 
+    #[inline]
     pub fn port(&self) -> u16 {
         match self {
             SocketAddress::IpV4(addr) => addr.port(),
             SocketAddress::IpV6(addr) => addr.port(),
+        }
+    }
+
+    #[inline]
+    pub const fn unicast_scope(&self) -> Option<UnicastScope> {
+        match self {
+            Self::IpV4(addr) => addr.unicast_scope(),
+            Self::IpV6(addr) => addr.unicast_scope(),
         }
     }
 
@@ -173,6 +183,19 @@ impl<'a> SocketAddressRef<'a> {
             Self::IpV6(addr) => SocketAddress::IpV6(*addr),
         }
     }
+}
+
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#21.5.6
+//# Similarly, endpoints could regard a change in address to a link-local
+//# address [RFC4291] or an address in a private-use range [RFC1918] from
+//# a global, unique-local [RFC4193], or non-private address as a
+//# potential attempt at request forgery.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnicastScope {
+    Loopback,
+    LinkLocal,
+    Private,
+    Global,
 }
 
 #[cfg(any(test, feature = "std"))]

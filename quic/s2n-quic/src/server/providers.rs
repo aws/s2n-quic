@@ -18,6 +18,7 @@ impl_providers_state! {
         event: Event,
         limits: Limits,
         io: IO,
+        path_migration: PathMigration,
         sync: Sync,
         tls: Tls,
         token: Token,
@@ -37,6 +38,7 @@ impl<
         Event: event::Provider,
         Limits: limits::Provider,
         IO: io::Provider,
+        PathMigration: path_migration::Provider,
         Sync: sync::Provider,
         Tls: tls::Provider,
         Token: token::Provider,
@@ -51,6 +53,7 @@ impl<
         Event,
         Limits,
         IO,
+        PathMigration,
         Sync,
         Tls,
         Token,
@@ -68,6 +71,7 @@ impl<
             limits,
             token,
             io,
+            path_migration,
             sync,
             tls,
         } = self;
@@ -84,6 +88,7 @@ impl<
         let event = event.start().map_err(StartError::new)?;
         let token = token.start().map_err(StartError::new)?;
         let sync = sync.start().map_err(StartError::new)?;
+        let path_migration = path_migration.start().map_err(StartError::new)?;
         let tls = tls.start_server().map_err(StartError::new)?;
 
         // Validate providers
@@ -111,6 +116,7 @@ impl<
             tls,
             token,
             path_handle: PhantomData,
+            path_migration,
         };
 
         let (endpoint, acceptor) = endpoint::Endpoint::new(endpoint_config);
@@ -128,6 +134,7 @@ struct EndpointConfig<
     ConnectionCloseFormatter,
     ConnectionID,
     PathHandle,
+    PathMigration,
     StatelessResetToken,
     Random,
     EndpointLimits,
@@ -149,12 +156,14 @@ struct EndpointConfig<
     tls: Tls,
     token: Token,
     path_handle: PhantomData<PathHandle>,
+    path_migration: PathMigration,
 }
 
 impl<
         CongestionController: congestion_controller::Endpoint,
         ConnectionCloseFormatter: connection_close_formatter::Formatter,
         ConnectionID: connection::id::Format,
+        PathMigration: path_migration::Validator,
         PathHandle: path::Handle,
         StatelessResetToken: stateless_reset_token::Generator,
         Random: s2n_quic_core::random::Generator,
@@ -170,6 +179,7 @@ impl<
         ConnectionCloseFormatter,
         ConnectionID,
         PathHandle,
+        PathMigration,
         StatelessResetToken,
         Random,
         EndpointLimits,
@@ -190,6 +200,7 @@ impl<
         ConnectionCloseFormatter: connection_close_formatter::Formatter,
         ConnectionID: connection::id::Format,
         PathHandle: path::Handle,
+        PathMigration: path_migration::Validator,
         StatelessResetToken: stateless_reset_token::Generator,
         Random: s2n_quic_core::random::Generator,
         EndpointLimits: s2n_quic_core::endpoint::Limiter,
@@ -204,6 +215,7 @@ impl<
         ConnectionCloseFormatter,
         ConnectionID,
         PathHandle,
+        PathMigration,
         StatelessResetToken,
         Random,
         EndpointLimits,
@@ -229,6 +241,7 @@ impl<
     type TokenFormat = Token;
     type ConnectionLimits = Limits;
     type Stream = stream::StreamImpl;
+    type PathMigrationValidator = PathMigration;
 
     const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Server;
 
@@ -244,6 +257,7 @@ impl<
             token: &mut self.token,
             connection_limits: &mut self.limits,
             event_subscriber: &mut self.event,
+            path_migration: &mut self.path_migration,
         }
     }
 }
