@@ -64,9 +64,9 @@ struct FrameSent {
 // This diverges a bit from the qlog spec, which prefers to log data as part of the
 // packet events.
 /// Frame was received
-struct FrameReceived {
+struct FrameReceived<'a> {
     packet_header: PacketHeader,
-    path_id: u64,
+    path: Path<'a>,
     frame: Frame,
 }
 
@@ -83,8 +83,8 @@ struct PacketLost<'a> {
 #[event("recovery:metrics_updated")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.4.2
 /// Recovery metrics updated
-struct RecoveryMetrics {
-    path_id: u64,
+struct RecoveryMetrics<'a> {
+    path: Path<'a>,
     min_rtt: Duration,
     smoothed_rtt: Duration,
     latest_rtt: Duration,
@@ -118,9 +118,9 @@ struct ConnectionClosed {
 
 #[event("transport:duplicate_packet")]
 /// Duplicate packet received
-struct DuplicatePacket {
+struct DuplicatePacket<'a> {
     packet_header: PacketHeader,
-    path_id: u64,
+    path: Path<'a>,
     error: DuplicatePacketError,
 }
 

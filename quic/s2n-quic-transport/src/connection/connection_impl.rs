@@ -846,7 +846,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         if let Some((space, _status)) = self.space_manager.initial_mut() {
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
-            let packet = space.validate_and_decrypt_packet(packet, path_id, &mut publisher)?;
+            let packet = space.validate_and_decrypt_packet(
+                packet,
+                path_id,
+                &self.path_manager[path_id],
+                &mut publisher,
+            )?;
 
             publisher.on_packet_received(event::builder::PacketReceived {
                 packet_header: event::builder::PacketHeader {
@@ -943,7 +948,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         if let Some((space, handshake_status)) = self.space_manager.handshake_mut() {
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
-            let packet = space.validate_and_decrypt_packet(packet, path_id, &mut publisher)?;
+            let packet = space.validate_and_decrypt_packet(
+                packet,
+                path_id,
+                &self.path_manager[path_id],
+                &mut publisher,
+            )?;
 
             publisher.on_packet_received(event::builder::PacketReceived {
                 packet_header: event::builder::PacketHeader {
@@ -1043,8 +1053,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             let packet = space.validate_and_decrypt_packet(
                 packet,
                 datagram,
-                &self.path_manager.active_path().rtt_estimator,
                 path_id,
+                &self.path_manager[path_id],
                 &mut publisher,
             )?;
 

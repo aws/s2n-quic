@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    connection, endpoint, path, path::Path, processed_packet::ProcessedPacket,
-    space::rx_packet_numbers::AckManager, transmission,
+    connection, endpoint, path,
+    path::{path_event, Path},
+    processed_packet::ProcessedPacket,
+    space::rx_packet_numbers::AckManager,
+    transmission,
 };
 use bytes::Bytes;
 use core::fmt;
@@ -594,12 +597,13 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 .decode::<FrameMut>()
                 .map_err(transport::Error::from)?;
 
+            let path = &path_manager[path_id];
             publisher.on_frame_received(event::builder::FrameReceived {
                 packet_header: event::builder::PacketHeader {
                     packet_type: packet_number.into_event(),
                     version: Some(publisher.quic_version()),
                 },
-                path_id: path_id.into_event(),
+                path: path_event!(path, path_id),
                 frame: frame.into_event(),
             });
             match frame {

@@ -4,7 +4,7 @@
 use crate::{
     connection::{self, ConnectionTransmissionContext, ProcessingError},
     endpoint, path,
-    path::Path,
+    path::{path_event, Path},
     processed_packet::ProcessedPacket,
     recovery,
     space::{rx_packet_numbers::AckManager, HandshakeStatus, PacketSpace, TxPacketNumbers},
@@ -31,7 +31,6 @@ use s2n_quic_core::{
         number::{PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow},
         short::{CleartextShort, ProtectedShort, Short, SpinBit},
     },
-    recovery::RttEstimator,
     time::{timer, Timestamp},
     transport,
 };
@@ -123,6 +122,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         &self,
         packet_number: PacketNumber,
         path_id: path::Id,
+        path: &path::Path<Config>,
         publisher: &mut Pub,
     ) -> bool {
         let packet_check = self.processed_packet_numbers.check(packet_number);
@@ -132,7 +132,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                     packet_type: packet_number.into_event(),
                     version: Some(publisher.quic_version()),
                 },
-                path_id: path_id.into_event(),
+                path: path_event!(path, path_id),
                 error: error.into_event(),
             });
         }
@@ -396,8 +396,8 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         &mut self,
         protected: ProtectedShort<'a>,
         datagram: &DatagramInfo,
-        rtt_estimator: &RttEstimator,
         path_id: path::Id,
+        path: &path::Path<Config>,
         publisher: &mut Pub,
     ) -> Result<CleartextShort<'a>, ProcessingError> {
         let largest_acked = self.ack_manager.largest_received_packet_number_acked();
@@ -417,7 +417,10 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             //# (PTO; see [QUIC-RECOVERY]) after receiving a packet that uses the new
             //# key generation before it creates the next set of packet protection
             //# keys.
-            datagram.timestamp + rtt_estimator.pto_period(1, PacketNumberSpace::ApplicationData),
+            datagram.timestamp
+                + path
+                    .rtt_estimator
+                    .pto_period(1, PacketNumberSpace::ApplicationData),
         );
         if let Ok((_, Some(generation))) = decrypted {
             publisher.on_key_update(event::builder::KeyUpdate {
@@ -433,7 +436,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
         // We perform decryption prior to checking for duplicate to avoid short-circuiting
         // and maintain constant-time operation.
-        if self.is_duplicate(packet_number, path_id, publisher) {
+        if self.is_duplicate(packet_number, path_id, path, publisher) {
             return Err(ProcessingError::DuplicatePacket);
         }
 
