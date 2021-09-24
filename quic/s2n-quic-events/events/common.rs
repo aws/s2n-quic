@@ -191,10 +191,14 @@ enum Frame {
     },
     MaxData,
     MaxStreamData,
-    MaxStreams,
+    MaxStreams {
+        stream_type: StreamType,
+    },
     DataBlocked,
     StreamDataBlocked,
-    StreamsBlocked,
+    StreamsBlocked {
+        stream_type: StreamType,
+    },
     NewConnectionId,
     RetireConnectionId,
     PathChallenge,
@@ -253,7 +257,9 @@ impl IntoEvent<builder::Frame> for &crate::frame::MaxStreamData {
 
 impl IntoEvent<builder::Frame> for &crate::frame::MaxStreams {
     fn into_event(self) -> builder::Frame {
-        builder::Frame::MaxStreams {}
+        builder::Frame::MaxStreams {
+            stream_type: self.stream_type.into_event(),
+        }
     }
 }
 
@@ -271,7 +277,9 @@ impl IntoEvent<builder::Frame> for &crate::frame::StreamDataBlocked {
 
 impl IntoEvent<builder::Frame> for &crate::frame::StreamsBlocked {
     fn into_event(self) -> builder::Frame {
-        builder::Frame::StreamsBlocked {}
+        builder::Frame::StreamsBlocked {
+            stream_type: self.stream_type.into_event(),
+        }
     }
 }
 
@@ -333,6 +341,20 @@ where
         builder::Frame::Crypto {
             offset: self.offset.as_u64(),
             len: self.data.encoding_size() as _,
+        }
+    }
+}
+
+enum StreamType {
+    Bidirectional,
+    Unidirectional,
+}
+
+impl<'a> IntoEvent<builder::StreamType> for &crate::stream::StreamType {
+    fn into_event(self) -> builder::StreamType {
+        match self {
+            crate::stream::StreamType::Bidirectional => builder::StreamType::Bidirectional {},
+            crate::stream::StreamType::Unidirectional => builder::StreamType::Unidirectional {},
         }
     }
 }
