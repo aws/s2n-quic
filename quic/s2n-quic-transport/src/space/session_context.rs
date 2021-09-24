@@ -16,6 +16,7 @@ use s2n_codec::{DecoderBuffer, DecoderValue};
 use s2n_quic_core::{
     ack,
     crypto::{tls, CryptoSuite},
+    ct::ConstantTimeEq,
     event,
     packet::number::PacketNumberSpace,
     time::Timestamp,
@@ -117,7 +118,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         let (peer_parameters, remaining) = match ClientTransportParameters::decode(param_decoder) {
             Ok(parameters) => parameters,
             Err(_e) => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4
                 //# An endpoint SHOULD treat receipt of
                 //# duplicate transport parameters as a connection error of type
                 //# TRANSPORT_PARAMETER_ERROR.
@@ -131,20 +132,29 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 .with_reason("Invalid bytes in transport parameters"));
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3
-        //= type=TODO
-        //= feature=Transport parameter ID validation
-        //= tracking-issue=353
-        //# The values provided by a peer for these transport parameters MUST
-        //# match the values that an endpoint used in the Destination and Source
-        //# Connection ID fields of Initial packets that it sent.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3
-        //# An endpoint MUST treat absence of the initial_source_connection_id
-        //# transport parameter from either endpoint or absence of the
-        //# original_destination_connection_id transport parameter from the
-        //# server as a connection error of type TRANSPORT_PARAMETER_ERROR.
-        if peer_parameters.initial_source_connection_id.is_none() {
+        if let Some(initial_source_connection_id) = peer_parameters.initial_source_connection_id {
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+            //# The values provided by a peer for these transport parameters MUST
+            //# match the values that an endpoint used in the Destination and Source
+            //# Connection ID fields of Initial packets that it sent (and received,
+            //# for servers).  Endpoints MUST validate that received transport
+            //# parameters match received connection ID values.
+            if initial_source_connection_id
+                .as_bytes()
+                .ct_eq(self.path.peer_connection_id.as_bytes())
+                .unwrap_u8()
+                == 0
+            {
+                return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
+                    .with_reason("initial_source_connection_id mismatch"));
+            }
+        } else {
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+            //# An endpoint MUST treat the absence of the
+            //# initial_source_connection_id transport parameter from either endpoint
+            //# or the absence of the original_destination_connection_id transport
+            //# parameter from the server as a connection error of type
+            //# TRANSPORT_PARAMETER_ERROR.
             return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
                 .with_reason("missing initial_source_connection_id"));
         }
