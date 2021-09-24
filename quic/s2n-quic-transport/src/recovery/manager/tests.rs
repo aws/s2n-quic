@@ -18,7 +18,7 @@ use s2n_quic_core::{
     frame::ack_elicitation::AckElicitation,
     inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
     packet::number::PacketNumberSpace,
-    path::{RemoteAddress, DEFAULT_MAX_MTU, INITIAL_PTO_BACKOFF},
+    path::{migration, RemoteAddress, DEFAULT_MAX_MTU, INITIAL_PTO_BACKOFF},
     random,
     recovery::{
         congestion_controller::testing::mock::{
@@ -2731,10 +2731,10 @@ fn helper_generate_multi_path_manager(
             .on_datagram_received(
                 &second_addr,
                 &datagram,
-                &connection::Limits::default(),
                 true,
                 &mut Endpoint::default(),
                 &mut random::testing::Generator(123),
+                &mut migration::default::Validator::default(),
                 DEFAULT_MAX_MTU,
                 &mut Publisher::default(),
             )

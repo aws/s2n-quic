@@ -31,6 +31,7 @@ use core::{
 use s2n_quic_core::{
     application,
     application::Sni,
+    connection::id::Generator as _,
     event::{self, ConnectionPublisher as _, IntoEvent as _},
     inet::{DatagramInfo, SocketAddress},
     io::tx,
@@ -44,7 +45,7 @@ use s2n_quic_core::{
         zero_rtt::ProtectedZeroRtt,
     },
     path::{Handle as _, MaxMtu},
-    random, stateless_reset,
+    stateless_reset::token::Generator as _,
     time::{timer, Timestamp},
     transport,
 };
@@ -561,13 +562,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Generates and registers new connection IDs using the given `ConnectionIdFormat`
-    fn on_new_connection_id<
-        ConnectionIdFormat: connection::id::Format,
-        StatelessResetTokenGenerator: stateless_reset::token::Generator,
-    >(
+    fn on_new_connection_id(
         &mut self,
-        connection_id_format: &mut ConnectionIdFormat,
-        stateless_reset_token_generator: &mut StatelessResetTokenGenerator,
+        connection_id_format: &mut Config::ConnectionIdFormat,
+        stateless_reset_token_generator: &mut Config::StatelessResetTokenGenerator,
         timestamp: Timestamp,
     ) -> Result<(), LocalIdRegistrationError> {
         match self.local_id_registry.connection_id_interest() {
@@ -775,6 +773,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         random: &mut Config::RandomGenerator,
+        path_migration: &mut Config::PathMigrationValidator,
         max_mtu: MaxMtu,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<path::Id, connection::Error> {
@@ -796,10 +795,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let (id, unblocked) = self.path_manager.on_datagram_received(
             path_handle,
             datagram,
-            &self.limits,
             handshake_confirmed,
             congestion_controller_endpoint,
             random,
+            path_migration,
             max_mtu,
             &mut publisher,
         )?;
@@ -835,12 +834,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a initial packet had been received
-    fn handle_initial_packet<Rnd: random::Generator>(
+    fn handle_initial_packet(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedInitial,
-        random_generator: &mut Rnd,
+        random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         if let Some((space, _status)) = self.space_manager.initial_mut() {
@@ -873,12 +872,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when an unprotected initial packet had been received
-    fn handle_cleartext_initial_packet<Rnd: random::Generator>(
+    fn handle_cleartext_initial_packet(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: CleartextInitial,
-        random_generator: &mut Rnd,
+        random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         if let Some((space, handshake_status)) = self.space_manager.initial_mut() {
@@ -924,12 +923,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a handshake packet had been received
-    fn handle_handshake_packet<Rnd: random::Generator>(
+    fn handle_handshake_packet(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedHandshake,
-        random_generator: &mut Rnd,
+        random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
@@ -1002,12 +1001,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a short packet had been received
-    fn handle_short_packet<Rnd: random::Generator>(
+    fn handle_short_packet(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedShort,
-        random_generator: &mut Rnd,
+        random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7

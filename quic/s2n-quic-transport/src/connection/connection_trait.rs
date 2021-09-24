@@ -31,7 +31,6 @@ use s2n_quic_core::{
         ProtectedPacket,
     },
     path::{Handle as _, MaxMtu},
-    random, stateless_reset,
     time::Timestamp,
 };
 
@@ -67,13 +66,10 @@ pub trait ConnectionTrait: 'static + Send + Sized {
 
     /// Generates and registers new connection IDs using the given `ConnectionIdFormat` and
     /// `StatelessResetTokenGenerator`
-    fn on_new_connection_id<
-        ConnectionIdFormat: connection::id::Format,
-        StatelessResetTokenGenerator: stateless_reset::token::Generator,
-    >(
+    fn on_new_connection_id(
         &mut self,
-        connection_id_format: &mut ConnectionIdFormat,
-        stateless_reset_token_generator: &mut StatelessResetTokenGenerator,
+        connection_id_format: &mut <Self::Config as endpoint::Config>::ConnectionIdFormat,
+        stateless_reset_token_generator: &mut <Self::Config as endpoint::Config>::StatelessResetTokenGenerator,
         timestamp: Timestamp,
     ) -> Result<(), LocalIdRegistrationError>;
 
@@ -103,42 +99,42 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     // Packet handling
 
     /// Is called when an initial packet had been received
-    fn handle_initial_packet<Rnd: random::Generator>(
+    fn handle_initial_packet(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedInitial,
-        random_generator: &mut Rnd,
+        random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when an unprotected initial packet had been received
-    fn handle_cleartext_initial_packet<Rnd: random::Generator>(
+    fn handle_cleartext_initial_packet(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: CleartextInitial,
-        random_generator: &mut Rnd,
+        random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a handshake packet had been received
-    fn handle_handshake_packet<Rnd: random::Generator>(
+    fn handle_handshake_packet(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedHandshake,
-        random_generator: &mut Rnd,
+        random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a short packet had been received
-    fn handle_short_packet<Rnd: random::Generator>(
+    fn handle_short_packet(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedShort,
-        random_generator: &mut Rnd,
+        random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError>;
 
@@ -176,6 +172,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
+        migration_validator: &mut <Self::Config as endpoint::Config>::PathMigrationValidator,
         max_mtu: MaxMtu,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<path::Id, connection::Error>;
@@ -187,12 +184,12 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     fn quic_version(&self) -> u32;
 
     /// Handles reception of a single QUIC packet
-    fn handle_packet<Rnd: random::Generator>(
+    fn handle_packet(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedPacket,
-        random_generator: &mut Rnd,
+        random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
@@ -241,14 +238,14 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     /// This is called to handle the remaining and yet undecoded packets inside
     /// a datagram.
     #[allow(clippy::too_many_arguments)]
-    fn handle_remaining_packets<Validator: connection::id::Validator, Rnd: random::Generator>(
+    fn handle_remaining_packets(
         &mut self,
         path_handle: &<Self::Config as endpoint::Config>::PathHandle,
         datagram: &DatagramInfo,
         path_id: path::Id,
-        connection_id_validator: &Validator,
+        connection_id_validator: &<Self::Config as endpoint::Config>::ConnectionIdFormat,
         mut payload: DecoderBufferMut,
-        random_generator: &mut Rnd,
+        random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), connection::Error> {
         let remote_address = path_handle.remote_address();

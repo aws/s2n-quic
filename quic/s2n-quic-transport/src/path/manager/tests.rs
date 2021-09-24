@@ -13,7 +13,7 @@ use core::time::Duration;
 use s2n_quic_core::{
     event::testing::Publisher,
     inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
-    path::RemoteAddress,
+    path::{migration, RemoteAddress},
     random::{self, Generator},
     recovery::RttEstimator,
     stateless_reset,
@@ -673,10 +673,10 @@ fn test_adding_new_path() {
         .on_datagram_received(
             &new_addr,
             &datagram,
-            &connection::Limits::default(),
             true,
             &mut Default::default(),
             &mut random::testing::Generator(123),
+            &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
         )
@@ -731,10 +731,10 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
     let on_datagram_result = manager.on_datagram_received(
         &new_addr,
         &datagram,
-        &connection::Limits::default(),
         handshake_confirmed,
         &mut Default::default(),
         &mut random::testing::Generator(123),
+        &mut migration::default::Validator::default(),
         DEFAULT_MAX_MTU,
         &mut Publisher::default(),
     );
@@ -777,6 +777,7 @@ fn limit_number_of_connection_migrations() {
             &datagram,
             &mut Default::default(),
             &mut random::testing::Generator(123),
+            &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
         );
@@ -820,6 +821,7 @@ fn connection_migration_challenge_behavior() {
             &datagram,
             &mut Default::default(),
             &mut random::testing::Generator(123),
+            &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
         )
@@ -898,6 +900,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
             &datagram,
             &mut Default::default(),
             &mut random::testing::Generator(123),
+            &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
         )
@@ -970,6 +973,7 @@ fn connection_migration_new_path_abandon_timer() {
             &datagram,
             &mut Default::default(),
             &mut random::testing::Generator(123),
+            &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
         )
