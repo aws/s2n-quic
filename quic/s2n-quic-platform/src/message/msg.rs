@@ -26,8 +26,6 @@ pub struct Handle {
     pub remote_address: RemoteAddress,
     #[cfg(s2n_quic_platform_pktinfo)]
     pub local_address: LocalAddress,
-    #[cfg(s2n_quic_platform_pktinfo)]
-    pub local_interface: Option<libc::c_int>,
 }
 
 impl Handle {
@@ -37,8 +35,6 @@ impl Handle {
             remote_address,
             #[cfg(s2n_quic_platform_pktinfo)]
             local_address: SocketAddressV4::UNSPECIFIED.into(),
-            #[cfg(s2n_quic_platform_pktinfo)]
-            local_interface: None,
         }
     }
 
@@ -47,7 +43,6 @@ impl Handle {
         #[cfg(s2n_quic_platform_pktinfo)]
         {
             self.local_address = ancillary_data.local_address;
-            self.local_interface = ancillary_data.local_interface.map(|v| v as _);
         }
 
         let _ = ancillary_data;
@@ -71,10 +66,6 @@ impl Handle {
                 let mut pkt_info = unsafe { core::mem::zeroed::<libc::in_pktinfo>() };
                 pkt_info.ipi_spec_dst.s_addr = u32::from_ne_bytes((*ip).into());
 
-                if let Some(interface) = self.local_interface {
-                    pkt_info.ipi_ifindex = interface as _;
-                }
-
                 msghdr.encode_cmsg(libc::IPPROTO_IP, libc::IP_PKTINFO, pkt_info);
             }
             SocketAddress::IpV6(addr) => {
@@ -89,10 +80,6 @@ impl Handle {
                 let mut pkt_info = unsafe { core::mem::zeroed::<libc::in6_pktinfo>() };
 
                 pkt_info.ipi6_addr.s6_addr = (*ip).into();
-
-                if let Some(interface) = self.local_interface {
-                    pkt_info.ipi6_ifindex = interface as _;
-                }
 
                 msghdr.encode_cmsg(libc::IPPROTO_IPV6, libc::IPV6_PKTINFO, pkt_info);
             }
