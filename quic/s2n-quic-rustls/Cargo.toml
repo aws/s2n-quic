@@ -15,7 +15,7 @@ webpki = "0.21"
 # and can change in future versions of rustls. Therefore care must be taken to maintain the same order
 # of ciphersuites when upgrading rustls version.
 # See quic/s2n-quic-rustls/src/lib.rs, default_ciphersuites()
-rustls = { version = "0.17", features = ["quic"] }
+rustls = { version = "0.20", features = ["quic"] }
 
 [dev-dependencies]
 s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", features = ["testing"] }
