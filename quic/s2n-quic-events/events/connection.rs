@@ -164,3 +164,10 @@ struct ConnectionIdUpdated<'a> {
     previous: ConnectionId<'a>,
     current: ConnectionId<'a>,
 }
+
+#[event("recovery:ecn_state_changed")]
+struct EcnStateChanged {
+    path_id: u64,
+    state: EcnState,
+    capable: bool,
+}
