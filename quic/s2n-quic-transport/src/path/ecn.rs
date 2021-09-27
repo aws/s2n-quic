@@ -336,7 +336,6 @@ impl Controller {
         publisher.on_ecn_state_changed(event::builder::EcnStateChanged {
             path_id: path_id.into_event(),
             state: self.state.into_event(),
-            capable: self.is_capable(),
         })
     }
 }

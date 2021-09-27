@@ -169,5 +169,4 @@ struct ConnectionIdUpdated<'a> {
 struct EcnStateChanged {
     path_id: u64,
     state: EcnState,
-    capable: bool,
 }

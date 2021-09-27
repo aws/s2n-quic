@@ -403,7 +403,6 @@ pub mod api {
     pub struct EcnStateChanged {
         pub path_id: u64,
         pub state: EcnState,
-        pub capable: bool,
     }
     impl Event for EcnStateChanged {
         const NAME: &'static str = "recovery:ecn_state_changed";
@@ -1559,20 +1558,14 @@ pub mod builder {
     pub struct EcnStateChanged {
         pub path_id: u64,
         pub state: EcnState,
-        pub capable: bool,
     }
     impl IntoEvent<api::EcnStateChanged> for EcnStateChanged {
         #[inline]
         fn into_event(self) -> api::EcnStateChanged {
-            let EcnStateChanged {
-                path_id,
-                state,
-                capable,
-            } = self;
+            let EcnStateChanged { path_id, state } = self;
             api::EcnStateChanged {
                 path_id: path_id.into_event(),
                 state: state.into_event(),
-                capable: capable.into_event(),
             }
         }
     }
