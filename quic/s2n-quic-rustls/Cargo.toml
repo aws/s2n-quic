@@ -6,7 +6,7 @@ edition = "2018"
 license = "Apache-2.0"
 
 [dependencies]
-rustls = { git = "https://github.com/rustls/rustls", rev = "14c024db16354c189ad6f5b3430cfca477ebcd8a", features = ["quic"] }
+rustls = { version = "0.20", features = ["quic"] }
 rustls-pemfile = "0.2"
 s2n-codec = { version = "0.1", path = "../../common/s2n-codec", default-features = false }
 s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", default-features = false }
