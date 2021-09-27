@@ -140,7 +140,7 @@ impl Builder {
             .with_cipher_suites(crate::ciphersuite::DEFAULT_CIPHERSUITES)
             .with_safe_default_kx_groups()
             .with_protocol_versions(crate::PROTOCOL_VERSIONS)?
-            .with_root_certificates(self.cert_store, &[])
+            .with_root_certificates(self.cert_store)
             .with_no_client_auth();
 
         config.max_fragment_size = None;
