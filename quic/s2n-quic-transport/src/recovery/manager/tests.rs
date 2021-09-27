@@ -109,7 +109,14 @@ fn on_packet_sent() {
             packet_number: space.new_packet_number(VarInt::from_u8(1)),
         };
 
-        manager.on_packet_sent(sent_packet, outcome, time_sent, ecn, &mut context);
+        manager.on_packet_sent(
+            sent_packet,
+            outcome,
+            time_sent,
+            ecn,
+            &mut context,
+            &mut Publisher::default(),
+        );
 
         assert!(manager.sent_packets.get(sent_packet).is_some());
         let actual_sent_packet = manager.sent_packets.get(sent_packet).unwrap();
@@ -227,7 +234,14 @@ fn on_packet_sent_across_multiple_paths() {
         packet_number: space.new_packet_number(VarInt::from_u8(1)),
     };
 
-    manager.on_packet_sent(sent_packet, outcome, time_sent, ecn, &mut context);
+    manager.on_packet_sent(
+        sent_packet,
+        outcome,
+        time_sent,
+        ecn,
+        &mut context,
+        &mut Publisher::default(),
+    );
 
     // Expectation 1:
     assert!(manager.sent_packets.get(sent_packet).is_some());
@@ -265,7 +279,14 @@ fn on_packet_sent_across_multiple_paths() {
 
     // Trigger 2:
     context.set_path_id(second_path_id);
-    manager.on_packet_sent(sent_packet, outcome, time_sent, ecn, &mut context);
+    manager.on_packet_sent(
+        sent_packet,
+        outcome,
+        time_sent,
+        ecn,
+        &mut context,
+        &mut Publisher::default(),
+    );
 
     // Expectation 2:
     assert!(manager.sent_packets.get(sent_packet).is_some());
@@ -317,6 +338,7 @@ fn on_ack_frame() {
             time_sent,
             ecn,
             &mut context,
+            &mut Publisher::default(),
         );
     }
 
@@ -426,6 +448,7 @@ fn on_ack_frame() {
         time_sent,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
     ack_packets(11..=11, ack_receive_time, &mut context, &mut manager, None);
 
@@ -486,6 +509,7 @@ fn process_new_acked_packets_update_pto_timer() {
         time_sent,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
     // Send packets 2 on second_path
     context.set_path_id(second_path_id);
@@ -500,6 +524,7 @@ fn process_new_acked_packets_update_pto_timer() {
         time_sent,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     // Start the pto backoff at 2 so we can tell if it was reset
@@ -594,6 +619,7 @@ fn process_new_acked_packets_congestion_controller() {
         time_sent,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
     // Send packets 2 on second_path
     context.set_path_id(second_path_id);
@@ -608,6 +634,7 @@ fn process_new_acked_packets_congestion_controller() {
         time_sent,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     // Trigger 1:
@@ -713,6 +740,7 @@ fn process_new_acked_packets_pto_timer() {
         time_sent,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
     // Send packets 2 on second_path
     context.set_path_id(second_path_id);
@@ -727,6 +755,7 @@ fn process_new_acked_packets_pto_timer() {
         time_sent,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     manager.pto.timer.cancel();
@@ -760,6 +789,7 @@ fn process_new_acked_packets_pto_timer() {
         time_sent,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     // Trigger 2:
@@ -819,6 +849,7 @@ fn process_new_acked_packets_process_ecn() {
             time_sent,
             ExplicitCongestionNotification::Ect0,
             &mut context,
+            &mut Publisher::default(),
         );
     }
 
@@ -914,6 +945,7 @@ fn process_new_acked_packets_failed_ecn_validation_does_not_cause_congestion_eve
             time_sent,
             ExplicitCongestionNotification::Ect0,
             &mut context,
+            &mut Publisher::default(),
         );
     }
 
@@ -967,6 +999,7 @@ fn no_rtt_update_when_not_acknowledging_the_largest_acknowledged_packet() {
         time_sent,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
     manager.on_packet_sent(
         space.new_packet_number(VarInt::from_u8(1)),
@@ -979,6 +1012,7 @@ fn no_rtt_update_when_not_acknowledging_the_largest_acknowledged_packet() {
         time_sent,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     assert_eq!(manager.sent_packets.iter().count(), 2);
@@ -1039,6 +1073,7 @@ fn no_rtt_update_when_receiving_packet_on_different_path() {
         time_sent,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
     manager.on_packet_sent(
         space.new_packet_number(VarInt::from_u8(1)),
@@ -1051,6 +1086,7 @@ fn no_rtt_update_when_receiving_packet_on_different_path() {
         time_sent,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
     assert_eq!(manager.sent_packets.iter().count(), 2);
 
@@ -1148,6 +1184,7 @@ fn rtt_update_when_receiving_ack_from_multiple_paths() {
         sent_time,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     // send packet 1 (largest) on first path. sent + 200
@@ -1163,6 +1200,7 @@ fn rtt_update_when_receiving_ack_from_multiple_paths() {
         sent_time,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
     assert_eq!(manager.sent_packets.iter().count(), 2);
 
@@ -1226,7 +1264,14 @@ fn detect_and_remove_lost_packets() {
 
     // Send a packet that was sent too long ago (lost)
     let old_packet_time_sent = space.new_packet_number(VarInt::from_u8(0));
-    manager.on_packet_sent(old_packet_time_sent, outcome, time_sent, ecn, &mut context);
+    manager.on_packet_sent(
+        old_packet_time_sent,
+        outcome,
+        time_sent,
+        ecn,
+        &mut context,
+        &mut Publisher::default(),
+    );
 
     // time threshold = max(kTimeThreshold * max(smoothed_rtt, latest_rtt), kGranularity)
     // time threshold = max(9/8 * 8) = 9
@@ -1255,15 +1300,30 @@ fn detect_and_remove_lost_packets() {
         time_sent,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     // Send a packet that is less than the largest acked but not lost
     let not_lost = space.new_packet_number(VarInt::from_u8(9));
-    manager.on_packet_sent(not_lost, outcome, time_sent, ecn, &mut context);
+    manager.on_packet_sent(
+        not_lost,
+        outcome,
+        time_sent,
+        ecn,
+        &mut context,
+        &mut Publisher::default(),
+    );
 
     // Send a packet larger than the largest acked (not lost)
     let larger_than_largest = manager.largest_acked_packet.unwrap().next().unwrap();
-    manager.on_packet_sent(larger_than_largest, outcome, time_sent, ecn, &mut context);
+    manager.on_packet_sent(
+        larger_than_largest,
+        outcome,
+        time_sent,
+        ecn,
+        &mut context,
+        &mut Publisher::default(),
+    );
 
     // Four packets sent, each size 1 byte
     let bytes_in_flight: u16 = manager
@@ -1384,6 +1444,7 @@ fn detect_lost_packets_persistent_cogestion_path_aware() {
             now,
             ecn,
             &mut context,
+            &mut Publisher::default(),
         );
     }
     // Send a packet that was sent too long ago (lost)
@@ -1396,6 +1457,7 @@ fn detect_lost_packets_persistent_cogestion_path_aware() {
             now,
             ecn,
             &mut context,
+            &mut Publisher::default(),
         );
     }
     // Send a packet that was sent too long ago (lost)
@@ -1408,6 +1470,7 @@ fn detect_lost_packets_persistent_cogestion_path_aware() {
             now,
             ecn,
             &mut context,
+            &mut Publisher::default(),
         );
     }
 
@@ -1590,7 +1653,14 @@ fn detect_and_remove_lost_packets_nothing_lost() {
 
     // Send a packet that is less than the largest acked but not lost
     let not_lost = space.new_packet_number(VarInt::from_u8(9));
-    manager.on_packet_sent(not_lost, outcome, time_sent, ecn, &mut context);
+    manager.on_packet_sent(
+        not_lost,
+        outcome,
+        time_sent,
+        ecn,
+        &mut context,
+        &mut Publisher::default(),
+    );
 
     manager.detect_and_remove_lost_packets(time_sent, &mut context, &mut Publisher::default());
 
@@ -1632,7 +1702,14 @@ fn detect_and_remove_lost_packets_mtu_probe() {
 
     // Send an MTU probe packet
     let lost_packet = space.new_packet_number(VarInt::from_u8(2));
-    manager.on_packet_sent(lost_packet, outcome, time_sent, ecn, &mut context);
+    manager.on_packet_sent(
+        lost_packet,
+        outcome,
+        time_sent,
+        ecn,
+        &mut context,
+        &mut Publisher::default(),
+    );
     assert_eq!(
         context.path().congestion_controller.bytes_in_flight,
         MINIMUM_MTU as u32 + 1
@@ -1688,6 +1765,7 @@ fn persistent_congestion() {
         time_zero,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     // t=1: Send packet #2 (app data)
@@ -1697,6 +1775,7 @@ fn persistent_congestion() {
         time_zero + Duration::from_secs(1),
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     // t=1.2: Recv acknowledgement of #1
@@ -1716,6 +1795,7 @@ fn persistent_congestion() {
             time_zero + Duration::from_secs(t.into()),
             ecn,
             &mut context,
+            &mut Publisher::default(),
         );
     }
 
@@ -1726,6 +1806,7 @@ fn persistent_congestion() {
         time_zero + Duration::from_secs(8),
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     // t=12: Send packet #9 (PTO 2)
@@ -1735,6 +1816,7 @@ fn persistent_congestion() {
         time_zero + Duration::from_secs(12),
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     // t=12.2: Recv acknowledgement of #9
@@ -1774,6 +1856,7 @@ fn persistent_congestion() {
         time_zero + Duration::from_secs(20),
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     // t=21: Recv acknowledgement of #10
@@ -1824,6 +1907,7 @@ fn persistent_congestion_multiple_periods() {
         time_zero,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     // t=1: Send packet #2 (app data)
@@ -1833,6 +1917,7 @@ fn persistent_congestion_multiple_periods() {
         time_zero + Duration::from_secs(1),
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     // t=1.2: Recv acknowledgement of #1
@@ -1852,6 +1937,7 @@ fn persistent_congestion_multiple_periods() {
             time_zero + Duration::from_secs(t.into()),
             ecn,
             &mut context,
+            &mut Publisher::default(),
         );
     }
 
@@ -1864,6 +1950,7 @@ fn persistent_congestion_multiple_periods() {
         time_zero + Duration::from_secs(8),
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     // t=20: Send packet #10 (app data)
@@ -1873,6 +1960,7 @@ fn persistent_congestion_multiple_periods() {
         time_zero + Duration::from_secs(20),
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     // t=30: Send packet #11 (app data)
@@ -1882,6 +1970,7 @@ fn persistent_congestion_multiple_periods() {
         time_zero + Duration::from_secs(30),
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     // t=30.2: Recv acknowledgement of #11
@@ -1937,6 +2026,7 @@ fn persistent_congestion_period_does_not_start_until_rtt_sample() {
         time_zero,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     // t=10: Send packet #2 (app data)
@@ -1946,6 +2036,7 @@ fn persistent_congestion_period_does_not_start_until_rtt_sample() {
         time_zero + Duration::from_secs(10),
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     // t=20: Send packet #3 (app data)
@@ -1955,6 +2046,7 @@ fn persistent_congestion_period_does_not_start_until_rtt_sample() {
         time_zero + Duration::from_secs(20),
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     // t=20.1: Recv acknowledgement of #3. The first RTT sample is collected
@@ -2069,6 +2161,7 @@ fn update_pto_timer() {
         now,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     let expected_pto_base_timestamp = now - Duration::from_secs(5);
@@ -2203,6 +2296,7 @@ fn on_timeout() {
         now - Duration::from_secs(5),
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     // Loss timer is armed and expired, on_packet_loss is called
@@ -2492,6 +2586,7 @@ fn probe_packets_count_towards_bytes_in_flight() {
         s2n_quic_platform::time::now(),
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
 
     assert_eq!(context.path().congestion_controller.bytes_in_flight, 100);
@@ -2580,6 +2675,7 @@ fn packet_declared_lost_less_than_1_ms_from_loss_threshold() {
         sent_time,
         ecn,
         &mut context,
+        &mut Publisher::default(),
     );
     manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(2)));
 

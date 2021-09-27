@@ -116,7 +116,9 @@ impl<Config: endpoint::Config> Manager<Config> {
         });
 
         // Restart ECN validation to check that the path still supports ECN
-        self.active_path_mut().ecn_controller.restart();
+        self.active_path_mut()
+            .ecn_controller
+            .restart(new_path_id, publisher);
 
         Ok(())
     }
@@ -525,9 +527,13 @@ impl<Config: endpoint::Config> Manager<Config> {
         Ok(())
     }
 
-    pub fn on_timeout(&mut self, timestamp: Timestamp) -> Result<(), connection::Error> {
-        for path in self.paths.iter_mut() {
-            path.on_timeout(timestamp);
+    pub fn on_timeout<Pub: event::ConnectionPublisher>(
+        &mut self,
+        timestamp: Timestamp,
+        publisher: &mut Pub,
+    ) -> Result<(), connection::Error> {
+        for (id, path) in self.paths.iter_mut().enumerate() {
+            path.on_timeout(timestamp, Id(id as u8), publisher);
         }
 
         if self.active_path().failed_validation() {

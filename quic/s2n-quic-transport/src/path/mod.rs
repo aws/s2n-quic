@@ -6,7 +6,7 @@
 use crate::{
     connection,
     contexts::WriteContext,
-    endpoint,
+    endpoint, path,
     recovery::{congestion_controller, CongestionController, RttEstimator},
     transmission::{self, Mode},
 };
@@ -182,10 +182,16 @@ impl<Config: endpoint::Config> Path<Config> {
     }
 
     #[inline]
-    pub fn on_timeout(&mut self, timestamp: Timestamp) {
+    pub fn on_timeout<Pub: event::ConnectionPublisher>(
+        &mut self,
+        timestamp: Timestamp,
+        path_id: path::Id,
+        publisher: &mut Pub,
+    ) {
         self.challenge.on_timeout(timestamp);
         self.mtu_controller.on_timeout(timestamp);
-        self.ecn_controller.on_timeout(timestamp);
+        self.ecn_controller
+            .on_timeout(timestamp, path_id, publisher);
     }
 
     /// Only PATH_CHALLENGE and PATH_RESPONSE frames should be transmitted here.
@@ -517,6 +523,7 @@ mod tests {
     use core::time::Duration;
     use s2n_quic_core::{
         connection, endpoint,
+        event::testing::Publisher,
         recovery::{CongestionController, RttEstimator},
         time::{Clock, NoopClock},
         transmission,
@@ -585,7 +592,11 @@ mod tests {
         assert!(path.challenge.is_pending());
 
         // Trigger:
-        path.on_timeout(expiration_time + Duration::from_millis(10));
+        path.on_timeout(
+            expiration_time + Duration::from_millis(10),
+            path::Id::test_id(),
+            &mut Publisher::default(),
+        );
 
         // Expectation:
         assert!(!path.is_challenge_pending());
@@ -643,7 +654,11 @@ mod tests {
         let expiration_time = helper_challenge.now + helper_challenge.abandon_duration;
 
         // Trigger:
-        path.on_timeout(expiration_time + Duration::from_millis(10));
+        path.on_timeout(
+            expiration_time + Duration::from_millis(10),
+            path::Id::test_id(),
+            &mut Publisher::default(),
+        );
 
         // Expectation:
         assert!(!path.challenge.is_disabled());

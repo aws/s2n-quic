@@ -227,6 +227,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             context.timestamp,
             ecn,
             &mut recovery_context,
+            context.publisher,
         );
 
         Ok((outcome, buffer))

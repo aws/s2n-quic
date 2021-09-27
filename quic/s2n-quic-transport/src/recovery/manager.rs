@@ -160,13 +160,14 @@ impl<Config: endpoint::Config> Manager<Config> {
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.5
     //# After a packet is sent, information about the packet is stored.
-    pub fn on_packet_sent<Ctx: Context<Config>>(
+    pub fn on_packet_sent<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         packet_number: PacketNumber,
         outcome: transmission::Outcome,
         time_sent: Timestamp,
         ecn: ExplicitCongestionNotification,
         context: &mut Ctx,
+        publisher: &mut Pub,
     ) {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7
         //# Similar to TCP, packets containing only ACK frames do not count
@@ -195,7 +196,11 @@ impl<Config: endpoint::Config> Manager<Config> {
             ),
         );
 
-        context.path_mut().ecn_controller.on_packet_sent(ecn);
+        let path_id = context.path_id();
+        context
+            .path_mut()
+            .ecn_controller
+            .on_packet_sent(ecn, path_id, publisher);
         self.sent_packet_ecn_counts.increment(ecn);
 
         if outcome.is_congestion_controlled {
@@ -531,15 +536,22 @@ impl<Config: endpoint::Config> Manager<Config> {
             !newly_acked_packets.is_empty(),
             "this method assumes there was at least one newly-acked packet"
         );
-        let path = context.path_mut();
 
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
         //# Validating ECN counts from reordered ACK frames can result in failure.
         //# An endpoint MUST NOT fail ECN validation as a result of processing an
         //# ACK frame that does not increase the largest acknowledged packet number.
         if new_largest_packet {
-            self.process_ecn(newly_acked_ecn_counts, frame.ecn_counts, datagram, path);
+            self.process_ecn(
+                newly_acked_ecn_counts,
+                frame.ecn_counts,
+                datagram,
+                context,
+                publisher,
+            );
         }
+
+        let path = context.path_mut();
 
         if current_path_acked_bytes > 0 {
             path.congestion_controller.on_packet_ack(
@@ -553,19 +565,24 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
     }
 
-    fn process_ecn(
+    fn process_ecn<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         newly_acked_ecn_counts: EcnCounts,
         ack_frame_ecn_counts: Option<EcnCounts>,
         datagram: &DatagramInfo,
-        path: &mut Path<Config>,
+        context: &mut Ctx,
+        publisher: &mut Pub,
     ) {
-        let outcome = path.ecn_controller.validate(
+        let path_id = context.path_id();
+
+        let outcome = context.path_mut().ecn_controller.validate(
             newly_acked_ecn_counts,
             self.sent_packet_ecn_counts,
             self.baseline_ecn_counts,
             ack_frame_ecn_counts,
             datagram.timestamp,
+            path_id,
+            publisher,
         );
 
         if matches!(outcome, ValidationOutcome::CongestionExperienced) {
@@ -573,7 +590,9 @@ impl<Config: endpoint::Config> Manager<Config> {
             //# If a path has been validated to support ECN ([RFC3168], [RFC8311]),
             //# QUIC treats a Congestion Experienced (CE) codepoint in the IP header
             //# as a signal of congestion.
-            path.congestion_controller
+            context
+                .path_mut()
+                .congestion_controller
                 .on_congestion_event(datagram.timestamp);
         }
 
@@ -859,8 +878,13 @@ impl<Config: endpoint::Config> Manager<Config> {
             );
 
             // Notify the ECN controller of packet loss for blackhole detection.
-            path.ecn_controller
-                .on_packet_loss(sent_info.time_sent, sent_info.ecn, now);
+            path.ecn_controller.on_packet_loss(
+                sent_info.time_sent,
+                sent_info.ecn,
+                now,
+                sent_info.path_id,
+                publisher,
+            );
 
             if persistent_congestion {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2

@@ -137,7 +137,10 @@ fn test_invalid_path_fallback() {
 
     // After a validation times out, the path should revert to the previous
     manager
-        .on_timeout(now + expiration + Duration::from_millis(100))
+        .on_timeout(
+            now + expiration + Duration::from_millis(100),
+            &mut Publisher::default(),
+        )
         .unwrap();
     assert_eq!(manager.active, 0);
     assert!(manager.last_known_validated_path.is_none());
@@ -297,7 +300,10 @@ fn validate_path_before_challenge_expiration() {
     // A response 100ms before the challenge is abandoned
     helper
         .manager
-        .on_timeout(helper.now + helper.challenge_expiration - Duration::from_millis(100))
+        .on_timeout(
+            helper.now + helper.challenge_expiration - Duration::from_millis(100),
+            &mut Publisher::default(),
+        )
         .unwrap();
 
     // Expectation 1:
@@ -372,7 +378,10 @@ fn dont_validate_path_if_path_challenge_is_abandoned() {
     // A response 100ms after the challenge should fail
     helper
         .manager
-        .on_timeout(helper.now + helper.challenge_expiration + Duration::from_millis(100))
+        .on_timeout(
+            helper.now + helper.challenge_expiration + Duration::from_millis(100),
+            &mut Publisher::default(),
+        )
         .unwrap();
 
     // Expectation 1:
@@ -475,7 +484,10 @@ fn silently_return_when_there_is_no_valid_path() {
         endpoint::Type::Client,
     );
     manager[first_path_id].on_transmit(&mut context);
-    let res = manager.on_timeout(now + expiration + Duration::from_millis(100));
+    let res = manager.on_timeout(
+        now + expiration + Duration::from_millis(100),
+        &mut Publisher::default(),
+    );
 
     // Expectation:
     assert!(!manager[first_path_id].is_challenge_pending());
@@ -1009,13 +1021,21 @@ fn connection_migration_new_path_abandon_timer() {
     //# [QUIC-RECOVERY]) is RECOMMENDED.
     // abandon_duration should use max pto_period: second path
     let abandon_time = now + (second_path_pto * 3);
-    manager[second_path_id].on_timeout(abandon_time - Duration::from_millis(10));
+    manager[second_path_id].on_timeout(
+        abandon_time - Duration::from_millis(10),
+        second_path_id,
+        &mut Publisher::default(),
+    );
 
     // Expectation 2:
     assert!(manager[second_path_id].is_challenge_pending());
 
     // Trigger 3:
-    manager[second_path_id].on_timeout(abandon_time + Duration::from_millis(10));
+    manager[second_path_id].on_timeout(
+        abandon_time + Duration::from_millis(10),
+        second_path_id,
+        &mut Publisher::default(),
+    );
     // Expectation 3:
     assert!(!manager[second_path_id].is_challenge_pending());
 }
