@@ -5,6 +5,7 @@ use core::num::NonZeroUsize;
 
 #[derive(Debug)]
 pub struct Gso {
+    #[allow(dead_code)] // ignore this field on unsupported platforms
     max_segments: NonZeroUsize,
 }
 

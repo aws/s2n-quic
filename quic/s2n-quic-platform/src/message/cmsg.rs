@@ -135,7 +135,20 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
                 #[cfg(s2n_quic_platform_pktinfo)]
                 (libc::IPPROTO_IP, libc::IP_PKTINFO, _) => {
                     let pkt_info = decode_value::<libc::in_pktinfo>(cmsg);
-                    let local_address = pkt_info.ipi_spec_dst.s_addr.to_ne_bytes();
+
+                    // read from both fields in case only one is set and not the other
+                    //
+                    // from https://man7.org/linux/man-pages/man7/ip.7.html:
+                    //
+                    // > ipi_spec_dst is the local address
+                    // > of the packet and ipi_addr is the destination address in
+                    // > the packet header.
+                    let local_address =
+                        match (pkt_info.ipi_addr.s_addr, pkt_info.ipi_spec_dst.s_addr) {
+                            (0, v) => v.to_ne_bytes(),
+                            (v, _) => v.to_ne_bytes(),
+                        };
+
                     // TODO set the correct port
                     //      https://github.com/awslabs/s2n-quic/issues/816
                     let port = 0;
@@ -155,6 +168,18 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
                         s2n_quic_core::inet::SocketAddressV6::new(local_address, port);
                     result.local_address = local_address.into();
                     result.local_interface = Some(pkt_info.ipi6_ifindex as _);
+                }
+                #[cfg(s2n_quic_platform_gso)]
+                (libc::SOL_UDP, libc::UDP_SEGMENT, _) => {
+                    // ignore GSO settings when reading
+                    continue;
+                }
+                (level, ty, len) if cfg!(test) => {
+                    // if we're getting an unexpected cmsg we should know about it in testing
+                    panic!(
+                        "unexpected cmsghdr {{ level: {}, type: {}, len: {} }}",
+                        level, ty, len
+                    );
                 }
                 _ => {}
             }
@@ -199,19 +224,55 @@ impl<'a> Iter<'a> {
             // ancillary data buffer associated with the passed msghdr.  It
             // returns NULL if there isn't enough space for a cmsghdr in the
             // buffer.
-            cmsghdr: libc::CMSG_FIRSTHDR(msghdr).as_ref(),
+            cmsghdr: libc::CMSG_FIRSTHDR(msghdr).as_ref().filter(|cmsghdr| {
+                // make sure we have a length, otherwise it'll loop forever
+                cmsghdr.cmsg_len > 0
+            }),
         }
     }
 }
 
 impl<'a> Iterator for Iter<'a> {
     type Item = &'a libc::cmsghdr;
+
     fn next(&mut self) -> Option<&'a libc::cmsghdr> {
         let current = self.cmsghdr.take()?;
         // CMSG_NXTHDR() returns the next valid cmsghdr after the passed
         // cmsghdr.  It returns NULL when there isn't enough space left
         // in the buffer.
-        self.cmsghdr = unsafe { libc::CMSG_NXTHDR(self.msghdr, current).as_ref() };
+        self.cmsghdr =
+            unsafe { libc::CMSG_NXTHDR(self.msghdr, current).as_ref() }.filter(|cmsghdr| {
+                // make sure we have a length, otherwise it'll loop forever
+                cmsghdr.cmsg_len > 0
+            });
         Some(current)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bolero::check;
+    use core::mem::zeroed;
+
+    #[test]
+    #[cfg_attr(target_os = "linux", ignore)] // the linux implementation currently has an integer overflow on garbage data
+    fn iter_test() {
+        check!().for_each(|cmsg| {
+            let mut msghdr = unsafe { zeroed::<libc::msghdr>() };
+            msghdr.msg_controllen = cmsg.len() as _;
+            msghdr.msg_control = if cmsg.is_empty() {
+                core::ptr::null_mut() as _
+            } else {
+                (&cmsg[0]) as *const u8 as _
+            };
+
+            for cmsghdr in unsafe { Iter::new(&msghdr) } {
+                assert_ne!(
+                    cmsghdr.cmsg_len, 0,
+                    "iterator should not return empty messages"
+                );
+            }
+        });
     }
 }
