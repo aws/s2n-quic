@@ -9,11 +9,11 @@ macro_rules! define_inet_type {
         $(,)*
     }) => {
         #[allow(unused_imports)]
-        #[cfg(feature = "generator")]
+        #[cfg(any(test, feature = "generator"))]
         use bolero_generator::*;
 
         #[derive(Clone, Copy, Default, Eq, zerocopy::FromBytes, zerocopy::AsBytes, zerocopy::Unaligned)]
-        #[cfg_attr(feature = "generator", derive(bolero_generator::TypeGenerator))]
+        #[cfg_attr(any(test, feature = "generator"), derive(bolero_generator::TypeGenerator))]
         #[repr(C)]
         $($vis)? struct $name {
             $(

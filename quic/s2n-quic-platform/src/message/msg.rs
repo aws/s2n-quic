@@ -18,10 +18,14 @@ use s2n_quic_core::{
     path::{self, LocalAddress, RemoteAddress},
 };
 
+#[cfg(any(test, feature = "generator"))]
+use bolero_generator::*;
+
 #[repr(transparent)]
 pub struct Message(pub(crate) msghdr);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
 pub struct Handle {
     pub remote_address: RemoteAddress,
     #[cfg(s2n_quic_platform_pktinfo)]
@@ -128,11 +132,19 @@ impl_message_delegate!(Message, 0, msghdr);
 
 impl fmt::Debug for Message {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("msghdr")
-            .field("ecn", &self.ecn())
-            .field("remote_address", &self.remote_address())
-            .field("payload", &self.payload())
-            .finish()
+        let alt = f.alternate();
+        let mut s = f.debug_struct("msghdr");
+
+        s.field("remote_address", &self.remote_address())
+            .field("anciliary_data", &cmsg::decode(&self.0));
+
+        if alt {
+            s.field("payload", &self.payload());
+        } else {
+            s.field("payload_len", &self.payload_len());
+        }
+
+        s.finish()
     }
 }
 
@@ -278,7 +290,7 @@ impl MessageTrait for msghdr {
         self.set_payload_len(mtu);
 
         // reset the address
-        self.msg_namelen = size_of::<sockaddr_in6>() as _;
+        self.set_remote_address(&SocketAddress::IpV6(Default::default()));
 
         if cfg!(debug_assertions) && self.msg_controllen == 0 {
             // make sure nothing was written to the control message if it was set to 0
@@ -547,7 +559,7 @@ mod tests {
     use super::*;
     use bolero::check;
 
-    use s2n_quic_core::inet::SocketAddress;
+    use s2n_quic_core::inet::{SocketAddress, Unspecified};
 
     #[test]
     fn address_inverse_pair_test() {
@@ -574,6 +586,59 @@ mod tests {
                 message.set_remote_address(&addr);
 
                 assert_eq!(message.remote_address(), Some(addr));
+            });
+    }
+
+    #[test]
+    fn handle_get_set_test() {
+        check!()
+            .with_generator((
+                gen::<Handle>(),
+                1..=crate::features::get().gso.max_segments(),
+            ))
+            .cloned()
+            .for_each(|(handle, segment_size)| {
+                use core::mem::zeroed;
+
+                let mut msghdr = unsafe { zeroed::<msghdr>() };
+
+                let mut msgname = unsafe { zeroed::<sockaddr_in6>() };
+                msghdr.msg_name = &mut msgname as *mut _ as *mut _;
+                msghdr.msg_namelen = size_of::<sockaddr_in6>() as _;
+
+                let mut iovec = unsafe { zeroed::<iovec>() };
+                let mut iovec_buf = [0u8; 16];
+                iovec.iov_len = iovec_buf.len() as _;
+                iovec.iov_base = (&mut iovec_buf[0]) as *mut u8 as _;
+                msghdr.msg_iov = &mut iovec;
+
+                let mut cmsg_buf = [0u8; cmsg::MAX_LEN];
+                msghdr.msg_controllen = cmsg_buf.len() as _;
+                msghdr.msg_control = (&mut cmsg_buf[0]) as *mut u8 as _;
+
+                let mut message = Message(msghdr);
+
+                handle.update_msg_hdr(&mut message.0);
+
+                if segment_size > 1 {
+                    message.set_segment_size(segment_size);
+                }
+
+                let header = Message::header(&message.0).unwrap();
+
+                assert_eq!(header.path.remote_address, handle.remote_address);
+
+                if cfg!(s2n_quic_platform_pktinfo) && !handle.local_address.ip().is_unspecified() {
+                    assert_eq!(header.path.local_address.ip(), handle.local_address.ip());
+                }
+
+                // reset the message and ensure everything is zeroed
+                unsafe {
+                    message.reset(0);
+                }
+
+                let header = Message::header(&msghdr).unwrap();
+                assert!(header.path.remote_address.is_unspecified());
             });
     }
 }

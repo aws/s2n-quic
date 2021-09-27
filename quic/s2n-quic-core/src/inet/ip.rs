@@ -8,7 +8,7 @@ use crate::inet::{
 };
 use core::fmt;
 
-#[cfg(feature = "generator")]
+#[cfg(any(test, feature = "generator"))]
 use bolero_generator::*;
 
 /// An IP address, either IPv4 or IPv6.
@@ -18,7 +18,7 @@ use bolero_generator::*;
 ///
 /// The size is also consistent across target operating systems.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "generator", derive(TypeGenerator))]
+#[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
 pub enum IpAddress {
     Ipv4(IpV4Address),
     Ipv6(IpV6Address),
@@ -44,6 +44,15 @@ impl From<IpV4Address> for IpAddress {
 impl From<IpV6Address> for IpAddress {
     fn from(ip: IpV6Address) -> Self {
         Self::Ipv6(ip)
+    }
+}
+
+impl Unspecified for IpAddress {
+    fn is_unspecified(&self) -> bool {
+        match self {
+            Self::Ipv4(addr) => addr.is_unspecified(),
+            Self::Ipv6(addr) => addr.is_unspecified(),
+        }
     }
 }
 
@@ -81,7 +90,7 @@ impl<'a> From<&'a IpV6Address> for IpAddressRef<'a> {
 ///
 /// The size is also consistent across target operating systems.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "generator", derive(TypeGenerator))]
+#[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
 pub enum SocketAddress {
     IpV4(SocketAddressV4),
     IpV6(SocketAddressV6),

@@ -9,6 +9,9 @@ use core::{
     num::NonZeroU16,
 };
 
+#[cfg(any(test, feature = "generator"))]
+use bolero_generator::*;
+
 pub mod migration;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14
@@ -63,6 +66,7 @@ pub trait Handle: 'static + Copy + Send + fmt::Debug {
 macro_rules! impl_addr {
     ($name:ident) => {
         #[derive(Clone, Copy, Debug, Default, Eq)]
+        #[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
         pub struct $name(pub SocketAddress);
 
         impl From<SocketAddress> for $name {
@@ -137,6 +141,7 @@ impl Handle for RemoteAddress {
 }
 
 #[derive(Clone, Copy, Debug, Eq)]
+#[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
 pub struct Tuple {
     pub remote_address: RemoteAddress,
     pub local_address: LocalAddress,

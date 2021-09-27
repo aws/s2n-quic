@@ -22,11 +22,21 @@ impl_message_delegate!(Message, 0, mmsghdr);
 
 impl fmt::Debug for Message {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("mmsghdr")
-            .field("ecn", &self.ecn())
-            .field("remote_address", &self.remote_address())
-            .field("payload", &self.payload())
-            .finish()
+        let alt = f.alternate();
+        let mut s = f.debug_struct("mmsghdr");
+
+        s.field("remote_address", &self.remote_address()).field(
+            "ancillary_data",
+            &crate::message::cmsg::decode(&self.0.msg_hdr),
+        );
+
+        if alt {
+            s.field("payload", &self.payload());
+        } else {
+            s.field("payload_len", &self.payload_len());
+        }
+
+        s.finish()
     }
 }
 

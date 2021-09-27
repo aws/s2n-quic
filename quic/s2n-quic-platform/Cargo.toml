@@ -8,11 +8,13 @@ license = "Apache-2.0"
 [features]
 default = ["std", "tokio-runtime", "wipe"]
 std = ["s2n-quic-core/std", "socket2", "lazy_static"]
-testing = ["std"] # Testing allows to overwrite the system time
+testing = ["std", "generator"] # Testing allows to overwrite the system time
+generator = ["bolero-generator", "s2n-quic-core/generator"]
 tokio-runtime = ["futures", "pin-project", "tokio"]
 wipe = ["zeroize"]
 
 [dependencies]
+bolero-generator = { version = "0.6", default-features = false, optional = true }
 cfg-if = "1"
 errno = "0.2"
 futures = { version = "0.3", optional = true }
@@ -28,5 +30,6 @@ libc = "0.2"
 
 [dev-dependencies]
 bolero = "0.6"
+bolero-generator = { version = "0.6", default-features = false }
 s2n-quic-core = { version = "0.1.0", path = "../s2n-quic-core", features = ["testing"] }
 tokio = { version = "1", features = ["full"] }
