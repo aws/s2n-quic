@@ -137,6 +137,12 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
                     let pkt_info = decode_value::<libc::in_pktinfo>(cmsg);
 
                     // read from both fields in case only one is set and not the other
+                    //
+                    // from https://man7.org/linux/man-pages/man7/ip.7.html:
+                    //
+                    // > ipi_spec_dst is the local address
+                    // > of the packet and ipi_addr is the destination address in
+                    // > the packet header.
                     let local_address =
                         match (pkt_info.ipi_addr.s_addr, pkt_info.ipi_spec_dst.s_addr) {
                             (0, v) => v.to_ne_bytes(),
