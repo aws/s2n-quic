@@ -114,10 +114,10 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
         self.outcome.is_congestion_controlled |= frame.is_congestion_controlled();
 
         self.publisher.on_frame_sent(event::builder::FrameSent {
-            packet_header: event::builder::PacketHeader {
-                packet_type: self.packet_number.into_event(),
-                version: Some(self.publisher.quic_version()),
-            },
+            packet_header: event::builder::PacketHeader::new(
+                self.packet_number,
+                self.publisher.quic_version(),
+            ),
             path_id: self.path_id.into_event(),
             frame: frame.into_event(),
         });
@@ -138,10 +138,10 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
         self.outcome.is_congestion_controlled |= frame.is_congestion_controlled();
 
         self.publisher.on_frame_sent(event::builder::FrameSent {
-            packet_header: event::builder::PacketHeader {
-                packet_type: self.packet_number.into_event(),
-                version: Some(self.publisher.quic_version()),
-            },
+            packet_header: event::builder::PacketHeader::new(
+                self.packet_number,
+                self.publisher.quic_version(),
+            ),
             path_id: self.path_id.into_event(),
             frame: frame.into_event(),
         });

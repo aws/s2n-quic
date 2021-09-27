@@ -8,7 +8,7 @@ use crate::{
 use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
-    event::{self, ConnectionPublisher as _, IntoEvent as _},
+    event::{self, ConnectionPublisher as _},
     frame::ack_elicitation::AckElicitable,
     inet::ExplicitCongestionNotification,
     io::tx,
@@ -180,10 +180,10 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                     self.context
                         .publisher
                         .on_packet_sent(event::builder::PacketSent {
-                            packet_header: event::builder::PacketHeader {
-                                packet_type: outcome.packet_number.into_event(),
-                                version: Some(self.context.publisher.quic_version()),
-                            },
+                            packet_header: event::builder::PacketHeader::new(
+                                outcome.packet_number,
+                                self.context.publisher.quic_version(),
+                            ),
                         });
 
                     if Config::ENDPOINT_TYPE.is_server()
@@ -236,10 +236,10 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                     self.context
                         .publisher
                         .on_packet_sent(event::builder::PacketSent {
-                            packet_header: event::builder::PacketHeader {
-                                packet_type: outcome.packet_number.into_event(),
-                                version: Some(self.context.publisher.quic_version()),
-                            },
+                            packet_header: event::builder::PacketHeader::new(
+                                outcome.packet_number,
+                                self.context.publisher.quic_version(),
+                            ),
                         });
 
                     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
@@ -334,10 +334,10 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                     self.context
                         .publisher
                         .on_packet_sent(event::builder::PacketSent {
-                            packet_header: event::builder::PacketHeader {
-                                packet_type: outcome.packet_number.into_event(),
-                                version: Some(self.context.publisher.quic_version()),
-                            },
+                            packet_header: event::builder::PacketHeader::new(
+                                outcome.packet_number,
+                                self.context.publisher.quic_version(),
+                            ),
                         });
                     encoder
                 }

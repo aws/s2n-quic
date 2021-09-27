@@ -87,10 +87,10 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         let packet_check = self.processed_packet_numbers.check(packet_number);
         if let Err(error) = packet_check {
             publisher.on_duplicate_packet(event::builder::DuplicatePacket {
-                packet_header: event::builder::PacketHeader {
-                    packet_type: packet_number.into_event(),
-                    version: Some(publisher.quic_version()),
-                },
+                packet_header: event::builder::PacketHeader::new(
+                    packet_number,
+                    publisher.quic_version(),
+                ),
                 path: path_event!(path, path_id),
                 error: error.into_event(),
             });

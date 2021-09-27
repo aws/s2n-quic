@@ -751,10 +751,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         );
 
         publisher.on_endpoint_packet_received(event::builder::EndpointPacketReceived {
-            packet_header: event::builder::PacketHeader {
-                packet_type: event::builder::PacketType::StatelessReset {},
-                version: publisher.quic_version(),
-            },
+            packet_header: event::builder::PacketHeader::StatelessReset {},
         });
 
         let close_packet_buffer = &mut self.close_packet_buffer;
