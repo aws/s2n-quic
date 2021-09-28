@@ -166,6 +166,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     ) -> Result<(), ProcessingError>;
 
     /// Notifies a connection it has received a datagram from a peer
+    #[allow(clippy::too_many_arguments)]
     fn on_datagram_received(
         &mut self,
         path_handle: &<Self::Config as endpoint::Config>::PathHandle,
