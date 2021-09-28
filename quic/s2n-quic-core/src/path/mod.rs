@@ -241,8 +241,8 @@ pub mod testing {
         event::{builder::SocketAddress, IntoEvent},
     };
 
-    impl<'a> Default for event::builder::Path<'a> {
-        fn default() -> Self {
+    impl<'a> event::builder::Path<'a> {
+        pub fn test() -> Self {
             Self {
                 local_addr: SocketAddress::IpV4 {
                     ip: &[127, 0, 0, 1],

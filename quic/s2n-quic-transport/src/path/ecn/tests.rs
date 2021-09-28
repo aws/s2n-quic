@@ -33,7 +33,7 @@ fn restart() {
     };
     controller.black_hole_counter += 1;
 
-    controller.restart(Path::default(), &mut Publisher::default());
+    controller.restart(Path::test(), &mut Publisher::default());
 
     assert_eq!(State::Testing(0), controller.state);
     assert_eq!(0, *controller.black_hole_counter.deref());
@@ -47,7 +47,7 @@ fn restart_already_in_testing_0() {
     };
     controller.black_hole_counter += 1;
 
-    controller.restart(Path::default(), &mut Publisher::default());
+    controller.restart(Path::test(), &mut Publisher::default());
 
     assert_eq!(State::Testing(0), controller.state);
     assert_eq!(0, *controller.black_hole_counter.deref());
@@ -57,7 +57,7 @@ fn restart_already_in_testing_0() {
 fn on_timeout() {
     let mut controller = Controller::default();
     let now = s2n_quic_platform::time::now();
-    controller.fail(now, Path::default(), &mut Publisher::default());
+    controller.fail(now, Path::test(), &mut Publisher::default());
 
     if let State::Failed(timer) = &controller.state {
         assert!(timer.is_armed());
@@ -70,7 +70,7 @@ fn on_timeout() {
     let now = now + RETEST_COOL_OFF_DURATION - Duration::from_secs(1);
 
     // Too soon
-    controller.on_timeout(now, Path::default(), &mut Publisher::default());
+    controller.on_timeout(now, Path::test(), &mut Publisher::default());
 
     if let State::Failed(timer) = &controller.state {
         assert!(timer.is_armed());
@@ -81,7 +81,7 @@ fn on_timeout() {
     assert_eq!(0, *controller.black_hole_counter.deref());
 
     let now = now + Duration::from_secs(1);
-    controller.on_timeout(now, Path::default(), &mut Publisher::default());
+    controller.on_timeout(now, Path::test(), &mut Publisher::default());
 
     assert_eq!(State::Testing(0), controller.state);
     assert_eq!(0, *controller.black_hole_counter.deref());
@@ -112,7 +112,7 @@ fn ecn() {
         //# the peer does not support ECN.
         controller.fail(
             s2n_quic_platform::time::now(),
-            Path::default(),
+            Path::test(),
             &mut Publisher::default(),
         );
         assert!(!controller.ecn(transmission_mode).using_ecn());
@@ -165,14 +165,14 @@ fn is_capable() {
 fn validate_already_failed() {
     let mut controller = Controller::default();
     let now = s2n_quic_platform::time::now();
-    controller.fail(now, Path::default(), &mut Publisher::default());
+    controller.fail(now, Path::test(), &mut Publisher::default());
     let outcome = controller.validate(
         EcnCounts::default(),
         EcnCounts::default(),
         EcnCounts::default(),
         None,
         now + Duration::from_secs(5),
-        Path::default(),
+        Path::test(),
         &mut Publisher::default(),
     );
 
@@ -206,7 +206,7 @@ fn validate_ecn_counts_not_in_ack() {
         EcnCounts::default(),
         None,
         now,
-        Path::default(),
+        Path::test(),
         &mut Publisher::default(),
     );
 
@@ -231,7 +231,7 @@ fn validate_ecn_ce_remarking() {
         EcnCounts::default(),
         Some(EcnCounts::default()),
         now,
-        Path::default(),
+        Path::test(),
         &mut Publisher::default(),
     );
 
@@ -256,7 +256,7 @@ fn validate_ect_0_remarking() {
         EcnCounts::default(),
         Some(ack_frame_ecn_counts),
         now,
-        Path::default(),
+        Path::test(),
         &mut Publisher::default(),
     );
 
@@ -278,7 +278,7 @@ fn validate_ect_0_remarking_after_restart() {
         baseline_ecn_counts,
         Some(ack_frame_ecn_counts),
         now,
-        Path::default(),
+        Path::test(),
         &mut Publisher::default(),
     );
 
@@ -299,7 +299,7 @@ fn validate_no_ecn_counts() {
         EcnCounts::default(),
         None,
         now,
-        Path::default(),
+        Path::test(),
         &mut Publisher::default(),
     );
 
@@ -318,7 +318,7 @@ fn validate_ecn_decrease() {
         baseline_ecn_counts,
         None,
         now,
-        Path::default(),
+        Path::test(),
         &mut Publisher::default(),
     );
 
@@ -344,7 +344,7 @@ fn validate_no_marked_packets_acked() {
         EcnCounts::default(),
         Some(EcnCounts::default()),
         now,
-        Path::default(),
+        Path::test(),
         &mut Publisher::default(),
     );
 
@@ -368,7 +368,7 @@ fn validate_capable() {
         EcnCounts::default(),
         Some(ack_frame_ecn_counts),
         now,
-        Path::default(),
+        Path::test(),
         &mut Publisher::default(),
     );
 
@@ -392,7 +392,7 @@ fn validate_capable_congestion_experienced() {
         EcnCounts::default(),
         Some(ack_frame_ecn_counts),
         now,
-        Path::default(),
+        Path::test(),
         &mut Publisher::default(),
     );
 
@@ -424,7 +424,7 @@ fn validate_capable_not_in_unknown_state() {
             EcnCounts::default(),
             Some(ack_frame_ecn_counts),
             now,
-            Path::default(),
+            Path::test(),
             &mut Publisher::default(),
         );
 
@@ -455,7 +455,7 @@ fn validate_capable_lost_ack_frame() {
         EcnCounts::default(),
         Some(ack_frame_ecn_counts),
         now,
-        Path::default(),
+        Path::test(),
         &mut Publisher::default(),
     );
 
@@ -482,7 +482,7 @@ fn validate_capable_after_restart() {
         baseline_ecn_counts,
         Some(ack_frame_ecn_counts),
         now,
-        Path::default(),
+        Path::test(),
         &mut Publisher::default(),
     );
 
@@ -498,7 +498,7 @@ fn on_packet_sent() {
         assert_eq!(State::Testing(i), controller.state);
         controller.on_packet_sent(
             ExplicitCongestionNotification::Ect0,
-            Path::default(),
+            Path::test(),
             &mut Publisher::default(),
         );
     }
@@ -525,7 +525,7 @@ fn on_packet_loss() {
                 time_sent,
                 ExplicitCongestionNotification::Ect0,
                 time_sent,
-                Path::default(),
+                Path::test(),
                 &mut Publisher::default(),
             );
         }
@@ -551,7 +551,7 @@ fn on_packet_loss_already_failed() {
     let time_sent = now + Duration::from_secs(1);
 
     controller.last_acked_ecn_packet_timestamp = Some(now);
-    controller.fail(now, Path::default(), &mut Publisher::default());
+    controller.fail(now, Path::test(), &mut Publisher::default());
 
     for _i in 0..TESTING_PACKET_THRESHOLD + 1 {
         assert_eq!(0, *controller.black_hole_counter.deref());
@@ -560,7 +560,7 @@ fn on_packet_loss_already_failed() {
             time_sent,
             ExplicitCongestionNotification::Ect0,
             time_sent,
-            Path::default(),
+            Path::test(),
             &mut Publisher::default(),
         );
     }
@@ -599,7 +599,7 @@ fn fuzz_validate() {
                     baseline_ecn_counts,
                     ack_frame_ecn_counts,
                     now,
-                    Path::default(),
+                    Path::test(),
                     &mut Publisher::default(),
                 );
 
