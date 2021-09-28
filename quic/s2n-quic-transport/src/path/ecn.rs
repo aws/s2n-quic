@@ -8,6 +8,7 @@ use s2n_quic_core::{
     frame::ack::EcnCounts,
     inet::ExplicitCongestionNotification,
     number::CheckedSub,
+    random,
     time::{timer, Duration, Timer, Timestamp},
     transmission,
     varint::VarInt,
@@ -23,6 +24,10 @@ const TESTING_PACKET_THRESHOLD: u8 = 10;
 // After a failure has been detected, the ecn::Controller will wait this duration
 // before testing for ECN support again.
 const RETEST_COOL_OFF_DURATION: Duration = Duration::from_secs(60);
+
+// The probability that a ECN-CE marked packet will be transmitted (in place of ECT0)
+// if the path is ECN capable, to check for ECN-CE suppression by the peer.
+const CE_SUPPRESSION_TESTING_PROBABILITY: f64 = 1.0 / 1000.0;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ValidationOutcome {
@@ -104,7 +109,11 @@ impl Controller {
     }
 
     /// Gets the ECN marking to use on packets sent to the peer
-    pub fn ecn(&self, transmission_mode: transmission::Mode) -> ExplicitCongestionNotification {
+    pub fn ecn<Rnd: random::Generator>(
+        &self,
+        transmission_mode: transmission::Mode,
+        random_generator: &mut Rnd,
+    ) -> ExplicitCongestionNotification {
         if transmission_mode.is_loss_recovery_probing() {
             // Don't mark loss recovery probes as ECN capable in case the ECN
             // marking is causing packet loss
@@ -116,12 +125,22 @@ impl Controller {
             //# On paths with a "testing" or "capable" state, the endpoint
             //# sends packets with an ECT marking -- ECT(0) by default;
             //# otherwise, the endpoint sends unmarked packets.
+            State::Testing(_) => ExplicitCongestionNotification::Ect0,
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
-            //# Upon successful validation, an endpoint MAY continue to set an ECT
-            //# codepoint in subsequent packets it sends, with the expectation that
-            //# the path is ECN-capable.
-            State::Testing(_) | State::Capable => ExplicitCongestionNotification::Ect0,
+            State::Capable => {
+                if random_generator.gen_bool(CE_SUPPRESSION_TESTING_PROBABILITY) {
+                    //= https://www.rfc-editor.org/rfc/rfc9002.txt#8.3
+                    //# A sender can detect suppression of reports by marking occasional
+                    //# packets that it sends with an ECN-CE marking.
+                    ExplicitCongestionNotification::Ce
+                } else {
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
+                    //# Upon successful validation, an endpoint MAY continue to set an ECT
+                    //# codepoint in subsequent packets it sends, with the expectation that
+                    //# the path is ECN-capable.
+                    ExplicitCongestionNotification::Ect0
+                }
+            }
             //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
             //# If validation fails, then the endpoint MUST disable ECN. It stops setting the ECT
             //# codepoint in IP packets that it sends, assuming that either the network path or
@@ -209,7 +228,26 @@ impl Controller {
                 return ValidationOutcome::Failed;
             }
 
-            congestion_experienced = incremental_ecn_counts.ce_count > VarInt::from_u8(0);
+            if incremental_ecn_counts.ce_count < newly_acked_ecn_counts.ce_count {
+                //= https://www.rfc-editor.org/rfc/rfc9002.txt#8.3
+                //# A receiver can misreport ECN markings to alter the congestion
+                //# response of a sender.  Suppressing reports of ECN-CE markings could
+                //# cause a sender to increase their send rate.  This increase could
+                //# result in congestion and loss.
+
+                //= https://www.rfc-editor.org/rfc/rfc9002.txt#8.3
+                //# A sender can detect suppression of reports by marking occasional
+                //# packets that it sends with an ECN-CE marking.  If a packet sent with
+                //# an ECN-CE marking is not reported as having been CE marked when the
+                //# packet is acknowledged, then the sender can disable ECN for that path
+                //# by not setting ECN-Capable Transport (ECT) codepoints in subsequent
+                //# packets sent on that path [RFC3168].
+                self.fail(now, path, publisher);
+                return ValidationOutcome::Failed;
+            }
+
+            congestion_experienced =
+                incremental_ecn_counts.ce_count > newly_acked_ecn_counts.ce_count;
         } else {
             // ECN counts decreased from the baseline
             self.fail(now, path, publisher);
@@ -243,10 +281,6 @@ impl Controller {
         debug_assert!(
             !matches!(ecn, ExplicitCongestionNotification::Ect1),
             "Ect1 is not used"
-        );
-        debug_assert!(
-            !matches!(ecn, ExplicitCongestionNotification::Ce),
-            "Endpoints should not mark packets as Ce"
         );
 
         if let (true, State::Testing(ref mut packet_count)) = (ecn.using_ecn(), &mut self.state) {

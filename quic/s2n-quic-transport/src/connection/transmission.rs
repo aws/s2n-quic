@@ -39,8 +39,10 @@ impl<'a, 'sub, Config: endpoint::Config> ConnectionTransmissionContext<'a, 'sub,
         &mut self.path_manager[self.path_id]
     }
 
-    pub fn ecn(&self) -> ExplicitCongestionNotification {
-        self.path().ecn_controller.ecn(self.transmission_mode)
+    pub fn ecn(&mut self) -> ExplicitCongestionNotification {
+        self.path_manager[self.path_id]
+            .ecn_controller
+            .ecn(self.transmission_mode, self.rnd)
     }
 }
 
