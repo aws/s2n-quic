@@ -191,7 +191,7 @@ impl<Config: endpoint::Config> Path<Config> {
         self.challenge.on_timeout(timestamp);
         self.mtu_controller.on_timeout(timestamp);
         self.ecn_controller
-            .on_timeout(timestamp, path_event!(self, path_id).clone(), publisher);
+            .on_timeout(timestamp, path_event!(self, path_id), publisher);
     }
 
     /// Only PATH_CHALLENGE and PATH_RESPONSE frames should be transmitted here.

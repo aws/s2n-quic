@@ -111,7 +111,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         // Restart ECN validation to check that the path still supports ECN
         let path = self.active_path_mut();
         path.ecn_controller
-            .restart(path_event!(path, new_path_id).clone(), publisher);
+            .restart(path_event!(path, new_path_id), publisher);
 
         let prev_path = &self[prev_path_id];
         let new_path = &self[new_path_id];

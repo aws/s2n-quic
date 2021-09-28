@@ -199,7 +199,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         let path_id = context.path_id();
         let path = context.path_mut();
         path.ecn_controller
-            .on_packet_sent(ecn, path_event!(path, path_id).clone(), publisher);
+            .on_packet_sent(ecn, path_event!(path, path_id), publisher);
         self.sent_packet_ecn_counts.increment(ecn);
 
         if outcome.is_congestion_controlled {
@@ -581,7 +581,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.baseline_ecn_counts,
             ack_frame_ecn_counts,
             datagram.timestamp,
-            path_event!(path, path_id).clone(),
+            path_event!(path, path_id),
             publisher,
         );
 
@@ -884,7 +884,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 sent_info.time_sent,
                 sent_info.ecn,
                 now,
-                path_event!(path, path_id).clone(),
+                path_event!(path, path_id),
                 publisher,
             );
 
