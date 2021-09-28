@@ -70,6 +70,7 @@ impl connection::Trait for TestConnection {
         _close_formatter: &<Self::Config as endpoint::Config>::ConnectionCloseFormatter,
         _packet_buffer: &mut endpoint::PacketBuffer,
         _timestamp: Timestamp,
+        _rnd: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) {
         assert!(!self.is_closed);
@@ -98,6 +99,7 @@ impl connection::Trait for TestConnection {
         &mut self,
         _queue: &mut Tx,
         _timestamp: Timestamp,
+        _rnd: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), crate::contexts::ConnectionOnTransmitError> {
         Ok(())

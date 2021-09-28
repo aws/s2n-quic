@@ -124,8 +124,12 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         let timestamp = clock.get_time();
 
         self.connections.iterate_transmission_list(|connection| {
-            transmit_result =
-                connection.on_transmit(queue, timestamp, endpoint_context.event_subscriber);
+            transmit_result = connection.on_transmit(
+                queue,
+                timestamp,
+                endpoint_context.random_generator,
+                endpoint_context.event_subscriber,
+            );
             if transmit_result.is_err() {
                 // If one connection fails, return
                 ConnectionContainerIterationResult::BreakAndInsertAtBack
@@ -184,6 +188,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                         endpoint_context.connection_close_formatter,
                         close_packet_buffer,
                         timestamp,
+                        endpoint_context.random_generator,
                         endpoint_context.event_subscriber,
                     );
                 }
@@ -475,6 +480,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                                 endpoint_context.connection_close_formatter,
                                 close_packet_buffer,
                                 datagram.timestamp,
+                                endpoint_context.random_generator,
                                 endpoint_context.event_subscriber,
                             );
                             return Err(());
@@ -516,6 +522,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         endpoint_context.connection_close_formatter,
                         close_packet_buffer,
                         datagram.timestamp,
+                        endpoint_context.random_generator,
                         endpoint_context.event_subscriber,
                     );
                     return Err(());
@@ -769,6 +776,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 endpoint_context.connection_close_formatter,
                 close_packet_buffer,
                 timestamp,
+                endpoint_context.random_generator,
                 endpoint_context.event_subscriber,
             );
         });
@@ -792,6 +800,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     endpoint_context.connection_close_formatter,
                     close_packet_buffer,
                     timestamp,
+                    endpoint_context.random_generator,
                     endpoint_context.event_subscriber,
                 );
             }

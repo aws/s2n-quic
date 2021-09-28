@@ -26,6 +26,7 @@ pub struct ConnectionTransmissionContext<'a, 'sub, Config: endpoint::Config> {
     pub outcome: &'a mut transmission::Outcome,
     pub min_packet_len: Option<usize>,
     pub transmission_mode: transmission::Mode,
+    pub rnd: &'a mut Config::RandomGenerator,
     pub publisher: &'a mut event::ConnectionPublisherSubscriber<'sub, Config::EventSubscriber>,
 }
 

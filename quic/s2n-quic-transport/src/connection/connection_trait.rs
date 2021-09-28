@@ -57,6 +57,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         close_formatter: &<Self::Config as endpoint::Config>::ConnectionCloseFormatter,
         packet_buffer: &mut endpoint::PacketBuffer,
         timestamp: Timestamp,
+        rnd: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     );
 
@@ -82,6 +83,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         &mut self,
         queue: &mut Tx,
         timestamp: Timestamp,
+        rnd: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ConnectionOnTransmitError>
     where

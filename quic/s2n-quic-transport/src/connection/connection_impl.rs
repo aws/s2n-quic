@@ -224,6 +224,7 @@ macro_rules! transmission_context {
         $path_id:expr,
         $timestamp:expr,
         $transmission_mode:expr,
+        $rnd:expr,
         $subscriber:expr,
         $(,)?
     ) => {
@@ -236,6 +237,7 @@ macro_rules! transmission_context {
             outcome: $outcome,
             min_packet_len: None,
             transmission_mode: $transmission_mode,
+            rnd: $rnd,
             publisher: &mut $self.event_context.publisher($timestamp, $subscriber),
         }
     };
@@ -342,6 +344,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         queue: &mut Tx,
         timestamp: Timestamp,
         outcome: &'a mut transmission::Outcome,
+        rnd: &'a mut Config::RandomGenerator,
         subscriber: &'sub mut Config::EventSubscriber,
     ) -> usize {
         let mut count = 0;
@@ -366,6 +369,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
                             outcome,
                             min_packet_len: None,
                             transmission_mode: transmission::Mode::PathValidationOnly,
+                            rnd,
                             publisher: &mut self.event_context.publisher(timestamp, subscriber),
                         },
                         space_manager: &mut self.space_manager,
@@ -459,6 +463,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         close_formatter: &Config::ConnectionCloseFormatter,
         packet_buffer: &mut endpoint::PacketBuffer,
         timestamp: Timestamp,
+        rnd: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) {
         match self.state {
@@ -499,6 +504,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 active_path_id,
                 timestamp,
                 transmission::Mode::Normal,
+                rnd,
                 subscriber,
             );
 
@@ -600,6 +606,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         &mut self,
         queue: &mut Tx,
         timestamp: Timestamp,
+        rnd: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ConnectionOnTransmitError> {
         let mut count = 0;
@@ -622,6 +629,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                                 self.path_manager.active_path_id(),
                                 timestamp,
                                 transmission::Mode::Normal,
+                                rnd,
                                 subscriber,
                             ),
                             space_manager: &mut self.space_manager,
@@ -649,6 +657,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                                 self.path_manager.active_path_id(),
                                 timestamp,
                                 transmission::Mode::MtuProbing,
+                                rnd,
                                 subscriber,
                             ),
                             space_manager: &mut self.space_manager,
@@ -664,6 +673,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     queue,
                     timestamp,
                     &mut outcome,
+                    rnd,
                     subscriber,
                 );
             }
