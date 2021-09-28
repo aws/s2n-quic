@@ -157,7 +157,10 @@ mod tests {
                 if min > max {
                     core::mem::swap(&mut min, &mut max);
                 }
-                let mut generator = random::testing::Generator(seed);
+                let mut generator = random::testing::Generator {
+                    seed,
+                    gen_bool_result: false,
+                };
                 let result = gen_range_biased(&mut generator, min..=max);
                 assert!(result >= min);
                 assert!(result <= max);
@@ -174,7 +177,10 @@ mod tests {
                 if min > max {
                     core::mem::swap(&mut min, &mut max);
                 }
-                let mut generator = random::testing::Generator(seed);
+                let mut generator = random::testing::Generator {
+                    seed,
+                    gen_bool_result: false,
+                };
                 let mut buffer = vec![0; max.into()];
                 let len = generate_unpredictable_bits(&mut generator, min.into(), &mut buffer);
                 assert!(len >= min.into());
@@ -314,7 +320,10 @@ mod tests {
             .with_type::<(u8, usize, u16)>()
             .cloned()
             .for_each(|(seed, triggering_packet_len, max_tag_len)| {
-                let mut generator = random::testing::Generator(seed);
+                let mut generator = random::testing::Generator {
+                    seed,
+                    gen_bool_result: false,
+                };
                 let packet_len = encode_packet(
                     TEST_TOKEN_1,
                     max_tag_len.into(),

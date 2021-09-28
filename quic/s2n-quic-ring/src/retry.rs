@@ -105,7 +105,7 @@ mod tests {
                 &remote_address,
                 &packet,
                 &local_conn_id,
-                &mut random::testing::Generator(5),
+                &mut random::testing::Generator::default(),
                 &mut token_format,
                 &mut output_buf,
             ) {
@@ -155,7 +155,7 @@ mod tests {
                 &remote_address,
                 &packet,
                 &local_conn_id,
-                &mut random::testing::Generator(5),
+                &mut random::testing::Generator::default(),
                 &mut token_format,
                 &mut output_buf,
             )
