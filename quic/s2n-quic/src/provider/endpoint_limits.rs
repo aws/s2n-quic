@@ -16,7 +16,7 @@ pub trait Provider: 'static {
     fn start(self) -> Result<Self::Limits, Self::Error>;
 }
 
-pub use default::Provider as Default;
+pub use default::Limits as Default;
 
 impl_provider_utils!();
 
@@ -99,6 +99,12 @@ pub mod default {
         max_inflight_handshake_limit: Option<usize>,
     }
 
+    impl Limits {
+        pub fn builder() -> Builder {
+            Builder::default()
+        }
+    }
+
     /// Default implementation for the Limits
     impl super::Limiter for Limits {
         fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome {
@@ -124,27 +130,9 @@ pub mod default {
         }
     }
 
-    #[derive(Debug, Default)]
-    pub struct Provider(Limits);
-
-    impl super::Provider for Provider {
-        type Limits = Limits;
-        type Error = Infallible;
-
-        fn start(self) -> Result<Self::Limits, Self::Error> {
-            Ok(self.0)
-        }
-    }
-
-    impl Provider {
-        pub fn builder() -> Builder {
-            Builder::default()
-        }
-    }
-
     #[test]
     fn builder_test() {
-        let elp = Provider::builder()
+        let elp = Limits::builder()
             .with_inflight_handshake_limit(100)
             .unwrap()
             .with_retry_delay(Duration::from_millis(100))
