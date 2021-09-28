@@ -194,6 +194,19 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " The current state of the ECN controller for the path"]
+    pub enum EcnState {
+        #[non_exhaustive]
+        Testing {},
+        #[non_exhaustive]
+        Unknown {},
+        #[non_exhaustive]
+        Failed {},
+        #[non_exhaustive]
+        Capable {},
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Application level protocol"]
     pub struct AlpnInformation<'a> {
         pub chosen_alpn: &'a [u8],
@@ -384,6 +397,15 @@ pub mod api {
     }
     impl<'a> Event for ConnectionIdUpdated<'a> {
         const NAME: &'static str = "connectivity:connection_id_updated";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct EcnStateChanged<'a> {
+        pub path: Path<'a>,
+        pub state: EcnState,
+    }
+    impl<'a> Event for EcnStateChanged<'a> {
+        const NAME: &'static str = "recovery:ecn_state_changed";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1174,6 +1196,26 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " The current state of the ECN controller for the path"]
+    pub enum EcnState {
+        Testing,
+        Unknown,
+        Failed,
+        Capable,
+    }
+    impl IntoEvent<api::EcnState> for EcnState {
+        #[inline]
+        fn into_event(self) -> api::EcnState {
+            use api::EcnState::*;
+            match self {
+                Self::Testing => Testing {},
+                Self::Unknown => Unknown {},
+                Self::Failed => Failed {},
+                Self::Capable => Capable {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Application level protocol"]
     pub struct AlpnInformation<'a> {
         pub chosen_alpn: &'a [u8],
@@ -1509,6 +1551,21 @@ pub mod builder {
                 cid_consumer: cid_consumer.into_event(),
                 previous: previous.into_event(),
                 current: current.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct EcnStateChanged<'a> {
+        pub path: Path<'a>,
+        pub state: EcnState,
+    }
+    impl<'a> IntoEvent<api::EcnStateChanged<'a>> for EcnStateChanged<'a> {
+        #[inline]
+        fn into_event(self) -> api::EcnStateChanged<'a> {
+            let EcnStateChanged { path, state } = self;
+            api::EcnStateChanged {
+                path: path.into_event(),
+                state: state.into_event(),
             }
         }
     }
@@ -2019,6 +2076,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `EcnStateChanged` event is triggered"]
+        #[inline]
+        fn on_ecn_state_changed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &EcnStateChanged,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `VersionInformation` event is triggered"]
         #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
@@ -2334,6 +2403,16 @@ mod traits {
             (self.1).on_connection_id_updated(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_ecn_state_changed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &EcnStateChanged,
+        ) {
+            (self.0).on_ecn_state_changed(&mut context.0, meta, event);
+            (self.1).on_ecn_state_changed(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
             (self.0).on_version_information(meta, event);
             (self.1).on_version_information(meta, event);
@@ -2607,6 +2686,8 @@ mod traits {
         fn on_datagram_dropped(&mut self, event: builder::DatagramDropped);
         #[doc = "Publishes a `ConnectionIdUpdated` event to the publisher's subscriber"]
         fn on_connection_id_updated(&mut self, event: builder::ConnectionIdUpdated);
+        #[doc = "Publishes a `EcnStateChanged` event to the publisher's subscriber"]
+        fn on_ecn_state_changed(&mut self, event: builder::EcnStateChanged);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
         fn quic_version(&self) -> u32;
     }
@@ -2804,6 +2885,15 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_ecn_state_changed(&mut self, event: builder::EcnStateChanged) {
+            let event = event.into_event();
+            self.subscriber
+                .on_ecn_state_changed(&mut self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(&mut self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn quic_version(&self) -> u32 {
             self.quic_version
         }
@@ -2832,6 +2922,7 @@ pub mod testing {
         pub datagram_received: u32,
         pub datagram_dropped: u32,
         pub connection_id_updated: u32,
+        pub ecn_state_changed: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -2996,6 +3087,14 @@ pub mod testing {
         ) {
             self.connection_id_updated += 1;
         }
+        fn on_ecn_state_changed(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::EcnStateChanged,
+        ) {
+            self.ecn_state_changed += 1;
+        }
         fn on_version_information(
             &mut self,
             _meta: &api::EndpointMeta,
@@ -3086,6 +3185,7 @@ pub mod testing {
         pub datagram_received: u32,
         pub datagram_dropped: u32,
         pub connection_id_updated: u32,
+        pub ecn_state_changed: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -3190,6 +3290,9 @@ pub mod testing {
         }
         fn on_connection_id_updated(&mut self, _event: builder::ConnectionIdUpdated) {
             self.connection_id_updated += 1;
+        }
+        fn on_ecn_state_changed(&mut self, _event: builder::EcnStateChanged) {
+            self.ecn_state_changed += 1;
         }
         fn quic_version(&self) -> u32 {
             1

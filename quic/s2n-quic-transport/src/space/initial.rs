@@ -171,6 +171,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             time_sent,
             ecn,
             &mut recovery_context,
+            context.publisher,
         );
 
         Ok((outcome, buffer))

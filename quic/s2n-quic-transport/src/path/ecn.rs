@@ -3,6 +3,8 @@
 
 use s2n_quic_core::{
     counter::{Counter, Saturating},
+    event,
+    event::IntoEvent,
     frame::ack::EcnCounts,
     inet::ExplicitCongestionNotification,
     number::CheckedSub,
@@ -46,6 +48,17 @@ enum State {
     Capable,
 }
 
+impl IntoEvent<event::builder::EcnState> for &State {
+    fn into_event(self) -> event::builder::EcnState {
+        match self {
+            State::Testing(_) => event::builder::EcnState::Testing,
+            State::Unknown => event::builder::EcnState::Unknown,
+            State::Failed(_) => event::builder::EcnState::Failed,
+            State::Capable => event::builder::EcnState::Capable,
+        }
+    }
+}
+
 impl Default for State {
     fn default() -> Self {
         State::Testing(0)
@@ -65,16 +78,27 @@ pub struct Controller {
 
 impl Controller {
     /// Restart testing of ECN capability
-    pub fn restart(&mut self) {
-        self.state = State::Testing(0);
+    pub fn restart<Pub: event::ConnectionPublisher>(
+        &mut self,
+        path: event::builder::Path,
+        publisher: &mut Pub,
+    ) {
+        if self.state != State::Testing(0) {
+            self.change_state(State::Testing(0), path, publisher);
+        }
         self.black_hole_counter = Default::default();
     }
 
     /// Called when the connection timer expires
-    pub fn on_timeout(&mut self, now: Timestamp) {
+    pub fn on_timeout<Pub: event::ConnectionPublisher>(
+        &mut self,
+        now: Timestamp,
+        path: event::builder::Path,
+        publisher: &mut Pub,
+    ) {
         if let State::Failed(ref mut retest_timer) = &mut self.state {
             if retest_timer.poll_expiration(now).is_ready() {
-                self.restart();
+                self.restart(path, publisher);
             }
         }
     }
@@ -123,13 +147,16 @@ impl Controller {
     /// * `baseline_ecn_counts` - the ECN counts present in the Ack frame the last time ECN counts were processed
     /// * `ack_frame_ecn_counts` - the ECN counts present in the current Ack frame (if any)
     /// * `now` - the time the Ack frame was received
-    pub fn validate(
+    #[allow(clippy::too_many_arguments)]
+    pub fn validate<Pub: event::ConnectionPublisher>(
         &mut self,
         newly_acked_ecn_counts: EcnCounts,
         sent_packet_ecn_counts: EcnCounts,
         baseline_ecn_counts: EcnCounts,
         ack_frame_ecn_counts: Option<EcnCounts>,
         now: Timestamp,
+        path: event::builder::Path,
+        publisher: &mut Pub,
     ) -> ValidationOutcome {
         if matches!(self.state, State::Failed(_)) {
             // Validation had already failed
@@ -144,7 +171,7 @@ impl Controller {
                 //# corresponding ECN counts are not present in the ACK frame. This check
                 //# detects a network element that zeroes the ECN field or a peer that does
                 //# not report ECN markings.
-                self.fail(now);
+                self.fail(now, path, publisher);
                 return ValidationOutcome::Failed;
             }
 
@@ -168,7 +195,7 @@ impl Controller {
                 //# ECN validation also fails if the sum of the increase in ECT(0)
                 //# and ECN-CE counts is less than the number of newly acknowledged
                 //# packets that were originally sent with an ECT(0) marking.
-                self.fail(now);
+                self.fail(now, path, publisher);
                 return ValidationOutcome::Failed;
             }
 
@@ -178,14 +205,14 @@ impl Controller {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
                 //# ECN validation can fail if the received total count for either ECT(0) or ECT(1)
                 //# exceeds the total number of packets sent with each corresponding ECT codepoint.
-                self.fail(now);
+                self.fail(now, path, publisher);
                 return ValidationOutcome::Failed;
             }
 
             congestion_experienced = incremental_ecn_counts.ce_count > VarInt::from_u8(0);
         } else {
             // ECN counts decreased from the baseline
-            self.fail(now);
+            self.fail(now, path, publisher);
             return ValidationOutcome::Failed;
         }
 
@@ -196,7 +223,7 @@ impl Controller {
         if matches!(self.state, State::Unknown)
             && newly_acked_ecn_counts.ect_0_count > VarInt::from_u8(0)
         {
-            self.state = State::Capable;
+            self.change_state(State::Capable, path, publisher);
         }
 
         if self.is_capable() && congestion_experienced {
@@ -207,7 +234,12 @@ impl Controller {
     }
 
     /// This method gets called when a packet has been sent
-    pub fn on_packet_sent(&mut self, ecn: ExplicitCongestionNotification) {
+    pub fn on_packet_sent<Pub: event::ConnectionPublisher>(
+        &mut self,
+        ecn: ExplicitCongestionNotification,
+        path: event::builder::Path,
+        publisher: &mut Pub,
+    ) {
         debug_assert!(
             !matches!(ecn, ExplicitCongestionNotification::Ect1),
             "Ect1 is not used"
@@ -221,7 +253,7 @@ impl Controller {
             *packet_count += 1;
 
             if *packet_count >= TESTING_PACKET_THRESHOLD {
-                self.state = State::Unknown
+                self.change_state(State::Unknown, path, publisher);
             }
         }
     }
@@ -237,11 +269,13 @@ impl Controller {
     }
 
     /// This method gets called when a packet loss is reported
-    pub fn on_packet_loss(
+    pub fn on_packet_loss<Pub: event::ConnectionPublisher>(
         &mut self,
         time_sent: Timestamp,
         ecn: ExplicitCongestionNotification,
         now: Timestamp,
+        path: event::builder::Path,
+        publisher: &mut Pub,
     ) {
         if matches!(self.state, State::Failed(_)) {
             return;
@@ -254,7 +288,7 @@ impl Controller {
         }
 
         if self.black_hole_counter > TESTING_PACKET_THRESHOLD {
-            self.fail(now);
+            self.fail(now, path, publisher);
         }
     }
 
@@ -273,14 +307,35 @@ impl Controller {
     }
 
     /// Set the state to Failed and arm the retest timer
-    fn fail(&mut self, now: Timestamp) {
+    fn fail<Pub: event::ConnectionPublisher>(
+        &mut self,
+        now: Timestamp,
+        path: event::builder::Path,
+        publisher: &mut Pub,
+    ) {
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
         //# Even if validation fails, an endpoint MAY revalidate ECN for the same path at any later
         //# time in the connection. An endpoint could continue to periodically attempt validation.
         let mut retest_timer = Timer::default();
         retest_timer.set(now + RETEST_COOL_OFF_DURATION);
-        self.state = State::Failed(retest_timer);
+        self.change_state(State::Failed(retest_timer), path, publisher);
         self.black_hole_counter = Default::default();
+    }
+
+    fn change_state<Pub: event::ConnectionPublisher>(
+        &mut self,
+        state: State,
+        path: event::builder::Path,
+        publisher: &mut Pub,
+    ) {
+        debug_assert_ne!(self.state, state);
+
+        self.state = state;
+
+        publisher.on_ecn_state_changed(event::builder::EcnStateChanged {
+            path,
+            state: self.state.into_event(),
+        })
     }
 }
 

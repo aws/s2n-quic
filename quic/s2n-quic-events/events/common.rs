@@ -469,3 +469,15 @@ enum DropReason {
     InvalidDestinationConnectionId,
     InvalidSourceConnectionId,
 }
+
+/// The current state of the ECN controller for the path
+enum EcnState {
+    /// ECN capability is being actively tested
+    Testing,
+    /// ECN capability has been tested, but not validated yet
+    Unknown,
+    /// ECN capability testing has failed validation
+    Failed,
+    /// ECN capability has been confirmed
+    Capable,
+}

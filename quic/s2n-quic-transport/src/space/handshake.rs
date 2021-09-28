@@ -169,6 +169,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
             time_sent,
             ecn,
             &mut recovery_context,
+            context.publisher,
         );
 
         Ok((outcome, buffer))
