@@ -20,6 +20,15 @@ pub use default::Provider as Default;
 
 impl_provider_utils!();
 
+impl<T: 'static + Limiter> Provider for T {
+    type Limits = T;
+    type Error = core::convert::Infallible;
+
+    fn start(self) -> Result<Self::Limits, Self::Error> {
+        Ok(self)
+    }
+}
+
 pub mod default {
     //! Default provider for the endpoint limits.
 
@@ -112,15 +121,6 @@ pub mod default {
                 retry_delay: Duration::from_millis(0),
                 max_inflight_handshake_limit: None,
             }
-        }
-    }
-
-    impl super::TryInto for Limits {
-        type Provider = Provider;
-        type Error = Infallible;
-
-        fn try_into(self) -> Result<Self::Provider, Self::Error> {
-            Ok(Provider(self))
         }
     }
 
