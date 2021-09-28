@@ -691,7 +691,7 @@ mod tests {
         handshake_id: connection::LocalId,
         token: stateless_reset::Token,
     ) -> (ConnectionIdMapper, LocalIdRegistry) {
-        let mut random_generator = random::testing::Generator(123);
+        let mut random_generator = random::testing::Generator::default();
 
         let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
         let registry = mapper.create_local_id_registry(
@@ -767,7 +767,7 @@ mod tests {
     #[test]
     fn connection_mapper_test() {
         let mut id_generator = InternalConnectionIdGenerator::new();
-        let mut random_generator = random::testing::Generator(123);
+        let mut random_generator = random::testing::Generator::default();
         let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
 
         let id1 = id_generator.generate_id();

@@ -2734,7 +2734,7 @@ fn helper_generate_multi_path_manager(
                 &connection::Limits::default(),
                 true,
                 &mut Endpoint::default(),
-                &mut random::testing::Generator(123),
+                &mut random::testing::Generator::default(),
                 DEFAULT_MAX_MTU,
                 &mut Publisher::default(),
             )
@@ -2776,7 +2776,7 @@ fn helper_generate_multi_path_manager(
 }
 
 fn helper_generate_path_manager(max_ack_delay: Duration) -> path::Manager<Config> {
-    let mut random_generator = random::testing::Generator(123);
+    let mut random_generator = random::testing::Generator::default();
 
     let registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
         .create_peer_id_registry(

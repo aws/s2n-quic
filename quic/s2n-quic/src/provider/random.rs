@@ -88,6 +88,10 @@ pub mod rand {
         fn private_random_fill(&mut self, dest: &mut [u8]) {
             self.private.fill_bytes(dest)
         }
+
+        fn gen_bool(&mut self, p: f64) -> bool {
+            self.public.gen_bool(p)
+        }
     }
 
     #[cfg(test)]
