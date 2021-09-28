@@ -166,7 +166,7 @@ struct ConnectionIdUpdated<'a> {
 }
 
 #[event("recovery:ecn_state_changed")]
-struct EcnStateChanged {
-    path_id: u64,
+struct EcnStateChanged<'a> {
+    path: Path<'a>,
     state: EcnState,
 }

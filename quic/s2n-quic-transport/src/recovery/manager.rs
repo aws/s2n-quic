@@ -4,7 +4,7 @@
 use crate::{
     contexts::WriteContext,
     endpoint,
-    path::{self, ecn::ValidationOutcome, Path},
+    path::{self, ecn::ValidationOutcome, path_event, Path},
     recovery::{SentPacketInfo, SentPackets},
     transmission,
 };
@@ -197,10 +197,9 @@ impl<Config: endpoint::Config> Manager<Config> {
         );
 
         let path_id = context.path_id();
-        context
-            .path_mut()
-            .ecn_controller
-            .on_packet_sent(ecn, path_id, publisher);
+        let path = context.path_mut();
+        path.ecn_controller
+            .on_packet_sent(ecn, path_event!(path, path_id).clone(), publisher);
         self.sent_packet_ecn_counts.increment(ecn);
 
         if outcome.is_congestion_controlled {
@@ -574,14 +573,15 @@ impl<Config: endpoint::Config> Manager<Config> {
         publisher: &mut Pub,
     ) {
         let path_id = context.path_id();
+        let path = context.path_mut();
 
-        let outcome = context.path_mut().ecn_controller.validate(
+        let outcome = path.ecn_controller.validate(
             newly_acked_ecn_counts,
             self.sent_packet_ecn_counts,
             self.baseline_ecn_counts,
             ack_frame_ecn_counts,
             datagram.timestamp,
-            path_id,
+            path_event!(path, path_id).clone(),
             publisher,
         );
 
@@ -877,12 +877,14 @@ impl<Config: endpoint::Config> Manager<Config> {
                 &mut path.congestion_controller,
             );
 
+            let path_id = sent_info.path_id;
+
             // Notify the ECN controller of packet loss for blackhole detection.
             path.ecn_controller.on_packet_loss(
                 sent_info.time_sent,
                 sent_info.ecn,
                 now,
-                sent_info.path_id,
+                path_event!(path, path_id).clone(),
                 publisher,
             );
 

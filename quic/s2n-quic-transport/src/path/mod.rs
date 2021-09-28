@@ -6,7 +6,7 @@
 use crate::{
     connection,
     contexts::WriteContext,
-    endpoint, path,
+    endpoint,
     recovery::{congestion_controller, CongestionController, RttEstimator},
     transmission::{self, Mode},
 };
@@ -185,13 +185,13 @@ impl<Config: endpoint::Config> Path<Config> {
     pub fn on_timeout<Pub: event::ConnectionPublisher>(
         &mut self,
         timestamp: Timestamp,
-        path_id: path::Id,
+        path_id: Id,
         publisher: &mut Pub,
     ) {
         self.challenge.on_timeout(timestamp);
         self.mtu_controller.on_timeout(timestamp);
         self.ecn_controller
-            .on_timeout(timestamp, path_id, publisher);
+            .on_timeout(timestamp, path_event!(self, path_id).clone(), publisher);
     }
 
     /// Only PATH_CHALLENGE and PATH_RESPONSE frames should be transmitted here.
@@ -518,6 +518,7 @@ mod tests {
     use crate::{
         contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
         endpoint::testing::Server as Config,
+        path,
         path::{challenge::testing::helper_challenge, testing},
     };
     use core::time::Duration;

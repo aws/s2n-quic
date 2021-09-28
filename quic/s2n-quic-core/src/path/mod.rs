@@ -233,3 +233,29 @@ impl Display for MaxMtuError {
         write!(f, "MaxMtu must be at least {}", self.0)
     }
 }
+
+#[cfg(any(test, feature = "testing"))]
+pub mod testing {
+    use crate::{
+        connection, event,
+        event::{builder::SocketAddress, IntoEvent},
+    };
+
+    impl<'a> Default for event::builder::Path<'a> {
+        fn default() -> Self {
+            Self {
+                local_addr: SocketAddress::IpV4 {
+                    ip: &[127, 0, 0, 1],
+                    port: 0,
+                },
+                local_cid: connection::LocalId::TEST_ID.into_event(),
+                remote_addr: SocketAddress::IpV4 {
+                    ip: &[127, 0, 0, 1],
+                    port: 0,
+                },
+                remote_cid: connection::PeerId::TEST_ID.into_event(),
+                id: 0,
+            }
+        }
+    }
+}

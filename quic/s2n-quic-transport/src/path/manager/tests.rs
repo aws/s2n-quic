@@ -6,6 +6,7 @@ use crate::{
     connection::{ConnectionIdMapper, InternalConnectionIdGenerator},
     contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
     endpoint::{self, testing::Server as Config},
+    path,
     path::DEFAULT_MAX_MTU,
 };
 use core::time::Duration;
@@ -1023,7 +1024,7 @@ fn connection_migration_new_path_abandon_timer() {
     let abandon_time = now + (second_path_pto * 3);
     manager[second_path_id].on_timeout(
         abandon_time - Duration::from_millis(10),
-        second_path_id,
+        path::Id::test_id(),
         &mut Publisher::default(),
     );
 
@@ -1033,7 +1034,7 @@ fn connection_migration_new_path_abandon_timer() {
     // Trigger 3:
     manager[second_path_id].on_timeout(
         abandon_time + Duration::from_millis(10),
-        second_path_id,
+        path::Id::test_id(),
         &mut Publisher::default(),
     );
     // Expectation 3:

@@ -108,17 +108,17 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         self.active = new_path_id.as_u8();
 
+        // Restart ECN validation to check that the path still supports ECN
+        let path = self.active_path_mut();
+        path.ecn_controller
+            .restart(path_event!(path, new_path_id).clone(), publisher);
+
         let prev_path = &self[prev_path_id];
         let new_path = &self[new_path_id];
         publisher.on_active_path_updated(event::builder::ActivePathUpdated {
             previous: path_event!(prev_path, prev_path_id),
             active: path_event!(new_path, new_path_id),
         });
-
-        // Restart ECN validation to check that the path still supports ECN
-        self.active_path_mut()
-            .ecn_controller
-            .restart(new_path_id, publisher);
 
         Ok(())
     }

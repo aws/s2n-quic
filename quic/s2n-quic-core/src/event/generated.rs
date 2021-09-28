@@ -400,11 +400,11 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    pub struct EcnStateChanged {
-        pub path_id: u64,
+    pub struct EcnStateChanged<'a> {
+        pub path: Path<'a>,
         pub state: EcnState,
     }
-    impl Event for EcnStateChanged {
+    impl<'a> Event for EcnStateChanged<'a> {
         const NAME: &'static str = "recovery:ecn_state_changed";
     }
     #[derive(Clone, Debug)]
@@ -1555,16 +1555,16 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    pub struct EcnStateChanged {
-        pub path_id: u64,
+    pub struct EcnStateChanged<'a> {
+        pub path: Path<'a>,
         pub state: EcnState,
     }
-    impl IntoEvent<api::EcnStateChanged> for EcnStateChanged {
+    impl<'a> IntoEvent<api::EcnStateChanged<'a>> for EcnStateChanged<'a> {
         #[inline]
-        fn into_event(self) -> api::EcnStateChanged {
-            let EcnStateChanged { path_id, state } = self;
+        fn into_event(self) -> api::EcnStateChanged<'a> {
+            let EcnStateChanged { path, state } = self;
             api::EcnStateChanged {
-                path_id: path_id.into_event(),
+                path: path.into_event(),
                 state: state.into_event(),
             }
         }
