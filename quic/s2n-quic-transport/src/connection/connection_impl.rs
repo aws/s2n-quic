@@ -227,7 +227,11 @@ macro_rules! transmission_context {
         $rnd:expr,
         $subscriber:expr,
         $(,)?
-    ) => {
+    ) => {{
+        let ecn = $self.path_manager[$path_id]
+            .ecn_controller
+            .ecn($transmission_mode, $rnd);
+
         ConnectionTransmissionContext {
             quic_version: $self.event_context.quic_version,
             timestamp: $timestamp,
@@ -235,12 +239,12 @@ macro_rules! transmission_context {
             path_manager: &mut $self.path_manager,
             local_id_registry: &mut $self.local_id_registry,
             outcome: $outcome,
+            ecn,
             min_packet_len: None,
             transmission_mode: $transmission_mode,
-            rnd: $rnd,
             publisher: &mut $self.event_context.publisher($timestamp, $subscriber),
         }
-    };
+    }};
 }
 
 impl<Config: endpoint::Config> ConnectionImpl<Config> {
@@ -353,28 +357,34 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             // It is more efficient to coalesce path validation and other
             // frames for the active path so we skip PathValidationOnly
             // and handle transmission for the active path seperately.
-            if path_id == path_manager.active_path_id() {
+            if path_id == path_manager.active_path_id()
+                || path_manager[path_id].at_amplification_limit()
+            {
                 continue;
             }
 
-            if !path_manager[path_id].at_amplification_limit()
-                && queue
-                    .push(ConnectionTransmission {
-                        context: ConnectionTransmissionContext {
-                            quic_version: self.event_context.quic_version,
-                            timestamp,
-                            path_id,
-                            path_manager,
-                            local_id_registry: &mut self.local_id_registry,
-                            outcome,
-                            min_packet_len: None,
-                            transmission_mode: transmission::Mode::PathValidationOnly,
-                            rnd,
-                            publisher: &mut self.event_context.publisher(timestamp, subscriber),
-                        },
-                        space_manager: &mut self.space_manager,
-                    })
-                    .is_ok()
+            let transmission_mode = transmission::Mode::PathValidationOnly;
+            let ecn = path_manager[path_id]
+                .ecn_controller
+                .ecn(transmission_mode, rnd);
+
+            if queue
+                .push(ConnectionTransmission {
+                    context: ConnectionTransmissionContext {
+                        quic_version: self.event_context.quic_version,
+                        timestamp,
+                        path_id,
+                        path_manager,
+                        local_id_registry: &mut self.local_id_registry,
+                        outcome,
+                        min_packet_len: None,
+                        ecn,
+                        transmission_mode,
+                        publisher: &mut self.event_context.publisher(timestamp, subscriber),
+                    },
+                    space_manager: &mut self.space_manager,
+                })
+                .is_ok()
             {
                 count += 1;
             }

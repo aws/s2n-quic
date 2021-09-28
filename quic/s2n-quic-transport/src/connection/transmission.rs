@@ -24,9 +24,9 @@ pub struct ConnectionTransmissionContext<'a, 'sub, Config: endpoint::Config> {
     pub path_manager: &'a mut path::Manager<Config>,
     pub local_id_registry: &'a mut connection::LocalIdRegistry,
     pub outcome: &'a mut transmission::Outcome,
+    pub ecn: ExplicitCongestionNotification,
     pub min_packet_len: Option<usize>,
     pub transmission_mode: transmission::Mode,
-    pub rnd: &'a mut Config::RandomGenerator,
     pub publisher: &'a mut event::ConnectionPublisherSubscriber<'sub, Config::EventSubscriber>,
 }
 
@@ -37,12 +37,6 @@ impl<'a, 'sub, Config: endpoint::Config> ConnectionTransmissionContext<'a, 'sub,
 
     pub fn path_mut(&mut self) -> &mut Path<Config> {
         &mut self.path_manager[self.path_id]
-    }
-
-    pub fn ecn(&mut self) -> ExplicitCongestionNotification {
-        self.path_manager[self.path_id]
-            .ecn_controller
-            .ecn(self.transmission_mode, self.rnd)
     }
 }
 
@@ -61,7 +55,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
 
     #[inline]
     fn ecn(&mut self) -> ExplicitCongestionNotification {
-        self.context.ecn()
+        self.context.ecn
     }
 
     #[inline]

@@ -162,14 +162,13 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
 
         let time_sent = context.timestamp;
         let path_id = context.path_id;
-        let ecn = context.ecn();
         let (recovery_manager, mut recovery_context) =
             self.recovery(handshake_status, path_id, context.path_manager);
         recovery_manager.on_packet_sent(
             packet_number,
             outcome,
             time_sent,
-            ecn,
+            context.ecn,
             &mut recovery_context,
             context.publisher,
         );
