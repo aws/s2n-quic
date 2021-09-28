@@ -56,20 +56,23 @@ pub trait Limiter: 'static + Send {
     /// implementor may have.
     ///
     /// ```rust
-    /// use s2n_quic_core::endpoint::limits::{Limiter, ConnectionAttempt, Outcome};
-    /// # struct MyEndpointLimits {
-    /// #    handshake_limit: usize,
-    /// #    delay: core::time::Duration,
-    /// # }
-    ///  impl Limiter for MyEndpointLimits {
-    ///     fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome {
-    ///         if info.inflight_handshakes > self.handshake_limit {
-    ///             Outcome::Retry { delay: self.delay }
-    ///         } else {
-    ///             Outcome::Allow
-    ///         }
-    ///     }
-    ///  }
+    /// # mod s2n_quic { pub mod provider { pub mod endpoint_limits { pub use s2n_quic_core::endpoint::limits::*; } } }
+    /// use s2n_quic::provider::endpoint_limits::{Limiter, ConnectionAttempt, Outcome};
+    ///
+    /// struct MyEndpointLimits {
+    ///    handshake_limit: usize,
+    ///    delay: core::time::Duration,
+    /// }
+    ///
+    /// impl Limiter for MyEndpointLimits {
+    ///    fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome {
+    ///        if info.inflight_handshakes > self.handshake_limit {
+    ///            Outcome::Retry { delay: self.delay }
+    ///        } else {
+    ///            Outcome::Allow
+    ///        }
+    ///    }
+    /// }
     /// ```
     fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome;
 }
