@@ -228,42 +228,10 @@ impl Controller {
             .unwrap_or_default()
             .checked_sub(baseline_ecn_counts)
         {
-            let ect_0_increase = incremental_ecn_counts
-                .ect_0_count
-                .saturating_add(incremental_ecn_counts.ce_count);
-            if ect_0_increase < newly_acked_ecn_counts.ect_0_count {
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
-                //# ECN validation also fails if the sum of the increase in ECT(0)
-                //# and ECN-CE counts is less than the number of newly acknowledged
-                //# packets that were originally sent with an ECT(0) marking.
-                self.fail(now, path, publisher);
-                return ValidationOutcome::Failed;
-            }
-
-            if incremental_ecn_counts.ect_0_count > sent_packet_ecn_counts.ect_0_count
-                || incremental_ecn_counts.ect_1_count > sent_packet_ecn_counts.ect_1_count
+            if Self::ce_remarking(incremental_ecn_counts, newly_acked_ecn_counts)
+                || Self::remarked_to_ect0_or_ect1(incremental_ecn_counts, sent_packet_ecn_counts)
+                || Self::ce_suppression(incremental_ecn_counts, newly_acked_ecn_counts)
             {
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
-                //# ECN validation can fail if the received total count for either ECT(0) or ECT(1)
-                //# exceeds the total number of packets sent with each corresponding ECT codepoint.
-                self.fail(now, path, publisher);
-                return ValidationOutcome::Failed;
-            }
-
-            if incremental_ecn_counts.ce_count < newly_acked_ecn_counts.ce_count {
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#8.3
-                //# A receiver can misreport ECN markings to alter the congestion
-                //# response of a sender.  Suppressing reports of ECN-CE markings could
-                //# cause a sender to increase their send rate.  This increase could
-                //# result in congestion and loss.
-
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#8.3
-                //# A sender can detect suppression of reports by marking occasional
-                //# packets that it sends with an ECN-CE marking.  If a packet sent with
-                //# an ECN-CE marking is not reported as having been CE marked when the
-                //# packet is acknowledged, then the sender can disable ECN for that path
-                //# by not setting ECN-Capable Transport (ECT) codepoints in subsequent
-                //# packets sent on that path [RFC3168].
                 self.fail(now, path, publisher);
                 return ValidationOutcome::Failed;
             }
@@ -295,6 +263,51 @@ impl Controller {
         }
 
         ValidationOutcome::Passed
+    }
+
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
+    //# ECN validation also fails if the sum of the increase in ECT(0)
+    //# and ECN-CE counts is less than the number of newly acknowledged
+    //# packets that were originally sent with an ECT(0) marking.
+    #[inline]
+    fn ce_remarking(incremental_ecn_counts: EcnCounts, newly_acked_ecn_counts: EcnCounts) -> bool {
+        let ect_0_increase = incremental_ecn_counts
+            .ect_0_count
+            .saturating_add(incremental_ecn_counts.ce_count);
+        ect_0_increase < newly_acked_ecn_counts.ect_0_count
+    }
+
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
+    //# ECN validation can fail if the received total count for either ECT(0) or ECT(1)
+    //# exceeds the total number of packets sent with each corresponding ECT codepoint.
+    #[inline]
+    fn remarked_to_ect0_or_ect1(
+        incremental_ecn_counts: EcnCounts,
+        sent_packet_ecn_counts: EcnCounts,
+    ) -> bool {
+        incremental_ecn_counts.ect_0_count > sent_packet_ecn_counts.ect_0_count
+            || incremental_ecn_counts.ect_1_count > sent_packet_ecn_counts.ect_1_count
+    }
+
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#8.3
+    //# A receiver can misreport ECN markings to alter the congestion
+    //# response of a sender.  Suppressing reports of ECN-CE markings could
+    //# cause a sender to increase their send rate.  This increase could
+    //# result in congestion and loss.
+
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#8.3
+    //# A sender can detect suppression of reports by marking occasional
+    //# packets that it sends with an ECN-CE marking.  If a packet sent with
+    //# an ECN-CE marking is not reported as having been CE marked when the
+    //# packet is acknowledged, then the sender can disable ECN for that path
+    //# by not setting ECN-Capable Transport (ECT) codepoints in subsequent
+    //# packets sent on that path [RFC3168].
+    #[inline]
+    fn ce_suppression(
+        incremental_ecn_counts: EcnCounts,
+        newly_acked_ecn_counts: EcnCounts,
+    ) -> bool {
+        incremental_ecn_counts.ce_count < newly_acked_ecn_counts.ce_count
     }
 
     /// This method gets called when a packet has been sent
