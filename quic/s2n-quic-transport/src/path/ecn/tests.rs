@@ -499,33 +499,6 @@ fn validate_capable_congestion_experienced() {
 }
 
 #[test]
-fn validate_capable_congestion_not_experienced_if_testing_ce_suppression() {
-    let mut controller = Controller {
-        state: State::Unknown,
-        ..Default::default()
-    };
-    let now = s2n_quic_platform::time::now();
-    let expected_ecn_counts = helper_ecn_counts(1, 0, 1);
-    let ack_frame_ecn_counts = helper_ecn_counts(1, 0, 1);
-    let sent_packet_ecn_counts = helper_ecn_counts(1, 0, 1);
-    let outcome = controller.validate(
-        expected_ecn_counts,
-        sent_packet_ecn_counts,
-        EcnCounts::default(),
-        Some(ack_frame_ecn_counts),
-        now,
-        Path::test(),
-        &mut Publisher::default(),
-    );
-
-    assert_eq!(ValidationOutcome::Passed, outcome);
-    assert_eq!(
-        State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
-        controller.state
-    );
-}
-
-#[test]
 fn validate_capable_ce_suppression_test() {
     let mut controller = Controller {
         state: State::Unknown,
@@ -545,6 +518,8 @@ fn validate_capable_ce_suppression_test() {
         &mut Publisher::default(),
     );
 
+    // The outcome should not be `CongestionExperienced` despite the increase in CE-count,
+    // because the CE-count was coming from a packet we had marked as ECN-CE
     assert_eq!(ValidationOutcome::Passed, outcome);
     assert_eq!(
         State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
