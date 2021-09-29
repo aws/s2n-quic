@@ -347,7 +347,6 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         queue: &mut Tx,
         timestamp: Timestamp,
         outcome: &'a mut transmission::Outcome,
-        rnd: &'a mut Config::RandomGenerator,
         subscriber: &'sub mut Config::EventSubscriber,
     ) -> usize {
         let mut count = 0;
@@ -472,7 +471,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         close_formatter: &Config::ConnectionCloseFormatter,
         packet_buffer: &mut endpoint::PacketBuffer,
         timestamp: Timestamp,
-        rnd: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) {
         match self.state {
@@ -614,7 +612,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         &mut self,
         queue: &mut Tx,
         timestamp: Timestamp,
-        rnd: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ConnectionOnTransmitError> {
         let mut count = 0;
@@ -681,7 +678,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     queue,
                     timestamp,
                     &mut outcome,
-                    rnd,
                     subscriber,
                 );
             }
