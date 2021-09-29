@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn remove_internal_connection_id_by_stateless_reset_token_test() {
-        let mut random_generator = random::testing::Generator::default();
+        let mut random_generator = random::testing::Generator(123);
         let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
         let internal_id = InternalConnectionIdGenerator::new().generate_id();
         let peer_id = id(b"id01");
@@ -372,7 +372,7 @@ mod tests {
 
     #[test]
     fn initial_id_map() {
-        let mut random_generator = random::testing::Generator::default();
+        let mut random_generator = random::testing::Generator(123);
         let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
         let internal_id = InternalConnectionIdGenerator::new().generate_id();
         let local_id = connection::LocalId::try_from_bytes(b"id000001").unwrap();
@@ -400,7 +400,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn initial_id_map_client_insert() {
-        let mut random_generator = random::testing::Generator::default();
+        let mut random_generator = random::testing::Generator(123);
         let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Client);
         let internal_id = InternalConnectionIdGenerator::new().generate_id();
         let local_id = connection::LocalId::try_from_bytes(b"id000001").unwrap();
@@ -414,7 +414,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn initial_id_map_client_remove() {
-        let mut random_generator = random::testing::Generator::default();
+        let mut random_generator = random::testing::Generator(123);
         let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Client);
         let internal_id = InternalConnectionIdGenerator::new().generate_id();
 
@@ -423,7 +423,7 @@ mod tests {
 
     #[test]
     fn initial_id_map_client_lookup() {
-        let mut random_generator = random::testing::Generator::default();
+        let mut random_generator = random::testing::Generator(123);
         let mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Client);
         let local_id = connection::LocalId::try_from_bytes(b"id000001").unwrap();
 

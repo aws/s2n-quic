@@ -24,7 +24,7 @@ use std::net::SocketAddr;
 
 // Helper function to easily create a PathManager
 fn manager(first_path: Path, stateless_reset_token: Option<stateless_reset::Token>) -> Manager {
-    let mut random_generator = random::testing::Generator::default();
+    let mut random_generator = random::testing::Generator(123);
     let peer_id_registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
         .create_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
@@ -118,7 +118,7 @@ fn test_invalid_path_fallback() {
     manager
         .update_active_path(
             Id(1),
-            &mut random::testing::Generator::default(),
+            &mut random::testing::Generator(123),
             &mut Publisher::default(),
         )
         .unwrap();
@@ -162,7 +162,7 @@ fn promote_validated_path_to_last_known_validated_path() {
         .manager
         .update_active_path(
             helper.second_path_id,
-            &mut random::testing::Generator::default(),
+            &mut random::testing::Generator(123),
             &mut Publisher::default(),
         )
         .unwrap();
@@ -183,7 +183,7 @@ fn dont_promote_non_validated_path_to_last_known_validated_path() {
         .manager
         .update_active_path(
             helper.second_path_id,
-            &mut random::testing::Generator::default(),
+            &mut random::testing::Generator(123),
             &mut Publisher::default(),
         )
         .unwrap();
@@ -204,7 +204,7 @@ fn update_path_to_active_path() {
         .manager
         .update_active_path(
             helper.second_path_id,
-            &mut random::testing::Generator::default(),
+            &mut random::testing::Generator(123),
             &mut Publisher::default(),
         )
         .unwrap();
@@ -224,7 +224,7 @@ fn dont_update_path_to_active_path_if_no_connection_id_available() {
     assert_eq!(
         helper.manager.update_active_path(
             helper.second_path_id,
-            &mut random::testing::Generator::default(),
+            &mut random::testing::Generator(123),
             &mut Publisher::default(),
         ),
         Err(transport::Error::INTERNAL_ERROR)
@@ -250,7 +250,7 @@ fn set_path_challenge_on_active_path_on_connection_migration() {
         .manager
         .update_active_path(
             helper.second_path_id,
-            &mut random::testing::Generator::default(),
+            &mut random::testing::Generator(123),
             &mut Publisher::default(),
         )
         .unwrap();
@@ -422,7 +422,7 @@ fn initiate_path_challenge_if_new_path_is_not_validated() {
         .on_processed_packet(
             helper.second_path_id,
             path_validation::Probe::NonProbing,
-            &mut random::testing::Generator::default(),
+            &mut random::testing::Generator(123),
             &mut Publisher::default(),
         )
         .unwrap();
@@ -519,7 +519,7 @@ fn dont_abandon_path_challenge_if_new_path_is_not_validated() {
         .on_processed_packet(
             helper.second_path_id,
             path_validation::Probe::NonProbing,
-            &mut random::testing::Generator::default(),
+            &mut random::testing::Generator(123),
             &mut Publisher::default(),
         )
         .unwrap();
@@ -548,7 +548,7 @@ fn abandon_path_challenges_if_new_path_is_validated() {
         .on_processed_packet(
             helper.second_path_id,
             path_validation::Probe::NonProbing,
-            &mut random::testing::Generator::default(),
+            &mut random::testing::Generator(123),
             &mut Publisher::default(),
         )
         .unwrap();
@@ -594,7 +594,7 @@ fn non_probing_should_update_path_to_active_path() {
         .on_processed_packet(
             helper.second_path_id,
             path_validation::Probe::NonProbing,
-            &mut random::testing::Generator::default(),
+            &mut random::testing::Generator(123),
             &mut Publisher::default(),
         )
         .unwrap();
@@ -621,7 +621,7 @@ fn probing_should_not_update_path_to_active_path() {
         .on_processed_packet(
             helper.second_path_id,
             path_validation::Probe::Probing,
-            &mut random::testing::Generator::default(),
+            &mut random::testing::Generator(123),
             &mut Publisher::default(),
         )
         .unwrap();
@@ -676,7 +676,7 @@ fn test_adding_new_path() {
             &connection::Limits::default(),
             true,
             &mut Default::default(),
-            &mut random::testing::Generator::default(),
+            &mut random::testing::Generator(123),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
         )
@@ -734,7 +734,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
         &connection::Limits::default(),
         handshake_confirmed,
         &mut Default::default(),
-        &mut random::testing::Generator::default(),
+        &mut random::testing::Generator(123),
         DEFAULT_MAX_MTU,
         &mut Publisher::default(),
     );
@@ -776,7 +776,7 @@ fn limit_number_of_connection_migrations() {
             &new_addr,
             &datagram,
             &mut Default::default(),
-            &mut random::testing::Generator::default(),
+            &mut random::testing::Generator(123),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
         );
@@ -819,7 +819,7 @@ fn connection_migration_challenge_behavior() {
             &new_addr,
             &datagram,
             &mut Default::default(),
-            &mut random::testing::Generator::default(),
+            &mut random::testing::Generator(123),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
         )
@@ -843,7 +843,7 @@ fn connection_migration_challenge_behavior() {
     //# corresponding PATH_CHALLENGE.
     // Verify that the data stored in the challenge is taken from the random generator
     // TODO does the below actually work?? investigate
-    let mut test_rnd_generator = random::testing::Generator::default();
+    let mut test_rnd_generator = random::testing::Generator(123);
     let mut expected_data: [u8; 8] = [0; 8];
     test_rnd_generator.public_random_fill(&mut expected_data);
 
@@ -897,7 +897,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
             &new_addr,
             &datagram,
             &mut Default::default(),
-            &mut random::testing::Generator::default(),
+            &mut random::testing::Generator(123),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
         )
@@ -969,7 +969,7 @@ fn connection_migration_new_path_abandon_timer() {
             &new_addr,
             &datagram,
             &mut Default::default(),
-            &mut random::testing::Generator::default(),
+            &mut random::testing::Generator(123),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
         )
@@ -1244,7 +1244,7 @@ fn helper_manager_with_paths_base(
     );
     second_path.set_challenge(challenge);
 
-    let mut random_generator = random::testing::Generator::default();
+    let mut random_generator = random::testing::Generator(123);
     let mut peer_id_registry =
         ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
             .create_peer_id_registry(
@@ -1277,7 +1277,7 @@ fn helper_manager_with_paths_base(
     assert!(manager
         .update_active_path(
             first_path_id,
-            &mut random::testing::Generator::default(),
+            &mut random::testing::Generator(123),
             &mut Publisher::default(),
         )
         .is_ok());

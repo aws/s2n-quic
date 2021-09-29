@@ -198,7 +198,7 @@ mod tests {
         const MIN_LEN: usize = 100;
         const MAX_LEN: usize = 1000;
 
-        let mut generator = random::testing::Generator::default();
+        let mut generator = random::testing::Generator(123);
         let mut buffer = [0; MAX_LEN];
         let mut buffer_2 = [0; MAX_LEN];
         generate_unpredictable_bits(&mut generator, MIN_LEN, &mut buffer);
@@ -211,7 +211,7 @@ mod tests {
     fn encode_packet_test() {
         let max_tag_len = 16;
         let triggering_packet_len = 600;
-        let mut generator = random::testing::Generator::default();
+        let mut generator = random::testing::Generator(123);
 
         let mut buffer = [0; MINIMUM_MTU as usize];
 
@@ -253,7 +253,7 @@ mod tests {
     fn min_packet_test() {
         let max_tag_len = 16;
         let mut triggering_packet_len = min_indistinguishable_packet_len(max_tag_len) + 1;
-        let mut generator = random::testing::Generator::default();
+        let mut generator = random::testing::Generator(123);
         let mut buffer = [0; MINIMUM_MTU as usize];
 
         let packet_len = encode_packet(
@@ -295,7 +295,7 @@ mod tests {
     fn max_packet_test() {
         let max_tag_len = 16;
         let triggering_packet_len = (MINIMUM_MTU * 2) as usize;
-        let mut generator = random::testing::Generator::default();
+        let mut generator = random::testing::Generator(123);
         let mut buffer = [0; MINIMUM_MTU as usize];
 
         let packet_len = encode_packet(

@@ -631,7 +631,7 @@ pub(crate) mod tests {
         initial_id: connection::PeerId,
         stateless_reset_token: Option<stateless_reset::Token>,
     ) -> PeerIdRegistry {
-        let mut random_generator = random::testing::Generator::default();
+        let mut random_generator = random::testing::Generator(123);
 
         ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
             .create_peer_id_registry(
@@ -839,7 +839,7 @@ pub(crate) mod tests {
     #[test]
     fn retire_connection_id_when_retire_prior_to_increases() {
         let id_1 = id(b"id01");
-        let mut random_generator = random::testing::Generator::default();
+        let mut random_generator = random::testing::Generator(123);
         let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
         let mut reg = mapper.create_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
@@ -970,7 +970,7 @@ pub(crate) mod tests {
     #[test]
     pub fn initial_id_is_active() {
         let id_1 = id(b"id01");
-        let mut random_generator = random::testing::Generator::default();
+        let mut random_generator = random::testing::Generator(123);
         let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
         let reg = mapper.create_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
@@ -984,7 +984,7 @@ pub(crate) mod tests {
     #[test]
     pub fn retired_id_is_not_active() {
         let id_1 = id(b"id01");
-        let mut random_generator = random::testing::Generator::default();
+        let mut random_generator = random::testing::Generator(123);
         let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
         let mut reg = mapper.create_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
@@ -1000,7 +1000,7 @@ pub(crate) mod tests {
     #[test]
     pub fn unknown_id_is_not_active() {
         let id_1 = id(b"id01");
-        let mut random_generator = random::testing::Generator::default();
+        let mut random_generator = random::testing::Generator(123);
         let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
         let reg = mapper.create_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
@@ -1016,7 +1016,7 @@ pub(crate) mod tests {
     #[test]
     pub fn consume_new_id_should_return_id() {
         let id_1 = id(b"id01");
-        let mut random_generator = random::testing::Generator::default();
+        let mut random_generator = random::testing::Generator(123);
         let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
         let mut reg = mapper.create_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
@@ -1048,7 +1048,7 @@ pub(crate) mod tests {
     #[test]
     pub fn consume_new_id_should_error_if_no_ids_are_available() {
         let id_1 = id(b"id01");
-        let mut random_generator = random::testing::Generator::default();
+        let mut random_generator = random::testing::Generator(123);
         let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
         let mut reg = mapper.create_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
