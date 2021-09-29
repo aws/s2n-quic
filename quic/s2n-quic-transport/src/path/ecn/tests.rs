@@ -104,10 +104,10 @@ fn ecn() {
         //# Upon successful validation, an endpoint MAY continue to set an ECT
         //# codepoint in subsequent packets it sends, with the expectation that
         //# the path is ECN-capable.
-        controller.state = State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT);
+        controller.state = State::Capable(*CE_SUPPRESSION_TESTING_PACKET_COUNT.start());
         assert!(controller.ecn(transmission_mode, &mut rnd).using_ecn());
         if let State::Capable(count) = controller.state {
-            assert_eq!(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT - 1, count);
+            assert_eq!(*CE_SUPPRESSION_TESTING_PACKET_COUNT.start() - 1, count);
         } else {
             panic!("State should be Capable");
         }
@@ -156,7 +156,7 @@ fn ecn_ce_suppression() {
 #[test]
 fn ecn_loss_recovery_probing() {
     for state in vec![
-        State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
+        State::Capable(*CE_SUPPRESSION_TESTING_PACKET_COUNT.start()),
         State::Testing(0),
         State::Unknown,
         State::Failed(Timer::default()),
@@ -187,7 +187,7 @@ fn is_capable() {
     }
 
     let controller = Controller {
-        state: State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
+        state: State::Capable(*CE_SUPPRESSION_TESTING_PACKET_COUNT.start()),
         ..Default::default()
     };
     assert!(controller.is_capable());
@@ -466,7 +466,7 @@ fn validate_capable() {
 
     assert_eq!(ValidationOutcome::Passed, outcome);
     assert_eq!(
-        State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
+        State::Capable(*CE_SUPPRESSION_TESTING_PACKET_COUNT.start()),
         controller.state
     );
 }
@@ -493,7 +493,7 @@ fn validate_capable_congestion_experienced() {
 
     assert_eq!(ValidationOutcome::CongestionExperienced, outcome);
     assert_eq!(
-        State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
+        State::Capable(*CE_SUPPRESSION_TESTING_PACKET_COUNT.start()),
         controller.state
     );
 }
@@ -522,7 +522,7 @@ fn validate_capable_ce_suppression_test() {
     // because the CE-count was coming from a packet we had marked as ECN-CE
     assert_eq!(ValidationOutcome::Passed, outcome);
     assert_eq!(
-        State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
+        State::Capable(*CE_SUPPRESSION_TESTING_PACKET_COUNT.start()),
         controller.state
     );
 }
@@ -532,7 +532,7 @@ fn validate_capable_ce_suppression_test() {
 fn validate_capable_not_in_unknown_state() {
     for state in vec![
         State::Testing(0),
-        State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
+        State::Capable(*CE_SUPPRESSION_TESTING_PACKET_COUNT.start()),
         State::Failed(Timer::default()),
     ] {
         let mut controller = Controller {
@@ -588,7 +588,7 @@ fn validate_capable_lost_ack_frame() {
 
     assert_eq!(ValidationOutcome::Passed, outcome);
     assert_eq!(
-        State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
+        State::Capable(*CE_SUPPRESSION_TESTING_PACKET_COUNT.start()),
         controller.state
     );
 }
@@ -618,7 +618,7 @@ fn validate_capable_after_restart() {
 
     assert_eq!(ValidationOutcome::CongestionExperienced, outcome);
     assert_eq!(
-        State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
+        State::Capable(*CE_SUPPRESSION_TESTING_PACKET_COUNT.start()),
         controller.state
     );
 }
@@ -643,7 +643,7 @@ fn on_packet_sent() {
 fn on_packet_loss() {
     for state in vec![
         State::Testing(0),
-        State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
+        State::Capable(*CE_SUPPRESSION_TESTING_PACKET_COUNT.start()),
         State::Unknown,
     ] {
         let mut controller = Controller {
