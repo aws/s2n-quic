@@ -26,8 +26,8 @@ const TESTING_PACKET_THRESHOLD: u8 = 10;
 // before testing for ECN support again.
 const RETEST_COOL_OFF_DURATION: Duration = Duration::from_secs(60);
 
-// The number of packets an ECN capable path will send before transmitting an ECN-CE marked packet.
-const CE_SUPPRESSION_TESTING_PACKET_COUNT: RangeInclusive<u16> = 500..=1000;
+// The number of round trip times an ECN capable path will wait before transmitting an ECN-CE marked packet.
+const CE_SUPPRESSION_TESTING_RTT_MULTIPLIER: RangeInclusive<u16> = 10..=100;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ValidationOutcome {
@@ -49,9 +49,8 @@ enum State {
     Unknown,
     // ECN validation has failed. Validation will be restarted based on the timer
     Failed(Timer),
-    // ECN validation has succeeded.
-    // The u16 is the number of packets to send before sending a CE-marked packet.
-    Capable(u16),
+    // ECN validation has succeeded. CE suppression will be tested based on the timer.
+    Capable(Timer),
 }
 
 impl IntoEvent<event::builder::EcnState> for &State {
@@ -104,18 +103,25 @@ impl Controller {
         rtt: Duration,
         publisher: &mut Pub,
     ) {
-        if let State::Failed(ref mut retest_timer) = &mut self.state {
-            if retest_timer.poll_expiration(now).is_ready() {
-                self.restart(path, publisher);
+        match self.state {
+            State::Failed(ref mut retest_timer) => {
+                if retest_timer.poll_expiration(now).is_ready() {
+                    self.restart(path, publisher);
+                }
             }
+            State::Capable(ref mut ce_suppression_timer) if !ce_suppression_timer.is_armed() => {
+                ce_suppression_timer
+                    .set(now + Self::next_ce_packet_duration(random_generator, rtt));
+            }
+            State::Testing(_) | State::Unknown | State::Capable(_) => {}
         }
     }
 
     /// Gets the ECN marking to use on packets sent to the peer
-    pub fn ecn<Rnd: random::Generator>(
+    pub fn ecn(
         &mut self,
         transmission_mode: transmission::Mode,
-        random_generator: &mut Rnd,
+        now: Timestamp,
     ) -> ExplicitCongestionNotification {
         if transmission_mode.is_loss_recovery_probing() {
             // Don't mark loss recovery probes as ECN capable in case the ECN
@@ -129,22 +135,20 @@ impl Controller {
             //# sends packets with an ECT marking -- ECT(0) by default;
             //# otherwise, the endpoint sends unmarked packets.
             State::Testing(_) => ExplicitCongestionNotification::Ect0,
-            State::Capable(ref mut packet_count) if *packet_count == 0 => {
-                *packet_count = Self::next_ce_packet_count(random_generator);
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#8.3
-                //# A sender can detect suppression of reports by marking occasional
-                //# packets that it sends with an ECN-CE marking.
-                ExplicitCongestionNotification::Ce
+            State::Capable(ref mut ce_suppression_timer) => {
+                if ce_suppression_timer.poll_expiration(now).is_ready() {
+                    //= https://www.rfc-editor.org/rfc/rfc9002.txt#8.3
+                    //# A sender can detect suppression of reports by marking occasional
+                    //# packets that it sends with an ECN-CE marking.
+                    ExplicitCongestionNotification::Ce
+                } else {
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
+                    //# Upon successful validation, an endpoint MAY continue to set an ECT
+                    //# codepoint in subsequent packets it sends, with the expectation that
+                    //# the path is ECN-capable.
+                    ExplicitCongestionNotification::Ect0
+                }
             }
-            State::Capable(ref mut packet_count) => {
-                *packet_count -= 1;
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
-                //# Upon successful validation, an endpoint MAY continue to set an ECT
-                //# codepoint in subsequent packets it sends, with the expectation that
-                //# the path is ECN-capable.
-                ExplicitCongestionNotification::Ect0
-            }
-
             //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
             //# If validation fails, then the endpoint MUST disable ECN. It stops setting the ECT
             //# codepoint in IP packets that it sends, assuming that either the network path or
@@ -153,24 +157,29 @@ impl Controller {
         }
     }
 
-    /// Returns a randomly generated number of packets in the CE_SUPPRESSION_TESTING_PACKET_COUNT
-    /// range to send before an ECN-CE marked packet should be sent, to test if CE reports are being
+    /// Returns a duration based on a randomly generated value in the CE_SUPPRESSION_TESTING_RTT_MULTIPLIER
+    /// range multiplied by the given round trip time. This duration represents the amount of time
+    /// to wait before an ECN-CE marked packet should be sent, to test if CE reports are being
     /// suppressed by the peer.
     ///
     /// Note: This function performs a modulo operation on the random generated bytes to restrict
-    /// the result to the `CE_SUPPRESSION_TESTING_MAX_PACKET_COUNT`. This may introduce a modulo
+    /// the result to the `CE_SUPPRESSION_TESTING_RTT_MULTIPLIER` range. This may introduce a modulo
     /// bias in the resulting count, but does not result in any reduction in security for this
     /// usage. Other usages that require uniform sampling should implement rejection sampling or
     /// other methodologies and not copy this implementation.
-    fn next_ce_packet_count<Rnd: random::Generator>(random_generator: &mut Rnd) -> u16 {
+    fn next_ce_packet_duration<Rnd: random::Generator>(
+        random_generator: &mut Rnd,
+        rtt: Duration,
+    ) -> Duration {
         let mut bytes = [0; core::mem::size_of::<u16>()];
         random_generator.private_random_fill(&mut bytes);
         let result = u16::from_le_bytes(bytes);
 
-        let max_variance = (CE_SUPPRESSION_TESTING_PACKET_COUNT.end()
-            - CE_SUPPRESSION_TESTING_PACKET_COUNT.start())
+        let max_variance = (CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.end()
+            - CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start())
         .saturating_add(1);
-        CE_SUPPRESSION_TESTING_PACKET_COUNT.start() + result % max_variance
+        let result = CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() + result % max_variance;
+        result as u32 * rtt
     }
 
     /// Returns true if the path has been determined to be capable of handling ECN marked packets
@@ -254,11 +263,12 @@ impl Controller {
         if matches!(self.state, State::Unknown)
             && newly_acked_ecn_counts.ect_0_count > VarInt::from_u8(0)
         {
-            self.change_state(
-                State::Capable(*CE_SUPPRESSION_TESTING_PACKET_COUNT.start()),
-                path,
-                publisher,
-            );
+            // Arm the ce suppression timer to send a ECN-CE marked packet to test for
+            // CE suppression by the peer.
+            let mut ce_suppression_timer = Timer::default();
+            ce_suppression_timer
+                .set(now + *CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() as u32 * rtt);
+            self.change_state(State::Capable(ce_suppression_timer), path, publisher);
         }
 
         if self.is_capable() && congestion_experienced {
@@ -418,8 +428,9 @@ impl Controller {
 impl timer::Provider for Controller {
     #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
-        if let State::Failed(timer) = &self.state {
-            timer.timers(query)?
+        match &self.state {
+            State::Failed(timer) | State::Capable(timer) => timer.timers(query)?,
+            State::Testing(_) | State::Unknown => {}
         }
 
         Ok(())

@@ -224,13 +224,12 @@ macro_rules! transmission_context {
         $path_id:expr,
         $timestamp:expr,
         $transmission_mode:expr,
-        $rnd:expr,
         $subscriber:expr,
         $(,)?
     ) => {{
         let ecn = $self.path_manager[$path_id]
             .ecn_controller
-            .ecn($transmission_mode, $rnd);
+            .ecn($transmission_mode, $timestamp);
 
         ConnectionTransmissionContext {
             quic_version: $self.event_context.quic_version,
@@ -366,7 +365,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             let transmission_mode = transmission::Mode::PathValidationOnly;
             let ecn = path_manager[path_id]
                 .ecn_controller
-                .ecn(transmission_mode, rnd);
+                .ecn(transmission_mode, timestamp);
 
             if queue
                 .push(ConnectionTransmission {
@@ -514,7 +513,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 active_path_id,
                 timestamp,
                 transmission::Mode::Normal,
-                rnd,
                 subscriber,
             );
 
@@ -640,7 +638,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                                 path_id,
                                 timestamp,
                                 transmission::Mode::Normal,
-                                rnd,
                                 subscriber,
                             ),
                             space_manager: &mut self.space_manager,
@@ -669,7 +666,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                                 path_id,
                                 timestamp,
                                 transmission::Mode::MtuProbing,
-                                rnd,
                                 subscriber,
                             ),
                             space_manager: &mut self.space_manager,
