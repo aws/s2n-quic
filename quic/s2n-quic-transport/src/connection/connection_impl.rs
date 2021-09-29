@@ -629,6 +629,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         match self.state {
             ConnectionState::Handshaking | ConnectionState::Active => {
                 let mut outcome = transmission::Outcome::new(PacketNumber::default());
+                let path_id = self.path_manager.active_path_id();
 
                 while !self.path_manager.active_path().at_amplification_limit()
                     && queue
@@ -636,7 +637,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                             context: transmission_context!(
                                 self,
                                 &mut outcome,
-                                self.path_manager.active_path_id(),
+                                path_id,
                                 timestamp,
                                 transmission::Mode::Normal,
                                 rnd,
@@ -654,6 +655,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 }
 
                 // Send an MTU probe if necessary
+                let path_id = self.path_manager.active_path_id();
                 if self
                     .path_manager
                     .active_path()
@@ -664,7 +666,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                             context: transmission_context!(
                                 self,
                                 &mut outcome,
-                                self.path_manager.active_path_id(),
+                                path_id,
                                 timestamp,
                                 transmission::Mode::MtuProbing,
                                 rnd,

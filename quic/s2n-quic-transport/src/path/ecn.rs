@@ -25,9 +25,13 @@ const TESTING_PACKET_THRESHOLD: u8 = 10;
 // before testing for ECN support again.
 const RETEST_COOL_OFF_DURATION: Duration = Duration::from_secs(60);
 
-// The probability that a ECN-CE marked packet will be transmitted (in place of ECT0)
-// if the path is ECN capable, to check for ECN-CE suppression by the peer.
-const CE_SUPPRESSION_TESTING_PROBABILITY: f64 = 1.0 / 1000.0;
+// The number of packets a newly ECN capable path will send
+// before transmitting an ECN-CE marked packet.
+const CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT: u16 = 100;
+
+// The maximum number of packets an ECN capable path will send
+// before transmitting an ECN-CE marked packet.
+const CE_SUPPRESSION_TESTING_MAX_PACKET_COUNT: u16 = 1000;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ValidationOutcome {
@@ -49,8 +53,9 @@ enum State {
     Unknown,
     // ECN validation has failed. Validation will be restarted based on the timer
     Failed(Timer),
-    // ECN validation has succeeded
-    Capable,
+    // ECN validation has succeeded.
+    // The u16 is the number of packets to send before sending a CE-marked packet.
+    Capable(u16),
 }
 
 impl IntoEvent<event::builder::EcnState> for &State {
@@ -59,7 +64,7 @@ impl IntoEvent<event::builder::EcnState> for &State {
             State::Testing(_) => event::builder::EcnState::Testing,
             State::Unknown => event::builder::EcnState::Unknown,
             State::Failed(_) => event::builder::EcnState::Failed,
-            State::Capable => event::builder::EcnState::Capable,
+            State::Capable(_) => event::builder::EcnState::Capable,
         }
     }
 }
@@ -110,7 +115,7 @@ impl Controller {
 
     /// Gets the ECN marking to use on packets sent to the peer
     pub fn ecn<Rnd: random::Generator>(
-        &self,
+        &mut self,
         transmission_mode: transmission::Mode,
         random_generator: &mut Rnd,
     ) -> ExplicitCongestionNotification {
@@ -127,8 +132,8 @@ impl Controller {
             //# otherwise, the endpoint sends unmarked packets.
             State::Testing(_) => ExplicitCongestionNotification::Ect0,
 
-            State::Capable => {
-                if random_generator.gen_bool(CE_SUPPRESSION_TESTING_PROBABILITY) {
+            State::Capable(_) => {
+                if self.test_ce_suppression(random_generator) {
                     //= https://www.rfc-editor.org/rfc/rfc9002.txt#8.3
                     //# A sender can detect suppression of reports by marking occasional
                     //# packets that it sends with an ECN-CE marking.
@@ -149,9 +154,27 @@ impl Controller {
         }
     }
 
+    /// Returns true if a ECN-CE marked packed should be sent, to test if CE reports are being
+    /// suppressed by the peer.
+    fn test_ce_suppression<Rnd: random::Generator>(&mut self, random_generator: &mut Rnd) -> bool {
+        match self.state {
+            State::Capable(ref mut count) if *count == 0 => {
+                let mut bytes = [0; 2];
+                random_generator.private_random_fill(&mut bytes);
+                *count = u16::from_be_bytes(bytes) % CE_SUPPRESSION_TESTING_MAX_PACKET_COUNT;
+                true
+            }
+            State::Capable(ref mut count) => {
+                *count = count.saturating_sub(1);
+                false
+            }
+            State::Testing(_) | State::Unknown | State::Failed(_) => false,
+        }
+    }
+
     /// Returns true if the path has been determined to be capable of handling ECN marked packets
     pub fn is_capable(&self) -> bool {
-        matches!(self.state, State::Capable)
+        matches!(self.state, State::Capable(_))
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
@@ -261,7 +284,11 @@ impl Controller {
         if matches!(self.state, State::Unknown)
             && newly_acked_ecn_counts.ect_0_count > VarInt::from_u8(0)
         {
-            self.change_state(State::Capable, path, publisher);
+            self.change_state(
+                State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
+                path,
+                publisher,
+            );
         }
 
         if self.is_capable() && congestion_experienced {

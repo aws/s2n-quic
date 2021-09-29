@@ -104,8 +104,13 @@ fn ecn() {
         //# Upon successful validation, an endpoint MAY continue to set an ECT
         //# codepoint in subsequent packets it sends, with the expectation that
         //# the path is ECN-capable.
-        controller.state = State::Capable;
+        controller.state = State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT);
         assert!(controller.ecn(transmission_mode, &mut rnd).using_ecn());
+        if let State::Capable(count) = controller.state {
+            assert_eq!(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT - 1, count);
+        } else {
+            panic!("State should be Capable");
+        }
 
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
         //= type=test
@@ -126,10 +131,7 @@ fn ecn() {
 
 #[test]
 fn ecn_ce_suppression() {
-    let mut rnd = random::testing::Generator {
-        seed: 123,
-        gen_bool_result: true,
-    };
+    let mut rnd = random::testing::Generator::default();
 
     for &transmission_mode in &[
         transmission::Mode::Normal,
@@ -139,47 +141,28 @@ fn ecn_ce_suppression() {
         let mut controller = Controller::default();
         assert!(controller.ecn(transmission_mode, &mut rnd).using_ecn());
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
-        //= type=test
-        //# Upon successful validation, an endpoint MAY continue to set an ECT
-        //# codepoint in subsequent packets it sends, with the expectation that
-        //# the path is ECN-capable.
-        controller.state = State::Capable;
+        controller.state = State::Capable(0);
         assert!(controller
             .ecn(transmission_mode, &mut rnd)
             .congestion_experienced());
-
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
-        //= type=test
-        //# If validation fails, then the endpoint MUST disable ECN. It stops setting the ECT
-        //# codepoint in IP packets that it sends, assuming that either the network path or
-        //# the peer does not support ECN.
-        controller.fail(
-            s2n_quic_platform::time::now(),
-            Path::test(),
-            &mut Publisher::default(),
-        );
-        assert!(!controller
-            .ecn(transmission_mode, &mut rnd)
-            .congestion_experienced());
-
-        controller.state = State::Unknown;
-        assert!(!controller
-            .ecn(transmission_mode, &mut rnd)
-            .congestion_experienced());
+        if let State::Capable(count) = controller.state {
+            assert!(count > 0);
+        } else {
+            panic!("State should be Capable");
+        }
     }
 }
 
 #[test]
 fn ecn_loss_recovery_probing() {
     for state in vec![
-        State::Capable,
+        State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
         State::Testing(0),
         State::Unknown,
         State::Failed(Timer::default()),
     ] {
         let mut rnd = random::testing::Generator::default();
-        let controller = Controller {
+        let mut controller = Controller {
             state,
             ..Default::default()
         };
@@ -204,7 +187,7 @@ fn is_capable() {
     }
 
     let controller = Controller {
-        state: State::Capable,
+        state: State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
         ..Default::default()
     };
     assert!(controller.is_capable());
@@ -482,7 +465,10 @@ fn validate_capable() {
     );
 
     assert_eq!(ValidationOutcome::Passed, outcome);
-    assert_eq!(State::Capable, controller.state);
+    assert_eq!(
+        State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
+        controller.state
+    );
 }
 
 #[test]
@@ -506,7 +492,10 @@ fn validate_capable_congestion_experienced() {
     );
 
     assert_eq!(ValidationOutcome::CongestionExperienced, outcome);
-    assert_eq!(State::Capable, controller.state);
+    assert_eq!(
+        State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
+        controller.state
+    );
 }
 
 #[test]
@@ -530,7 +519,10 @@ fn validate_capable_congestion_not_experienced_if_testing_ce_suppression() {
     );
 
     assert_eq!(ValidationOutcome::Passed, outcome);
-    assert_eq!(State::Capable, controller.state);
+    assert_eq!(
+        State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
+        controller.state
+    );
 }
 
 #[test]
@@ -554,7 +546,10 @@ fn validate_capable_ce_suppression_test() {
     );
 
     assert_eq!(ValidationOutcome::Passed, outcome);
-    assert_eq!(State::Capable, controller.state);
+    assert_eq!(
+        State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
+        controller.state
+    );
 }
 
 /// Successful validation when not in the Unknown state does not change the state
@@ -562,7 +557,7 @@ fn validate_capable_ce_suppression_test() {
 fn validate_capable_not_in_unknown_state() {
     for state in vec![
         State::Testing(0),
-        State::Capable,
+        State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
         State::Failed(Timer::default()),
     ] {
         let mut controller = Controller {
@@ -617,7 +612,10 @@ fn validate_capable_lost_ack_frame() {
     );
 
     assert_eq!(ValidationOutcome::Passed, outcome);
-    assert_eq!(State::Capable, controller.state);
+    assert_eq!(
+        State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
+        controller.state
+    );
 }
 
 #[test]
@@ -644,7 +642,10 @@ fn validate_capable_after_restart() {
     );
 
     assert_eq!(ValidationOutcome::CongestionExperienced, outcome);
-    assert_eq!(State::Capable, controller.state);
+    assert_eq!(
+        State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
+        controller.state
+    );
 }
 
 #[test]
@@ -665,7 +666,11 @@ fn on_packet_sent() {
 
 #[test]
 fn on_packet_loss() {
-    for state in vec![State::Testing(0), State::Capable, State::Unknown] {
+    for state in vec![
+        State::Testing(0),
+        State::Capable(CE_SUPPRESSION_TESTING_INITIAL_PACKET_COUNT),
+        State::Unknown,
+    ] {
         let mut controller = Controller {
             state,
             ..Default::default()
