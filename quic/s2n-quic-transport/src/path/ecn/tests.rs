@@ -54,7 +54,7 @@ fn restart_already_in_testing_0() {
 }
 
 #[test]
-fn on_timeout() {
+fn on_timeout_failed() {
     let mut controller = Controller::default();
     let now = s2n_quic_platform::time::now();
     controller.fail(now, Path::test(), &mut Publisher::default());
@@ -97,6 +97,53 @@ fn on_timeout() {
 
     assert_eq!(State::Testing(0), controller.state);
     assert_eq!(0, *controller.black_hole_counter.deref());
+}
+
+#[test]
+fn on_timeout_capable() {
+    let mut controller = Controller::default();
+    let now = s2n_quic_platform::time::now();
+    let rtt = Duration::from_millis(50);
+    let ce_suppression_time = now + *CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() as u32 * rtt;
+    let mut ce_suppression_timer = Timer::default();
+    ce_suppression_timer.set(ce_suppression_time);
+    controller.state = State::Capable(ce_suppression_timer);
+
+    let now = now + rtt;
+
+    // Too soon
+    controller.on_timeout(
+        now,
+        Path::test(),
+        &mut random::testing::Generator(123),
+        rtt,
+        &mut Publisher::default(),
+    );
+
+    if let State::Capable(timer) = &controller.state {
+        assert!(timer.is_armed());
+        assert_eq!(Some(ce_suppression_time), controller.next_expiration());
+    } else {
+        panic!("State should be Capable");
+    }
+
+    // Timer is no longer armed
+    controller.state = State::Capable(Timer::default());
+
+    controller.on_timeout(
+        now,
+        Path::test(),
+        &mut random::testing::Generator(123),
+        rtt,
+        &mut Publisher::default(),
+    );
+
+    if let State::Capable(timer) = &controller.state {
+        assert!(timer.is_armed());
+        assert!(controller.next_expiration().unwrap() > now);
+    } else {
+        panic!("State should be Capable");
+    }
 }
 
 #[test]
