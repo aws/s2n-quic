@@ -12,7 +12,7 @@ use crate::{
 };
 use s2n_quic_core::{
     event::{self, IntoEvent},
-    frame, packet,
+    frame, packet, random,
     time::{timer, Timestamp},
 };
 
@@ -182,16 +182,22 @@ impl<Config: endpoint::Config> Path<Config> {
     }
 
     #[inline]
-    pub fn on_timeout<Pub: event::ConnectionPublisher>(
+    pub fn on_timeout<Rnd: random::Generator, Pub: event::ConnectionPublisher>(
         &mut self,
         timestamp: Timestamp,
         path_id: Id,
+        random_generator: &mut Rnd,
         publisher: &mut Pub,
     ) {
         self.challenge.on_timeout(timestamp);
         self.mtu_controller.on_timeout(timestamp);
-        self.ecn_controller
-            .on_timeout(timestamp, path_event!(self, path_id), publisher);
+        self.ecn_controller.on_timeout(
+            timestamp,
+            path_event!(self, path_id),
+            random_generator,
+            self.rtt_estimator.smoothed_rtt(),
+            publisher,
+        );
     }
 
     /// Only PATH_CHALLENGE and PATH_RESPONSE frames should be transmitted here.
@@ -596,6 +602,7 @@ mod tests {
         path.on_timeout(
             expiration_time + Duration::from_millis(10),
             path::Id::test_id(),
+            &mut random::testing::Generator(123),
             &mut Publisher::default(),
         );
 
@@ -658,6 +665,7 @@ mod tests {
         path.on_timeout(
             expiration_time + Duration::from_millis(10),
             path::Id::test_id(),
+            &mut random::testing::Generator(123),
             &mut Publisher::default(),
         );
 

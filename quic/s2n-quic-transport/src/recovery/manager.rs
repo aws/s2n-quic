@@ -581,6 +581,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.baseline_ecn_counts,
             ack_frame_ecn_counts,
             datagram.timestamp,
+            path.rtt_estimator.smoothed_rtt(),
             path_event!(path, path_id),
             publisher,
         );

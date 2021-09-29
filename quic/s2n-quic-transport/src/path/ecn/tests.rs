@@ -70,7 +70,13 @@ fn on_timeout() {
     let now = now + RETEST_COOL_OFF_DURATION - Duration::from_secs(1);
 
     // Too soon
-    controller.on_timeout(now, Path::test(), &mut Publisher::default());
+    controller.on_timeout(
+        now,
+        Path::test(),
+        &mut random::testing::Generator(123),
+        Duration::default(),
+        &mut Publisher::default(),
+    );
 
     if let State::Failed(timer) = &controller.state {
         assert!(timer.is_armed());
@@ -81,7 +87,13 @@ fn on_timeout() {
     assert_eq!(0, *controller.black_hole_counter.deref());
 
     let now = now + Duration::from_secs(1);
-    controller.on_timeout(now, Path::test(), &mut Publisher::default());
+    controller.on_timeout(
+        now,
+        Path::test(),
+        &mut random::testing::Generator(123),
+        Duration::default(),
+        &mut Publisher::default(),
+    );
 
     assert_eq!(State::Testing(0), controller.state);
     assert_eq!(0, *controller.black_hole_counter.deref());
@@ -204,6 +216,7 @@ fn validate_already_failed() {
         EcnCounts::default(),
         None,
         now + Duration::from_secs(5),
+        Duration::default(),
         Path::test(),
         &mut Publisher::default(),
     );
@@ -238,6 +251,7 @@ fn validate_ecn_counts_not_in_ack() {
         EcnCounts::default(),
         None,
         now,
+        Duration::default(),
         Path::test(),
         &mut Publisher::default(),
     );
@@ -263,6 +277,7 @@ fn validate_ecn_ce_remarking() {
         EcnCounts::default(),
         Some(EcnCounts::default()),
         now,
+        Duration::default(),
         Path::test(),
         &mut Publisher::default(),
     );
@@ -288,6 +303,7 @@ fn validate_ect_0_remarking() {
         EcnCounts::default(),
         Some(ack_frame_ecn_counts),
         now,
+        Duration::default(),
         Path::test(),
         &mut Publisher::default(),
     );
@@ -310,6 +326,7 @@ fn validate_ect_0_remarking_after_restart() {
         baseline_ecn_counts,
         Some(ack_frame_ecn_counts),
         now,
+        Duration::default(),
         Path::test(),
         &mut Publisher::default(),
     );
@@ -331,6 +348,7 @@ fn validate_no_ecn_counts() {
         EcnCounts::default(),
         None,
         now,
+        Duration::default(),
         Path::test(),
         &mut Publisher::default(),
     );
@@ -350,6 +368,7 @@ fn validate_ecn_decrease() {
         baseline_ecn_counts,
         None,
         now,
+        Duration::default(),
         Path::test(),
         &mut Publisher::default(),
     );
@@ -376,6 +395,7 @@ fn validate_no_marked_packets_acked() {
         EcnCounts::default(),
         Some(EcnCounts::default()),
         now,
+        Duration::default(),
         Path::test(),
         &mut Publisher::default(),
     );
@@ -406,6 +426,7 @@ fn validate_ce_suppression_remarked_to_not_ect() {
         EcnCounts::default(),
         Some(ack_frame_ecn_counts),
         now,
+        Duration::default(),
         Path::test(),
         &mut Publisher::default(),
     );
@@ -436,6 +457,7 @@ fn validate_ce_suppression_remarked_to_ect0() {
         EcnCounts::default(),
         Some(ack_frame_ecn_counts),
         now,
+        Duration::default(),
         Path::test(),
         &mut Publisher::default(),
     );
@@ -454,12 +476,14 @@ fn validate_capable() {
     let expected_ecn_counts = helper_ecn_counts(2, 0, 0);
     let ack_frame_ecn_counts = helper_ecn_counts(2, 0, 0);
     let sent_packet_ecn_counts = helper_ecn_counts(2, 0, 0);
+    let rtt = Duration::from_millis(50);
     let outcome = controller.validate(
         expected_ecn_counts,
         sent_packet_ecn_counts,
         EcnCounts::default(),
         Some(ack_frame_ecn_counts),
         now,
+        rtt,
         Path::test(),
         &mut Publisher::default(),
     );
@@ -481,12 +505,14 @@ fn validate_capable_congestion_experienced() {
     let expected_ecn_counts = helper_ecn_counts(2, 0, 0);
     let ack_frame_ecn_counts = helper_ecn_counts(1, 0, 1);
     let sent_packet_ecn_counts = helper_ecn_counts(2, 0, 0);
+    let rtt = Duration::from_millis(50);
     let outcome = controller.validate(
         expected_ecn_counts,
         sent_packet_ecn_counts,
         EcnCounts::default(),
         Some(ack_frame_ecn_counts),
         now,
+        rtt,
         Path::test(),
         &mut Publisher::default(),
     );
@@ -508,12 +534,14 @@ fn validate_capable_ce_suppression_test() {
     let expected_ecn_counts = helper_ecn_counts(2, 0, 1);
     let ack_frame_ecn_counts = helper_ecn_counts(2, 0, 1);
     let sent_packet_ecn_counts = helper_ecn_counts(2, 0, 1);
+    let rtt = Duration::from_millis(50);
     let outcome = controller.validate(
         expected_ecn_counts,
         sent_packet_ecn_counts,
         EcnCounts::default(),
         Some(ack_frame_ecn_counts),
         now,
+        rtt,
         Path::test(),
         &mut Publisher::default(),
     );
@@ -543,7 +571,7 @@ fn validate_capable_not_in_unknown_state() {
         let expected_ecn_counts = helper_ecn_counts(1, 0, 0);
         let ack_frame_ecn_counts = helper_ecn_counts(1, 0, 0);
         let sent_packet_ecn_counts = helper_ecn_counts(1, 0, 0);
-
+        let rtt = Duration::from_millis(50);
         let expected_state = controller.state.clone();
         controller.validate(
             expected_ecn_counts,
@@ -551,6 +579,7 @@ fn validate_capable_not_in_unknown_state() {
             EcnCounts::default(),
             Some(ack_frame_ecn_counts),
             now,
+            rtt,
             Path::test(),
             &mut Publisher::default(),
         );
@@ -575,6 +604,7 @@ fn validate_capable_lost_ack_frame() {
     let ack_frame_ecn_counts = helper_ecn_counts(3, 0, 0);
 
     let expected_ecn_counts = helper_ecn_counts(2, 0, 0);
+    let rtt = Duration::from_millis(50);
 
     let outcome = controller.validate(
         expected_ecn_counts,
@@ -582,6 +612,7 @@ fn validate_capable_lost_ack_frame() {
         EcnCounts::default(),
         Some(ack_frame_ecn_counts),
         now,
+        rtt,
         Path::test(),
         &mut Publisher::default(),
     );
@@ -606,12 +637,14 @@ fn validate_capable_after_restart() {
     // in the baseline ecn counts below, that means we've already accounted for them.
     let ack_frame_ecn_counts = helper_ecn_counts(1, 2, 1);
     let baseline_ecn_counts = helper_ecn_counts(0, 2, 0);
+    let rtt = Duration::from_millis(50);
     let outcome = controller.validate(
         expected_ecn_counts,
         sent_packet_ecn_counts,
         baseline_ecn_counts,
         Some(ack_frame_ecn_counts),
         now,
+        rtt,
         Path::test(),
         &mut Publisher::default(),
     );
@@ -721,7 +754,7 @@ fn fuzz_validate() {
     let mut rnd = random::testing::Generator(123);
 
     bolero::check!()
-        .with_type::<(EcnCounts, EcnCounts, EcnCounts, Option<EcnCounts>)>()
+        .with_type::<(EcnCounts, EcnCounts, EcnCounts, Option<EcnCounts>, Duration)>()
         .cloned()
         .for_each(
             |(
@@ -729,6 +762,7 @@ fn fuzz_validate() {
                 sent_packet_ecn_counts,
                 baseline_ecn_counts,
                 ack_frame_ecn_counts,
+                rtt,
             )| {
                 let mut controller = Controller::default();
                 let outcome = controller.validate(
@@ -737,6 +771,7 @@ fn fuzz_validate() {
                     baseline_ecn_counts,
                     ack_frame_ecn_counts,
                     now,
+                    rtt,
                     Path::test(),
                     &mut Publisher::default(),
                 );

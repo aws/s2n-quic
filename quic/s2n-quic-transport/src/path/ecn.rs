@@ -96,10 +96,12 @@ impl Controller {
     }
 
     /// Called when the connection timer expires
-    pub fn on_timeout<Pub: event::ConnectionPublisher>(
+    pub fn on_timeout<Rnd: random::Generator, Pub: event::ConnectionPublisher>(
         &mut self,
         now: Timestamp,
         path: event::builder::Path,
+        random_generator: &mut Rnd,
+        rtt: Duration,
         publisher: &mut Pub,
     ) {
         if let State::Failed(ref mut retest_timer) = &mut self.state {
@@ -196,6 +198,7 @@ impl Controller {
         baseline_ecn_counts: EcnCounts,
         ack_frame_ecn_counts: Option<EcnCounts>,
         now: Timestamp,
+        rtt: Duration,
         path: event::builder::Path,
         publisher: &mut Pub,
     ) -> ValidationOutcome {
