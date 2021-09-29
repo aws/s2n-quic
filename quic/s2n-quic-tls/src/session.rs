@@ -33,7 +33,9 @@ impl Session {
         });
 
         connection.set_config(config)?;
+        connection.enable_quic()?;
         connection.set_quic_transport_parameters(params)?;
+        // QUIC handles sending alerts, so no need to apply TLS blinding
         connection.set_blinding(s2n_blinding::SelfServiceBlinding)?;
 
         Ok(Self {
