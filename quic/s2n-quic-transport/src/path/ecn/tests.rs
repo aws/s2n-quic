@@ -122,7 +122,7 @@ fn on_timeout_capable() {
 
     if let State::Capable(timer) = &controller.state {
         assert!(timer.is_armed());
-        assert_eq!(Some(ce_suppression_time), controller.next_expiration());
+        assert_eq!(Some(ce_suppression_time), timer.next_expiration());
     } else {
         panic!("State should be Capable");
     }
@@ -140,7 +140,7 @@ fn on_timeout_capable() {
 
     if let State::Capable(timer) = &controller.state {
         assert!(timer.is_armed());
-        assert!(controller.next_expiration().unwrap() > now);
+        assert!(timer.next_expiration().unwrap() > now);
     } else {
         panic!("State should be Capable");
     }
@@ -542,10 +542,12 @@ fn validate_capable() {
 
     assert_eq!(ValidationOutcome::Passed, outcome);
     assert!(controller.is_capable());
-    assert_eq!(
-        Some(now + *CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() as u32 * rtt),
-        controller.next_expiration()
-    );
+    if let State::Capable(timer) = controller.state {
+        assert_eq!(
+            Some(now + *CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() as u32 * rtt),
+            timer.next_expiration()
+        );
+    }
 }
 
 #[test]
@@ -572,10 +574,12 @@ fn validate_capable_congestion_experienced() {
 
     assert_eq!(ValidationOutcome::CongestionExperienced, outcome);
     assert!(controller.is_capable());
-    assert_eq!(
-        Some(now + *CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() as u32 * rtt),
-        controller.next_expiration()
-    );
+    if let State::Capable(timer) = controller.state {
+        assert_eq!(
+            Some(now + *CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() as u32 * rtt),
+            timer.next_expiration()
+        );
+    }
 }
 
 #[test]
@@ -604,10 +608,12 @@ fn validate_capable_ce_suppression_test() {
     // because the CE-count was coming from a packet we had marked as ECN-CE
     assert_eq!(ValidationOutcome::Passed, outcome);
     assert!(controller.is_capable());
-    assert_eq!(
-        Some(now + *CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() as u32 * rtt),
-        controller.next_expiration()
-    );
+    if let State::Capable(timer) = controller.state {
+        assert_eq!(
+            Some(now + *CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() as u32 * rtt),
+            timer.next_expiration()
+        );
+    }
 }
 
 /// Successful validation when not in the Unknown state does not change the state
@@ -674,10 +680,12 @@ fn validate_capable_lost_ack_frame() {
 
     assert_eq!(ValidationOutcome::Passed, outcome);
     assert!(controller.is_capable());
-    assert_eq!(
-        Some(now + *CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() as u32 * rtt),
-        controller.next_expiration()
-    );
+    if let State::Capable(timer) = controller.state {
+        assert_eq!(
+            Some(now + *CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() as u32 * rtt),
+            timer.next_expiration()
+        );
+    }
 }
 
 #[test]
@@ -707,10 +715,12 @@ fn validate_capable_after_restart() {
 
     assert_eq!(ValidationOutcome::CongestionExperienced, outcome);
     assert!(controller.is_capable());
-    assert_eq!(
-        Some(now + *CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() as u32 * rtt),
-        controller.next_expiration()
-    );
+    if let State::Capable(timer) = controller.state {
+        assert_eq!(
+            Some(now + *CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() as u32 * rtt),
+            timer.next_expiration()
+        );
+    }
 }
 
 #[test]

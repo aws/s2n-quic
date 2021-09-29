@@ -428,10 +428,12 @@ impl Controller {
 impl timer::Provider for Controller {
     #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
-        match &self.state {
-            State::Failed(timer) | State::Capable(timer) => timer.timers(query)?,
-            State::Testing(_) | State::Unknown => {}
+        if let State::Failed(timer) = &self.state {
+            timer.timers(query)?
         }
+        // The ce suppression timer in State::Capable is not queried here as that
+        // timer is passively polled when transmitting and does not require firing
+        // precisely.
 
         Ok(())
     }
