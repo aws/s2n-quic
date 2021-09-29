@@ -89,7 +89,7 @@ fn on_timeout() {
 
 #[test]
 fn ecn() {
-    let mut rnd = random::testing::Generator::default();
+    let mut rnd = random::testing::Generator(123);
 
     for &transmission_mode in &[
         transmission::Mode::Normal,
@@ -131,7 +131,7 @@ fn ecn() {
 
 #[test]
 fn ecn_ce_suppression() {
-    let mut rnd = random::testing::Generator::default();
+    let mut rnd = random::testing::Generator(123);
 
     for &transmission_mode in &[
         transmission::Mode::Normal,
@@ -161,7 +161,7 @@ fn ecn_loss_recovery_probing() {
         State::Unknown,
         State::Failed(Timer::default()),
     ] {
-        let mut rnd = random::testing::Generator::default();
+        let mut rnd = random::testing::Generator(123);
         let mut controller = Controller {
             state,
             ..Default::default()
@@ -743,7 +743,7 @@ fn on_packet_loss_already_failed() {
 #[test]
 fn fuzz_validate() {
     let now = s2n_quic_platform::time::now();
-    let mut rnd = random::testing::Generator::default();
+    let mut rnd = random::testing::Generator(123);
 
     bolero::check!()
         .with_type::<(EcnCounts, EcnCounts, EcnCounts, Option<EcnCounts>)>()
