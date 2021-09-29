@@ -217,6 +217,11 @@ impl Connection {
 
 #[cfg(feature = "quic")]
 impl Connection {
+    pub fn enable_quic(&mut self) -> Result<(), Error> {
+        call!(s2n_connection_enable_quic(self.connection))?;
+        Ok(())
+    }
+
     pub fn set_quic_transport_parameters(&mut self, buffer: &[u8]) -> Result<(), Error> {
         call!(s2n_connection_set_quic_transport_parameters(
             self.connection,
