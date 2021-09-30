@@ -168,19 +168,18 @@ impl Controller {
     /// usage. Other usages that require uniform sampling should implement rejection sampling or
     /// other methodologies and not copy this implementation.
     fn next_ce_packet_duration<Rnd: random::Generator>(
-        _random_generator: &mut Rnd,
-        _rtt: Duration,
+        random_generator: &mut Rnd,
+        rtt: Duration,
     ) -> Duration {
-        // let mut bytes = [0; core::mem::size_of::<u16>()];
-        // random_generator.private_random_fill(&mut bytes);
-        // let result = u16::from_le_bytes(bytes);
-        //
-        // let max_variance = (CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.end()
-        //     - CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start())
-        // .saturating_add(1);
-        // let result = CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() + result % max_variance;
-        // result as u32 * rtt
-        Duration::from_millis(250)
+        let mut bytes = [0; core::mem::size_of::<u16>()];
+        random_generator.private_random_fill(&mut bytes);
+        let result = u16::from_le_bytes(bytes);
+
+        let max_variance = (CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.end()
+            - CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start())
+        .saturating_add(1);
+        let result = CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() + result % max_variance;
+        result as u32 * rtt
     }
 
     /// Returns true if the path has been determined to be capable of handling ECN marked packets
