@@ -99,8 +99,8 @@ impl Controller {
         &mut self,
         now: Timestamp,
         path: event::builder::Path,
-        random_generator: &mut Rnd,
-        rtt: Duration,
+        _random_generator: &mut Rnd,
+        _rtt: Duration,
         publisher: &mut Pub,
     ) {
         match self.state {
@@ -109,10 +109,10 @@ impl Controller {
                     self.restart(path, publisher);
                 }
             }
-            State::Capable(ref mut ce_suppression_timer) if !ce_suppression_timer.is_armed() => {
-                ce_suppression_timer
-                    .set(now + Self::next_ce_packet_duration(random_generator, rtt));
-            }
+            // State::Capable(ref mut ce_suppression_timer) if !ce_suppression_timer.is_armed() => {
+            //     ce_suppression_timer
+            //         .set(now + Self::next_ce_packet_duration(random_generator, rtt));
+            // }
             State::Testing(_) | State::Unknown | State::Capable(_) => {}
         }
     }
@@ -167,21 +167,21 @@ impl Controller {
     /// bias in the resulting count, but does not result in any reduction in security for this
     /// usage. Other usages that require uniform sampling should implement rejection sampling or
     /// other methodologies and not copy this implementation.
-    fn next_ce_packet_duration<Rnd: random::Generator>(
-        _random_generator: &mut Rnd,
-        _rtt: Duration,
-    ) -> Duration {
-        // let mut bytes = [0; core::mem::size_of::<u16>()];
-        // random_generator.private_random_fill(&mut bytes);
-        // let result = u16::from_le_bytes(bytes);
-        //
-        // let max_variance = (CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.end()
-        //     - CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start())
-        // .saturating_add(1);
-        // let result = CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() + result % max_variance;
-        // result as u32 * rtt
-        Duration::from_millis(250)
-    }
+    // fn next_ce_packet_duration<Rnd: random::Generator>(
+    //     _random_generator: &mut Rnd,
+    //     _rtt: Duration,
+    // ) -> Duration {
+    //     // let mut bytes = [0; core::mem::size_of::<u16>()];
+    //     // random_generator.private_random_fill(&mut bytes);
+    //     // let result = u16::from_le_bytes(bytes);
+    //     //
+    //     // let max_variance = (CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.end()
+    //     //     - CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start())
+    //     // .saturating_add(1);
+    //     // let result = CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() + result % max_variance;
+    //     // result as u32 * rtt
+    //     Duration::from_millis(250)
+    // }
 
     /// Returns true if the path has been determined to be capable of handling ECN marked packets
     pub fn is_capable(&self) -> bool {

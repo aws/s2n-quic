@@ -100,6 +100,7 @@ fn on_timeout_failed() {
 }
 
 #[test]
+#[ignore]
 fn on_timeout_capable() {
     let mut controller = Controller::default();
     let now = s2n_quic_platform::time::now();
