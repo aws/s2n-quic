@@ -38,6 +38,10 @@ macro_rules! impl_message_delegate {
                 $crate::message::Message::payload_len(&self.$field)
             }
 
+            fn can_gso<M: tx::Message<Handle = Self::Handle>>(&self, other: &mut M) -> bool {
+                $crate::message::Message::can_gso(&self.$field, other)
+            }
+
             unsafe fn set_payload_len(&mut self, payload_len: usize) {
                 $crate::message::Message::set_payload_len(&mut self.$field, payload_len)
             }

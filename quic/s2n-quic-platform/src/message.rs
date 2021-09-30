@@ -19,6 +19,7 @@ pub mod simple;
 use core::ffi::c_void;
 use s2n_quic_core::{
     inet::{ExplicitCongestionNotification, SocketAddress},
+    io::tx,
     path,
 };
 
@@ -45,6 +46,9 @@ pub trait Message {
 
     /// Returns the length of the payload
     fn payload_len(&self) -> usize;
+
+    /// Returns true if this message can be included in the same GSO payload of the `other` message
+    fn can_gso<M: tx::Message<Handle = Self::Handle>>(&self, other: &mut M) -> bool;
 
     /// Sets the payload length for the message
     ///
