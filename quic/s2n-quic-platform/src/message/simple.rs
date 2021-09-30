@@ -53,12 +53,12 @@ impl MessageTrait for Message {
         self.payload_len as usize
     }
 
-    fn can_gso<M: tx::Message>(&self, _other: &mut M) -> bool {
-        false
-    }
-
     unsafe fn set_payload_len(&mut self, len: usize) {
         self.payload_len = len;
+    }
+
+    fn can_gso<M: tx::Message>(&self, _other: &mut M) -> bool {
+        false
     }
 
     unsafe fn reset(&mut self, mtu: usize) {

@@ -47,15 +47,15 @@ pub trait Message {
     /// Returns the length of the payload
     fn payload_len(&self) -> usize;
 
-    /// Returns true if this message can be included in the same GSO payload as the `other` message
-    fn can_gso<M: tx::Message<Handle = Self::Handle>>(&self, other: &mut M) -> bool;
-
     /// Sets the payload length for the message
     ///
     /// # Safety
     /// This method should only set the payload less than or
     /// equal to its initially allocated size.
     unsafe fn set_payload_len(&mut self, payload_len: usize);
+
+    /// Returns true if this message can be included in the same GSO payload as the `other` message
+    fn can_gso<M: tx::Message<Handle = Self::Handle>>(&self, other: &mut M) -> bool;
 
     /// Copies the relevant fields inside of one message into another.
     ///

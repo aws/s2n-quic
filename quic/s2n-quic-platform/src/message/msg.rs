@@ -272,21 +272,21 @@ impl MessageTrait for msghdr {
     }
 
     #[inline]
+    unsafe fn set_payload_len(&mut self, payload_len: usize) {
+        debug_assert!(!self.msg_iov.is_null());
+        (*self.msg_iov).iov_len = payload_len;
+    }
+
+    #[inline]
     fn can_gso<M: tx::Message<Handle = Self::Handle>>(&self, other: &mut M) -> bool {
         if let Some(header) = Message::header(self) {
             // check the path handles match
             header.path.strict_eq(other.path_handle()) &&
-            // check the ECN markings match
-            header.ecn == other.ecn()
+                // check the ECN markings match
+                header.ecn == other.ecn()
         } else {
             false
         }
-    }
-
-    #[inline]
-    unsafe fn set_payload_len(&mut self, payload_len: usize) {
-        debug_assert!(!self.msg_iov.is_null());
-        (*self.msg_iov).iov_len = payload_len;
     }
 
     #[cfg(s2n_quic_platform_gso)]
