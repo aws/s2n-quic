@@ -192,6 +192,7 @@ fn ecn() {
 }
 
 #[test]
+#[ignore]
 fn ecn_ce_suppression() {
     let now = s2n_quic_platform::time::now();
 
