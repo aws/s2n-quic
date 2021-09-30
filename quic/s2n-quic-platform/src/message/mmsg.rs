@@ -83,6 +83,11 @@ impl MessageTrait for mmsghdr {
     }
 
     #[inline]
+    fn can_gso<M: tx::Message<Handle = Self::Handle>>(&self, other: &mut M) -> bool {
+        self.msg_hdr.can_gso(other)
+    }
+
+    #[inline]
     fn set_segment_size(&mut self, size: usize) {
         self.msg_hdr.set_segment_size(size)
     }
