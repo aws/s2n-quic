@@ -240,12 +240,14 @@ impl<Config: endpoint::Config> Manager<Config> {
     ) -> Result<(Id, bool), transport::Error> {
         let remote_address = path_handle.remote_address();
         let local_address = path_handle.local_address();
+        let active_local_addr = self.active_path().local_address();
+        let active_remote_addr = self.active_path().remote_address();
 
         let attempt: migration::Attempt = migration::AttemptBuilder {
             active_path: event::builder::Path {
-                local_addr: local_address.into_event(),
+                local_addr: active_local_addr.into_event(),
                 local_cid: self.active_path().local_connection_id.into_event(),
-                remote_addr: remote_address.into_event(),
+                remote_addr: active_remote_addr.into_event(),
                 remote_cid: self.active_path().peer_connection_id.into_event(),
                 id: self.active_path_id().into_event(),
             }

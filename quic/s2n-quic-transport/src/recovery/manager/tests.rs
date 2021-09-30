@@ -2703,9 +2703,10 @@ fn helper_generate_multi_path_manager(
     let manager = Manager::new(space, Duration::from_millis(100));
     let clock = NoopClock {};
 
-    let first_addr = SocketAddress::IpV4(Default::default());
+    let first_addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
+    let first_addr = SocketAddress::from(first_addr);
     let first_addr = RemoteAddress::from(first_addr);
-    let second_addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
+    let second_addr: SocketAddr = "127.0.0.2:80".parse().unwrap();
     let second_addr = SocketAddress::from(second_addr);
     let second_addr = RemoteAddress::from(second_addr);
 
@@ -2713,7 +2714,8 @@ fn helper_generate_multi_path_manager(
     let second_path_id = path::Id::new(1);
 
     // confirm we have one path
-    let mut path_manager = helper_generate_path_manager(Duration::from_millis(100));
+    let mut path_manager =
+        helper_generate_path_manager_with_first_addr(Duration::from_millis(100), first_addr);
     {
         assert!(path_manager.path(&first_addr).is_some());
         assert!(path_manager.path(&second_addr).is_none());
@@ -2776,6 +2778,13 @@ fn helper_generate_multi_path_manager(
 }
 
 fn helper_generate_path_manager(max_ack_delay: Duration) -> path::Manager<Config> {
+    helper_generate_path_manager_with_first_addr(max_ack_delay, Default::default())
+}
+
+fn helper_generate_path_manager_with_first_addr(
+    max_ack_delay: Duration,
+    first_addr: RemoteAddress,
+) -> path::Manager<Config> {
     let mut random_generator = random::testing::Generator(123);
 
     let registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
@@ -2785,7 +2794,7 @@ fn helper_generate_path_manager(max_ack_delay: Duration) -> path::Manager<Config
             None,
         );
     let path = Path::new(
-        Default::default(),
+        first_addr,
         connection::PeerId::TEST_ID,
         connection::LocalId::TEST_ID,
         RttEstimator::new(max_ack_delay),
