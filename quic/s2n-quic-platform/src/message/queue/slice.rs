@@ -152,7 +152,6 @@ impl<'a, Message: message::Message, B> Slice<'a, Message, B> {
         );
 
         let prev_message = &mut self.messages[gso.index];
-        prev_message.can_gso(&mut message);
         // check to make sure the message can be GSO'd and can be included in the same
         // GSO payload as the previous message
         if !(message.can_gso() && prev_message.can_gso(&mut message)) {
