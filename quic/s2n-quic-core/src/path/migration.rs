@@ -1,7 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::event::api::{Path, SocketAddress};
+use crate::{
+    event::{
+        api::{Path, SocketAddress},
+        IntoEvent,
+    },
+    inet,
+};
 
 #[derive(Debug)]
 #[non_exhaustive]
@@ -13,11 +19,45 @@ pub struct Attempt<'a> {
 }
 
 #[derive(Debug)]
+pub struct AttemptBuilder<'a> {
+    /// The path that the connection is currently actively using
+    pub active_path: Path<'a>,
+    /// Information about the packet triggering the migration attempt
+    pub packet: PacketInfo<'a>,
+}
+
+impl<'a> From<AttemptBuilder<'a>> for Attempt<'a> {
+    fn from(builder: AttemptBuilder<'a>) -> Self {
+        Self {
+            active_path: builder.active_path,
+            packet: builder.packet,
+        }
+    }
+}
+
+#[derive(Debug)]
 #[non_exhaustive]
 pub struct PacketInfo<'a> {
     pub remote_address: SocketAddress<'a>,
     pub local_address: SocketAddress<'a>,
 }
+
+#[derive(Debug)]
+pub struct PacketInfoBuilder<'a> {
+    pub remote_address: &'a inet::SocketAddress,
+    pub local_address: &'a inet::SocketAddress,
+}
+
+impl<'a> From<PacketInfoBuilder<'a>> for PacketInfo<'a> {
+    fn from(builder: PacketInfoBuilder<'a>) -> Self {
+        Self {
+            remote_address: builder.remote_address.into_event(),
+            local_address: builder.local_address.into_event(),
+        }
+    }
+}
+
+// TODO: Add an outcome that allows the connection to be closed/stateless reset https://github.com/awslabs/s2n-quic/issues/317
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]

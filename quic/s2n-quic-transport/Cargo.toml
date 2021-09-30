@@ -8,7 +8,6 @@ license = "Apache-2.0"
 [features]
 default = ["std"]
 std = []
-connection-migration = []
 
 [dependencies]
 bytes = { version = "1", default-features = false }

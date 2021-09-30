@@ -13,7 +13,7 @@ use core::time::Duration;
 use s2n_quic_core::{
     event::testing::Publisher,
     inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
-    path::RemoteAddress,
+    path::{migration, RemoteAddress},
     random::{self, Generator},
     recovery::RttEstimator,
     stateless_reset,
@@ -643,8 +643,11 @@ fn probing_should_not_update_path_to_active_path() {
 fn test_adding_new_path() {
     // Setup:
     let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
+    let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
+    let new_addr = SocketAddress::from(new_addr);
+    let new_addr = RemoteAddress::from(new_addr);
     let first_path = Path::new(
-        Default::default(),
+        new_addr,
         first_conn_id,
         connection::LocalId::TEST_ID,
         RttEstimator::new(Duration::from_millis(30)),
@@ -655,8 +658,8 @@ fn test_adding_new_path() {
     let mut manager = manager(first_path, None);
 
     // verify we have one path
-    assert!(manager.path(&Default::default()).is_some());
-    let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
+    assert!(manager.path(&new_addr).is_some());
+    let new_addr: SocketAddr = "127.0.0.2:8001".parse().unwrap();
     let new_addr = SocketAddress::from(new_addr);
     let new_addr = RemoteAddress::from(new_addr);
     assert!(manager.path(&new_addr).is_none());
@@ -673,10 +676,10 @@ fn test_adding_new_path() {
         .on_datagram_received(
             &new_addr,
             &datagram,
-            &connection::Limits::default(),
             true,
             &mut Default::default(),
             &mut random::testing::Generator(123),
+            &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
         )
@@ -731,10 +734,10 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
     let on_datagram_result = manager.on_datagram_received(
         &new_addr,
         &datagram,
-        &connection::Limits::default(),
         handshake_confirmed,
         &mut Default::default(),
         &mut random::testing::Generator(123),
+        &mut migration::default::Validator::default(),
         DEFAULT_MAX_MTU,
         &mut Publisher::default(),
     );
@@ -748,8 +751,11 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
 #[test]
 fn limit_number_of_connection_migrations() {
     // Setup:
+    let new_addr: SocketAddr = "127.0.0.1:1".parse().unwrap();
+    let new_addr = SocketAddress::from(new_addr);
+    let new_addr = RemoteAddress::from(new_addr);
     let first_path = Path::new(
-        Default::default(),
+        new_addr,
         connection::PeerId::try_from_bytes(&[1]).unwrap(),
         connection::LocalId::TEST_ID,
         RttEstimator::new(Duration::from_millis(30)),
@@ -761,7 +767,7 @@ fn limit_number_of_connection_migrations() {
     let mut total_paths = 1;
 
     for i in 1..std::u8::MAX {
-        let new_addr: SocketAddr = format!("127.0.0.1:{}", i).parse().unwrap();
+        let new_addr: SocketAddr = format!("127.0.0.2:{}", i).parse().unwrap();
         let new_addr = SocketAddress::from(new_addr);
         let new_addr = RemoteAddress::from(new_addr);
         let now = NoopClock {}.get_time();
@@ -777,6 +783,7 @@ fn limit_number_of_connection_migrations() {
             &datagram,
             &mut Default::default(),
             &mut random::testing::Generator(123),
+            &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
         );
@@ -792,8 +799,11 @@ fn limit_number_of_connection_migrations() {
 fn connection_migration_challenge_behavior() {
     // Setup:
     let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
+    let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
+    let new_addr = SocketAddress::from(new_addr);
+    let new_addr = RemoteAddress::from(new_addr);
     let first_path = Path::new(
-        Default::default(),
+        new_addr,
         first_conn_id,
         connection::LocalId::TEST_ID,
         RttEstimator::new(Duration::from_millis(30)),
@@ -803,7 +813,7 @@ fn connection_migration_challenge_behavior() {
     );
     let mut manager = manager(first_path, None);
 
-    let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
+    let new_addr: SocketAddr = "127.0.0.2:8001".parse().unwrap();
     let new_addr = SocketAddress::from(new_addr);
     let new_addr = RemoteAddress::from(new_addr);
     let now = NoopClock {}.get_time();
@@ -820,6 +830,7 @@ fn connection_migration_challenge_behavior() {
             &datagram,
             &mut Default::default(),
             &mut random::testing::Generator(123),
+            &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
         )
@@ -869,8 +880,11 @@ fn connection_migration_challenge_behavior() {
 // - assert that new path uses max_ack_delay from the active path
 fn connection_migration_use_max_ack_delay_from_active_path() {
     // Setup 1:
+    let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
+    let new_addr = SocketAddress::from(new_addr);
+    let new_addr = RemoteAddress::from(new_addr);
     let first_path = Path::new(
-        Default::default(),
+        new_addr,
         connection::PeerId::try_from_bytes(&[1]).unwrap(),
         connection::LocalId::TEST_ID,
         RttEstimator::new(Duration::from_millis(30)),
@@ -880,7 +894,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
     );
     let mut manager = manager(first_path, None);
 
-    let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
+    let new_addr: SocketAddr = "127.0.0.2:8001".parse().unwrap();
     let new_addr = SocketAddress::from(new_addr);
     let new_addr = RemoteAddress::from(new_addr);
     let now = NoopClock {}.get_time();
@@ -898,6 +912,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
             &datagram,
             &mut Default::default(),
             &mut random::testing::Generator(123),
+            &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
         )
@@ -942,8 +957,11 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
 // - verify challenge is abandoned
 fn connection_migration_new_path_abandon_timer() {
     // Setup 1:
+    let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
+    let new_addr = SocketAddress::from(new_addr);
+    let new_addr = RemoteAddress::from(new_addr);
     let first_path = Path::new(
-        Default::default(),
+        new_addr,
         connection::PeerId::try_from_bytes(&[1]).unwrap(),
         connection::LocalId::TEST_ID,
         RttEstimator::new(Duration::from_millis(30)),
@@ -953,7 +971,7 @@ fn connection_migration_new_path_abandon_timer() {
     );
     let mut manager = manager(first_path, None);
 
-    let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
+    let new_addr: SocketAddr = "127.0.0.2:8001".parse().unwrap();
     let new_addr = SocketAddress::from(new_addr);
     let new_addr = RemoteAddress::from(new_addr);
     let now = NoopClock {}.get_time();
@@ -970,6 +988,7 @@ fn connection_migration_new_path_abandon_timer() {
             &datagram,
             &mut Default::default(),
             &mut random::testing::Generator(123),
+            &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
         )

@@ -15,7 +15,7 @@ default = [
 ]
 # Sends debug information in CONNECTION_CLOSE frames
 connection-close-debug = []
-connection-migration = ["s2n-quic-transport/connection-migration"]
+connection-migration = []
 default-token-provider = ["ring", "zerocopy", "zerocopy-derive"]
 default-tls-provider = ["s2n-quic-tls-default"]
 packet-wipe = ["s2n-quic-platform/wipe"]
