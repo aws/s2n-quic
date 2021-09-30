@@ -42,6 +42,10 @@ macro_rules! impl_message_delegate {
                 $crate::message::Message::set_payload_len(&mut self.$field, payload_len)
             }
 
+            fn can_gso<M: tx::Message<Handle = Self::Handle>>(&self, other: &mut M) -> bool {
+                $crate::message::Message::can_gso(&self.$field, other)
+            }
+
             fn set_segment_size(&mut self, size: usize) {
                 $crate::message::Message::set_segment_size(&mut self.$field, size)
             }

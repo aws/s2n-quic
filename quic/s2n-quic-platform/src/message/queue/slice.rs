@@ -6,7 +6,7 @@ use crate::message;
 use core::ops::{Deref, DerefMut};
 use s2n_quic_core::{
     io::{rx, tx},
-    path::{self, Handle as _},
+    path,
 };
 
 /// A view of the currently enqueued messages for a given segment
@@ -152,14 +152,9 @@ impl<'a, Message: message::Message, B> Slice<'a, Message, B> {
         );
 
         let prev_message = &mut self.messages[gso.index];
-
-        // check to make sure the message can be GSO'd and that the path handles match
-        if !(message.can_gso()
-            && prev_message
-                .path_handle()
-                .map(|handle| message.path_handle().strict_eq(&handle))
-                .unwrap_or(false))
-        {
+        // check to make sure the message can be GSO'd and can be included in the same
+        // GSO payload as the previous message
+        if !(message.can_gso() && prev_message.can_gso(&mut message)) {
             self.flush_gso();
             return Ok(Err(message));
         }
