@@ -121,7 +121,7 @@ impl Controller {
     pub fn ecn(
         &mut self,
         transmission_mode: transmission::Mode,
-        _now: Timestamp,
+        now: Timestamp,
     ) -> ExplicitCongestionNotification {
         if transmission_mode.is_loss_recovery_probing() {
             // Don't mark loss recovery probes as ECN capable in case the ECN
@@ -135,20 +135,19 @@ impl Controller {
             //# sends packets with an ECT marking -- ECT(0) by default;
             //# otherwise, the endpoint sends unmarked packets.
             State::Testing(_) => ExplicitCongestionNotification::Ect0,
-            State::Capable(ref mut _ce_suppression_timer) => {
-                ExplicitCongestionNotification::Ce
-                // if ce_suppression_timer.poll_expiration(now).is_ready() {
-                //     //= https://www.rfc-editor.org/rfc/rfc9002.txt#8.3
-                //     //# A sender can detect suppression of reports by marking occasional
-                //     //# packets that it sends with an ECN-CE marking.
-                //     ExplicitCongestionNotification::Ce
-                // } else {
-                //     //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
-                //     //# Upon successful validation, an endpoint MAY continue to set an ECT
-                //     //# codepoint in subsequent packets it sends, with the expectation that
-                //     //# the path is ECN-capable.
-                //     ExplicitCongestionNotification::Ect0
-                // }
+            State::Capable(ref mut ce_suppression_timer) => {
+                if (*ce_suppression_timer).poll_expiration(now).is_ready() {
+                    //= https://www.rfc-editor.org/rfc/rfc9002.txt#8.3
+                    //# A sender can detect suppression of reports by marking occasional
+                    //# packets that it sends with an ECN-CE marking.
+                    ExplicitCongestionNotification::Ce
+                } else {
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
+                    //# Upon successful validation, an endpoint MAY continue to set an ECT
+                    //# codepoint in subsequent packets it sends, with the expectation that
+                    //# the path is ECN-capable.
+                    ExplicitCongestionNotification::Ect0
+                }
             }
             //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
             //# If validation fails, then the endpoint MUST disable ECN. It stops setting the ECT
