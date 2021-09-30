@@ -64,9 +64,8 @@ impl<Path: path::Handle> Dispatch<Path> {
             match queue.push(&transmission) {
                 Ok(tx::Outcome { len, .. }) => {
                     publisher.on_endpoint_packet_sent(event::builder::EndpointPacketSent {
-                        packet_header: event::builder::PacketHeader {
-                            packet_type: event::builder::PacketType::Retry,
-                            version: publisher.quic_version(),
+                        packet_header: event::builder::PacketHeader::Retry {
+                            version: transmission.version,
                         },
                     });
 
@@ -88,6 +87,7 @@ pub struct Transmission<Path: path::Handle> {
     path: Path,
     packet: [u8; MINIMUM_MTU as usize],
     packet_range: Range<usize>,
+    version: u32,
 }
 
 impl<Path: path::Handle> core::fmt::Debug for Transmission<Path> {
@@ -122,6 +122,7 @@ impl<Path: path::Handle> Transmission<Path> {
             path,
             packet: packet_buf,
             packet_range,
+            version: packet.version,
         })
     }
 }

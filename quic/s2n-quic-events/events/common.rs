@@ -21,12 +21,6 @@ struct EndpointMeta {
 
 struct ConnectionInfo {}
 
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
-struct PacketHeader {
-    packet_type: PacketType,
-    version: Option<u32>,
-}
-
 struct Path<'a> {
     local_addr: SocketAddress<'a>,
     local_cid: ConnectionId<'a>,
@@ -360,30 +354,38 @@ impl<'a> IntoEvent<builder::StreamType> for &crate::stream::StreamType {
 }
 
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.2
-enum PacketType {
-    Initial { number: u64 },
-    Handshake { number: u64 },
-    ZeroRtt { number: u64 },
+//
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
+enum PacketHeader {
+    Initial { number: u64, version: u32 },
+    Handshake { number: u64, version: u32 },
+    ZeroRtt { number: u64, version: u32 },
     OneRtt { number: u64 },
-    Retry,
+    Retry { version: u32 },
+    // The Version field of a Version Negotiation packet MUST be set to 0x00000000.
     VersionNegotiation,
     StatelessReset,
 }
 
-impl IntoEvent<builder::PacketType> for crate::packet::number::PacketNumber {
-    fn into_event(self) -> builder::PacketType {
+impl builder::PacketHeader {
+    pub fn new(
+        packet_number: crate::packet::number::PacketNumber,
+        version: u32,
+    ) -> builder::PacketHeader {
         use crate::packet::number::PacketNumberSpace;
-        use builder::PacketType;
+        use builder::PacketHeader;
 
-        match self.space() {
-            PacketNumberSpace::Initial => PacketType::Initial {
-                number: self.as_u64(),
+        match packet_number.space() {
+            PacketNumberSpace::Initial => PacketHeader::Initial {
+                number: packet_number.as_u64(),
+                version,
             },
-            PacketNumberSpace::Handshake => PacketType::Handshake {
-                number: self.as_u64(),
+            PacketNumberSpace::Handshake => PacketHeader::Handshake {
+                number: packet_number.as_u64(),
+                version,
             },
-            PacketNumberSpace::ApplicationData => PacketType::OneRtt {
-                number: self.as_u64(),
+            PacketNumberSpace::ApplicationData => PacketHeader::OneRtt {
+                number: packet_number.as_u64(),
             },
         }
     }

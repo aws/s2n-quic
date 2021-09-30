@@ -853,10 +853,10 @@ impl<Config: endpoint::Config> Manager<Config> {
             }
 
             publisher.on_packet_lost(event::builder::PacketLost {
-                packet_header: event::builder::PacketHeader {
-                    packet_type: packet_number.into_event(),
-                    version: Some(publisher.quic_version()),
-                },
+                packet_header: event::builder::PacketHeader::new(
+                    packet_number,
+                    publisher.quic_version(),
+                ),
                 path: event::builder::Path {
                     local_addr: path.local_address().into_event(),
                     local_cid: path.local_connection_id.into_event(),
