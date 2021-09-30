@@ -136,11 +136,11 @@ impl Controller {
             //# otherwise, the endpoint sends unmarked packets.
             State::Testing(_) => ExplicitCongestionNotification::Ect0,
             State::Capable(ref mut ce_suppression_timer) => {
-                if (*ce_suppression_timer).poll_expiration(now).is_ready() {
+                if ce_suppression_timer.poll_expiration(now).is_ready() {
                     //= https://www.rfc-editor.org/rfc/rfc9002.txt#8.3
                     //# A sender can detect suppression of reports by marking occasional
                     //# packets that it sends with an ECN-CE marking.
-                    ExplicitCongestionNotification::Ce
+                    ExplicitCongestionNotification::Ect0
                 } else {
                     //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
                     //# Upon successful validation, an endpoint MAY continue to set an ECT
