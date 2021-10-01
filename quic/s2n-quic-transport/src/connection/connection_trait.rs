@@ -86,11 +86,11 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     /// Handles all timeouts on the `Connection`.
     ///
     /// `timestamp` passes the current time.
-    fn on_timeout<Rnd: random::Generator>(
+    fn on_timeout(
         &mut self,
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
-        random_generator: &mut Rnd,
+        random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), connection::Error>;
 

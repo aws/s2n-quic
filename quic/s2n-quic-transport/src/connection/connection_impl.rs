@@ -705,11 +705,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     /// Handles all timeouts on the `Connection`.
     ///
     /// `timestamp` passes the current time.
-    fn on_timeout<Rnd: random::Generator>(
+    fn on_timeout(
         &mut self,
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
-        random_generator: &mut Rnd,
+        random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), connection::Error> {
         if self.close_sender.on_timeout(timestamp).is_ready() {

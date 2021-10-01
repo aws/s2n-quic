@@ -99,11 +99,11 @@ impl connection::Trait for TestConnection {
         Ok(())
     }
 
-    fn on_timeout<Rnd: random::Generator>(
+    fn on_timeout(
         &mut self,
         _connection_id_mapper: &mut connection::ConnectionIdMapper,
         _timestamp: Timestamp,
-        _random_generator: &mut Rnd,
+        _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), connection::Error> {
         Ok(())

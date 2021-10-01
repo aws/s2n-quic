@@ -560,10 +560,10 @@ impl<Config: endpoint::Config> Manager<Config> {
         Ok(())
     }
 
-    pub fn on_timeout<Rnd: random::Generator, Pub: event::ConnectionPublisher>(
+    pub fn on_timeout<Pub: event::ConnectionPublisher>(
         &mut self,
         timestamp: Timestamp,
-        random_generator: &mut Rnd,
+        random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), connection::Error> {
         for (id, path) in self.paths.iter_mut().enumerate() {
