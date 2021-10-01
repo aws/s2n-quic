@@ -140,6 +140,7 @@ fn test_invalid_path_fallback() {
     manager
         .on_timeout(
             now + expiration + Duration::from_millis(100),
+            &mut random::testing::Generator(123),
             &mut Publisher::default(),
         )
         .unwrap();
@@ -303,6 +304,7 @@ fn validate_path_before_challenge_expiration() {
         .manager
         .on_timeout(
             helper.now + helper.challenge_expiration - Duration::from_millis(100),
+            &mut random::testing::Generator(123),
             &mut Publisher::default(),
         )
         .unwrap();
@@ -381,6 +383,7 @@ fn dont_validate_path_if_path_challenge_is_abandoned() {
         .manager
         .on_timeout(
             helper.now + helper.challenge_expiration + Duration::from_millis(100),
+            &mut random::testing::Generator(123),
             &mut Publisher::default(),
         )
         .unwrap();
@@ -487,6 +490,7 @@ fn silently_return_when_there_is_no_valid_path() {
     manager[first_path_id].on_transmit(&mut context);
     let res = manager.on_timeout(
         now + expiration + Duration::from_millis(100),
+        &mut random::testing::Generator(123),
         &mut Publisher::default(),
     );
 
@@ -1044,6 +1048,7 @@ fn connection_migration_new_path_abandon_timer() {
     manager[second_path_id].on_timeout(
         abandon_time - Duration::from_millis(10),
         path::Id::test_id(),
+        &mut random::testing::Generator(123),
         &mut Publisher::default(),
     );
 
@@ -1054,6 +1059,7 @@ fn connection_migration_new_path_abandon_timer() {
     manager[second_path_id].on_timeout(
         abandon_time + Duration::from_millis(10),
         path::Id::test_id(),
+        &mut random::testing::Generator(123),
         &mut Publisher::default(),
     );
     // Expectation 3:

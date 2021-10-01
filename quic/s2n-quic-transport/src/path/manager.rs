@@ -563,10 +563,11 @@ impl<Config: endpoint::Config> Manager<Config> {
     pub fn on_timeout<Pub: event::ConnectionPublisher>(
         &mut self,
         timestamp: Timestamp,
+        random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), connection::Error> {
         for (id, path) in self.paths.iter_mut().enumerate() {
-            path.on_timeout(timestamp, Id(id as u8), publisher);
+            path.on_timeout(timestamp, Id(id as u8), random_generator, publisher);
         }
 
         if self.active_path().failed_validation() {

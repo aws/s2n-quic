@@ -54,7 +54,7 @@ fn restart_already_in_testing_0() {
 }
 
 #[test]
-fn on_timeout() {
+fn on_timeout_failed() {
     let mut controller = Controller::default();
     let now = s2n_quic_platform::time::now();
     controller.fail(now, Path::test(), &mut Publisher::default());
@@ -70,7 +70,13 @@ fn on_timeout() {
     let now = now + RETEST_COOL_OFF_DURATION - Duration::from_secs(1);
 
     // Too soon
-    controller.on_timeout(now, Path::test(), &mut Publisher::default());
+    controller.on_timeout(
+        now,
+        Path::test(),
+        &mut random::testing::Generator(123),
+        Duration::default(),
+        &mut Publisher::default(),
+    );
 
     if let State::Failed(timer) = &controller.state {
         assert!(timer.is_armed());
@@ -81,29 +87,91 @@ fn on_timeout() {
     assert_eq!(0, *controller.black_hole_counter.deref());
 
     let now = now + Duration::from_secs(1);
-    controller.on_timeout(now, Path::test(), &mut Publisher::default());
+    controller.on_timeout(
+        now,
+        Path::test(),
+        &mut random::testing::Generator(123),
+        Duration::default(),
+        &mut Publisher::default(),
+    );
 
     assert_eq!(State::Testing(0), controller.state);
     assert_eq!(0, *controller.black_hole_counter.deref());
 }
 
 #[test]
+fn on_timeout_capable() {
+    let mut controller = Controller::default();
+    let now = s2n_quic_platform::time::now();
+    let rtt = Duration::from_millis(50);
+    let ce_suppression_time = now + *CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() as u32 * rtt;
+    let mut ce_suppression_timer = Timer::default();
+    ce_suppression_timer.set(ce_suppression_time);
+    controller.state = State::Capable(ce_suppression_timer);
+
+    let now = now + rtt;
+
+    // Too soon
+    controller.on_timeout(
+        now,
+        Path::test(),
+        &mut random::testing::Generator(123),
+        rtt,
+        &mut Publisher::default(),
+    );
+
+    if let State::Capable(timer) = &controller.state {
+        assert!(timer.is_armed());
+        assert_eq!(Some(ce_suppression_time), timer.next_expiration());
+    } else {
+        panic!("State should be Capable");
+    }
+
+    // Timer is no longer armed
+    controller.state = State::Capable(Timer::default());
+
+    controller.on_timeout(
+        now,
+        Path::test(),
+        &mut random::testing::Generator(123),
+        rtt,
+        &mut Publisher::default(),
+    );
+
+    if let State::Capable(timer) = &controller.state {
+        assert!(timer.is_armed());
+        assert!(timer.next_expiration().unwrap() > now);
+    } else {
+        panic!("State should be Capable");
+    }
+}
+
+#[test]
 fn ecn() {
+    let now = s2n_quic_platform::time::now();
+
     for &transmission_mode in &[
         transmission::Mode::Normal,
         transmission::Mode::MtuProbing,
         transmission::Mode::PathValidationOnly,
     ] {
         let mut controller = Controller::default();
-        assert!(controller.ecn(transmission_mode).using_ecn());
+        assert!(controller.ecn(transmission_mode, now).using_ecn());
 
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
         //= type=test
         //# Upon successful validation, an endpoint MAY continue to set an ECT
         //# codepoint in subsequent packets it sends, with the expectation that
         //# the path is ECN-capable.
-        controller.state = State::Capable;
-        assert!(controller.ecn(transmission_mode).using_ecn());
+        let mut ce_suppression_timer = Timer::default();
+        ce_suppression_timer.set(now + Duration::from_secs(10));
+        controller.state = State::Capable(ce_suppression_timer);
+        assert!(controller.ecn(transmission_mode, now).using_ecn());
+        if let State::Capable(ref timer) = controller.state {
+            assert!(timer.is_armed());
+        } else {
+            panic!("State should be Capable");
+        }
 
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
         //= type=test
@@ -115,27 +183,55 @@ fn ecn() {
             Path::test(),
             &mut Publisher::default(),
         );
-        assert!(!controller.ecn(transmission_mode).using_ecn());
+        assert!(!controller.ecn(transmission_mode, now).using_ecn());
 
         controller.state = State::Unknown;
-        assert!(!controller.ecn(transmission_mode).using_ecn());
+        assert!(!controller.ecn(transmission_mode, now).using_ecn());
+    }
+}
+
+#[test]
+fn ecn_ce_suppression() {
+    let now = s2n_quic_platform::time::now();
+
+    for &transmission_mode in &[
+        transmission::Mode::Normal,
+        transmission::Mode::MtuProbing,
+        transmission::Mode::PathValidationOnly,
+    ] {
+        let mut controller = Controller::default();
+        assert!(controller.ecn(transmission_mode, now).using_ecn());
+
+        let mut ce_suppression_timer = Timer::default();
+        ce_suppression_timer.set(now);
+        controller.state = State::Capable(ce_suppression_timer);
+        assert!(controller
+            .ecn(transmission_mode, now)
+            .congestion_experienced());
+        if let State::Capable(timer) = controller.state {
+            assert!(!timer.is_armed());
+        } else {
+            panic!("State should be Capable");
+        }
     }
 }
 
 #[test]
 fn ecn_loss_recovery_probing() {
+    let now = s2n_quic_platform::time::now();
+
     for state in vec![
-        State::Capable,
+        State::Capable(Timer::default()),
         State::Testing(0),
         State::Unknown,
         State::Failed(Timer::default()),
     ] {
-        let controller = Controller {
+        let mut controller = Controller {
             state,
             ..Default::default()
         };
         assert!(!controller
-            .ecn(transmission::Mode::LossRecoveryProbing)
+            .ecn(transmission::Mode::LossRecoveryProbing, now)
             .using_ecn());
     }
 }
@@ -155,7 +251,7 @@ fn is_capable() {
     }
 
     let controller = Controller {
-        state: State::Capable,
+        state: State::Capable(Timer::default()),
         ..Default::default()
     };
     assert!(controller.is_capable());
@@ -172,6 +268,7 @@ fn validate_already_failed() {
         EcnCounts::default(),
         None,
         now + Duration::from_secs(5),
+        Duration::default(),
         Path::test(),
         &mut Publisher::default(),
     );
@@ -206,6 +303,7 @@ fn validate_ecn_counts_not_in_ack() {
         EcnCounts::default(),
         None,
         now,
+        Duration::default(),
         Path::test(),
         &mut Publisher::default(),
     );
@@ -231,6 +329,7 @@ fn validate_ecn_ce_remarking() {
         EcnCounts::default(),
         Some(EcnCounts::default()),
         now,
+        Duration::default(),
         Path::test(),
         &mut Publisher::default(),
     );
@@ -256,6 +355,7 @@ fn validate_ect_0_remarking() {
         EcnCounts::default(),
         Some(ack_frame_ecn_counts),
         now,
+        Duration::default(),
         Path::test(),
         &mut Publisher::default(),
     );
@@ -278,6 +378,7 @@ fn validate_ect_0_remarking_after_restart() {
         baseline_ecn_counts,
         Some(ack_frame_ecn_counts),
         now,
+        Duration::default(),
         Path::test(),
         &mut Publisher::default(),
     );
@@ -299,6 +400,7 @@ fn validate_no_ecn_counts() {
         EcnCounts::default(),
         None,
         now,
+        Duration::default(),
         Path::test(),
         &mut Publisher::default(),
     );
@@ -318,6 +420,7 @@ fn validate_ecn_decrease() {
         baseline_ecn_counts,
         None,
         now,
+        Duration::default(),
         Path::test(),
         &mut Publisher::default(),
     );
@@ -344,12 +447,75 @@ fn validate_no_marked_packets_acked() {
         EcnCounts::default(),
         Some(EcnCounts::default()),
         now,
+        Duration::default(),
         Path::test(),
         &mut Publisher::default(),
     );
 
     assert_eq!(ValidationOutcome::Passed, outcome);
     assert_eq!(State::Unknown, controller.state);
+}
+
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#8.3
+//= type=test
+//# A sender can detect suppression of reports by marking occasional packets that it
+//# sends with an ECN-CE marking. If a packet sent with an ECN-CE marking is not
+//# reported as having been CE marked when the packet is acknowledged, then the
+//# sender can disable ECN for that path by not setting ECN-Capable Transport (ECT)
+//# codepoints in subsequent packets sent on that path [RFC3168].
+#[test]
+fn validate_ce_suppression_remarked_to_not_ect() {
+    let mut controller = Controller::default();
+    let now = s2n_quic_platform::time::now();
+    // We sent one ECT0 and one CE
+    let newly_acked_ecn_counts = helper_ecn_counts(1, 0, 1);
+    let sent_packet_ecn_counts = helper_ecn_counts(1, 0, 1);
+    // The peer suppressed the CE count
+    let ack_frame_ecn_counts = helper_ecn_counts(1, 0, 0);
+    let outcome = controller.validate(
+        newly_acked_ecn_counts,
+        sent_packet_ecn_counts,
+        EcnCounts::default(),
+        Some(ack_frame_ecn_counts),
+        now,
+        Duration::default(),
+        Path::test(),
+        &mut Publisher::default(),
+    );
+
+    assert_eq!(ValidationOutcome::Failed, outcome);
+    assert!(matches!(controller.state, State::Failed(_)));
+}
+
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#8.3
+//= type=test
+//# A sender can detect suppression of reports by marking occasional packets that it
+//# sends with an ECN-CE marking. If a packet sent with an ECN-CE marking is not
+//# reported as having been CE marked when the packet is acknowledged, then the
+//# sender can disable ECN for that path by not setting ECN-Capable Transport (ECT)
+//# codepoints in subsequent packets sent on that path [RFC3168].
+#[test]
+fn validate_ce_suppression_remarked_to_ect0() {
+    let mut controller = Controller::default();
+    let now = s2n_quic_platform::time::now();
+    // We sent one ECT0 and one CE
+    let newly_acked_ecn_counts = helper_ecn_counts(1, 0, 1);
+    let sent_packet_ecn_counts = helper_ecn_counts(1, 0, 1);
+    // The peer remarked the CE as ECT0
+    let ack_frame_ecn_counts = helper_ecn_counts(2, 0, 0);
+    let outcome = controller.validate(
+        newly_acked_ecn_counts,
+        sent_packet_ecn_counts,
+        EcnCounts::default(),
+        Some(ack_frame_ecn_counts),
+        now,
+        Duration::default(),
+        Path::test(),
+        &mut Publisher::default(),
+    );
+
+    assert_eq!(ValidationOutcome::Failed, outcome);
+    assert!(matches!(controller.state, State::Failed(_)));
 }
 
 #[test]
@@ -362,18 +528,26 @@ fn validate_capable() {
     let expected_ecn_counts = helper_ecn_counts(2, 0, 0);
     let ack_frame_ecn_counts = helper_ecn_counts(2, 0, 0);
     let sent_packet_ecn_counts = helper_ecn_counts(2, 0, 0);
+    let rtt = Duration::from_millis(50);
     let outcome = controller.validate(
         expected_ecn_counts,
         sent_packet_ecn_counts,
         EcnCounts::default(),
         Some(ack_frame_ecn_counts),
         now,
+        rtt,
         Path::test(),
         &mut Publisher::default(),
     );
 
     assert_eq!(ValidationOutcome::Passed, outcome);
-    assert_eq!(State::Capable, controller.state);
+    assert!(controller.is_capable());
+    if let State::Capable(timer) = controller.state {
+        assert_eq!(
+            Some(now + *CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() as u32 * rtt),
+            timer.next_expiration()
+        );
+    }
 }
 
 #[test]
@@ -386,18 +560,60 @@ fn validate_capable_congestion_experienced() {
     let expected_ecn_counts = helper_ecn_counts(2, 0, 0);
     let ack_frame_ecn_counts = helper_ecn_counts(1, 0, 1);
     let sent_packet_ecn_counts = helper_ecn_counts(2, 0, 0);
+    let rtt = Duration::from_millis(50);
     let outcome = controller.validate(
         expected_ecn_counts,
         sent_packet_ecn_counts,
         EcnCounts::default(),
         Some(ack_frame_ecn_counts),
         now,
+        rtt,
         Path::test(),
         &mut Publisher::default(),
     );
 
     assert_eq!(ValidationOutcome::CongestionExperienced, outcome);
-    assert_eq!(State::Capable, controller.state);
+    assert!(controller.is_capable());
+    if let State::Capable(timer) = controller.state {
+        assert_eq!(
+            Some(now + *CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() as u32 * rtt),
+            timer.next_expiration()
+        );
+    }
+}
+
+#[test]
+fn validate_capable_ce_suppression_test() {
+    let mut controller = Controller {
+        state: State::Unknown,
+        ..Default::default()
+    };
+    let now = s2n_quic_platform::time::now();
+    let expected_ecn_counts = helper_ecn_counts(2, 0, 1);
+    let ack_frame_ecn_counts = helper_ecn_counts(2, 0, 1);
+    let sent_packet_ecn_counts = helper_ecn_counts(2, 0, 1);
+    let rtt = Duration::from_millis(50);
+    let outcome = controller.validate(
+        expected_ecn_counts,
+        sent_packet_ecn_counts,
+        EcnCounts::default(),
+        Some(ack_frame_ecn_counts),
+        now,
+        rtt,
+        Path::test(),
+        &mut Publisher::default(),
+    );
+
+    // The outcome should not be `CongestionExperienced` despite the increase in CE-count,
+    // because the CE-count was coming from a packet we had marked as ECN-CE
+    assert_eq!(ValidationOutcome::Passed, outcome);
+    assert!(controller.is_capable());
+    if let State::Capable(timer) = controller.state {
+        assert_eq!(
+            Some(now + *CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() as u32 * rtt),
+            timer.next_expiration()
+        );
+    }
 }
 
 /// Successful validation when not in the Unknown state does not change the state
@@ -405,7 +621,7 @@ fn validate_capable_congestion_experienced() {
 fn validate_capable_not_in_unknown_state() {
     for state in vec![
         State::Testing(0),
-        State::Capable,
+        State::Capable(Timer::default()),
         State::Failed(Timer::default()),
     ] {
         let mut controller = Controller {
@@ -416,7 +632,7 @@ fn validate_capable_not_in_unknown_state() {
         let expected_ecn_counts = helper_ecn_counts(1, 0, 0);
         let ack_frame_ecn_counts = helper_ecn_counts(1, 0, 0);
         let sent_packet_ecn_counts = helper_ecn_counts(1, 0, 0);
-
+        let rtt = Duration::from_millis(50);
         let expected_state = controller.state.clone();
         controller.validate(
             expected_ecn_counts,
@@ -424,6 +640,7 @@ fn validate_capable_not_in_unknown_state() {
             EcnCounts::default(),
             Some(ack_frame_ecn_counts),
             now,
+            rtt,
             Path::test(),
             &mut Publisher::default(),
         );
@@ -448,6 +665,7 @@ fn validate_capable_lost_ack_frame() {
     let ack_frame_ecn_counts = helper_ecn_counts(3, 0, 0);
 
     let expected_ecn_counts = helper_ecn_counts(2, 0, 0);
+    let rtt = Duration::from_millis(50);
 
     let outcome = controller.validate(
         expected_ecn_counts,
@@ -455,12 +673,19 @@ fn validate_capable_lost_ack_frame() {
         EcnCounts::default(),
         Some(ack_frame_ecn_counts),
         now,
+        rtt,
         Path::test(),
         &mut Publisher::default(),
     );
 
     assert_eq!(ValidationOutcome::Passed, outcome);
-    assert_eq!(State::Capable, controller.state);
+    assert!(controller.is_capable());
+    if let State::Capable(timer) = controller.state {
+        assert_eq!(
+            Some(now + *CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() as u32 * rtt),
+            timer.next_expiration()
+        );
+    }
 }
 
 #[test]
@@ -476,18 +701,26 @@ fn validate_capable_after_restart() {
     // in the baseline ecn counts below, that means we've already accounted for them.
     let ack_frame_ecn_counts = helper_ecn_counts(1, 2, 1);
     let baseline_ecn_counts = helper_ecn_counts(0, 2, 0);
+    let rtt = Duration::from_millis(50);
     let outcome = controller.validate(
         expected_ecn_counts,
         sent_packet_ecn_counts,
         baseline_ecn_counts,
         Some(ack_frame_ecn_counts),
         now,
+        rtt,
         Path::test(),
         &mut Publisher::default(),
     );
 
     assert_eq!(ValidationOutcome::CongestionExperienced, outcome);
-    assert_eq!(State::Capable, controller.state);
+    assert!(controller.is_capable());
+    if let State::Capable(timer) = controller.state {
+        assert_eq!(
+            Some(now + *CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() as u32 * rtt),
+            timer.next_expiration()
+        );
+    }
 }
 
 #[test]
@@ -508,7 +741,11 @@ fn on_packet_sent() {
 
 #[test]
 fn on_packet_loss() {
-    for state in vec![State::Testing(0), State::Capable, State::Unknown] {
+    for state in vec![
+        State::Testing(0),
+        State::Capable(Timer::default()),
+        State::Unknown,
+    ] {
         let mut controller = Controller {
             state,
             ..Default::default()
@@ -583,7 +820,7 @@ fn fuzz_validate() {
     let now = s2n_quic_platform::time::now();
 
     bolero::check!()
-        .with_type::<(EcnCounts, EcnCounts, EcnCounts, Option<EcnCounts>)>()
+        .with_type::<(EcnCounts, EcnCounts, EcnCounts, Option<EcnCounts>, Duration)>()
         .cloned()
         .for_each(
             |(
@@ -591,6 +828,7 @@ fn fuzz_validate() {
                 sent_packet_ecn_counts,
                 baseline_ecn_counts,
                 ack_frame_ecn_counts,
+                rtt,
             )| {
                 let mut controller = Controller::default();
                 let outcome = controller.validate(
@@ -599,6 +837,7 @@ fn fuzz_validate() {
                     baseline_ecn_counts,
                     ack_frame_ecn_counts,
                     now,
+                    rtt,
                     Path::test(),
                     &mut Publisher::default(),
                 );
@@ -607,7 +846,7 @@ fn fuzz_validate() {
                     assert!(!controller.is_capable());
                     assert_eq!(
                         ExplicitCongestionNotification::NotEct,
-                        controller.ecn(transmission::Mode::Normal)
+                        controller.ecn(transmission::Mode::Normal, now)
                     );
                     assert!(matches!(controller.state, State::Failed(_)));
                 }

@@ -214,7 +214,6 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                     )
                 })?;
 
-        let ecn = context.ecn();
         let (recovery_manager, mut recovery_context) = self.recovery(
             handshake_status,
             context.local_id_registry,
@@ -225,7 +224,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             packet_number,
             outcome,
             context.timestamp,
-            ecn,
+            context.ecn,
             &mut recovery_context,
             context.publisher,
         );

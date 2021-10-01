@@ -783,6 +783,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             if let Err(error) = conn.on_timeout(
                 connection_id_mapper,
                 timestamp,
+                endpoint_context.random_generator,
                 endpoint_context.event_subscriber,
             ) {
                 conn.close(
