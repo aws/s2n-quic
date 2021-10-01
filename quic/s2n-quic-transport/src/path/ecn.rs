@@ -172,7 +172,7 @@ impl Controller {
         rtt: Duration,
     ) -> Duration {
         let mut bytes = [0; core::mem::size_of::<u16>()];
-        random_generator.private_random_fill(&mut bytes);
+        random_generator.public_random_fill(&mut bytes);
         let result = u16::from_le_bytes(bytes);
 
         let max_variance = (CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.end()
