@@ -27,12 +27,6 @@ pub mod api {
     pub struct ConnectionInfo {}
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    pub struct PacketHeader {
-        pub packet_type: PacketType,
-        pub version: Option<u32>,
-    }
-    #[derive(Clone, Debug)]
-    #[non_exhaustive]
     pub struct Path<'a> {
         pub local_addr: SocketAddress<'a>,
         pub local_cid: ConnectionId<'a>,
@@ -120,17 +114,17 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    pub enum PacketType {
+    pub enum PacketHeader {
         #[non_exhaustive]
-        Initial { number: u64 },
+        Initial { number: u64, version: u32 },
         #[non_exhaustive]
-        Handshake { number: u64 },
+        Handshake { number: u64, version: u32 },
         #[non_exhaustive]
-        ZeroRtt { number: u64 },
+        ZeroRtt { number: u64, version: u32 },
         #[non_exhaustive]
         OneRtt { number: u64 },
         #[non_exhaustive]
-        Retry {},
+        Retry { version: u32 },
         #[non_exhaustive]
         VersionNegotiation {},
         #[non_exhaustive]
@@ -766,19 +760,24 @@ pub mod api {
             }
         }
     }
-    impl IntoEvent<builder::PacketType> for crate::packet::number::PacketNumber {
-        fn into_event(self) -> builder::PacketType {
+    impl builder::PacketHeader {
+        pub fn new(
+            packet_number: crate::packet::number::PacketNumber,
+            version: u32,
+        ) -> builder::PacketHeader {
             use crate::packet::number::PacketNumberSpace;
-            use builder::PacketType;
-            match self.space() {
-                PacketNumberSpace::Initial => PacketType::Initial {
-                    number: self.as_u64(),
+            use builder::PacketHeader;
+            match packet_number.space() {
+                PacketNumberSpace::Initial => PacketHeader::Initial {
+                    number: packet_number.as_u64(),
+                    version,
                 },
-                PacketNumberSpace::Handshake => PacketType::Handshake {
-                    number: self.as_u64(),
+                PacketNumberSpace::Handshake => PacketHeader::Handshake {
+                    number: packet_number.as_u64(),
+                    version,
                 },
-                PacketNumberSpace::ApplicationData => PacketType::OneRtt {
-                    number: self.as_u64(),
+                PacketNumberSpace::ApplicationData => PacketHeader::OneRtt {
+                    number: packet_number.as_u64(),
                 },
             }
         }
@@ -876,24 +875,6 @@ pub mod builder {
         fn into_event(self) -> api::ConnectionInfo {
             let ConnectionInfo {} = self;
             api::ConnectionInfo {}
-        }
-    }
-    #[derive(Clone, Debug)]
-    pub struct PacketHeader {
-        pub packet_type: PacketType,
-        pub version: Option<u32>,
-    }
-    impl IntoEvent<api::PacketHeader> for PacketHeader {
-        #[inline]
-        fn into_event(self) -> api::PacketHeader {
-            let PacketHeader {
-                packet_type,
-                version,
-            } = self;
-            api::PacketHeader {
-                packet_type: packet_type.into_event(),
-                version: version.into_event(),
-            }
         }
     }
     #[derive(Clone, Debug)]
@@ -1068,33 +1049,38 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    pub enum PacketType {
-        Initial { number: u64 },
-        Handshake { number: u64 },
-        ZeroRtt { number: u64 },
+    pub enum PacketHeader {
+        Initial { number: u64, version: u32 },
+        Handshake { number: u64, version: u32 },
+        ZeroRtt { number: u64, version: u32 },
         OneRtt { number: u64 },
-        Retry,
+        Retry { version: u32 },
         VersionNegotiation,
         StatelessReset,
     }
-    impl IntoEvent<api::PacketType> for PacketType {
+    impl IntoEvent<api::PacketHeader> for PacketHeader {
         #[inline]
-        fn into_event(self) -> api::PacketType {
-            use api::PacketType::*;
+        fn into_event(self) -> api::PacketHeader {
+            use api::PacketHeader::*;
             match self {
-                Self::Initial { number } => Initial {
+                Self::Initial { number, version } => Initial {
                     number: number.into_event(),
+                    version: version.into_event(),
                 },
-                Self::Handshake { number } => Handshake {
+                Self::Handshake { number, version } => Handshake {
                     number: number.into_event(),
+                    version: version.into_event(),
                 },
-                Self::ZeroRtt { number } => ZeroRtt {
+                Self::ZeroRtt { number, version } => ZeroRtt {
                     number: number.into_event(),
+                    version: version.into_event(),
                 },
                 Self::OneRtt { number } => OneRtt {
                     number: number.into_event(),
                 },
-                Self::Retry => Retry {},
+                Self::Retry { version } => Retry {
+                    version: version.into_event(),
+                },
                 Self::VersionNegotiation => VersionNegotiation {},
                 Self::StatelessReset => StatelessReset {},
             }

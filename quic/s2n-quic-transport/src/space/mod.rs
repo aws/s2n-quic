@@ -24,7 +24,6 @@ use s2n_quic_core::{
     },
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
-    random,
     time::{timer, Timestamp},
     transport,
 };
@@ -348,10 +347,10 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                                 context
                                     .publisher
                                     .on_packet_sent(event::builder::PacketSent {
-                                        packet_header: event::builder::PacketHeader {
-                                            packet_type: outcome.packet_number.into_event(),
-                                            version: Some(context.publisher.quic_version()),
-                                        },
+                                        packet_header: event::builder::PacketHeader::new(
+                                            outcome.packet_number,
+                                            context.publisher.quic_version(),
+                                        ),
                                     });
                                 buffer
                             }
@@ -565,7 +564,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
     // TODO: Reduce arguments, https://github.com/awslabs/s2n-quic/issues/312
     #[allow(clippy::too_many_arguments)]
-    fn handle_cleartext_payload<'a, Rnd: random::Generator, Pub: event::ConnectionPublisher>(
+    fn handle_cleartext_payload<'a, Pub: event::ConnectionPublisher>(
         &mut self,
         packet_number: PacketNumber,
         mut payload: DecoderBufferMut<'a>,
@@ -574,7 +573,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
-        random_generator: &mut Rnd,
+        random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), connection::Error> {
         use s2n_quic_core::{
@@ -599,10 +598,10 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
             let path = &path_manager[path_id];
             publisher.on_frame_received(event::builder::FrameReceived {
-                packet_header: event::builder::PacketHeader {
-                    packet_type: packet_number.into_event(),
-                    version: Some(publisher.quic_version()),
-                },
+                packet_header: event::builder::PacketHeader::new(
+                    packet_number,
+                    publisher.quic_version(),
+                ),
                 path: path_event!(path, path_id),
                 frame: frame.into_event(),
             });

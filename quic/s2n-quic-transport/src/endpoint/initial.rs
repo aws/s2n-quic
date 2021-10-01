@@ -270,6 +270,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             datagram,
             endpoint_context.congestion_controller,
             endpoint_context.random_generator,
+            endpoint_context.path_migration,
             self.max_mtu,
             endpoint_context.event_subscriber,
         )?;

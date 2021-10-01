@@ -31,6 +31,7 @@ use core::{
 use s2n_quic_core::{
     application,
     application::Sni,
+    connection::id::Generator as _,
     event::{self, ConnectionPublisher as _, IntoEvent as _},
     inet::{DatagramInfo, SocketAddress},
     io::tx,
@@ -44,7 +45,7 @@ use s2n_quic_core::{
         zero_rtt::ProtectedZeroRtt,
     },
     path::{Handle as _, MaxMtu},
-    random, stateless_reset,
+    stateless_reset::token::Generator as _,
     time::{timer, Timestamp},
     transport,
 };
@@ -573,13 +574,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Generates and registers new connection IDs using the given `ConnectionIdFormat`
-    fn on_new_connection_id<
-        ConnectionIdFormat: connection::id::Format,
-        StatelessResetTokenGenerator: stateless_reset::token::Generator,
-    >(
+    fn on_new_connection_id(
         &mut self,
-        connection_id_format: &mut ConnectionIdFormat,
-        stateless_reset_token_generator: &mut StatelessResetTokenGenerator,
+        connection_id_format: &mut Config::ConnectionIdFormat,
+        stateless_reset_token_generator: &mut Config::StatelessResetTokenGenerator,
         timestamp: Timestamp,
     ) -> Result<(), LocalIdRegistrationError> {
         match self.local_id_registry.connection_id_interest() {
@@ -791,6 +789,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         random: &mut Config::RandomGenerator,
+        path_migration: &mut Config::PathMigrationValidator,
         max_mtu: MaxMtu,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<path::Id, connection::Error> {
@@ -812,10 +811,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let (id, unblocked) = self.path_manager.on_datagram_received(
             path_handle,
             datagram,
-            &self.limits,
             handshake_confirmed,
             congestion_controller_endpoint,
             random,
+            path_migration,
             max_mtu,
             &mut publisher,
         )?;
@@ -851,12 +850,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a initial packet had been received
-    fn handle_initial_packet<Rnd: random::Generator>(
+    fn handle_initial_packet(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedInitial,
-        random_generator: &mut Rnd,
+        random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         if let Some((space, _status)) = self.space_manager.initial_mut() {
@@ -870,10 +869,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             )?;
 
             publisher.on_packet_received(event::builder::PacketReceived {
-                packet_header: event::builder::PacketHeader {
-                    packet_type: packet.packet_number.into_event(),
-                    version: Some(packet.version),
-                },
+                packet_header: event::builder::PacketHeader::new(
+                    packet.packet_number,
+                    packet.version,
+                ),
             });
 
             self.handle_cleartext_initial_packet(
@@ -889,12 +888,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when an unprotected initial packet had been received
-    fn handle_cleartext_initial_packet<Rnd: random::Generator>(
+    fn handle_cleartext_initial_packet(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: CleartextInitial,
-        random_generator: &mut Rnd,
+        random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         if let Some((space, handshake_status)) = self.space_manager.initial_mut() {
@@ -940,12 +939,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a handshake packet had been received
-    fn handle_handshake_packet<Rnd: random::Generator>(
+    fn handle_handshake_packet(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedHandshake,
-        random_generator: &mut Rnd,
+        random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
@@ -972,10 +971,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             )?;
 
             publisher.on_packet_received(event::builder::PacketReceived {
-                packet_header: event::builder::PacketHeader {
-                    packet_type: packet.packet_number.into_event(),
-                    version: Some(packet.version),
-                },
+                packet_header: event::builder::PacketHeader::new(
+                    packet.packet_number,
+                    packet.version,
+                ),
             });
 
             space.handle_cleartext_payload(
@@ -1018,12 +1017,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a short packet had been received
-    fn handle_short_packet<Rnd: random::Generator>(
+    fn handle_short_packet(
         &mut self,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedShort,
-        random_generator: &mut Rnd,
+        random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
@@ -1104,10 +1103,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
             publisher.on_packet_received(event::builder::PacketReceived {
-                packet_header: event::builder::PacketHeader {
-                    packet_type: packet.packet_number.into_event(),
-                    version: Some(publisher.quic_version()),
-                },
+                packet_header: event::builder::PacketHeader::new(
+                    packet.packet_number,
+                    publisher.quic_version(),
+                ),
             });
         }
 
@@ -1125,10 +1124,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
         publisher.on_packet_received(event::builder::PacketReceived {
-            packet_header: event::builder::PacketHeader {
-                packet_type: event::builder::PacketType::VersionNegotiation {},
-                version: Some(publisher.quic_version()),
-            },
+            packet_header: event::builder::PacketHeader::VersionNegotiation {},
         });
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.2
         //= type=TODO
@@ -1168,13 +1164,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
         publisher.on_packet_received(event::builder::PacketReceived {
-            packet_header: event::builder::PacketHeader {
-                // FIXME: remove when we support zero-rtt. Since there is a
-                // `IntoEvent<PacketType>` for PacketNumber` this can be replaced
-                // wih `packet_number.into_event()` once the packet number is
-                // available.
-                packet_type: event::builder::PacketType::ZeroRtt { number: 0 },
-                version: Some(publisher.quic_version()),
+            packet_header: event::builder::PacketHeader::ZeroRtt {
+                // FIXME: replace with PacketHeader::new when we support zero-rtt.
+                number: 0,
+                version: publisher.quic_version(),
             },
         });
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
@@ -1199,9 +1192,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
         publisher.on_packet_received(event::builder::PacketReceived {
-            packet_header: event::builder::PacketHeader {
-                packet_type: event::builder::PacketType::Retry {},
-                version: Some(publisher.quic_version()),
+            packet_header: event::builder::PacketHeader::Retry {
+                version: publisher.quic_version(),
             },
         });
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3

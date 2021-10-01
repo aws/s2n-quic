@@ -16,8 +16,11 @@ use s2n_quic_core::{
     frame::path_validation,
     inet::DatagramInfo,
     packet::number::PacketNumberSpace,
-    path::{Handle as _, MaxMtu},
-    random,
+    path::{
+        migration::{self, Validator as _},
+        Handle as _, MaxMtu,
+    },
+    random::Generator as _,
     recovery::{
         congestion_controller::{self, Endpoint as _},
         RttEstimator,
@@ -60,10 +63,10 @@ impl<Config: endpoint::Config> Manager<Config> {
     }
 
     /// Update the active path
-    fn update_active_path<Rnd: random::Generator, Pub: event::ConnectionPublisher>(
+    fn update_active_path<Pub: event::ConnectionPublisher>(
         &mut self,
         new_path_id: Id,
-        random_generator: &mut Rnd,
+        random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         debug_assert!(new_path_id != Id(self.active));
@@ -176,15 +179,15 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// Upon success, returns a `(Id, bool)` containing the path ID and a boolean that is
     /// true if the path had been amplification limited prior to receiving the datagram
     /// and is now no longer amplification limited.
-    #[allow(unused_variables, clippy::too_many_arguments)]
-    pub fn on_datagram_received<Rnd: random::Generator, Pub: event::ConnectionPublisher>(
+    #[allow(clippy::too_many_arguments)]
+    pub fn on_datagram_received<Pub: event::ConnectionPublisher>(
         &mut self,
         path_handle: &Config::PathHandle,
         datagram: &DatagramInfo,
-        limits: &connection::Limits,
         handshake_confirmed: bool,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
-        random_generator: &mut Rnd,
+        random_generator: &mut Config::RandomGenerator,
+        migration_validator: &mut Config::PathMigrationValidator,
         max_mtu: MaxMtu,
         publisher: &mut Pub,
     ) -> Result<(Id, bool), transport::Error> {
@@ -218,31 +221,62 @@ impl<Config: endpoint::Config> Manager<Config> {
             datagram,
             congestion_controller_endpoint,
             random_generator,
+            migration_validator,
             max_mtu,
             publisher,
         )
     }
 
-    #[allow(unreachable_code)]
-    #[allow(unused_variables)]
-    fn handle_connection_migration<Rnd: random::Generator, Pub: event::ConnectionPublisher>(
+    #[allow(clippy::too_many_arguments)]
+    fn handle_connection_migration<Pub: event::ConnectionPublisher>(
         &mut self,
         path_handle: &Config::PathHandle,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
-        random_generator: &mut Rnd,
+        random_generator: &mut Config::RandomGenerator,
+        migration_validator: &mut Config::PathMigrationValidator,
         max_mtu: MaxMtu,
         publisher: &mut Pub,
     ) -> Result<(Id, bool), transport::Error> {
-        // Since we are not currently supporting connection migration (whether it was deliberate or
-        // not), we will error our at this point to avoid re-using a peer connection ID.
-        // TODO: This would be better handled as a stateless reset so the peer can terminate the
-        //       connection immediately. https://github.com/awslabs/s2n-quic/issues/317
-        // We only enable connection migration for testing
-        #[cfg(not(any(feature = "connection-migration", feature = "testing", test)))]
-        return Err(
-            transport::Error::INTERNAL_ERROR.with_reason("Connection Migration is not supported")
-        );
+        let remote_address = path_handle.remote_address();
+        let local_address = path_handle.local_address();
+        let active_local_addr = self.active_path().local_address();
+        let active_remote_addr = self.active_path().remote_address();
+
+        let attempt: migration::Attempt = migration::AttemptBuilder {
+            active_path: event::builder::Path {
+                local_addr: active_local_addr.into_event(),
+                local_cid: self.active_path().local_connection_id.into_event(),
+                remote_addr: active_remote_addr.into_event(),
+                remote_cid: self.active_path().peer_connection_id.into_event(),
+                id: self.active_path_id().into_event(),
+            }
+            .into_event(),
+            packet: migration::PacketInfoBuilder {
+                remote_address: &remote_address,
+                local_address: &local_address,
+            }
+            .into(),
+        }
+        .into();
+
+        match migration_validator.on_migration_attempt(&attempt) {
+            migration::Outcome::Allow => {
+                // no-op: allow the migration to continue
+            }
+            migration::Outcome::Deny => {
+                // Even though this returns an error, it is ignored by the endpoint and the connection remains open.
+                // TODO return a specialized enum for dropping the packet (see https://github.com/awslabs/s2n-quic/issues/669)
+                return Err(
+                    transport::Error::PROTOCOL_VIOLATION.with_reason("migration attempt denied")
+                );
+            }
+            _ => {
+                return Err(
+                    transport::Error::INTERNAL_ERROR.with_reason("unimplemented migration outcome")
+                );
+            }
+        }
 
         let new_path_idx = self.paths.len();
         // TODO: Support deletion of old paths: https://github.com/awslabs/s2n-quic/issues/741
@@ -267,7 +301,6 @@ impl<Config: endpoint::Config> Manager<Config> {
         //# time measurements to this address, the estimate SHOULD be the default
         //# initial value; see [QUIC-RECOVERY].
         let rtt = RttEstimator::new(self.active_path().rtt_estimator.max_ack_delay());
-        let remote_address = path_handle.remote_address();
         let path_info = congestion_controller::PathInfo::new(&remote_address);
         let cc = congestion_controller_endpoint.new_congestion_controller(path_info);
 
@@ -337,7 +370,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         Ok((new_path_id, unblocked))
     }
 
-    fn set_challenge<Rnd: random::Generator>(&mut self, path_id: Id, random_generator: &mut Rnd) {
+    fn set_challenge(&mut self, path_id: Id, random_generator: &mut Config::RandomGenerator) {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
         //# The endpoint MUST use unpredictable data in every PATH_CHALLENGE
         //# frame so that it can associate the peer's response with the
@@ -437,11 +470,11 @@ impl<Config: endpoint::Config> Manager<Config> {
     ///
     /// Check if the packet is a non-probing (path validation) packet and attempt to
     /// update the active path for the connection.
-    pub fn on_processed_packet<Rnd: random::Generator, Pub: event::ConnectionPublisher>(
+    pub fn on_processed_packet<Pub: event::ConnectionPublisher>(
         &mut self,
         path_id: Id,
         path_validation_probing: path_validation::Probe,
-        random_generator: &mut Rnd,
+        random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.2

@@ -26,7 +26,6 @@ use s2n_quic_core::{
         zero_rtt::ProtectedZeroRtt,
     },
     path::MaxMtu,
-    random, stateless_reset,
     time::Timestamp,
 };
 use std::sync::Mutex;
@@ -82,13 +81,10 @@ impl connection::Trait for TestConnection {
         self.interests.accept = false;
     }
 
-    fn on_new_connection_id<
-        ConnectionIdFormat: connection::id::Format,
-        StatelessResetTokenGenerator: stateless_reset::token::Generator,
-    >(
+    fn on_new_connection_id(
         &mut self,
-        _connection_id_format: &mut ConnectionIdFormat,
-        _stateless_reset_token_generator: &mut StatelessResetTokenGenerator,
+        _connection_id_format: &mut <Self::Config as endpoint::Config>::ConnectionIdFormat,
+        _stateless_reset_token_generator: &mut <Self::Config as endpoint::Config>::StatelessResetTokenGenerator,
         _timestamp: Timestamp,
     ) -> Result<(), connection::local_id_registry::LocalIdRegistrationError> {
         Ok(())
@@ -117,48 +113,48 @@ impl connection::Trait for TestConnection {
         Ok(())
     }
 
-    fn handle_initial_packet<Rnd: random::Generator>(
+    fn handle_initial_packet(
         &mut self,
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedInitial,
-        _random_generator: &mut Rnd,
+        _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
 
     /// Is called when an unprotected initial packet had been received
-    fn handle_cleartext_initial_packet<Rnd: random::Generator>(
+    fn handle_cleartext_initial_packet(
         &mut self,
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: CleartextInitial,
-        _random_generator: &mut Rnd,
+        _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
 
     /// Is called when a handshake packet had been received
-    fn handle_handshake_packet<Rnd: random::Generator>(
+    fn handle_handshake_packet(
         &mut self,
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedHandshake,
-        _random_generator: &mut Rnd,
+        _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
 
     /// Is called when a short packet had been received
-    fn handle_short_packet<Rnd: random::Generator>(
+    fn handle_short_packet(
         &mut self,
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedShort,
-        _random_generator: &mut Rnd,
+        _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError> {
         Ok(())
@@ -204,6 +200,7 @@ impl connection::Trait for TestConnection {
         _datagram: &DatagramInfo,
         _congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
         _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
+        _path_migration: &mut <Self::Config as endpoint::Config>::PathMigrationValidator,
         _max_mtu: MaxMtu,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<path::Id, connection::Error> {
