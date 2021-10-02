@@ -9,6 +9,7 @@ use s2n_quic::{
     provider::{
         endpoint_limits,
         event::{events, Subscriber},
+        io,
         tls::default::certificate::{Certificate, IntoCertificate, IntoPrivateKey, PrivateKey},
     },
     stream::BidirectionalStream,
@@ -204,8 +205,14 @@ impl Interop {
             .with_inflight_handshake_limit(max_handshakes)?
             .build()?;
 
+        let io = io::Default::builder()
+            .with_receive_address((self.ip, self.port).into())?
+            // Disable GSO as it does not work with Docker
+            .with_max_segments(1)?
+            .build()?;
+
         let server = Server::builder()
-            .with_io((self.ip, self.port))?
+            .with_io(io)?
             .with_tls(tls)?
             .with_endpoint_limits(limits)?
             .with_event(EventSubscriber(1))?
