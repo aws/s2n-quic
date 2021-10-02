@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{buffer::default as buffer, socket::default as socket};
+use crate::{buffer::default as buffer, features::gso, socket::default as socket};
 use cfg_if::cfg_if;
 use core::{
     future::Future,
@@ -90,6 +90,7 @@ impl Io {
             recv_buffer_size,
             send_buffer_size,
             max_mtu,
+            max_segments,
         } = self.builder;
 
         endpoint.set_max_mtu(max_mtu);
@@ -271,12 +272,25 @@ impl Io {
             }
         }
 
+        let rx;
+        let tx;
+
+        cfg_if! {
+            if #[cfg(any(s2n_quic_platform_socket_msg, s2n_quic_platform_socket_mmsg))] {
+                rx = socket::Queue::<buffer::Buffer>::new(buffer::Buffer::default(), max_segments.into());
+                tx = socket::Queue::<buffer::Buffer>::new(buffer::Buffer::default(), max_segments.into());
+            } else {
+                rx = Default::default();
+                tx = Default::default();
+            }
+        }
+
         let instance = Instance {
             clock,
             rx_socket: rx_socket.into(),
             tx_socket: tx_socket.into(),
-            rx: Default::default(),
-            tx: Default::default(),
+            rx,
+            tx,
             endpoint,
         };
 
@@ -354,6 +368,7 @@ pub struct Builder {
     recv_buffer_size: Option<usize>,
     send_buffer_size: Option<usize>,
     max_mtu: MaxMtu,
+    max_segments: gso::MaxSegments,
 }
 
 impl Builder {
@@ -423,6 +438,15 @@ impl Builder {
     /// Sets the largest maximum transmission unit (MTU) that can be sent on a path
     pub fn with_max_mtu(mut self, max_mtu: u16) -> io::Result<Self> {
         self.max_mtu = max_mtu
+            .try_into()
+            .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{}", err)))?;
+        Ok(self)
+    }
+
+    /// Sets the maximum number of segments in a Generic Segmentation Offload (GSO) payload
+    /// Setting this value to `1` will disable GSO
+    pub fn with_max_segments(mut self, max_segments: usize) -> io::Result<Self> {
+        self.max_segments = max_segments
             .try_into()
             .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{}", err)))?;
         Ok(self)

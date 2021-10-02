@@ -3,7 +3,7 @@
 
 use lazy_static::lazy_static;
 
-mod gso;
+pub mod gso;
 pub use gso::Gso;
 
 lazy_static! {
