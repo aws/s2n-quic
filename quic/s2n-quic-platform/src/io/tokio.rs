@@ -114,7 +114,7 @@ impl Io {
 
         publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
             configuration: event::builder::PlatformFeatureConfiguration::Gso {
-                max_segments: crate::features::get().gso.default_max_segments(),
+                max_segments: max_segments.into(),
             },
         });
 
@@ -443,7 +443,8 @@ impl Builder {
         Ok(self)
     }
 
-    /// Sets the maximum number of segments in a Generic Segmentation Offload (GSO) payload
+    /// Sets the maximum number of segments that can be sent in a single Generic Segmentation Offload (GSO) packet
+    ///
     /// Setting this value to `1` will disable GSO
     pub fn with_max_segments(mut self, max_segments: usize) -> io::Result<Self> {
         self.max_segments = max_segments
