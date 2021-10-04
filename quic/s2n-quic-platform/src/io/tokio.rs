@@ -446,7 +446,7 @@ impl Builder {
     /// Sets the maximum number of segments that can be sent in a single Generic Segmentation Offload (GSO) packet
     ///
     /// Setting this value to `1` will disable GSO
-    pub fn with_max_segments(mut self, max_segments: usize) -> io::Result<Self> {
+    pub fn with_max_gso_segments(mut self, max_segments: usize) -> io::Result<Self> {
         self.max_segments = max_segments
             .try_into()
             .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{}", err)))?;

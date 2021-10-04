@@ -208,7 +208,7 @@ impl Interop {
         let io = io::Default::builder()
             .with_receive_address((self.ip, self.port).into())?
             // Disable GSO as it does not work with Docker
-            .with_max_segments(1)?
+            .with_max_gso_segments(1)?
             .build()?;
 
         let server = Server::builder()
