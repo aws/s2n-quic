@@ -6,7 +6,7 @@ use bytes::Bytes;
 use futures::future::try_join_all;
 use s2n_quic::{
     provider::{
-        event,
+        event, io,
         tls::default::certificate::{Certificate, IntoCertificate, IntoPrivateKey, PrivateKey},
     },
     stream::{BidirectionalStream, ReceiveStream, SendStream},
@@ -37,6 +37,9 @@ pub struct Perf {
 
     #[structopt(long)]
     connections: Option<usize>,
+
+    #[structopt(long)]
+    disable_gso: bool,
 }
 
 impl Perf {
@@ -244,8 +247,17 @@ impl Perf {
             .with_key_logging()?
             .build()?;
 
+        let mut io_builder =
+            io::Default::builder().with_receive_address((self.ip, self.port).into())?;
+
+        if self.disable_gso {
+            io_builder = io_builder.with_gso_disabled()?;
+        }
+
+        let io = io_builder.build()?;
+
         let server = Server::builder()
-            .with_io((self.ip, self.port))?
+            .with_io(io)?
             .with_tls(tls)?
             .with_event(event::disabled::Provider)?
             .start()
