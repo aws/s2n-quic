@@ -443,13 +443,12 @@ impl Builder {
         Ok(self)
     }
 
-    /// Sets the maximum number of segments that can be sent in a single Generic Segmentation Offload (GSO) packet
+    /// Disables Generic Segmentation Offload (GSO)
     ///
-    /// Setting this value to `1` will disable GSO
-    pub fn with_max_gso_segments(mut self, max_segments: usize) -> io::Result<Self> {
-        self.max_segments = max_segments
-            .try_into()
-            .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{}", err)))?;
+    /// By default, GSO will be used unless the platform does not support it or an attempt to use
+    /// GSO fails. If it is known that GSO is not available, set this option to explicitly disable it.
+    pub fn with_gso_disabled(mut self) -> io::Result<Self> {
+        self.max_segments = 1.try_into().expect("1 is always a valid MaxSegments value");
         Ok(self)
     }
 

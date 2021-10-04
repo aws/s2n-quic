@@ -44,7 +44,7 @@ pub struct Interop {
     www_dir: PathBuf,
 
     #[structopt(long)]
-    max_gso_segments: Option<usize>,
+    disable_gso: bool,
 }
 
 impl Interop {
@@ -211,8 +211,8 @@ impl Interop {
         let mut io_builder =
             io::Default::builder().with_receive_address((self.ip, self.port).into())?;
 
-        if let Some(max_segments) = self.max_gso_segments {
-            io_builder = io_builder.with_max_gso_segments(max_segments)?;
+        if self.disable_gso {
+            io_builder = io_builder.with_gso_disabled()?;
         }
 
         let io = io_builder.build()?;
