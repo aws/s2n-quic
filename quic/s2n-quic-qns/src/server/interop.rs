@@ -42,6 +42,9 @@ pub struct Interop {
 
     #[structopt(long, default_value = ".")]
     www_dir: PathBuf,
+
+    #[structopt(long)]
+    max_gso_segments: Option<usize>,
 }
 
 impl Interop {
@@ -205,11 +208,14 @@ impl Interop {
             .with_inflight_handshake_limit(max_handshakes)?
             .build()?;
 
-        let io = io::Default::builder()
-            .with_receive_address((self.ip, self.port).into())?
-            // Disable GSO as it does not work with Docker
-            .with_max_gso_segments(1)?
-            .build()?;
+        let mut io_builder =
+            io::Default::builder().with_receive_address((self.ip, self.port).into())?;
+
+        if let Some(max_segments) = self.max_gso_segments {
+            io_builder = io_builder.with_max_gso_segments(max_segments)?;
+        }
+
+        let io = io_builder.build()?;
 
         let server = Server::builder()
             .with_io(io)?

@@ -25,8 +25,11 @@ QNS_BIN="s2n-quic-qns"
 QNS_MODE=${QNS_MODE:-interop}
 
 if [ "$QNS_MODE" == "interop" ] && [ "$ROLE" == "server" ]; then
-    SERVER_PARAMS+="--www-dir /www"
+    SERVER_PARAMS+="--www-dir /www "
 fi
+
+# Disable GSO as it does not work with Docker
+SERVER_PARAMS+="--max-gso-segments 1"
 
 if [ "$TEST_TYPE" == "MEASUREMENT" ] && [ -x "$(command -v s2n-quic-qns-release)" ]; then
     echo "using optimized build"
