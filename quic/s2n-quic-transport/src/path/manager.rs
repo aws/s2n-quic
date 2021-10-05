@@ -50,6 +50,11 @@ pub struct Manager<Config: endpoint::Config> {
 
     /// Index of last known validated path
     last_known_validated_path: Option<u8>,
+
+    /// The current index of a path that is pending packet protection authentication
+    ///
+    /// This index should be used when creating new paths if one exists
+    pending_packet_authentication: Option<u8>,
 }
 
 impl<Config: endpoint::Config> Manager<Config> {
@@ -59,6 +64,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             peer_id_registry,
             active: 0,
             last_known_validated_path: None,
+            pending_packet_authentication: None,
         }
     }
 
@@ -186,7 +192,6 @@ impl<Config: endpoint::Config> Manager<Config> {
         datagram: &DatagramInfo,
         handshake_confirmed: bool,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
-        random_generator: &mut Config::RandomGenerator,
         migration_validator: &mut Config::PathMigrationValidator,
         max_mtu: MaxMtu,
         publisher: &mut Pub,
@@ -220,7 +225,6 @@ impl<Config: endpoint::Config> Manager<Config> {
             path_handle,
             datagram,
             congestion_controller_endpoint,
-            random_generator,
             migration_validator,
             max_mtu,
             publisher,
@@ -233,7 +237,6 @@ impl<Config: endpoint::Config> Manager<Config> {
         path_handle: &Config::PathHandle,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
-        random_generator: &mut Config::RandomGenerator,
         migration_validator: &mut Config::PathMigrationValidator,
         max_mtu: MaxMtu,
         publisher: &mut Pub,
@@ -278,7 +281,15 @@ impl<Config: endpoint::Config> Manager<Config> {
             }
         }
 
-        let new_path_idx = self.paths.len();
+        let new_path_idx = if let Some(idx) = self.pending_packet_authentication {
+            // use the temporary path if it exists
+            idx as _
+        } else {
+            let idx = self.paths.len();
+            self.pending_packet_authentication = Some(idx as _);
+            idx
+        };
+
         // TODO: Support deletion of old paths: https://github.com/awslabs/s2n-quic/issues/741
         // The current path manager implementation does not delete or reuse indices
         // in the path array. This can result in an unbounded number of paths. To prevent
@@ -363,9 +374,11 @@ impl<Config: endpoint::Config> Manager<Config> {
         });
 
         // create a new path
-        self.paths.push(path);
-
-        self.set_challenge(new_path_id, random_generator);
+        if new_path_idx < self.paths.len() {
+            self.paths[new_path_idx] = path;
+        } else {
+            self.paths.push(path);
+        }
 
         Ok((new_path_id, unblocked))
     }
@@ -477,6 +490,14 @@ impl<Config: endpoint::Config> Manager<Config> {
         random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
+        // Remove the temporary status after successfully processing a packet
+        if self.pending_packet_authentication == Some(path_id.0) {
+            self.pending_packet_authentication = None;
+
+            // We can finally arm the challenge after authenticating the packet
+            self.set_challenge(path_id, random_generator);
+        }
+
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.2
         //# An endpoint can migrate a connection to a new local address by
         //# sending packets containing non-probing frames from that address.

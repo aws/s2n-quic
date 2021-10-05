@@ -2735,7 +2735,6 @@ fn helper_generate_multi_path_manager(
                 &datagram,
                 true,
                 &mut Endpoint::default(),
-                &mut random::testing::Generator(123),
                 &mut migration::default::Validator::default(),
                 DEFAULT_MAX_MTU,
                 &mut Publisher::default(),

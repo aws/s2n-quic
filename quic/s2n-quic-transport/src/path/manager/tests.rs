@@ -682,7 +682,6 @@ fn test_adding_new_path() {
             &datagram,
             true,
             &mut Default::default(),
-            &mut random::testing::Generator(123),
             &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
@@ -740,7 +739,6 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
         &datagram,
         handshake_confirmed,
         &mut Default::default(),
-        &mut random::testing::Generator(123),
         &mut migration::default::Validator::default(),
         DEFAULT_MAX_MTU,
         &mut Publisher::default(),
@@ -786,13 +784,20 @@ fn limit_number_of_connection_migrations() {
             &new_addr,
             &datagram,
             &mut Default::default(),
-            &mut random::testing::Generator(123),
             &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
         );
         match res {
-            Ok(_) => total_paths += 1,
+            Ok((id, _)) => {
+                let _ = manager.on_processed_packet(
+                    id,
+                    path_validation::Probe::NonProbing,
+                    &mut random::testing::Generator(123),
+                    &mut Publisher::default(),
+                );
+                total_paths += 1
+            }
             Err(_) => break,
         }
     }
@@ -828,12 +833,11 @@ fn connection_migration_challenge_behavior() {
         destination_connection_id: connection::LocalId::TEST_ID,
     };
 
-    let (_path_id, _unblocked) = manager
+    let (path_id, _unblocked) = manager
         .handle_connection_migration(
             &new_addr,
             &datagram,
             &mut Default::default(),
-            &mut random::testing::Generator(123),
             &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
@@ -844,12 +848,22 @@ fn connection_migration_challenge_behavior() {
     assert!(manager.path(&new_addr).is_some());
     assert_eq!(manager.paths.len(), 2);
 
+    assert!(!manager[path_id].is_challenge_pending());
+
+    // notify the manager that the datagram was authenticated - the path should now issue a challenge
+    let _ = manager.on_processed_packet(
+        path_id,
+        path_validation::Probe::NonProbing,
+        &mut random::testing::Generator(123),
+        &mut Publisher::default(),
+    );
+
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
     //= type=test
     //# An endpoint MUST
     //# perform path validation (Section 8.2) if it detects any change to a
     //# peer's address, unless it has previously validated that address.
-    assert!(manager[Id(1)].is_challenge_pending());
+    assert!(manager[path_id].is_challenge_pending());
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
     //= type=test
@@ -867,8 +881,8 @@ fn connection_migration_challenge_behavior() {
     //# An endpoint MUST
     //# perform path validation (Section 8.2) if it detects any change to a
     //# peer's address, unless it has previously validated that address.
-    manager[Id(1)].on_path_response(&expected_data);
-    assert!(manager[Id(1)].is_validated());
+    manager[path_id].on_path_response(&expected_data);
+    assert!(manager[path_id].is_validated());
 }
 
 #[test]
@@ -915,7 +929,6 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
             &new_addr,
             &datagram,
             &mut Default::default(),
-            &mut random::testing::Generator(123),
             &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
@@ -991,13 +1004,20 @@ fn connection_migration_new_path_abandon_timer() {
             &new_addr,
             &datagram,
             &mut Default::default(),
-            &mut random::testing::Generator(123),
             &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut Publisher::default(),
         )
         .unwrap();
     let first_path_id = Id(0);
+
+    // notify the manager that the datagram was authenticated - the path should now issue a challenge
+    let _ = manager.on_processed_packet(
+        second_path_id,
+        path_validation::Probe::NonProbing,
+        &mut random::testing::Generator(123),
+        &mut Publisher::default(),
+    );
 
     // Trigger 1:
     // modify rtt for first path so we can detect differences
@@ -1209,6 +1229,113 @@ fn pending_paths_should_return_paths_pending_validation() {
 
     // Expectation:
     assert!(next.is_none());
+}
+
+#[test]
+// Ensure paths are temporary until after authenticating a packet on the path
+fn temporary_until_authenticated() {
+    let now = NoopClock {}.get_time();
+    let datagram = DatagramInfo {
+        timestamp: now,
+        payload_len: 0,
+        ecn: ExplicitCongestionNotification::default(),
+        destination_connection_id: connection::LocalId::TEST_ID,
+    };
+
+    // create an initial path
+    let first_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
+    let first_addr = SocketAddress::from(first_addr);
+    let first_addr = RemoteAddress::from(first_addr);
+    let first_path = Path::new(
+        first_addr,
+        connection::PeerId::try_from_bytes(&[1]).unwrap(),
+        connection::LocalId::TEST_ID,
+        RttEstimator::new(Duration::from_millis(30)),
+        Default::default(),
+        false,
+        DEFAULT_MAX_MTU,
+    );
+    let mut manager = manager(first_path, None);
+
+    let second_addr: SocketAddr = "127.0.0.2:8001".parse().unwrap();
+    let second_addr = SocketAddress::from(second_addr);
+    let second_addr = RemoteAddress::from(second_addr);
+
+    // create a second path without calling on_processed_packet
+    let (second_path_id, _unblocked) = manager
+        .on_datagram_received(
+            &second_addr,
+            &datagram,
+            true,
+            &mut Default::default(),
+            &mut migration::default::Validator::default(),
+            DEFAULT_MAX_MTU,
+            &mut Publisher::default(),
+        )
+        .unwrap();
+
+    assert!(
+        !manager[second_path_id].is_challenge_pending(),
+        "pending paths should not issue a challenge"
+    );
+
+    let third_addr: SocketAddr = "127.0.0.3:8001".parse().unwrap();
+    let third_addr = SocketAddress::from(third_addr);
+    let third_addr = RemoteAddress::from(third_addr);
+
+    // create a third path
+    let (third_path_id, _unblocked) = manager
+        .on_datagram_received(
+            &third_addr,
+            &datagram,
+            true,
+            &mut Default::default(),
+            &mut migration::default::Validator::default(),
+            DEFAULT_MAX_MTU,
+            &mut Publisher::default(),
+        )
+        .unwrap();
+
+    assert_eq!(
+        second_path_id, third_path_id,
+        "third path should replace the second"
+    );
+
+    assert!(
+        !manager[third_path_id].is_challenge_pending(),
+        "pending paths should not issue a challenge"
+    );
+
+    // notify the manager that the packet was processed
+    let _ = manager.on_processed_packet(
+        third_path_id,
+        path_validation::Probe::NonProbing,
+        &mut random::testing::Generator(123),
+        &mut Publisher::default(),
+    );
+
+    assert!(
+        manager[third_path_id].is_challenge_pending(),
+        "after processing a packet the path should issue a challenge"
+    );
+
+    // receive another datagram with the second_addr
+    let (fourth_path_id, _unblocked) = manager
+        .on_datagram_received(
+            &second_addr,
+            &datagram,
+            true,
+            &mut Default::default(),
+            &mut migration::default::Validator::default(),
+            DEFAULT_MAX_MTU,
+            &mut Publisher::default(),
+        )
+        .unwrap();
+
+    assert_ne!(
+        fourth_path_id, third_path_id,
+        "a new path should be created"
+    );
 }
 
 // creates a test path_manager. also check out `helper_manager_with_paths`

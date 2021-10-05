@@ -199,7 +199,6 @@ impl connection::Trait for TestConnection {
         _path: &<Self::Config as endpoint::Config>::PathHandle,
         _datagram: &DatagramInfo,
         _congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
-        _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _path_migration: &mut <Self::Config as endpoint::Config>::PathMigrationValidator,
         _max_mtu: MaxMtu,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
