@@ -65,7 +65,7 @@ pub trait Handle: 'static + Copy + Send + fmt::Debug {
 
 macro_rules! impl_addr {
     ($name:ident) => {
-        #[derive(Clone, Copy, Debug, Default, Eq)]
+        #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
         #[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
         pub struct $name(pub SocketAddress);
 
@@ -87,13 +87,6 @@ macro_rules! impl_addr {
             #[inline]
             fn from(value: SocketAddressV6) -> Self {
                 Self(value.into())
-            }
-        }
-
-        impl PartialEq for $name {
-            #[inline]
-            fn eq(&self, other: &Self) -> bool {
-                self.0.eq(&other.0)
             }
         }
 

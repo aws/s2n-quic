@@ -3,8 +3,12 @@
 
 use core::ops::{BitOr, BitOrAssign};
 
+#[cfg(any(test, feature = "generator"))]
+use bolero_generator::*;
+
 /// Describes if a frame is probing
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(any(feature = "generator", test), derive(TypeGenerator))]
 pub enum Probe {
     NonProbing,
     Probing,

@@ -801,3 +801,6 @@ pub(crate) use path_event;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod fuzz_target;

@@ -13,6 +13,9 @@ use core::{
 };
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
 
+#[cfg(any(test, feature = "generator"))]
+use bolero_generator::*;
+
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
 //# Each connection possesses a set of connection identifiers, or
 //# connection IDs, each of which can identify the connection.
@@ -33,8 +36,10 @@ macro_rules! id {
     ($type:ident, $min_len:expr) => {
         /// Uniquely identifies a QUIC connection between 2 peers
         #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[cfg_attr(any(feature = "generator", test), derive(TypeGenerator))]
         pub struct $type {
             bytes: [u8; MAX_LEN],
+            #[cfg_attr(any(feature = "generator", test), generator($min_len..=(MAX_LEN as u8)))]
             len: u8,
         }
 

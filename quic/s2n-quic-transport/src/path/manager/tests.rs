@@ -1419,7 +1419,7 @@ fn temporary_until_authenticated() {
 
 // creates a test path_manager. also check out `helper_manager_with_paths`
 // which calls this helper with preset options
-fn helper_manager_with_paths_base(
+pub fn helper_manager_with_paths_base(
     register_second_conn_id: bool,
     validate_path_zero: bool,
 ) -> Helper {
@@ -1429,16 +1429,7 @@ fn helper_manager_with_paths_base(
     let zero_path_id = Id(0);
     let first_path_id = Id(1);
     let second_path_id = Id(2);
-    let local_conn_id = connection::LocalId::TEST_ID;
-    let mut zero_path = Path::new(
-        Default::default(),
-        zero_conn_id,
-        local_conn_id,
-        RttEstimator::new(Duration::from_millis(30)),
-        Default::default(),
-        false,
-        DEFAULT_MAX_MTU,
-    );
+    let mut zero_path = helper_path(zero_conn_id);
     if validate_path_zero {
         // simulate receiving a handshake packet to force path validation
         zero_path.on_handshake_packet();
@@ -1450,29 +1441,13 @@ fn helper_manager_with_paths_base(
     let expected_data = [0; 8];
     let challenge = challenge::Challenge::new(challenge_expiration, expected_data);
 
-    let mut first_path = Path::new(
-        Default::default(),
-        first_conn_id,
-        local_conn_id,
-        RttEstimator::new(Duration::from_millis(30)),
-        Default::default(),
-        false,
-        DEFAULT_MAX_MTU,
-    );
+    let mut first_path = helper_path(first_conn_id);
     first_path.set_challenge(challenge);
 
     // Create a challenge that will expire in 100ms
     let expected_data = [1; 8];
     let challenge = challenge::Challenge::new(challenge_expiration, expected_data);
-    let mut second_path = Path::new(
-        Default::default(),
-        second_conn_id,
-        local_conn_id,
-        RttEstimator::new(Duration::from_millis(30)),
-        Default::default(),
-        false,
-        DEFAULT_MAX_MTU,
-    );
+    let mut second_path = helper_path(second_conn_id);
     second_path.set_challenge(challenge);
 
     let mut random_generator = random::testing::Generator(123);
@@ -1542,11 +1517,24 @@ fn helper_manager_with_paths_base(
     }
 }
 
-fn helper_manager_with_paths() -> Helper {
+pub fn helper_path(peer_id: connection::PeerId) -> Path {
+    let local_conn_id = connection::LocalId::TEST_ID;
+    Path::new(
+        Default::default(),
+        peer_id,
+        local_conn_id,
+        RttEstimator::new(Duration::from_millis(30)),
+        Default::default(),
+        false,
+        DEFAULT_MAX_MTU,
+    )
+}
+
+pub fn helper_manager_with_paths() -> Helper {
     helper_manager_with_paths_base(true, true)
 }
 
-struct Helper {
+pub struct Helper {
     pub now: Timestamp,
     pub expected_data: challenge::Data,
     pub challenge_expiration: Duration,
