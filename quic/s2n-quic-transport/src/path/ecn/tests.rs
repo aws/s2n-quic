@@ -27,13 +27,14 @@ fn default() {
 
 #[test]
 fn restart() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller {
         state: State::Failed(Timer::default()),
         ..Default::default()
     };
     controller.black_hole_counter += 1;
 
-    controller.restart(Path::test(), &mut Publisher::default());
+    controller.restart(Path::test(), &mut publisher);
 
     assert_eq!(State::Testing(0), controller.state);
     assert_eq!(0, *controller.black_hole_counter.deref());
@@ -41,13 +42,14 @@ fn restart() {
 
 #[test]
 fn restart_already_in_testing_0() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller {
         state: State::Testing(0),
         ..Default::default()
     };
     controller.black_hole_counter += 1;
 
-    controller.restart(Path::test(), &mut Publisher::default());
+    controller.restart(Path::test(), &mut publisher);
 
     assert_eq!(State::Testing(0), controller.state);
     assert_eq!(0, *controller.black_hole_counter.deref());
@@ -55,9 +57,10 @@ fn restart_already_in_testing_0() {
 
 #[test]
 fn on_timeout_failed() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
     let now = s2n_quic_platform::time::now();
-    controller.fail(now, Path::test(), &mut Publisher::default());
+    controller.fail(now, Path::test(), &mut publisher);
 
     if let State::Failed(timer) = &controller.state {
         assert!(timer.is_armed());
@@ -75,7 +78,7 @@ fn on_timeout_failed() {
         Path::test(),
         &mut random::testing::Generator(123),
         Duration::default(),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     if let State::Failed(timer) = &controller.state {
@@ -92,7 +95,7 @@ fn on_timeout_failed() {
         Path::test(),
         &mut random::testing::Generator(123),
         Duration::default(),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     assert_eq!(State::Testing(0), controller.state);
@@ -101,6 +104,7 @@ fn on_timeout_failed() {
 
 #[test]
 fn on_timeout_capable() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
     let now = s2n_quic_platform::time::now();
     let rtt = Duration::from_millis(50);
@@ -117,7 +121,7 @@ fn on_timeout_capable() {
         Path::test(),
         &mut random::testing::Generator(123),
         rtt,
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     if let State::Capable(timer) = &controller.state {
@@ -135,7 +139,7 @@ fn on_timeout_capable() {
         Path::test(),
         &mut random::testing::Generator(123),
         rtt,
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     if let State::Capable(timer) = &controller.state {
@@ -148,6 +152,7 @@ fn on_timeout_capable() {
 
 #[test]
 fn ecn() {
+    let mut publisher = Publisher::snapshot();
     let now = s2n_quic_platform::time::now();
 
     for &transmission_mode in &[
@@ -178,11 +183,7 @@ fn ecn() {
         //# If validation fails, then the endpoint MUST disable ECN. It stops setting the ECT
         //# codepoint in IP packets that it sends, assuming that either the network path or
         //# the peer does not support ECN.
-        controller.fail(
-            s2n_quic_platform::time::now(),
-            Path::test(),
-            &mut Publisher::default(),
-        );
+        controller.fail(s2n_quic_platform::time::now(), Path::test(), &mut publisher);
         assert!(!controller.ecn(transmission_mode, now).using_ecn());
 
         controller.state = State::Unknown;
@@ -259,9 +260,10 @@ fn is_capable() {
 
 #[test]
 fn validate_already_failed() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
     let now = s2n_quic_platform::time::now();
-    controller.fail(now, Path::test(), &mut Publisher::default());
+    controller.fail(now, Path::test(), &mut publisher);
     let outcome = controller.validate(
         EcnCounts::default(),
         EcnCounts::default(),
@@ -270,7 +272,7 @@ fn validate_already_failed() {
         now + Duration::from_secs(5),
         Duration::default(),
         Path::test(),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     if let State::Failed(timer) = &controller.state {
@@ -294,6 +296,7 @@ fn validate_already_failed() {
 //# not report ECN markings.
 #[test]
 fn validate_ecn_counts_not_in_ack() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
     let now = s2n_quic_platform::time::now();
     let expected_ecn_counts = helper_ecn_counts(1, 0, 0);
@@ -305,7 +308,7 @@ fn validate_ecn_counts_not_in_ack() {
         now,
         Duration::default(),
         Path::test(),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     assert_eq!(ValidationOutcome::Failed, outcome);
@@ -319,6 +322,7 @@ fn validate_ecn_counts_not_in_ack() {
 //# packets that were originally sent with an ECT(0) marking.
 #[test]
 fn validate_ecn_ce_remarking() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
     let now = s2n_quic_platform::time::now();
     let expected_ecn_counts = helper_ecn_counts(1, 0, 0);
@@ -331,7 +335,7 @@ fn validate_ecn_ce_remarking() {
         now,
         Duration::default(),
         Path::test(),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     assert_eq!(ValidationOutcome::Failed, outcome);
@@ -344,6 +348,7 @@ fn validate_ecn_ce_remarking() {
 //# exceeds the total number of packets sent with each corresponding ECT codepoint.
 #[test]
 fn validate_ect_0_remarking() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
     let now = s2n_quic_platform::time::now();
     let expected_ecn_counts = helper_ecn_counts(1, 0, 0);
@@ -357,7 +362,7 @@ fn validate_ect_0_remarking() {
         now,
         Duration::default(),
         Path::test(),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     assert_eq!(ValidationOutcome::Failed, outcome);
@@ -366,6 +371,7 @@ fn validate_ect_0_remarking() {
 
 #[test]
 fn validate_ect_0_remarking_after_restart() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
     let now = s2n_quic_platform::time::now();
     let expected_ecn_counts = helper_ecn_counts(1, 0, 0);
@@ -380,7 +386,7 @@ fn validate_ect_0_remarking_after_restart() {
         now,
         Duration::default(),
         Path::test(),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     assert_eq!(ValidationOutcome::Failed, outcome);
@@ -389,6 +395,7 @@ fn validate_ect_0_remarking_after_restart() {
 
 #[test]
 fn validate_no_ecn_counts() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller {
         state: State::Unknown,
         ..Default::default()
@@ -402,7 +409,7 @@ fn validate_no_ecn_counts() {
         now,
         Duration::default(),
         Path::test(),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     assert_eq!(ValidationOutcome::Skipped, outcome);
@@ -411,6 +418,7 @@ fn validate_no_ecn_counts() {
 
 #[test]
 fn validate_ecn_decrease() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
     let now = s2n_quic_platform::time::now();
     let baseline_ecn_counts = helper_ecn_counts(1, 0, 0);
@@ -422,7 +430,7 @@ fn validate_ecn_decrease() {
         now,
         Duration::default(),
         Path::test(),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     assert_eq!(ValidationOutcome::Failed, outcome);
@@ -436,6 +444,7 @@ fn validate_ecn_decrease() {
 //# unless no marked packet has been acknowledged.
 #[test]
 fn validate_no_marked_packets_acked() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller {
         state: State::Unknown,
         ..Default::default()
@@ -449,7 +458,7 @@ fn validate_no_marked_packets_acked() {
         now,
         Duration::default(),
         Path::test(),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     assert_eq!(ValidationOutcome::Passed, outcome);
@@ -465,6 +474,7 @@ fn validate_no_marked_packets_acked() {
 //# codepoints in subsequent packets sent on that path [RFC3168].
 #[test]
 fn validate_ce_suppression_remarked_to_not_ect() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
     let now = s2n_quic_platform::time::now();
     // We sent one ECT0 and one CE
@@ -480,7 +490,7 @@ fn validate_ce_suppression_remarked_to_not_ect() {
         now,
         Duration::default(),
         Path::test(),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     assert_eq!(ValidationOutcome::Failed, outcome);
@@ -496,6 +506,7 @@ fn validate_ce_suppression_remarked_to_not_ect() {
 //# codepoints in subsequent packets sent on that path [RFC3168].
 #[test]
 fn validate_ce_suppression_remarked_to_ect0() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
     let now = s2n_quic_platform::time::now();
     // We sent one ECT0 and one CE
@@ -511,7 +522,7 @@ fn validate_ce_suppression_remarked_to_ect0() {
         now,
         Duration::default(),
         Path::test(),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     assert_eq!(ValidationOutcome::Failed, outcome);
@@ -520,6 +531,7 @@ fn validate_ce_suppression_remarked_to_ect0() {
 
 #[test]
 fn validate_capable() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller {
         state: State::Unknown,
         ..Default::default()
@@ -537,7 +549,7 @@ fn validate_capable() {
         now,
         rtt,
         Path::test(),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     assert_eq!(ValidationOutcome::Passed, outcome);
@@ -552,6 +564,7 @@ fn validate_capable() {
 
 #[test]
 fn validate_capable_congestion_experienced() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller {
         state: State::Unknown,
         ..Default::default()
@@ -569,7 +582,7 @@ fn validate_capable_congestion_experienced() {
         now,
         rtt,
         Path::test(),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     assert_eq!(ValidationOutcome::CongestionExperienced, outcome);
@@ -584,6 +597,7 @@ fn validate_capable_congestion_experienced() {
 
 #[test]
 fn validate_capable_ce_suppression_test() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller {
         state: State::Unknown,
         ..Default::default()
@@ -601,7 +615,7 @@ fn validate_capable_ce_suppression_test() {
         now,
         rtt,
         Path::test(),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     // The outcome should not be `CongestionExperienced` despite the increase in CE-count,
@@ -619,6 +633,7 @@ fn validate_capable_ce_suppression_test() {
 /// Successful validation when not in the Unknown state does not change the state
 #[test]
 fn validate_capable_not_in_unknown_state() {
+    let mut publisher = Publisher::snapshot();
     for state in vec![
         State::Testing(0),
         State::Capable(Timer::default()),
@@ -642,7 +657,7 @@ fn validate_capable_not_in_unknown_state() {
             now,
             rtt,
             Path::test(),
-            &mut Publisher::default(),
+            &mut publisher,
         );
 
         assert_eq!(expected_state, controller.state);
@@ -651,6 +666,7 @@ fn validate_capable_not_in_unknown_state() {
 
 #[test]
 fn validate_capable_lost_ack_frame() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller {
         state: State::Unknown,
         ..Default::default()
@@ -675,7 +691,7 @@ fn validate_capable_lost_ack_frame() {
         now,
         rtt,
         Path::test(),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     assert_eq!(ValidationOutcome::Passed, outcome);
@@ -690,6 +706,7 @@ fn validate_capable_lost_ack_frame() {
 
 #[test]
 fn validate_capable_after_restart() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller {
         state: State::Unknown,
         ..Default::default()
@@ -710,7 +727,7 @@ fn validate_capable_after_restart() {
         now,
         rtt,
         Path::test(),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     assert_eq!(ValidationOutcome::CongestionExperienced, outcome);
@@ -725,6 +742,7 @@ fn validate_capable_after_restart() {
 
 #[test]
 fn on_packet_sent() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
 
     for i in 0..TESTING_PACKET_THRESHOLD {
@@ -732,7 +750,7 @@ fn on_packet_sent() {
         controller.on_packet_sent(
             ExplicitCongestionNotification::Ect0,
             Path::test(),
-            &mut Publisher::default(),
+            &mut publisher,
         );
     }
 
@@ -741,6 +759,7 @@ fn on_packet_sent() {
 
 #[test]
 fn on_packet_loss() {
+    let mut publisher = Publisher::snapshot();
     for state in vec![
         State::Testing(0),
         State::Capable(Timer::default()),
@@ -763,7 +782,7 @@ fn on_packet_loss() {
                 ExplicitCongestionNotification::Ect0,
                 time_sent,
                 Path::test(),
-                &mut Publisher::default(),
+                &mut publisher,
             );
         }
 
@@ -783,12 +802,13 @@ fn on_packet_loss() {
 
 #[test]
 fn on_packet_loss_already_failed() {
+    let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
     let now = s2n_quic_platform::time::now();
     let time_sent = now + Duration::from_secs(1);
 
     controller.last_acked_ecn_packet_timestamp = Some(now);
-    controller.fail(now, Path::test(), &mut Publisher::default());
+    controller.fail(now, Path::test(), &mut publisher);
 
     for _i in 0..TESTING_PACKET_THRESHOLD + 1 {
         assert_eq!(0, *controller.black_hole_counter.deref());
@@ -798,7 +818,7 @@ fn on_packet_loss_already_failed() {
             ExplicitCongestionNotification::Ect0,
             time_sent,
             Path::test(),
-            &mut Publisher::default(),
+            &mut publisher,
         );
     }
 

@@ -1,5 +1,6 @@
 ---
 source: quic/s2n-quic-transport/src/recovery/sent_packets.rs
 expression: "core::mem::size_of::<SentPacketInfo>()"
+
 ---
 16

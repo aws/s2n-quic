@@ -340,6 +340,7 @@ mod tests {
                 let mut path = helper_path_server();
                 let mut buffer = [0; MINIMUM_MTU as usize];
                 let mut transmission_count = 0usize;
+                let mut publisher = Publisher::default();
 
                 if *is_validated {
                     // simulate receiving a handshake packet to force path validation
@@ -355,7 +356,7 @@ mod tests {
                 // transmit an initial packet
                 assert!(sender.can_transmit(path.transmission_constraint()));
                 sender
-                    .transmission(&mut path, &mut Publisher::default())
+                    .transmission(&mut path, &mut publisher)
                     .write_payload(&mut buffer, 0);
 
                 for (gap, packet_size) in events {
@@ -377,7 +378,7 @@ mod tests {
                         let interest = sender.get_transmission_interest();
                         if interest.can_transmit(path.transmission_constraint()) {
                             sender
-                                .transmission(&mut path, &mut Publisher::default())
+                                .transmission(&mut path, &mut publisher)
                                 .write_payload(&mut buffer, 0);
                             transmission_count += 1;
                         }

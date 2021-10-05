@@ -342,7 +342,13 @@ mod tests {
     }
 
     macro_rules! on_packet {
-        ($negotiator:ident, $remote_address:expr, $payload_len:expr, $packet:expr) => {{
+        (
+            $negotiator:ident,
+            $publisher:ident,
+            $remote_address:expr,
+            $payload_len:expr,
+            $packet:expr
+        ) => {{
             let mut buffer = vec![0u8; 1200];
             let mut encoder = EncoderBuffer::new(&mut buffer);
 
@@ -353,12 +359,7 @@ mod tests {
             let remote_address = SocketAddress::default();
             let connection_info = ConnectionInfo::new(&remote_address);
             let (packet, _) = ProtectedPacket::decode(decoder, &connection_info, &3).unwrap();
-            $negotiator.on_packet(
-                &$remote_address,
-                $payload_len,
-                &packet,
-                &mut Publisher::default(),
-            )
+            $negotiator.on_packet(&$remote_address, $payload_len, &packet, $publisher)
         }};
     }
 
@@ -366,9 +367,11 @@ mod tests {
         datagram_info: (C::PathHandle, DatagramInfo),
         version: u32,
         negotiator: &mut Negotiator<C>,
+        publisher: &mut Publisher,
     ) -> Result<(), Error> {
         on_packet!(
             negotiator,
+            publisher,
             datagram_info.0,
             datagram_info.1.payload_len,
             Initial {
@@ -386,12 +389,14 @@ mod tests {
         datagram_info: (C::PathHandle, DatagramInfo),
         version: u32,
         negotiator: &mut Negotiator<C>,
+        publisher: &mut Publisher,
     ) -> Result<(), Error> {
         let mut payload = vec![1u8, 2, 3, 4, 5];
         payload.extend_from_slice(&DUMMY_TAG[..]);
 
         on_packet!(
             negotiator,
+            publisher,
             datagram_info.0,
             datagram_info.1.payload_len,
             Initial {
@@ -410,12 +415,14 @@ mod tests {
         datagram_info: (C::PathHandle, DatagramInfo),
         version: u32,
         negotiator: &mut Negotiator<C>,
+        publisher: &mut Publisher,
     ) -> Result<(), Error> {
         let mut payload = vec![1u8, 2, 3, 4, 5];
         payload.extend_from_slice(&DUMMY_TAG[..]);
 
         on_packet!(
             negotiator,
+            publisher,
             datagram_info.0,
             datagram_info.1.payload_len,
             Handshake {
@@ -432,12 +439,14 @@ mod tests {
         datagram_info: (C::PathHandle, DatagramInfo),
         version: u32,
         negotiator: &mut Negotiator<C>,
+        publisher: &mut Publisher,
     ) -> Result<(), Error> {
         let mut payload = vec![1u8, 2, 3, 4, 5];
         payload.extend_from_slice(&DUMMY_TAG[..]);
 
         on_packet!(
             negotiator,
+            publisher,
             datagram_info.0,
             datagram_info.1.payload_len,
             ZeroRtt {
@@ -453,9 +462,11 @@ mod tests {
     fn on_version_negotiation_packet<C: endpoint::Config>(
         datagram_info: (C::PathHandle, DatagramInfo),
         negotiator: &mut Negotiator<C>,
+        publisher: &mut Publisher,
     ) -> Result<(), Error> {
         on_packet!(
             negotiator,
+            publisher,
             datagram_info.0,
             datagram_info.1.payload_len,
             VersionNegotiation {
@@ -470,12 +481,14 @@ mod tests {
     fn on_short_packet<C: endpoint::Config>(
         datagram_info: (C::PathHandle, DatagramInfo),
         negotiator: &mut Negotiator<C>,
+        publisher: &mut Publisher,
     ) -> Result<(), Error> {
         let mut payload = vec![1u8, 2, 3, 4, 5];
         payload.extend_from_slice(&DUMMY_TAG[..]);
 
         on_packet!(
             negotiator,
+            publisher,
             datagram_info.0,
             datagram_info.1.payload_len,
             Short {
@@ -498,15 +511,26 @@ mod tests {
     #[test]
     fn client_test() {
         let mut client = Client::default();
+        let mut publisher = Publisher::snapshot();
 
         assert_eq!(
-            on_initial_packet(datagram_info(1200), INVALID_VERSION, &mut client),
+            on_initial_packet(
+                datagram_info(1200),
+                INVALID_VERSION,
+                &mut client,
+                &mut publisher
+            ),
             Ok(()),
             "client implementation should always allow version negotiator packets through",
         );
 
         assert_eq!(
-            on_zerortt_packet(datagram_info(1200), INVALID_VERSION, &mut client),
+            on_zerortt_packet(
+                datagram_info(1200),
+                INVALID_VERSION,
+                &mut client,
+                &mut publisher
+            ),
             Ok(()),
             "client implementation should always allow version negotiator packets through",
         );
@@ -520,9 +544,15 @@ mod tests {
     #[test]
     fn server_initial_test() {
         let mut server = Server::default();
+        let mut publisher = Publisher::snapshot();
 
         assert_eq!(
-            on_initial_packet(datagram_info(1200), INVALID_VERSION, &mut server),
+            on_initial_packet(
+                datagram_info(1200),
+                INVALID_VERSION,
+                &mut server,
+                &mut publisher
+            ),
             Err(Error),
             "server implementations should error on invalid versions"
         );
@@ -536,9 +566,15 @@ mod tests {
     #[test]
     fn server_future_version_initial_test() {
         let mut server = Server::default();
+        let mut publisher = Publisher::snapshot();
 
         assert_eq!(
-            on_future_version_initial_packet(datagram_info(1200), INVALID_VERSION, &mut server),
+            on_future_version_initial_packet(
+                datagram_info(1200),
+                INVALID_VERSION,
+                &mut server,
+                &mut publisher
+            ),
             Err(Error),
             "server implementations should error on invalid versions"
         );
@@ -552,9 +588,15 @@ mod tests {
     #[test]
     fn server_zerortt_test() {
         let mut server = Server::default();
+        let mut publisher = Publisher::snapshot();
 
         assert_eq!(
-            on_zerortt_packet(datagram_info(1200), INVALID_VERSION, &mut server),
+            on_zerortt_packet(
+                datagram_info(1200),
+                INVALID_VERSION,
+                &mut server,
+                &mut publisher
+            ),
             Err(Error),
             "server implementations should error on invalid versions"
         );
@@ -568,9 +610,15 @@ mod tests {
     #[test]
     fn server_undersized_test() {
         let mut server = Server::default();
+        let mut publisher = Publisher::snapshot();
 
         assert_eq!(
-            on_initial_packet(datagram_info(32), INVALID_VERSION, &mut server),
+            on_initial_packet(
+                datagram_info(32),
+                INVALID_VERSION,
+                &mut server,
+                &mut publisher
+            ),
             Err(Error),
             "server implementations should error on invalid versions"
         );
@@ -584,10 +632,16 @@ mod tests {
     #[test]
     fn server_max_peers_test() {
         let mut server = Server::new(2);
+        let mut publisher = Publisher::snapshot();
 
         for _ in 0..5 {
             assert_eq!(
-                on_initial_packet(datagram_info(1200), INVALID_VERSION, &mut server),
+                on_initial_packet(
+                    datagram_info(1200),
+                    INVALID_VERSION,
+                    &mut server,
+                    &mut publisher
+                ),
                 Err(Error),
                 "server implementations should error on invalid versions"
             );
@@ -603,21 +657,27 @@ mod tests {
     #[test]
     fn server_other_packets_test() {
         let mut server = Server::default();
+        let mut publisher = Publisher::snapshot();
 
         assert_eq!(
-            on_version_negotiation_packet(datagram_info(1200), &mut server),
+            on_version_negotiation_packet(datagram_info(1200), &mut server, &mut publisher),
             Ok(()),
             "server implementations should allow other packets through to connections"
         );
 
         assert_eq!(
-            on_handshake_packet(datagram_info(1200), INVALID_VERSION, &mut server),
+            on_handshake_packet(
+                datagram_info(1200),
+                INVALID_VERSION,
+                &mut server,
+                &mut publisher
+            ),
             Ok(()),
             "server implementations should allow other packets through to connections"
         );
 
         assert_eq!(
-            on_short_packet(datagram_info(1200), &mut server),
+            on_short_packet(datagram_info(1200), &mut server, &mut publisher),
             Ok(()),
             "server implementations should allow other packets through to connections"
         );

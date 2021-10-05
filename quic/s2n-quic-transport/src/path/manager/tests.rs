@@ -98,6 +98,7 @@ fn get_path_by_address_test() {
 //# address when validation of a new peer address fails.
 #[test]
 fn test_invalid_path_fallback() {
+    let mut publisher = Publisher::snapshot();
     let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
     let first_local_conn_id = connection::LocalId::TEST_ID;
     let mut first_path = ServerPath::new(
@@ -136,11 +137,7 @@ fn test_invalid_path_fallback() {
     assert!(manager.paths[0].is_validated());
 
     manager
-        .update_active_path(
-            Id(1),
-            &mut random::testing::Generator(123),
-            &mut Publisher::default(),
-        )
+        .update_active_path(Id(1), &mut random::testing::Generator(123), &mut publisher)
         .unwrap();
     assert_eq!(manager.active, 1);
     assert_eq!(manager.last_known_active_validated_path, Some(0));
@@ -161,7 +158,7 @@ fn test_invalid_path_fallback() {
         .on_timeout(
             now + expiration + Duration::from_millis(100),
             &mut random::testing::Generator(123),
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
     assert_eq!(manager.active, 0);
@@ -172,7 +169,8 @@ fn test_invalid_path_fallback() {
 // a validated path should be assigned to last_known_active_validated_path
 fn promote_validated_path_to_last_known_validated_path() {
     // Setup:
-    let mut helper = helper_manager_with_paths();
+    let mut publisher = Publisher::snapshot();
+    let mut helper = helper_manager_with_paths(&mut publisher);
     assert!(!helper.manager.paths[helper.first_path_id.0 as usize].is_validated());
 
     // Trigger:
@@ -184,7 +182,7 @@ fn promote_validated_path_to_last_known_validated_path() {
         .update_active_path(
             helper.second_path_id,
             &mut random::testing::Generator(123),
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
 
@@ -196,7 +194,8 @@ fn promote_validated_path_to_last_known_validated_path() {
 // a NOT validated path should NOT be assigned to last_known_active_validated_path
 fn dont_promote_non_validated_path_to_last_known_validated_path() {
     // Setup:
-    let mut helper = helper_manager_with_paths();
+    let mut publisher = Publisher::snapshot();
+    let mut helper = helper_manager_with_paths(&mut publisher);
     assert!(!helper.manager.paths[helper.first_path_id.0 as usize].is_validated());
 
     // Trigger:
@@ -205,7 +204,7 @@ fn dont_promote_non_validated_path_to_last_known_validated_path() {
         .update_active_path(
             helper.second_path_id,
             &mut random::testing::Generator(123),
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
 
@@ -217,7 +216,8 @@ fn dont_promote_non_validated_path_to_last_known_validated_path() {
 // update path to the new active path
 fn update_path_to_active_path() {
     // Setup:
-    let mut helper = helper_manager_with_paths();
+    let mut publisher = Publisher::snapshot();
+    let mut helper = helper_manager_with_paths(&mut publisher);
     assert_eq!(helper.manager.active, helper.first_path_id.0);
 
     // Trigger:
@@ -226,7 +226,7 @@ fn update_path_to_active_path() {
         .update_active_path(
             helper.second_path_id,
             &mut random::testing::Generator(123),
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
 
@@ -238,7 +238,8 @@ fn update_path_to_active_path() {
 // Don't update path to the new active path if insufficient connection ids
 fn dont_update_path_to_active_path_if_no_connection_id_available() {
     // Setup:
-    let mut helper = helper_manager_with_paths_base(false, true);
+    let mut publisher = Publisher::snapshot();
+    let mut helper = helper_manager_with_paths_base(false, true, &mut publisher);
     assert_eq!(helper.manager.active, helper.first_path_id.0);
 
     // Trigger:
@@ -246,7 +247,7 @@ fn dont_update_path_to_active_path_if_no_connection_id_available() {
         helper.manager.update_active_path(
             helper.second_path_id,
             &mut random::testing::Generator(123),
-            &mut Publisher::default(),
+            &mut publisher,
         ),
         Err(transport::Error::INTERNAL_ERROR)
     );
@@ -258,7 +259,8 @@ fn dont_update_path_to_active_path_if_no_connection_id_available() {
 #[test]
 fn set_path_challenge_on_active_path_on_connection_migration() {
     // Setup:
-    let mut helper = helper_manager_with_paths();
+    let mut publisher = Publisher::snapshot();
+    let mut helper = helper_manager_with_paths(&mut publisher);
     helper.manager[helper.zero_path_id].abandon_challenge();
     assert!(!helper.manager[helper.zero_path_id].is_challenge_pending());
     assert_eq!(
@@ -272,7 +274,7 @@ fn set_path_challenge_on_active_path_on_connection_migration() {
         .update_active_path(
             helper.second_path_id,
             &mut random::testing::Generator(123),
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
 
@@ -303,7 +305,8 @@ fn set_path_challenge_on_active_path_on_connection_migration() {
 // - verify second path is validated
 fn validate_path_before_challenge_expiration() {
     // Setup:
-    let mut helper = helper_manager_with_paths();
+    let mut publisher = Publisher::snapshot();
+    let mut helper = helper_manager_with_paths(&mut publisher);
     assert_eq!(helper.manager.active, helper.first_path_id.0);
 
     // send challenge and arm abandon timer
@@ -325,7 +328,7 @@ fn validate_path_before_challenge_expiration() {
         .on_timeout(
             helper.now + helper.challenge_expiration - Duration::from_millis(100),
             &mut random::testing::Generator(123),
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
 
@@ -379,7 +382,8 @@ fn validate_path_before_challenge_expiration() {
 // - verify second path is NOT validated
 fn dont_validate_path_if_path_challenge_is_abandoned() {
     // Setup:
-    let mut helper = helper_manager_with_paths();
+    let mut publisher = Publisher::snapshot();
+    let mut helper = helper_manager_with_paths(&mut publisher);
     assert_eq!(helper.manager.active, helper.first_path_id.0);
 
     // send challenge and arm abandon timer
@@ -404,7 +408,7 @@ fn dont_validate_path_if_path_challenge_is_abandoned() {
         .on_timeout(
             helper.now + helper.challenge_expiration + Duration::from_millis(100),
             &mut random::testing::Generator(123),
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
 
@@ -430,7 +434,8 @@ fn dont_validate_path_if_path_challenge_is_abandoned() {
 //# validation is not already underway.
 fn initiate_path_challenge_if_new_path_is_not_validated() {
     // Setup:
-    let mut helper = helper_manager_with_paths();
+    let mut publisher = Publisher::snapshot();
+    let mut helper = helper_manager_with_paths(&mut publisher);
     assert!(!helper.manager[helper.first_path_id].is_validated());
     assert!(helper.manager[helper.first_path_id].is_challenge_pending());
 
@@ -447,7 +452,7 @@ fn initiate_path_challenge_if_new_path_is_not_validated() {
             None,
             path_validation::Probe::NonProbing,
             &mut random::testing::Generator(123),
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
 
@@ -478,6 +483,7 @@ fn initiate_path_challenge_if_new_path_is_not_validated() {
 // NoValidPath error
 fn silently_return_when_there_is_no_valid_path() {
     // Setup:
+    let mut publisher = Publisher::snapshot();
     let now = NoopClock {}.get_time();
     let expiration = Duration::from_millis(1000);
     let challenge = challenge::Challenge::new(expiration, [0; 8]);
@@ -513,7 +519,7 @@ fn silently_return_when_there_is_no_valid_path() {
     let res = manager.on_timeout(
         now + expiration + Duration::from_millis(100),
         &mut random::testing::Generator(123),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     // Expectation:
@@ -531,7 +537,8 @@ fn silently_return_when_there_is_no_valid_path() {
 // path but the path is still not validated.
 fn dont_abandon_path_challenge_if_new_path_is_not_validated() {
     // Setup:
-    let mut helper = helper_manager_with_paths();
+    let mut publisher = Publisher::snapshot();
+    let mut helper = helper_manager_with_paths(&mut publisher);
     assert!(!helper.manager[helper.first_path_id].is_validated());
     assert!(helper.manager[helper.first_path_id].is_challenge_pending());
 
@@ -547,7 +554,7 @@ fn dont_abandon_path_challenge_if_new_path_is_not_validated() {
             None,
             path_validation::Probe::NonProbing,
             &mut random::testing::Generator(123),
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
 
@@ -560,7 +567,8 @@ fn dont_abandon_path_challenge_if_new_path_is_not_validated() {
 #[test]
 fn abandon_path_challenges_if_new_path_is_validated() {
     // Setup:
-    let mut helper = helper_manager_with_paths();
+    let mut publisher = Publisher::snapshot();
+    let mut helper = helper_manager_with_paths(&mut publisher);
     assert!(helper.manager[helper.first_path_id].is_challenge_pending());
     assert!(helper.manager[helper.second_path_id].is_challenge_pending());
     assert_eq!(helper.manager.active_path_id(), helper.first_path_id);
@@ -577,7 +585,7 @@ fn abandon_path_challenges_if_new_path_is_validated() {
             None,
             path_validation::Probe::NonProbing,
             &mut random::testing::Generator(123),
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
 
@@ -590,7 +598,8 @@ fn abandon_path_challenges_if_new_path_is_validated() {
 #[test]
 fn abandon_all_path_challenges() {
     // Setup:
-    let mut helper = helper_manager_with_paths();
+    let mut publisher = Publisher::snapshot();
+    let mut helper = helper_manager_with_paths(&mut publisher);
     assert!(helper.manager[helper.zero_path_id].is_challenge_pending());
     assert!(helper.manager[helper.first_path_id].is_challenge_pending());
     assert!(helper.manager[helper.second_path_id].is_challenge_pending());
@@ -613,7 +622,8 @@ fn abandon_all_path_challenges() {
 // receiving a path_validation::Probing::NonProbing should update path to active path
 fn non_probing_should_update_path_to_active_path() {
     // Setup:
-    let mut helper = helper_manager_with_paths();
+    let mut publisher = Publisher::snapshot();
+    let mut helper = helper_manager_with_paths(&mut publisher);
     assert_eq!(helper.manager.active, helper.first_path_id.0);
 
     // Trigger:
@@ -624,7 +634,7 @@ fn non_probing_should_update_path_to_active_path() {
             None,
             path_validation::Probe::NonProbing,
             &mut random::testing::Generator(123),
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
 
@@ -641,7 +651,8 @@ fn non_probing_should_update_path_to_active_path() {
 // receiving a path_validation::Probing::Probing should NOT update path to active path
 fn probing_should_not_update_path_to_active_path() {
     // Setup:
-    let mut helper = helper_manager_with_paths();
+    let mut publisher = Publisher::snapshot();
+    let mut helper = helper_manager_with_paths(&mut publisher);
     assert_eq!(helper.manager.active, helper.first_path_id.0);
 
     // Trigger:
@@ -652,7 +663,7 @@ fn probing_should_not_update_path_to_active_path() {
             None,
             path_validation::Probe::Probing,
             &mut random::testing::Generator(123),
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
 
@@ -672,6 +683,7 @@ fn probing_should_not_update_path_to_active_path() {
 // - assert we have two paths
 fn test_adding_new_path() {
     // Setup:
+    let mut publisher = Publisher::snapshot();
     let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
     let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
     let new_addr = SocketAddress::from(new_addr);
@@ -712,7 +724,7 @@ fn test_adding_new_path() {
             &mut Default::default(),
             &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
 
@@ -736,6 +748,7 @@ fn test_adding_new_path() {
 // - assert we have one paths
 fn do_not_add_new_path_if_handshake_not_confirmed() {
     // Setup:
+    let mut publisher = Publisher::snapshot();
     let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
     let first_path = ServerPath::new(
         Default::default(),
@@ -771,7 +784,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
         &mut Default::default(),
         &mut migration::default::Validator::default(),
         DEFAULT_MAX_MTU,
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     // Expectation:
@@ -887,6 +900,7 @@ fn switch_destination_connection_id_after_first_server_response() {
 #[test]
 fn limit_number_of_connection_migrations() {
     // Setup:
+    let mut publisher = Publisher::snapshot();
     let new_addr: SocketAddr = "127.0.0.1:1".parse().unwrap();
     let new_addr = SocketAddress::from(new_addr);
     let new_addr = RemoteAddress::from(new_addr);
@@ -922,7 +936,7 @@ fn limit_number_of_connection_migrations() {
             &mut Default::default(),
             &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
-            &mut Publisher::default(),
+            &mut publisher,
         );
         match res {
             Ok((id, _)) => {
@@ -931,7 +945,7 @@ fn limit_number_of_connection_migrations() {
                     None,
                     path_validation::Probe::NonProbing,
                     &mut random::testing::Generator(123),
-                    &mut Publisher::default(),
+                    &mut publisher,
                 );
                 total_paths += 1
             }
@@ -944,6 +958,7 @@ fn limit_number_of_connection_migrations() {
 #[test]
 fn connection_migration_challenge_behavior() {
     // Setup:
+    let mut publisher = Publisher::snapshot();
     let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
     let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
     let new_addr = SocketAddress::from(new_addr);
@@ -979,7 +994,7 @@ fn connection_migration_challenge_behavior() {
             &mut Default::default(),
             &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
 
@@ -995,7 +1010,7 @@ fn connection_migration_challenge_behavior() {
         None,
         path_validation::Probe::NonProbing,
         &mut random::testing::Generator(123),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
@@ -1038,6 +1053,7 @@ fn connection_migration_challenge_behavior() {
 // - assert that new path uses max_ack_delay from the active path
 fn connection_migration_use_max_ack_delay_from_active_path() {
     // Setup 1:
+    let mut publisher = Publisher::snapshot();
     let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
     let new_addr = SocketAddress::from(new_addr);
     let new_addr = RemoteAddress::from(new_addr);
@@ -1073,7 +1089,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
             &mut Default::default(),
             &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
     let first_path_id = Id(0);
@@ -1116,6 +1132,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
 // - verify challenge is abandoned
 fn connection_migration_new_path_abandon_timer() {
     // Setup 1:
+    let mut publisher = Publisher::snapshot();
     let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
     let new_addr = SocketAddress::from(new_addr);
     let new_addr = RemoteAddress::from(new_addr);
@@ -1150,7 +1167,7 @@ fn connection_migration_new_path_abandon_timer() {
             &mut Default::default(),
             &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
     let first_path_id = Id(0);
@@ -1161,7 +1178,7 @@ fn connection_migration_new_path_abandon_timer() {
         None,
         path_validation::Probe::NonProbing,
         &mut random::testing::Generator(123),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     // Trigger 1:
@@ -1213,7 +1230,7 @@ fn connection_migration_new_path_abandon_timer() {
         abandon_time - Duration::from_millis(10),
         path::Id::test_id(),
         &mut random::testing::Generator(123),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     // Expectation 2:
@@ -1224,7 +1241,7 @@ fn connection_migration_new_path_abandon_timer() {
         abandon_time + Duration::from_millis(10),
         path::Id::test_id(),
         &mut random::testing::Generator(123),
-        &mut Publisher::default(),
+        &mut publisher,
     );
     // Expectation 3:
     assert!(!manager[second_path_id].is_challenge_pending());
@@ -1238,6 +1255,7 @@ fn connection_migration_new_path_abandon_timer() {
 //# connection ID to the set of active connection IDs.
 #[test]
 fn stop_using_a_retired_connection_id() {
+    let mut publisher = Publisher::snapshot();
     let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
     let first_path = ServerPath::new(
         Default::default(),
@@ -1253,7 +1271,7 @@ fn stop_using_a_retired_connection_id() {
 
     let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
     assert!(manager
-        .on_new_connection_id(&id_2, 1, 1, &TEST_TOKEN_1, &mut Publisher::default())
+        .on_new_connection_id(&id_2, 1, 1, &TEST_TOKEN_1, &mut publisher)
         .is_ok());
 
     assert_eq!(id_2, manager.paths[0].peer_connection_id);
@@ -1262,7 +1280,8 @@ fn stop_using_a_retired_connection_id() {
 #[test]
 fn amplification_limited_true_if_all_paths_amplificaiton_limited() {
     // Setup:
-    let helper = helper_manager_with_paths_base(true, false);
+    let mut publisher = Publisher::snapshot();
+    let helper = helper_manager_with_paths_base(true, false, &mut publisher);
     let zp = &helper.manager[helper.zero_path_id];
     assert!(zp.at_amplification_limit());
     let fp = &helper.manager[helper.first_path_id];
@@ -1277,7 +1296,8 @@ fn amplification_limited_true_if_all_paths_amplificaiton_limited() {
 #[test]
 fn amplification_limited_false_if_any_paths_amplificaiton_limited() {
     // Setup:
-    let mut helper = helper_manager_with_paths();
+    let mut publisher = Publisher::snapshot();
+    let mut helper = helper_manager_with_paths(&mut publisher);
     let fp = &helper.manager[helper.first_path_id];
     assert!(fp.at_amplification_limit());
     let sp = &mut helper.manager[helper.second_path_id];
@@ -1291,7 +1311,8 @@ fn amplification_limited_false_if_any_paths_amplificaiton_limited() {
 #[test]
 fn can_transmit_false_if_no_path_can_transmit() {
     // Setup:
-    let helper = helper_manager_with_paths_base(true, false);
+    let mut publisher = Publisher::snapshot();
+    let helper = helper_manager_with_paths_base(true, false, &mut publisher);
 
     let zp = &helper.manager[helper.zero_path_id];
     assert!(!transmission::Interest::None.can_transmit(zp.transmission_constraint()));
@@ -1309,7 +1330,8 @@ fn can_transmit_false_if_no_path_can_transmit() {
 #[test]
 fn can_transmit_true_if_any_path_can_transmit() {
     // Setup:
-    let mut helper = helper_manager_with_paths();
+    let mut publisher = Publisher::snapshot();
+    let mut helper = helper_manager_with_paths(&mut publisher);
     let interest = transmission::Interest::Forced;
     let fp = &helper.manager[helper.first_path_id];
     assert!(!interest.can_transmit(fp.transmission_constraint()));
@@ -1326,7 +1348,8 @@ fn can_transmit_true_if_any_path_can_transmit() {
 // Return all paths that are pending challenge or response.
 fn pending_paths_should_return_paths_pending_validation() {
     // Setup:
-    let mut helper = helper_manager_with_paths();
+    let mut publisher = Publisher::snapshot();
+    let mut helper = helper_manager_with_paths(&mut publisher);
     let third_path_id = Id(3);
     let third_conn_id = connection::PeerId::try_from_bytes(&[3]).unwrap();
     let mut third_path = ServerPath::new(
@@ -1380,6 +1403,7 @@ fn pending_paths_should_return_paths_pending_validation() {
 #[test]
 // Ensure paths are temporary until after authenticating a packet on the path
 fn temporary_until_authenticated() {
+    let mut publisher = Publisher::snapshot();
     let now = NoopClock {}.get_time();
     let datagram = DatagramInfo {
         timestamp: now,
@@ -1418,7 +1442,7 @@ fn temporary_until_authenticated() {
             &mut Default::default(),
             &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
 
@@ -1440,7 +1464,7 @@ fn temporary_until_authenticated() {
             &mut Default::default(),
             &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
 
@@ -1460,7 +1484,7 @@ fn temporary_until_authenticated() {
         None,
         path_validation::Probe::NonProbing,
         &mut random::testing::Generator(123),
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     assert!(
@@ -1477,7 +1501,7 @@ fn temporary_until_authenticated() {
             &mut Default::default(),
             &mut migration::default::Validator::default(),
             DEFAULT_MAX_MTU,
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
 
@@ -1672,6 +1696,7 @@ fn last_known_validated_path_should_update_on_path_response() {
 pub fn helper_manager_with_paths_base(
     register_second_conn_id: bool,
     validate_path_zero: bool,
+    publisher: &mut Publisher,
 ) -> Helper {
     let zero_conn_id = connection::PeerId::try_from_bytes(&[0]).unwrap();
     let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
@@ -1734,7 +1759,7 @@ pub fn helper_manager_with_paths_base(
         .update_active_path(
             first_path_id,
             &mut random::testing::Generator(123),
-            &mut Publisher::default(),
+            publisher,
         )
         .is_ok());
     if validate_path_zero {
@@ -1743,7 +1768,7 @@ pub fn helper_manager_with_paths_base(
 
     assert!(manager
         .peer_id_registry
-        .consume_new_id_for_existing_path(Id(0), zero_conn_id, &mut Publisher::default())
+        .consume_new_id_for_existing_path(Id(0), zero_conn_id, publisher)
         .is_some());
 
     // assert first_path is active and last_known_active_validated_path
@@ -1785,8 +1810,8 @@ pub fn helper_path(peer_id: connection::PeerId) -> ServerPath {
     )
 }
 
-pub fn helper_manager_with_paths() -> Helper {
-    helper_manager_with_paths_base(true, true)
+fn helper_manager_with_paths(publisher: &mut Publisher) -> Helper {
+    helper_manager_with_paths_base(true, true, publisher)
 }
 
 pub struct Helper {

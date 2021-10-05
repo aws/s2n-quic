@@ -664,6 +664,7 @@ mod tests {
     #[test]
     fn on_timeout_should_set_challenge_to_none_on_challenge_abandonment() {
         // Setup:
+        let mut publisher = Publisher::snapshot();
         let mut path = testing::helper_path_server();
         let helper_challenge = helper_challenge();
         let expiration_time = helper_challenge.now + helper_challenge.abandon_duration;
@@ -688,7 +689,7 @@ mod tests {
             expiration_time + Duration::from_millis(10),
             path::Id::test_id(),
             &mut random::testing::Generator(123),
-            &mut Publisher::default(),
+            &mut publisher,
         );
 
         // Expectation:
@@ -730,6 +731,7 @@ mod tests {
     #[test]
     fn failed_validation() {
         // Setup:
+        let mut publisher = Publisher::snapshot();
         let mut path = testing::helper_path_server();
         let helper_challenge = helper_challenge();
 
@@ -751,7 +753,7 @@ mod tests {
             expiration_time + Duration::from_millis(10),
             path::Id::test_id(),
             &mut random::testing::Generator(123),
-            &mut Publisher::default(),
+            &mut publisher,
         );
 
         // Expectation:
