@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-include!("/home/ubuntu/tools/rmc/src/test/rmc-prelude.rs");
+include!("/home/ubuntu/rmc/src/test/rmc-prelude.rs");
 
 use std::ops::{Deref, DerefMut};
 
