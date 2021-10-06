@@ -53,7 +53,16 @@ pub struct Manager<Config: endpoint::Config> {
 
     /// The current index of a path that is pending packet protection authentication
     ///
-    /// This index should be used when creating new paths if one exists
+    /// This field is used to annotate a new path that is pending packet authentication.
+    /// If packet authentication fails then this path index will get reused instead of
+    /// appending another to the list. This is used to prevent an off-path attacker from
+    /// creating new paths with garbage data and preventing the peer to migrate paths.
+    ///
+    /// Note that it doesn't prevent an on-path attacker from observering/forwarding
+    /// authenticated packets from bogus addresses. Because of the current hard limit
+    /// of `MAX_ALLOWED_PATHS`, this will prevent the peer from migrating, if it needs to.
+    /// The `paths` data structure will need to be enhanced to include garbage collection
+    /// of old paths to overcome this limitation.
     pending_packet_authentication: Option<u8>,
 }
 
@@ -219,8 +228,6 @@ impl<Config: endpoint::Config> Manager<Config> {
         //# in the network to cause connections to close by spoofing or otherwise
         //# manipulating observed traffic.
 
-        // TODO set alpn if available
-
         self.handle_connection_migration(
             path_handle,
             datagram,
@@ -246,6 +253,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         let active_local_addr = self.active_path().local_address();
         let active_remote_addr = self.active_path().remote_address();
 
+        // TODO set alpn if available
         let attempt: migration::Attempt = migration::AttemptBuilder {
             active_path: event::builder::Path {
                 local_addr: active_local_addr.into_event(),
@@ -281,8 +289,11 @@ impl<Config: endpoint::Config> Manager<Config> {
             }
         }
 
+        // Determine which index will be used for the newly created path
+        //
+        // If a previously allocated path failed to contain an authenticated packet, we
+        // use that index instead of pushing on to the end.
         let new_path_idx = if let Some(idx) = self.pending_packet_authentication {
-            // use the temporary path if it exists
             idx as _
         } else {
             let idx = self.paths.len();
