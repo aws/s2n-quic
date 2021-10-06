@@ -28,7 +28,6 @@ pub use manager::*;
 pub use s2n_quic_core::path::*;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[allow(dead_code)]
 enum State {
     /// Path has no transmission limitations
     Validated,

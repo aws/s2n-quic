@@ -50,6 +50,20 @@ pub struct Manager<Config: endpoint::Config> {
 
     /// Index of last known validated path
     last_known_validated_path: Option<u8>,
+
+    /// The current index of a path that is pending packet protection authentication
+    ///
+    /// This field is used to annotate a new path that is pending packet authentication.
+    /// If packet authentication fails then this path index will get reused instead of
+    /// appending another to the list. This is used to prevent an off-path attacker from
+    /// creating new paths with garbage data and preventing the peer to migrate paths.
+    ///
+    /// Note that it doesn't prevent an on-path attacker from observering/forwarding
+    /// authenticated packets from bogus addresses. Because of the current hard limit
+    /// of `MAX_ALLOWED_PATHS`, this will prevent the peer from migrating, if it needs to.
+    /// The `paths` data structure will need to be enhanced to include garbage collection
+    /// of old paths to overcome this limitation.
+    pending_packet_authentication: Option<u8>,
 }
 
 impl<Config: endpoint::Config> Manager<Config> {
@@ -59,6 +73,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             peer_id_registry,
             active: 0,
             last_known_validated_path: None,
+            pending_packet_authentication: None,
         }
     }
 
@@ -186,7 +201,6 @@ impl<Config: endpoint::Config> Manager<Config> {
         datagram: &DatagramInfo,
         handshake_confirmed: bool,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
-        random_generator: &mut Config::RandomGenerator,
         migration_validator: &mut Config::PathMigrationValidator,
         max_mtu: MaxMtu,
         publisher: &mut Pub,
@@ -214,13 +228,10 @@ impl<Config: endpoint::Config> Manager<Config> {
         //# in the network to cause connections to close by spoofing or otherwise
         //# manipulating observed traffic.
 
-        // TODO set alpn if available
-
         self.handle_connection_migration(
             path_handle,
             datagram,
             congestion_controller_endpoint,
-            random_generator,
             migration_validator,
             max_mtu,
             publisher,
@@ -233,7 +244,6 @@ impl<Config: endpoint::Config> Manager<Config> {
         path_handle: &Config::PathHandle,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
-        random_generator: &mut Config::RandomGenerator,
         migration_validator: &mut Config::PathMigrationValidator,
         max_mtu: MaxMtu,
         publisher: &mut Pub,
@@ -243,6 +253,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         let active_local_addr = self.active_path().local_address();
         let active_remote_addr = self.active_path().remote_address();
 
+        // TODO set alpn if available
         let attempt: migration::Attempt = migration::AttemptBuilder {
             active_path: event::builder::Path {
                 local_addr: active_local_addr.into_event(),
@@ -278,7 +289,18 @@ impl<Config: endpoint::Config> Manager<Config> {
             }
         }
 
-        let new_path_idx = self.paths.len();
+        // Determine which index will be used for the newly created path
+        //
+        // If a previously allocated path failed to contain an authenticated packet, we
+        // use that index instead of pushing on to the end.
+        let new_path_idx = if let Some(idx) = self.pending_packet_authentication {
+            idx as _
+        } else {
+            let idx = self.paths.len();
+            self.pending_packet_authentication = Some(idx as _);
+            idx
+        };
+
         // TODO: Support deletion of old paths: https://github.com/awslabs/s2n-quic/issues/741
         // The current path manager implementation does not delete or reuse indices
         // in the path array. This can result in an unbounded number of paths. To prevent
@@ -363,9 +385,11 @@ impl<Config: endpoint::Config> Manager<Config> {
         });
 
         // create a new path
-        self.paths.push(path);
-
-        self.set_challenge(new_path_id, random_generator);
+        if new_path_idx < self.paths.len() {
+            self.paths[new_path_idx] = path;
+        } else {
+            self.paths.push(path);
+        }
 
         Ok((new_path_id, unblocked))
     }
@@ -477,6 +501,14 @@ impl<Config: endpoint::Config> Manager<Config> {
         random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
+        // Remove the temporary status after successfully processing a packet
+        if self.pending_packet_authentication == Some(path_id.0) {
+            self.pending_packet_authentication = None;
+
+            // We can finally arm the challenge after authenticating the packet
+            self.set_challenge(path_id, random_generator);
+        }
+
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.2
         //# An endpoint can migrate a connection to a new local address by
         //# sending packets containing non-probing frames from that address.
