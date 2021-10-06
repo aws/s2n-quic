@@ -525,5 +525,36 @@ jobs:
 
       - name: Check to make sure the generated events are up-to-date
         run: |
-          # If this fails you neeed to run `cargo run --bin s2n-quic-events`
+          # If this fails you need to run `cargo run --bin s2n-quic-events`
+          git diff --exit-code
+
+  # ensures there are no unused snapshots
+  snapshots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Install cargo-insta
+        uses: camshaft/install@v1
+        with:
+          crate: cargo-insta
+
+      - uses: camshaft/rust-cache@v1
+
+      - name: Run cargo insta test
+        run: |
+          cargo insta test --delete-unreferenced-snapshots
+
+      - name: Check to make sure there are no unused snapshots
+        run: |
+          # If this fails, a test that was asserting a snapshot is no longer being executed.
           git diff --exit-code
