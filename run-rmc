@@ -77,6 +77,11 @@ class LitaniJob:
     def __init__(self, *args, **kwargs):
         self.args = args
         self.kwargs = kwargs
+        self.cmd = None
+
+
+    def __str__(self):
+        return self.cmd
 
 
     async def litani_add(self, litani):
@@ -92,7 +97,8 @@ class LitaniJob:
             else:
                 cmd.append(str(value))
 
-        logging.debug("Running '%s'", " ".join(cmd))
+        self.cmd = " ".join(cmd)
+        logging.debug("Running '%s'", self.cmd)
 
         proc = await asyncio.create_subprocess_exec(*cmd)
         await proc.wait()
@@ -278,7 +284,7 @@ def print_counter(counter, final=False):
     print(
         "\rConfiguring proofs: "
         "{complete:{width}} / {total:{width}}".format(
-            **counter), end="", file=sys.stderr)
+            **counter), file=sys.stderr)
     if final:
         print("", file=sys.stderr)
 
@@ -355,12 +361,14 @@ async def main():
     litani = get_litani_path()
 
     if not args.no_standalone:
-        proc = run_cmd([
-            litani, "init",
-            "--project-name", "Firecracker RMC Proofs",
-            "--output-prefix", OUT_DIR,
-            "--output-symlink", OUT_DIR / "latest",
-        ])
+        cmd = [
+            str(litani), "init",
+            "--project-name", "RMC verification",
+            "--output-prefix", str(OUT_DIR),
+            "--output-symlink", str(OUT_DIR / "latest"),
+        ]
+        logging.debug("Running '%s'", " ".join(cmd))
+        proc = run_cmd(cmd)
         if proc.returncode:
             sys.exit(1)
 
@@ -399,6 +407,7 @@ async def main():
         cmd = [litani, "run-build"]
         cmd.extend(["-j", args.parallel_jobs] if args.parallel_jobs else [])
         proc = run_cmd(cmd)
+        logging.debug("Running '%s'", " ".join(cmd))
         if proc.returncode:
             sys.exit(1)
 
