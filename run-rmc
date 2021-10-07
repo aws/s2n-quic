@@ -143,6 +143,7 @@ class Symtab2GbJobs:
         dependencies_dir = get_deps_dir(self.directory)
         logging.debug("Using %s as dependencies dir", str(dependencies_dir))
         if not pathlib.Path(dependencies_dir).exists():
+            print_out_subdirectories()
             logging.debug("Directory %s does not exist", dependencies_dir)
         for fyle in dependencies_dir.iterdir():
             if self.should_ignore(fyle):
@@ -368,6 +369,18 @@ def get_litani_jobs(proof_list, directory):
 
     emit_cbmc_jobs = CBMCJobs(proof_list, directory, emit_symtab_jobs.out_files)
     yield from emit_cbmc_jobs()
+
+
+def print_out_subdirectories(directory=".", level=0, max=10):
+  if level > max:
+      return
+  generator_contents = next(os.walk(directory))
+  current_dir = generator_contents[0]
+  sub_dirs = generator_contents[1]
+  for sub_dir in sub_dirs:
+      relative_sub_directory = f"{current_dir}/{sub_dir}"
+      print(relative_sub_directory)
+      print_out_subdirectories(directory=relative_sub_directory, level=level+1)
 
 
 async def main():
