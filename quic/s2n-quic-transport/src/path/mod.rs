@@ -24,6 +24,7 @@ pub(crate) mod mtu;
 pub use challenge::*;
 pub use manager::*;
 
+use crate::endpoint::Type;
 /// re-export core
 pub use s2n_quic_core::path::*;
 
@@ -98,6 +99,21 @@ impl<Config: endpoint::Config> Path<Config> {
         peer_validated: bool,
         max_mtu: MaxMtu,
     ) -> Path<Config> {
+        let state = match Config::ENDPOINT_TYPE {
+            Type::Server => {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+                //# If the client IP address has changed, the server MUST
+                //# adhere to the anti-amplification limits found in Section 8.1.
+                // Start each path in State::AmplificationLimited until it has been validated.
+                State::AmplificationLimited {
+                    tx_bytes: 0,
+                    rx_bytes: 0,
+                }
+            }
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
+            //# Clients are only constrained by the congestion controller.
+            Type::Client => State::Validated,
+        };
         let peer_socket_address = handle.remote_address();
         Path {
             handle,
@@ -106,14 +122,7 @@ impl<Config: endpoint::Config> Path<Config> {
             rtt_estimator,
             congestion_controller,
             pto_backoff: INITIAL_PTO_BACKOFF,
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
-            //# If the client IP address has changed, the server MUST
-            //# adhere to the anti-amplification limits found in Section 8.1.
-            // Start each path in State::AmplificationLimited until it has been validated.
-            state: State::AmplificationLimited {
-                tx_bytes: 0,
-                rx_bytes: 0,
-            },
+            state,
             mtu_controller: mtu::Controller::new(max_mtu, &peer_socket_address),
             ecn_controller: ecn::Controller::default(),
             peer_validated,
@@ -300,8 +309,9 @@ impl<Config: endpoint::Config> Path<Config> {
     fn on_validated(&mut self) {
         self.state = State::Validated;
 
-        // Enable the mtu controller to allow for PMTU discovery
-        self.mtu_controller.enable()
+        if self.is_peer_validated() {
+            self.on_fully_validated();
+        }
     }
 
     /// Returns whether this path has passed address validation
@@ -314,12 +324,22 @@ impl<Config: endpoint::Config> Path<Config> {
     #[inline]
     pub fn on_peer_validated(&mut self) {
         self.peer_validated = true;
+
+        if self.is_validated() {
+            self.on_fully_validated();
+        }
     }
 
     /// Returns whether this path has been validated by the peer
     #[inline]
     pub fn is_peer_validated(&self) -> bool {
         self.peer_validated
+    }
+
+    /// Called when the path has been validated locally, and also by the peer
+    fn on_fully_validated(&mut self) {
+        // Enable the mtu controller to allow for PMTU discovery
+        self.mtu_controller.enable()
     }
 
     #[inline]
@@ -515,6 +535,18 @@ pub mod testing {
             DEFAULT_MAX_MTU,
         )
     }
+
+    pub fn helper_path_client() -> Path<endpoint::testing::Client> {
+        Path::new(
+            Default::default(),
+            connection::PeerId::try_from_bytes(&[]).unwrap(),
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
+            DEFAULT_MAX_MTU,
+        )
+    }
 }
 
 #[cfg(test)]
@@ -524,7 +556,7 @@ mod tests {
         contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
         endpoint::testing::Server as Config,
         path,
-        path::{challenge::testing::helper_challenge, testing},
+        path::{challenge::testing::helper_challenge, testing, testing::helper_path_client},
     };
     use core::time::Duration;
     use s2n_quic_core::{
@@ -850,6 +882,10 @@ mod tests {
         // more bytes doesn't unblock
         unblocked = path.on_bytes_received(1200);
         assert!(!unblocked);
+
+        // Clients are not amplification limited
+        let path = helper_path_client();
+        assert!(path.is_validated());
     }
 
     #[test]
@@ -987,8 +1023,7 @@ mod tests {
 
     #[test]
     fn peer_validated_test() {
-        let mut path = testing::helper_path();
-        path.peer_validated = false;
+        let mut path = testing::helper_path_client();
 
         assert!(!path.is_peer_validated());
 
