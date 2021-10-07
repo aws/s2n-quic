@@ -339,7 +339,7 @@ def set_up_logging(verbose):
 
 
 def get_litani_path():
-    ret = pathlib.Path("litani/litani")
+    ret = pathlib.Path("tls/s2n-tls-sys/s2n/tests/litani/litani")
     if not ret.exists():
         logging.error(
             "Could not find litani at '%s'. Are your submodules up-to-date?",
