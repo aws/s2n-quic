@@ -600,7 +600,7 @@ pub mod testing {
     }
 
     // Helper function to easily create a PeerIdRegistry
-    pub(crate) fn reg(
+    pub(crate) fn peer_registry(
         initial_id: connection::PeerId,
         stateless_reset_token: Option<stateless_reset::Token>,
     ) -> PeerIdRegistry {

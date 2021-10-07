@@ -3,7 +3,7 @@
 use crate::{
     connection::{
         peer_id_registry::{
-            testing::{id, reg},
+            testing::{id, peer_registry},
             PeerIdRegistrationError,
             PeerIdRegistrationError::{
                 ExceededActiveConnectionIdLimit, ExceededRetiredConnectionIdLimit,
@@ -46,7 +46,7 @@ use s2n_quic_core::{
 #[test]
 fn error_when_exceeding_retired_connection_id_limit() {
     let id_1 = id(b"id01");
-    let mut reg = reg(id_1, None);
+    let mut reg = peer_registry(id_1, None);
 
     // Register 6 more new IDs for a total of 7, with 6 retired
     for i in 2u32..=(RETIRED_CONNECTION_ID_LIMIT + 1).into() {
@@ -81,7 +81,7 @@ fn error_when_exceeding_retired_connection_id_limit() {
 #[test]
 fn error_when_exceeding_active_connection_id_limit() {
     let id_1 = id(b"id01");
-    let mut reg = reg(id_1, None);
+    let mut reg = peer_registry(id_1, None);
 
     // Register 5 more new IDs with a retire_prior_to of 4, so there will be a total of
     // 6 connection IDs, with 3 retired and 3 active
@@ -114,7 +114,7 @@ fn error_when_exceeding_active_connection_id_limit() {
 #[test]
 fn no_error_when_duplicate() {
     let id_1 = id(b"id01");
-    let mut reg = reg(id_1, None);
+    let mut reg = peer_registry(id_1, None);
 
     let id_2 = id(b"id02");
     assert!(reg.on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1).is_ok());
@@ -133,7 +133,7 @@ fn no_error_when_duplicate() {
 #[test]
 fn active_connection_id_limit_must_be_at_least_2() {
     let id_1 = id(b"id01");
-    let mut reg = reg(id_1, None);
+    let mut reg = peer_registry(id_1, None);
 
     let id_2 = id(b"id02");
     assert!(reg.on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1).is_ok());
@@ -160,7 +160,7 @@ fn active_connection_id_limit_must_be_at_least_2() {
 #[test]
 fn duplicate_new_id_different_token_or_sequence_number() {
     let id_1 = id(b"id01");
-    let mut reg = reg(id_1, None);
+    let mut reg = peer_registry(id_1, None);
 
     let id_2 = id(b"id02");
     assert!(reg.on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1).is_ok());
@@ -184,7 +184,7 @@ fn duplicate_new_id_different_token_or_sequence_number() {
 #[test]
 fn non_duplicate_new_id_same_token_or_sequence_number() {
     let id_1 = id(b"id01");
-    let mut reg = reg(id_1, None);
+    let mut reg = peer_registry(id_1, None);
 
     let id_2 = id(b"id02");
     let id_3 = id(b"id03");
@@ -211,7 +211,7 @@ fn non_duplicate_new_id_same_token_or_sequence_number() {
 #[test]
 fn ignore_retire_prior_to_that_does_not_increase() {
     let id_1 = id(b"id01");
-    let mut reg = reg(id_1, None);
+    let mut reg = peer_registry(id_1, None);
 
     let id_2 = id(b"id02");
     let id_3 = id(b"id03");
@@ -331,7 +331,7 @@ fn retire_connection_id_when_retire_prior_to_increases() {
 #[test]
 fn retire_new_connection_id_if_sequence_number_smaller_than_retire_prior_to() {
     let id_1 = id(b"id01");
-    let mut reg = reg(id_1, None);
+    let mut reg = peer_registry(id_1, None);
 
     let id_2 = id(b"id02");
     assert!(reg
@@ -350,7 +350,7 @@ fn retire_new_connection_id_if_sequence_number_smaller_than_retire_prior_to() {
 #[test]
 fn retire_initial_id_when_new_connection_id_available() {
     let id_1 = id(b"id01");
-    let mut reg = reg(id_1, None);
+    let mut reg = peer_registry(id_1, None);
 
     assert_eq!(InUsePendingNewConnectionId, reg.registered_ids[0].status);
 
