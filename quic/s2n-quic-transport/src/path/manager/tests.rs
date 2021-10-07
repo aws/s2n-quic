@@ -798,6 +798,7 @@ fn do_not_add_new_path_if_client() {
         DEFAULT_MAX_MTU,
     );
     let mut manager = manager_client(first_path, None);
+    let mut publisher = Publisher::default();
 
     // verify we have one path
     let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
@@ -819,7 +820,7 @@ fn do_not_add_new_path_if_client() {
         &mut Default::default(),
         &mut migration::default::Validator::default(),
         DEFAULT_MAX_MTU,
-        &mut Publisher::default(),
+        &mut publisher,
     );
 
     // Expectation:
