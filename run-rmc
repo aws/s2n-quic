@@ -359,7 +359,7 @@ def get_deps_dir(directory):
         return pathlib.Path(
             f"{target_dir}build/cargo_target/x86_64-apple-darwin/debug/deps")
     return pathlib.Path(
-        f"build/cargo_target/x86_64-unknown-linux-gnu/debug/deps")
+        f"{target_dir}build/cargo_target/x86_64-unknown-linux-gnu/debug/deps")
 
 
 def get_litani_jobs(proof_list, directory):
