@@ -137,7 +137,14 @@ class Symtab2GbJobs:
 
 
     def __call__(self):
-        for fyle in get_deps_dir(self.directory).iterdir():
+        logging.debug("Using %s as prefix to the target dir", self.directory)
+        if not pathlib.Path(self.directory).exists():
+            logging.debug("Directory %s does not exist", self.directory)
+        dependencies_dir = get_deps_dir(self.directory)
+        logging.debug("Using %s as dependencies dir", str(dependencies_dir))
+        if not pathlib.Path(dependencies_dir).exists():
+            logging.debug("Directory %s does not exist", dependencies_dir)
+        for fyle in dependencies_dir.iterdir():
             if self.should_ignore(fyle):
                 continue
             out_file = fyle.with_suffix(".gb")
@@ -350,9 +357,9 @@ def get_deps_dir(directory):
     target_dir = directory if directory else ''
     if platform.system() == "Darwin":
         return pathlib.Path(
-            f"{directory}/build/cargo_target/x86_64-apple-darwin/debug/deps")
+            f"{target_dir}build/cargo_target/x86_64-apple-darwin/debug/deps")
     return pathlib.Path(
-        f"{directory}build/cargo_target/x86_64-unknown-linux-gnu/debug/deps")
+        f"{target_dir}build/cargo_target/x86_64-unknown-linux-gnu/debug/deps")
 
 
 def get_litani_jobs(proof_list, directory):
