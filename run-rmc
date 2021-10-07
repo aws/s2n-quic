@@ -46,10 +46,6 @@ def get_args():
             "nargs": "+",
             "help": "which proofs to run (default: all of them)",
     }, {
-            "flags": ["-d", "--directory"],
-            "metavar": "/path/to/directory/with/proofs",
-            "help": "the directory to codegen"
-    }, {
             "flags": ["-j", "--parallel-jobs"],
             "metavar": "N",
             "type": int,
@@ -81,11 +77,6 @@ class LitaniJob:
     def __init__(self, *args, **kwargs):
         self.args = args
         self.kwargs = kwargs
-        self.cmd = None
-
-
-    def __str__(self):
-        return self.cmd
 
 
     async def litani_add(self, litani):
@@ -100,9 +91,8 @@ class LitaniJob:
                 cmd.extend([str(v) for v in value])
             else:
                 cmd.append(str(value))
-        
-        self.cmd = " ".join(cmd)
-        logging.debug("Running '%s'", self.cmd)
+
+        logging.debug("Running '%s'", " ".join(cmd))
 
         proc = await asyncio.create_subprocess_exec(*cmd)
         await proc.wait()
@@ -117,7 +107,6 @@ class LitaniJob:
 
 @dataclasses.dataclass
 class Symtab2GbJobs:
-    directory: str
     out_files: list = dataclasses.field(default_factory=list)
 
 
@@ -125,27 +114,17 @@ class Symtab2GbJobs:
     def should_ignore(fyle):
         if fyle.suffix != ".json":
             return True
-
         if not fyle.name.startswith("vm_memory-"):
             return False
         with open(fyle) as handle:
             for line in handle:
                 if "dirty_bitmap" in line:
                     return False
-
         return True
 
 
     def __call__(self):
-        logging.debug("Using %s as prefix to the target dir", self.directory)
-        if not pathlib.Path(self.directory).exists():
-            logging.debug("Directory %s does not exist", self.directory)
-        dependencies_dir = get_deps_dir(self.directory)
-        logging.debug("Using %s as dependencies dir", str(dependencies_dir))
-        if not pathlib.Path(dependencies_dir).exists():
-            print_out_subdirectories()
-            logging.debug("Directory %s does not exist", dependencies_dir)
-        for fyle in dependencies_dir.iterdir():
+        for fyle in get_deps_dir().iterdir():
             if self.should_ignore(fyle):
                 continue
             out_file = fyle.with_suffix(".gb")
@@ -164,12 +143,11 @@ class Symtab2GbJobs:
 @dataclasses.dataclass
 class CBMCJobs:
     proof_names: list
-    directory: str
     out_files: list
 
 
     def get_proofs(self):
-        for root, _, fyles in os.walk(self.directory):
+        for root, _, fyles in os.walk("src"):
             dyr = pathlib.Path(root)
             for fyle in fyles:
                 path = dyr / fyle
@@ -221,7 +199,7 @@ class CBMCJobs:
                 ci_stage="test",
                 ignore_returns="10",
                 inputs=instrumented_binary,
-                outputs=phony_output,
+                phony_outputs=phony_output,
             )
 
 
@@ -251,30 +229,20 @@ class ProofFile:
 
     path: pathlib.Path
     proof_pat: re.Pattern = re.compile(r"\s*\#\[cfg\(rmc\)\]")
-    mangle_pat: re.Pattern = re.compile(r"\s*\#\[no\_mangle\]")
     name_pat: re.Pattern = re.compile(r"\s*fn\s+(?P<name>\w+)\(")
 
 
     def __call__(self):
         in_proof = False
-        in_mangle = False
-        logging.debug("Checking if file %s contains RMC proofs", str(self.path))
         with open(self.path) as handle:
-            line_num = 0
             for line in handle:
                 m = self.name_pat.match(line)
-                if in_proof and in_mangle and m:
-                    logging.debug("Found proof %s in line #%s", str(m["name"]), str(line_num))
+                if in_proof and m:
                     yield Proof(self.path, m["name"])
                     in_proof = False
-                    in_mangle = False
-                elif self.mangle_pat.match(line):
-                    logging.debug("Matched #[no_mangle] pattern in line #%s", str(line_num))
-                    in_mangle = True
                 elif self.proof_pat.match(line):
-                    logging.debug("Matched #[cfg(rmc)] pattern in line #%s", str(line_num))
                     in_proof = True
-                line_num += 1
+                    continue
 
 
 
@@ -310,7 +278,7 @@ def print_counter(counter, final=False):
     print(
         "\rConfiguring proofs: "
         "{complete:{width}} / {total:{width}}".format(
-            **counter), file=sys.stderr)
+            **counter), end="", file=sys.stderr)
     if final:
         print("", file=sys.stderr)
 
@@ -345,7 +313,7 @@ def set_up_logging(verbose):
 
 
 def get_litani_path():
-    ret = pathlib.Path("tls/s2n-tls-sys/s2n/tests/litani/litani")
+    ret = pathlib.Path("litani/litani")
     if not ret.exists():
         logging.error(
             "Could not find litani at '%s'. Are your submodules up-to-date?",
@@ -354,66 +322,50 @@ def get_litani_path():
     return ret
 
 
-def get_deps_dir(directory):
-    target_dir = directory if directory else ''
+def get_deps_dir():
     if platform.system() == "Darwin":
         return pathlib.Path(
-            f"{target_dir}build/cargo_target/x86_64-apple-darwin/debug/deps")
+            "build/cargo_target/x86_64-apple-darwin/debug/deps")
     return pathlib.Path(
-        f"{target_dir}build/cargo_target/x86_64-unknown-linux-gnu/debug/deps")
+        "build/cargo_target/x86_64-unknown-linux-gnu/debug/deps")
 
 
-def get_litani_jobs(proof_list, directory):
-    emit_symtab_jobs = Symtab2GbJobs(directory)
+def get_litani_jobs(proof_list):
+    emit_symtab_jobs = Symtab2GbJobs()
     yield from emit_symtab_jobs()
 
-    emit_cbmc_jobs = CBMCJobs(proof_list, directory, emit_symtab_jobs.out_files)
+    emit_cbmc_jobs = CBMCJobs(proof_list, emit_symtab_jobs.out_files)
     yield from emit_cbmc_jobs()
-
-
-def print_out_subdirectories(directory=".", level=0, max=10):
-  if level > max:
-      return
-  generator_contents = next(os.walk(directory))
-  current_dir = generator_contents[0]
-  sub_dirs = generator_contents[1]
-  for sub_dir in sub_dirs:
-      relative_sub_directory = f"{current_dir}/{sub_dir}"
-      print(relative_sub_directory)
-      print_out_subdirectories(directory=relative_sub_directory, level=level+1)
 
 
 async def main():
     args = get_args()
     set_up_logging(args.verbose)
 
-    cwd = pathlib.Path(args.directory) if args.directory else pathlib.Path("")
+    cwd = pathlib.Path("src/devices/src/virtio")
     env = {
         "RUST_BACKTRACE": "1",
         "RUSTFLAGS": "-Z trim-diagnostic-paths=no -Z codegen-backend=gotoc --cfg=rmc",
         "RUSTC": "rmc-rustc",
         **os.environ
     }
-    target_dir = f"{args.directory if args.directory else ''}build/cargo_target"
-    cmd = ["cargo", "build", "--target", "x86_64-unknown-linux-gnu", "--target-dir", target_dir]
+    cmd = ["cargo", "build", "--target", "x86_64-unknown-linux-gnu"]
     subprocess.run(cmd, env=env, cwd=str(cwd), check=True)
 
     litani = get_litani_path()
 
     if not args.no_standalone:
-        cmd = [
-            str(litani), "init",
-            "--project-name", "s2n-quic-core RMC",
-            "--output-prefix", str(OUT_DIR),
-            "--output-symlink", str(OUT_DIR / "latest"),
-        ]
-        logging.debug("Running '%s'", " ".join(cmd))
-        proc = run_cmd(cmd)
+        proc = run_cmd([
+            litani, "init",
+            "--project-name", "Firecracker RMC Proofs",
+            "--output-prefix", OUT_DIR,
+            "--output-symlink", OUT_DIR / "latest",
+        ])
         if proc.returncode:
             sys.exit(1)
 
     proof_queue = asyncio.Queue()
-    for job in get_litani_jobs(args.proofs, args.directory):
+    for job in get_litani_jobs(args.proofs):
         proof_queue.put_nowait(job)
 
     counter = {
@@ -447,7 +399,6 @@ async def main():
         cmd = [litani, "run-build"]
         cmd.extend(["-j", args.parallel_jobs] if args.parallel_jobs else [])
         proc = run_cmd(cmd)
-        logging.debug("Running '%s'", " ".join(cmd))
         if proc.returncode:
             sys.exit(1)
 
