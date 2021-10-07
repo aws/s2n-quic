@@ -331,7 +331,7 @@ impl ConnectionIdMapper {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::connection::{peer_id_registry::tests::id, InternalConnectionIdGenerator};
+    use crate::connection::{peer_id_registry::testing::id, InternalConnectionIdGenerator};
     use s2n_quic_core::stateless_reset::token::testing::*;
 
     #[test]
