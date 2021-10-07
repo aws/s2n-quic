@@ -7,6 +7,7 @@ use crate::{
     connection,
     contexts::WriteContext,
     endpoint,
+    endpoint::Type,
     recovery::{congestion_controller, CongestionController, RttEstimator},
     transmission::{self, Mode},
 };
@@ -24,7 +25,6 @@ pub(crate) mod mtu;
 pub use challenge::*;
 pub use manager::*;
 
-use crate::endpoint::Type;
 /// re-export core
 pub use s2n_quic_core::path::*;
 
