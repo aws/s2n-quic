@@ -22,10 +22,19 @@ use s2n_quic_core::{
 };
 use std::net::SocketAddr;
 
-// Helper function to easily create a PathManager
+// Helper function to easily create a PathManager as a Server
 fn manager(first_path: Path, stateless_reset_token: Option<stateless_reset::Token>) -> Manager {
+    manager_with_endpoint_type(first_path, stateless_reset_token, endpoint::Type::Server)
+}
+
+// Helper function to easily create a PathManager, specifying the endpoint type
+fn manager_with_endpoint_type(
+    first_path: Path,
+    stateless_reset_token: Option<stateless_reset::Token>,
+    endpoint_type: endpoint::Type,
+) -> Manager {
     let mut random_generator = random::testing::Generator(123);
-    let peer_id_registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
+    let peer_id_registry = ConnectionIdMapper::new(&mut random_generator, endpoint_type)
         .create_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             first_path.peer_connection_id,
@@ -738,6 +747,64 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
         &new_addr,
         &datagram,
         handshake_confirmed,
+        &mut Default::default(),
+        &mut migration::default::Validator::default(),
+        DEFAULT_MAX_MTU,
+        &mut Publisher::default(),
+    );
+
+    // Expectation:
+    assert!(on_datagram_result.is_err());
+    assert!(!manager.path(&new_addr).is_some());
+    assert_eq!(manager.paths.len(), 1);
+}
+
+#[test]
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#9
+//= type=test
+//# If a client receives packets from an unknown server address,
+//# the client MUST discard these packets.
+//
+// Setup:
+// - create path manager with one path as a client
+//
+// Trigger:
+// - call on_datagram_received with new remote address bit
+//
+// Expectation:
+// - asset on_datagram_received errors
+// - assert we have one path
+fn do_not_add_new_path_if_client() {
+    // Setup:
+    let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
+    let first_path = Path::new(
+        Default::default(),
+        first_conn_id,
+        connection::LocalId::TEST_ID,
+        RttEstimator::new(Duration::from_millis(30)),
+        Default::default(),
+        false,
+        DEFAULT_MAX_MTU,
+    );
+    let mut manager = manager_with_endpoint_type(first_path, None, endpoint::Type::Client);
+
+    // verify we have one path
+    let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
+    let new_addr = SocketAddress::from(new_addr);
+    let new_addr = RemoteAddress::from(new_addr);
+    assert_eq!(manager.paths.len(), 1);
+
+    // Trigger:
+    let datagram = DatagramInfo {
+        timestamp: NoopClock {}.get_time(),
+        payload_len: 0,
+        ecn: ExplicitCongestionNotification::default(),
+        destination_connection_id: connection::LocalId::TEST_ID,
+    };
+    let on_datagram_result = manager.on_datagram_received(
+        &new_addr,
+        &datagram,
+        true,
         &mut Default::default(),
         &mut migration::default::Validator::default(),
         DEFAULT_MAX_MTU,
