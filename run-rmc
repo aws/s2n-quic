@@ -235,20 +235,40 @@ class ProofFile:
 
     path: pathlib.Path
     proof_pat: re.Pattern = re.compile(r"\s*\#\[cfg\(rmc\)\]")
+    mangle_pat: re.Pattern = re.compile(r"\s*\#\[no\_mangle\]")
     name_pat: re.Pattern = re.compile(r"\s*fn\s+(?P<name>\w+)\(")
 
 
     def __call__(self):
         in_proof = False
+        in_mangle = False
+        logging.debug("Checking if file %s contains RMC proofs", str(self.path))
         with open(self.path) as handle:
+            line_num = 0
             for line in handle:
                 m = self.name_pat.match(line)
-                if in_proof and m:
+                if in_proof and in_mangle and m:
+                    logging.debug(
+                        "Found proof %s in line #%s",
+                        str(m["name"]),
+                        str(line_num)
+                    )
                     yield Proof(self.path, m["name"])
                     in_proof = False
+                    in_mangle = False
+                elif self.mangle_pat.match(line):
+                    logging.debug(
+                        "Matched #[no_mangle] pattern in line #%s",
+                        str(line_num)
+                    )
+                    in_mangle = True
                 elif self.proof_pat.match(line):
+                    logging.debug(
+                        "Matched #[cfg(rmc)] pattern in line #%s",
+                        str(line_num)
+                    )
                     in_proof = True
-                    continue
+                line_num += 1
 
 
 
