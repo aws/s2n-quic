@@ -193,7 +193,7 @@ class CBMCJobs:
                 description=f"{pipeline_name}: checking safety properties",
                 command=
                    f"cbmc {instrumented_binary} --reachability-slice "
-                   "--object-bits 11 --unwind 1",
+                   "--object-bits 11 --unwind 5 --unwinding-assertions",
                 pipeline=pipeline_name,
                 ci_stage="test",
                 ignore_returns="10",
