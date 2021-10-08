@@ -7,10 +7,10 @@
 use super::{ConnectionApi, ConnectionApiProvider};
 use crate::{
     connection::{self, Connection, ConnectionInterests, InternalConnectionId},
-    endpoint::handle::AcceptorSender,
+    endpoint::{self, connect::ConnectionSender, handle::AcceptorSender},
     stream,
 };
-use alloc::sync::Arc;
+use alloc::{collections::BTreeMap, sync::Arc};
 use bytes::Bytes;
 use core::{
     cell::Cell,
@@ -304,6 +304,7 @@ struct InterestLists<C: connection::Trait, L: connection::Lock<C>> {
     waiting_for_connection_id: LinkedList<WaitingForConnectionIdAdapter<C, L>>,
     /// Connections which are waiting for a timeout to occur
     waiting_for_timeout: RBTree<WaitingForTimeoutAdapter<C, L>>,
+    waiting_for_open: BTreeMap<InternalConnectionId, ConnectionSender>,
     /// Inflight handshake count
     handshake_connections: usize,
 }
@@ -315,6 +316,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
             waiting_for_transmission: LinkedList::new(WaitingForTransmissionAdapter::new()),
             waiting_for_connection_id: LinkedList::new(WaitingForConnectionIdAdapter::new()),
             waiting_for_timeout: RBTree::new(WaitingForTimeoutAdapter::new()),
+            waiting_for_open: BTreeMap::new(),
             handshake_connections: 0,
         }
     }
@@ -326,6 +328,8 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
         node: &ConnectionNode<C, L>,
         interests: ConnectionInterests,
     ) -> Result<(), L::Error> {
+        let id = node.internal_connection_id;
+
         // Note that all comparisons start by checking whether the connection is
         // already part of the given list. This is required in order for the
         // following operation to be safe. Inserting an element in a list while
@@ -410,7 +414,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
         if interests.accept {
             node.inner.write(|conn| {
                 debug_assert!(!conn.is_handshaking());
-                conn.mark_as_accepted()
+                conn.mark_as_accepted();
             })?;
 
             // Decrement the inflight handshakes because this connection completed the
@@ -427,13 +431,31 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
             };
             let handle = crate::connection::api::Connection::new(handle);
 
-            if let Err(error) = accept_queue.unbounded_send(handle) {
-                error.into_inner().api.close_connection(None);
+            match <C::Config as endpoint::Config>::ENDPOINT_TYPE {
+                endpoint::Type::Server => {
+                    if let Err(error) = accept_queue.unbounded_send(handle) {
+                        error.into_inner().api.close_connection(None);
+                    }
+                }
+                endpoint::Type::Client => {
+                    if let Some(sender) = self.waiting_for_open.remove(&id) {
+                        if let Err(Ok(handle)) = sender.send(Ok(handle)) {
+                            // close the connection if the application is no longer waiting for the handshake
+                            handle.api.close_connection(None);
+                        }
+                    } else if cfg!(debug_assertions) {
+                        panic!("client connection tried to open more than once");
+                    }
+                }
             }
         }
 
         if interests.finalization != node.done_connections_link.is_linked() {
             if interests.finalization {
+                if let Some(_sender) = self.waiting_for_open.remove(&id) {
+                    todo!("respond with the connection's error");
+                }
+
                 insert_interest!(done_connections, push_back);
             } else {
                 unreachable!("Done connections should never report not done later");
@@ -568,12 +590,35 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         timeout
     }
 
-    /// Insert a new Connection into the container
-    pub fn insert_connection(
+    /// Insert a new server Connection into the container
+    pub fn insert_server_connection(
         &mut self,
         connection: C,
         internal_connection_id: InternalConnectionId,
     ) {
+        debug_assert!(<C::Config as endpoint::Config>::ENDPOINT_TYPE.is_server());
+
+        self.insert_connection(connection, internal_connection_id)
+    }
+
+    /// Insert a new client Connection into the container
+    #[allow(dead_code)]
+    pub fn insert_client_connection(
+        &mut self,
+        connection: C,
+        internal_connection_id: InternalConnectionId,
+        connection_sender: ConnectionSender,
+    ) {
+        debug_assert!(<C::Config as endpoint::Config>::ENDPOINT_TYPE.is_client());
+
+        self.interest_lists
+            .waiting_for_open
+            .insert(internal_connection_id, connection_sender);
+
+        self.insert_connection(connection, internal_connection_id)
+    }
+
+    fn insert_connection(&mut self, connection: C, internal_connection_id: InternalConnectionId) {
         let interests = connection.interests();
 
         let connection = L::new(connection);

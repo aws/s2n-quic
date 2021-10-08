@@ -17,8 +17,8 @@ use s2n_quic_core::{
     path::{LocalAddress, RemoteAddress},
 };
 
-type ConnectionReceiver = oneshot::Receiver<Result<Connection, connection::Error>>;
-type ConnectionSender = oneshot::Sender<Result<Connection, connection::Error>>;
+pub(crate) type ConnectionReceiver = oneshot::Receiver<Result<Connection, connection::Error>>;
+pub(crate) type ConnectionSender = oneshot::Sender<Result<Connection, connection::Error>>;
 
 #[derive(Debug)]
 pub struct Connect {
@@ -45,9 +45,9 @@ impl Connect {
 }
 
 #[derive(Debug)]
-pub struct Request {
-    connect: Connect,
-    sender: ConnectionSender,
+pub(crate) struct Request {
+    pub connect: Connect,
+    pub sender: ConnectionSender,
 }
 
 pub struct Attempt {

@@ -196,14 +196,17 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
             });
         }
 
+        // try to open connection requests from the application
         if Cfg::ENDPOINT_TYPE.is_client() {
             loop {
                 match Pin::new(&mut self.connector_receiver).poll_next(cx) {
                     Poll::Pending => break,
                     Poll::Ready(Some(request)) => {
                         dbg!(&request);
-                        // TODO create the connection
+
                         nr_wakeups += 1;
+
+                        todo!("create a client connection; wakeups: {}", nr_wakeups);
                     }
                     Poll::Ready(None) => {
                         // TODO the client handle has been dropped - do anything?
@@ -249,6 +252,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             config,
             connector_receiver,
             connections: ConnectionContainer::new(acceptor_sender),
+
             connection_id_generator: InternalConnectionIdGenerator::new(),
             connection_id_mapper,
             wakeup_queue: WakeupQueue::new(),

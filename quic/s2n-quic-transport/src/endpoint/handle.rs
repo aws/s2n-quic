@@ -11,10 +11,10 @@ use core::{
 use futures_channel::mpsc;
 use futures_core::Stream;
 
-pub type AcceptorReceiver = mpsc::UnboundedReceiver<Connection>;
-pub type AcceptorSender = mpsc::UnboundedSender<Connection>;
-pub type ConnectorReceiver = mpsc::Receiver<connect::Request>;
-pub type ConnectorSender = mpsc::Sender<connect::Request>;
+pub(crate) type AcceptorReceiver = mpsc::UnboundedReceiver<Connection>;
+pub(crate) type AcceptorSender = mpsc::UnboundedSender<Connection>;
+pub(crate) type ConnectorReceiver = mpsc::Receiver<connect::Request>;
+pub(crate) type ConnectorSender = mpsc::Sender<connect::Request>;
 
 /// The [`Handle`] allows applications to accept and open QUIC connections on an `Endpoint`.
 pub struct Handle {

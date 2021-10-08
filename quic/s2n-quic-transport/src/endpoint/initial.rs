@@ -334,7 +334,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         // will also clean up all state which was already allocated for
         // the connection
         self.connections
-            .insert_connection(connection, internal_connection_id);
+            .insert_server_connection(connection, internal_connection_id);
 
         Ok(())
     }
