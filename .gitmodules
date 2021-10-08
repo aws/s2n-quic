@@ -1,0 +1,3 @@
+[submodule "litani"]
+	path = litani
+	url = https://github.com/awslabs/aws-build-accumulator
