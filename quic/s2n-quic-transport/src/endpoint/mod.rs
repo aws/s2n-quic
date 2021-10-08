@@ -4,16 +4,18 @@
 //! This module defines a QUIC endpoint
 
 use crate::{
-    acceptor::Acceptor,
     connection::{
         self, ConnectionContainer, ConnectionContainerIterationResult, ConnectionIdMapper,
         InternalConnectionId, InternalConnectionIdGenerator, ProcessingError, Trait as _,
     },
-    unbounded_channel,
     wakeup_queue::WakeupQueue,
 };
 use alloc::collections::VecDeque;
-use core::task::{self, Poll};
+use core::{
+    pin::Pin,
+    task::{self, Poll},
+};
+use futures_core::Stream as _;
 use s2n_codec::{DecoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{
     connection::{
@@ -33,6 +35,8 @@ use s2n_quic_core::{
 };
 
 mod config;
+pub mod connect;
+pub(crate) mod handle;
 mod initial;
 mod packet_buffer;
 mod retry;
@@ -41,6 +45,7 @@ mod version;
 
 // exports
 pub use config::{Config, Context};
+pub use handle::Handle;
 pub use packet_buffer::Buffer as PacketBuffer;
 pub use s2n_quic_core::endpoint::*;
 
@@ -63,6 +68,7 @@ pub struct Endpoint<Cfg: Config> {
     /// This is not a local variable in order to reuse the allocated queue capacity in between
     /// [`Endpoint`] interactions.
     dequeued_wakeups: VecDeque<InternalConnectionId>,
+    connector_receiver: handle::ConnectorReceiver,
     version_negotiator: version::Negotiator<Cfg>,
     retry_dispatch: retry::Dispatch<Cfg::PathHandle>,
     stateless_reset_dispatch: stateless_reset::Dispatch<Cfg::PathHandle>,
@@ -161,7 +167,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
 
         self.wakeup_queue
             .poll_pending_wakeups(&mut self.dequeued_wakeups, cx);
-        let nr_wakeups = self.dequeued_wakeups.len();
+        let mut nr_wakeups = self.dequeued_wakeups.len();
         let close_packet_buffer = &mut self.close_packet_buffer;
         let endpoint_context = self.config.context();
 
@@ -190,6 +196,22 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
             });
         }
 
+        if Cfg::ENDPOINT_TYPE.is_client() {
+            loop {
+                match Pin::new(&mut self.connector_receiver).poll_next(cx) {
+                    Poll::Pending => break,
+                    Poll::Ready(Some(request)) => {
+                        dbg!(&request);
+                        // TODO create the connection
+                        nr_wakeups += 1;
+                    }
+                    Poll::Ready(None) => {
+                        // TODO the client handle has been dropped - do anything?
+                    }
+                }
+            }
+        }
+
         if nr_wakeups > 0 {
             Poll::Ready(Ok(nr_wakeups))
         } else {
@@ -215,16 +237,18 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
 
 impl<Cfg: Config> Endpoint<Cfg> {
     /// Creates a new QUIC endpoint using the given configuration
-    pub fn new(mut config: Cfg) -> (Self, Acceptor) {
-        let (connection_sender, connection_receiver) = unbounded_channel::channel();
-        let acceptor = Acceptor::new(connection_receiver);
+    pub fn new(mut config: Cfg) -> (Self, Handle) {
+        // TODO make this configurable
+        let max_opening_connections = 1000;
+        let (handle, acceptor_sender, connector_receiver) = Handle::new(max_opening_connections);
 
         let connection_id_mapper =
             ConnectionIdMapper::new(config.context().random_generator, Cfg::ENDPOINT_TYPE);
 
         let endpoint = Self {
             config,
-            connections: ConnectionContainer::new(connection_sender),
+            connector_receiver,
+            connections: ConnectionContainer::new(acceptor_sender),
             connection_id_generator: InternalConnectionIdGenerator::new(),
             connection_id_mapper,
             wakeup_queue: WakeupQueue::new(),
@@ -236,7 +260,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             max_mtu: Default::default(),
         };
 
-        (endpoint, acceptor)
+        (endpoint, handle)
     }
 
     /// Determine the next step when a peer attempts a connection

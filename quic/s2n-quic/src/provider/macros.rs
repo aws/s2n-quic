@@ -151,18 +151,18 @@ macro_rules! impl_providers_state {
             }
         }
 
-        impl_providers_state!(@with, {}, {$($field: $field_ty),*});
+        impl_providers_state!(@with, $trait, {}, {$($field: $field_ty),*});
     };
-    (@with, { $($field:ident: $field_ty:ident),* }, {}) => {
+    (@with, $trait:ident, { $($field:ident: $field_ty:ident),* }, {}) => {
         // done
     };
-    (@with, { $($prev:ident: $prev_ty:ident),* }, { $field:ident: $field_ty:ident $(, $rest:ident: $rest_ty:ident)* }) => {
-        impl<Provider: ServerProviders, New: $field::Provider> $field::With<New> for Provider {
-            type Output = Providers<$(Provider::$prev_ty, )* New $(, Provider::$rest_ty)*>;
+    (@with, $trait:ident, { $($prev:ident: $prev_ty:ident),* }, { $field:ident: $field_ty:ident $(, $rest:ident: $rest_ty:ident)* }) => {
+        impl<Provider: $trait, New: $field::Provider> $field::With<New> for Builder<Provider> {
+            type Output = Builder<Providers<$(Provider::$prev_ty, )* New $(, Provider::$rest_ty)*>>;
 
             fn with(self, $field: New) -> Self::Output {
-                let providers = self.build();
-                Providers {
+                let providers = self.0.build();
+                Builder(Providers {
                     $field,
                     $(
                         $prev: providers.$prev,
@@ -170,27 +170,28 @@ macro_rules! impl_providers_state {
                     $(
                         $rest: providers.$rest,
                     )*
-                }
+                })
             }
         }
 
-        impl_providers_state!(@with, { $($prev: $prev_ty, )* $field: $field_ty }, {$($rest: $rest_ty),*});
+        impl_providers_state!(@with, $trait, { $($prev: $prev_ty, )* $field: $field_ty }, {$($rest: $rest_ty),*});
     }
 }
 
 macro_rules! impl_provider_method {
-    ($(#[$($attr:tt)*])* $name:ident, $field:ident) => {
+    ($(#[$($attr:tt)*])* $name:ident, $field:ident, $trait:ident) => {
             $(
                 #[$($attr)*]
             )*
-            pub fn $name<T>(self, $field: T) -> Result<Builder<impl ServerProviders>, T::Error>
+            pub fn $name<T, U>(self, $field: T) -> Result<Builder<impl $trait>, T::Error>
             where
                 T: $field::TryInto,
-                Providers: $field::With<T::Provider>,
+                U: $trait,
+                Self: $field::With<T::Provider, Output = Builder<U>>,
             {
                 let $field = $field.try_into()?;
-                let providers = $field::With::with(self.0.build(), $field);
-                Ok(Builder(providers))
+                let builder = $field::With::with(self, $field);
+                Ok(builder)
             }
 
     };

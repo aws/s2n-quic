@@ -7,7 +7,8 @@
 use super::{ConnectionApi, ConnectionApiProvider};
 use crate::{
     connection::{self, Connection, ConnectionInterests, InternalConnectionId},
-    stream, unbounded_channel,
+    endpoint::handle::AcceptorSender,
+    stream,
 };
 use alloc::sync::Arc;
 use bytes::Bytes;
@@ -321,7 +322,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
     /// Update all interest lists based on latest interest reported by a Node
     fn update_interests(
         &mut self,
-        accept_queue: &mut unbounded_channel::Sender<Connection>,
+        accept_queue: &mut AcceptorSender,
         node: &ConnectionNode<C, L>,
         interests: ConnectionInterests,
     ) -> Result<(), L::Error> {
@@ -426,8 +427,8 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
             };
             let handle = crate::connection::api::Connection::new(handle);
 
-            if let Err((handle, _)) = accept_queue.send(handle) {
-                handle.api.close_connection(None);
+            if let Err(error) = accept_queue.unbounded_send(handle) {
+                error.into_inner().api.close_connection(None);
             }
         }
 
@@ -485,7 +486,7 @@ pub struct ConnectionContainer<C: connection::Trait, L: connection::Lock<C>> {
     /// Additional interest lists in which Connections will be placed dynamically
     interest_lists: InterestLists<C, L>,
     /// The synchronized queue of accepted connections
-    accept_queue: unbounded_channel::Sender<Connection>,
+    accept_queue: AcceptorSender,
 }
 
 macro_rules! iterate_interruptible {
@@ -539,7 +540,7 @@ macro_rules! iterate_interruptible {
 
 impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
     /// Creates a new `ConnectionContainer`
-    pub fn new(accept_queue: unbounded_channel::Sender<Connection>) -> Self {
+    pub fn new(accept_queue: AcceptorSender) -> Self {
         Self {
             connection_map: RBTree::new(ConnectionTreeAdapter::new()),
             interest_lists: InterestLists::new(),
@@ -548,7 +549,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
     }
 
     pub fn can_accept(&self) -> bool {
-        self.accept_queue.is_open()
+        !self.accept_queue.is_closed()
     }
 
     pub fn is_open(&self) -> bool {

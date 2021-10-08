@@ -44,6 +44,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 #[macro_use]
 pub mod provider;
 
+pub mod client;
 pub mod connection;
 pub mod server;
 pub mod stream;
@@ -52,5 +53,6 @@ pub mod application {
     pub use s2n_quic_core::application::{Error, Sni};
 }
 
+pub use client::Client;
 pub use connection::Connection;
 pub use server::Server;

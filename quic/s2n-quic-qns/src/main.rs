@@ -7,6 +7,7 @@ pub type Error = Box<dyn 'static + std::error::Error + Send + Sync>;
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 mod client;
 mod file;
+mod perf;
 mod server;
 
 /// This message is searched in interop logs to ensure the application doesn't panic

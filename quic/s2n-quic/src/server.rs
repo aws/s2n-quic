@@ -6,7 +6,7 @@ use core::{
     fmt,
     task::{Context, Poll},
 };
-use s2n_quic_transport::acceptor::Acceptor;
+use s2n_quic_transport::endpoint::Handle;
 
 mod builder;
 mod providers;
@@ -16,7 +16,7 @@ pub use providers::*;
 
 /// A QUIC server endpoint, capable of accepting connections
 pub struct Server {
-    acceptor: Acceptor,
+    handle: Handle,
 }
 
 impl fmt::Debug for Server {
@@ -110,7 +110,7 @@ impl Server {
     /// // TODO
     /// ```
     pub fn poll_accept(&mut self, cx: &mut Context) -> Poll<Option<Connection>> {
-        match self.acceptor.poll_accept(cx) {
+        match self.handle.poll_accept(cx) {
             Poll::Ready(Some(connection)) => Poll::Ready(Some(Connection::new(connection))),
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,

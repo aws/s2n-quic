@@ -15,10 +15,8 @@ mod processed_packet;
 mod space;
 mod sync;
 mod transmission;
-mod unbounded_channel;
 mod wakeup_queue;
 
-pub mod acceptor;
 pub mod connection;
 pub mod endpoint;
 pub mod path;

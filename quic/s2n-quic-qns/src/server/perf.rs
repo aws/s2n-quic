@@ -1,8 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::Result;
-use bytes::Bytes;
+use crate::{perf, Result};
 use futures::future::try_join_all;
 use s2n_quic::{
     provider::{
@@ -135,10 +134,10 @@ impl Perf {
         //# merely closes its side of the stream.
         async fn handle_bidi_stream(stream: BidirectionalStream) -> Result<()> {
             let (mut receiver, sender) = stream.split();
-            let (size, _prelude) = read_stream_size(&mut receiver).await?;
+            let (size, _prelude) = perf::read_stream_size(&mut receiver).await?;
 
-            let receiver = tokio::spawn(async move { handle_receive_stream(receiver).await });
-            let sender = tokio::spawn(async move { handle_send_stream(sender, size).await });
+            let receiver = tokio::spawn(async move { perf::handle_receive_stream(receiver).await });
+            let sender = tokio::spawn(async move { perf::handle_send_stream(sender, size).await });
 
             let _ = futures::try_join!(receiver, sender);
 
@@ -151,89 +150,14 @@ impl Perf {
         //# to send the requested data.  If no data is requested by the client,
         //# the server need take no action.
         async fn handle_uni_stream(mut receiver: ReceiveStream, sender: SendStream) -> Result<()> {
-            let (size, _prelude) = read_stream_size(&mut receiver).await?;
+            let (size, _prelude) = perf::read_stream_size(&mut receiver).await?;
 
-            let receiver = tokio::spawn(async move { handle_receive_stream(receiver).await });
-            let sender = tokio::spawn(async move { handle_send_stream(sender, size).await });
+            let receiver = tokio::spawn(async move { perf::handle_receive_stream(receiver).await });
+            let sender = tokio::spawn(async move { perf::handle_send_stream(sender, size).await });
 
             let _ = futures::try_join!(receiver, sender);
 
             Ok(())
-        }
-
-        async fn handle_receive_stream(mut stream: ReceiveStream) -> Result<()> {
-            let mut chunks = vec![Bytes::new(); 64];
-
-            loop {
-                let (len, is_open) = stream.receive_vectored(&mut chunks).await?;
-
-                if !is_open {
-                    break;
-                }
-
-                for chunk in chunks[..len].iter_mut() {
-                    // discard chunks
-                    *chunk = Bytes::new();
-                }
-            }
-
-            Ok(())
-        }
-
-        async fn handle_send_stream(mut stream: SendStream, len: u64) -> Result<()> {
-            let mut chunks = vec![Bytes::new(); 64];
-
-            //= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#4.1
-            //# Since the goal here is to measure the efficiency of the QUIC
-            //# implementation and not any application protocol, the performance
-            //# application layer should be as light-weight as possible.  To this
-            //# end, the client and server application layer may use a single
-            //# preallocated and initialized buffer that it queues to send when any
-            //# payload needs to be sent out.
-            let mut data = s2n_quic_core::stream::testing::Data::new(len);
-
-            loop {
-                match data.send(usize::MAX, &mut chunks) {
-                    Some(count) => {
-                        stream.send_vectored(&mut chunks[..count]).await?;
-                    }
-                    None => {
-                        stream.finish()?;
-                        break;
-                    }
-                }
-            }
-
-            Ok(())
-        }
-
-        //= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#2.3.1
-        //# Every stream opened by the client uses the first 8 bytes of the
-        //# stream data to encode a 64-bit unsigned integer in network byte order
-        //# to indicate the length of data the client wishes the server to
-        //# respond with.
-        async fn read_stream_size(stream: &mut ReceiveStream) -> Result<(u64, Bytes)> {
-            let mut chunk = Bytes::new();
-            let mut offset = 0;
-            let mut id = [0u8; core::mem::size_of::<u64>()];
-
-            while offset < id.len() {
-                chunk = stream
-                    .receive()
-                    .await?
-                    .expect("every stream should be prefixed with the scenario ID");
-
-                let needed_len = id.len() - offset;
-                let len = chunk.len().min(needed_len);
-
-                id[offset..offset + len].copy_from_slice(&chunk[..len]);
-                offset += len;
-                bytes::Buf::advance(&mut chunk, len);
-            }
-
-            let id = u64::from_be_bytes(id);
-
-            Ok((id, chunk))
         }
     }
 

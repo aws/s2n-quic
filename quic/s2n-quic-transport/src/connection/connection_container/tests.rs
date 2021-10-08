@@ -13,6 +13,7 @@ use crate::{
 use bolero::{check, generator::*};
 use bytes::Bytes;
 use core::task::{Context, Poll};
+use futures_core::Stream as _;
 use s2n_quic_core::{
     application, event,
     inet::{DatagramInfo, SocketAddress},
@@ -344,8 +345,8 @@ fn container_test() {
     check!().with_type::<Vec<Operation>>().for_each(|ops| {
         let mut id_gen = InternalConnectionIdGenerator::new();
         let mut connections = vec![];
-        let (sender, receiver) = crate::unbounded_channel::channel();
-        let mut receiver = Some(receiver);
+        let (sender, receiver) = futures_channel::mpsc::unbounded();
+        let mut receiver = Some(Box::pin(receiver));
         let (waker, _wake_count) = futures_test::task::new_count_waker();
         let mut now = unsafe { Timestamp::from_duration(Duration::from_secs(0)) };
 
@@ -410,8 +411,9 @@ fn container_test() {
                 }
                 Operation::Receive => {
                     if let Some(receiver) = receiver.as_mut() {
-                        while let Poll::Ready(Ok(_accepted)) =
-                            receiver.poll_next(&Context::from_waker(&waker))
+                        while let Poll::Ready(Some(_accepted)) = receiver
+                            .as_mut()
+                            .poll_next(&mut Context::from_waker(&waker))
                         {
                             // TODO assert that the accepted connection expressed accept
                             // interest
