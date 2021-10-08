@@ -46,6 +46,10 @@ def get_args():
             "nargs": "+",
             "help": "which proofs to run (default: all of them)",
     }, {
+            "flags": ["-d", "--directory"],
+            "metavar": "/path/to/directory/with/proofs",
+            "help": "the directory to codegen"
+    }, {
             "flags": ["-j", "--parallel-jobs"],
             "metavar": "N",
             "type": int,
@@ -368,7 +372,7 @@ async def main():
     args = get_args()
     set_up_logging(args.verbose)
 
-    cwd = pathlib.Path("src/devices/src/virtio")
+    cwd = pathlib.Path(args.directory) if args.directory else pathlib.Path("")
     env = {
         "RUST_BACKTRACE": "1",
         "RUSTFLAGS": "-Z trim-diagnostic-paths=no -Z codegen-backend=gotoc --cfg=rmc",
