@@ -7,6 +7,7 @@ use crate::{
     connection,
     contexts::WriteContext,
     endpoint,
+    endpoint::Type,
     recovery::{congestion_controller, CongestionController, RttEstimator},
     transmission::{self, Mode},
 };
@@ -98,6 +99,21 @@ impl<Config: endpoint::Config> Path<Config> {
         peer_validated: bool,
         max_mtu: MaxMtu,
     ) -> Path<Config> {
+        let state = match Config::ENDPOINT_TYPE {
+            Type::Server => {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+                //# If the client IP address has changed, the server MUST
+                //# adhere to the anti-amplification limits found in Section 8.1.
+                // Start each path in State::AmplificationLimited until it has been validated.
+                State::AmplificationLimited {
+                    tx_bytes: 0,
+                    rx_bytes: 0,
+                }
+            }
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
+            //# Clients are only constrained by the congestion controller.
+            Type::Client => State::Validated,
+        };
         let peer_socket_address = handle.remote_address();
         Path {
             handle,
@@ -106,14 +122,7 @@ impl<Config: endpoint::Config> Path<Config> {
             rtt_estimator,
             congestion_controller,
             pto_backoff: INITIAL_PTO_BACKOFF,
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
-            //# If the client IP address has changed, the server MUST
-            //# adhere to the anti-amplification limits found in Section 8.1.
-            // Start each path in State::AmplificationLimited until it has been validated.
-            state: State::AmplificationLimited {
-                tx_bytes: 0,
-                rx_bytes: 0,
-            },
+            state,
             mtu_controller: mtu::Controller::new(max_mtu, &peer_socket_address),
             ecn_controller: ecn::Controller::default(),
             peer_validated,
@@ -300,8 +309,9 @@ impl<Config: endpoint::Config> Path<Config> {
     fn on_validated(&mut self) {
         self.state = State::Validated;
 
-        // Enable the mtu controller to allow for PMTU discovery
-        self.mtu_controller.enable()
+        if self.is_peer_validated() {
+            self.on_fully_validated();
+        }
     }
 
     /// Returns whether this path has passed address validation
@@ -314,12 +324,22 @@ impl<Config: endpoint::Config> Path<Config> {
     #[inline]
     pub fn on_peer_validated(&mut self) {
         self.peer_validated = true;
+
+        if self.is_validated() {
+            self.on_fully_validated();
+        }
     }
 
     /// Returns whether this path has been validated by the peer
     #[inline]
     pub fn is_peer_validated(&self) -> bool {
         self.peer_validated
+    }
+
+    /// Called when the path has been validated locally, and also by the peer
+    fn on_fully_validated(&mut self) {
+        // Enable the mtu controller to allow for PMTU discovery
+        self.mtu_controller.enable()
     }
 
     #[inline]
@@ -504,7 +524,7 @@ pub mod testing {
     use core::time::Duration;
     use s2n_quic_core::{connection, recovery::RttEstimator};
 
-    pub fn helper_path() -> Path<endpoint::testing::Server> {
+    pub fn helper_path_server() -> Path<endpoint::testing::Server> {
         Path::new(
             Default::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
@@ -512,6 +532,18 @@ pub mod testing {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             true,
+            DEFAULT_MAX_MTU,
+        )
+    }
+
+    pub fn helper_path_client() -> Path<endpoint::testing::Client> {
+        Path::new(
+            Default::default(),
+            connection::PeerId::try_from_bytes(&[]).unwrap(),
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
             DEFAULT_MAX_MTU,
         )
     }
@@ -524,7 +556,7 @@ mod tests {
         contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
         endpoint::testing::Server as Config,
         path,
-        path::{challenge::testing::helper_challenge, testing},
+        path::{challenge::testing::helper_challenge, testing, testing::helper_path_client},
     };
     use core::time::Duration;
     use s2n_quic_core::{
@@ -540,7 +572,7 @@ mod tests {
     #[test]
     fn response_data_should_only_be_sent_once() {
         // Setup:
-        let mut path = testing::helper_path();
+        let mut path = testing::helper_path_server();
         let now = NoopClock {}.get_time();
 
         let mut frame_buffer = OutgoingFrameBuffer::new();
@@ -578,7 +610,7 @@ mod tests {
     #[test]
     fn on_timeout_should_set_challenge_to_none_on_challenge_abandonment() {
         // Setup:
-        let mut path = testing::helper_path();
+        let mut path = testing::helper_path_server();
         let helper_challenge = helper_challenge();
         let expiration_time = helper_challenge.now + helper_challenge.abandon_duration;
         path.set_challenge(helper_challenge.challenge);
@@ -613,7 +645,7 @@ mod tests {
     #[test]
     fn is_challenge_pending_should_return_false_if_challenge_is_not_set() {
         // Setup:
-        let mut path = testing::helper_path();
+        let mut path = testing::helper_path_server();
         let helper_challenge = helper_challenge();
 
         // Expectation:
@@ -631,7 +663,7 @@ mod tests {
     #[test]
     fn first_path_in_disabled_state_cant_fail_validation() {
         // Setup:
-        let path = testing::helper_path();
+        let path = testing::helper_path_server();
 
         // Expectation:
         assert!(path.challenge.is_disabled());
@@ -644,7 +676,7 @@ mod tests {
     #[test]
     fn failed_validation() {
         // Setup:
-        let mut path = testing::helper_path();
+        let mut path = testing::helper_path_server();
         let helper_challenge = helper_challenge();
 
         path.set_challenge(helper_challenge.challenge);
@@ -679,7 +711,7 @@ mod tests {
     #[test]
     fn abandon_challenge() {
         // Setup:
-        let mut path = testing::helper_path();
+        let mut path = testing::helper_path_server();
         let helper_challenge = helper_challenge();
         path.set_challenge(helper_challenge.challenge);
 
@@ -693,7 +725,7 @@ mod tests {
     #[test]
     fn on_path_challenge_should_set_reponse_data() {
         // Setup:
-        let mut path = testing::helper_path();
+        let mut path = testing::helper_path_server();
 
         // Expectation:
         assert!(!path.response_data.is_some());
@@ -714,7 +746,7 @@ mod tests {
     #[test]
     fn on_path_challenge_should_replace_reponse_data() {
         // Setup:
-        let mut path = testing::helper_path();
+        let mut path = testing::helper_path_server();
         let expected_data: [u8; 8] = [0; 8];
 
         // Trigger 1:
@@ -735,7 +767,7 @@ mod tests {
     #[test]
     fn validate_path_response_should_only_validate_if_challenge_is_set() {
         // Setup:
-        let mut path = testing::helper_path();
+        let mut path = testing::helper_path_server();
         let helper_challenge = helper_challenge();
 
         // Expectation:
@@ -752,7 +784,7 @@ mod tests {
     #[test]
     fn on_validated_should_change_state_to_validated_and_clear_challenge() {
         // Setup:
-        let mut path = testing::helper_path();
+        let mut path = testing::helper_path_server();
         let helper_challenge = helper_challenge();
         path.set_challenge(helper_challenge.challenge);
 
@@ -770,7 +802,7 @@ mod tests {
     #[test]
     fn on_validated_when_already_validated_does_nothing() {
         // Setup:
-        let mut path = testing::helper_path();
+        let mut path = testing::helper_path_server();
         path.set_challenge(helper_challenge().challenge);
         path.on_validated();
 
@@ -803,7 +835,7 @@ mod tests {
         //# adhere to the anti-amplification limits found in Section 8.1.
         // This tests the IP change because a new path is created when a new peer_address is
         // detected. This new path should always start in State::Pending.
-        let mut path = testing::helper_path();
+        let mut path = testing::helper_path_server();
 
         // Verify we enforce the amplification limit if we can't send
         // at least 1 minimum sized packet
@@ -850,6 +882,10 @@ mod tests {
         // more bytes doesn't unblock
         unblocked = path.on_bytes_received(1200);
         assert!(!unblocked);
+
+        // Clients are not amplification limited
+        let path = helper_path_client();
+        assert!(path.is_validated());
     }
 
     #[test]
@@ -886,7 +922,7 @@ mod tests {
             Mode::MtuProbing,
             Mode::LossRecoveryProbing,
         ] {
-            let mut path = testing::helper_path();
+            let mut path = testing::helper_path_server();
             // Verify we can transmit up to the mtu
             let mtu = path.mtu(transmission_mode);
 
@@ -916,7 +952,7 @@ mod tests {
 
     #[test]
     fn clamp_mtu_for_validated_path() {
-        let mut path = testing::helper_path();
+        let mut path = testing::helper_path_server();
         path.on_validated();
         let mtu = 1472;
         let probed_size = 1500;
@@ -942,7 +978,7 @@ mod tests {
 
     #[test]
     fn path_mtu() {
-        let mut path = testing::helper_path();
+        let mut path = testing::helper_path_server();
         path.on_bytes_received(1);
         let mtu = 1472;
         let probed_size = 1500;
@@ -968,7 +1004,7 @@ mod tests {
 
     #[test]
     fn clamp_mtu_when_tx_more_than_rx() {
-        let mut path = testing::helper_path();
+        let mut path = testing::helper_path_server();
         let mtu = 1472;
         let probed_size = 1500;
         path.mtu_controller = mtu::testing::test_controller(mtu, probed_size);
@@ -987,8 +1023,7 @@ mod tests {
 
     #[test]
     fn peer_validated_test() {
-        let mut path = testing::helper_path();
-        path.peer_validated = false;
+        let mut path = testing::helper_path_client();
 
         assert!(!path.is_peer_validated());
 

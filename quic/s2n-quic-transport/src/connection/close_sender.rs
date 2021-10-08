@@ -309,7 +309,7 @@ impl timer::Provider for Limiter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::path::testing::helper_path;
+    use crate::path::testing::helper_path_server;
     use s2n_quic_core::{
         event::testing::Publisher,
         io::tx::Message as _,
@@ -336,7 +336,7 @@ mod tests {
             .for_each(|(close_time, rtt, events, is_validated)| {
                 let mut sender = CloseSender::default();
                 let mut clock = Clock::default();
-                let mut path = helper_path();
+                let mut path = helper_path_server();
                 let mut buffer = [0; MINIMUM_MTU as usize];
                 let mut transmission_count = 0usize;
 
