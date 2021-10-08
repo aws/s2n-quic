@@ -210,6 +210,15 @@ impl<Config: endpoint::Config> Manager<Config> {
             return Ok((id, unblocked));
         }
 
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
+        //# If a client receives packets from an unknown server address,
+        //# the client MUST discard these packets.
+        // Even though this returns an error, it is ignored by the endpoint and the connection remains open.
+        // TODO return a specialized enum for dropping the packet (see https://github.com/awslabs/s2n-quic/issues/669)
+        if Config::ENDPOINT_TYPE.is_client() {
+            return Err(transport::Error::PROTOCOL_VIOLATION.with_reason("unknown server address"));
+        };
+
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //# The design of QUIC relies on endpoints retaining a stable address
         //# for the duration of the handshake.  An endpoint MUST NOT initiate
@@ -248,6 +257,10 @@ impl<Config: endpoint::Config> Manager<Config> {
         max_mtu: MaxMtu,
         publisher: &mut Pub,
     ) -> Result<(Id, bool), transport::Error> {
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
+        //# Clients are responsible for initiating all migrations.
+        debug_assert!(Config::ENDPOINT_TYPE.is_server());
+
         let remote_address = path_handle.remote_address();
         let local_address = path_handle.local_address();
         let active_local_addr = self.active_path().local_address();
