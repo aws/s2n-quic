@@ -12,6 +12,7 @@ use crate::{
     transmission::{self, Mode},
 };
 use s2n_quic_core::{
+    counter::{Counter, Saturating},
     event::{self, IntoEvent},
     frame, packet, random,
     time::{timer, Timestamp},
@@ -34,7 +35,10 @@ enum State {
     Validated,
 
     /// Path has not been validated and is subject to amplification limits
-    AmplificationLimited { tx_bytes: u32, rx_bytes: u32 },
+    AmplificationLimited {
+        tx_bytes: Counter<u32, Saturating>,
+        rx_bytes: Counter<u32, Saturating>,
+    },
 }
 
 #[derive(Debug)]
@@ -106,8 +110,8 @@ impl<Config: endpoint::Config> Path<Config> {
                 //# adhere to the anti-amplification limits found in Section 8.1.
                 // Start each path in State::AmplificationLimited until it has been validated.
                 State::AmplificationLimited {
-                    tx_bytes: 0,
-                    rx_bytes: 0,
+                    tx_bytes: Default::default(),
+                    rx_bytes: Default::default(),
                 }
             }
             //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
@@ -393,7 +397,7 @@ impl<Config: endpoint::Config> Path<Config> {
             State::AmplificationLimited { tx_bytes, rx_bytes } => {
                 let limit = rx_bytes
                     .checked_mul(3)
-                    .and_then(|v| v.checked_sub(tx_bytes))
+                    .and_then(|v| v.checked_sub(*tx_bytes))
                     .unwrap_or(0);
 
                 if limit > 0 {
@@ -474,8 +478,8 @@ impl<Config: endpoint::Config> Path<Config> {
             State::AmplificationLimited { .. } => {}
             State::Validated => {
                 self.state = State::AmplificationLimited {
-                    tx_bytes: 0,
-                    rx_bytes: MINIMUM_MTU as _,
+                    tx_bytes: Default::default(),
+                    rx_bytes: Counter::new(MINIMUM_MTU as u32),
                 };
             }
         }
