@@ -117,25 +117,13 @@ class LitaniJob:
 
 @dataclasses.dataclass
 class Symtab2GbJobs:
+    symtab2gb_directory: str
     out_files: list = dataclasses.field(default_factory=list)
 
 
-    @staticmethod
-    def should_ignore(fyle):
-        if fyle.suffix != ".json":
-            return True
-        if not fyle.name.startswith("vm_memory-"):
-            return False
-        with open(fyle) as handle:
-            for line in handle:
-                if "dirty_bitmap" in line:
-                    return False
-        return True
-
-
     def __call__(self):
-        for fyle in get_deps_dir().iterdir():
-            if self.should_ignore(fyle):
+        for fyle in self.symtab2gb_directory.iterdir():
+            if fyle.suffix != ".json":
                 continue
             out_file = fyle.with_suffix(".gb")
             self.out_files.append(out_file)
@@ -153,11 +141,12 @@ class Symtab2GbJobs:
 @dataclasses.dataclass
 class CBMCJobs:
     proof_names: list
+    cbmc_directory: str
     out_files: list
 
 
     def get_proofs(self):
-        for root, _, fyles in os.walk("src"):
+        for root, _, fyles in os.walk(self.cbmc_directory):
             dyr = pathlib.Path(root)
             for fyle in fyles:
                 path = dyr / fyle
@@ -204,7 +193,7 @@ class CBMCJobs:
                 description=f"{pipeline_name}: checking safety properties",
                 command=
                    f"cbmc {instrumented_binary} --reachability-slice "
-                   "--object-bits 11",
+                   "--object-bits 11 --unwind 1",
                 pipeline=pipeline_name,
                 ci_stage="test",
                 ignore_returns="10",
@@ -352,19 +341,18 @@ def get_litani_path():
     return ret
 
 
-def get_deps_dir():
-    if platform.system() == "Darwin":
-        return pathlib.Path(
-            "build/cargo_target/x86_64-apple-darwin/debug/deps")
-    return pathlib.Path(
-        "build/cargo_target/x86_64-unknown-linux-gnu/debug/deps")
+def get_deps_dir(cargo_target_dir):
+    DARWIN_DEPS_DIR = "build/cargo_target/x86_64-apple-darwin/debug/deps"
+    GNU_DEPS_DIR = "build/cargo_target/x86_64-unknown-linux-gnu/debug/deps"
+    deps_dir = DARWIN_DEPS_DIR if platform.system() == "Darwin" else GNU_DEPS_DIR
+    return pathlib.Path(f"{cargo_target_dir}{deps_dir}")
 
 
-def get_litani_jobs(proof_list):
-    emit_symtab_jobs = Symtab2GbJobs()
+def get_litani_jobs(proof_list, symtab2gb_directory, cbmc_directory):
+    emit_symtab_jobs = Symtab2GbJobs(symtab2gb_directory)
     yield from emit_symtab_jobs()
 
-    emit_cbmc_jobs = CBMCJobs(proof_list, emit_symtab_jobs.out_files)
+    emit_cbmc_jobs = CBMCJobs(proof_list, cbmc_directory, emit_symtab_jobs.out_files)
     yield from emit_cbmc_jobs()
 
 
@@ -372,14 +360,15 @@ async def main():
     args = get_args()
     set_up_logging(args.verbose)
 
-    cwd = pathlib.Path(args.directory) if args.directory else pathlib.Path("")
+    directory = args.directory if args.directory else ""
+    cwd = pathlib.Path(directory)
     env = {
         "RUST_BACKTRACE": "1",
         "RUSTFLAGS": "-Z trim-diagnostic-paths=no -Z codegen-backend=gotoc --cfg=rmc",
         "RUSTC": "rmc-rustc",
         **os.environ
     }
-    cmd = ["cargo", "build", "--target", "x86_64-unknown-linux-gnu"]
+    cmd = ["cargo", "build", "--target", "x86_64-unknown-linux-gnu", "--target-dir", "build/cargo_target"]
     subprocess.run(cmd, env=env, cwd=str(cwd), check=True)
 
     litani = get_litani_path()
@@ -397,7 +386,9 @@ async def main():
             sys.exit(1)
 
     proof_queue = asyncio.Queue()
-    for job in get_litani_jobs(args.proofs):
+    symtab2gb_directory = get_deps_dir(directory)
+    cbmc_directory = directory
+    for job in get_litani_jobs(args.proofs, symtab2gb_directory, cbmc_directory):
         proof_queue.put_nowait(job)
 
     counter = {
