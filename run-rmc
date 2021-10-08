@@ -431,6 +431,7 @@ async def main():
         cmd = [litani, "run-build"]
         cmd.extend(["-j", args.parallel_jobs] if args.parallel_jobs else [])
         proc = run_cmd(cmd)
+        cmd = [str(c) for c in cmd]
         logging.debug("Running '%s'", " ".join(cmd))
         if proc.returncode:
             sys.exit(1)
