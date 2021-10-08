@@ -1,9 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
-
 use crate::Result;
 use futures::future::try_join_all;
 use s2n_quic::{
@@ -108,16 +105,14 @@ impl Perf {
 
         let io = io_builder.build()?;
 
-        let server = Client::builder()
+        let client = Client::builder()
             .with_io(io)?
             .with_tls(tls)?
             .with_event(event::disabled::Provider)?
             .start()
             .unwrap();
 
-        eprintln!("Server listening on port {}", self.port);
-
-        Ok(server)
+        Ok(client)
     }
 
     fn ca(&self) -> Result<Certificate> {

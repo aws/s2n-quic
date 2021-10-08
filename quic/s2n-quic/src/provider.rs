@@ -22,7 +22,7 @@ pub(crate) mod path_migration;
 pub(crate) mod random;
 pub(crate) mod sync;
 
-/// An error indicating a failure to start a [`Client`]
+/// An error indicating a failure to start an endpoint
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 #[non_exhaustive]
 pub struct StartError(Box<dyn 'static + fmt::Display>);

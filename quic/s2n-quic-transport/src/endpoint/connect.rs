@@ -56,14 +56,19 @@ pub struct Attempt {
 
 impl Attempt {
     pub(crate) fn new(opener: &ConnectorSender, connect: Connect) -> Self {
+        let (response, receiver) = oneshot::channel();
+        let request = Request {
+            connect,
+            sender: response,
+        };
         Self {
-            state: AttemptState::Connect(connect, opener.clone()),
+            state: AttemptState::Connect(request, opener.clone(), receiver),
         }
     }
 }
 
 enum AttemptState {
-    Connect(Connect, ConnectorSender),
+    Connect(Request, ConnectorSender, ConnectionReceiver),
     Waiting(ConnectionReceiver),
     Unreachable,
 }
@@ -73,33 +78,36 @@ impl Future for Attempt {
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match core::mem::replace(&mut self.state, AttemptState::Unreachable) {
-            AttemptState::Connect(connect, mut sender) => {
-                match sender.poll_ready(cx) {
+            AttemptState::Connect(request, mut opener, receiver) => {
+                match opener.poll_ready(cx) {
                     Poll::Ready(Ok(())) => {
-                        let (response, receiver) = oneshot::channel();
-                        let request = Request {
-                            connect,
-                            sender: response,
-                        };
-
-                        if sender.start_send(request).is_err() {
-                            // The endpoint has closed
-                            return Err(connection::Error::Unspecified).into();
+                        match opener.try_send(request) {
+                            Ok(_) => {
+                                // transition to the waiting state
+                                self.state = AttemptState::Waiting(receiver);
+                            }
+                            Err(err) if err.is_full() => {
+                                // reset to the original state
+                                self.state =
+                                    AttemptState::Connect(err.into_inner(), opener, receiver);
+                            }
+                            Err(_) => {
+                                // The endpoint has closed
+                                return Err(connection::Error::Unspecified).into();
+                            }
                         }
-
-                        self.state = AttemptState::Waiting(receiver);
-
-                        Poll::Pending
                     }
                     Poll::Ready(Err(_)) => {
                         // The endpoint has closed
-                        Err(connection::Error::Unspecified).into()
+                        return Err(connection::Error::Unspecified).into();
                     }
                     Poll::Pending => {
-                        self.state = AttemptState::Connect(connect, sender);
-                        Poll::Pending
+                        // reset to the original state
+                        self.state = AttemptState::Connect(request, opener, receiver);
                     }
                 }
+
+                Poll::Pending
             }
             AttemptState::Waiting(mut receiver) => match Pin::new(&mut receiver).poll(cx) {
                 Poll::Ready(Ok(res)) => Poll::Ready(res),
