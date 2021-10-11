@@ -190,7 +190,7 @@ mod rmc_test {
     #[no_mangle]
     fn main() {
 
-        const sz1: usize = 4;
+        const sz1: usize = 2;
         let a1: [u8; sz1] = __nondet();
         let a2: [u8; sz1] = __nondet();
         let a3: [u8; sz1] = __nondet();
@@ -205,7 +205,7 @@ mod rmc_test {
 
         let from = [&a1[..sa1_sz], &a2[..sa2_sz], &a3[..sa3_sz]];
 
-        const sz2: usize = 4;
+        const sz2: usize = 2;
 
         let mut b1: [u8; sz2] = __nondet();
         let mut b2: [u8; sz2] = __nondet();

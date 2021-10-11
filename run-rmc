@@ -179,7 +179,7 @@ class CBMCJobs:
             yield LitaniJob(
                 description=f"{pipeline_name}: dropping unused functions",
                 command=
-                   f"goto-instrument --drop-unused-functions "
+                   f"goto-instrument --reachability-slice --drop-unused-functions "
                    f"{linked_binary} {instrumented_binary}",
                 pipeline=pipeline_name,
                 ci_stage="build",
@@ -192,7 +192,7 @@ class CBMCJobs:
             yield LitaniJob(
                 description=f"{pipeline_name}: checking safety properties",
                 command=
-                   f"cbmc {instrumented_binary} --reachability-slice "
+                   f"cbmc {instrumented_binary} "
                    "--object-bits 11 --unwind 5 --unwinding-assertions",
                 pipeline=pipeline_name,
                 ci_stage="test",
