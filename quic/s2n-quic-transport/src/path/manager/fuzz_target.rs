@@ -52,6 +52,7 @@ struct Oracle {
     paths: HashMap<Handle, PathInfo>,
     active: Handle,
     last_known_validated_path: Option<u8>,
+    prev_state_amplification_limited: bool,
 }
 
 impl Oracle {
@@ -63,6 +64,7 @@ impl Oracle {
             paths,
             active: handle,
             last_known_validated_path: None,
+            prev_state_amplification_limited: false,
         }
     }
 
@@ -85,7 +87,12 @@ impl Oracle {
     }
 
     /// Insert new path if the remote address doesnt match any existing path
-    fn on_datagram_received(&mut self, handle: &Handle) {
+    fn on_datagram_received(
+        &mut self,
+        handle: &Handle,
+        payload_len: u16,
+        still_amplification_limited: bool,
+    ) {
         match self.path(handle) {
             Some(_path) => (),
             None => {
@@ -96,6 +103,14 @@ impl Oracle {
 
                 self.insert_new_path(*handle, new_path);
             }
+        }
+
+        // Verify receiving bytes unblocks amplification limited.
+        //
+        // Amplification is calculated in terms of packets rather than bytes. Therefore any
+        // payload len that is > 0 will unblock amplification.
+        if self.prev_state_amplification_limited && payload_len > 0 {
+            assert!(!still_amplification_limited);
         }
     }
 
@@ -130,9 +145,24 @@ enum Operation {
 
         /// The peer may switch the cid on the connection
         local_id: LocalId,
-        // TODO enable
-        // ecn: ExplicitCongestionNotification,
-        // payload_len: u8,
+
+        // 9000 captures up to jumbo frames
+        #[generator(0..9000)]
+        payload_len: u16,
+    },
+
+    // path.on_bytes_transmitted
+    OnBytesTransmit {
+        /// Used to calculate path_id
+        ///
+        /// path_id = path_id_generator % paths.len()
+        #[generator(1..100)]
+        path_id_generator: u8,
+
+        /// Bytes to be transmitted
+        // 9000 captures up to jumbo frames
+        #[generator(0..9000)]
+        bytes: u16,
     },
 
     // on_timeout
@@ -199,7 +229,12 @@ impl Model {
                 probing,
                 handle,
                 local_id,
-            } => self.on_datagram_received(handle, probing, *local_id),
+                payload_len,
+            } => self.on_datagram_received(handle, probing, *local_id, *payload_len),
+            Operation::OnBytesTransmit {
+                path_id_generator,
+                bytes,
+            } => self.on_bytes_transmitted(*path_id_generator, *bytes),
         }
     }
 
@@ -223,16 +258,22 @@ impl Model {
         handle: &Handle,
         probing: &Option<path_validation::Probe>,
         local_id: LocalId,
+        payload_len: u16,
     ) {
         let datagram = DatagramInfo {
             timestamp: self.timestamp,
-            payload_len: 2000,
+            payload_len: payload_len as usize,
             ecn: ExplicitCongestionNotification::NotEct,
             destination_connection_id: local_id,
         };
         let mut migration_validator = path::migration::default::Validator;
         let mut random_generator = Generator::default();
         let mut publisher = Publisher::default();
+
+        self.oracle.prev_state_amplification_limited = self
+            .subject
+            .path(handle)
+            .map_or(false, |(_id, path)| path.at_amplification_limit());
 
         match self.subject.on_datagram_received(
             handle,
@@ -243,8 +284,13 @@ impl Model {
             MaxMtu::default(),
             &mut publisher,
         ) {
-            Ok(_) => {
-                self.oracle.on_datagram_received(handle);
+            Ok((id, _)) => {
+                // Only call oracle if the subject can process on_datagram_received without errors
+                self.oracle.on_datagram_received(
+                    handle,
+                    payload_len,
+                    self.subject[id].at_amplification_limit(),
+                );
 
                 if let Some(probe) = probing {
                     self.oracle.on_processed_packet(handle, probe);
@@ -263,6 +309,15 @@ impl Model {
                     panic!("{}", err)
                 }
             }
+        }
+    }
+
+    fn on_bytes_transmitted(&mut self, path_id_generator: u8, bytes: u16) {
+        let path_id = path_id_generator as usize % self.subject.paths.len();
+
+        let path = &mut self.subject[Id(path_id as u8)];
+        if !path.at_amplification_limit() {
+            path.on_bytes_transmitted(bytes as usize);
         }
     }
 
@@ -299,24 +354,6 @@ impl Model {
                 "path_id: {}",
                 path_id
             );
-
-            // TODO Enable other checks
-            // assert_eq!(o_path.state, s_path.state, "path_id: {}", path_id);
-            //
-            // assert_eq!(
-            //     o_path.is_challenge_pending(),
-            //     s_path.is_challenge_pending(),
-            //     "path_id: {}, {:?}",
-            //     path_id,
-            //     s_path
-            // );
-            //
-            // assert_eq!(
-            //     o_path.is_response_pending(),
-            //     s_path.is_response_pending(),
-            //     "path_id: {}",
-            //     path_id
-            // );
         }
     }
 }

@@ -36,8 +36,7 @@ enum State {
 
     /// Path has not been validated and is subject to amplification limits
     AmplificationLimited {
-        tx_bytes: Counter<u32, Saturating>,
-        rx_bytes: Counter<u32, Saturating>,
+        tx_allowance: Counter<u32, Saturating>,
     },
 }
 
@@ -110,8 +109,7 @@ impl<Config: endpoint::Config> Path<Config> {
                 //# adhere to the anti-amplification limits found in Section 8.1.
                 // Start each path in State::AmplificationLimited until it has been validated.
                 State::AmplificationLimited {
-                    tx_bytes: Default::default(),
-                    rx_bytes: Default::default(),
+                    tx_allowance: Default::default(),
                 }
             }
             //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
@@ -169,8 +167,8 @@ impl<Config: endpoint::Config> Path<Config> {
             bytes
         );
 
-        if let State::AmplificationLimited { tx_bytes, .. } = &mut self.state {
-            *tx_bytes += bytes as u32
+        if let State::AmplificationLimited { tx_allowance, .. } = &mut self.state {
+            *tx_allowance -= bytes as u32
         }
     }
 
@@ -186,8 +184,14 @@ impl<Config: endpoint::Config> Path<Config> {
         //# avoiding amplification prior to address validation, servers MUST
         //# count all of the payload bytes received in datagrams that are
         //# uniquely attributed to a single connection.
-        if let State::AmplificationLimited { rx_bytes, .. } = &mut self.state {
-            *rx_bytes += bytes as u32;
+        //
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+        //# Prior to validating the client address, servers MUST NOT send more
+        //# than three times as many bytes as the number of bytes they have
+        //# received.
+        //
+        if let State::AmplificationLimited { tx_allowance } = &mut self.state {
+            *tx_allowance += bytes.saturating_mul(3) as u32;
         }
 
         was_at_amplification_limit && !self.at_amplification_limit()
@@ -383,24 +387,14 @@ impl<Config: endpoint::Config> Path<Config> {
         match self.state {
             State::Validated => requested_size.min(mtu),
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
-            //# Prior to validating the client address, servers MUST NOT send more
-            //# than three times as many bytes as the number of bytes they have
-            //# received.
-            //
             // https://github.com/awslabs/s2n-quic/issues/695
             // Note: while a 3X check if performed, the `limit` value is not used
             // to restrict the MTU. There are two reasons for this:
             // - Expanding to the full MTU allows for MTU validation during connection migration.
             // - Networking infrastructure cares more about number of packets than bytes for
             // anti-amplification.
-            State::AmplificationLimited { tx_bytes, rx_bytes } => {
-                let limit = rx_bytes
-                    .checked_mul(3)
-                    .and_then(|v| v.checked_sub(*tx_bytes))
-                    .unwrap_or(0);
-
-                if limit > 0 {
+            State::AmplificationLimited { tx_allowance } => {
+                if tx_allowance > 0 {
                     requested_size.min(mtu)
                 } else {
                     0
@@ -478,8 +472,7 @@ impl<Config: endpoint::Config> Path<Config> {
             State::AmplificationLimited { .. } => {}
             State::Validated => {
                 self.state = State::AmplificationLimited {
-                    tx_bytes: Default::default(),
-                    rx_bytes: Counter::new(MINIMUM_MTU as u32),
+                    tx_allowance: Counter::new(MINIMUM_MTU as u32 * 3),
                 };
             }
         }
@@ -1086,5 +1079,41 @@ mod tests {
             path.transmission_constraint(),
             transmission::Constraint::None
         );
+    }
+
+    #[test]
+    fn on_closing_validated_path() {
+        let mut path = testing::helper_path_server();
+        path.on_validated();
+        assert!(path.is_validated());
+
+        // Trigger:
+        path.on_closing();
+
+        // Expectation:
+        match path.state {
+            path::State::Validated => panic!("transition to AmplificationLimited when closing"),
+            path::State::AmplificationLimited { tx_allowance } => {
+                assert_eq!(*tx_allowance, (MINIMUM_MTU * 3) as u32)
+            }
+        }
+    }
+
+    // Maintain amplification limits if already in AmplificationLimited state
+    #[test]
+    fn on_closing_not_validated_path() {
+        let mut path = testing::helper_path_server();
+        assert!(!path.is_validated());
+
+        // Trigger:
+        path.on_closing();
+
+        // Expectation:
+        match path.state {
+            path::State::Validated => panic!("transition to AmplificationLimited when closing"),
+            path::State::AmplificationLimited { tx_allowance } => {
+                assert_eq!(*tx_allowance, 0)
+            }
+        }
     }
 }
