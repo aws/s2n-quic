@@ -20,7 +20,7 @@ structopt = "0.3"
 toml = "0.5"
 triple_accel = "0.4"
 url = "2"
-v_jsonescape = "0.5"
+v_jsonescape = "0.6"
 
 [dev-dependencies]
 insta = "1"
