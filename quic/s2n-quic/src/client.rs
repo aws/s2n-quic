@@ -11,7 +11,7 @@ use core::{
     pin::Pin,
     task::{Context, Poll},
 };
-use s2n_quic_transport::endpoint::{connect, Handle};
+use s2n_quic_transport::endpoint::{connect, handle::Connector};
 
 mod builder;
 mod providers;
@@ -21,9 +21,8 @@ pub use connect::Connect;
 pub use providers::*;
 
 /// A QUIC client endpoint, capable of opening connections
-pub struct Client {
-    handle: Handle,
-}
+#[derive(Clone)]
+pub struct Client(Connector);
 
 impl fmt::Debug for Client {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -64,8 +63,10 @@ impl Client {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// # use std::{error::Error, path::Path};
-    /// # use s2n_quic::Client;
+    /// # use std::error::Error;
+    /// use std::path::Path;
+    /// use s2n_quic::Client;
+    ///
     /// #
     /// # fn main() -> Result<(), Box<dyn Error>> {
     /// let client = Client::builder()
@@ -80,9 +81,29 @@ impl Client {
         Builder::default()
     }
 
-    /// TODO
+    /// Establishes a connection to the specified endpoint
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use std::error::Error;
+    /// use s2n_quic::Client;
+    /// use std::{net::SocketAddr, path::Path};
+    ///
+    /// # async fn connect() -> Result<(), Box<dyn Error>> {
+    /// let client = Client::builder()
+    ///     .with_tls(Path::new("./certs/cert.pem"))?
+    ///     .with_io("0.0.0.0:0")?
+    ///     .start()?;
+    ///
+    /// let addr: SocketAddr = "127.0.0.1:443".parse()?;
+    /// let connection = client.connect(addr.into()).await?;
+    /// #
+    /// #    Ok(())
+    /// # }
+    /// ```
     pub fn connect(&self, connect: Connect) -> ConnectionAttempt {
-        let attempt = self.handle.connect(connect);
+        let attempt = self.0.connect(connect);
         ConnectionAttempt(attempt)
     }
 
@@ -108,10 +129,11 @@ impl Client {
     #[cfg(feature = "std")]
     pub fn local_addr(&self) -> Result<std::net::SocketAddr, std::io::Error> {
         // TODO: Return the actual local address
-        Ok("127.0.0.1:12345".parse().unwrap())
+        Ok("0.0.0.0:0".parse().unwrap())
     }
 }
 
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct ConnectionAttempt(connect::Attempt);
 
 impl Future for ConnectionAttempt {

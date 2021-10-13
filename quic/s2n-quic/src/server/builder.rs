@@ -339,7 +339,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
     /// # }
     /// ```
     pub fn start(self) -> Result<Server, StartError> {
-        let handle = self.0.build().start()?;
-        Ok(Server { handle })
+        let acceptor = self.0.build().start()?;
+        Ok(Server(acceptor))
     }
 }

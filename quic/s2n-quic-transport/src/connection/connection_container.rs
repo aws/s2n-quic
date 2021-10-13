@@ -7,7 +7,11 @@
 use super::{ConnectionApi, ConnectionApiProvider};
 use crate::{
     connection::{self, Connection, ConnectionInterests, InternalConnectionId},
-    endpoint::{self, connect::ConnectionSender, handle::AcceptorSender},
+    endpoint::{
+        self,
+        connect::{self, ConnectionSender},
+        handle::{AcceptorSender, ConnectorReceiver},
+    },
     stream,
 };
 use alloc::{collections::BTreeMap, sync::Arc};
@@ -16,6 +20,7 @@ use core::{
     cell::Cell,
     marker::PhantomData,
     ops::Deref,
+    pin::Pin,
     task::{Context, Poll},
 };
 use intrusive_collections::{
@@ -452,8 +457,10 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
 
         if interests.finalization != node.done_connections_link.is_linked() {
             if interests.finalization {
-                if let Some(_sender) = self.waiting_for_open.remove(&id) {
-                    todo!("respond with the connection's error");
+                if <C::Config as endpoint::Config>::ENDPOINT_TYPE.is_client() {
+                    if let Some(_sender) = self.waiting_for_open.remove(&id) {
+                        todo!("respond with the connection's error");
+                    }
                 }
 
                 insert_interest!(done_connections, push_back);
@@ -508,7 +515,13 @@ pub struct ConnectionContainer<C: connection::Trait, L: connection::Lock<C>> {
     /// Additional interest lists in which Connections will be placed dynamically
     interest_lists: InterestLists<C, L>,
     /// The synchronized queue of accepted connections
+    ///
+    /// This is only used by servers
     accept_queue: AcceptorSender,
+    /// The channel of connection attempts submitted by the application
+    ///
+    /// This is only used by clients
+    connector_receiver: ConnectorReceiver,
 }
 
 macro_rules! iterate_interruptible {
@@ -562,20 +575,37 @@ macro_rules! iterate_interruptible {
 
 impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
     /// Creates a new `ConnectionContainer`
-    pub fn new(accept_queue: AcceptorSender) -> Self {
+    pub(crate) fn new(accept_queue: AcceptorSender, connector_receiver: ConnectorReceiver) -> Self {
         Self {
             connection_map: RBTree::new(ConnectionTreeAdapter::new()),
             interest_lists: InterestLists::new(),
             accept_queue,
+            connector_receiver,
         }
     }
 
+    /// Returns `true` if the endpoint can accept new connections
     pub fn can_accept(&self) -> bool {
+        debug_assert!(<C::Config as endpoint::Config>::ENDPOINT_TYPE.is_server());
+
         !self.accept_queue.is_closed()
     }
 
+    /// Returns `true` if the endpoint can make connection attempts
+    pub fn can_connect(&self) -> bool {
+        debug_assert!(<C::Config as endpoint::Config>::ENDPOINT_TYPE.is_client());
+
+        use futures_core::FusedStream;
+
+        !self.connector_receiver.is_terminated()
+    }
+
     pub fn is_open(&self) -> bool {
-        !self.connection_map.is_empty() || self.can_accept()
+        !self.connection_map.is_empty()
+            || match <C::Config as endpoint::Config>::ENDPOINT_TYPE {
+                endpoint::Type::Server => self.can_accept(),
+                endpoint::Type::Client => self.can_connect(),
+            }
     }
 
     /// Returns the next `Timestamp` at which any contained connections will expire
@@ -616,6 +646,18 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
             .insert(internal_connection_id, connection_sender);
 
         self.insert_connection(connection, internal_connection_id)
+    }
+
+    pub(crate) fn poll_connection_request(
+        &mut self,
+        cx: &mut Context,
+    ) -> Poll<Option<connect::Request>> {
+        debug_assert!(
+            <C::Config as endpoint::Config>::ENDPOINT_TYPE.is_client(),
+            "only clients can open connections"
+        );
+
+        futures_core::Stream::poll_next(Pin::new(&mut self.connector_receiver), cx)
     }
 
     fn insert_connection(&mut self, connection: C, internal_connection_id: InternalConnectionId) {

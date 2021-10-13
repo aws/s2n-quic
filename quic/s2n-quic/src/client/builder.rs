@@ -289,7 +289,7 @@ impl<Providers: ClientProviders> Builder<Providers> {
     /// # }
     /// ```
     pub fn start(self) -> Result<Client, StartError> {
-        let handle = self.0.build().start()?;
-        Ok(Client { handle })
+        let connector = self.0.build().start()?;
+        Ok(Client(connector))
     }
 }
