@@ -244,6 +244,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
         &mut self,
         header: &datagram::Header<Cfg::PathHandle>,
         packet: &ProtectedInitial,
+        payload_len: usize,
+        timestamp: Timestamp,
     ) -> Option<()> {
         if !self.connections.can_accept() {
             return None;
@@ -303,7 +305,18 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 None
             }
             Outcome::Drop => {
-                // TODO emit drop event
+                let mut publisher = event::EndpointPublisherSubscriber::new(
+                    event::builder::EndpointMeta {
+                        endpoint_type: Cfg::ENDPOINT_TYPE,
+                        timestamp,
+                    },
+                    None,
+                    self.config.context().event_subscriber,
+                );
+                publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
+                    len: payload_len as u16,
+                    reason: event::builder::DropReason::RejectedConnectionAttempt,
+                });
                 None
             }
             _ => {
@@ -606,7 +619,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         //# Upon receiving the client's Initial packet, the server can request
                         //# address validation by sending a Retry packet (Section 17.2.5)
                         //# containing a token.
-                        if self.connection_allowed(header, &packet).is_none() {
+                        if self
+                            .connection_allowed(header, &packet, payload_len, timestamp)
+                            .is_none()
+                        {
                             let mut publisher = event::EndpointPublisherSubscriber::new(
                                 event::builder::EndpointMeta {
                                     endpoint_type: Cfg::ENDPOINT_TYPE,
