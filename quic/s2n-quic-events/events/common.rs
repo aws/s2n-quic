@@ -470,6 +470,7 @@ enum DropReason {
     UnsupportedVersion,
     InvalidDestinationConnectionId,
     InvalidSourceConnectionId,
+    EndpointLimits,
 }
 
 /// The current state of the ECN controller for the path
