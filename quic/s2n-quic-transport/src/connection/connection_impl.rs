@@ -250,16 +250,16 @@ macro_rules! transmission_context {
 impl<Config: endpoint::Config> ConnectionImpl<Config> {
     fn update_crypto_state(
         &mut self,
-        datagram: &DatagramInfo,
+        timestamp: Timestamp,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), connection::Error> {
-        let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
+        let mut publisher = self.event_context.publisher(timestamp, subscriber);
         let space_manager = &mut self.space_manager;
         space_manager.poll_crypto(
             self.path_manager.active_path(),
             &mut self.local_id_registry,
             &mut self.limits,
-            datagram.timestamp,
+            timestamp,
             &mut publisher,
         )?;
 
@@ -278,7 +278,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             if Config::ENDPOINT_TYPE.is_server() {
                 self.timers
                     .initial_id_expiration_timer
-                    .set(datagram.timestamp + 3 * self.current_pto())
+                    .set(timestamp + 3 * self.current_pto())
             }
         }
 
@@ -402,7 +402,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Creates a new `Connection` instance with the given configuration
-    fn new(parameters: ConnectionParameters<Self::Config>) -> Self {
+    fn new(parameters: ConnectionParameters<Self::Config>) -> Result<Self, connection::Error> {
         let mut event_context = EventContext {
             context: parameters.event_context,
             internal_connection_id: parameters.internal_connection_id,
@@ -441,7 +441,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             },
         });
 
-        Self {
+        let mut connection = Self {
             local_id_registry: parameters.local_id_registry,
             timers: Default::default(),
             accept_state: AcceptState::Handshaking,
@@ -453,7 +453,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             space_manager: parameters.space_manager,
             wakeup_handle: parameters.wakeup_handle,
             event_context,
+        };
+
+        if Config::ENDPOINT_TYPE.is_client() {
+            connection.update_crypto_state(parameters.timestamp, parameters.event_subscriber)?;
         }
+        Ok(connection)
     }
 
     /// Returns the Connections internal ID
@@ -929,7 +934,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             )?;
 
             // try to move the crypto state machine forward
-            self.update_crypto_state(datagram, subscriber)?;
+            self.update_crypto_state(datagram.timestamp, subscriber)?;
 
             // notify the connection a packet was processed
             self.on_processed_packet(datagram.timestamp);
@@ -1007,7 +1012,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             }
 
             // try to move the crypto state machine forward
-            self.update_crypto_state(datagram, subscriber)?;
+            self.update_crypto_state(datagram.timestamp, subscriber)?;
 
             // notify the connection a packet was processed
             self.on_processed_packet(datagram.timestamp);

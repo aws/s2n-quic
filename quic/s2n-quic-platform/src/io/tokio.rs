@@ -497,6 +497,8 @@ impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
         let sleep = tokio::time::sleep_until(prev_time);
         tokio::pin!(sleep);
 
+        // This loop doesn't run in a tight loop. This implementation is backed by a future
+        // so it awaits a new task, `select.await`, and yields when there is nothing to process.
         loop {
             // Poll for readability if we have free slots available
             let rx_interest = rx.free_len() > 0;

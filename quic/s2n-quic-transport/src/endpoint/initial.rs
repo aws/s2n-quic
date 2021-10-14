@@ -129,8 +129,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         );
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
-        //= type=TODO
-        //= tracking-issue=195
         //= feature=Stateless Reset
         //# Servers can also specify a stateless_reset_token transport
         //# parameter during the handshake that applies to the connection ID that
@@ -263,7 +261,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             event_subscriber: endpoint_context.event_subscriber,
         };
 
-        let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters);
+        let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters)?;
 
         let path_id = connection.on_datagram_received(
             &header.path,

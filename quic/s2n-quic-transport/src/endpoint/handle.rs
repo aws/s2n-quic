@@ -11,9 +11,14 @@ use core::{
 use futures_channel::mpsc;
 use futures_core::Stream;
 
+/// Held by application. Used to receive when a new connection is accepted.
 pub(crate) type AcceptorReceiver = mpsc::UnboundedReceiver<Connection>;
+/// Held by library. Used to send a new connection when a datagram is received.
 pub(crate) type AcceptorSender = mpsc::UnboundedSender<Connection>;
+
+/// Held by library. Used to receive new connections requested by the application.
 pub(crate) type ConnectorReceiver = mpsc::Receiver<connect::Request>;
+/// Held by application. Used to send request for new connections to library.
 pub(crate) type ConnectorSender = mpsc::Sender<connect::Request>;
 
 /// The [`Handle`] allows applications to accept and open QUIC connections on an `Endpoint`.

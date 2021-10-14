@@ -280,7 +280,7 @@ impl LocalIdRegistry {
     ///
     /// This will return an error if the provided ConnectionId has already been
     /// registered or is already used by a different internal connection.
-    pub fn register_connection_id(
+    pub(super) fn register_connection_id(
         &mut self,
         id: &connection::LocalId,
         expiration: Option<Timestamp>,

@@ -17,15 +17,19 @@ use s2n_quic_core::{
     path::{LocalAddress, RemoteAddress},
 };
 
+/// Held by connection Attempt future. Used to receive the actual connection.
 pub(crate) type ConnectionReceiver = oneshot::Receiver<Result<Connection, connection::Error>>;
+
+/// Held within the library connection_container. Used to send the actual connection once
+/// its been created.
 pub(crate) type ConnectionSender = oneshot::Sender<Result<Connection, connection::Error>>;
 
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct Connect {
-    remote_address: RemoteAddress,
-    local_address: Option<LocalAddress>,
-    hostname: Option<Sni>,
+    pub remote_address: RemoteAddress,
+    pub local_address: Option<LocalAddress>,
+    pub hostname: Option<Sni>,
 }
 
 impl Connect {
