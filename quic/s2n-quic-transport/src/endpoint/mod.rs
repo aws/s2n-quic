@@ -4,12 +4,10 @@
 //! This module defines a QUIC endpoint
 
 use crate::{
-    acceptor::Acceptor,
     connection::{
         self, ConnectionContainer, ConnectionContainerIterationResult, ConnectionIdMapper,
         InternalConnectionId, InternalConnectionIdGenerator, ProcessingError, Trait as _,
     },
-    unbounded_channel,
     wakeup_queue::WakeupQueue,
 };
 use alloc::collections::VecDeque;
@@ -33,6 +31,8 @@ use s2n_quic_core::{
 };
 
 mod config;
+pub mod connect;
+pub mod handle;
 mod initial;
 mod packet_buffer;
 mod retry;
@@ -161,7 +161,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
 
         self.wakeup_queue
             .poll_pending_wakeups(&mut self.dequeued_wakeups, cx);
-        let nr_wakeups = self.dequeued_wakeups.len();
+        let mut wakeup_count = self.dequeued_wakeups.len();
         let close_packet_buffer = &mut self.close_packet_buffer;
         let endpoint_context = self.config.context();
 
@@ -190,8 +190,27 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
             });
         }
 
-        if nr_wakeups > 0 {
-            Poll::Ready(Ok(nr_wakeups))
+        // try to open connection requests from the application
+        if Cfg::ENDPOINT_TYPE.is_client() {
+            loop {
+                match self.connections.poll_connection_request(cx) {
+                    Poll::Pending => break,
+                    Poll::Ready(Some(request)) => {
+                        dbg!(&request);
+
+                        wakeup_count += 1;
+
+                        todo!("create a client connection; wakeups: {}", wakeup_count);
+                    }
+                    Poll::Ready(None) => {
+                        // TODO the client handle has been dropped - do anything?
+                    }
+                }
+            }
+        }
+
+        if wakeup_count > 0 {
+            Poll::Ready(Ok(wakeup_count))
         } else {
             Poll::Pending
         }
@@ -214,17 +233,38 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
 }
 
 impl<Cfg: Config> Endpoint<Cfg> {
-    /// Creates a new QUIC endpoint using the given configuration
-    pub fn new(mut config: Cfg) -> (Self, Acceptor) {
-        let (connection_sender, connection_receiver) = unbounded_channel::channel();
-        let acceptor = Acceptor::new(connection_receiver);
+    /// Creates a new QUIC server endpoint using the given configuration
+    pub fn new_server(config: Cfg) -> (Self, handle::Acceptor) {
+        assert!(
+            Cfg::ENDPOINT_TYPE.is_server(),
+            "only server endpoints can be created with server configurations"
+        );
+        let (endpoint, handle) = Self::new(config);
+        (endpoint, handle.acceptor)
+    }
+
+    /// Creates a new QUIC client endpoint using the given configuration
+    pub fn new_client(config: Cfg) -> (Self, handle::Connector) {
+        assert!(
+            Cfg::ENDPOINT_TYPE.is_client(),
+            "only client endpoints can be created with client configurations"
+        );
+        let (endpoint, handle) = Self::new(config);
+        (endpoint, handle.connector)
+    }
+
+    fn new(mut config: Cfg) -> (Self, handle::Handle) {
+        // TODO make this limit configurable
+        let max_opening_connections = 1000;
+        let (handle, acceptor_sender, connector_receiver) =
+            handle::Handle::new(max_opening_connections);
 
         let connection_id_mapper =
             ConnectionIdMapper::new(config.context().random_generator, Cfg::ENDPOINT_TYPE);
 
         let endpoint = Self {
             config,
-            connections: ConnectionContainer::new(connection_sender),
+            connections: ConnectionContainer::new(acceptor_sender, connector_receiver),
             connection_id_generator: InternalConnectionIdGenerator::new(),
             connection_id_mapper,
             wakeup_queue: WakeupQueue::new(),
@@ -236,7 +276,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             max_mtu: Default::default(),
         };
 
-        (endpoint, acceptor)
+        (endpoint, handle)
     }
 
     /// Determine the next step when a peer attempts a connection

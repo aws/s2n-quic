@@ -243,6 +243,15 @@ mod std_conversion {
         }
     }
 
+    impl From<(net::IpAddr, u16)> for SocketAddress {
+        fn from((ip, port): (net::IpAddr, u16)) -> Self {
+            match ip {
+                net::IpAddr::V4(ip) => Self::IpV4((ip, port).into()),
+                net::IpAddr::V6(ip) => Self::IpV6((ip, port).into()),
+            }
+        }
+    }
+
     impl<'a> From<SocketAddressRef<'a>> for net::SocketAddr {
         fn from(address: SocketAddressRef<'a>) -> Self {
             match address {

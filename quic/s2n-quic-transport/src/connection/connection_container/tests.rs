@@ -344,13 +344,13 @@ fn container_test() {
     check!().with_type::<Vec<Operation>>().for_each(|ops| {
         let mut id_gen = InternalConnectionIdGenerator::new();
         let mut connections = vec![];
-        let (sender, receiver) = crate::unbounded_channel::channel();
-        let mut receiver = Some(receiver);
+        let (handle, acceptor, connector) = endpoint::handle::Handle::new(100);
         let (waker, _wake_count) = futures_test::task::new_count_waker();
         let mut now = unsafe { Timestamp::from_duration(Duration::from_secs(0)) };
 
+        let mut handle = Some(handle);
         let mut container: ConnectionContainer<TestConnection, TestLock> =
-            ConnectionContainer::new(sender);
+            ConnectionContainer::new(acceptor, connector);
 
         for op in ops.iter() {
             match op {
@@ -406,12 +406,13 @@ fn container_test() {
                     assert!(was_called);
                 }
                 Operation::CloseApp => {
-                    receiver = None;
+                    handle = None;
                 }
                 Operation::Receive => {
-                    if let Some(receiver) = receiver.as_mut() {
-                        while let Poll::Ready(Ok(_accepted)) =
-                            receiver.poll_next(&Context::from_waker(&waker))
+                    if let Some(handle) = handle.as_mut() {
+                        while let Poll::Ready(Some(_accepted)) = handle
+                            .acceptor
+                            .poll_accept(&mut Context::from_waker(&waker))
                         {
                             // TODO assert that the accepted connection expressed accept
                             // interest

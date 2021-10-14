@@ -7,14 +7,20 @@
 use super::{ConnectionApi, ConnectionApiProvider};
 use crate::{
     connection::{self, Connection, ConnectionInterests, InternalConnectionId},
-    stream, unbounded_channel,
+    endpoint::{
+        self,
+        connect::{self, ConnectionSender},
+        handle::{AcceptorSender, ConnectorReceiver},
+    },
+    stream,
 };
-use alloc::sync::Arc;
+use alloc::{collections::BTreeMap, sync::Arc};
 use bytes::Bytes;
 use core::{
     cell::Cell,
     marker::PhantomData,
     ops::Deref,
+    pin::Pin,
     task::{Context, Poll},
 };
 use intrusive_collections::{
@@ -303,6 +309,7 @@ struct InterestLists<C: connection::Trait, L: connection::Lock<C>> {
     waiting_for_connection_id: LinkedList<WaitingForConnectionIdAdapter<C, L>>,
     /// Connections which are waiting for a timeout to occur
     waiting_for_timeout: RBTree<WaitingForTimeoutAdapter<C, L>>,
+    waiting_for_open: BTreeMap<InternalConnectionId, ConnectionSender>,
     /// Inflight handshake count
     handshake_connections: usize,
 }
@@ -314,6 +321,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
             waiting_for_transmission: LinkedList::new(WaitingForTransmissionAdapter::new()),
             waiting_for_connection_id: LinkedList::new(WaitingForConnectionIdAdapter::new()),
             waiting_for_timeout: RBTree::new(WaitingForTimeoutAdapter::new()),
+            waiting_for_open: BTreeMap::new(),
             handshake_connections: 0,
         }
     }
@@ -321,10 +329,12 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
     /// Update all interest lists based on latest interest reported by a Node
     fn update_interests(
         &mut self,
-        accept_queue: &mut unbounded_channel::Sender<Connection>,
+        accept_queue: &mut AcceptorSender,
         node: &ConnectionNode<C, L>,
         interests: ConnectionInterests,
     ) -> Result<(), L::Error> {
+        let id = node.internal_connection_id;
+
         // Note that all comparisons start by checking whether the connection is
         // already part of the given list. This is required in order for the
         // following operation to be safe. Inserting an element in a list while
@@ -409,7 +419,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
         if interests.accept {
             node.inner.write(|conn| {
                 debug_assert!(!conn.is_handshaking());
-                conn.mark_as_accepted()
+                conn.mark_as_accepted();
             })?;
 
             // Decrement the inflight handshakes because this connection completed the
@@ -426,13 +436,33 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
             };
             let handle = crate::connection::api::Connection::new(handle);
 
-            if let Err((handle, _)) = accept_queue.send(handle) {
-                handle.api.close_connection(None);
+            match <C::Config as endpoint::Config>::ENDPOINT_TYPE {
+                endpoint::Type::Server => {
+                    if let Err(error) = accept_queue.unbounded_send(handle) {
+                        error.into_inner().api.close_connection(None);
+                    }
+                }
+                endpoint::Type::Client => {
+                    if let Some(sender) = self.waiting_for_open.remove(&id) {
+                        if let Err(Ok(handle)) = sender.send(Ok(handle)) {
+                            // close the connection if the application is no longer waiting for the handshake
+                            handle.api.close_connection(None);
+                        }
+                    } else if cfg!(debug_assertions) {
+                        panic!("client connection tried to open more than once");
+                    }
+                }
             }
         }
 
         if interests.finalization != node.done_connections_link.is_linked() {
             if interests.finalization {
+                if <C::Config as endpoint::Config>::ENDPOINT_TYPE.is_client() {
+                    if let Some(_sender) = self.waiting_for_open.remove(&id) {
+                        todo!("respond with the connection's error");
+                    }
+                }
+
                 insert_interest!(done_connections, push_back);
             } else {
                 unreachable!("Done connections should never report not done later");
@@ -485,7 +515,13 @@ pub struct ConnectionContainer<C: connection::Trait, L: connection::Lock<C>> {
     /// Additional interest lists in which Connections will be placed dynamically
     interest_lists: InterestLists<C, L>,
     /// The synchronized queue of accepted connections
-    accept_queue: unbounded_channel::Sender<Connection>,
+    ///
+    /// This is only used by servers
+    accept_queue: AcceptorSender,
+    /// The channel of connection attempts submitted by the application
+    ///
+    /// This is only used by clients
+    connector_receiver: ConnectorReceiver,
 }
 
 macro_rules! iterate_interruptible {
@@ -539,20 +575,37 @@ macro_rules! iterate_interruptible {
 
 impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
     /// Creates a new `ConnectionContainer`
-    pub fn new(accept_queue: unbounded_channel::Sender<Connection>) -> Self {
+    pub(crate) fn new(accept_queue: AcceptorSender, connector_receiver: ConnectorReceiver) -> Self {
         Self {
             connection_map: RBTree::new(ConnectionTreeAdapter::new()),
             interest_lists: InterestLists::new(),
             accept_queue,
+            connector_receiver,
         }
     }
 
+    /// Returns `true` if the endpoint can accept new connections
     pub fn can_accept(&self) -> bool {
-        self.accept_queue.is_open()
+        debug_assert!(<C::Config as endpoint::Config>::ENDPOINT_TYPE.is_server());
+
+        !self.accept_queue.is_closed()
+    }
+
+    /// Returns `true` if the endpoint can make connection attempts
+    pub fn can_connect(&self) -> bool {
+        debug_assert!(<C::Config as endpoint::Config>::ENDPOINT_TYPE.is_client());
+
+        use futures_core::FusedStream;
+
+        !self.connector_receiver.is_terminated()
     }
 
     pub fn is_open(&self) -> bool {
-        !self.connection_map.is_empty() || self.can_accept()
+        !self.connection_map.is_empty()
+            || match <C::Config as endpoint::Config>::ENDPOINT_TYPE {
+                endpoint::Type::Server => self.can_accept(),
+                endpoint::Type::Client => self.can_connect(),
+            }
     }
 
     /// Returns the next `Timestamp` at which any contained connections will expire
@@ -567,12 +620,47 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         timeout
     }
 
-    /// Insert a new Connection into the container
-    pub fn insert_connection(
+    /// Insert a new server Connection into the container
+    pub fn insert_server_connection(
         &mut self,
         connection: C,
         internal_connection_id: InternalConnectionId,
     ) {
+        debug_assert!(<C::Config as endpoint::Config>::ENDPOINT_TYPE.is_server());
+
+        self.insert_connection(connection, internal_connection_id)
+    }
+
+    /// Insert a new client Connection into the container
+    #[allow(dead_code)]
+    pub fn insert_client_connection(
+        &mut self,
+        connection: C,
+        internal_connection_id: InternalConnectionId,
+        connection_sender: ConnectionSender,
+    ) {
+        debug_assert!(<C::Config as endpoint::Config>::ENDPOINT_TYPE.is_client());
+
+        self.interest_lists
+            .waiting_for_open
+            .insert(internal_connection_id, connection_sender);
+
+        self.insert_connection(connection, internal_connection_id)
+    }
+
+    pub(crate) fn poll_connection_request(
+        &mut self,
+        cx: &mut Context,
+    ) -> Poll<Option<connect::Request>> {
+        debug_assert!(
+            <C::Config as endpoint::Config>::ENDPOINT_TYPE.is_client(),
+            "only clients can open connections"
+        );
+
+        futures_core::Stream::poll_next(Pin::new(&mut self.connector_receiver), cx)
+    }
+
+    fn insert_connection(&mut self, connection: C, internal_connection_id: InternalConnectionId) {
         let interests = connection.interests();
 
         let connection = L::new(connection);

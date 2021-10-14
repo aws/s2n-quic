@@ -6,7 +6,7 @@ use core::marker::PhantomData;
 use s2n_quic_core::{connection::id::Generator, crypto, path};
 use s2n_quic_transport::{
     connection,
-    endpoint::{self, handle::Acceptor},
+    endpoint::{self, handle::Connector},
     stream,
 };
 
@@ -18,18 +18,15 @@ impl_providers_state! {
         connection_id: ConnectionID,
         stateless_reset_token: StatelessResetToken,
         random: Random,
-        endpoint_limits: EndpointLimits,
         event: Event,
         limits: Limits,
         io: IO,
-        path_migration: PathMigration,
         sync: Sync,
         tls: Tls,
-        token: Token,
     }
 
     /// Opaque trait containing all of the configured providers
-    trait ServerProviders {}
+    trait ClientProviders {}
 }
 
 impl<
@@ -38,14 +35,11 @@ impl<
         ConnectionID: connection_id::Provider,
         StatelessResetToken: stateless_reset_token::Provider,
         Random: random::Provider,
-        EndpointLimits: endpoint_limits::Provider,
         Event: event::Provider,
         Limits: limits::Provider,
         IO: io::Provider,
-        PathMigration: path_migration::Provider,
         Sync: sync::Provider,
         Tls: tls::Provider,
-        Token: token::Provider,
     >
     Providers<
         CongestionController,
@@ -53,29 +47,23 @@ impl<
         ConnectionID,
         StatelessResetToken,
         Random,
-        EndpointLimits,
         Event,
         Limits,
         IO,
-        PathMigration,
         Sync,
         Tls,
-        Token,
     >
 {
-    pub fn start(self) -> Result<Acceptor, StartError> {
+    pub fn start(self) -> Result<Connector, StartError> {
         let Self {
             congestion_controller,
             connection_close_formatter,
             connection_id,
             stateless_reset_token,
             random,
-            endpoint_limits,
             event,
             limits,
-            token,
             io,
-            path_migration,
             sync,
             tls,
         } = self;
@@ -87,13 +75,13 @@ impl<
         let connection_id = connection_id.start().map_err(StartError::new)?;
         let stateless_reset_token = stateless_reset_token.start().map_err(StartError::new)?;
         let random = random.start().map_err(StartError::new)?;
-        let endpoint_limits = endpoint_limits.start().map_err(StartError::new)?;
+        let endpoint_limits = EndpointLimits;
         let limits = limits.start().map_err(StartError::new)?;
         let event = event.start().map_err(StartError::new)?;
-        let token = token.start().map_err(StartError::new)?;
+        let token = Token;
         let sync = sync.start().map_err(StartError::new)?;
-        let path_migration = path_migration.start().map_err(StartError::new)?;
-        let tls = tls.start_server().map_err(StartError::new)?;
+        let path_migration = PathMigration;
+        let tls = tls.start_client().map_err(StartError::new)?;
 
         // Validate providers
         // TODO: Add more validation https://github.com/awslabs/s2n-quic/issues/285
@@ -123,12 +111,69 @@ impl<
             path_migration,
         };
 
-        let (endpoint, acceptor) = endpoint::Endpoint::new_server(endpoint_config);
+        let (endpoint, connector) = endpoint::Endpoint::new_client(endpoint_config);
 
         // Start the IO last
         io.start(endpoint).map_err(StartError::new)?;
 
-        Ok(acceptor)
+        Ok(connector)
+    }
+}
+
+#[derive(Debug)]
+struct EndpointLimits;
+
+impl endpoint::limits::Limiter for EndpointLimits {
+    fn on_connection_attempt(
+        &mut self,
+        _info: &endpoint::limits::ConnectionAttempt,
+    ) -> endpoint::limits::Outcome {
+        unreachable!("endpoint limits should not be used with clients")
+    }
+}
+
+#[derive(Debug)]
+struct Token;
+
+impl crate::provider::token::Format for Token {
+    const TOKEN_LEN: usize = 0;
+
+    fn generate_new_token(
+        &mut self,
+        _context: &mut s2n_quic_core::token::Context<'_>,
+        _source_connection_id: &s2n_quic_core::connection::LocalId,
+        _output_buffer: &mut [u8],
+    ) -> Option<()> {
+        unreachable!("tokens should not be generated with clients")
+    }
+
+    fn generate_retry_token(
+        &mut self,
+        _context: &mut s2n_quic_core::token::Context<'_>,
+        _original_destination_connection_id: &s2n_quic_core::connection::InitialId,
+        _output_buffer: &mut [u8],
+    ) -> Option<()> {
+        unreachable!("tokens should not be generated with clients")
+    }
+
+    fn validate_token(
+        &mut self,
+        _context: &mut s2n_quic_core::token::Context<'_>,
+        _token: &[u8],
+    ) -> Option<s2n_quic_core::connection::InitialId> {
+        unreachable!("tokens should not be generated with clients")
+    }
+}
+
+#[derive(Debug)]
+struct PathMigration;
+
+impl crate::provider::path_migration::Validator for PathMigration {
+    fn on_migration_attempt(
+        &mut self,
+        _attempt: &path::migration::Attempt,
+    ) -> path::migration::Outcome {
+        unreachable!("path migration should not be validated with clients")
     }
 }
 
@@ -138,15 +183,12 @@ struct EndpointConfig<
     ConnectionCloseFormatter,
     ConnectionID,
     PathHandle,
-    PathMigration,
     StatelessResetToken,
     Random,
-    EndpointLimits,
     Event,
     Limits,
     Sync,
     Tls,
-    Token,
 > {
     congestion_controller: CongestionController,
     connection_close_formatter: ConnectionCloseFormatter,
@@ -167,35 +209,29 @@ impl<
         CongestionController: congestion_controller::Endpoint,
         ConnectionCloseFormatter: connection_close_formatter::Formatter,
         ConnectionID: connection::id::Format,
-        PathMigration: path_migration::Validator,
         PathHandle: path::Handle,
         StatelessResetToken: stateless_reset_token::Generator,
         Random: s2n_quic_core::random::Generator,
-        EndpointLimits: s2n_quic_core::endpoint::Limiter,
         Event: s2n_quic_core::event::Subscriber,
         Limits: s2n_quic_core::connection::limits::Limiter,
         Sync,
         Tls: crypto::tls::Endpoint,
-        Token: token::Format,
     > core::fmt::Debug
     for EndpointConfig<
         CongestionController,
         ConnectionCloseFormatter,
         ConnectionID,
         PathHandle,
-        PathMigration,
         StatelessResetToken,
         Random,
-        EndpointLimits,
         Event,
         Limits,
         Sync,
         Tls,
-        Token,
     >
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ServerConfig").finish()
+        f.debug_struct("ClientConfig").finish()
     }
 }
 
@@ -204,30 +240,24 @@ impl<
         ConnectionCloseFormatter: connection_close_formatter::Formatter,
         ConnectionID: connection::id::Format,
         PathHandle: path::Handle,
-        PathMigration: path_migration::Validator,
         StatelessResetToken: stateless_reset_token::Generator,
         Random: s2n_quic_core::random::Generator,
-        EndpointLimits: s2n_quic_core::endpoint::Limiter,
         Event: s2n_quic_core::event::Subscriber,
         Limits: s2n_quic_core::connection::limits::Limiter,
         Sync: 'static + Send,
         Tls: crypto::tls::Endpoint,
-        Token: token::Format,
     > endpoint::Config
     for EndpointConfig<
         CongestionController,
         ConnectionCloseFormatter,
         ConnectionID,
         PathHandle,
-        PathMigration,
         StatelessResetToken,
         Random,
-        EndpointLimits,
         Event,
         Limits,
         Sync,
         Tls,
-        Token,
     >
 {
     type ConnectionIdFormat = ConnectionID;
@@ -247,7 +277,7 @@ impl<
     type Stream = stream::StreamImpl;
     type PathMigrationValidator = PathMigration;
 
-    const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Server;
+    const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Client;
 
     fn context(&mut self) -> endpoint::Context<Self> {
         endpoint::Context {

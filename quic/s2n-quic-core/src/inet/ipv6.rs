@@ -345,6 +345,12 @@ mod std_conversion {
         }
     }
 
+    impl From<(net::Ipv6Addr, u16)> for SocketAddressV6 {
+        fn from((ip, port): (net::Ipv6Addr, u16)) -> Self {
+            Self::new(ip, port)
+        }
+    }
+
     impl From<SocketAddressV6> for net::SocketAddrV6 {
         fn from(address: SocketAddressV6) -> Self {
             let ip = address.ip.into();

@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    client::{Client, ClientProviders, DefaultProviders},
     provider::*,
-    server::{DefaultProviders, Server, ServerProviders},
 };
 
-/// A builder for configuring [`Server`] providers
+/// A builder for configuring [`Client`] providers
 #[derive(Debug)]
 pub struct Builder<Providers>(pub(crate) Providers);
 
@@ -16,9 +16,9 @@ impl Default for Builder<DefaultProviders> {
     }
 }
 
-impl<Providers: ServerProviders> Builder<Providers> {
+impl<Providers: ClientProviders> Builder<Providers> {
     impl_provider_method!(
-        /// Sets the congestion controller provider for the [`Server`]
+        /// Sets the congestion controller provider for the [`Client`]
         ///
         /// # Examples
         ///
@@ -26,11 +26,11 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// ```rust,no_run
         /// # use std::error::Error;
-        /// use s2n_quic::{Server, provider::congestion_controller};
+        /// use s2n_quic::{Client, provider::congestion_controller};
         ///
         /// # #[tokio::main]
         /// # async fn main() -> Result<(), Box<dyn Error>> {
-        /// let server = Server::builder()
+        /// let client = Client::builder()
         ///     .with_congestion_controller(congestion_controller::cubic::Provider::default())?
         ///     .start()?;
         /// #
@@ -39,11 +39,11 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// ```
         with_congestion_controller,
         congestion_controller,
-        ServerProviders
+        ClientProviders
     );
 
     impl_provider_method!(
-        /// Sets the connection ID provider for the [`Server`]
+        /// Sets the connection ID provider for the [`Client`]
         ///
         /// # Examples
         ///
@@ -51,11 +51,11 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// ```rust,no_run
         /// # use std::{error::Error, time::Duration};
-        /// use s2n_quic::{Server, provider::connection_id};
+        /// use s2n_quic::{Client, provider::connection_id};
         /// #
         /// # #[tokio::main]
         /// # async fn main() -> Result<(), Box<dyn Error>> {
-        /// let server = Server::builder()
+        /// let client = Client::builder()
         ///     .with_connection_id(connection_id::Default::default())?
         ///     .start()?;
         /// #
@@ -63,11 +63,11 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// # }
         /// ```
         ///
-        /// Sets a custom connection ID provider for the server
+        /// Sets a custom connection ID provider for the client
         ///
         /// ```rust,no_run
         /// # use std::{error::Error, time::Duration};
-        /// use s2n_quic::{Server, provider::connection_id};
+        /// use s2n_quic::{Client, provider::connection_id};
         /// use rand::prelude::*;
         /// #
         /// # #[tokio::main]
@@ -89,7 +89,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///     }
         /// }
         ///
-        /// let server = Server::builder()
+        /// let client = Client::builder()
         ///     .with_connection_id(MyConnectionIdFormat)?
         ///     .start()?;
         /// #
@@ -98,23 +98,23 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// ```
         with_connection_id,
         connection_id,
-        ServerProviders
+        ClientProviders
     );
 
     impl_provider_method!(
-        /// Sets the stateless reset token provider for the [`Server`]
+        /// Sets the stateless reset token provider for the [`Client`]
         ///
         /// # Examples
         ///
-        /// Sets a custom stateless reset token provider for the server
+        /// Sets a custom stateless reset token provider for the client
         ///
         /// ```rust,ignore
         /// # use std::error::Error;
-        /// use s2n_quic::Server;
+        /// use s2n_quic::Client;
         /// #
         /// # #[tokio::main]
         /// # async fn main() -> Result<(), Box<dyn Error>> {
-        /// let server = Server::builder()
+        /// let client = Client::builder()
         ///     .with_stateless_reset_token(MyStatelessResetTokenGenerator::new())?
         ///     .start()?;
         /// #
@@ -123,11 +123,11 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// ```
         with_stateless_reset_token,
         stateless_reset_token,
-        ServerProviders
+        ClientProviders
     );
 
     impl_provider_method!(
-        /// Sets the limits provider for the [`Server`]
+        /// Sets the limits provider for the [`Client`]
         ///
         /// # Examples
         ///
@@ -135,11 +135,11 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// ```rust,no_run
         /// # use std::{error::Error, time::Duration};
-        /// use s2n_quic::{Server, provider::limits};
+        /// use s2n_quic::{Client, provider::limits};
         /// #
         /// # #[tokio::main]
         /// # async fn main() -> Result<(), Box<dyn Error>> {
-        /// let server = Server::builder()
+        /// let client = Client::builder()
         ///     .with_limits(limits::Default::default())?
         ///     .start()?;
         /// #
@@ -148,48 +148,23 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// ```
         with_limits,
         limits,
-        ServerProviders
+        ClientProviders
     );
 
     impl_provider_method!(
-        /// Sets the endpoint limits provider for the [`Server`]
+        /// Sets the event provider for the [`Client`]
         ///
         /// # Examples
         ///
-        /// Sets the max inflight handshakes for an endpoint, while inheriting the remaining default limits
-        ///
-        /// ```rust,no_run
-        /// # use std::{error::Error, time::Duration};
-        /// use s2n_quic::{Server, provider::endpoint_limits};
-        ///
-        /// # #[tokio::main]
-        /// # async fn main() -> Result<(), Box<dyn Error>> {
-        /// let server = Server::builder()
-        ///     .with_endpoint_limits(endpoint_limits::Default::default())?
-        ///     .start()?;
-        /// #
-        /// #    Ok(())
-        /// # }
-        /// ```
-        with_endpoint_limits,
-        endpoint_limits,
-        ServerProviders
-    );
-
-    impl_provider_method!(
-        /// Sets the event provider for the [`Server`]
-        ///
-        /// # Examples
-        ///
-        /// Sets a custom event subscriber for the server
+        /// Sets a custom event subscriber for the client
         ///
         /// ```rust,ignore
         /// # use std::{error::Error, time::Duration};
-        /// use s2n_quic::Server;
+        /// use s2n_quic::Client;
         /// #
         /// # #[tokio::main]
         /// # async fn main() -> Result<(), Box<dyn Error>> {
-        /// let server = Server::builder()
+        /// let client = Client::builder()
         ///     .with_event(MyEventLogger::new())?
         ///     .start()?;
         /// #
@@ -198,49 +173,24 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// ```
         with_event,
         event,
-        ServerProviders
+        ClientProviders
     );
 
     impl_provider_method!(
-        /// Sets the token provider for the [`Server`]
+        /// Sets the IO provider for the [`Client`]
         ///
         /// # Examples
         ///
-        /// Sets a custom token provider for the server
-        ///
-        /// ```rust,ignore
-        /// # use std::{error::Error, time::Duration};
-        /// use s2n_quic::Server;
-        /// #
-        /// # #[tokio::main]
-        /// # async fn main() -> Result<(), Box<dyn Error>> {
-        /// let server = Server::builder()
-        ///     .with_token(MyTokenProvider::new())?
-        ///     .start()?;
-        /// #
-        /// #    Ok(())
-        /// # }
-        /// ```
-        with_token,
-        token,
-        ServerProviders
-    );
-
-    impl_provider_method!(
-        /// Sets the IO provider for the [`Server`]
-        ///
-        /// # Examples
-        ///
-        /// Starts listening on [`127.0.0.1:443`](https://127.0.0.1)
+        /// Opens a socket on an address chosen by the operating system
         ///
         /// ```rust,no_run
         /// # use std::error::Error;
-        /// use s2n_quic::Server;
+        /// use s2n_quic::Client;
         /// #
         /// # #[tokio::main]
         /// # async fn main() -> Result<(), Box<dyn Error>> {
-        /// let server = Server::builder()
-        ///     .with_io("127.0.0.1:443")?
+        /// let client = Client::builder()
+        ///     .with_io("0.0.0.0:0")?
         ///     .start()?;
         /// #
         /// #    Ok(())
@@ -251,18 +201,18 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// ```rust,no_run
         /// # use std::error::Error;
-        /// use s2n_quic::{Server, provider::io::tokio::Builder as IoBuilder};
+        /// use s2n_quic::{Client, provider::io::tokio::Builder as IoBuilder};
         /// use std::net::ToSocketAddrs;
         /// #
         /// # #[tokio::main]
         /// # async fn main() -> Result<(), Box<dyn Error>> {
-        /// let addr = "127.0.0.1:443".to_socket_addrs()?.next().unwrap();
+        /// let addr = "0.0.0.0:0".to_socket_addrs()?.next().unwrap();
         ///
         /// let io = IoBuilder::default()
         ///     .with_receive_address(addr)?
         ///     .build()?;
         ///
-        /// let server = Server::builder()
+        /// let client = Client::builder()
         ///     .with_io(io)?
         ///     .start()?;
         /// #
@@ -271,11 +221,11 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// ```
         with_io,
         io,
-        ServerProviders
+        ClientProviders
     );
 
     impl_provider_method!(
-        /// Sets the TLS provider for the [`Server`]
+        /// Sets the TLS provider for the [`Client`]
         ///
         /// # Examples
         ///
@@ -284,31 +234,31 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// ```rust,no_run
         /// # use std::{error::Error, path::Path};
-        /// # use s2n_quic::Server;
+        /// # use s2n_quic::Client;
         /// #
         /// # #[tokio::main]
         /// # async fn main() -> Result<(), Box<dyn Error>> {
-        /// let server = Server::builder()
-        ///     .with_tls((Path::new("./certs/cert.pem"), Path::new("./certs/key.pem")))?
+        /// let client = Client::builder()
+        ///     .with_tls(Path::new("./certs/cert.pem"))?
         ///     .start()?;
         /// #
         /// #    Ok(())
         /// # }
         /// ```
         ///
-        /// Sets the TLS provider to a TLS server builder
+        /// Sets the TLS provider to a TLS client builder
         ///
         /// ```rust,ignore
         /// # use std::{error::Error, path::Path};
-        /// # use s2n_quic::Server;
+        /// # use s2n_quic::Client;
         /// #
         /// # #[tokio::main]
         /// # async fn main() -> Result<(), Box<dyn Error>> {
-        /// let tls = s2n::tls::Server::builder()
-        ///     .with_certificate(Path::new("./certs/cert.pem"), Path::new("./certs/key.pem"))?
+        /// let tls = s2n::tls::Client::builder()
+        ///     .with_certificate(Path::new("./certs/cert.pem"))?
         ///     .with_security_policy(s2n::tls::security_policy::S2N_20190802)?;
         ///
-        /// let server = Server::builder()
+        /// let client = Client::builder()
         ///     .with_tls(tls)?
         ///     .start()?;
         /// #
@@ -317,29 +267,29 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// ```
         with_tls,
         tls,
-        ServerProviders
+        ClientProviders
     );
 
-    /// Starts the [`Server`] with the configured providers
+    /// Starts the [`Client`] with the configured providers
     ///
     /// # Examples
     ///
     /// ```rust,no_run
     /// # use std::{error::Error, path::Path};
-    /// # use s2n_quic::Server;
+    /// # use s2n_quic::Client;
     /// #
     /// # #[tokio::main]
     /// # async fn main() -> Result<(), Box<dyn Error>> {
-    /// let server = Server::builder()
-    ///     .with_tls((Path::new("./certs/cert.pem"), Path::new("./certs/key.pem")))?
-    ///     .with_io("127.0.0.1:443")?
+    /// let client = Client::builder()
+    ///     .with_tls(Path::new("./certs/cert.pem"))?
+    ///     .with_io("0.0.0.0:0")?
     ///     .start()?;
     /// #
     /// #    Ok(())
     /// # }
     /// ```
-    pub fn start(self) -> Result<Server, StartError> {
-        let acceptor = self.0.build().start()?;
-        Ok(Server(acceptor))
+    pub fn start(self) -> Result<Client, StartError> {
+        let connector = self.0.build().start()?;
+        Ok(Client(connector))
     }
 }
