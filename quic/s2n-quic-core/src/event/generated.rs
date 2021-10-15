@@ -185,6 +185,8 @@ pub mod api {
         InvalidDestinationConnectionId {},
         #[non_exhaustive]
         InvalidSourceConnectionId {},
+        #[non_exhaustive]
+        RejectedConnectionAttempt {},
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1166,6 +1168,7 @@ pub mod builder {
         UnsupportedVersion,
         InvalidDestinationConnectionId,
         InvalidSourceConnectionId,
+        RejectedConnectionAttempt,
     }
     impl IntoEvent<api::DropReason> for DropReason {
         #[inline]
@@ -1178,6 +1181,7 @@ pub mod builder {
                 Self::UnsupportedVersion => UnsupportedVersion {},
                 Self::InvalidDestinationConnectionId => InvalidDestinationConnectionId {},
                 Self::InvalidSourceConnectionId => InvalidSourceConnectionId {},
+                Self::RejectedConnectionAttempt => RejectedConnectionAttempt {},
             }
         }
     }
