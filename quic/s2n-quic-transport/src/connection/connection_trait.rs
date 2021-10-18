@@ -19,6 +19,7 @@ use s2n_quic_core::{
     application,
     application::Sni,
     event,
+    event::EndpointPublisher,
     inet::{DatagramInfo, SocketAddress},
     io::tx,
     packet::{
@@ -198,7 +199,19 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         //# initially selected, it MUST discard that packet.
         if let Some(version) = packet.version() {
             if version != self.quic_version() {
-                // TODO emit packet dropped event here with version mismatch reason
+                let mut publisher = event::EndpointPublisherSubscriber::new(
+                    event::builder::EndpointMeta {
+                        endpoint_type: <Self::Config as endpoint::Config>::ENDPOINT_TYPE,
+                        timestamp: datagram.timestamp,
+                    },
+                    None,
+                    subscriber,
+                );
+
+                publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
+                    len: datagram.payload_len as u16,
+                    reason: event::builder::DropReason::VersionMismatch,
+                });
                 return Ok(());
             }
         }

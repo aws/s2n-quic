@@ -471,6 +471,7 @@ enum DropReason {
     InvalidDestinationConnectionId,
     InvalidSourceConnectionId,
     RejectedConnectionAttempt,
+    VersionMismatch,
 }
 
 /// The current state of the ECN controller for the path
