@@ -204,7 +204,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                         endpoint_type: <Self::Config as endpoint::Config>::ENDPOINT_TYPE,
                         timestamp: datagram.timestamp,
                     },
-                    None,
+                    Some(self.quic_version()),
                     subscriber,
                 );
 
@@ -279,7 +279,19 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 if datagram.destination_connection_id.as_bytes()
                     != packet.destination_connection_id()
                 {
-                    // TODO emit packet dropped event with different CID reason
+                    let mut publisher = event::EndpointPublisherSubscriber::new(
+                        event::builder::EndpointMeta {
+                            endpoint_type: <Self::Config as endpoint::Config>::ENDPOINT_TYPE,
+                            timestamp: datagram.timestamp,
+                        },
+                        None,
+                        subscriber,
+                    );
+
+                    publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
+                        len: datagram.payload_len as u16,
+                        reason: event::builder::DropReason::InvalidDestinationConnectionId,
+                    });
                     break;
                 }
 
