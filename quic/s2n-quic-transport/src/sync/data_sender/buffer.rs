@@ -292,47 +292,90 @@ impl<'a> View<'a> {
     pub fn is_fin(&self) -> bool {
         self.is_fin
     }
+
+    #[inline]
+    pub fn iter<'iter, S: Slice<'iter>>(&'iter self) -> ViewIter<'iter, S> {
+        ViewIter {
+            view: *self,
+            slice: Default::default(),
+        }
+    }
 }
 
-impl<'a> Iterator for View<'a> {
-    type Item = &'a [u8];
+pub struct ViewIter<'a, S: Slice<'a>> {
+    view: View<'a>,
+    slice: core::marker::PhantomData<S>,
+}
+
+impl<'a, S: Slice<'a>> Iterator for ViewIter<'a, S> {
+    type Item = S;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        if self.len == 0 {
+        let view = &mut self.view;
+
+        if view.len == 0 {
             return None;
         }
 
-        let chunk = &self.buffer.chunks[self.chunk_index];
+        let chunk = &view.buffer.chunks[view.chunk_index];
 
-        let start = self.offset;
+        let start = view.offset;
         // reset the offset to the beginning of the next chunk
-        self.offset = 0;
+        view.offset = 0;
         // compute the chunk len with the given offset
         let len = chunk.len() - start;
         // make sure we don't exceed that max len
-        let len = self.len.min(len);
+        let len = view.len.min(len);
 
         // compute the end of the chunk slice
         let end = start + len;
         // decrement the remaining len
-        self.len -= len;
+        view.len -= len;
         // move to the next chunk
-        self.chunk_index += 1;
+        view.chunk_index += 1;
 
+        debug_assert_eq!(chunk[start..end].len(), len);
+        Some(S::from_chunk(chunk, start, end))
+    }
+}
+
+/// Converts a Bytes into the implemented type
+pub trait Slice<'a> {
+    fn from_chunk(chunk: &'a Bytes, start: usize, end: usize) -> Self;
+}
+
+impl<'a> Slice<'a> for &'a [u8] {
+    #[inline]
+    fn from_chunk(chunk: &'a Bytes, start: usize, end: usize) -> Self {
         unsafe {
-            debug_assert_eq!(chunk[start..end].len(), len);
-            Some(chunk.get_unchecked(start..end))
+            debug_assert!(chunk.len() >= end);
+            chunk.get_unchecked(start..end)
         }
+    }
+}
+
+impl<'a> Slice<'a> for Bytes {
+    #[inline]
+    fn from_chunk(chunk: &'a Bytes, start: usize, end: usize) -> Self {
+        chunk.slice(start..end)
     }
 }
 
 impl<'a> EncoderValue for &mut View<'a> {
     #[inline]
     fn encode<E: Encoder>(&self, encoder: &mut E) {
+        // Specialize on writing byte chunks directly instead of copying the slices
+        if E::SPECIALIZES_BYTES {
+            for chunk in self.iter::<Bytes>() {
+                encoder.write_bytes(chunk);
+            }
+            return;
+        }
+
         encoder.write_sized(self.len, |slice| {
             let mut offset = 0;
-            for chunk in **self {
+            for chunk in self.iter::<&[u8]>() {
                 let len = chunk.len();
                 let end = offset + len;
                 unsafe {
@@ -441,6 +484,7 @@ mod tests {
         let interval =
             (VarInt::new(interval.start).unwrap()..=VarInt::new(interval.end).unwrap()).into();
         let actual: Vec<u8> = View::new(buffer, interval, false, &mut buffer.head.as_u64(), &mut 0)
+            .iter::<&[u8]>()
             .flatten()
             .copied()
             .collect();
@@ -452,6 +496,7 @@ mod tests {
             (VarInt::new(interval.start).unwrap()..=VarInt::new(interval.end).unwrap()).into();
         let actual: Vec<u8> = viewer
             .next_view(interval, false)
+            .iter::<&[u8]>()
             .flatten()
             .copied()
             .collect();

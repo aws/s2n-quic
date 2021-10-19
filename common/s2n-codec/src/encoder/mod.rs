@@ -12,6 +12,10 @@ pub use value::*;
 use core::convert::TryFrom;
 
 pub trait Encoder: Sized {
+    /// Set to `true` if the particular encoder specializes on the bytes implementation
+    #[cfg(feature = "bytes")]
+    const SPECIALIZES_BYTES: bool = false;
+
     /// Encode the given `EncoderValue` into the buffer
     #[inline]
     fn encode<T: EncoderValue>(&mut self, value: &T) {
@@ -34,6 +38,12 @@ pub trait Encoder: Sized {
 
     /// Copies the slice into the buffer
     fn write_slice(&mut self, slice: &[u8]);
+
+    #[cfg(feature = "bytes")]
+    #[inline]
+    fn write_bytes(&mut self, bytes: bytes::Bytes) {
+        self.write_slice(&bytes)
+    }
 
     /// Repeatedly write a byte `value` for a given `count`
     ///

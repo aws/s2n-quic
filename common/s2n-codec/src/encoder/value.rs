@@ -168,3 +168,47 @@ impl<T: EncoderValue> EncoderValue for Option<T> {
         }
     }
 }
+
+#[cfg(feature = "bytes")]
+impl EncoderValue for bytes::Bytes {
+    #[inline]
+    fn encode<E: Encoder>(&self, encoder: &mut E) {
+        if E::SPECIALIZES_BYTES {
+            encoder.write_bytes(self.clone())
+        } else {
+            encoder.write_slice(self)
+        }
+    }
+
+    #[inline]
+    fn encoding_size(&self) -> usize {
+        self.len()
+    }
+
+    #[inline]
+    fn encoding_size_for_encoder<E: Encoder>(&self, _encoder: &E) -> usize {
+        self.len()
+    }
+}
+
+#[cfg(feature = "bytes")]
+impl EncoderValue for &bytes::Bytes {
+    #[inline]
+    fn encode<E: Encoder>(&self, encoder: &mut E) {
+        if E::SPECIALIZES_BYTES {
+            encoder.write_bytes((*self).clone())
+        } else {
+            encoder.write_slice(self)
+        }
+    }
+
+    #[inline]
+    fn encoding_size(&self) -> usize {
+        self.len()
+    }
+
+    #[inline]
+    fn encoding_size_for_encoder<E: Encoder>(&self, _encoder: &E) -> usize {
+        self.len()
+    }
+}
