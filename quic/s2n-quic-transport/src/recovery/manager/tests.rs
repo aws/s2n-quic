@@ -2736,8 +2736,10 @@ fn helper_generate_multi_path_manager(
         };
         let _ = path_manager
             .on_datagram_received(
+                InternalConnectionIdGenerator::new().generate_id(),
                 &second_addr,
                 &datagram,
+                None,
                 true,
                 &mut Endpoint::default(),
                 &mut migration::default::Validator::default(),
@@ -2792,7 +2794,7 @@ fn helper_generate_path_manager_with_first_addr(
     let mut random_generator = random::testing::Generator(123);
 
     let registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
-        .create_peer_id_registry(
+        .create_server_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             connection::PeerId::TEST_ID,
             None,

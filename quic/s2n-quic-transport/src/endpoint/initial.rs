@@ -138,7 +138,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         //# parameter because their transport parameters do not have
         //# confidentiality protection.
         let stateless_reset_token = None;
-        let peer_id_registry = self.connection_id_mapper.create_peer_id_registry(
+        let peer_id_registry = self.connection_id_mapper.create_server_peer_id_registry(
             internal_connection_id,
             source_connection_id,
             stateless_reset_token,
@@ -268,6 +268,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         let path_id = connection.on_datagram_received(
             &header.path,
             datagram,
+            Some(source_connection_id),
             endpoint_context.congestion_controller,
             endpoint_context.path_migration,
             self.max_mtu,

@@ -310,21 +310,38 @@ impl ConnectionIdMapper {
         )
     }
 
-    /// Creates a `PeerIdRegistry` for a new internal connection ID, which allows that
-    /// connection to modify the mappings of it's Connection ID aliases. The provided
-    /// `initial_connection_id` will be registered in the returned registry.
-    pub fn create_peer_id_registry(
+    /// Creates a Server `PeerIdRegistry` for a new InternalConnectionId.
+    ///
+    /// The registry allows a connection to modify the mappings of it's
+    /// Connection ID aliases. The provided `initial_connection_id`
+    /// will be registered in the returned registry.
+    pub fn create_server_peer_id_registry(
         &mut self,
         internal_id: InternalConnectionId,
         initial_connection_id: connection::PeerId,
         peer_stateless_reset_token: Option<stateless_reset::Token>,
     ) -> PeerIdRegistry {
-        PeerIdRegistry::new(
+        let mut registry = PeerIdRegistry::new(internal_id, self.state.clone());
+
+        registry.register_initial_connection_id(
             internal_id,
-            self.state.clone(),
             initial_connection_id,
             peer_stateless_reset_token,
-        )
+        );
+        registry
+    }
+
+    /// Creates a Client `PeerIdRegistry` for a new InternalConnectionId.
+    ///
+    /// Similar to [`Self::create_server_peer_id_registry`] but does not register
+    /// an initial_connection_id since one it is only available after the first
+    /// Server response.
+    #[allow(unused)]
+    pub fn create_client_peer_id_registry(
+        &mut self,
+        internal_id: InternalConnectionId,
+    ) -> PeerIdRegistry {
+        PeerIdRegistry::new(internal_id, self.state.clone())
     }
 }
 
@@ -341,7 +358,8 @@ mod tests {
         let internal_id = InternalConnectionIdGenerator::new().generate_id();
         let peer_id = id(b"id01");
 
-        let _registry = mapper.create_peer_id_registry(internal_id, peer_id, Some(TEST_TOKEN_1));
+        let _registry =
+            mapper.create_server_peer_id_registry(internal_id, peer_id, Some(TEST_TOKEN_1));
 
         assert_eq!(
             Some(internal_id),
@@ -356,7 +374,8 @@ mod tests {
             mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_2)
         );
 
-        let _registry = mapper.create_peer_id_registry(internal_id, peer_id, Some(TEST_TOKEN_3));
+        let _registry =
+            mapper.create_server_peer_id_registry(internal_id, peer_id, Some(TEST_TOKEN_3));
 
         mapper
             .state

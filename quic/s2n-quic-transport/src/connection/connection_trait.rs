@@ -172,6 +172,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         &mut self,
         path_handle: &<Self::Config as endpoint::Config>::PathHandle,
         datagram: &DatagramInfo,
+        source_connection_id: Option<connection::PeerId>,
         congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
         migration_validator: &mut <Self::Config as endpoint::Config>::PathMigrationValidator,
         max_mtu: MaxMtu,

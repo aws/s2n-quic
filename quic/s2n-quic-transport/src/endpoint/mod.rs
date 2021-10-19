@@ -29,6 +29,7 @@ use s2n_quic_core::{
     time::{Clock, Timestamp},
     token::{self, Format},
 };
+use std::convert::TryInto;
 
 mod config;
 pub mod connect;
@@ -458,6 +459,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 }
             };
 
+        let source_connection_id = packet
+            .source_connection_id()
+            .map(|source_connection_id_bytes| source_connection_id_bytes.try_into().ok())
+            .flatten();
+
         let datagram = &DatagramInfo {
             timestamp,
             payload_len,
@@ -484,6 +490,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     .on_datagram_received(
                         &header.path,
                         datagram,
+                        source_connection_id,
                         endpoint_context.congestion_controller,
                         endpoint_context.path_migration,
                         max_mtu,

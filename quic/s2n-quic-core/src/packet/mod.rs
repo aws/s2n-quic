@@ -72,6 +72,18 @@ impl<'a> ProtectedPacket<'a> {
         }
     }
 
+    /// Returns the packets source connection ID
+    pub fn source_connection_id(&self) -> Option<&[u8]> {
+        match self {
+            ProtectedPacket::Short(_packet) => None,
+            ProtectedPacket::VersionNegotiation(packet) => Some(packet.source_connection_id()),
+            ProtectedPacket::Initial(packet) => Some(packet.source_connection_id()),
+            ProtectedPacket::ZeroRtt(packet) => Some(packet.source_connection_id()),
+            ProtectedPacket::Handshake(packet) => Some(packet.source_connection_id()),
+            ProtectedPacket::Retry(packet) => Some(packet.source_connection_id()),
+        }
+    }
+
     pub fn version(&self) -> Option<u32> {
         match self {
             ProtectedPacket::Short(_) => None,

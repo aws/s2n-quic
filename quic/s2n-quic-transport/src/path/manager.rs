@@ -4,7 +4,7 @@
 //! This module contains the Manager implementation
 
 use crate::{
-    connection::PeerIdRegistry,
+    connection::{InternalConnectionId, PeerIdRegistry},
     endpoint,
     path::{challenge, Path},
     transmission,
@@ -203,14 +203,44 @@ impl<Config: endpoint::Config> Manager<Config> {
     #[allow(clippy::too_many_arguments)]
     pub fn on_datagram_received<Pub: event::ConnectionPublisher>(
         &mut self,
+        internal_id: InternalConnectionId,
         path_handle: &Config::PathHandle,
         datagram: &DatagramInfo,
+        source_connection_id: Option<connection::PeerId>,
         handshake_confirmed: bool,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         migration_validator: &mut Config::PathMigrationValidator,
         max_mtu: MaxMtu,
         publisher: &mut Pub,
     ) -> Result<(Id, bool), transport::Error> {
+        if let endpoint::Type::Client = Config::ENDPOINT_TYPE {
+            // A QUIC client uses a randomly generated value as the Initial Connection Id
+            // until it receives a packet from the Server. Upon receiving a Server packet,
+            // the Client switches to using the new Destination Connection Id. The
+            // PeerIdRegistry is expected to be empty until the first Server packet.
+            let waiting_for_server_resonse = self.peer_id_registry.is_empty();
+
+            if let Some(((_id, path), source_connection_id)) =
+                self.path_mut(path_handle).zip(source_connection_id)
+            {
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+                //# Until a packet is received from the server, the client MUST
+                //# use the same Destination Connection ID value on all packets in this
+                //# connection.
+                //
+                // This is the first Server packet so start using the newly provided
+                // connection id form the Server.
+                if waiting_for_server_resonse {
+                    path.peer_connection_id = source_connection_id;
+                    self.peer_id_registry.register_initial_connection_id(
+                        internal_id,
+                        source_connection_id,
+                        None,
+                    );
+                }
+            };
+        }
+
         if let Some((id, path)) = self.path_mut(path_handle) {
             let unblocked = path.on_bytes_received(datagram.payload_len);
             return Ok((id, unblocked));
@@ -383,7 +413,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         //# protect against potential attacks as described in Section 9.3.1 and
         //# Section 9.3.2.
         //
-        // New paths start in AmplificationLimited state until they are validated.
+        // New paths for a Server endpoint start in AmplificationLimited state until they are validated.
         let mut path = Path::new(
             *path_handle,
             peer_connection_id,

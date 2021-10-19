@@ -195,7 +195,7 @@ impl Model {
             let mut random_generator = random::testing::Generator(123);
             let mut peer_id_registry =
                 ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
-                    .create_peer_id_registry(
+                    .create_server_peer_id_registry(
                         InternalConnectionIdGenerator::new().generate_id(),
                         zero_path.peer_connection_id,
                         None,
@@ -276,8 +276,10 @@ impl Model {
             .map_or(false, |(_id, path)| path.at_amplification_limit());
 
         match self.subject.on_datagram_received(
+            InternalConnectionIdGenerator::new().generate_id(),
             handle,
             &datagram,
+            None,
             true,
             &mut Default::default(),
             &mut migration_validator,

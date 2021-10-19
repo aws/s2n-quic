@@ -5,7 +5,10 @@ use super::*;
 use crate::{
     connection::{ConnectionIdMapper, InternalConnectionIdGenerator},
     contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
-    endpoint::{self, testing::Server as Config},
+    endpoint::{
+        self,
+        testing::{Client, Server},
+    },
     path,
     path::DEFAULT_MAX_MTU,
 };
@@ -22,46 +25,39 @@ use s2n_quic_core::{
 };
 use std::net::SocketAddr;
 
+type ServerManager = super::Manager<Server>;
+type ServerPath = super::Path<Server>;
+type ClientManager = super::Manager<Client>;
+type ClientPath = super::Path<Client>;
+
 // Helper function to easily create a PathManager as a Server
 fn manager_server(
-    first_path: Path,
+    first_path: ServerPath,
     stateless_reset_token: Option<stateless_reset::Token>,
-) -> Manager {
-    manager_with_endpoint_type(first_path, stateless_reset_token, endpoint::Type::Server)
-}
-
-// Helper function to easily create a PathManager as a Client
-fn manager_client(
-    first_path: Path,
-    stateless_reset_token: Option<stateless_reset::Token>,
-) -> Manager {
-    manager_with_endpoint_type(first_path, stateless_reset_token, endpoint::Type::Client)
-}
-
-// Helper function to easily create a PathManager, specifying the endpoint type
-fn manager_with_endpoint_type(
-    first_path: Path,
-    stateless_reset_token: Option<stateless_reset::Token>,
-    endpoint_type: endpoint::Type,
-) -> Manager {
+) -> ServerManager {
     let mut random_generator = random::testing::Generator(123);
-    let peer_id_registry = ConnectionIdMapper::new(&mut random_generator, endpoint_type)
-        .create_peer_id_registry(
+    let peer_id_registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
+        .create_server_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             first_path.peer_connection_id,
             stateless_reset_token,
         );
-    Manager::new(first_path, peer_id_registry)
+    ServerManager::new(first_path, peer_id_registry)
 }
 
-type Manager = super::Manager<Config>;
-type Path = super::Path<Config>;
+// Helper function to easily create a PathManager as a Client
+fn manager_client(first_path: ClientPath) -> ClientManager {
+    let mut random_generator = random::testing::Generator(123);
+    let peer_id_registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Client)
+        .create_client_peer_id_registry(InternalConnectionIdGenerator::new().generate_id());
+    ClientManager::new(first_path, peer_id_registry)
+}
 
 #[test]
 fn get_path_by_address_test() {
     let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
     let first_local_conn_id = connection::LocalId::TEST_ID;
-    let first_path = Path::new(
+    let first_path = ServerPath::new(
         Default::default(),
         first_conn_id,
         first_local_conn_id,
@@ -73,7 +69,7 @@ fn get_path_by_address_test() {
     );
 
     let second_conn_id = connection::PeerId::try_from_bytes(&[5, 4, 3, 2, 1]).unwrap();
-    let second_path = Path::new(
+    let second_path = ServerPath::new(
         Default::default(),
         second_conn_id,
         first_local_conn_id,
@@ -104,7 +100,7 @@ fn get_path_by_address_test() {
 fn test_invalid_path_fallback() {
     let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
     let first_local_conn_id = connection::LocalId::TEST_ID;
-    let mut first_path = Path::new(
+    let mut first_path = ServerPath::new(
         Default::default(),
         first_conn_id,
         first_local_conn_id,
@@ -121,7 +117,7 @@ fn test_invalid_path_fallback() {
     let now = NoopClock {}.get_time();
     let expiration = Duration::from_millis(1000);
     let challenge = challenge::Challenge::new(expiration, [0; 8]);
-    let mut second_path = Path::new(
+    let mut second_path = ServerPath::new(
         Default::default(),
         first_conn_id,
         first_local_conn_id,
@@ -484,7 +480,7 @@ fn silently_return_when_there_is_no_valid_path() {
     let now = NoopClock {}.get_time();
     let expiration = Duration::from_millis(1000);
     let challenge = challenge::Challenge::new(expiration, [0; 8]);
-    let mut first_path = Path::new(
+    let mut first_path = ServerPath::new(
         Default::default(),
         connection::PeerId::try_from_bytes(&[1]).unwrap(),
         connection::LocalId::TEST_ID,
@@ -675,7 +671,7 @@ fn test_adding_new_path() {
     let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
     let new_addr = SocketAddress::from(new_addr);
     let new_addr = RemoteAddress::from(new_addr);
-    let first_path = Path::new(
+    let first_path = ServerPath::new(
         new_addr,
         first_conn_id,
         connection::LocalId::TEST_ID,
@@ -704,8 +700,10 @@ fn test_adding_new_path() {
     };
     let (path_id, unblocked) = manager
         .on_datagram_received(
+            InternalConnectionIdGenerator::new().generate_id(),
             &new_addr,
             &datagram,
+            None,
             true,
             &mut Default::default(),
             &mut migration::default::Validator::default(),
@@ -735,7 +733,7 @@ fn test_adding_new_path() {
 fn do_not_add_new_path_if_handshake_not_confirmed() {
     // Setup:
     let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
-    let first_path = Path::new(
+    let first_path = ServerPath::new(
         Default::default(),
         first_conn_id,
         connection::LocalId::TEST_ID,
@@ -762,8 +760,10 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
     };
     let handshake_confirmed = false;
     let on_datagram_result = manager.on_datagram_received(
+        InternalConnectionIdGenerator::new().generate_id(),
         &new_addr,
         &datagram,
+        None,
         handshake_confirmed,
         &mut Default::default(),
         &mut migration::default::Validator::default(),
@@ -795,7 +795,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
 fn do_not_add_new_path_if_client() {
     // Setup:
     let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
-    let first_path = Path::new(
+    let first_path = ClientPath::new(
         Default::default(),
         first_conn_id,
         connection::LocalId::TEST_ID,
@@ -805,7 +805,7 @@ fn do_not_add_new_path_if_client() {
         DEFAULT_MAX_MTU,
         true,
     );
-    let mut manager = manager_client(first_path, None);
+    let mut manager = manager_client(first_path);
     let mut publisher = Publisher::default();
 
     // verify we have one path
@@ -822,8 +822,10 @@ fn do_not_add_new_path_if_client() {
         destination_connection_id: connection::LocalId::TEST_ID,
     };
     let on_datagram_result = manager.on_datagram_received(
+        InternalConnectionIdGenerator::new().generate_id(),
         &new_addr,
         &datagram,
+        None,
         true,
         &mut Default::default(),
         &mut migration::default::Validator::default(),
@@ -838,12 +840,65 @@ fn do_not_add_new_path_if_client() {
 }
 
 #[test]
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+//= type=test
+//# Until a packet is received from the server, the client MUST
+//# use the same Destination Connection ID value on all packets in this
+//# connection.
+fn switch_destination_connection_id_after_first_server_response() {
+    // Setup:
+    let initial_cid = connection::PeerId::try_from_bytes(&[0, 0]).unwrap();
+    let zero_path_id = Id(0);
+    let path_handle = Default::default();
+    let zero_path = ClientPath::new(
+        path_handle,
+        initial_cid,
+        connection::LocalId::TEST_ID,
+        RttEstimator::new(Duration::from_millis(30)),
+        Default::default(),
+        false,
+        DEFAULT_MAX_MTU,
+    );
+    let mut manager = manager_client(zero_path);
+    assert_eq!(manager[zero_path_id].peer_connection_id, initial_cid);
+
+    // Trigger:
+    let server_destination_cid = connection::PeerId::try_from_bytes(&[1, 1]).unwrap();
+    let datagram = DatagramInfo {
+        timestamp: NoopClock {}.get_time(),
+        payload_len: 0,
+        ecn: ExplicitCongestionNotification::default(),
+        destination_connection_id: connection::LocalId::TEST_ID,
+    };
+    let mut publisher = Publisher::default();
+
+    let on_datagram_result = manager.on_datagram_received(
+        InternalConnectionIdGenerator::new().generate_id(),
+        &path_handle,
+        &datagram,
+        Some(server_destination_cid),
+        true,
+        &mut Default::default(),
+        &mut migration::default::Validator::default(),
+        DEFAULT_MAX_MTU,
+        &mut publisher,
+    );
+
+    // Expectation:
+    assert!(on_datagram_result.is_ok());
+    assert_eq!(
+        manager[zero_path_id].peer_connection_id,
+        server_destination_cid
+    );
+}
+
+#[test]
 fn limit_number_of_connection_migrations() {
     // Setup:
     let new_addr: SocketAddr = "127.0.0.1:1".parse().unwrap();
     let new_addr = SocketAddress::from(new_addr);
     let new_addr = RemoteAddress::from(new_addr);
-    let first_path = Path::new(
+    let first_path = ServerPath::new(
         new_addr,
         connection::PeerId::try_from_bytes(&[1]).unwrap(),
         connection::LocalId::TEST_ID,
@@ -899,7 +954,7 @@ fn connection_migration_challenge_behavior() {
     let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
     let new_addr = SocketAddress::from(new_addr);
     let new_addr = RemoteAddress::from(new_addr);
-    let first_path = Path::new(
+    let first_path = ServerPath::new(
         new_addr,
         first_conn_id,
         connection::LocalId::TEST_ID,
@@ -990,7 +1045,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
     let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
     let new_addr = SocketAddress::from(new_addr);
     let new_addr = RemoteAddress::from(new_addr);
-    let first_path = Path::new(
+    let first_path = ServerPath::new(
         new_addr,
         connection::PeerId::try_from_bytes(&[1]).unwrap(),
         connection::LocalId::TEST_ID,
@@ -1067,7 +1122,7 @@ fn connection_migration_new_path_abandon_timer() {
     let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
     let new_addr = SocketAddress::from(new_addr);
     let new_addr = RemoteAddress::from(new_addr);
-    let first_path = Path::new(
+    let first_path = ServerPath::new(
         new_addr,
         connection::PeerId::try_from_bytes(&[1]).unwrap(),
         connection::LocalId::TEST_ID,
@@ -1186,7 +1241,7 @@ fn connection_migration_new_path_abandon_timer() {
 #[test]
 fn stop_using_a_retired_connection_id() {
     let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
-    let first_path = Path::new(
+    let first_path = ServerPath::new(
         Default::default(),
         id_1,
         connection::LocalId::TEST_ID,
@@ -1276,7 +1331,7 @@ fn pending_paths_should_return_paths_pending_validation() {
     let mut helper = helper_manager_with_paths();
     let third_path_id = Id(3);
     let third_conn_id = connection::PeerId::try_from_bytes(&[3]).unwrap();
-    let mut third_path = Path::new(
+    let mut third_path = ServerPath::new(
         Default::default(),
         third_conn_id,
         connection::LocalId::TEST_ID,
@@ -1339,7 +1394,7 @@ fn temporary_until_authenticated() {
     let first_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
     let first_addr = SocketAddress::from(first_addr);
     let first_addr = RemoteAddress::from(first_addr);
-    let first_path = Path::new(
+    let first_path = ServerPath::new(
         first_addr,
         connection::PeerId::try_from_bytes(&[1]).unwrap(),
         connection::LocalId::TEST_ID,
@@ -1358,8 +1413,10 @@ fn temporary_until_authenticated() {
     // create a second path without calling on_processed_packet
     let (second_path_id, _unblocked) = manager
         .on_datagram_received(
+            InternalConnectionIdGenerator::new().generate_id(),
             &second_addr,
             &datagram,
+            None,
             true,
             &mut Default::default(),
             &mut migration::default::Validator::default(),
@@ -1380,8 +1437,10 @@ fn temporary_until_authenticated() {
     // create a third path
     let (third_path_id, _unblocked) = manager
         .on_datagram_received(
+            InternalConnectionIdGenerator::new().generate_id(),
             &third_addr,
             &datagram,
+            None,
             true,
             &mut Default::default(),
             &mut migration::default::Validator::default(),
@@ -1416,8 +1475,10 @@ fn temporary_until_authenticated() {
     // receive another datagram with the second_addr
     let (fourth_path_id, _unblocked) = manager
         .on_datagram_received(
+            InternalConnectionIdGenerator::new().generate_id(),
             &second_addr,
             &datagram,
+            None,
             true,
             &mut Default::default(),
             &mut migration::default::Validator::default(),
@@ -1648,7 +1709,7 @@ pub fn helper_manager_with_paths_base(
     let mut random_generator = random::testing::Generator(123);
     let mut peer_id_registry =
         ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
-            .create_peer_id_registry(
+            .create_server_peer_id_registry(
                 InternalConnectionIdGenerator::new().generate_id(),
                 zero_path.peer_connection_id,
                 None,
@@ -1663,7 +1724,7 @@ pub fn helper_manager_with_paths_base(
             .is_ok());
     }
 
-    let mut manager = Manager::new(zero_path, peer_id_registry);
+    let mut manager = ServerManager::new(zero_path, peer_id_registry);
     assert!(manager.peer_id_registry.is_active(&first_conn_id));
     manager.paths.push(first_path);
     manager.paths.push(second_path);
@@ -1716,9 +1777,9 @@ pub fn helper_manager_with_paths_base(
     }
 }
 
-pub fn helper_path(peer_id: connection::PeerId) -> Path {
+pub fn helper_path(peer_id: connection::PeerId) -> ServerPath {
     let local_conn_id = connection::LocalId::TEST_ID;
-    Path::new(
+    ServerPath::new(
         Default::default(),
         peer_id,
         local_conn_id,
@@ -1742,7 +1803,7 @@ pub struct Helper {
     pub zero_path_id: Id,
     pub first_path_id: Id,
     pub second_path_id: Id,
-    pub manager: Manager,
+    pub manager: ServerManager,
 }
 
 impl Id {
