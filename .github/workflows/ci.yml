@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        toolchain: [stable, beta]
+        toolchain: [stable]
     steps:
       - uses: actions/checkout@v2
         with:
@@ -92,6 +92,33 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --all-features --all-targets -- -D warnings
+          name: clippy (${{ matrix.toolchain }}) / report
+
+  clippy_beta:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain: [beta]
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          profile: minimal
+          override: true
+          components: clippy
+
+      - uses: camshaft/rust-cache@v1
+
+      - name: Run cargo clippy
+        uses: actions-rs/clippy-check@v1.0.7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features --all-targets -- -D warnings -A clippy::manual_split_once
           name: clippy (${{ matrix.toolchain }}) / report
 
   udeps:

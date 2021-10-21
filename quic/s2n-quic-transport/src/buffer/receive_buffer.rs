@@ -137,12 +137,11 @@ impl StreamReceiveBuffer {
         // allocations later on - but since this value is purely expected to be
         // a compile-time configuration value prominently showing the error to
         // help debugging seems preferred.
-        if buffer_size < MIN_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE {
-            panic!(
-                "Invalid buffer size. Expected at least {}",
-                MIN_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE
-            );
-        }
+        assert!(
+            buffer_size >= MIN_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE,
+            "Invalid buffer size. Expected at least {}",
+            MIN_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE
+        );
 
         StreamReceiveBuffer {
             slots: VecDeque::new(),

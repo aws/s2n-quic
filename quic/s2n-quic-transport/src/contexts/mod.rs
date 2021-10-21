@@ -103,7 +103,7 @@ impl<'a> ConnectionApiCallContext<'a> {
 
     /// Returns a reference to the WakeupHandle
     pub fn wakeup_handle(&mut self) -> &mut WakeupHandle<InternalConnectionId> {
-        &mut self.wakeup_handle
+        self.wakeup_handle
     }
 }
 

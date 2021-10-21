@@ -277,7 +277,6 @@ impl Interop {
 
 #[derive(Debug, Clone, Copy)]
 pub struct MyConnectionContext {
-    id: usize,
     packet_sent: u64,
     stream_requests: u64,
 }
@@ -293,7 +292,6 @@ impl Subscriber for EventSubscriber {
         _info: &events::ConnectionInfo,
     ) -> Self::ConnectionContext {
         MyConnectionContext {
-            id: self.0,
             packet_sent: 0,
             stream_requests: 0,
         }

@@ -97,7 +97,6 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         alpn: Bytes,
     ) -> Self {
         let key_set = KeySet::new(key);
-        let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
 
         Self {
             tx_packet_numbers: TxPacketNumbers::new(PacketNumberSpace::ApplicationData, now),
@@ -110,10 +109,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             alpn,
             ping: flag::Ping::default(),
             processed_packet_numbers: SlidingWindow::default(),
-            recovery_manager: recovery::Manager::new(
-                PacketNumberSpace::ApplicationData,
-                max_ack_delay,
-            ),
+            recovery_manager: recovery::Manager::new(PacketNumberSpace::ApplicationData),
         }
     }
 
@@ -176,8 +172,8 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             packet_number,
             payload: transmission::application::Payload::<Config>::new(
                 context.path_id,
-                &mut context.path_manager,
-                &mut context.local_id_registry,
+                context.path_manager,
+                context.local_id_registry,
                 context.transmission_mode,
                 &mut self.ack_manager,
                 handshake_status,

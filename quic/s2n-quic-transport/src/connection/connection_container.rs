@@ -448,8 +448,8 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
                             // close the connection if the application is no longer waiting for the handshake
                             handle.api.close_connection(None);
                         }
-                    } else if cfg!(debug_assertions) {
-                        panic!("client connection tried to open more than once");
+                    } else {
+                        debug_assert!(false, "client connection tried to open more than once");
                     }
                 }
             }
@@ -826,9 +826,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
                 Some(v) if !v.has_elapsed(now) => break,
                 Some(_) => {}
                 None => {
-                    if cfg!(debug_assertions) {
-                        panic!("connection was inserted without a timeout specified");
-                    }
+                    debug_assert!(false, "connection was inserted without a timeout specified");
 
                     let conn = cursor.remove().unwrap();
                     conn.timeout.set(None);

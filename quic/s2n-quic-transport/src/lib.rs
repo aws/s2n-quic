@@ -5,7 +5,6 @@
 //! data via the QUIC protocol.
 
 #![deny(unused_must_use)]
-
 extern crate alloc;
 
 mod buffer;

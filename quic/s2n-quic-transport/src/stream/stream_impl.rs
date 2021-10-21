@@ -132,8 +132,6 @@ pub trait StreamTrait: StreamInterestProvider + timer::Provider + core::fmt::Deb
 pub struct StreamImpl {
     /// The stream ID
     pub(super) stream_id: StreamId,
-    /// Set to `true` when this stream has a receiving side
-    has_receive: bool,
     /// Manages the receiving side of the stream
     pub(super) receive_stream: ReceiveStream,
     /// Set to `true` when this stream has a sending side
@@ -169,7 +167,6 @@ impl StreamTrait for StreamImpl {
 
         StreamImpl {
             stream_id: config.stream_id,
-            has_receive: !receive_is_closed,
             receive_stream: ReceiveStream::new(
                 receive_is_closed,
                 config.incoming_connection_flow_controller,

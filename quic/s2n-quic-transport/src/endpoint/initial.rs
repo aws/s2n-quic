@@ -290,9 +290,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                     // this is the first packet this connection has received
                     // so getting this error would be incorrect
                     ProcessingError::DuplicatePacket => {
-                        if cfg!(debug_assertions) {
-                            panic!("got duplicate packet error on first packet");
-                        }
+                        debug_assert!(false, "got duplicate packet error on first packet");
                         transport::Error::INTERNAL_ERROR.into()
                     }
                 }

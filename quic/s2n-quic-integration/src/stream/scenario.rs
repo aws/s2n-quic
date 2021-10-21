@@ -34,7 +34,7 @@ impl Default for Streams {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Eq, Ord, TypeGenerator)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, TypeGenerator)]
 pub struct UniStream {
     /// The amount of time the initiator should delay before opening the stream
     #[generator((0..=2).map_gen(Duration::from_millis))]
@@ -43,16 +43,7 @@ pub struct UniStream {
     pub local: Stream,
 }
 
-impl Default for UniStream {
-    fn default() -> Self {
-        Self {
-            delay: Duration::default(),
-            local: Stream::default(),
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Eq, Ord, TypeGenerator)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, TypeGenerator)]
 pub struct BidiStream {
     /// The amount of time the initiator should delay before opening the stream
     #[generator((0..=2).map_gen(Duration::from_millis))]
@@ -63,17 +54,7 @@ pub struct BidiStream {
     pub peer: Stream,
 }
 
-impl Default for BidiStream {
-    fn default() -> Self {
-        Self {
-            delay: Duration::default(),
-            local: Stream::default(),
-            peer: Stream::default(),
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Eq, Ord, TypeGenerator)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, TypeGenerator)]
 pub struct Stream {
     /// The data that should be sent over the stream
     pub data: Data,
@@ -83,17 +64,6 @@ pub struct Stream {
     pub stop_sending: Option<Error>,
     /// The size of the chunks that should be sent on the stream
     pub send_amount: SendAmount,
-}
-
-impl Default for Stream {
-    fn default() -> Self {
-        Self {
-            data: Data::default(),
-            reset: None,
-            stop_sending: None,
-            send_amount: SendAmount::default(),
-        }
-    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Eq, Ord, TypeGenerator)]

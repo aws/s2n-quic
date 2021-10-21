@@ -216,7 +216,6 @@ impl Report {
                 .or_insert_with(|| TargetReport {
                     target,
                     references: BTreeSet::new(),
-                    contents: contents.get(&target).expect("content should exist"),
                     specification: specifications.get(&target).expect("content should exist"),
                     require_citations: self.require_citations(),
                     require_tests: self.require_tests(),
@@ -296,7 +295,6 @@ pub struct ReportResult<'a> {
 pub struct TargetReport<'a> {
     target: &'a Target,
     references: BTreeSet<Reference<'a>>,
-    contents: &'a str,
     specification: &'a Specification<'a>,
     require_citations: bool,
     require_tests: bool,

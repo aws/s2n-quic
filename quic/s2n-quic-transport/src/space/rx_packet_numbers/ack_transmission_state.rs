@@ -122,9 +122,7 @@ impl AckTransmissionState {
                 }
             }
             Self::Disabled => {
-                if cfg!(debug_assertions) {
-                    panic!("ACKs should not be transmitted in `Disabled` state");
-                }
+                debug_assert!(false, "ACKs should not be transmitted in `Disabled` state");
             }
         }
 

@@ -21,6 +21,7 @@ pub(crate) type ConnectionReceiver = oneshot::Receiver<Result<Connection, connec
 pub(crate) type ConnectionSender = oneshot::Sender<Result<Connection, connection::Error>>;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Connect {
     remote_address: RemoteAddress,
     local_address: Option<LocalAddress>,
@@ -54,6 +55,7 @@ impl<T: Into<SocketAddress>> From<T> for Connect {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub(crate) struct Request {
     pub connect: Connect,
     pub sender: ConnectionSender,

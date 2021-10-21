@@ -190,9 +190,7 @@ where
                         client: other_secret,
                     },
                     _ => {
-                        if cfg!(debug_assertions) {
-                            panic!("invalid key phase");
-                        }
+                        debug_assert!(false, "invalid key phase");
                         return Err(transport::Error::INTERNAL_ERROR);
                     }
                 };
