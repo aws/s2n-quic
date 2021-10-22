@@ -2716,171 +2716,171 @@ mod traits {
         fn on_alpn_information(&mut self, event: builder::AlpnInformation) {
             let event = event.into_event();
             self.subscriber
-                .on_alpn_information(&mut self.context, &self.meta, &event);
+                .on_alpn_information(self.context, &self.meta, &event);
             self.subscriber
-                .on_connection_event(&mut self.context, &self.meta, &event);
+                .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
         fn on_sni_information(&mut self, event: builder::SniInformation) {
             let event = event.into_event();
             self.subscriber
-                .on_sni_information(&mut self.context, &self.meta, &event);
+                .on_sni_information(self.context, &self.meta, &event);
             self.subscriber
-                .on_connection_event(&mut self.context, &self.meta, &event);
+                .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
         fn on_packet_sent(&mut self, event: builder::PacketSent) {
             let event = event.into_event();
             self.subscriber
-                .on_packet_sent(&mut self.context, &self.meta, &event);
+                .on_packet_sent(self.context, &self.meta, &event);
             self.subscriber
-                .on_connection_event(&mut self.context, &self.meta, &event);
+                .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
         fn on_packet_received(&mut self, event: builder::PacketReceived) {
             let event = event.into_event();
             self.subscriber
-                .on_packet_received(&mut self.context, &self.meta, &event);
+                .on_packet_received(self.context, &self.meta, &event);
             self.subscriber
-                .on_connection_event(&mut self.context, &self.meta, &event);
+                .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
         fn on_active_path_updated(&mut self, event: builder::ActivePathUpdated) {
             let event = event.into_event();
             self.subscriber
-                .on_active_path_updated(&mut self.context, &self.meta, &event);
+                .on_active_path_updated(self.context, &self.meta, &event);
             self.subscriber
-                .on_connection_event(&mut self.context, &self.meta, &event);
+                .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
         fn on_path_created(&mut self, event: builder::PathCreated) {
             let event = event.into_event();
             self.subscriber
-                .on_path_created(&mut self.context, &self.meta, &event);
+                .on_path_created(self.context, &self.meta, &event);
             self.subscriber
-                .on_connection_event(&mut self.context, &self.meta, &event);
+                .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
         fn on_frame_sent(&mut self, event: builder::FrameSent) {
             let event = event.into_event();
             self.subscriber
-                .on_frame_sent(&mut self.context, &self.meta, &event);
+                .on_frame_sent(self.context, &self.meta, &event);
             self.subscriber
-                .on_connection_event(&mut self.context, &self.meta, &event);
+                .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
         fn on_frame_received(&mut self, event: builder::FrameReceived) {
             let event = event.into_event();
             self.subscriber
-                .on_frame_received(&mut self.context, &self.meta, &event);
+                .on_frame_received(self.context, &self.meta, &event);
             self.subscriber
-                .on_connection_event(&mut self.context, &self.meta, &event);
+                .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
         fn on_packet_lost(&mut self, event: builder::PacketLost) {
             let event = event.into_event();
             self.subscriber
-                .on_packet_lost(&mut self.context, &self.meta, &event);
+                .on_packet_lost(self.context, &self.meta, &event);
             self.subscriber
-                .on_connection_event(&mut self.context, &self.meta, &event);
+                .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
         fn on_recovery_metrics(&mut self, event: builder::RecoveryMetrics) {
             let event = event.into_event();
             self.subscriber
-                .on_recovery_metrics(&mut self.context, &self.meta, &event);
+                .on_recovery_metrics(self.context, &self.meta, &event);
             self.subscriber
-                .on_connection_event(&mut self.context, &self.meta, &event);
+                .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
         fn on_key_update(&mut self, event: builder::KeyUpdate) {
             let event = event.into_event();
             self.subscriber
-                .on_key_update(&mut self.context, &self.meta, &event);
+                .on_key_update(self.context, &self.meta, &event);
             self.subscriber
-                .on_connection_event(&mut self.context, &self.meta, &event);
+                .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
         fn on_connection_started(&mut self, event: builder::ConnectionStarted) {
             let event = event.into_event();
             self.subscriber
-                .on_connection_started(&mut self.context, &self.meta, &event);
+                .on_connection_started(self.context, &self.meta, &event);
             self.subscriber
-                .on_connection_event(&mut self.context, &self.meta, &event);
+                .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
         fn on_connection_closed(&mut self, event: builder::ConnectionClosed) {
             let event = event.into_event();
             self.subscriber
-                .on_connection_closed(&mut self.context, &self.meta, &event);
+                .on_connection_closed(self.context, &self.meta, &event);
             self.subscriber
-                .on_connection_event(&mut self.context, &self.meta, &event);
+                .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
         fn on_duplicate_packet(&mut self, event: builder::DuplicatePacket) {
             let event = event.into_event();
             self.subscriber
-                .on_duplicate_packet(&mut self.context, &self.meta, &event);
+                .on_duplicate_packet(self.context, &self.meta, &event);
             self.subscriber
-                .on_connection_event(&mut self.context, &self.meta, &event);
+                .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
         fn on_datagram_sent(&mut self, event: builder::DatagramSent) {
             let event = event.into_event();
             self.subscriber
-                .on_datagram_sent(&mut self.context, &self.meta, &event);
+                .on_datagram_sent(self.context, &self.meta, &event);
             self.subscriber
-                .on_connection_event(&mut self.context, &self.meta, &event);
+                .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
         fn on_datagram_received(&mut self, event: builder::DatagramReceived) {
             let event = event.into_event();
             self.subscriber
-                .on_datagram_received(&mut self.context, &self.meta, &event);
+                .on_datagram_received(self.context, &self.meta, &event);
             self.subscriber
-                .on_connection_event(&mut self.context, &self.meta, &event);
+                .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
         fn on_datagram_dropped(&mut self, event: builder::DatagramDropped) {
             let event = event.into_event();
             self.subscriber
-                .on_datagram_dropped(&mut self.context, &self.meta, &event);
+                .on_datagram_dropped(self.context, &self.meta, &event);
             self.subscriber
-                .on_connection_event(&mut self.context, &self.meta, &event);
+                .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
         fn on_connection_id_updated(&mut self, event: builder::ConnectionIdUpdated) {
             let event = event.into_event();
             self.subscriber
-                .on_connection_id_updated(&mut self.context, &self.meta, &event);
+                .on_connection_id_updated(self.context, &self.meta, &event);
             self.subscriber
-                .on_connection_event(&mut self.context, &self.meta, &event);
+                .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
         fn on_ecn_state_changed(&mut self, event: builder::EcnStateChanged) {
             let event = event.into_event();
             self.subscriber
-                .on_ecn_state_changed(&mut self.context, &self.meta, &event);
+                .on_ecn_state_changed(self.context, &self.meta, &event);
             self.subscriber
-                .on_connection_event(&mut self.context, &self.meta, &event);
+                .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]

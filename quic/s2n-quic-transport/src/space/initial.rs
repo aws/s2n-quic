@@ -64,7 +64,6 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         now: Timestamp,
         ack_manager: AckManager,
     ) -> Self {
-        let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
         Self {
             ack_manager,
             key,
@@ -72,7 +71,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             crypto_stream: CryptoStream::new(),
             tx_packet_numbers: TxPacketNumbers::new(PacketNumberSpace::Initial, now),
             processed_packet_numbers: SlidingWindow::default(),
-            recovery_manager: recovery::Manager::new(PacketNumberSpace::Initial, max_ack_delay),
+            recovery_manager: recovery::Manager::new(PacketNumberSpace::Initial),
         }
     }
 

@@ -44,7 +44,7 @@ type Path = super::Path<Config>;
 fn one_second_pto_when_no_previous_rtt_available() {
     let space = PacketNumberSpace::Handshake;
     let max_ack_delay = Duration::from_millis(0);
-    let mut manager = Manager::new(space, max_ack_delay);
+    let mut manager = Manager::new(space);
     let now = s2n_quic_platform::time::now();
 
     let path = Path::new(
@@ -314,7 +314,7 @@ fn on_packet_sent_across_multiple_paths() {
 #[test]
 fn on_ack_frame() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space, Duration::from_millis(100));
+    let mut manager = Manager::new(space);
     let packet_bytes = 128;
     let ecn = ExplicitCongestionNotification::default();
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
@@ -830,7 +830,7 @@ fn process_new_acked_packets_pto_timer() {
 fn process_new_acked_packets_process_ecn() {
     // Setup:
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space, Duration::from_millis(100));
+    let mut manager = Manager::new(space);
     let packet_bytes = 128;
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let mut context = MockContext::new(&mut path_manager);
@@ -926,7 +926,7 @@ fn process_new_acked_packets_process_ecn() {
 fn process_new_acked_packets_failed_ecn_validation_does_not_cause_congestion_event() {
     // Setup:
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space, Duration::from_millis(100));
+    let mut manager = Manager::new(space);
     let packet_bytes = 128;
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let mut context = MockContext::new(&mut path_manager);
@@ -979,7 +979,7 @@ fn process_new_acked_packets_failed_ecn_validation_does_not_cause_congestion_eve
 #[test]
 fn no_rtt_update_when_not_acknowledging_the_largest_acknowledged_packet() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space, Duration::from_millis(100));
+    let mut manager = Manager::new(space);
     let packet_bytes = 128;
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
@@ -1246,7 +1246,7 @@ fn rtt_update_when_receiving_ack_from_multiple_paths() {
 #[test]
 fn detect_and_remove_lost_packets() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space, Duration::from_millis(100));
+    let mut manager = Manager::new(space);
     let now = s2n_quic_platform::time::now();
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
@@ -1637,7 +1637,7 @@ fn remove_lost_packets_persistent_cogestion_path_aware() {
 #[test]
 fn detect_and_remove_lost_packets_nothing_lost() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space, Duration::from_millis(100));
+    let mut manager = Manager::new(space);
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
@@ -1686,7 +1686,7 @@ fn detect_and_remove_lost_packets_nothing_lost() {
 #[test]
 fn detect_and_remove_lost_packets_mtu_probe() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space, Duration::from_millis(100));
+    let mut manager = Manager::new(space);
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
@@ -1734,7 +1734,7 @@ fn persistent_congestion() {
     //# across packet number spaces MAY use state for just the packet number
     //# space that was acknowledged.
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space, Duration::from_millis(100));
+    let mut manager = Manager::new(space);
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
@@ -1887,7 +1887,7 @@ fn persistent_congestion() {
 #[test]
 fn persistent_congestion_multiple_periods() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space, Duration::from_millis(100));
+    let mut manager = Manager::new(space);
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
@@ -2006,7 +2006,7 @@ fn persistent_congestion_multiple_periods() {
 #[test]
 fn persistent_congestion_period_does_not_start_until_rtt_sample() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space, Duration::from_millis(100));
+    let mut manager = Manager::new(space);
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
@@ -2073,7 +2073,7 @@ fn persistent_congestion_period_does_not_start_until_rtt_sample() {
 #[test]
 fn update_pto_timer() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space, Duration::from_millis(10));
+    let mut manager = Manager::new(space);
     let now = s2n_quic_platform::time::now() + Duration::from_secs(10);
     let is_handshake_confirmed = true;
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
@@ -2125,7 +2125,7 @@ fn update_pto_timer() {
         Default::default(),
         connection::PeerId::TEST_ID,
         connection::LocalId::TEST_ID,
-        RttEstimator::new(manager.max_ack_delay),
+        RttEstimator::new(Duration::from_millis(10)),
         MockCongestionController::default(),
         false,
         DEFAULT_MAX_MTU,
@@ -2200,7 +2200,7 @@ fn update_pto_timer() {
 #[test]
 fn pto_armed_if_handshake_not_confirmed() {
     let space = PacketNumberSpace::Handshake;
-    let mut manager = Manager::new(space, Duration::from_millis(10));
+    let mut manager = Manager::new(space);
     let now = s2n_quic_platform::time::now() + Duration::from_secs(10);
     let is_handshake_confirmed = false;
 
@@ -2229,7 +2229,7 @@ fn pto_armed_if_handshake_not_confirmed() {
 fn pto_must_be_at_least_k_granularity() {
     let space = PacketNumberSpace::Handshake;
     let max_ack_delay = Duration::from_millis(0);
-    let mut manager = Manager::new(space, max_ack_delay);
+    let mut manager = Manager::new(space);
     let now = s2n_quic_platform::time::now();
 
     let mut path = Path::new(
@@ -2264,7 +2264,7 @@ fn pto_must_be_at_least_k_granularity() {
 #[test]
 fn on_timeout() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space, Duration::from_millis(10));
+    let mut manager = Manager::new(space);
     let now = s2n_quic_platform::time::now() + Duration::from_secs(10);
     manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
@@ -2377,7 +2377,7 @@ fn on_timeout() {
 #[test]
 fn timers() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space, Duration::from_millis(10));
+    let mut manager = Manager::new(space);
     let loss_time = s2n_quic_platform::time::now() + Duration::from_secs(5);
     let pto_time = s2n_quic_platform::time::now() + Duration::from_secs(10);
 
@@ -2405,7 +2405,7 @@ fn timers() {
 #[test]
 fn on_transmit() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space, Duration::from_millis(10));
+    let mut manager = Manager::new(space);
     let mut frame_buffer = OutgoingFrameBuffer::new();
     let mut context = MockWriteContext::new(
         s2n_quic_platform::time::now(),
@@ -2469,7 +2469,7 @@ fn on_transmit() {
 #[test]
 fn on_transmit_normal_transmission_mode() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space, Duration::from_millis(10));
+    let mut manager = Manager::new(space);
     let mut frame_buffer = OutgoingFrameBuffer::new();
     let mut context = MockWriteContext::new(
         s2n_quic_platform::time::now(),
@@ -2550,7 +2550,7 @@ fn ack_packets(
 #[test]
 fn requires_probe() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space, Duration::from_millis(10));
+    let mut manager = Manager::new(space);
 
     manager.pto.state = PtoState::RequiresTransmission(2);
     assert!(manager.requires_probe());
@@ -2567,7 +2567,7 @@ fn requires_probe() {
 #[test]
 fn probe_packets_count_towards_bytes_in_flight() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space, Duration::from_millis(10));
+    let mut manager = Manager::new(space);
     let ecn = ExplicitCongestionNotification::default();
 
     manager.pto.state = PtoState::RequiresTransmission(2);
@@ -2658,7 +2658,7 @@ fn timer_granularity() {
 #[test]
 fn packet_declared_lost_less_than_1_ms_from_loss_threshold() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space, Duration::from_millis(100));
+    let mut manager = Manager::new(space);
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
@@ -2700,7 +2700,7 @@ fn helper_generate_multi_path_manager(
     Manager,
     path::Manager<Config>,
 ) {
-    let manager = Manager::new(space, Duration::from_millis(100));
+    let manager = Manager::new(space);
     let clock = NoopClock {};
 
     let first_addr: SocketAddr = "127.0.0.1:80".parse().unwrap();

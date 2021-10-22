@@ -71,7 +71,7 @@ impl Annotation {
     }
 
     pub fn target_path(&self) -> &str {
-        self.target.splitn(2, '#').next().unwrap()
+        self.target.split_once('#').map_or(&*self.target, |x| x.0)
     }
 
     // The JSON file needs to index the specification
@@ -92,7 +92,7 @@ impl Annotation {
     }
 
     pub fn target_section(&self) -> Option<&str> {
-        self.target.splitn(2, '#').nth(1).map(|section| {
+        self.target.split_once('#').map(|x| x.1).map(|section| {
             // allow references to specify a #section-123 instead of #123
             section
                 .trim_start_matches("section-")

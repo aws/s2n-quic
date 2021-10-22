@@ -296,9 +296,11 @@ impl Io {
 
         let task = handle.spawn(async move {
             if let Err(err) = instance.event_loop().await {
-                eprintln!("A fatal IO error occurred ({:?}): {}", err.kind(), err);
+                let debug = format!("A fatal IO error occurred ({:?}): {}", err.kind(), err);
                 if cfg!(test) {
-                    panic!();
+                    panic!("{}", debug);
+                } else {
+                    eprintln!("{}", debug);
                 }
             }
         });
@@ -804,9 +806,8 @@ mod tests {
             let len = entries.len();
             for entry in entries {
                 if let Some((_header, payload)) = entry.read() {
-                    if payload.len() != 4 {
-                        panic!("invalid payload {:?}", payload);
-                    }
+                    assert_eq!(payload.len(), 4, "invalid payload {:?}", payload);
+
                     let id = (&payload[..]).try_into().unwrap();
                     let id = u32::from_be_bytes(id);
                     self.messages.remove(&id);

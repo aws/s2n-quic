@@ -89,7 +89,7 @@ impl<'a, 'sub, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
             tag_len,
             config: Default::default(),
             path_id: self.path_id,
-            publisher: &mut self.publisher,
+            publisher: self.publisher,
         };
 
         self.payload.on_transmit(&mut context);

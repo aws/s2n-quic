@@ -204,8 +204,8 @@ impl Struct {
                         #[inline]
                         fn #function(&mut self, event: builder::#ident) {
                             let event = event.into_event();
-                            self.subscriber.#function(&mut self.context, &self.meta, &event);
-                            self.subscriber.on_connection_event(&mut self.context, &self.meta, &event);
+                            self.subscriber.#function(self.context, &self.meta, &event);
+                            self.subscriber.on_connection_event(self.context, &self.meta, &event);
                             self.subscriber.on_event(&self.meta, &event);
                         }
                     ));

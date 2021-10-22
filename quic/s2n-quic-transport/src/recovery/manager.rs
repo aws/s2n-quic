@@ -29,15 +29,6 @@ pub struct Manager<Config: endpoint::Config> {
     space: PacketNumberSpace,
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.3
-    //# The maximum amount of time by which the receiver
-    //# intends to delay acknowledgments for packets in the Application
-    //# Data packet number space, as defined by the eponymous transport
-    //# parameter (Section 18.2 of [QUIC-TRANSPORT]).  Note that the
-    //# actual ack_delay in a received ACK frame may be larger due to late
-    //# timers, reordering, or loss.
-    max_ack_delay: Duration,
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.3
     //# The largest packet number acknowledged in the packet number space so far.
     largest_acked_packet: Option<PacketNumber>,
 
@@ -108,14 +99,13 @@ macro_rules! recovery_event {
 
 impl<Config: endpoint::Config> Manager<Config> {
     /// Constructs a new `recovery::Manager`
-    pub fn new(space: PacketNumberSpace, max_ack_delay: Duration) -> Self {
+    pub fn new(space: PacketNumberSpace) -> Self {
         Self {
             space,
-            max_ack_delay,
             largest_acked_packet: None,
             sent_packets: SentPackets::default(),
             loss_timer: Timer::default(),
-            pto: Pto::new(max_ack_delay),
+            pto: Pto::default(),
             time_of_last_ack_eliciting_packet: None,
             baseline_ecn_counts: EcnCounts::default(),
             sent_packet_ecn_counts: EcnCounts::default(),
@@ -983,7 +973,6 @@ impl<Config: endpoint::Config> transmission::interest::Provider for Manager<Conf
 struct Pto {
     timer: Timer,
     state: PtoState,
-    max_ack_delay: Duration,
 }
 
 #[derive(Debug, PartialEq)]
@@ -999,14 +988,6 @@ impl Default for PtoState {
 }
 
 impl Pto {
-    /// Constructs a new `Pto` with the given `max_ack_delay`
-    pub fn new(max_ack_delay: Duration) -> Self {
-        Self {
-            max_ack_delay,
-            ..Self::default()
-        }
-    }
-
     /// Called when a timeout has occurred. Returns true if the PTO timer had expired.
     pub fn on_timeout(&mut self, packets_in_flight: bool, timestamp: Timestamp) -> bool {
         if self.timer.poll_expiration(timestamp).is_ready() {
