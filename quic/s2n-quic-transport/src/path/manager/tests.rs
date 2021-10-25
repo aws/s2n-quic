@@ -131,7 +131,7 @@ fn test_invalid_path_fallback() {
 
     let mut manager = manager_server(first_path, None);
     manager.paths.push(second_path);
-    assert_eq!(manager.last_known_validated_path, None);
+    assert_eq!(manager.last_known_active_validated_path, None);
     assert_eq!(manager.active, 0);
     assert!(manager.paths[0].is_validated());
 
@@ -143,7 +143,7 @@ fn test_invalid_path_fallback() {
         )
         .unwrap();
     assert_eq!(manager.active, 1);
-    assert_eq!(manager.last_known_validated_path, Some(0));
+    assert_eq!(manager.last_known_active_validated_path, Some(0));
 
     // send challenge and arm abandon timer
     let mut frame_buffer = OutgoingFrameBuffer::new();
@@ -165,11 +165,11 @@ fn test_invalid_path_fallback() {
         )
         .unwrap();
     assert_eq!(manager.active, 0);
-    assert!(manager.last_known_validated_path.is_none());
+    assert!(manager.last_known_active_validated_path.is_none());
 }
 
 #[test]
-// a validated path should be assigned to last_known_validated_path
+// a validated path should be assigned to last_known_active_validated_path
 fn promote_validated_path_to_last_known_validated_path() {
     // Setup:
     let mut helper = helper_manager_with_paths();
@@ -189,11 +189,11 @@ fn promote_validated_path_to_last_known_validated_path() {
         .unwrap();
 
     // Expectation:
-    assert_eq!(helper.manager.last_known_validated_path, Some(1));
+    assert_eq!(helper.manager.last_known_active_validated_path, Some(1));
 }
 
 #[test]
-// a NOT validated path should NOT be assigned to last_known_validated_path
+// a NOT validated path should NOT be assigned to last_known_active_validated_path
 fn dont_promote_non_validated_path_to_last_known_validated_path() {
     // Setup:
     let mut helper = helper_manager_with_paths();
@@ -210,7 +210,7 @@ fn dont_promote_non_validated_path_to_last_known_validated_path() {
         .unwrap();
 
     // Expectation:
-    assert_eq!(helper.manager.last_known_validated_path, Some(0));
+    assert_eq!(helper.manager.last_known_active_validated_path, Some(0));
 }
 
 #[test]
@@ -262,7 +262,7 @@ fn set_path_challenge_on_active_path_on_connection_migration() {
     helper.manager[helper.zero_path_id].abandon_challenge();
     assert!(!helper.manager[helper.zero_path_id].is_challenge_pending());
     assert_eq!(
-        helper.manager.last_known_validated_path.unwrap(),
+        helper.manager.last_known_active_validated_path.unwrap(),
         helper.zero_path_id.0
     );
 
@@ -473,7 +473,7 @@ fn initiate_path_challenge_if_new_path_is_not_validated() {
 //# An endpoint MAY discard connection state if it does not have a
 //# validated path on which it can send packets; see Section 8.2
 //
-// If there is no last_known_validated_path after a on_timeout then return a
+// If there is no last_known_active_validated_path after a on_timeout then return a
 // NoValidPath error
 fn silently_return_when_there_is_no_valid_path() {
     // Setup:
@@ -495,7 +495,7 @@ fn silently_return_when_there_is_no_valid_path() {
 
     assert!(!manager[first_path_id].is_validated());
     assert!(manager[first_path_id].is_challenge_pending());
-    assert_eq!(manager.last_known_validated_path, None);
+    assert_eq!(manager.last_known_active_validated_path, None);
 
     // Trigger:
     // send challenge and arm abandon timer
@@ -1424,20 +1424,20 @@ fn temporary_until_authenticated() {
 // - path 1 non-probing packet
 // Expectation Setup 1:
 // - path 1 active + not valid + challenge pending
-// - last_known_validated_path = path 0
+// - last_known_active_validated_path = path 0
 
 // Trigger Setup 2:
 // - path 2 non-probing packet
 // Expectation Setup 2:
 // - path 2 active + not valid + challenge pending
 // - path 1 not valid + challenge pending
-// - last_known_validated_path = path 0
+// - last_known_active_validated_path = path 0
 
 // Trigger 1:
 // - path response for path 1
 // Expectation 1:
 // - path 1 valid + no challenge pending
-// - last_known_validated_path = path 1
+// - last_known_active_validated_path = path 1
 //
 // - path 2 active + not valid + challenge pending
 
@@ -1446,7 +1446,7 @@ fn temporary_until_authenticated() {
 // Expectation 2:
 // - path 1 active
 // - path 2 not valid + no challenge pending
-// - last_known_validated_path = None
+// - last_known_active_validated_path = None
 #[test]
 fn last_known_validated_path_should_update_on_path_response() {
     // Setup:
@@ -1503,9 +1503,9 @@ fn last_known_validated_path_should_update_on_path_response() {
     // first
     assert!(manager[first_path_id].is_challenge_pending());
     assert!(!manager[first_path_id].is_validated());
-    // last_known_validated_path
+    // last_known_active_validated_path
     assert_eq!(
-        manager.last_known_validated_path.unwrap(),
+        manager.last_known_active_validated_path.unwrap(),
         zero_path_id.as_u8()
     );
 
@@ -1542,9 +1542,9 @@ fn last_known_validated_path_should_update_on_path_response() {
     // first
     assert!(manager[first_path_id].is_challenge_pending());
     assert!(!manager[first_path_id].is_validated());
-    // last_known_validated_path
+    // last_known_active_validated_path
     assert_eq!(
-        manager.last_known_validated_path.unwrap(),
+        manager.last_known_active_validated_path.unwrap(),
         zero_path_id.as_u8()
     );
 
@@ -1562,9 +1562,9 @@ fn last_known_validated_path_should_update_on_path_response() {
     // first
     assert!(!manager[first_path_id].is_challenge_pending());
     assert!(manager[first_path_id].is_validated());
-    // last_known_validated_path
+    // last_known_active_validated_path
     assert_eq!(
-        manager.last_known_validated_path.unwrap(),
+        manager.last_known_active_validated_path.unwrap(),
         first_path_id.as_u8()
     );
 
@@ -1586,8 +1586,8 @@ fn last_known_validated_path_should_update_on_path_response() {
     // first
     assert!(!manager[first_path_id].is_challenge_pending());
     assert!(manager[first_path_id].is_validated());
-    // last_known_validated_path
-    assert_eq!(manager.last_known_validated_path, None);
+    // last_known_active_validated_path
+    assert_eq!(manager.last_known_active_validated_path, None);
 }
 
 // creates a test path_manager. also check out `helper_manager_with_paths`
@@ -1669,14 +1669,17 @@ pub fn helper_manager_with_paths_base(
         .consume_new_id_for_existing_path(Id(0), zero_conn_id, &mut Publisher::default())
         .is_some());
 
-    // assert first_path is active and last_known_validated_path
+    // assert first_path is active and last_known_active_validated_path
     assert!(manager.peer_id_registry.is_active(&first_conn_id));
     assert_eq!(manager.active, first_path_id.0);
 
     if validate_path_zero {
-        assert_eq!(manager.last_known_validated_path, Some(zero_path_id.0));
+        assert_eq!(
+            manager.last_known_active_validated_path,
+            Some(zero_path_id.0)
+        );
     } else {
-        assert_eq!(manager.last_known_validated_path, None);
+        assert_eq!(manager.last_known_active_validated_path, None);
     }
 
     Helper {

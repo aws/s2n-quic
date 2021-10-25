@@ -49,7 +49,7 @@ pub struct Manager<Config: endpoint::Config> {
     active: u8,
 
     /// Index of last known validated path
-    last_known_validated_path: Option<u8>,
+    last_known_active_validated_path: Option<u8>,
 
     /// The current index of a path that is pending packet protection authentication
     ///
@@ -72,7 +72,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             paths: SmallVec::from_elem(initial_path, 1),
             peer_id_registry,
             active: 0,
-            last_known_validated_path: None,
+            last_known_active_validated_path: None,
             pending_packet_authentication: None,
         }
     }
@@ -110,7 +110,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         self[new_path_id].peer_connection_id = peer_connection_id;
 
         if self.active_path().is_validated() {
-            self.last_known_validated_path = Some(self.active);
+            self.last_known_active_validated_path = Some(self.active);
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.3
@@ -616,14 +616,14 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
 
         if self.active_path().failed_validation() {
-            match self.last_known_validated_path {
-                Some(last_known_validated_path) => {
+            match self.last_known_active_validated_path {
+                Some(last_known_active_validated_path) => {
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
                     //# To protect the connection from failing due to such a spurious
                     //# migration, an endpoint MUST revert to using the last validated peer
                     //# address when validation of a new peer address fails.
-                    self.active = last_known_validated_path;
-                    self.last_known_validated_path = None;
+                    self.active = last_known_active_validated_path;
+                    self.last_known_active_validated_path = None;
                 }
                 None => {
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
