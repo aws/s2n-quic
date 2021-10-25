@@ -348,7 +348,7 @@ fn validate_path_before_challenge_expiration() {
     // The above requirements are satisfied because on_path_response is a path
     // agnostic function
     let frame = s2n_quic_core::frame::PathResponse {
-        data: &helper.expected_data,
+        data: &helper.second_expected_data,
     };
     helper.manager.on_path_response(&frame);
 
@@ -414,7 +414,7 @@ fn dont_validate_path_if_path_challenge_is_abandoned() {
 
     // Trigger 2:
     let frame = s2n_quic_core::frame::PathResponse {
-        data: &helper.expected_data,
+        data: &helper.second_expected_data,
     };
     helper.manager.on_path_response(&frame);
 
@@ -1417,6 +1417,179 @@ fn temporary_until_authenticated() {
     );
 }
 
+// Setup:
+// - path 0 validated and active
+
+// Trigger Setup 1:
+// - path 1 non-probing packet
+// Expectation Setup 1:
+// - path 1 active + not valid + challenge pending
+// - last_known_validated_path = path 0
+
+// Trigger Setup 2:
+// - path 2 non-probing packet
+// Expectation Setup 2:
+// - path 2 active + not valid + challenge pending
+// - path 1 not valid + challenge pending
+// - last_known_validated_path = path 0
+
+// Trigger 1:
+// - path response for path 1
+// Expectation 1:
+// - path 1 valid + no challenge pending
+// - last_known_validated_path = path 1
+//
+// - path 2 active + not valid + challenge pending
+
+// Trigger 2:
+// - timeout for path 2 challenge
+// Expectation 2:
+// - path 1 active
+// - path 2 not valid + no challenge pending
+// - last_known_validated_path = None
+#[test]
+fn last_known_validated_path_should_update_on_path_response() {
+    // Setup:
+    let zero_conn_id = connection::PeerId::try_from_bytes(&[0]).unwrap();
+    let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
+    let second_conn_id = connection::PeerId::try_from_bytes(&[2]).unwrap();
+
+    // path zero
+    let zero_path_id = Id(0);
+    let mut zero_path = helper_path(zero_conn_id);
+    zero_path.on_handshake_packet();
+
+    let mut random_generator = random::testing::Generator(123);
+    let mut peer_id_registry =
+        ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
+            .create_peer_id_registry(
+                InternalConnectionIdGenerator::new().generate_id(),
+                zero_path.peer_connection_id,
+                None,
+            );
+    assert!(peer_id_registry
+        .on_new_connection_id(&first_conn_id, 1, 0, &TEST_TOKEN_1)
+        .is_ok());
+
+    assert!(peer_id_registry
+        .on_new_connection_id(&second_conn_id, 2, 0, &TEST_TOKEN_2)
+        .is_ok());
+
+    let mut manager = Manager::new(zero_path, peer_id_registry);
+
+    assert!(!manager[zero_path_id].is_challenge_pending());
+    assert!(manager[zero_path_id].is_validated());
+    assert_eq!(manager.active_path_id(), zero_path_id);
+
+    // Trigger Setup 1:
+    let first_path_id = Id(1);
+    let mut first_path = helper_path(first_conn_id);
+    let now = NoopClock {}.get_time();
+    let challenge_expiration = Duration::from_millis(10_000);
+    let first_expected_data = [0; 8];
+    let challenge = challenge::Challenge::new(challenge_expiration, first_expected_data);
+    first_path.set_challenge(challenge);
+    manager.paths.push(first_path);
+    assert!(manager
+        .update_active_path(
+            first_path_id,
+            &mut random::testing::Generator(123),
+            &mut Publisher::default(),
+        )
+        .is_ok());
+
+    // Expectation Setup 1:
+    assert_eq!(manager.active_path_id(), first_path_id);
+    // first
+    assert!(manager[first_path_id].is_challenge_pending());
+    assert!(!manager[first_path_id].is_validated());
+    // last_known_validated_path
+    assert_eq!(
+        manager.last_known_validated_path.unwrap(),
+        zero_path_id.as_u8()
+    );
+
+    // Trigger Setup 2:
+    let second_path_id = Id(2);
+    let second_expected_data = [1; 8];
+    let challenge = challenge::Challenge::new(challenge_expiration, second_expected_data);
+    let mut second_path = helper_path(second_conn_id);
+    second_path.set_challenge(challenge);
+    let mut frame_buffer = OutgoingFrameBuffer::new();
+    let mut context = MockWriteContext::new(
+        now,
+        &mut frame_buffer,
+        transmission::Constraint::None,
+        transmission::Mode::Normal,
+        endpoint::Type::Client,
+    );
+    second_path.on_transmit(&mut context); // send challenge and arm timer
+
+    manager.paths.push(second_path);
+    assert!(manager
+        .update_active_path(
+            second_path_id,
+            &mut random::testing::Generator(123),
+            &mut Publisher::default(),
+        )
+        .is_ok());
+
+    // Expectation Setup 2:
+    assert_eq!(manager.active_path_id(), second_path_id);
+    // second
+    assert!(manager[second_path_id].is_challenge_pending());
+    assert!(!manager[second_path_id].is_validated());
+    // first
+    assert!(manager[first_path_id].is_challenge_pending());
+    assert!(!manager[first_path_id].is_validated());
+    // last_known_validated_path
+    assert_eq!(
+        manager.last_known_validated_path.unwrap(),
+        zero_path_id.as_u8()
+    );
+
+    // Trigger 1:
+    // - path response for path 1
+    let frame = s2n_quic_core::frame::PathResponse {
+        data: &first_expected_data,
+    };
+    manager.on_path_response(&frame);
+    // Expectation 1:
+    assert_eq!(manager.active_path_id(), second_path_id);
+    // second
+    assert!(manager[second_path_id].is_challenge_pending());
+    assert!(!manager[second_path_id].is_validated());
+    // first
+    assert!(!manager[first_path_id].is_challenge_pending());
+    assert!(manager[first_path_id].is_validated());
+    // last_known_validated_path
+    assert_eq!(
+        manager.last_known_validated_path.unwrap(),
+        first_path_id.as_u8()
+    );
+
+    // Trigger 2:
+    // - timeout for path 2 challenge
+    manager
+        .on_timeout(
+            now + challenge_expiration + Duration::from_millis(100),
+            &mut random::testing::Generator(123),
+            &mut Publisher::default(),
+        )
+        .unwrap();
+
+    // Expectation 2:
+    assert_eq!(manager.active_path_id(), first_path_id);
+    // second
+    assert!(!manager[second_path_id].is_challenge_pending());
+    assert!(!manager[second_path_id].is_validated());
+    // first
+    assert!(!manager[first_path_id].is_challenge_pending());
+    assert!(manager[first_path_id].is_validated());
+    // last_known_validated_path
+    assert_eq!(manager.last_known_validated_path, None);
+}
+
 // creates a test path_manager. also check out `helper_manager_with_paths`
 // which calls this helper with preset options
 pub fn helper_manager_with_paths_base(
@@ -1438,15 +1611,15 @@ pub fn helper_manager_with_paths_base(
 
     let now = NoopClock {}.get_time();
     let challenge_expiration = Duration::from_millis(10_000);
-    let expected_data = [0; 8];
-    let challenge = challenge::Challenge::new(challenge_expiration, expected_data);
+    let first_expected_data = [0; 8];
+    let challenge = challenge::Challenge::new(challenge_expiration, first_expected_data);
 
     let mut first_path = helper_path(first_conn_id);
     first_path.set_challenge(challenge);
 
     // Create a challenge that will expire in 100ms
-    let expected_data = [1; 8];
-    let challenge = challenge::Challenge::new(challenge_expiration, expected_data);
+    let second_expected_data = [1; 8];
+    let challenge = challenge::Challenge::new(challenge_expiration, second_expected_data);
     let mut second_path = helper_path(second_conn_id);
     second_path.set_challenge(challenge);
 
@@ -1508,7 +1681,8 @@ pub fn helper_manager_with_paths_base(
 
     Helper {
         now,
-        expected_data,
+        first_expected_data,
+        second_expected_data,
         challenge_expiration,
         zero_path_id,
         first_path_id,
@@ -1536,7 +1710,8 @@ pub fn helper_manager_with_paths() -> Helper {
 
 pub struct Helper {
     pub now: Timestamp,
-    pub expected_data: challenge::Data,
+    pub first_expected_data: challenge::Data,
+    pub second_expected_data: challenge::Data,
     pub challenge_expiration: Duration,
     pub zero_path_id: Id,
     pub first_path_id: Id,
