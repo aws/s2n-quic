@@ -69,6 +69,14 @@ pub struct Path<Config: endpoint::Config> {
 
     /// Received a Challenge and should echo back data in PATH_RESPONSE
     response_data: Option<challenge::Data>,
+
+    /// True if the path is currently or at some point been an active path.
+    ///
+    /// A path becomes an active path if it receives a non-path-validation-probing
+    /// packet. `activated` is a one way state used to mark paths that have been the
+    /// active path at some point in the connection. This parameter is used to
+    /// determine if the path should become the last_known_active_validated_path.
+    activated: bool,
 }
 
 impl<Config: endpoint::Config> Clone for Path<Config> {
@@ -86,6 +94,7 @@ impl<Config: endpoint::Config> Clone for Path<Config> {
             peer_validated: self.peer_validated,
             challenge: self.challenge.clone(),
             response_data: self.response_data,
+            activated: self.activated,
         }
     }
 }
@@ -93,6 +102,7 @@ impl<Config: endpoint::Config> Clone for Path<Config> {
 /// A Path holds the local and peer socket addresses, connection ids, and state. It can be
 /// validated or pending validation.
 impl<Config: endpoint::Config> Path<Config> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         handle: Config::PathHandle,
         peer_connection_id: connection::PeerId,
@@ -101,6 +111,7 @@ impl<Config: endpoint::Config> Path<Config> {
         congestion_controller: <Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController,
         peer_validated: bool,
         max_mtu: MaxMtu,
+        activated: bool,
     ) -> Path<Config> {
         let state = match Config::ENDPOINT_TYPE {
             Type::Server => {
@@ -130,6 +141,7 @@ impl<Config: endpoint::Config> Path<Config> {
             peer_validated,
             challenge: Challenge::disabled(),
             response_data: None,
+            activated,
         }
     }
 
@@ -265,16 +277,21 @@ impl<Config: endpoint::Config> Path<Config> {
         self.response_data = Some(*response);
     }
 
+    /// Validates the path if the PATH_RESPONSE data matches the PATH_CHALLENGE data.
     #[inline]
-    pub fn on_path_response(&mut self, response: &[u8]) {
+    pub fn on_path_response(&mut self, response: &[u8]) -> bool {
         if self.challenge.on_validated(response) {
             self.on_validated();
+
+            return true;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
             //= type=TODO
             //# After verifying a new client address, the server SHOULD send new
             //# address validation tokens (Section 8) to the client.
         }
+
+        false
     }
 
     /// Called when a handshake packet is received.
@@ -326,6 +343,18 @@ impl<Config: endpoint::Config> Path<Config> {
     #[inline]
     pub fn is_validated(&self) -> bool {
         self.state == State::Validated
+    }
+
+    /// The path received a non-path-validation-probing packet so mark it as activated.
+    #[inline]
+    pub fn on_activated(&mut self) {
+        self.activated = true;
+    }
+
+    /// Returns if the path is currently or at some point been an active path.
+    #[inline]
+    pub fn is_activated(&self) -> bool {
+        self.activated
     }
 
     /// Marks the path as peer validated
@@ -530,6 +559,7 @@ pub mod testing {
             Default::default(),
             true,
             DEFAULT_MAX_MTU,
+            true,
         )
     }
 
@@ -542,6 +572,7 @@ pub mod testing {
             Default::default(),
             false,
             DEFAULT_MAX_MTU,
+            true,
         )
     }
 }
@@ -772,7 +803,7 @@ mod tests {
 
         // Trigger:
         path.set_challenge(helper_challenge.challenge);
-        path.on_path_response(&helper_challenge.expected_data);
+        assert!(path.on_path_response(&helper_challenge.expected_data));
 
         // Expectation:
         assert!(path.is_validated());
@@ -1039,6 +1070,7 @@ mod tests {
             Default::default(),
             false,
             DEFAULT_MAX_MTU,
+            true,
         );
         let now = NoopClock.get_time();
         path.on_validated();

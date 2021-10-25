@@ -69,6 +69,7 @@ fn get_path_by_address_test() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
 
     let second_conn_id = connection::PeerId::try_from_bytes(&[5, 4, 3, 2, 1]).unwrap();
@@ -80,6 +81,7 @@ fn get_path_by_address_test() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
 
     let mut manager = manager_server(first_path.clone(), None);
@@ -110,6 +112,7 @@ fn test_invalid_path_fallback() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     // simulate receiving a handshake packet to force path validation
     first_path.on_handshake_packet();
@@ -126,6 +129,7 @@ fn test_invalid_path_fallback() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     second_path.set_challenge(challenge);
 
@@ -488,6 +492,7 @@ fn silently_return_when_there_is_no_valid_path() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     first_path.set_challenge(challenge);
     let mut manager = manager_server(first_path, None);
@@ -678,6 +683,7 @@ fn test_adding_new_path() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let mut manager = manager_server(first_path, None);
 
@@ -737,6 +743,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let mut manager = manager_server(first_path, None);
 
@@ -796,6 +803,7 @@ fn do_not_add_new_path_if_client() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let mut manager = manager_client(first_path, None);
     let mut publisher = Publisher::default();
@@ -843,6 +851,7 @@ fn limit_number_of_connection_migrations() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let mut manager = manager_server(first_path, None);
     let mut total_paths = 1;
@@ -898,6 +907,7 @@ fn connection_migration_challenge_behavior() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let mut manager = manager_server(first_path, None);
 
@@ -960,7 +970,7 @@ fn connection_migration_challenge_behavior() {
     //# An endpoint MUST
     //# perform path validation (Section 8.2) if it detects any change to a
     //# peer's address, unless it has previously validated that address.
-    manager[path_id].on_path_response(&expected_data);
+    assert!(manager[path_id].on_path_response(&expected_data));
     assert!(manager[path_id].is_validated());
 }
 
@@ -988,6 +998,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let mut manager = manager_server(first_path, None);
 
@@ -1064,6 +1075,7 @@ fn connection_migration_new_path_abandon_timer() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let mut manager = manager_server(first_path, None);
 
@@ -1182,6 +1194,7 @@ fn stop_using_a_retired_connection_id() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let mut manager = manager_server(first_path, None);
 
@@ -1271,6 +1284,7 @@ fn pending_paths_should_return_paths_pending_validation() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let expected_response_data = [0; 8];
     third_path.on_path_challenge(&expected_response_data);
@@ -1333,6 +1347,7 @@ fn temporary_until_authenticated() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let mut manager = manager_server(first_path, None);
 
@@ -1417,6 +1432,13 @@ fn temporary_until_authenticated() {
     );
 }
 
+// The last_known_active_validated_path needs to be both validated and also
+// activated (the active path at some point in the connection).
+//
+// This test specifically checks that a currently non-active path can become
+// the last_known_active_validated_path if it is activated and receives a
+// PATH_RESPONSE which matches its PATH_CHALLENGE.
+//
 // Setup:
 // - path 0 validated and active
 
@@ -1704,6 +1726,7 @@ pub fn helper_path(peer_id: connection::PeerId) -> Path {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     )
 }
 
