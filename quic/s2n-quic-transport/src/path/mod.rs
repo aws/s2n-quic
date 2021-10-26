@@ -277,7 +277,8 @@ impl<Config: endpoint::Config> Path<Config> {
         self.response_data = Some(*response);
     }
 
-    /// Validates the path if the PATH_RESPONSE data matches the PATH_CHALLENGE data.
+    /// Validates the path if the PATH_RESPONSE data matches the PATH_CHALLENGE data
+    /// and returns if the path was validated.
     #[inline]
     pub fn on_path_response(&mut self, response: &[u8]) -> bool {
         if self.challenge.on_validated(response) {
