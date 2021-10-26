@@ -789,13 +789,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         &mut self,
         path_handle: &Config::PathHandle,
         datagram: &DatagramInfo,
-        source_connection_id: Option<connection::PeerId>,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         path_migration: &mut Config::PathMigrationValidator,
         max_mtu: MaxMtu,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<path::Id, connection::Error> {
-        let internal_id = self.internal_connection_id();
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
@@ -812,10 +810,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let handshake_confirmed = self.space_manager.is_handshake_confirmed();
 
         let (id, unblocked) = self.path_manager.on_datagram_received(
-            internal_id,
             path_handle,
             datagram,
-            source_connection_id,
             handshake_confirmed,
             congestion_controller_endpoint,
             path_migration,

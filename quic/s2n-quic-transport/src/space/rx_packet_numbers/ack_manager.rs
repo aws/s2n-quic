@@ -376,6 +376,7 @@ mod tests {
             payload_len: 1200,
             timestamp: NoopClock {}.get_time(),
             destination_connection_id: connection::LocalId::TEST_ID,
+            source_connection_id: None,
         };
         let mut processed_packet = ProcessedPacket::new(pn, &datagram);
         processed_packet.path_challenge_on_active_path = true;
@@ -446,6 +447,7 @@ mod tests {
             payload_len: 1200,
             timestamp: NoopClock {}.get_time(),
             destination_connection_id: connection::LocalId::TEST_ID,
+            source_connection_id: None,
         }
     }
 

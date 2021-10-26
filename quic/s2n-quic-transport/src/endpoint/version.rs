@@ -339,6 +339,7 @@ mod tests {
                 payload_len,
                 ecn: Default::default(),
                 destination_connection_id: connection::LocalId::TEST_ID,
+                source_connection_id: None,
             },
         )
     }

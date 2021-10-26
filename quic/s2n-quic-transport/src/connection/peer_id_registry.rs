@@ -252,18 +252,17 @@ impl PeerIdRegistry {
     ///
     /// For a Server endpoint this happens immediately after creation of the
     /// PeerIdRegistry, since the ClientHello includes a SourceConnectionId.
-    /// A Client endpoint must however wait for the intial Server response
+    /// A Client endpoint must however wait for the initial Server response
     /// to populate this value.
     pub(crate) fn register_initial_connection_id(
         &mut self,
-        internal_id: InternalConnectionId,
-        destination_connection_id: connection::PeerId,
+        peer_id: connection::PeerId,
         stateless_reset_token: Option<stateless_reset::Token>,
     ) {
         debug_assert!(self.is_empty());
 
         self.registered_ids.push(PeerIdInfo {
-            id: destination_connection_id,
+            id: peer_id,
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
             //# The sequence number of the initial connection ID is 0.
             sequence_number: 0,
@@ -277,7 +276,7 @@ impl PeerIdRegistry {
             self.state
                 .borrow_mut()
                 .stateless_reset_map
-                .insert(token, internal_id);
+                .insert(token, self.internal_id);
         }
     }
 

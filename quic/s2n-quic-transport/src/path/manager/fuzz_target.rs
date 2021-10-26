@@ -265,6 +265,7 @@ impl Model {
             payload_len: payload_len as usize,
             ecn: ExplicitCongestionNotification::NotEct,
             destination_connection_id: local_id,
+            source_connection_id: None,
         };
         let mut migration_validator = path::migration::default::Validator;
         let mut random_generator = Generator::default();
@@ -276,10 +277,8 @@ impl Model {
             .map_or(false, |(_id, path)| path.at_amplification_limit());
 
         match self.subject.on_datagram_received(
-            InternalConnectionIdGenerator::new().generate_id(),
             handle,
             &datagram,
-            None,
             true,
             &mut Default::default(),
             &mut migration_validator,
@@ -299,7 +298,13 @@ impl Model {
 
                     let (path_id, _path) = self.subject.path(handle).unwrap();
                     self.subject
-                        .on_processed_packet(path_id, *probe, &mut random_generator, &mut publisher)
+                        .on_processed_packet(
+                            path_id,
+                            None,
+                            *probe,
+                            &mut random_generator,
+                            &mut publisher,
+                        )
                         .unwrap();
                 }
             }

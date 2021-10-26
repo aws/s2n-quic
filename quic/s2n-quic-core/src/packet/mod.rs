@@ -60,7 +60,7 @@ impl<'a> ProtectedPacket<'a> {
         BasicPacketDecoder.decode_packet(buffer, connection_info, connection_id_validator)
     }
 
-    /// Returns the packets destination connection ID
+    /// Returns the packet's destination connection ID
     pub fn destination_connection_id(&self) -> &[u8] {
         match self {
             ProtectedPacket::Short(packet) => packet.destination_connection_id(),
@@ -72,7 +72,7 @@ impl<'a> ProtectedPacket<'a> {
         }
     }
 
-    /// Returns the packets source connection ID
+    /// Returns the packet's source connection ID
     pub fn source_connection_id(&self) -> Option<&[u8]> {
         match self {
             ProtectedPacket::Short(_packet) => None,

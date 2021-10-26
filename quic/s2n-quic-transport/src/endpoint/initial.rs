@@ -95,7 +95,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
         //# Endpoints that receive a version 1 long header
         //# with a value larger than 20 MUST drop the packet.
-        let source_connection_id: connection::PeerId = packet
+        let source_connection_id = packet
             .source_connection_id()
             .try_into()
             .map_err(transport::Error::from)?;
@@ -268,7 +268,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         let path_id = connection.on_datagram_received(
             &header.path,
             datagram,
-            Some(source_connection_id),
             endpoint_context.congestion_controller,
             endpoint_context.path_migration,
             self.max_mtu,

@@ -2519,6 +2519,7 @@ fn ack_packets_on_path(
         payload_len: 0,
         ecn: Default::default(),
         destination_connection_id: connection::LocalId::TEST_ID,
+        source_connection_id: None,
     };
 
     let mut ack_range = AckRanges::new(acked_packets.count());
@@ -2733,13 +2734,12 @@ fn helper_generate_multi_path_manager(
             payload_len: 0,
             ecn: ExplicitCongestionNotification::default(),
             destination_connection_id: connection::LocalId::TEST_ID,
+            source_connection_id: None,
         };
         let _ = path_manager
             .on_datagram_received(
-                InternalConnectionIdGenerator::new().generate_id(),
                 &second_addr,
                 &datagram,
-                None,
                 true,
                 &mut Endpoint::default(),
                 &mut migration::default::Validator::default(),

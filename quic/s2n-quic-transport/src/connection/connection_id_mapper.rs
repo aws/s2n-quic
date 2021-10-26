@@ -323,11 +323,7 @@ impl ConnectionIdMapper {
     ) -> PeerIdRegistry {
         let mut registry = PeerIdRegistry::new(internal_id, self.state.clone());
 
-        registry.register_initial_connection_id(
-            internal_id,
-            initial_connection_id,
-            peer_stateless_reset_token,
-        );
+        registry.register_initial_connection_id(initial_connection_id, peer_stateless_reset_token);
         registry
     }
 

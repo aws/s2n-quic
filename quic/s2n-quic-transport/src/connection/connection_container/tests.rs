@@ -198,7 +198,6 @@ impl connection::Trait for TestConnection {
         &mut self,
         _path: &<Self::Config as endpoint::Config>::PathHandle,
         _datagram: &DatagramInfo,
-        _source_connection_id: Option<connection::PeerId>,
         _congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
         _path_migration: &mut <Self::Config as endpoint::Config>::PathMigrationValidator,
         _max_mtu: MaxMtu,

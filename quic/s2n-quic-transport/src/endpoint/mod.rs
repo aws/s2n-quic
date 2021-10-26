@@ -16,7 +16,7 @@ use s2n_codec::{DecoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{
     connection::{
         id::{ConnectionInfo, Generator},
-        LocalId,
+        LocalId, PeerId,
     },
     crypto::{tls, tls::Endpoint as _, CryptoSuite},
     endpoint::{limits::Outcome, Limiter as _},
@@ -29,7 +29,6 @@ use s2n_quic_core::{
     time::{Clock, Timestamp},
     token::{self, Format},
 };
-use std::convert::TryInto;
 
 mod config;
 pub mod connect;
@@ -461,7 +460,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         let source_connection_id = packet
             .source_connection_id()
-            .map(|source_connection_id_bytes| source_connection_id_bytes.try_into().ok())
+            .map(PeerId::try_from_bytes)
             .flatten();
 
         let datagram = &DatagramInfo {
@@ -469,6 +468,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             payload_len,
             ecn: header.ecn,
             destination_connection_id,
+            source_connection_id,
         };
 
         // TODO validate the connection ID before looking up the connection in the map
@@ -490,7 +490,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     .on_datagram_received(
                         &header.path,
                         datagram,
-                        source_connection_id,
                         endpoint_context.congestion_controller,
                         endpoint_context.path_migration,
                         max_mtu,

@@ -444,6 +444,7 @@ fn initiate_path_challenge_if_new_path_is_not_validated() {
         .manager
         .on_processed_packet(
             helper.second_path_id,
+            None,
             path_validation::Probe::NonProbing,
             &mut random::testing::Generator(123),
             &mut Publisher::default(),
@@ -543,6 +544,7 @@ fn dont_abandon_path_challenge_if_new_path_is_not_validated() {
         .manager
         .on_processed_packet(
             helper.second_path_id,
+            None,
             path_validation::Probe::NonProbing,
             &mut random::testing::Generator(123),
             &mut Publisher::default(),
@@ -572,6 +574,7 @@ fn abandon_path_challenges_if_new_path_is_validated() {
         .manager
         .on_processed_packet(
             helper.second_path_id,
+            None,
             path_validation::Probe::NonProbing,
             &mut random::testing::Generator(123),
             &mut Publisher::default(),
@@ -618,6 +621,7 @@ fn non_probing_should_update_path_to_active_path() {
         .manager
         .on_processed_packet(
             helper.second_path_id,
+            None,
             path_validation::Probe::NonProbing,
             &mut random::testing::Generator(123),
             &mut Publisher::default(),
@@ -645,6 +649,7 @@ fn probing_should_not_update_path_to_active_path() {
         .manager
         .on_processed_packet(
             helper.second_path_id,
+            None,
             path_validation::Probe::Probing,
             &mut random::testing::Generator(123),
             &mut Publisher::default(),
@@ -697,13 +702,12 @@ fn test_adding_new_path() {
         payload_len: 0,
         ecn: ExplicitCongestionNotification::default(),
         destination_connection_id: connection::LocalId::TEST_ID,
+        source_connection_id: None,
     };
     let (path_id, unblocked) = manager
         .on_datagram_received(
-            InternalConnectionIdGenerator::new().generate_id(),
             &new_addr,
             &datagram,
-            None,
             true,
             &mut Default::default(),
             &mut migration::default::Validator::default(),
@@ -757,13 +761,12 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
         payload_len: 0,
         ecn: ExplicitCongestionNotification::default(),
         destination_connection_id: connection::LocalId::TEST_ID,
+        source_connection_id: None,
     };
     let handshake_confirmed = false;
     let on_datagram_result = manager.on_datagram_received(
-        InternalConnectionIdGenerator::new().generate_id(),
         &new_addr,
         &datagram,
-        None,
         handshake_confirmed,
         &mut Default::default(),
         &mut migration::default::Validator::default(),
@@ -820,12 +823,11 @@ fn do_not_add_new_path_if_client() {
         payload_len: 0,
         ecn: ExplicitCongestionNotification::default(),
         destination_connection_id: connection::LocalId::TEST_ID,
+        source_connection_id: None,
     };
     let on_datagram_result = manager.on_datagram_received(
-        InternalConnectionIdGenerator::new().generate_id(),
         &new_addr,
         &datagram,
-        None,
         true,
         &mut Default::default(),
         &mut migration::default::Validator::default(),
@@ -858,34 +860,24 @@ fn switch_destination_connection_id_after_first_server_response() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        false,
     );
     let mut manager = manager_client(zero_path);
     assert_eq!(manager[zero_path_id].peer_connection_id, initial_cid);
 
     // Trigger:
     let server_destination_cid = connection::PeerId::try_from_bytes(&[1, 1]).unwrap();
-    let datagram = DatagramInfo {
-        timestamp: NoopClock {}.get_time(),
-        payload_len: 0,
-        ecn: ExplicitCongestionNotification::default(),
-        destination_connection_id: connection::LocalId::TEST_ID,
-    };
     let mut publisher = Publisher::default();
-
-    let on_datagram_result = manager.on_datagram_received(
-        InternalConnectionIdGenerator::new().generate_id(),
-        &path_handle,
-        &datagram,
+    let processed_packet = manager.on_processed_packet(
+        zero_path_id,
         Some(server_destination_cid),
-        true,
-        &mut Default::default(),
-        &mut migration::default::Validator::default(),
-        DEFAULT_MAX_MTU,
+        path_validation::Probe::NonProbing,
+        &mut random::testing::Generator(123),
         &mut publisher,
     );
 
     // Expectation:
-    assert!(on_datagram_result.is_ok());
+    assert!(processed_packet.is_ok());
     assert_eq!(
         manager[zero_path_id].peer_connection_id,
         server_destination_cid
@@ -921,6 +913,7 @@ fn limit_number_of_connection_migrations() {
             payload_len: 0,
             ecn: ExplicitCongestionNotification::default(),
             destination_connection_id: connection::LocalId::TEST_ID,
+            source_connection_id: None,
         };
 
         let res = manager.handle_connection_migration(
@@ -935,6 +928,7 @@ fn limit_number_of_connection_migrations() {
             Ok((id, _)) => {
                 let _ = manager.on_processed_packet(
                     id,
+                    None,
                     path_validation::Probe::NonProbing,
                     &mut random::testing::Generator(123),
                     &mut Publisher::default(),
@@ -975,6 +969,7 @@ fn connection_migration_challenge_behavior() {
         payload_len: 0,
         ecn: ExplicitCongestionNotification::default(),
         destination_connection_id: connection::LocalId::TEST_ID,
+        source_connection_id: None,
     };
 
     let (path_id, _unblocked) = manager
@@ -997,6 +992,7 @@ fn connection_migration_challenge_behavior() {
     // notify the manager that the datagram was authenticated - the path should now issue a challenge
     let _ = manager.on_processed_packet(
         path_id,
+        None,
         path_validation::Probe::NonProbing,
         &mut random::testing::Generator(123),
         &mut Publisher::default(),
@@ -1066,6 +1062,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
         payload_len: 0,
         ecn: ExplicitCongestionNotification::default(),
         destination_connection_id: connection::LocalId::TEST_ID,
+        source_connection_id: None,
     };
 
     // Trigger 1:
@@ -1143,6 +1140,7 @@ fn connection_migration_new_path_abandon_timer() {
         payload_len: 0,
         ecn: ExplicitCongestionNotification::default(),
         destination_connection_id: connection::LocalId::TEST_ID,
+        source_connection_id: None,
     };
 
     let (second_path_id, _unblocked) = manager
@@ -1160,6 +1158,7 @@ fn connection_migration_new_path_abandon_timer() {
     // notify the manager that the datagram was authenticated - the path should now issue a challenge
     let _ = manager.on_processed_packet(
         second_path_id,
+        None,
         path_validation::Probe::NonProbing,
         &mut random::testing::Generator(123),
         &mut Publisher::default(),
@@ -1388,6 +1387,7 @@ fn temporary_until_authenticated() {
         payload_len: 0,
         ecn: ExplicitCongestionNotification::default(),
         destination_connection_id: connection::LocalId::TEST_ID,
+        source_connection_id: None,
     };
 
     // create an initial path
@@ -1413,10 +1413,8 @@ fn temporary_until_authenticated() {
     // create a second path without calling on_processed_packet
     let (second_path_id, _unblocked) = manager
         .on_datagram_received(
-            InternalConnectionIdGenerator::new().generate_id(),
             &second_addr,
             &datagram,
-            None,
             true,
             &mut Default::default(),
             &mut migration::default::Validator::default(),
@@ -1437,10 +1435,8 @@ fn temporary_until_authenticated() {
     // create a third path
     let (third_path_id, _unblocked) = manager
         .on_datagram_received(
-            InternalConnectionIdGenerator::new().generate_id(),
             &third_addr,
             &datagram,
-            None,
             true,
             &mut Default::default(),
             &mut migration::default::Validator::default(),
@@ -1462,6 +1458,7 @@ fn temporary_until_authenticated() {
     // notify the manager that the packet was processed
     let _ = manager.on_processed_packet(
         third_path_id,
+        None,
         path_validation::Probe::NonProbing,
         &mut random::testing::Generator(123),
         &mut Publisher::default(),
@@ -1475,10 +1472,8 @@ fn temporary_until_authenticated() {
     // receive another datagram with the second_addr
     let (fourth_path_id, _unblocked) = manager
         .on_datagram_received(
-            InternalConnectionIdGenerator::new().generate_id(),
             &second_addr,
             &datagram,
-            None,
             true,
             &mut Default::default(),
             &mut migration::default::Validator::default(),
@@ -1545,7 +1540,7 @@ fn last_known_validated_path_should_update_on_path_response() {
     let mut random_generator = random::testing::Generator(123);
     let mut peer_id_registry =
         ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
-            .create_peer_id_registry(
+            .create_server_peer_id_registry(
                 InternalConnectionIdGenerator::new().generate_id(),
                 zero_path.peer_connection_id,
                 None,
