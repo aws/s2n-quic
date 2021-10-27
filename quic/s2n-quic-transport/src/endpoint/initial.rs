@@ -95,7 +95,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
         //# Endpoints that receive a version 1 long header
         //# with a value larger than 20 MUST drop the packet.
-        let source_connection_id: connection::PeerId = packet
+        let source_connection_id = packet
             .source_connection_id()
             .try_into()
             .map_err(transport::Error::from)?;
@@ -138,7 +138,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         //# parameter because their transport parameters do not have
         //# confidentiality protection.
         let stateless_reset_token = None;
-        let peer_id_registry = self.connection_id_mapper.create_peer_id_registry(
+        let peer_id_registry = self.connection_id_mapper.create_server_peer_id_registry(
             internal_connection_id,
             source_connection_id,
             stateless_reset_token,

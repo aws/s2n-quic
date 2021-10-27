@@ -10,7 +10,8 @@ use crate::{
     transmission,
 };
 use s2n_quic_core::{
-    ack, connection,
+    ack,
+    connection::{self, PeerId},
     event::{self, IntoEvent},
     frame,
     frame::path_validation,
@@ -200,6 +201,10 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// Upon success, returns a `(Id, bool)` containing the path ID and a boolean that is
     /// true if the path had been amplification limited prior to receiving the datagram
     /// and is now no longer amplification limited.
+    ///
+    /// This function is called prior to packet authentication. If possible add business
+    /// logic to [`Self::on_processed_packet`], which is called after the packet has been
+    /// authenticated.
     #[allow(clippy::too_many_arguments)]
     pub fn on_datagram_received<Pub: event::ConnectionPublisher>(
         &mut self,
@@ -383,7 +388,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         //# protect against potential attacks as described in Section 9.3.1 and
         //# Section 9.3.2.
         //
-        // New paths start in AmplificationLimited state until they are validated.
+        // New paths for a Server endpoint start in AmplificationLimited state until they are validated.
         let mut path = Path::new(
             *path_handle,
             peer_connection_id,
@@ -524,10 +529,31 @@ impl<Config: endpoint::Config> Manager<Config> {
     pub fn on_processed_packet<Pub: event::ConnectionPublisher>(
         &mut self,
         path_id: Id,
+        source_connection_id: Option<PeerId>,
         path_validation_probing: path_validation::Probe,
         random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
+        // A QUIC client uses a randomly generated value as the Initial Connection Id
+        // until it receives a packet from the Server. Upon receiving a Server packet,
+        // the Client switches to using the new Destination Connection Id. The
+        // PeerIdRegistry is expected to be empty until the first Server packet.
+        if self.peer_id_registry.is_empty() {
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+            //# Until a packet is received from the server, the client MUST
+            //# use the same Destination Connection ID value on all packets in this
+            //# connection.
+            //
+            // This is the first Server packet so start using the newly provided
+            // connection id form the Server.
+            assert!(Config::ENDPOINT_TYPE.is_client());
+            if let Some(source_connection_id) = source_connection_id {
+                self[path_id].peer_connection_id = source_connection_id;
+                self.peer_id_registry
+                    .register_initial_connection_id(source_connection_id, None);
+            }
+        }
+
         // Remove the temporary status after successfully processing a packet
         if self.pending_packet_authentication == Some(path_id.0) {
             self.pending_packet_authentication = None;

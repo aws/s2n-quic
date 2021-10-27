@@ -235,23 +235,34 @@ impl Drop for PeerIdRegistry {
 }
 
 impl PeerIdRegistry {
-    /// Constructs a new `PeerIdRegistry`. The provided `initial_connection_id` will be registered
-    /// in the returned registry, with the optional associated `stateless_reset_token`.
+    /// Constructs a new `PeerIdRegistry`.
     pub(crate) fn new(
         internal_id: InternalConnectionId,
         state: Rc<RefCell<ConnectionIdMapperState>>,
-        initial_connection_id: connection::PeerId,
-        stateless_reset_token: Option<stateless_reset::Token>,
     ) -> Self {
-        let mut registry = Self {
+        Self {
             internal_id,
             state,
             registered_ids: SmallVec::new(),
             retire_prior_to: 0,
-        };
+        }
+    }
 
-        registry.registered_ids.push(PeerIdInfo {
-            id: initial_connection_id,
+    /// Used to register the initial peer DestinationConnectionId.
+    ///
+    /// For a Server endpoint this happens immediately after creation of the
+    /// PeerIdRegistry, since the ClientHello includes a SourceConnectionId.
+    /// A Client endpoint must however wait for the initial Server response
+    /// to populate this value.
+    pub(crate) fn register_initial_connection_id(
+        &mut self,
+        peer_id: connection::PeerId,
+        stateless_reset_token: Option<stateless_reset::Token>,
+    ) {
+        debug_assert!(self.is_empty());
+
+        self.registered_ids.push(PeerIdInfo {
+            id: peer_id,
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
             //# The sequence number of the initial connection ID is 0.
             sequence_number: 0,
@@ -262,14 +273,19 @@ impl PeerIdRegistry {
         });
 
         if let Some(token) = stateless_reset_token {
-            registry
-                .state
+            self.state
                 .borrow_mut()
                 .stateless_reset_map
-                .insert(token, internal_id);
+                .insert(token, self.internal_id);
         }
+    }
 
-        registry
+    /// Check if registered_ids is empty.
+    ///
+    /// This is only expected to be true when an endpoint creates a new
+    /// peer_id_registry.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.registered_ids.is_empty()
     }
 
     /// Handles a new connection ID received from a NEW_CONNECTION_ID frame
@@ -607,7 +623,7 @@ pub mod testing {
         let mut random_generator = random::testing::Generator(123);
 
         ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
-            .create_peer_id_registry(
+            .create_server_peer_id_registry(
                 InternalConnectionIdGenerator::new().generate_id(),
                 initial_id,
                 stateless_reset_token,

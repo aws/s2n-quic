@@ -16,7 +16,7 @@ use s2n_codec::{DecoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{
     connection::{
         id::{ConnectionInfo, Generator},
-        LocalId,
+        LocalId, PeerId,
     },
     crypto::{tls, tls::Endpoint as _, CryptoSuite},
     endpoint::{limits::Outcome, Limiter as _},
@@ -458,11 +458,17 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 }
             };
 
+        let source_connection_id = packet
+            .source_connection_id()
+            .map(PeerId::try_from_bytes)
+            .flatten();
+
         let datagram = &DatagramInfo {
             timestamp,
             payload_len,
             ecn: header.ecn,
             destination_connection_id,
+            source_connection_id,
         };
 
         // TODO validate the connection ID before looking up the connection in the map

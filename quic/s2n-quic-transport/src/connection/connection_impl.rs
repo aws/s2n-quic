@@ -414,6 +414,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let rtt_estimator = RttEstimator::new(parameters.limits.ack_settings().max_ack_delay);
         // Assume clients validate the server's address implicitly.
         let peer_validated = Self::Config::ENDPOINT_TYPE.is_server();
+
         let initial_path = path::Path::new(
             parameters.path_handle,
             parameters.peer_connection_id,

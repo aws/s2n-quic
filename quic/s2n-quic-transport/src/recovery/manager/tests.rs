@@ -2519,6 +2519,7 @@ fn ack_packets_on_path(
         payload_len: 0,
         ecn: Default::default(),
         destination_connection_id: connection::LocalId::TEST_ID,
+        source_connection_id: None,
     };
 
     let mut ack_range = AckRanges::new(acked_packets.count());
@@ -2733,6 +2734,7 @@ fn helper_generate_multi_path_manager(
             payload_len: 0,
             ecn: ExplicitCongestionNotification::default(),
             destination_connection_id: connection::LocalId::TEST_ID,
+            source_connection_id: None,
         };
         let _ = path_manager
             .on_datagram_received(
@@ -2792,7 +2794,7 @@ fn helper_generate_path_manager_with_first_addr(
     let mut random_generator = random::testing::Generator(123);
 
     let registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
-        .create_peer_id_registry(
+        .create_server_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             connection::PeerId::TEST_ID,
             None,

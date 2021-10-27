@@ -756,6 +756,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
         path_manager.on_processed_packet(
             path_id,
+            datagram.source_connection_id,
             processed_packet.path_validation_probing,
             random_generator,
             publisher,

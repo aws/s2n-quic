@@ -114,6 +114,11 @@ impl<'a> ProtectedVersionNegotiation<'a> {
     pub fn destination_connection_id(&self) -> &[u8] {
         self.destination_connection_id
     }
+
+    #[inline]
+    pub fn source_connection_id(&self) -> &[u8] {
+        self.source_connection_id
+    }
 }
 
 impl<'a, SupportedVersions: EncoderValue> VersionNegotiation<'a, SupportedVersions> {

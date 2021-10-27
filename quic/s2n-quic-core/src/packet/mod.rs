@@ -60,7 +60,7 @@ impl<'a> ProtectedPacket<'a> {
         BasicPacketDecoder.decode_packet(buffer, connection_info, connection_id_validator)
     }
 
-    /// Returns the packets destination connection ID
+    /// Returns the packet's destination connection ID
     pub fn destination_connection_id(&self) -> &[u8] {
         match self {
             ProtectedPacket::Short(packet) => packet.destination_connection_id(),
@@ -69,6 +69,18 @@ impl<'a> ProtectedPacket<'a> {
             ProtectedPacket::ZeroRtt(packet) => packet.destination_connection_id(),
             ProtectedPacket::Handshake(packet) => packet.destination_connection_id(),
             ProtectedPacket::Retry(packet) => packet.destination_connection_id(),
+        }
+    }
+
+    /// Returns the packet's source connection ID
+    pub fn source_connection_id(&self) -> Option<&[u8]> {
+        match self {
+            ProtectedPacket::Short(_packet) => None,
+            ProtectedPacket::VersionNegotiation(packet) => Some(packet.source_connection_id()),
+            ProtectedPacket::Initial(packet) => Some(packet.source_connection_id()),
+            ProtectedPacket::ZeroRtt(packet) => Some(packet.source_connection_id()),
+            ProtectedPacket::Handshake(packet) => Some(packet.source_connection_id()),
+            ProtectedPacket::Retry(packet) => Some(packet.source_connection_id()),
         }
     }
 

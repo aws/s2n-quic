@@ -195,7 +195,7 @@ impl Model {
             let mut random_generator = random::testing::Generator(123);
             let mut peer_id_registry =
                 ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
-                    .create_peer_id_registry(
+                    .create_server_peer_id_registry(
                         InternalConnectionIdGenerator::new().generate_id(),
                         zero_path.peer_connection_id,
                         None,
@@ -265,6 +265,7 @@ impl Model {
             payload_len: payload_len as usize,
             ecn: ExplicitCongestionNotification::NotEct,
             destination_connection_id: local_id,
+            source_connection_id: None,
         };
         let mut migration_validator = path::migration::default::Validator;
         let mut random_generator = Generator::default();
@@ -297,7 +298,13 @@ impl Model {
 
                     let (path_id, _path) = self.subject.path(handle).unwrap();
                     self.subject
-                        .on_processed_packet(path_id, *probe, &mut random_generator, &mut publisher)
+                        .on_processed_packet(
+                            path_id,
+                            None,
+                            *probe,
+                            &mut random_generator,
+                            &mut publisher,
+                        )
                         .unwrap();
                 }
             }
