@@ -69,10 +69,10 @@ where
 
         // compute the number of blocks the payload will require
         let mut payload_block_count = payload_len / BLOCK_LEN;
-        let full_batches = payload_block_count / N;
         let batch_rem = payload_block_count % N;
         let payload_rem = payload_len % BLOCK_LEN;
 
+        // set to true if the ek0 counter can be encrypted alongside the last batch
         let can_interleave_ek0;
         // set it to an out of bounds index if we don't need it
         let mut last_block_idx = N;
@@ -93,6 +93,8 @@ where
 
         // initialize the counter with the provided nonce
         let mut ctr = C::new(nonce);
+
+        // generate the ek0 counter block to be encrypted and hashed at the end
         let mut ek0 = ctr.block();
 
         /// Performs a single batch which will interleave the AES-CTR stream
@@ -145,18 +147,11 @@ where
         batch!(aad_block_count > 0, aad_block_count -= 1);
 
         // iterate over all of the remaining full batches
-        for _ in 0..full_batches {
-            unsafe {
-                unsafe_assert!(
-                    payload_block_count >= N,
-                    "full batches unsafe_assert {} blocks",
-                    N
-                );
-            }
+        while let Some(count) = payload_block_count.checked_sub(N) {
+            payload_block_count = count;
 
             // Apply the AES-CTR stream cipher blocks to the payload and move them into
             // the ghash blocks
-            payload_block_count -= N;
             cipher_blocks.for_each(
                 #[inline(always)]
                 |idx, block| {
