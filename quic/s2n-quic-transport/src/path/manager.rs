@@ -201,6 +201,10 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// Upon success, returns a `(Id, bool)` containing the path ID and a boolean that is
     /// true if the path had been amplification limited prior to receiving the datagram
     /// and is now no longer amplification limited.
+    ///
+    /// This function is called prior to packet authentication. If possible add business
+    /// logic to [`Self::on_processed_packet`], which is called after the packet has been
+    /// authenticated.
     #[allow(clippy::too_many_arguments)]
     pub fn on_datagram_received<Pub: event::ConnectionPublisher>(
         &mut self,
