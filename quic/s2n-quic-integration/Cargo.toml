@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Cameron Bytheway <bythewc@amazon.com>"]
 edition = "2018"
 license = "Apache-2.0"
+# this only contains internal tests and should not be published
 publish = false
 
 [features]
