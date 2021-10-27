@@ -48,8 +48,11 @@ pub struct Manager<Config: endpoint::Config> {
     /// Index to the active path
     active: u8,
 
-    /// Index of last known validated path
-    last_known_validated_path: Option<u8>,
+    /// Index of last known active and validated path.
+    ///
+    /// The Path must be validated and also active at some some point to
+    /// be set as the last_known_active_validated_path.
+    last_known_active_validated_path: Option<u8>,
 
     /// The current index of a path that is pending packet protection authentication
     ///
@@ -72,7 +75,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             paths: SmallVec::from_elem(initial_path, 1),
             peer_id_registry,
             active: 0,
-            last_known_validated_path: None,
+            last_known_active_validated_path: None,
             pending_packet_authentication: None,
         }
     }
@@ -109,8 +112,11 @@ impl<Config: endpoint::Config> Manager<Config> {
         };
         self[new_path_id].peer_connection_id = peer_connection_id;
 
+        // Mark as activated
+        self[new_path_id].on_activated();
+
         if self.active_path().is_validated() {
-            self.last_known_validated_path = Some(self.active);
+            self.last_known_active_validated_path = Some(self.active);
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.3
@@ -386,6 +392,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             cc,
             true,
             max_mtu,
+            false,
         );
 
         let unblocked = path.on_bytes_received(datagram.payload_len);
@@ -498,8 +505,15 @@ impl<Config: endpoint::Config> Manager<Config> {
         //# A PATH_RESPONSE frame received on any network path validates the path
         //# on which the PATH_CHALLENGE was sent.
 
-        for path in self.paths.iter_mut() {
-            path.on_path_response(response.data);
+        for (id, path) in self.paths.iter_mut().enumerate() {
+            if path.on_path_response(response.data) {
+                // A path was validated so check if it becomes the new
+                // last_known_active_validated_path
+                if path.is_activated() {
+                    self.last_known_active_validated_path = Some(id as u8);
+                }
+                break;
+            }
         }
     }
 
@@ -616,14 +630,14 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
 
         if self.active_path().failed_validation() {
-            match self.last_known_validated_path {
-                Some(last_known_validated_path) => {
+            match self.last_known_active_validated_path {
+                Some(last_known_active_validated_path) => {
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
                     //# To protect the connection from failing due to such a spurious
                     //# migration, an endpoint MUST revert to using the last validated peer
                     //# address when validation of a new peer address fails.
-                    self.active = last_known_validated_path;
-                    self.last_known_validated_path = None;
+                    self.active = last_known_active_validated_path;
+                    self.last_known_active_validated_path = None;
                 }
                 None => {
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9

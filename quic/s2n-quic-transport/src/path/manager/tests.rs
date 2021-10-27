@@ -69,6 +69,7 @@ fn get_path_by_address_test() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
 
     let second_conn_id = connection::PeerId::try_from_bytes(&[5, 4, 3, 2, 1]).unwrap();
@@ -80,6 +81,7 @@ fn get_path_by_address_test() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
 
     let mut manager = manager_server(first_path.clone(), None);
@@ -110,6 +112,7 @@ fn test_invalid_path_fallback() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     // simulate receiving a handshake packet to force path validation
     first_path.on_handshake_packet();
@@ -126,12 +129,13 @@ fn test_invalid_path_fallback() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     second_path.set_challenge(challenge);
 
     let mut manager = manager_server(first_path, None);
     manager.paths.push(second_path);
-    assert_eq!(manager.last_known_validated_path, None);
+    assert_eq!(manager.last_known_active_validated_path, None);
     assert_eq!(manager.active, 0);
     assert!(manager.paths[0].is_validated());
 
@@ -143,7 +147,7 @@ fn test_invalid_path_fallback() {
         )
         .unwrap();
     assert_eq!(manager.active, 1);
-    assert_eq!(manager.last_known_validated_path, Some(0));
+    assert_eq!(manager.last_known_active_validated_path, Some(0));
 
     // send challenge and arm abandon timer
     let mut frame_buffer = OutgoingFrameBuffer::new();
@@ -165,11 +169,11 @@ fn test_invalid_path_fallback() {
         )
         .unwrap();
     assert_eq!(manager.active, 0);
-    assert!(manager.last_known_validated_path.is_none());
+    assert!(manager.last_known_active_validated_path.is_none());
 }
 
 #[test]
-// a validated path should be assigned to last_known_validated_path
+// a validated path should be assigned to last_known_active_validated_path
 fn promote_validated_path_to_last_known_validated_path() {
     // Setup:
     let mut helper = helper_manager_with_paths();
@@ -189,11 +193,11 @@ fn promote_validated_path_to_last_known_validated_path() {
         .unwrap();
 
     // Expectation:
-    assert_eq!(helper.manager.last_known_validated_path, Some(1));
+    assert_eq!(helper.manager.last_known_active_validated_path, Some(1));
 }
 
 #[test]
-// a NOT validated path should NOT be assigned to last_known_validated_path
+// a NOT validated path should NOT be assigned to last_known_active_validated_path
 fn dont_promote_non_validated_path_to_last_known_validated_path() {
     // Setup:
     let mut helper = helper_manager_with_paths();
@@ -210,7 +214,7 @@ fn dont_promote_non_validated_path_to_last_known_validated_path() {
         .unwrap();
 
     // Expectation:
-    assert_eq!(helper.manager.last_known_validated_path, Some(0));
+    assert_eq!(helper.manager.last_known_active_validated_path, Some(0));
 }
 
 #[test]
@@ -262,7 +266,7 @@ fn set_path_challenge_on_active_path_on_connection_migration() {
     helper.manager[helper.zero_path_id].abandon_challenge();
     assert!(!helper.manager[helper.zero_path_id].is_challenge_pending());
     assert_eq!(
-        helper.manager.last_known_validated_path.unwrap(),
+        helper.manager.last_known_active_validated_path.unwrap(),
         helper.zero_path_id.0
     );
 
@@ -348,7 +352,7 @@ fn validate_path_before_challenge_expiration() {
     // The above requirements are satisfied because on_path_response is a path
     // agnostic function
     let frame = s2n_quic_core::frame::PathResponse {
-        data: &helper.expected_data,
+        data: &helper.second_expected_data,
     };
     helper.manager.on_path_response(&frame);
 
@@ -414,7 +418,7 @@ fn dont_validate_path_if_path_challenge_is_abandoned() {
 
     // Trigger 2:
     let frame = s2n_quic_core::frame::PathResponse {
-        data: &helper.expected_data,
+        data: &helper.second_expected_data,
     };
     helper.manager.on_path_response(&frame);
 
@@ -473,7 +477,7 @@ fn initiate_path_challenge_if_new_path_is_not_validated() {
 //# An endpoint MAY discard connection state if it does not have a
 //# validated path on which it can send packets; see Section 8.2
 //
-// If there is no last_known_validated_path after a on_timeout then return a
+// If there is no last_known_active_validated_path after a on_timeout then return a
 // NoValidPath error
 fn silently_return_when_there_is_no_valid_path() {
     // Setup:
@@ -488,6 +492,7 @@ fn silently_return_when_there_is_no_valid_path() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     first_path.set_challenge(challenge);
     let mut manager = manager_server(first_path, None);
@@ -495,7 +500,7 @@ fn silently_return_when_there_is_no_valid_path() {
 
     assert!(!manager[first_path_id].is_validated());
     assert!(manager[first_path_id].is_challenge_pending());
-    assert_eq!(manager.last_known_validated_path, None);
+    assert_eq!(manager.last_known_active_validated_path, None);
 
     // Trigger:
     // send challenge and arm abandon timer
@@ -678,6 +683,7 @@ fn test_adding_new_path() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let mut manager = manager_server(first_path, None);
 
@@ -737,6 +743,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let mut manager = manager_server(first_path, None);
 
@@ -796,6 +803,7 @@ fn do_not_add_new_path_if_client() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let mut manager = manager_client(first_path, None);
     let mut publisher = Publisher::default();
@@ -843,6 +851,7 @@ fn limit_number_of_connection_migrations() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let mut manager = manager_server(first_path, None);
     let mut total_paths = 1;
@@ -898,6 +907,7 @@ fn connection_migration_challenge_behavior() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let mut manager = manager_server(first_path, None);
 
@@ -960,7 +970,7 @@ fn connection_migration_challenge_behavior() {
     //# An endpoint MUST
     //# perform path validation (Section 8.2) if it detects any change to a
     //# peer's address, unless it has previously validated that address.
-    manager[path_id].on_path_response(&expected_data);
+    assert!(manager[path_id].on_path_response(&expected_data));
     assert!(manager[path_id].is_validated());
 }
 
@@ -988,6 +998,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let mut manager = manager_server(first_path, None);
 
@@ -1064,6 +1075,7 @@ fn connection_migration_new_path_abandon_timer() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let mut manager = manager_server(first_path, None);
 
@@ -1182,6 +1194,7 @@ fn stop_using_a_retired_connection_id() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let mut manager = manager_server(first_path, None);
 
@@ -1271,6 +1284,7 @@ fn pending_paths_should_return_paths_pending_validation() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let expected_response_data = [0; 8];
     third_path.on_path_challenge(&expected_response_data);
@@ -1333,6 +1347,7 @@ fn temporary_until_authenticated() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     );
     let mut manager = manager_server(first_path, None);
 
@@ -1417,6 +1432,186 @@ fn temporary_until_authenticated() {
     );
 }
 
+// The last_known_active_validated_path needs to be both validated and also
+// activated (the active path at some point in the connection).
+//
+// This test specifically checks that a currently non-active path can become
+// the last_known_active_validated_path if it is activated and receives a
+// PATH_RESPONSE which matches its PATH_CHALLENGE.
+//
+// Setup:
+// - path 0 validated and active
+
+// Trigger Setup 1:
+// - path 1 non-probing packet
+// Expectation Setup 1:
+// - path 1 active + not valid + challenge pending
+// - last_known_active_validated_path = path 0
+
+// Trigger Setup 2:
+// - path 2 non-probing packet
+// Expectation Setup 2:
+// - path 2 active + not valid + challenge pending
+// - path 1 not valid + challenge pending
+// - last_known_active_validated_path = path 0
+
+// Trigger 1:
+// - path response for path 1
+// Expectation 1:
+// - path 1 valid + no challenge pending
+// - last_known_active_validated_path = path 1
+//
+// - path 2 active + not valid + challenge pending
+
+// Trigger 2:
+// - timeout for path 2 challenge
+// Expectation 2:
+// - path 1 active
+// - path 2 not valid + no challenge pending
+// - last_known_active_validated_path = None
+#[test]
+fn last_known_validated_path_should_update_on_path_response() {
+    // Setup:
+    let zero_conn_id = connection::PeerId::try_from_bytes(&[0]).unwrap();
+    let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
+    let second_conn_id = connection::PeerId::try_from_bytes(&[2]).unwrap();
+
+    // path zero
+    let zero_path_id = Id(0);
+    let mut zero_path = helper_path(zero_conn_id);
+    zero_path.on_handshake_packet();
+
+    let mut random_generator = random::testing::Generator(123);
+    let mut peer_id_registry =
+        ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
+            .create_peer_id_registry(
+                InternalConnectionIdGenerator::new().generate_id(),
+                zero_path.peer_connection_id,
+                None,
+            );
+    assert!(peer_id_registry
+        .on_new_connection_id(&first_conn_id, 1, 0, &TEST_TOKEN_1)
+        .is_ok());
+
+    assert!(peer_id_registry
+        .on_new_connection_id(&second_conn_id, 2, 0, &TEST_TOKEN_2)
+        .is_ok());
+
+    let mut manager = Manager::new(zero_path, peer_id_registry);
+
+    assert!(!manager[zero_path_id].is_challenge_pending());
+    assert!(manager[zero_path_id].is_validated());
+    assert_eq!(manager.active_path_id(), zero_path_id);
+
+    // Trigger Setup 1:
+    let first_path_id = Id(1);
+    let mut first_path = helper_path(first_conn_id);
+    let now = NoopClock {}.get_time();
+    let challenge_expiration = Duration::from_millis(10_000);
+    let first_expected_data = [0; 8];
+    let challenge = challenge::Challenge::new(challenge_expiration, first_expected_data);
+    first_path.set_challenge(challenge);
+    manager.paths.push(first_path);
+    assert!(manager
+        .update_active_path(
+            first_path_id,
+            &mut random::testing::Generator(123),
+            &mut Publisher::default(),
+        )
+        .is_ok());
+
+    // Expectation Setup 1:
+    assert_eq!(manager.active_path_id(), first_path_id);
+    // first
+    assert!(manager[first_path_id].is_challenge_pending());
+    assert!(!manager[first_path_id].is_validated());
+    // last_known_active_validated_path
+    assert_eq!(
+        manager.last_known_active_validated_path.unwrap(),
+        zero_path_id.as_u8()
+    );
+
+    // Trigger Setup 2:
+    let second_path_id = Id(2);
+    let second_expected_data = [1; 8];
+    let challenge = challenge::Challenge::new(challenge_expiration, second_expected_data);
+    let mut second_path = helper_path(second_conn_id);
+    second_path.set_challenge(challenge);
+    let mut frame_buffer = OutgoingFrameBuffer::new();
+    let mut context = MockWriteContext::new(
+        now,
+        &mut frame_buffer,
+        transmission::Constraint::None,
+        transmission::Mode::Normal,
+        endpoint::Type::Client,
+    );
+    second_path.on_transmit(&mut context); // send challenge and arm timer
+
+    manager.paths.push(second_path);
+    assert!(manager
+        .update_active_path(
+            second_path_id,
+            &mut random::testing::Generator(123),
+            &mut Publisher::default(),
+        )
+        .is_ok());
+
+    // Expectation Setup 2:
+    assert_eq!(manager.active_path_id(), second_path_id);
+    // second
+    assert!(manager[second_path_id].is_challenge_pending());
+    assert!(!manager[second_path_id].is_validated());
+    // first
+    assert!(manager[first_path_id].is_challenge_pending());
+    assert!(!manager[first_path_id].is_validated());
+    // last_known_active_validated_path
+    assert_eq!(
+        manager.last_known_active_validated_path.unwrap(),
+        zero_path_id.as_u8()
+    );
+
+    // Trigger 1:
+    // - path response for path 1
+    let frame = s2n_quic_core::frame::PathResponse {
+        data: &first_expected_data,
+    };
+    manager.on_path_response(&frame);
+    // Expectation 1:
+    assert_eq!(manager.active_path_id(), second_path_id);
+    // second
+    assert!(manager[second_path_id].is_challenge_pending());
+    assert!(!manager[second_path_id].is_validated());
+    // first
+    assert!(!manager[first_path_id].is_challenge_pending());
+    assert!(manager[first_path_id].is_validated());
+    // last_known_active_validated_path
+    assert_eq!(
+        manager.last_known_active_validated_path.unwrap(),
+        first_path_id.as_u8()
+    );
+
+    // Trigger 2:
+    // - timeout for path 2 challenge
+    manager
+        .on_timeout(
+            now + challenge_expiration + Duration::from_millis(100),
+            &mut random::testing::Generator(123),
+            &mut Publisher::default(),
+        )
+        .unwrap();
+
+    // Expectation 2:
+    assert_eq!(manager.active_path_id(), first_path_id);
+    // second
+    assert!(!manager[second_path_id].is_challenge_pending());
+    assert!(!manager[second_path_id].is_validated());
+    // first
+    assert!(!manager[first_path_id].is_challenge_pending());
+    assert!(manager[first_path_id].is_validated());
+    // last_known_active_validated_path
+    assert_eq!(manager.last_known_active_validated_path, None);
+}
+
 // creates a test path_manager. also check out `helper_manager_with_paths`
 // which calls this helper with preset options
 pub fn helper_manager_with_paths_base(
@@ -1438,15 +1633,15 @@ pub fn helper_manager_with_paths_base(
 
     let now = NoopClock {}.get_time();
     let challenge_expiration = Duration::from_millis(10_000);
-    let expected_data = [0; 8];
-    let challenge = challenge::Challenge::new(challenge_expiration, expected_data);
+    let first_expected_data = [0; 8];
+    let challenge = challenge::Challenge::new(challenge_expiration, first_expected_data);
 
     let mut first_path = helper_path(first_conn_id);
     first_path.set_challenge(challenge);
 
     // Create a challenge that will expire in 100ms
-    let expected_data = [1; 8];
-    let challenge = challenge::Challenge::new(challenge_expiration, expected_data);
+    let second_expected_data = [1; 8];
+    let challenge = challenge::Challenge::new(challenge_expiration, second_expected_data);
     let mut second_path = helper_path(second_conn_id);
     second_path.set_challenge(challenge);
 
@@ -1496,19 +1691,23 @@ pub fn helper_manager_with_paths_base(
         .consume_new_id_for_existing_path(Id(0), zero_conn_id, &mut Publisher::default())
         .is_some());
 
-    // assert first_path is active and last_known_validated_path
+    // assert first_path is active and last_known_active_validated_path
     assert!(manager.peer_id_registry.is_active(&first_conn_id));
     assert_eq!(manager.active, first_path_id.0);
 
     if validate_path_zero {
-        assert_eq!(manager.last_known_validated_path, Some(zero_path_id.0));
+        assert_eq!(
+            manager.last_known_active_validated_path,
+            Some(zero_path_id.0)
+        );
     } else {
-        assert_eq!(manager.last_known_validated_path, None);
+        assert_eq!(manager.last_known_active_validated_path, None);
     }
 
     Helper {
         now,
-        expected_data,
+        first_expected_data,
+        second_expected_data,
         challenge_expiration,
         zero_path_id,
         first_path_id,
@@ -1527,6 +1726,7 @@ pub fn helper_path(peer_id: connection::PeerId) -> Path {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        true,
     )
 }
 
@@ -1536,7 +1736,8 @@ pub fn helper_manager_with_paths() -> Helper {
 
 pub struct Helper {
     pub now: Timestamp,
-    pub expected_data: challenge::Data,
+    pub first_expected_data: challenge::Data,
+    pub second_expected_data: challenge::Data,
     pub challenge_expiration: Duration,
     pub zero_path_id: Id,
     pub first_path_id: Id,

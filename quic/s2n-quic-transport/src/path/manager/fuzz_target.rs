@@ -51,7 +51,7 @@ impl PathInfo {
 struct Oracle {
     paths: HashMap<Handle, PathInfo>,
     active: Handle,
-    last_known_validated_path: Option<u8>,
+    last_known_active_validated_path: Option<u8>,
     prev_state_amplification_limited: bool,
 }
 
@@ -63,7 +63,7 @@ impl Oracle {
         Oracle {
             paths,
             active: handle,
-            last_known_validated_path: None,
+            last_known_active_validated_path: None,
             prev_state_amplification_limited: false,
         }
     }
@@ -119,7 +119,7 @@ impl Oracle {
         // call timeout on each Path
         //
         // if active path is not validated and validation failed
-        //   set the last_known_validated_path as active path
+        //   set the last_known_active_validated_path as active path
     }
 
     fn on_processed_packet(&mut self, handle: &Handle, probe: &path_validation::Probe) {
@@ -334,8 +334,8 @@ impl Model {
 
         // compare last known valid path
         assert_eq!(
-            self.oracle.last_known_validated_path,
-            self.subject.last_known_validated_path
+            self.oracle.last_known_active_validated_path,
+            self.subject.last_known_active_validated_path
         );
 
         // compare path properties

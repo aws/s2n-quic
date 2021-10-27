@@ -422,6 +422,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             parameters.congestion_controller,
             peer_validated,
             parameters.max_mtu,
+            true,
         );
 
         let path_manager = path::Manager::new(initial_path, parameters.peer_id_registry);
