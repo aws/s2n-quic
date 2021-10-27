@@ -1,8 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{aes::BLOCK_LEN, block::Block};
-
 pub trait Payload<Block: Copy> {
     fn len(&self) -> usize;
     unsafe fn read_block(&self) -> Block;
