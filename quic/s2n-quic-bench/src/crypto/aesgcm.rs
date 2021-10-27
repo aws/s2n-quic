@@ -53,8 +53,8 @@ pub fn benchmarks(c: &mut Criterion) {
                         input.extend_from_slice(&[0; TAG_LEN]);
 
                         let (payload, tag) = input.split_at_mut(payload_len);
-                        let mut tag: &mut [u8; TAG_LEN] = tag.try_into().unwrap();
-                        b.iter(|| key.encrypt(&nonce, &aad, payload, &mut tag));
+                        let tag: &mut [u8; TAG_LEN] = tag.try_into().unwrap();
+                        b.iter(|| key.encrypt(&nonce, &aad, payload, tag));
                     },
                 );
             }
@@ -73,10 +73,10 @@ pub fn benchmarks(c: &mut Criterion) {
                     input.extend_from_slice(&[0; TAG_LEN]);
 
                     let (payload, tag) = input.split_at_mut(payload_len);
-                    let mut tag: &mut [u8; TAG_LEN] = tag.try_into().unwrap();
+                    let tag: &mut [u8; TAG_LEN] = tag.try_into().unwrap();
 
                     // create a valid encrypted payload
-                    key.encrypt(&nonce, &aad, payload, &mut tag);
+                    key.encrypt(&nonce, &aad, payload, tag);
                     let tag = &*tag;
 
                     b.iter_batched(
