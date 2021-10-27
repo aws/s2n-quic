@@ -28,7 +28,6 @@ zerocopy-derive = "0.3"
 [dev-dependencies]
 bolero = "0.6"
 bolero-generator = { version = "0.6", default-features = false }
-criterion = { version = "0.3", features = ["html_reports"] }
 insta = "1"
 ip_network = "0.4"
 plotters = { version = "0.3", default-features = false, features = ["svg_backend", "line_series"] }
@@ -39,17 +38,9 @@ name = "crypto"
 path = "tests/crypto/fuzz_target.rs"
 harness = false
 
-[[bench]]
-name = "frame"
-harness = false
-
 [[test]]
 name = "frame"
 path = "tests/frame/fuzz_target.rs"
-harness = false
-
-[[bench]]
-name = "packet"
 harness = false
 
 [[test]]
@@ -61,10 +52,6 @@ required-features = ["testing"]
 [[test]]
 name = "transport_parameters"
 path = "tests/transport_parameters/fuzz_target.rs"
-harness = false
-
-[[bench]]
-name = "varint"
 harness = false
 
 [[test]]
