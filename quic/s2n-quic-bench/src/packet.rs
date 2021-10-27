@@ -31,7 +31,7 @@ macro_rules! input {
 fn codec(c: &mut Criterion) {
     let mut group = c.benchmark_group("packet");
 
-    let inputs = [
+    let mut inputs = [
         input!("handshake"),
         input!("initial"),
         input!("short"),
@@ -39,6 +39,9 @@ fn codec(c: &mut Criterion) {
         input!("version_negotiation"),
         input!("retry"),
     ];
+
+    // sort by length to make the graphs nicer
+    inputs.sort_by_key(|input| input.buffer.len());
 
     for input in &inputs {
         group.throughput(Throughput::Bytes(input.buffer.len() as _));
