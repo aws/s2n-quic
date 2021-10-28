@@ -16,7 +16,7 @@ Simulation {
           5: pkts: 3,
           6: pkts: 4,
           7: pkts: 4,
-          8: pkts: 4,
-          9: pkts: 4,
+          8: pkts: 5,
+          9: pkts: 5,
     ],
 }
