@@ -251,6 +251,10 @@ impl<C: CryptoSuite> Context<C> {
         self.sni = params.sni.map(|sni| sni.into_bytes());
         self.transport_parameters = Some(Bytes::copy_from_slice(params.transport_parameters));
     }
+
+    fn log(&self, event: &str) {
+        eprintln!("{}: {}", core::any::type_name::<C>(), event);
+    }
 }
 
 pub struct Space<K: Key> {
@@ -325,12 +329,25 @@ fn seal_open<S: Key, O: Key>(sealer: &S, opener: &O) {
     let mut encrypted_payload = cleartext_payload.clone();
     encrypted_payload.resize(cleartext_payload.len() + sealer.tag_len(), 0);
 
+    let sealer_name = core::any::type_name::<S>();
+    let opener_name = core::any::type_name::<O>();
+
     sealer
         .encrypt(packet_number, header, &mut encrypted_payload)
-        .unwrap();
+        .unwrap_or_else(|err| {
+            panic!(
+                "encryption error; opener={}, sealer={} - {:?}",
+                opener_name, sealer_name, err
+            )
+        });
     opener
         .decrypt(packet_number, header, &mut encrypted_payload)
-        .unwrap();
+        .unwrap_or_else(|err| {
+            panic!(
+                "decryption error; opener={}, sealer={} - {:?}",
+                opener_name, sealer_name, err
+            )
+        });
 
     assert_eq!(
         cleartext_payload[..],
@@ -348,6 +365,7 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
             self.handshake.crypto.is_none(),
             "handshake keys emitted multiple times"
         );
+        self.log("handshake keys");
         self.handshake.crypto = Some(key);
         Ok(())
     }
@@ -362,6 +380,7 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
             self.zero_rtt_crypto.is_none(),
             "0-rtt keys emitted multiple times"
         );
+        self.log("0-rtt keys");
         self.zero_rtt_crypto = Some(key);
         self.on_application_params(params);
         Ok(())
@@ -377,6 +396,7 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
             self.application.crypto.is_none(),
             "1-rtt keys emitted multiple times"
         );
+        self.log("1-rtt keys");
         self.application.crypto = Some(key);
         self.on_application_params(params);
         Ok(())
@@ -385,18 +405,22 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
     fn on_handshake_done(&mut self) -> Result<(), transport::Error> {
         assert!(!self.handshake_done, "handshake done called multiple times");
         self.handshake_done = true;
+        self.log("handshake done");
         Ok(())
     }
 
     fn receive_initial(&mut self, max_len: Option<usize>) -> Option<Bytes> {
+        self.log("rx initial");
         self.initial.rx(max_len)
     }
 
     fn receive_handshake(&mut self, max_len: Option<usize>) -> Option<Bytes> {
+        self.log("rx handshake");
         self.handshake.rx(max_len)
     }
 
     fn receive_application(&mut self, max_len: Option<usize>) -> Option<Bytes> {
+        self.log("rx application");
         self.application.rx(max_len)
     }
 
@@ -405,6 +429,7 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
     }
 
     fn send_initial(&mut self, transmission: Bytes) {
+        self.log("tx initial");
         self.initial.tx(transmission)
     }
 
@@ -417,6 +442,7 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
             self.can_send_handshake(),
             "handshake keys need to be emitted before buffering handshake crypto"
         );
+        self.log("tx handshake");
         self.handshake.tx(transmission)
     }
 
@@ -429,6 +455,7 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
             self.can_send_application(),
             "1-rtt keys need to be emitted before buffering application crypto"
         );
+        self.log("tx application");
         self.application.tx(transmission)
     }
 }
