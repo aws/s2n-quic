@@ -42,7 +42,31 @@ use num_traits::Float as _;
 enum State {
     SlowStart,
     Recovery(Timestamp, FastRetransmission),
-    CongestionAvoidance(Timestamp),
+    CongestionAvoidance(Timestamp, Duration),
+}
+
+impl State {
+    /// Called when app limited after sending has completed for a round and an ACK has been received.
+    /// Applies the app limited duration accumulated while sending packets to the congestion avoidance
+    /// start time, and resets the duration so it is not applied again.
+    fn on_app_limited(&mut self) {
+        if let CongestionAvoidance(ref mut avoidance_start_time, ref mut app_limited_duration) =
+            self
+        {
+            //= https://tools.ietf.org/rfc/rfc8312#5.8
+            //# CUBIC does not raise its congestion window size if the flow is
+            //# currently limited by the application instead of the congestion
+            //# window.  In case of long periods when cwnd has not been updated due
+            //# to the application rate limit, such as idle periods, t in Eq. 1 MUST
+            //# NOT include these periods; otherwise, W_cubic(t) might be very high
+            //# after restarting from these periods.
+
+            // Adjust the congestion avoidance start time by the app limited duration
+            // and reset the app limited duration.
+            *avoidance_start_time += *app_limited_duration;
+            *app_limited_duration = Duration::default();
+        }
+    }
 }
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
@@ -122,8 +146,9 @@ impl CongestionController for CubicCongestionController {
 
         self.under_utilized = self.is_congestion_window_under_utilized();
 
-        if self.under_utilized {
-            if let CongestionAvoidance(ref mut avoidance_start_time) = self.state {
+        if let CongestionAvoidance(avoidance_start_time, ref mut app_limited_duration) = self.state
+        {
+            if self.under_utilized {
                 //= https://tools.ietf.org/rfc/rfc8312#5.8
                 //# CUBIC does not raise its congestion window size if the flow is
                 //# currently limited by the application instead of the congestion
@@ -132,14 +157,21 @@ impl CongestionController for CubicCongestionController {
                 //# NOT include these periods; otherwise, W_cubic(t) might be very high
                 //# after restarting from these periods.
 
-                // Since we are application limited, we shift the start time of CongestionAvoidance
-                // by the app limited duration, to avoid including that duration in W_cubic(t).
-                let last_time_sent = self.time_of_last_sent_packet.unwrap_or(time_sent);
-                // Use the later of the last time sent and the avoidance start time to not count
+                // We are app limited, so add the duration since a packet was last sent to now
+                // to the app limited duration. Once the sending round has completed and an ACK
+                // has been received, the avoidance start time will be shifted by the app limited
+                // duration, to avoid including that duration in W_cubic(t).
+                // We use the later of the last time sent and the avoidance start time to not count
                 // the app limited time spent prior to entering congestion avoidance.
-                let app_limited_duration = time_sent - last_time_sent.max(*avoidance_start_time);
+                let last_time_sent = self
+                    .time_of_last_sent_packet
+                    .unwrap_or(time_sent)
+                    .max(avoidance_start_time);
 
-                *avoidance_start_time += app_limited_duration;
+                *app_limited_duration += time_sent - last_time_sent;
+            } else {
+                // Reset the app limited duration since we are no longer application limited
+                *app_limited_duration = Duration::default();
             }
         }
 
@@ -178,6 +210,8 @@ impl CongestionController for CubicCongestionController {
             .expect("sent bytes should not exceed u32::MAX");
 
         if self.under_utilized {
+            self.state.on_app_limited();
+
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8
             //# When bytes in flight is smaller than the congestion window and
             //# sending is not pacing limited, the congestion window is under-
@@ -193,7 +227,7 @@ impl CongestionController for CubicCongestionController {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
                 //# A recovery period ends and the sender enters congestion avoidance
                 //# when a packet sent during the recovery period is acknowledged.
-                self.state = State::CongestionAvoidance(ack_receive_time)
+                self.state = State::CongestionAvoidance(ack_receive_time, Duration::default())
             }
         };
 
@@ -215,14 +249,14 @@ impl CongestionController for CubicCongestionController {
                     //# t is the elapsed time since the beginning of the current congestion
                     //# avoidance, K is set to 0, and W_max is set to the congestion window
                     //# size at the beginning of the current congestion avoidance.
-                    self.state = State::CongestionAvoidance(ack_receive_time);
+                    self.state = State::CongestionAvoidance(ack_receive_time, Duration::default());
                     self.cubic.on_slow_start_exit(self.congestion_window);
                 }
             }
             Recovery(_, _) => {
                 // Don't increase the congestion window while in recovery
             }
-            CongestionAvoidance(avoidance_start_time) => {
+            CongestionAvoidance(avoidance_start_time, _app_limited_duration) => {
                 //= https://tools.ietf.org/rfc/rfc8312.txt#4.1
                 //# t is the elapsed time from the beginning of the current congestion avoidance
                 let t = ack_receive_time - avoidance_start_time;
@@ -837,7 +871,7 @@ mod test {
         cc.bytes_in_flight = BytesInFlight::new(6000);
         assert!(!cc.is_congestion_window_under_utilized());
 
-        cc.state = CongestionAvoidance(NoopClock.get_time());
+        cc.state = CongestionAvoidance(NoopClock.get_time(), Duration::default());
         assert!(cc.is_congestion_window_under_utilized());
 
         // In Congestion Avoidance, the window is under utilized if there are more than
@@ -963,7 +997,7 @@ mod test {
         assert_eq!(cc.time_of_last_sent_packet, Some(now));
 
         // t10: Enter Congestion Avoidance
-        cc.state = CongestionAvoidance(now + Duration::from_secs(10));
+        cc.state = CongestionAvoidance(now + Duration::from_secs(10), Duration::default());
 
         // t15: Send a packet in Congestion Avoidance
         cc.on_packet_sent(now + Duration::from_secs(15), 1000);
@@ -974,17 +1008,23 @@ mod test {
             Some(now + Duration::from_secs(15))
         );
         // Application limited, but the last sent packet was sent before CongestionAvoidance,
-        // so the CongestionAvoidance increases by the time from avoidance start to now
-        assert_eq!(cc.state, CongestionAvoidance(now + Duration::from_secs(15)));
+        // so the app limited duration increases by the time from avoidance start to now
+        assert_eq!(
+            cc.state,
+            CongestionAvoidance(now + Duration::from_secs(10), Duration::from_secs(5))
+        );
 
         cc.bytes_in_flight = BytesInFlight::new(93500);
 
         // t25: Send a packet in Congestion Avoidance
         cc.on_packet_sent(now + Duration::from_secs(25), 1000);
 
-        // Application limited so the CongestionAvoidance start moves up by 10 seconds
+        // Application limited so the app limited duration increases by 10 seconds
         // (time_of_last_sent_packet - time_sent)
-        assert_eq!(cc.state, CongestionAvoidance(now + Duration::from_secs(25)));
+        assert_eq!(
+            cc.state,
+            CongestionAvoidance(now + Duration::from_secs(10), Duration::from_secs(15))
+        );
     }
 
     #[test]
@@ -1024,26 +1064,42 @@ mod test {
 
         // t10: Enter Congestion Avoidance
         cc.cubic.w_max = 6.0;
-        cc.state = CongestionAvoidance(now + Duration::from_secs(10));
+        cc.state = CongestionAvoidance(now + Duration::from_secs(10), Duration::default());
 
         // t15: Send a packet in Congestion Avoidance while under utilized
         cc.on_packet_sent(now + Duration::from_secs(15), 1000);
         assert!(cc.is_congestion_window_under_utilized());
 
-        // t15: Send a packet in Congestion Avoidance while not under utilized
-        cc.on_packet_sent(now + Duration::from_secs(15), 1000);
-        assert!(!cc.is_congestion_window_under_utilized());
-
-        assert_eq!(cc.bytes_in_flight, 3000);
+        assert_eq!(cc.bytes_in_flight, 2000);
+        // Verify the app limited duration counted the 5 seconds of under utilization
+        assert_eq!(
+            cc.state,
+            CongestionAvoidance(now + Duration::from_secs(10), Duration::from_secs(5))
+        );
 
         // t16: Ack a packet in Congestion Avoidance
         cc.on_packet_ack(now, 1000, rtt_estimator, now + Duration::from_secs(16));
 
-        assert_eq!(cc.bytes_in_flight, 2000);
+        assert_eq!(cc.bytes_in_flight, 1000);
 
         // Verify congestion avoidance start time was moved from t10 to t15 to account
-        // for the 5 seconds of under utilized time
-        assert_eq!(cc.state, CongestionAvoidance(now + Duration::from_secs(15)));
+        // for the 5 seconds of under utilized time and the app limited duration was reset
+        assert_eq!(
+            cc.state,
+            CongestionAvoidance(now + Duration::from_secs(15), Duration::default())
+        );
+
+        // t20: Send packets to fully utilize the congestion window
+        while cc.bytes_in_flight < cc.congestion_window() {
+            cc.on_packet_sent(now + Duration::from_secs(20), 1000);
+        }
+
+        assert!(!cc.is_congestion_window_under_utilized());
+        // Verify avoidance start time has not changed
+        assert_eq!(
+            cc.state,
+            CongestionAvoidance(now + Duration::from_secs(15), Duration::default())
+        );
     }
 
     #[test]
@@ -1155,7 +1211,7 @@ mod test {
         let now = NoopClock.get_time();
         cc.congestion_window = cc.cubic.minimum_window();
         cc.bytes_in_flight = BytesInFlight::new(cc.congestion_window());
-        cc.state = CongestionAvoidance(now);
+        cc.state = CongestionAvoidance(now, Duration::default());
 
         cc.on_packets_lost(100, false, now + Duration::from_secs(10));
 
@@ -1294,7 +1350,7 @@ mod test {
 
         assert_delta!(cc.congestion_window, 100_000.0, 0.001);
 
-        cc.state = CongestionAvoidance(now);
+        cc.state = CongestionAvoidance(now, Duration::default());
 
         cc.on_packet_ack(now, 1, &RttEstimator::new(Duration::from_secs(0)), now);
 
@@ -1359,7 +1415,7 @@ mod test {
 
         assert_eq!(
             cc.state,
-            CongestionAvoidance(now + Duration::from_millis(2))
+            CongestionAvoidance(now + Duration::from_millis(2), Duration::default())
         );
     }
 
@@ -1392,7 +1448,7 @@ mod test {
         assert_eq!(cc.cubic.k, Duration::from_secs(0));
         assert_eq!(
             cc.state,
-            CongestionAvoidance(now + Duration::from_millis(2))
+            CongestionAvoidance(now + Duration::from_millis(2), Duration::default())
         );
     }
 
@@ -1424,7 +1480,7 @@ mod test {
         let mut cc2 = CubicCongestionController::new(max_datagram_size);
         let now = NoopClock.get_time();
 
-        cc.state = CongestionAvoidance(now + Duration::from_millis(3300));
+        cc.state = CongestionAvoidance(now + Duration::from_millis(3300), Duration::default());
         cc.congestion_window = 10000.0;
         cc.bytes_in_flight = BytesInFlight::new(10000);
         cc.cubic.w_max = bytes_to_packets(10000.0, max_datagram_size);
