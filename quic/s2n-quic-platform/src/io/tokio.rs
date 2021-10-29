@@ -736,6 +736,7 @@ mod tests {
             rx::{self, Entry as _},
             tx,
         },
+        path::Handle as _,
         time::{Clock, Timestamp},
     };
     use std::collections::BTreeMap;
