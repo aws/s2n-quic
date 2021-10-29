@@ -42,29 +42,28 @@ use num_traits::Float as _;
 enum State {
     SlowStart,
     Recovery(Timestamp, FastRetransmission),
-    CongestionAvoidance(Timestamp, Duration),
+    CongestionAvoidance(CongestionAvoidanceTiming),
 }
 
 impl State {
-    /// Called when app limited after sending has completed for a round and an ACK has been received.
-    /// Applies the app limited duration accumulated while sending packets to the congestion avoidance
-    /// start time, and resets the duration so it is not applied again.
-    fn on_app_limited(&mut self) {
-        if let CongestionAvoidance(ref mut avoidance_start_time, ref mut app_limited_duration) =
-            self
-        {
-            //= https://tools.ietf.org/rfc/rfc8312#5.8
-            //# CUBIC does not raise its congestion window size if the flow is
-            //# currently limited by the application instead of the congestion
-            //# window.  In case of long periods when cwnd has not been updated due
-            //# to the application rate limit, such as idle periods, t in Eq. 1 MUST
-            //# NOT include these periods; otherwise, W_cubic(t) might be very high
-            //# after restarting from these periods.
+    /// Returns State::CongestionAvoidance initialized with the given `start_time`
+    fn congestion_avoidance(start_time: Timestamp) -> Self {
+        Self::CongestionAvoidance(CongestionAvoidanceTiming {
+            start_time,
+            window_increase_time: start_time,
+            app_limited_time: None,
+        })
+    }
 
-            // Adjust the congestion avoidance start time by the app limited duration
-            // and reset the app limited duration.
-            *avoidance_start_time += *app_limited_duration;
-            *app_limited_duration = Duration::default();
+    /// Called when app limited after sending has completed for a round and an ACK has been received.
+    fn on_app_limited(&mut self, timestamp: Timestamp) {
+        if let CongestionAvoidance(ref mut timing) = self {
+            if timing
+                .app_limited_time
+                .map_or(true, |app_limited_time| timestamp > app_limited_time)
+            {
+                timing.app_limited_time = Some(timestamp);
+            }
         }
     }
 }
@@ -78,6 +77,40 @@ impl State {
 enum FastRetransmission {
     Idle,
     RequiresTransmission,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CongestionAvoidanceTiming {
+    // The time the congestion avoidance state was entered
+    start_time: Timestamp,
+    // The time the congestion window was last increased
+    window_increase_time: Timestamp,
+    // The last known time the congestion window was underutilized
+    app_limited_time: Option<Timestamp>,
+}
+
+impl CongestionAvoidanceTiming {
+    /// Called when the congestion window is being increased.
+    ///
+    /// Adjusts the start time by the period from the last window increase to the app limited time
+    /// to avoid counting the app limited time period in W_cubic.
+    fn on_window_increase(&mut self, timestamp: Timestamp) {
+        if let Some(app_limited_time) = self.app_limited_time {
+            //= https://tools.ietf.org/rfc/rfc8312#5.8
+            //# CUBIC does not raise its congestion window size if the flow is
+            //# currently limited by the application instead of the congestion
+            //# window.  In case of long periods when cwnd has not been updated due
+            //# to the application rate limit, such as idle periods, t in Eq. 1 MUST
+            //# NOT include these periods; otherwise, W_cubic(t) might be very high
+            //# after restarting from these periods.
+
+            // Adjust the congestion avoidance start time by the app limited duration
+            self.start_time += app_limited_time - self.window_increase_time;
+        }
+
+        self.window_increase_time = timestamp;
+        self.app_limited_time = None;
+    }
 }
 
 /// A congestion controller that implements "CUBIC for Fast Long-Distance Networks"
@@ -146,35 +179,6 @@ impl CongestionController for CubicCongestionController {
 
         self.under_utilized = self.is_congestion_window_under_utilized();
 
-        if let CongestionAvoidance(avoidance_start_time, ref mut app_limited_duration) = self.state
-        {
-            if self.under_utilized {
-                //= https://tools.ietf.org/rfc/rfc8312#5.8
-                //# CUBIC does not raise its congestion window size if the flow is
-                //# currently limited by the application instead of the congestion
-                //# window.  In case of long periods when cwnd has not been updated due
-                //# to the application rate limit, such as idle periods, t in Eq. 1 MUST
-                //# NOT include these periods; otherwise, W_cubic(t) might be very high
-                //# after restarting from these periods.
-
-                // We are app limited, so add the duration since a packet was last sent to now
-                // to the app limited duration. Once the sending round has completed and an ACK
-                // has been received, the avoidance start time will be shifted by the app limited
-                // duration, to avoid including that duration in W_cubic(t).
-                // We use the later of the last time sent and the avoidance start time to not count
-                // the app limited time spent prior to entering congestion avoidance.
-                let last_time_sent = self
-                    .time_of_last_sent_packet
-                    .unwrap_or(time_sent)
-                    .max(avoidance_start_time);
-
-                *app_limited_duration += time_sent - last_time_sent;
-            } else {
-                // Reset the app limited duration since we are no longer application limited
-                *app_limited_duration = Duration::default();
-            }
-        }
-
         if let Recovery(recovery_start_time, RequiresTransmission) = self.state {
             // A packet has been sent since we entered recovery (fast retransmission)
             // so flip the state back to idle.
@@ -210,7 +214,7 @@ impl CongestionController for CubicCongestionController {
             .expect("sent bytes should not exceed u32::MAX");
 
         if self.under_utilized {
-            self.state.on_app_limited();
+            self.state.on_app_limited(ack_receive_time);
 
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8
             //# When bytes in flight is smaller than the congestion window and
@@ -227,7 +231,7 @@ impl CongestionController for CubicCongestionController {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
                 //# A recovery period ends and the sender enters congestion avoidance
                 //# when a packet sent during the recovery period is acknowledged.
-                self.state = State::CongestionAvoidance(ack_receive_time, Duration::default())
+                self.state = State::congestion_avoidance(ack_receive_time)
             }
         };
 
@@ -249,17 +253,19 @@ impl CongestionController for CubicCongestionController {
                     //# t is the elapsed time since the beginning of the current congestion
                     //# avoidance, K is set to 0, and W_max is set to the congestion window
                     //# size at the beginning of the current congestion avoidance.
-                    self.state = State::CongestionAvoidance(ack_receive_time, Duration::default());
+                    self.state = State::congestion_avoidance(ack_receive_time);
                     self.cubic.on_slow_start_exit(self.congestion_window);
                 }
             }
             Recovery(_, _) => {
                 // Don't increase the congestion window while in recovery
             }
-            CongestionAvoidance(avoidance_start_time, _app_limited_duration) => {
+            CongestionAvoidance(ref mut timing) => {
+                timing.on_window_increase(ack_receive_time);
+
                 //= https://tools.ietf.org/rfc/rfc8312.txt#4.1
                 //# t is the elapsed time from the beginning of the current congestion avoidance
-                let t = ack_receive_time - avoidance_start_time;
+                let t = ack_receive_time - timing.start_time;
 
                 //= https://tools.ietf.org/rfc/rfc8312.txt#4.1
                 //# RTT is the weighted average RTT

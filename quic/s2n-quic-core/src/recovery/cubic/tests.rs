@@ -152,7 +152,7 @@ fn is_congestion_window_under_utilized() {
     cc.bytes_in_flight = BytesInFlight::new(6000);
     assert!(!cc.is_congestion_window_under_utilized());
 
-    cc.state = CongestionAvoidance(NoopClock.get_time(), Duration::default());
+    cc.state = State::congestion_avoidance(NoopClock.get_time());
     assert!(cc.is_congestion_window_under_utilized());
 
     // In Congestion Avoidance, the window is under utilized if there are more than
@@ -278,7 +278,9 @@ fn on_packet_sent_application_limited() {
     assert_eq!(cc.time_of_last_sent_packet, Some(now));
 
     // t10: Enter Congestion Avoidance
-    cc.state = CongestionAvoidance(now + Duration::from_secs(10), Duration::default());
+    cc.state = State::congestion_avoidance(now + Duration::from_secs(10));
+
+    assert!(!cc.under_utilized);
 
     // t15: Send a packet in Congestion Avoidance
     cc.on_packet_sent(now + Duration::from_secs(15), 1000);
@@ -288,24 +290,14 @@ fn on_packet_sent_application_limited() {
         cc.time_of_last_sent_packet,
         Some(now + Duration::from_secs(15))
     );
-    // Application limited, but the last sent packet was sent before CongestionAvoidance,
-    // so the app limited duration increases by the time from avoidance start to now
-    assert_eq!(
-        cc.state,
-        CongestionAvoidance(now + Duration::from_secs(10), Duration::from_secs(5))
-    );
+    assert!(cc.under_utilized);
 
-    cc.bytes_in_flight = BytesInFlight::new(93500);
+    // t20: Send packets to fully utilize the congestion window
+    while cc.bytes_in_flight < cc.congestion_window() {
+        cc.on_packet_sent(now + Duration::from_secs(20), 1000);
+    }
 
-    // t25: Send a packet in Congestion Avoidance
-    cc.on_packet_sent(now + Duration::from_secs(25), 1000);
-
-    // Application limited so the app limited duration increases by 10 seconds
-    // (time_of_last_sent_packet - time_sent)
-    assert_eq!(
-        cc.state,
-        CongestionAvoidance(now + Duration::from_secs(10), Duration::from_secs(15))
-    );
+    assert!(!cc.under_utilized);
 }
 
 #[test]
@@ -345,30 +337,27 @@ fn congestion_avoidance_after_idle_period() {
 
     // t10: Enter Congestion Avoidance
     cc.cubic.w_max = 6.0;
-    cc.state = CongestionAvoidance(now + Duration::from_secs(10), Duration::default());
+    cc.state = State::congestion_avoidance(now + Duration::from_secs(10));
 
     // t15: Send a packet in Congestion Avoidance while under utilized
     cc.on_packet_sent(now + Duration::from_secs(15), 1000);
     assert!(cc.is_congestion_window_under_utilized());
 
     assert_eq!(cc.bytes_in_flight, 2000);
-    // Verify the app limited duration counted the 5 seconds of under utilization
-    assert_eq!(
-        cc.state,
-        CongestionAvoidance(now + Duration::from_secs(10), Duration::from_secs(5))
-    );
 
     // t16: Ack a packet in Congestion Avoidance
     cc.on_packet_ack(now, 1000, rtt_estimator, now + Duration::from_secs(16));
-
-    assert_eq!(cc.bytes_in_flight, 1000);
-
-    // Verify congestion avoidance start time was moved from t10 to t15 to account
-    // for the 5 seconds of under utilized time and the app limited duration was reset
+    // Verify the app limited time is set
     assert_eq!(
         cc.state,
-        CongestionAvoidance(now + Duration::from_secs(15), Duration::default())
+        CongestionAvoidance(CongestionAvoidanceTiming {
+            start_time: now + Duration::from_secs(10),
+            window_increase_time: now + Duration::from_secs(10),
+            app_limited_time: Some(now + Duration::from_secs(16)),
+        })
     );
+
+    assert_eq!(cc.bytes_in_flight, 1000);
 
     // t20: Send packets to fully utilize the congestion window
     while cc.bytes_in_flight < cc.congestion_window() {
@@ -376,10 +365,19 @@ fn congestion_avoidance_after_idle_period() {
     }
 
     assert!(!cc.is_congestion_window_under_utilized());
-    // Verify avoidance start time has not changed
+
+    // t25: Ack a packet in Congestion Avoidance
+    cc.on_packet_ack(now, 1000, rtt_estimator, now + Duration::from_secs(25));
+
+    // Verify congestion avoidance start time was moved from t10 to t16 to account
+    // for the 6 seconds of under utilized time and the app_limited_time was reset
     assert_eq!(
         cc.state,
-        CongestionAvoidance(now + Duration::from_secs(15), Duration::default())
+        CongestionAvoidance(CongestionAvoidanceTiming {
+            start_time: now + Duration::from_secs(16),
+            window_increase_time: now + Duration::from_secs(25),
+            app_limited_time: None,
+        })
     );
 }
 
@@ -491,7 +489,7 @@ fn on_packet_lost_below_minimum_window() {
     let now = NoopClock.get_time();
     cc.congestion_window = cc.cubic.minimum_window();
     cc.bytes_in_flight = BytesInFlight::new(cc.congestion_window());
-    cc.state = CongestionAvoidance(now, Duration::default());
+    cc.state = State::congestion_avoidance(now);
 
     cc.on_packets_lost(100, false, now + Duration::from_secs(10));
 
@@ -630,7 +628,7 @@ fn on_packet_ack_limited() {
 
     assert_delta!(cc.congestion_window, 100_000.0, 0.001);
 
-    cc.state = CongestionAvoidance(now, Duration::default());
+    cc.state = State::congestion_avoidance(now);
 
     cc.on_packet_ack(now, 1, &RttEstimator::new(Duration::from_secs(0)), now);
 
@@ -695,7 +693,7 @@ fn on_packet_ack_recovery_to_congestion_avoidance() {
 
     assert_eq!(
         cc.state,
-        CongestionAvoidance(now + Duration::from_millis(2), Duration::default())
+        State::congestion_avoidance(now + Duration::from_millis(2))
     );
 }
 
@@ -728,7 +726,7 @@ fn on_packet_ack_slow_start_to_congestion_avoidance() {
     assert_eq!(cc.cubic.k, Duration::from_secs(0));
     assert_eq!(
         cc.state,
-        CongestionAvoidance(now + Duration::from_millis(2), Duration::default())
+        State::congestion_avoidance(now + Duration::from_millis(2))
     );
 }
 
@@ -760,7 +758,7 @@ fn on_packet_ack_congestion_avoidance() {
     let mut cc2 = CubicCongestionController::new(max_datagram_size);
     let now = NoopClock.get_time();
 
-    cc.state = CongestionAvoidance(now + Duration::from_millis(3300), Duration::default());
+    cc.state = State::congestion_avoidance(now + Duration::from_millis(3300));
     cc.congestion_window = 10000.0;
     cc.bytes_in_flight = BytesInFlight::new(10000);
     cc.cubic.w_max = bytes_to_packets(10000.0, max_datagram_size);
