@@ -46,6 +46,9 @@ pub const INITIAL_PTO_BACKOFF: u32 = 1;
 
 /// An interface for an object that represents a unique path between two endpoints
 pub trait Handle: 'static + Copy + Send + fmt::Debug {
+    /// Creates a Handle from a RemoteAddress
+    fn from_remote_address(remote_addr: RemoteAddress) -> Self;
+
     /// Returns the remote address for the given handle
     fn remote_address(&self) -> RemoteAddress;
 
@@ -104,14 +107,12 @@ impl_addr!(LocalAddress);
 
 impl_addr!(RemoteAddress);
 
-impl RemoteAddress {
-    #[inline]
-    pub fn from_remote_address(remote_address: SocketAddress) -> Self {
-        Self(remote_address)
-    }
-}
-
 impl Handle for RemoteAddress {
+    #[inline]
+    fn from_remote_address(remote_address: RemoteAddress) -> Self {
+        remote_address
+    }
+
     #[inline]
     fn remote_address(&self) -> RemoteAddress {
         *self
@@ -140,17 +141,6 @@ pub struct Tuple {
     pub local_address: LocalAddress,
 }
 
-impl Tuple {
-    #[inline]
-    pub fn from_remote_address(remote_address: RemoteAddress) -> Self {
-        let local_address = SocketAddressV4::UNSPECIFIED.into();
-        Self {
-            remote_address,
-            local_address,
-        }
-    }
-}
-
 impl PartialEq for Tuple {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
@@ -160,6 +150,15 @@ impl PartialEq for Tuple {
 }
 
 impl Handle for Tuple {
+    #[inline]
+    fn from_remote_address(remote_address: RemoteAddress) -> Self {
+        let local_address = SocketAddressV4::UNSPECIFIED.into();
+        Self {
+            remote_address,
+            local_address,
+        }
+    }
+
     #[inline]
     fn remote_address(&self) -> RemoteAddress {
         self.remote_address
