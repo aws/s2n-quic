@@ -62,7 +62,11 @@ impl State {
                 timing
                     .app_limited_time
                     .map_or(true, |app_limited_time| timestamp >= app_limited_time),
-                "timestamp should be monotonically increasing"
+                "timestamp must be monotonically increasing"
+            );
+            debug_assert!(
+                timestamp >= timing.window_increase_time,
+                "timestamp must not be before the window was last increased"
             );
 
             timing.app_limited_time = Some(timestamp);
@@ -97,7 +101,7 @@ impl CongestionAvoidanceTiming {
     /// Adjusts the start time by the period from the last window increase to the app limited time
     /// to avoid counting the app limited time period in W_cubic.
     fn on_window_increase(&mut self, timestamp: Timestamp) {
-        if let Some(app_limited_time) = self.app_limited_time {
+        if let Some(app_limited_time) = self.app_limited_time.take() {
             //= https://tools.ietf.org/rfc/rfc8312#5.8
             //# CUBIC does not raise its congestion window size if the flow is
             //# currently limited by the application instead of the congestion
@@ -111,7 +115,6 @@ impl CongestionAvoidanceTiming {
         }
 
         self.window_increase_time = timestamp;
-        self.app_limited_time = None;
     }
 }
 
