@@ -119,6 +119,28 @@ impl<const N: usize> super::aes256::DecryptionKey for DecryptionKey<N> {
     }
 }
 
+/// Calls the keygen assist intrinsic with the same argument order as the assembly
+macro_rules! aeskeygenassist {
+    ($imm8:expr, $src:expr, $dest:ident) => {
+        $dest = _mm_aeskeygenassist_si128($src, $imm8);
+    };
+}
+
+macro_rules! key_shuffle {
+    ($dest:ident) => {{
+        // https://github.com/awslabs/aws-lc/blob/aed75eb04d322d101941e1377f274484f5e4f5b8/crypto/fipsmodule/aes/asm/aesni-x86_64.pl#L4703
+        // shufps	\$0b00010000,%xmm0,%xmm4
+        // xorps	%xmm4,%xmm0
+        // shufps	\$0b10001100,%xmm0,%xmm4
+        // xorps	%xmm4,%xmm0
+
+        let mut xmm4 = _mm_slli_si128($dest, 4);
+        $dest = xmm4.xor($dest);
+        xmm4 = _mm_slli_si128($dest, 8);
+        $dest = xmm4.xor($dest);
+    }}
+}
+
 pub mod aes128 {
     use super::*;
     use crate::aes::aes128::KEY_LEN;
@@ -137,34 +159,70 @@ pub mod aes128 {
             unsafe {
                 debug_assert!(Avx2::is_supported());
 
+                let mut xmm0;
+                let mut xmm1;
+
                 // _mm_aeskeygenassist_si128 requires the second argument to be a constant
                 // so we need to use a macro rather than a function
-                macro_rules! keyround {
-                    ($round:expr, $imm8:expr) => {{
-                        let key = enc[$round].0;
-                        let gen = _mm_aeskeygenassist_si128(key, $imm8);
-                        let gen = _mm_shuffle_epi32(gen, 255);
-                        let key = key.xor(_mm_slli_si128(key, 4));
-                        let key = key.xor(_mm_slli_si128(key, 8));
-                        let key = key.xor(gen);
-                        enc[$round + 1] = KeyRound(key);
+                macro_rules! key_expansion_128 {
+                    ($idx:expr) => {{
+                        // https://github.com/awslabs/aws-lc/blob/aed75eb04d322d101941e1377f274484f5e4f5b8/crypto/fipsmodule/aes/asm/aesni-x86_64.pl#L4661-L4666
+                        key_shuffle!(xmm0);
+
+                        // shufps	\$0b11111111,%xmm1,%xmm1	# critical path
+                        xmm1 = _mm_shuffle_epi32(xmm1, 0b11111111);
+
+                        // xorps	%xmm1,%xmm0
+                        xmm0 = xmm1.xor(xmm0);
+
+                        enc[$idx] = KeyRound(xmm0);
                     }};
                 }
 
-                // initialize the keys with the provided key
-                enc[0] = KeyRound(__m128i::from_array(key));
-
-                // aes128 has 10 keyrounds
-                keyround!(0, 0x01);
-                keyround!(1, 0x02);
-                keyround!(2, 0x04);
-                keyround!(3, 0x08);
-                keyround!(4, 0x10);
-                keyround!(5, 0x20);
-                keyround!(6, 0x40);
-                keyround!(7, 0x80);
-                keyround!(8, 0x1b);
-                keyround!(9, 0x36);
+                // https://github.com/awslabs/aws-lc/blob/aed75eb04d322d101941e1377f274484f5e4f5b8/crypto/fipsmodule/aes/asm/aesni-x86_64.pl#L4382
+                // $movkey	%xmm0,($key)			# round 0
+                xmm0 = __m128i::from_array(key);
+                enc[0] = KeyRound(xmm0);
+                // aeskeygenassist	\$0x1,%xmm0,%xmm1	# round 1
+                aeskeygenassist!(0x1, xmm0, xmm1);
+                // call		.Lkey_expansion_128_cold
+                key_expansion_128!(1);
+                // aeskeygenassist	\$0x2,%xmm0,%xmm1	# round 2
+                aeskeygenassist!(0x2, xmm0, xmm1);
+                // call		.Lkey_expansion_128
+                key_expansion_128!(2);
+                // aeskeygenassist	\$0x4,%xmm0,%xmm1	# round 3
+                aeskeygenassist!(0x4, xmm0, xmm1);
+                // call		.Lkey_expansion_128
+                key_expansion_128!(3);
+                // aeskeygenassist	\$0x8,%xmm0,%xmm1	# round 4
+                aeskeygenassist!(0x8, xmm0, xmm1);
+                // call		.Lkey_expansion_128
+                key_expansion_128!(4);
+                // aeskeygenassist	\$0x10,%xmm0,%xmm1	# round 5
+                aeskeygenassist!(0x10, xmm0, xmm1);
+                // call		.Lkey_expansion_128
+                key_expansion_128!(5);
+                // aeskeygenassist	\$0x20,%xmm0,%xmm1	# round 6
+                aeskeygenassist!(0x20, xmm0, xmm1);
+                // call		.Lkey_expansion_128
+                key_expansion_128!(6);
+                // aeskeygenassist	\$0x40,%xmm0,%xmm1	# round 7
+                aeskeygenassist!(0x40, xmm0, xmm1);
+                // call		.Lkey_expansion_128
+                key_expansion_128!(7);
+                // aeskeygenassist	\$0x80,%xmm0,%xmm1	# round 8
+                aeskeygenassist!(0x80, xmm0, xmm1);
+                // call		.Lkey_expansion_128
+                key_expansion_128!(8);
+                // aeskeygenassist	\$0x1b,%xmm0,%xmm1	# round 9
+                aeskeygenassist!(0x1b, xmm0, xmm1);
+                // call		.Lkey_expansion_128
+                key_expansion_128!(9);
+                // aeskeygenassist	\$0x36,%xmm0,%xmm1	# round 10
+                aeskeygenassist!(0x36, xmm0, xmm1);
+                // call		.Lkey_expansion_128
+                key_expansion_128!(10);
 
                 // initialize the decryption half
                 dec[0] = enc[10];
@@ -206,73 +264,104 @@ pub mod aes256 {
             unsafe {
                 debug_assert!(Avx2::is_supported());
 
-                // _mm_aeskeygenassist_si128 requires the second argument to be a constant
-                // so we need to use a macro rather than a function
-                macro_rules! keyround {
-                    ($idx:expr, $imm8:expr) => {
-                        let mut temp1 = enc[$idx - 2].0;
-                        let mut temp2;
-                        let mut temp3 = enc[$idx - 1].0;
-                        let mut temp4;
+                // To make it easier to compare the libcrypto version, name the temporary variables
+                // the same as the registers.
+                let mut xmm0;
+                let mut xmm1;
+                let mut xmm2;
 
-                        temp2 = _mm_aeskeygenassist_si128(temp3, $imm8);
-                        temp2 = _mm_shuffle_epi32(temp2, 0xff);
-                        temp4 = _mm_slli_si128(temp1, 0x4);
-                        temp1 = temp1.xor(temp4);
-                        temp4 = _mm_slli_si128(temp4, 0x4);
-                        temp1 = temp1.xor(temp4);
-                        temp4 = _mm_slli_si128(temp4, 0x4);
-                        temp1 = temp1.xor(temp4);
-                        temp1 = temp1.xor(temp2);
+                macro_rules! key_expansion_256a {
+                    ($imm8:expr, $idx:expr) => {{
+                        // https://github.com/awslabs/aws-lc/blob/aed75eb04d322d101941e1377f274484f5e4f5b8/crypto/fipsmodule/aes/asm/aesni-x86_64.pl#L4703
+                        key_shuffle!(xmm0);
 
-                        enc[$idx] = KeyRound(temp1);
+                        // shufps	\$0b11111111,%xmm1,%xmm1	# critical path
+                        xmm1 = _mm_shuffle_epi32(xmm1, 0b11111111);
 
-                        temp4 = _mm_aeskeygenassist_si128(temp1, 0x00);
-                        temp2 = _mm_shuffle_epi32(temp4, 0xaa);
-                        temp4 = _mm_slli_si128(temp3, 0x4);
-                        temp3 = temp3.xor(temp4);
-                        temp4 = _mm_slli_si128(temp4, 0x4);
-                        temp3 = temp3.xor(temp4);
-                        temp4 = _mm_slli_si128(temp4, 0x4);
-                        temp3 = temp3.xor(temp4);
-                        temp3 = temp3.xor(temp2);
+                        // xorps	%xmm1,%xmm0
+                        xmm0 = xmm0.xor(xmm1);
 
-                        enc[$idx + 1] = KeyRound(temp3);
-                    };
+                        enc[$idx] = KeyRound(xmm0);
+                    }};
+                }
+
+                macro_rules! key_expansion_256b {
+                    ($imm8:expr, $idx:expr) => {{
+                        // https://github.com/awslabs/aws-lc/blob/aed75eb04d322d101941e1377f274484f5e4f5b8/crypto/fipsmodule/aes/asm/aesni-x86_64.pl#L4713
+                        key_shuffle!(xmm2);
+
+                        // shufps	\$0b10101010,%xmm1,%xmm1	# critical path
+                        xmm1 = _mm_shuffle_epi32(xmm1, 0b10101010);
+
+                        // xorps	%xmm1,%xmm2
+                        xmm2 = xmm2.xor(xmm1);
+
+                        enc[$idx] = KeyRound(xmm2);
+                    }};
                 }
 
                 let key = key.as_ptr() as *const __m128i;
-                enc[0] = KeyRound(_mm_loadu_si128(key));
-                enc[1] = KeyRound(_mm_loadu_si128(key.offset(1)));
 
-                keyround!(2, 0x01);
-                keyround!(4, 0x02);
-                keyround!(6, 0x04);
-                keyround!(8, 0x08);
-                keyround!(10, 0x10);
-                keyround!(12, 0x20);
+                // https://github.com/awslabs/aws-lc/blob/aed75eb04d322d101941e1377f274484f5e4f5b8/crypto/fipsmodule/aes/asm/aesni-x86_64.pl#L4553
+                // $movkey	%xmm0,($key)			# round 0
+                xmm0 = _mm_loadu_si128(key);
+                enc[0] = KeyRound(xmm0);
+                // $movkey	%xmm2,16($key)			# round 1
+                xmm2 = _mm_loadu_si128(key.offset(1));
+                enc[1] = KeyRound(xmm2);
 
-                // final round
-                {
-                    let pos = 14;
-
-                    let mut temp1 = enc[pos - 2].0;
-                    let mut temp2;
-                    let temp3 = enc[pos - 1].0;
-                    let mut temp4;
-
-                    temp2 = _mm_aeskeygenassist_si128(temp3, 0x40);
-                    temp2 = _mm_shuffle_epi32(temp2, 0xff);
-                    temp4 = _mm_slli_si128(temp1, 0x4);
-                    temp1 = temp1.xor(temp4);
-                    temp4 = _mm_slli_si128(temp4, 0x4);
-                    temp1 = temp1.xor(temp4);
-                    temp4 = _mm_slli_si128(temp4, 0x4);
-                    temp1 = temp1.xor(temp4);
-                    temp1 = temp1.xor(temp2);
-
-                    enc[pos] = KeyRound(temp1);
-                }
+                // aeskeygenassist	\$0x1,%xmm2,%xmm1	# round 2
+                aeskeygenassist!(0x1, xmm2, xmm1);
+                // call		.Lkey_expansion_256a_cold
+                key_expansion_256a!(0x1, 2);
+                // aeskeygenassist	\$0x1,%xmm0,%xmm1	# round 3
+                aeskeygenassist!(0x1, xmm0, xmm1);
+                // call		.Lkey_expansion_256b
+                key_expansion_256b!(0x1, 3);
+                // aeskeygenassist	\$0x2,%xmm2,%xmm1	# round 4
+                aeskeygenassist!(0x2, xmm2, xmm1);
+                // call		.Lkey_expansion_256a
+                key_expansion_256a!(0x2, 4);
+                // aeskeygenassist	\$0x2,%xmm0,%xmm1	# round 5
+                aeskeygenassist!(0x2, xmm0, xmm1);
+                // call		.Lkey_expansion_256b
+                key_expansion_256b!(0x2, 5);
+                // aeskeygenassist	\$0x4,%xmm2,%xmm1	# round 6
+                aeskeygenassist!(0x4, xmm2, xmm1);
+                // call		.Lkey_expansion_256a
+                key_expansion_256a!(0x4, 6);
+                // aeskeygenassist	\$0x4,%xmm0,%xmm1	# round 7
+                aeskeygenassist!(0x4, xmm0, xmm1);
+                // call		.Lkey_expansion_256b
+                key_expansion_256b!(0x4, 7);
+                // aeskeygenassist	\$0x8,%xmm2,%xmm1	# round 8
+                aeskeygenassist!(0x8, xmm2, xmm1);
+                // call		.Lkey_expansion_256a
+                key_expansion_256a!(0x8, 8);
+                // aeskeygenassist	\$0x8,%xmm0,%xmm1	# round 9
+                aeskeygenassist!(0x8, xmm0, xmm1);
+                // call		.Lkey_expansion_256b
+                key_expansion_256b!(0x8, 9);
+                // aeskeygenassist	\$0x10,%xmm2,%xmm1	# round 10
+                aeskeygenassist!(0x10, xmm2, xmm1);
+                // call		.Lkey_expansion_256a
+                key_expansion_256a!(0x10, 10);
+                // aeskeygenassist	\$0x10,%xmm0,%xmm1	# round 11
+                aeskeygenassist!(0x10, xmm0, xmm1);
+                // call		.Lkey_expansion_256b
+                key_expansion_256b!(0x10, 11);
+                // aeskeygenassist	\$0x20,%xmm2,%xmm1	# round 12
+                aeskeygenassist!(0x20, xmm2, xmm1);
+                // call		.Lkey_expansion_256a
+                key_expansion_256a!(0x20, 12);
+                // aeskeygenassist	\$0x20,%xmm0,%xmm1	# round 13
+                aeskeygenassist!(0x20, xmm0, xmm1);
+                // call		.Lkey_expansion_256b
+                key_expansion_256b!(0x20, 13);
+                // aeskeygenassist	\$0x40,%xmm2,%xmm1	# round 14
+                aeskeygenassist!(0x40, xmm2, xmm1);
+                // call		.Lkey_expansion_256a
+                key_expansion_256a!(0x40, 14);
 
                 // initialize the decryption half
                 dec[0] = enc[14];

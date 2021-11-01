@@ -13,7 +13,16 @@ pub trait Encrypt {
     type Block;
     const KEY_LEN: usize;
 
-    fn encrypt<B: BatchMut<Block = Self::Block>>(&self, block: &mut B);
+    /// Encrypts a batch of blocks with the AES key
+    #[inline(always)]
+    fn encrypt<B: BatchMut<Block = Self::Block>>(&self, block: &mut B) {
+        self.encrypt_interleaved(block, |_| {})
+    }
+
+    /// Encrypts a batch of blocks with the AES key, while interleaving the provided function
+    ///
+    /// The provided function will be called for each AES round of the key. This can lead to
+    /// improved performance if multiple operations are being done in parallel.
     fn encrypt_interleaved<B: BatchMut<Block = Self::Block>, F: FnMut(usize)>(
         &self,
         block: &mut B,
@@ -25,7 +34,16 @@ pub trait Decrypt {
     type Block;
     const KEY_LEN: usize;
 
-    fn decrypt<B: BatchMut<Block = Self::Block>>(&self, block: &mut B);
+    /// Decrypts a batch of blocks with the AES key
+    #[inline(always)]
+    fn decrypt<B: BatchMut<Block = Self::Block>>(&self, block: &mut B) {
+        self.decrypt_interleaved(block, |_| {})
+    }
+
+    /// Decrypts a batch of blocks with the AES key, while interleaving the provided function
+    ///
+    /// The provided function will be called for each AES round of the key. This can lead to
+    /// improved performance if multiple operations are being done in parallel.
     fn decrypt_interleaved<B: BatchMut<Block = Self::Block>, F: FnMut(usize)>(
         &self,
         block: &mut B,
@@ -61,11 +79,6 @@ pub mod aes128 {
         const KEY_LEN: usize = KEY_LEN;
 
         #[inline(always)]
-        fn encrypt<B: BatchMut<Block = Blk>>(&self, block: &mut B) {
-            aes128::EncryptionKey::encrypt(&self.0, block)
-        }
-
-        #[inline(always)]
         fn encrypt_interleaved<B: BatchMut<Block = Blk>, F: FnMut(usize)>(
             &self,
             block: &mut B,
@@ -82,20 +95,13 @@ pub mod aes128 {
         fn keyround(&self, index: usize) -> &Self::KeyRound;
 
         #[inline(always)]
-        fn encrypt<B: BatchMut<Block = Self::Block>>(&self, block: &mut B) {
-            self.encrypt_interleaved(
-                block,
-                #[inline(always)]
-                |_| {},
-            );
-        }
-
-        #[inline(always)]
         fn encrypt_interleaved<B: BatchMut<Block = Self::Block>, F: FnMut(usize)>(
             &self,
             block: &mut B,
             mut f: F,
         ) {
+            // NOTE: instead of looping here, manually unroll the loop so the CPU has a large run of instructions
+            //       without any branches.
             self.keyround(0).xor(block);
             self.keyround(1).encrypt(block);
             f(0);
@@ -127,11 +133,6 @@ pub mod aes128 {
         const KEY_LEN: usize = KEY_LEN;
 
         #[inline(always)]
-        fn decrypt<B: BatchMut<Block = Blk>>(&self, block: &mut B) {
-            aes128::DecryptionKey::decrypt(&self.0, block)
-        }
-
-        #[inline(always)]
         fn decrypt_interleaved<B: BatchMut<Block = Blk>, F: FnMut(usize)>(
             &self,
             block: &mut B,
@@ -148,20 +149,13 @@ pub mod aes128 {
         fn keyround(&self, index: usize) -> &Self::KeyRound;
 
         #[inline(always)]
-        fn decrypt<B: BatchMut<Block = Self::Block>>(&self, block: &mut B) {
-            self.decrypt_interleaved(
-                block,
-                #[inline(always)]
-                |_| {},
-            );
-        }
-
-        #[inline(always)]
         fn decrypt_interleaved<B: BatchMut<Block = Self::Block>, F: FnMut(usize)>(
             &self,
             block: &mut B,
             mut f: F,
         ) {
+            // NOTE: instead of looping here, manually unroll the loop so the CPU has a large run of instructions
+            //       without any branches.
             self.keyround(10).xor(block);
             self.keyround(11).decrypt(block);
             f(0);
@@ -202,11 +196,6 @@ pub mod aes256 {
         const KEY_LEN: usize = KEY_LEN;
 
         #[inline(always)]
-        fn encrypt<B: BatchMut<Block = Blk>>(&self, block: &mut B) {
-            aes256::EncryptionKey::encrypt(&self.0, block)
-        }
-
-        #[inline(always)]
         fn encrypt_interleaved<B: BatchMut<Block = Blk>, F: FnMut(usize)>(
             &self,
             block: &mut B,
@@ -223,20 +212,13 @@ pub mod aes256 {
         fn keyround(&self, index: usize) -> &Self::KeyRound;
 
         #[inline(always)]
-        fn encrypt<B: BatchMut<Block = Self::Block>>(&self, block: &mut B) {
-            self.encrypt_interleaved(
-                block,
-                #[inline(always)]
-                |_| {},
-            );
-        }
-
-        #[inline(always)]
         fn encrypt_interleaved<B: BatchMut<Block = Self::Block>, F: FnMut(usize)>(
             &self,
             block: &mut B,
             mut f: F,
         ) {
+            // NOTE: instead of looping here, manually unroll the loop so the CPU has a large run of instructions
+            //       without any branches.
             self.keyround(0).xor(block);
             self.keyround(1).encrypt(block);
             f(0);
@@ -276,11 +258,6 @@ pub mod aes256 {
         const KEY_LEN: usize = KEY_LEN;
 
         #[inline(always)]
-        fn decrypt<B: BatchMut<Block = Blk>>(&self, block: &mut B) {
-            aes256::DecryptionKey::decrypt(&self.0, block)
-        }
-
-        #[inline(always)]
         fn decrypt_interleaved<B: BatchMut<Block = Blk>, F: FnMut(usize)>(
             &self,
             block: &mut B,
@@ -297,20 +274,13 @@ pub mod aes256 {
         fn keyround(&self, index: usize) -> &Self::KeyRound;
 
         #[inline(always)]
-        fn decrypt<B: BatchMut<Block = Self::Block>>(&self, block: &mut B) {
-            self.decrypt_interleaved(
-                block,
-                #[inline(always)]
-                |_| {},
-            );
-        }
-
-        #[inline(always)]
         fn decrypt_interleaved<B: BatchMut<Block = Self::Block>, F: FnMut(usize)>(
             &self,
             block: &mut B,
             mut f: F,
         ) {
+            // NOTE: instead of looping here, manually unroll the loop so the CPU has a large run of instructions
+            //       without any branches.
             self.keyround(14).xor(block);
             self.keyround(15).decrypt(block);
             f(0);
