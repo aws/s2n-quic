@@ -34,15 +34,6 @@ pub struct Handle {
 
 impl Handle {
     #[inline]
-    pub fn from_remote_address(remote_address: RemoteAddress) -> Self {
-        Self {
-            remote_address,
-            #[cfg(s2n_quic_platform_pktinfo)]
-            local_address: SocketAddressV4::UNSPECIFIED.into(),
-        }
-    }
-
-    #[inline]
     fn with_ancillary_data(&mut self, ancillary_data: AncillaryData) {
         #[cfg(s2n_quic_platform_pktinfo)]
         {
@@ -92,6 +83,15 @@ impl Handle {
 }
 
 impl path::Handle for Handle {
+    #[inline]
+    fn from_remote_address(remote_address: RemoteAddress) -> Self {
+        Self {
+            remote_address,
+            #[cfg(s2n_quic_platform_pktinfo)]
+            local_address: SocketAddressV4::UNSPECIFIED.into(),
+        }
+    }
+
     #[inline]
     fn remote_address(&self) -> RemoteAddress {
         self.remote_address

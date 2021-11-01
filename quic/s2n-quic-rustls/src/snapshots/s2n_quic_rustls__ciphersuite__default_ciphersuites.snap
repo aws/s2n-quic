@@ -1,0 +1,25 @@
+---
+source: quic/s2n-quic-rustls/src/ciphersuite.rs
+expression: default_ciphersuites()
+
+---
+[
+    Tls13(
+        Tls13CipherSuite {
+            suite: TLS13_AES_128_GCM_SHA256,
+            bulk: Aes128Gcm,
+        },
+    ),
+    Tls13(
+        Tls13CipherSuite {
+            suite: TLS13_AES_256_GCM_SHA384,
+            bulk: Aes256Gcm,
+        },
+    ),
+    Tls13(
+        Tls13CipherSuite {
+            suite: TLS13_CHACHA20_POLY1305_SHA256,
+            bulk: Chacha20Poly1305,
+        },
+    ),
+]
