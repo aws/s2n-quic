@@ -52,6 +52,7 @@ impl State {
             start_time,
             window_increase_time: start_time,
             app_limited_time: None,
+            app_limited_duration: Duration::default(),
         })
     }
 
@@ -91,15 +92,30 @@ struct CongestionAvoidanceTiming {
     start_time: Timestamp,
     // The time the congestion window was last increased
     window_increase_time: Timestamp,
-    // The last known time the congestion window was underutilized
+    // The last time the current congestion window was underutilized
     app_limited_time: Option<Timestamp>,
+    // The total amount of time spent while limited by the application
+    app_limited_duration: Duration,
 }
 
 impl CongestionAvoidanceTiming {
+    //= https://tools.ietf.org/rfc/rfc8312.txt#4.1
+    //# t is the elapsed time from the beginning of the current congestion avoidance
+    fn t(&self, timestamp: Timestamp) -> Duration {
+        //= https://tools.ietf.org/rfc/rfc8312#5.8
+        //# CUBIC does not raise its congestion window size if the flow is
+        //# currently limited by the application instead of the congestion
+        //# window.  In case of long periods when cwnd has not been updated due
+        //# to the application rate limit, such as idle periods, t in Eq. 1 MUST
+        //# NOT include these periods; otherwise, W_cubic(t) might be very high
+        //# after restarting from these periods.
+        (timestamp - self.start_time) - self.app_limited_duration
+    }
+
     /// Called when the congestion window is being increased.
     ///
-    /// Adjusts the start time by the period from the last window increase to the app limited time
-    /// to avoid counting the app limited time period in W_cubic.
+    /// Adds the duration between when the window was last increased to the app limited time
+    /// (if any) to the app limited duration.
     fn on_window_increase(&mut self, timestamp: Timestamp) {
         if let Some(app_limited_time) = self.app_limited_time.take() {
             //= https://tools.ietf.org/rfc/rfc8312#5.8
@@ -110,8 +126,8 @@ impl CongestionAvoidanceTiming {
             //# NOT include these periods; otherwise, W_cubic(t) might be very high
             //# after restarting from these periods.
 
-            // Adjust the congestion avoidance start time by the app limited duration
-            self.start_time += app_limited_time - self.window_increase_time;
+            // Add the time spent app limit since the last window increase to the app limited duration
+            self.app_limited_duration += app_limited_time - self.window_increase_time;
         }
 
         self.window_increase_time = timestamp;
@@ -270,7 +286,7 @@ impl CongestionController for CubicCongestionController {
 
                 //= https://tools.ietf.org/rfc/rfc8312.txt#4.1
                 //# t is the elapsed time from the beginning of the current congestion avoidance
-                let t = ack_receive_time - timing.start_time;
+                let t = timing.t(ack_receive_time);
 
                 //= https://tools.ietf.org/rfc/rfc8312.txt#4.1
                 //# RTT is the weighted average RTT
