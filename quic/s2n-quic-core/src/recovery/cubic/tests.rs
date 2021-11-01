@@ -354,7 +354,6 @@ fn congestion_avoidance_after_idle_period() {
             start_time: now + Duration::from_secs(10),
             window_increase_time: now + Duration::from_secs(10),
             app_limited_time: Some(now + Duration::from_secs(16)),
-            app_limited_duration: Default::default()
         })
     );
 
@@ -370,14 +369,14 @@ fn congestion_avoidance_after_idle_period() {
     // t25: Ack a packet in Congestion Avoidance
     cc.on_packet_ack(now, 1000, rtt_estimator, now + Duration::from_secs(25));
 
-    // Verify app_limited_duration contains the 6 seconds of under utilized time and the app_limited_time was reset
+    // Verify congestion avoidance start time was moved from t10 to t16 to account
+    // for the 6 seconds of under utilized time and the app_limited_time was reset
     assert_eq!(
         cc.state,
         CongestionAvoidance(CongestionAvoidanceTiming {
-            start_time: now + Duration::from_secs(10),
+            start_time: now + Duration::from_secs(16),
             window_increase_time: now + Duration::from_secs(25),
             app_limited_time: None,
-            app_limited_duration: Duration::from_secs(6)
         })
     );
     // Verify t does not include the app limited time
@@ -661,7 +660,6 @@ fn on_packet_ack_timestamp_regression() {
             start_time: now,
             window_increase_time: now,
             app_limited_time: Some(now),
-            app_limited_duration: Duration::default()
         }),
         cc.state
     );
