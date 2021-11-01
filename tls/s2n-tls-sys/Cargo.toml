@@ -11,7 +11,7 @@ vendored = ["openssl-sys/vendored"]
 
 [dependencies]
 libc = "0.2"
-openssl-sys = { version = "0.9" }
+openssl-sys = { version = "0.9.68" }
 
 [build-dependencies]
 bindgen = "0.59"
