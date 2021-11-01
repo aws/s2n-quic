@@ -11,11 +11,7 @@ use core::{
     task::{Context, Poll},
 };
 use futures_channel::oneshot;
-use s2n_quic_core::{
-    application::Sni,
-    inet::SocketAddress,
-    path::{LocalAddress, RemoteAddress},
-};
+use s2n_quic_core::{application::Sni, inet::SocketAddress, path::RemoteAddress};
 
 /// Held by connection Attempt future. Used to receive the actual connection.
 pub(crate) type ConnectionReceiver = oneshot::Receiver<Result<Connection, connection::Error>>;
@@ -25,11 +21,9 @@ pub(crate) type ConnectionReceiver = oneshot::Receiver<Result<Connection, connec
 pub(crate) type ConnectionSender = oneshot::Sender<Result<Connection, connection::Error>>;
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct Connect {
-    pub remote_address: RemoteAddress,
-    pub local_address: Option<LocalAddress>,
-    pub hostname: Option<Sni>,
+    pub(crate) remote_address: RemoteAddress,
+    pub(crate) hostname: Option<Sni>,
 }
 
 impl Connect {
@@ -37,7 +31,6 @@ impl Connect {
     pub fn new<Addr: Into<SocketAddress>>(addr: Addr) -> Self {
         Self {
             remote_address: addr.into().into(),
-            local_address: None,
             hostname: None,
         }
     }

@@ -585,7 +585,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
     }
 
     /// Returns `true` if the endpoint can accept new connections
-    pub(crate) fn can_accept(&self) -> bool {
+    pub fn can_accept(&self) -> bool {
         debug_assert!(<C::Config as endpoint::Config>::ENDPOINT_TYPE.is_server());
 
         !self.accept_queue.is_closed()

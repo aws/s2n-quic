@@ -200,15 +200,10 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
 
         // try to open connection requests from the application
         if Cfg::ENDPOINT_TYPE.is_client() {
-            // This loop doesn't run in a tight loop. The `poll_connection_request`
-            // implementation is backed by a future so it awaits a new connection requests
-            // and yields when there is nothing to process.
             loop {
                 match self.connections.poll_connection_request(cx) {
                     Poll::Pending => break,
                     Poll::Ready(Some(request)) => {
-                        dbg!(&request);
-
                         wakeup_count += 1;
 
                         let time = clock.get_time();
@@ -217,8 +212,6 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                             // TODO emit event
                             dbg!(err);
                         }
-
-                        todo!("create a client connection; wakeups: {}", wakeup_count);
                     }
                     Poll::Ready(None) => {
                         // TODO the client handle has been dropped - do anything?
@@ -893,7 +886,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             });
     }
 
-    #[allow(unused, clippy::diverging_sub_expression)]
     fn create_client_connection(
         &mut self,
         request: endpoint::connect::Request,
@@ -903,7 +895,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             connect:
                 endpoint::connect::Connect {
                     remote_address,
-                    local_address,
                     hostname,
                 },
             sender,
@@ -940,7 +931,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         //# populates the Destination Connection ID field with an unpredictable
         //# value.
         let initial_connection_id = {
-            let mut data: [u8; InitialId::MIN_LEN] = [0; InitialId::MIN_LEN];
+            let mut data = [0u8; InitialId::MIN_LEN];
             endpoint_context
                 .random_generator
                 .public_random_fill(&mut data);
@@ -968,8 +959,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 .new_congestion_controller(path_info)
         };
 
-        // TODO: update this value to V1
-        let quic_version = 0xff00_0020; // draft-32 (https://github.com/quicwg/base-drafts/wiki/20th-Implementation-Draft)
+        //= https://tools.ietf.org/rfc/rfc9000.txt#15
+        //# This version of the specification is identified by the number
+        //# 0x00000001.
+        let quic_version = 0x00000001;
 
         let meta = event::builder::ConnectionMeta {
             endpoint_type: Cfg::ENDPOINT_TYPE,
@@ -1047,14 +1040,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             event_subscriber: endpoint_context.event_subscriber,
         };
         let connection = <Cfg as crate::endpoint::Config>::Connection::new(connection_parameters)?;
-
-        // TODO: calling `insert_client_connection` resolves the future and returns
-        // a connection object to the application, which might not be in the desired
-        // state for 1-rtt use.
-        //
-        // There are two cases to consider:
-        // - 1-rtt intiate and complete the handshake prior to returning the connection
-        // - 0-rtt return the connection object immediately to allow for sending early data
         self.connections
             .insert_client_connection(connection, internal_connection_id, sender);
         Ok(())
