@@ -636,6 +636,31 @@ fn on_packet_ack_limited() {
 }
 
 #[test]
+#[should_panic]
+fn on_packet_ack_timestamp_regression() {
+    let mut cc = CubicCongestionController::new(5000);
+    let now = NoopClock.get_time() + Duration::from_secs(1);
+    let rtt_estimator = RttEstimator::new(Duration::from_secs(0));
+    cc.congestion_window = 100_000.0;
+    cc.bytes_in_flight = BytesInFlight::new(10000);
+    cc.under_utilized = true;
+    cc.state = State::congestion_avoidance(now);
+
+    cc.on_packet_ack(now, 1, &rtt_estimator, now);
+
+    assert_eq!(
+        State::CongestionAvoidance(CongestionAvoidanceTiming {
+            start_time: now,
+            window_increase_time: now,
+            app_limited_time: Some(now)
+        }),
+        cc.state
+    );
+
+    cc.on_packet_ack(now, 1, &rtt_estimator, now - Duration::from_secs(1));
+}
+
+#[test]
 fn on_packet_ack_utilized_then_under_utilized() {
     let mut cc = CubicCongestionController::new(5000);
     let now = NoopClock.get_time();

@@ -58,12 +58,14 @@ impl State {
     /// Called when app limited after sending has completed for a round and an ACK has been received.
     fn on_app_limited(&mut self, timestamp: Timestamp) {
         if let CongestionAvoidance(ref mut timing) = self {
-            if timing
-                .app_limited_time
-                .map_or(true, |app_limited_time| timestamp > app_limited_time)
-            {
-                timing.app_limited_time = Some(timestamp);
-            }
+            debug_assert!(
+                timing
+                    .app_limited_time
+                    .map_or(true, |app_limited_time| timestamp >= app_limited_time),
+                "timestamp should be monotonically increasing"
+            );
+
+            timing.app_limited_time = Some(timestamp);
         }
     }
 }
