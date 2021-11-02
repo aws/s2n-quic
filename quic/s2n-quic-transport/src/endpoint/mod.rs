@@ -5,9 +5,14 @@
 
 use crate::{
     connection::{
-        self, ConnectionContainer, ConnectionContainerIterationResult, ConnectionIdMapper,
+        self,
+        limits::{ConnectionInfo as LimitsInfo, Limiter as _},
+        ConnectionContainer, ConnectionContainerIterationResult, ConnectionIdMapper,
         InternalConnectionId, InternalConnectionIdGenerator, ProcessingError, Trait as _,
     },
+    endpoint,
+    recovery::congestion_controller::{self, Endpoint as _},
+    space::PacketSpaceManager,
     wakeup_queue::WakeupQueue,
 };
 use alloc::collections::VecDeque;
@@ -16,18 +21,21 @@ use s2n_codec::{DecoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{
     connection::{
         id::{ConnectionInfo, Generator},
-        LocalId, PeerId,
+        InitialId, LocalId, PeerId,
     },
-    crypto::{tls, tls::Endpoint as _, CryptoSuite},
+    crypto::{tls, tls::Endpoint as _, CryptoSuite, InitialKey},
     endpoint::{limits::Outcome, Limiter as _},
-    event::{self, EndpointPublisher as _},
+    event::{self, EndpointPublisher as _, IntoEvent, Subscriber as _},
     inet::{datagram, DatagramInfo},
     io::{rx, tx},
     packet::{initial::ProtectedInitial, ProtectedPacket},
+    path,
     path::{Handle as _, MaxMtu},
+    random::Generator as _,
     stateless_reset::token::{Generator as _, LEN as StatelessResetTokenLen},
     time::{Clock, Timestamp},
     token::{self, Format},
+    transport::parameters::ClientTransportParameters,
 };
 
 mod config;
@@ -196,11 +204,14 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                 match self.connections.poll_connection_request(cx) {
                     Poll::Pending => break,
                     Poll::Ready(Some(request)) => {
-                        dbg!(&request);
-
                         wakeup_count += 1;
 
-                        todo!("create a client connection; wakeups: {}", wakeup_count);
+                        let time = clock.get_time();
+                        if let Err(err) = self.create_client_connection(request, time) {
+                            // TODO report that the connection was not successfuly created
+                            // TODO emit event
+                            dbg!(err);
+                        }
                     }
                     Poll::Ready(None) => {
                         // TODO the client handle has been dropped - do anything?
@@ -873,6 +884,163 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     panic!("Generated connection ID was already in use");
                 }
             });
+    }
+
+    fn create_client_connection(
+        &mut self,
+        request: endpoint::connect::Request,
+        timestamp: Timestamp,
+    ) -> Result<(), connection::Error> {
+        let endpoint::connect::Request {
+            connect:
+                endpoint::connect::Connect {
+                    remote_address,
+                    hostname,
+                },
+            sender,
+        } = request;
+
+        let internal_connection_id = self.connection_id_generator.generate_id();
+        let source_connection_id = self
+            .config
+            .context()
+            .connection_id_format
+            .generate(&ConnectionInfo::new(&remote_address));
+
+        let local_id_registry = {
+            // TODO: the client currently generates a random stateless_reset_token but doesnt
+            // transmit it. Refactor `create_local_id_registry` to instead accept None for
+            // stateless_reset_token.
+            let stateless_reset_token = self
+                .config
+                .context()
+                .stateless_reset_token_generator
+                .generate(source_connection_id.as_bytes());
+            self.connection_id_mapper.create_local_id_registry(
+                internal_connection_id,
+                &source_connection_id,
+                stateless_reset_token,
+            )
+        };
+
+        let endpoint_context = self.config.context();
+
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+        //# When an Initial packet is sent by a client that has not previously
+        //# received an Initial or Retry packet from the server, the client
+        //# populates the Destination Connection ID field with an unpredictable
+        //# value.
+        let initial_connection_id = {
+            let mut data = [0u8; InitialId::MIN_LEN];
+            endpoint_context
+                .random_generator
+                .public_random_fill(&mut data);
+            PeerId::try_from_bytes(&data).expect("PeerId creation failed.")
+        };
+
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
+        //# Note that clients cannot use the
+        //# stateless_reset_token transport parameter because their transport
+        //# parameters do not have confidentiality protection.
+        //
+        // The initial_connection_id is a random value used to establish the connection.
+        // Since the connection is not yet secured, the client must not set a
+        // stateless_reset_token.
+        let peer_id_registry = self
+            .connection_id_mapper
+            .create_client_peer_id_registry(internal_connection_id);
+
+        let congestion_controller = {
+            let path_info = congestion_controller::PathInfo::new(&remote_address);
+            endpoint_context
+                .congestion_controller
+                .new_congestion_controller(path_info)
+        };
+
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#15
+        //# This version of the specification is identified by the number
+        //# 0x00000001.
+        let quic_version = 0x00000001;
+
+        let meta = event::builder::ConnectionMeta {
+            endpoint_type: Cfg::ENDPOINT_TYPE,
+            id: internal_connection_id.into(),
+            timestamp,
+        };
+        let mut event_context = endpoint_context.event_subscriber.create_connection_context(
+            &meta.clone().into_event(),
+            &event::builder::ConnectionInfo {}.into_event(),
+        );
+        let mut publisher = event::ConnectionPublisherSubscriber::new(
+            meta,
+            quic_version,
+            endpoint_context.event_subscriber,
+            &mut event_context,
+        );
+
+        let mut transport_parameters = ClientTransportParameters::default();
+        let limits = endpoint_context
+            .connection_limits
+            .on_connection(&LimitsInfo::new(&remote_address));
+        transport_parameters.load_limits(&limits);
+
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+        //# The Destination Connection ID field from the first Initial packet
+        //# sent by a client is used to determine packet protection keys for
+        //# Initial packets.
+        //
+        // Use the randomly generated `initial_connection_id` to generate the packet
+        // protection keys.
+        let (initial_key, initial_header_key) =
+            <<Cfg::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialKey::new_client(
+                initial_connection_id.as_bytes(),
+            );
+        let tls_session = endpoint_context
+            .tls
+            // TODO should SNI be optional? rustls expects a SNI but other tls providers dont seem
+            // to require this value.
+            .new_client_session(
+                &transport_parameters,
+                hostname.expect("application should provide a valid server name"),
+            );
+        let space_manager = PacketSpaceManager::new(
+            tls_session,
+            initial_key,
+            initial_header_key,
+            timestamp,
+            &mut publisher,
+        );
+
+        let wakeup_handle = self
+            .wakeup_queue
+            .create_wakeup_handle(internal_connection_id);
+
+        let path_handle =
+            <<Cfg as endpoint::Config>::PathHandle as path::Handle>::from_remote_address(
+                remote_address,
+            );
+
+        let connection_parameters = connection::Parameters {
+            internal_connection_id,
+            local_id_registry,
+            peer_id_registry,
+            space_manager,
+            wakeup_handle,
+            peer_connection_id: initial_connection_id,
+            local_connection_id: source_connection_id,
+            path_handle,
+            congestion_controller,
+            timestamp,
+            quic_version,
+            limits,
+            max_mtu: self.max_mtu,
+            event_context,
+            event_subscriber: endpoint_context.event_subscriber,
+        };
+        let connection = <Cfg as crate::endpoint::Config>::Connection::new(connection_parameters)?;
+        self.connections
+            .insert_client_connection(connection, internal_connection_id, sender);
+        Ok(())
     }
 }
 

@@ -51,8 +51,8 @@ impl Default for TestConnection {
 impl connection::Trait for TestConnection {
     type Config = crate::endpoint::testing::Server;
 
-    fn new(_params: connection::Parameters<Self::Config>) -> Self {
-        Self::default()
+    fn new(_params: connection::Parameters<Self::Config>) -> Result<Self, connection::Error> {
+        Ok(Self::default())
     }
 
     fn internal_connection_id(&self) -> InternalConnectionId {
