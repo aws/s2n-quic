@@ -3,6 +3,8 @@
 
 #![forbid(unsafe_code)]
 
+pub use rustls::{self, Certificate, PrivateKey};
+
 mod ciphersuite;
 mod error;
 mod session;
