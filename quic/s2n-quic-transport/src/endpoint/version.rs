@@ -24,10 +24,7 @@ pub struct Negotiator<Config: endpoint::Config> {
 pub struct Error;
 
 const SUPPORTED_VERSIONS: &[u32] = &[
-    0xff00_0020, // draft-32 (https://github.com/quicwg/base-drafts/wiki/20th-Implementation-Draft)
-    0xff00_001f, // draft-31
-    0xff00_001e, // draft-30
-    0xff00_001d, // draft-29 (https://github.com/quicwg/base-drafts/wiki/19th-Implementation-Draft)
+    0x1, // Draft 34 / Version 1 (https://github.com/quicwg/base-drafts/wiki/21st-Implementation-Draft)
 ];
 
 macro_rules! is_supported {

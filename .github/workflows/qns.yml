@@ -15,7 +15,7 @@ env:
   RUST_BACKTRACE: 1
   # This kept breaking builds so we're pinning for now. We should do our best to keep
   # up with the changes, though.
-  INTEROP_RUNNER_REF: cd62367f7cf98d16854551fdd8ef6a48ad89d53d
+  INTEROP_RUNNER_REF: 37c7eb05402c43ad1d7daa0e1c903db80f6478b9
   NETWORK_SIMULATOR_REF: sha256:d36e1ffd9369e41e9fd5cb8d2af5fb69d4bfaf1b1983fc538a5a3bf7777af4ba
   IPERF_ENDPOINT_REF: sha256:cb50cc8019d45d9cad5faecbe46a3c21dd5e871949819a5175423755a9045106
   WIRESHARK_VERSION: 3.4.8

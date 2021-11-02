@@ -46,7 +46,6 @@ echo "executing request"
 ./target/perf/quinn/bin/perf_client \
   --download-size "$DOWNLOAD_B" \
   --upload-size "$UPLOAD_B" \
-  --insecure \
   --duration 10 \
   localhost:4433 || stop_server "failed to finish the request"
 

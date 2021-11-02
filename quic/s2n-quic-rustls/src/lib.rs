@@ -19,7 +19,7 @@ pub use server::Server;
 static PROTOCOL_VERSIONS: &[&rustls::SupportedProtocolVersion] = &[&rustls::version::TLS13];
 
 /// The supported version of quic
-const QUIC_VERSION: rustls::quic::Version = rustls::quic::Version::V1Draft;
+const QUIC_VERSION: rustls::quic::Version = rustls::quic::Version::V1;
 
 /// Encodes transport parameters into a byte vec
 pub(crate) fn encode_transport_parameters<Params: s2n_codec::EncoderValue>(
