@@ -925,7 +925,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         let endpoint_context = self.config.context();
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
         //# When an Initial packet is sent by a client that has not previously
         //# received an Initial or Retry packet from the server, the client
         //# populates the Destination Connection ID field with an unpredictable
@@ -938,12 +938,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
             PeerId::try_from_bytes(&data).expect("PeerId creation failed.")
         };
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
-        //# Servers can also specify a stateless_reset_token transport
-        //# parameter during the handshake that applies to the connection ID that
-        //# it selected during the handshake; clients cannot use this transport
-        //# parameter because their transport parameters do not have
-        //# confidentiality protection.
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
+        //# Note that clients cannot use the
+        //# stateless_reset_token transport parameter because their transport
+        //# parameters do not have confidentiality protection.
         //
         // The initial_connection_id is a random value used to establish the connection.
         // Since the connection is not yet secured, the client must not set a
@@ -959,7 +957,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 .new_congestion_controller(path_info)
         };
 
-        //= https://tools.ietf.org/rfc/rfc9000.txt#15
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#15
         //# This version of the specification is identified by the number
         //# 0x00000001.
         let quic_version = 0x00000001;
@@ -986,7 +984,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .on_connection(&LimitsInfo::new(&remote_address));
         transport_parameters.load_limits(&limits);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
         //# The Destination Connection ID field from the first Initial packet
         //# sent by a client is used to determine packet protection keys for
         //# Initial packets.
