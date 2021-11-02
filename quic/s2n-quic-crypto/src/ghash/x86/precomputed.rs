@@ -189,7 +189,11 @@ impl State {
 
         unsafe {
             debug_assert!(Avx2::is_supported());
-            unsafe_assert!(power == 0, "ghash update count incorrect");
+            unsafe_assert!(
+                power == 0,
+                "ghash update count incorrect: remaining {}",
+                power
+            );
 
             mid = mid.xor(hi);
             mid = mid.xor(lo);

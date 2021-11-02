@@ -61,8 +61,15 @@ where
         // create a block with the AAD and payload lengths
         let bit_counts = C::bit_counts(aad_len, payload_len);
 
+        // keep track of the number of blocks required to hash
+        // start off with 1 for the `bit_counts` block
+        let mut required_blocks = 1;
+
         // load the AAD into the first ghash batch
         let (mut ghash_blocks, mut aad_block_count) = aad_blocks(aad);
+
+        // add the AAD blocks to the required size
+        required_blocks += aad_block_count;
 
         // initialize the cipher blocks to hold the encryption stream
         let mut cipher_blocks = [B::zeroed(); N];
@@ -75,21 +82,25 @@ where
         // set to true if the ek0 counter can be encrypted alongside the last batch
         let can_interleave_ek0;
         // set it to an out of bounds index if we don't need it
-        let mut last_block_idx = N;
+        let mut last_block_idx = N + 1;
 
         if payload_rem == 0 {
             can_interleave_ek0 = true;
         } else {
-            payload_block_count += 1;
+            required_blocks += 1;
             last_block_idx = batch_rem;
             can_interleave_ek0 = false;
         }
 
+        let mut partial_blocks = payload_block_count % N;
+        if last_block_idx < N + 1 {
+            partial_blocks += 1;
+        }
+
+        required_blocks += payload_block_count;
+
         // initialize the ghash state with the number of blocks we plan on hashing
-        let mut ghash_state = self.ghash.start({
-            // add 1 for the final bit count update
-            aad_block_count + payload_block_count + 1
-        });
+        let mut ghash_state = self.ghash.start(required_blocks);
 
         // initialize the counter with the provided nonce
         let mut ctr = C::new(nonce);
@@ -176,17 +187,17 @@ where
 
         unsafe {
             unsafe_assert!(
-                payload_block_count <= N,
+                partial_blocks <= N,
                 "only a single batch should be left to process"
             );
         }
 
         // finalize the encryption stream
-        if payload_block_count > 0 {
+        if partial_blocks > 0 {
             cipher_blocks.for_each(
                 #[inline(always)]
                 |idx, cipher_block| {
-                    if idx >= payload_block_count {
+                    if idx >= partial_blocks {
                         return;
                     }
 
@@ -246,19 +257,6 @@ where
         payload: &mut [u8],
         tag: &mut [u8; TAG_LEN],
     ) {
-        unsafe {
-            // Assuming payload are rounded to the nearest block makes the generated code
-            // a lot smaller, since we don't have to handle remainders. Because this crypto
-            // implementation is _only_ to be used by `s2n-quic` this is an OK compromise.
-            // It also has the benefit of somewhat hiding lengths of encrypted payloads which
-            // potentially makes it harder to observe traffic patterns.
-            unsafe_assert!(
-                payload.len() % BLOCK_LEN == 0,
-                "s2n-quic-crypto only supports payload sizes rounded to the nearest {} bytes",
-                N
-            );
-        }
-
         *tag = Self::aesgcm(self, nonce, aad, payload)
     }
 

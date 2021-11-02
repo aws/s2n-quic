@@ -25,5 +25,6 @@ aes-gcm = "0.9"
 bolero = "0.6"
 ctr = "0.8"
 ghash = "0.4"
+hex-literal = "0.3"
 pretty-hex = "0.2"
 ring = { version = "0.16", default-features = false }

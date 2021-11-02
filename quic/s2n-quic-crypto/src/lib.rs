@@ -1,6 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+// Since this crate doesn't actually export anything at the moment, don't emit warnings for dead code
+#![cfg_attr(not(test), allow(dead_code))]
+
 /// Asserts that a boolean expression is true at runtime, only if debug_assertions are enabled.
 ///
 /// Otherwise, the compiler is told to assume that the expression is always true and can perform

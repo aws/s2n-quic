@@ -67,6 +67,8 @@ pub mod aes128 {
     use super::*;
 
     pub const KEY_LEN: usize = 16;
+    // https://github.com/awslabs/aws-lc/blob/aed75eb04d322d101941e1377f274484f5e4f5b8/crypto/fipsmodule/aes/asm/aesni-x86_64.pl#L4378
+    // mov	\$9,$bits			# 10 rounds for 128-bit key
     pub const ROUNDS: usize = 10;
 
     pub struct Key<T>(pub T);
@@ -184,6 +186,8 @@ pub mod aes256 {
     use super::*;
 
     pub const KEY_LEN: usize = 32;
+    // https://github.com/awslabs/aws-lc/blob/aed75eb04d322d101941e1377f274484f5e4f5b8/crypto/fipsmodule/aes/asm/aesni-x86_64.pl#L4548
+    // mov	\$13,$bits			# 14 rounds for 256
     pub const ROUNDS: usize = 14;
 
     pub struct Key<T>(pub T);
