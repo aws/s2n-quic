@@ -91,12 +91,8 @@ impl<const N: usize> super::aes128::DecryptionKey for DecryptionKey<N> {
 
     #[inline(always)]
     fn keyround(&self, index: usize) -> &Self::KeyRound {
-        if index == 0 {
-            return &self.0[10];
-        }
         unsafe {
-            unsafe_assert!(index >= (N - 1));
-            let index = index - (N - 1);
+            unsafe_assert!(index < N);
             self.0.get_unchecked(index)
         }
     }
@@ -108,12 +104,8 @@ impl<const N: usize> super::aes256::DecryptionKey for DecryptionKey<N> {
 
     #[inline(always)]
     fn keyround(&self, index: usize) -> &Self::KeyRound {
-        if index == 0 {
-            return &self.0[14];
-        }
         unsafe {
-            unsafe_assert!(index >= (N - 1));
-            let index = index - (N - 1);
+            unsafe_assert!(index < N);
             self.0.get_unchecked(index)
         }
     }
@@ -226,17 +218,17 @@ pub mod aes128 {
                 key_expansion_128!(10);
 
                 // initialize the decryption half
-                dec[0] = enc[10];
-                dec[1] = enc[9].inv_mix_columns();
-                dec[2] = enc[8].inv_mix_columns();
-                dec[3] = enc[7].inv_mix_columns();
-                dec[4] = enc[6].inv_mix_columns();
+                dec[10] = enc[10];
+                dec[9] = enc[9].inv_mix_columns();
+                dec[8] = enc[8].inv_mix_columns();
+                dec[7] = enc[7].inv_mix_columns();
+                dec[6] = enc[6].inv_mix_columns();
                 dec[5] = enc[5].inv_mix_columns();
-                dec[6] = enc[4].inv_mix_columns();
-                dec[7] = enc[3].inv_mix_columns();
-                dec[8] = enc[2].inv_mix_columns();
-                dec[9] = enc[1].inv_mix_columns();
-                dec[10] = enc[0];
+                dec[4] = enc[4].inv_mix_columns();
+                dec[3] = enc[3].inv_mix_columns();
+                dec[2] = enc[2].inv_mix_columns();
+                dec[1] = enc[1].inv_mix_columns();
+                dec[0] = enc[0];
             }
 
             Self {
@@ -361,21 +353,21 @@ pub mod aes256 {
                 key_expansion_256a!(14);
 
                 // initialize the decryption half
-                dec[0] = enc[14];
-                dec[1] = enc[13].inv_mix_columns();
-                dec[2] = enc[12].inv_mix_columns();
-                dec[3] = enc[11].inv_mix_columns();
-                dec[4] = enc[10].inv_mix_columns();
-                dec[5] = enc[9].inv_mix_columns();
-                dec[6] = enc[8].inv_mix_columns();
+                dec[14] = enc[14];
+                dec[13] = enc[13].inv_mix_columns();
+                dec[12] = enc[12].inv_mix_columns();
+                dec[11] = enc[11].inv_mix_columns();
+                dec[10] = enc[10].inv_mix_columns();
+                dec[9] = enc[9].inv_mix_columns();
+                dec[8] = enc[8].inv_mix_columns();
                 dec[7] = enc[7].inv_mix_columns();
-                dec[8] = enc[6].inv_mix_columns();
-                dec[9] = enc[5].inv_mix_columns();
-                dec[10] = enc[4].inv_mix_columns();
-                dec[11] = enc[3].inv_mix_columns();
-                dec[12] = enc[2].inv_mix_columns();
-                dec[13] = enc[1].inv_mix_columns();
-                dec[14] = enc[0];
+                dec[6] = enc[6].inv_mix_columns();
+                dec[5] = enc[5].inv_mix_columns();
+                dec[4] = enc[4].inv_mix_columns();
+                dec[3] = enc[3].inv_mix_columns();
+                dec[2] = enc[2].inv_mix_columns();
+                dec[1] = enc[1].inv_mix_columns();
+                dec[0] = enc[0];
             }
 
             Self {

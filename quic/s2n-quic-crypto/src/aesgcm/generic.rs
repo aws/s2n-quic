@@ -53,6 +53,11 @@ where
         aad: &[u8],
         mut payload: P,
     ) -> [u8; TAG_LEN] {
+        debug_assert!(
+            A::ROUNDS >= N,
+            "The number of encryption rounds must be at least the batch size"
+        );
+
         // ask how many blocks are in the AAD
         let aad_len = aad.len();
         // payload includes the tag so don't round up

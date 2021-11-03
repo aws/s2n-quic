@@ -12,6 +12,7 @@ pub mod testing;
 pub trait Encrypt {
     type Block;
     const KEY_LEN: usize;
+    const ROUNDS: usize;
 
     /// Encrypts a batch of blocks with the AES key
     #[inline(always)]
@@ -33,6 +34,7 @@ pub trait Encrypt {
 pub trait Decrypt {
     type Block;
     const KEY_LEN: usize;
+    const ROUNDS: usize;
 
     /// Decrypts a batch of blocks with the AES key
     #[inline(always)]
@@ -79,6 +81,7 @@ pub mod aes128 {
     {
         type Block = Blk;
         const KEY_LEN: usize = KEY_LEN;
+        const ROUNDS: usize = ROUNDS;
 
         #[inline(always)]
         fn encrypt_interleaved<B: BatchMut<Block = Blk>, F: FnMut(usize)>(
@@ -133,6 +136,7 @@ pub mod aes128 {
     {
         type Block = Blk;
         const KEY_LEN: usize = KEY_LEN;
+        const ROUNDS: usize = ROUNDS;
 
         #[inline(always)]
         fn decrypt_interleaved<B: BatchMut<Block = Blk>, F: FnMut(usize)>(
@@ -159,23 +163,23 @@ pub mod aes128 {
             // NOTE: instead of looping here, manually unroll the loop so the CPU has a large run of instructions
             //       without any branches.
             self.keyround(10).xor(block);
-            self.keyround(11).decrypt(block);
+            self.keyround(9).decrypt(block);
             f(0);
-            self.keyround(12).decrypt(block);
+            self.keyround(8).decrypt(block);
             f(1);
-            self.keyround(13).decrypt(block);
+            self.keyround(7).decrypt(block);
             f(2);
-            self.keyround(14).decrypt(block);
+            self.keyround(6).decrypt(block);
             f(3);
-            self.keyround(15).decrypt(block);
+            self.keyround(5).decrypt(block);
             f(4);
-            self.keyround(16).decrypt(block);
+            self.keyround(4).decrypt(block);
             f(5);
-            self.keyround(17).decrypt(block);
+            self.keyround(3).decrypt(block);
             f(6);
-            self.keyround(18).decrypt(block);
+            self.keyround(2).decrypt(block);
             f(7);
-            self.keyround(19).decrypt(block);
+            self.keyround(1).decrypt(block);
             f(8);
             self.keyround(0).decrypt_finish(block);
         }
@@ -198,6 +202,7 @@ pub mod aes256 {
     {
         type Block = Blk;
         const KEY_LEN: usize = KEY_LEN;
+        const ROUNDS: usize = ROUNDS;
 
         #[inline(always)]
         fn encrypt_interleaved<B: BatchMut<Block = Blk>, F: FnMut(usize)>(
@@ -260,6 +265,7 @@ pub mod aes256 {
     {
         type Block = Blk;
         const KEY_LEN: usize = KEY_LEN;
+        const ROUNDS: usize = ROUNDS;
 
         #[inline(always)]
         fn decrypt_interleaved<B: BatchMut<Block = Blk>, F: FnMut(usize)>(
@@ -286,31 +292,31 @@ pub mod aes256 {
             // NOTE: instead of looping here, manually unroll the loop so the CPU has a large run of instructions
             //       without any branches.
             self.keyround(14).xor(block);
-            self.keyround(15).decrypt(block);
+            self.keyround(13).decrypt(block);
             f(0);
-            self.keyround(16).decrypt(block);
+            self.keyround(12).decrypt(block);
             f(1);
-            self.keyround(17).decrypt(block);
+            self.keyround(11).decrypt(block);
             f(2);
-            self.keyround(18).decrypt(block);
+            self.keyround(10).decrypt(block);
             f(3);
-            self.keyround(19).decrypt(block);
+            self.keyround(9).decrypt(block);
             f(4);
-            self.keyround(20).decrypt(block);
+            self.keyround(8).decrypt(block);
             f(5);
-            self.keyround(21).decrypt(block);
+            self.keyround(7).decrypt(block);
             f(6);
-            self.keyround(22).decrypt(block);
+            self.keyround(6).decrypt(block);
             f(7);
-            self.keyround(23).decrypt(block);
+            self.keyround(5).decrypt(block);
             f(8);
-            self.keyround(24).decrypt(block);
+            self.keyround(4).decrypt(block);
             f(9);
-            self.keyround(25).decrypt(block);
+            self.keyround(3).decrypt(block);
             f(10);
-            self.keyround(26).decrypt(block);
+            self.keyround(2).decrypt(block);
             f(11);
-            self.keyround(27).decrypt(block);
+            self.keyround(1).decrypt(block);
             f(12);
             self.keyround(0).decrypt_finish(block);
         }
