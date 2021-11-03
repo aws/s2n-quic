@@ -75,7 +75,7 @@ impl Oracle {
     fn path(&mut self, handle: &Handle) -> Option<(&Handle, &mut PathInfo)> {
         self.paths
             .iter_mut()
-            .find(|(path_handle, _path)| path_handle == &handle)
+            .find(|(path_handle, _path)| path_handle.eq(&handle))
     }
 
     /// Insert a new path while adhering to limits
@@ -260,6 +260,9 @@ impl Model {
         local_id: LocalId,
         payload_len: u16,
     ) {
+        // Handle is an alias to RemoteAddress so does not inherit the PathHandle
+        // eq implementation which unmaps an ipv6 address into a ipv4 address
+        let handle = path::RemoteAddress(handle.unmap());
         let datagram = DatagramInfo {
             timestamp: self.timestamp,
             payload_len: payload_len as usize,
@@ -273,11 +276,11 @@ impl Model {
 
         self.oracle.prev_state_amplification_limited = self
             .subject
-            .path(handle)
+            .path(&handle)
             .map_or(false, |(_id, path)| path.at_amplification_limit());
 
         match self.subject.on_datagram_received(
-            handle,
+            &handle,
             &datagram,
             true,
             &mut Default::default(),
@@ -288,15 +291,15 @@ impl Model {
             Ok((id, _)) => {
                 // Only call oracle if the subject can process on_datagram_received without errors
                 self.oracle.on_datagram_received(
-                    handle,
+                    &handle,
                     payload_len,
                     self.subject[id].at_amplification_limit(),
                 );
 
                 if let Some(probe) = probing {
-                    self.oracle.on_processed_packet(handle, probe);
+                    self.oracle.on_processed_packet(&handle, probe);
 
-                    let (path_id, _path) = self.subject.path(handle).unwrap();
+                    let (path_id, _path) = self.subject.path(&handle).unwrap();
                     self.subject
                         .on_processed_packet(
                             path_id,
