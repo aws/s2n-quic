@@ -1,6 +1,8 @@
 # s2n-quic-crypto
 
-This crate contains QUIC-optimized versions of cryptographic AEAD routines for high efficiency and performance. As such, **it is not meant to be for general use** outside of `s2n-quic`. YOU HAVE BEEN WARNED!
+This crate contains QUIC-optimized versions of cryptographic AEAD routines for high efficiency and performance.
+
+**WARNING**: **This is not meant to be for general use** outside of `s2n-quic`. There are no guarantees of a stable interface.
 
 ## Navigating the code
 
