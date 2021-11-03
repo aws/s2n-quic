@@ -120,6 +120,9 @@ impl<const N: usize> super::aes256::DecryptionKey for DecryptionKey<N> {
 }
 
 /// Calls the keygen assist intrinsic with the same argument order as the assembly
+///
+/// By having it in the same order, it should make comparing the code to other implementations
+/// a bit more straightforward.
 macro_rules! aeskeygenassist {
     ($imm8:expr, $src:expr, $dest:ident) => {
         $dest = _mm_aeskeygenassist_si128($src, $imm8);
@@ -168,10 +171,8 @@ pub mod aes128 {
                     ($idx:expr) => {{
                         // https://github.com/awslabs/aws-lc/blob/aed75eb04d322d101941e1377f274484f5e4f5b8/crypto/fipsmodule/aes/asm/aesni-x86_64.pl#L4661-L4666
                         key_shuffle!(xmm0);
-
                         // shufps	\$0b11111111,%xmm1,%xmm1	# critical path
                         xmm1 = _mm_shuffle_epi32(xmm1, 0b11111111);
-
                         // xorps	%xmm1,%xmm0
                         xmm0 = xmm1.xor(xmm0);
 
@@ -271,13 +272,11 @@ pub mod aes256 {
                 let mut xmm2;
 
                 macro_rules! key_expansion_256a {
-                    ($imm8:expr, $idx:expr) => {{
+                    ($idx:expr) => {{
                         // https://github.com/awslabs/aws-lc/blob/aed75eb04d322d101941e1377f274484f5e4f5b8/crypto/fipsmodule/aes/asm/aesni-x86_64.pl#L4703
                         key_shuffle!(xmm0);
-
                         // shufps	\$0b11111111,%xmm1,%xmm1	# critical path
                         xmm1 = _mm_shuffle_epi32(xmm1, 0b11111111);
-
                         // xorps	%xmm1,%xmm0
                         xmm0 = xmm0.xor(xmm1);
 
@@ -286,13 +285,11 @@ pub mod aes256 {
                 }
 
                 macro_rules! key_expansion_256b {
-                    ($imm8:expr, $idx:expr) => {{
+                    ($idx:expr) => {{
                         // https://github.com/awslabs/aws-lc/blob/aed75eb04d322d101941e1377f274484f5e4f5b8/crypto/fipsmodule/aes/asm/aesni-x86_64.pl#L4713
                         key_shuffle!(xmm2);
-
                         // shufps	\$0b10101010,%xmm1,%xmm1	# critical path
                         xmm1 = _mm_shuffle_epi32(xmm1, 0b10101010);
-
                         // xorps	%xmm1,%xmm2
                         xmm2 = xmm2.xor(xmm1);
 
@@ -313,55 +310,55 @@ pub mod aes256 {
                 // aeskeygenassist	\$0x1,%xmm2,%xmm1	# round 2
                 aeskeygenassist!(0x1, xmm2, xmm1);
                 // call		.Lkey_expansion_256a_cold
-                key_expansion_256a!(0x1, 2);
+                key_expansion_256a!(2);
                 // aeskeygenassist	\$0x1,%xmm0,%xmm1	# round 3
                 aeskeygenassist!(0x1, xmm0, xmm1);
                 // call		.Lkey_expansion_256b
-                key_expansion_256b!(0x1, 3);
+                key_expansion_256b!(3);
                 // aeskeygenassist	\$0x2,%xmm2,%xmm1	# round 4
                 aeskeygenassist!(0x2, xmm2, xmm1);
                 // call		.Lkey_expansion_256a
-                key_expansion_256a!(0x2, 4);
+                key_expansion_256a!(4);
                 // aeskeygenassist	\$0x2,%xmm0,%xmm1	# round 5
                 aeskeygenassist!(0x2, xmm0, xmm1);
                 // call		.Lkey_expansion_256b
-                key_expansion_256b!(0x2, 5);
+                key_expansion_256b!(5);
                 // aeskeygenassist	\$0x4,%xmm2,%xmm1	# round 6
                 aeskeygenassist!(0x4, xmm2, xmm1);
                 // call		.Lkey_expansion_256a
-                key_expansion_256a!(0x4, 6);
+                key_expansion_256a!(6);
                 // aeskeygenassist	\$0x4,%xmm0,%xmm1	# round 7
                 aeskeygenassist!(0x4, xmm0, xmm1);
                 // call		.Lkey_expansion_256b
-                key_expansion_256b!(0x4, 7);
+                key_expansion_256b!(7);
                 // aeskeygenassist	\$0x8,%xmm2,%xmm1	# round 8
                 aeskeygenassist!(0x8, xmm2, xmm1);
                 // call		.Lkey_expansion_256a
-                key_expansion_256a!(0x8, 8);
+                key_expansion_256a!(8);
                 // aeskeygenassist	\$0x8,%xmm0,%xmm1	# round 9
                 aeskeygenassist!(0x8, xmm0, xmm1);
                 // call		.Lkey_expansion_256b
-                key_expansion_256b!(0x8, 9);
+                key_expansion_256b!(9);
                 // aeskeygenassist	\$0x10,%xmm2,%xmm1	# round 10
                 aeskeygenassist!(0x10, xmm2, xmm1);
                 // call		.Lkey_expansion_256a
-                key_expansion_256a!(0x10, 10);
+                key_expansion_256a!(10);
                 // aeskeygenassist	\$0x10,%xmm0,%xmm1	# round 11
                 aeskeygenassist!(0x10, xmm0, xmm1);
                 // call		.Lkey_expansion_256b
-                key_expansion_256b!(0x10, 11);
+                key_expansion_256b!(11);
                 // aeskeygenassist	\$0x20,%xmm2,%xmm1	# round 12
                 aeskeygenassist!(0x20, xmm2, xmm1);
                 // call		.Lkey_expansion_256a
-                key_expansion_256a!(0x20, 12);
+                key_expansion_256a!(12);
                 // aeskeygenassist	\$0x20,%xmm0,%xmm1	# round 13
                 aeskeygenassist!(0x20, xmm0, xmm1);
                 // call		.Lkey_expansion_256b
-                key_expansion_256b!(0x20, 13);
+                key_expansion_256b!(13);
                 // aeskeygenassist	\$0x40,%xmm2,%xmm1	# round 14
                 aeskeygenassist!(0x40, xmm2, xmm1);
                 // call		.Lkey_expansion_256a
-                key_expansion_256a!(0x40, 14);
+                key_expansion_256a!(14);
 
                 // initialize the decryption half
                 dec[0] = enc[14];

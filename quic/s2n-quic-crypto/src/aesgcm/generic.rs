@@ -77,6 +77,7 @@ where
         // compute the number of blocks the payload will require
         let mut payload_block_count = payload_len / BLOCK_LEN;
         let batch_rem = payload_block_count % N;
+        let mut partial_blocks = batch_rem;
         let payload_rem = payload_len % BLOCK_LEN;
 
         // set to true if the ek0 counter can be encrypted alongside the last batch
@@ -87,14 +88,13 @@ where
         if payload_rem == 0 {
             can_interleave_ek0 = true;
         } else {
+            // add another partial block to be processed
             required_blocks += 1;
-            last_block_idx = batch_rem;
-            can_interleave_ek0 = false;
-        }
-
-        let mut partial_blocks = payload_block_count % N;
-        if last_block_idx < N + 1 {
             partial_blocks += 1;
+            // set the last block index to the batch remainder
+            last_block_idx = batch_rem;
+            // we can only interleave ek0 if we have a spare block
+            can_interleave_ek0 = last_block_idx < N - 1;
         }
 
         required_blocks += payload_block_count;
