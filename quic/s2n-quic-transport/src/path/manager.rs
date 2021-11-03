@@ -177,7 +177,16 @@ impl<Config: endpoint::Config> Manager<Config> {
         self.paths
             .iter()
             .enumerate()
-            .find(|(_id, path)| path.handle.eq(handle))
+            .find(|(_id, path)| {
+                if Config::ENDPOINT_TYPE.is_client() {
+                    s2n_quic_core::path::Handle::eq(
+                        &path.handle.remote_address(),
+                        &handle.remote_address(),
+                    )
+                } else {
+                    path.handle.eq(handle)
+                }
+            })
             .map(|(id, path)| (Id(id as u8), path))
     }
 
@@ -187,7 +196,16 @@ impl<Config: endpoint::Config> Manager<Config> {
         self.paths
             .iter_mut()
             .enumerate()
-            .find(|(_id, path)| path.handle.eq(handle))
+            .find(|(_id, path)| {
+                if Config::ENDPOINT_TYPE.is_client() {
+                    s2n_quic_core::path::Handle::eq(
+                        &path.handle.remote_address(),
+                        &handle.remote_address(),
+                    )
+                } else {
+                    path.handle.eq(handle)
+                }
+            })
             .map(|(id, path)| (Id(id as u8), path))
     }
 

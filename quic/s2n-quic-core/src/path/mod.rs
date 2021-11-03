@@ -125,7 +125,7 @@ impl Handle for RemoteAddress {
 
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        PartialEq::eq(self, other)
+        PartialEq::eq(&self.unmap(), &other.unmap())
     }
 
     #[inline]
@@ -171,7 +171,8 @@ impl Handle for Tuple {
 
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        PartialEq::eq(self, other)
+        PartialEq::eq(&self.local_address.unmap(), &other.local_address.unmap())
+            && Handle::eq(&self.remote_address, &other.remote_address)
     }
 
     #[inline]

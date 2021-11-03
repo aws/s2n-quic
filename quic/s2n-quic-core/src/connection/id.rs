@@ -185,9 +185,27 @@ macro_rules! id {
 // endpoint. s2n-QUIC does not provide zero-length connection IDs, the minimum allowable LocalId
 // is 4 bytes.
 id!(LocalId, 4);
+impl From<LocalId> for UnboundedId {
+    fn from(id: LocalId) -> Self {
+        UnboundedId {
+            bytes: id.bytes,
+            len: id.len,
+        }
+    }
+}
+
 // Connection IDs used to route packets to the peer. The peer may choose to use zero-length
 // connection IDs.
 id!(PeerId, 0);
+impl From<PeerId> for UnboundedId {
+    fn from(id: PeerId) -> Self {
+        UnboundedId {
+            bytes: id.bytes,
+            len: id.len,
+        }
+    }
+}
+
 // Connection IDs that are used as either a LocalId or a PeerId depending on if the endpoint is a
 // server or a client, and thus the minimum length of the ID is not validated.
 id!(UnboundedId, 0);
@@ -199,6 +217,14 @@ id!(UnboundedId, 0);
 //# value.  This Destination Connection ID MUST be at least 8 bytes in
 //# length.
 id!(InitialId, 8);
+impl From<InitialId> for UnboundedId {
+    fn from(id: InitialId) -> Self {
+        UnboundedId {
+            bytes: id.bytes,
+            len: id.len,
+        }
+    }
+}
 
 // A LocalId may be converted to an InitialId, but InitialId has a higher
 // minimum length, so conversion may not succeed.

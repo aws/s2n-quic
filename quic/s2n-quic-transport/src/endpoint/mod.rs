@@ -901,7 +901,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         } = request;
 
         let internal_connection_id = self.connection_id_generator.generate_id();
-        let source_connection_id = self
+        let local_connection_id = self
             .config
             .context()
             .connection_id_format
@@ -915,10 +915,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 .config
                 .context()
                 .stateless_reset_token_generator
-                .generate(source_connection_id.as_bytes());
+                .generate(local_connection_id.as_bytes());
             self.connection_id_mapper.create_local_id_registry(
                 internal_connection_id,
-                &source_connection_id,
+                &local_connection_id,
                 stateless_reset_token,
             )
         };
@@ -978,7 +978,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
             &mut event_context,
         );
 
-        let mut transport_parameters = ClientTransportParameters::default();
+        let mut transport_parameters = ClientTransportParameters {
+            initial_source_connection_id: Some(local_connection_id.into()),
+            ..Default::default()
+        };
         let limits = endpoint_context
             .connection_limits
             .on_connection(&LimitsInfo::new(&remote_address));
@@ -1027,7 +1030,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             space_manager,
             wakeup_handle,
             peer_connection_id: initial_connection_id,
-            local_connection_id: source_connection_id,
+            local_connection_id,
             path_handle,
             congestion_controller,
             timestamp,
