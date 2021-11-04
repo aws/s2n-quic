@@ -22,14 +22,27 @@ const CRASH_ERROR_MESSAGE: &str = "The s2n-quic-qns application shut down unexpe
 static ALLOCATOR: dhat::DhatAlloc = dhat::DhatAlloc;
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
+async fn main() {
     // setup heap profiling if enabled
     #[cfg(feature = "dhat")]
     let _dhat = dhat::Dhat::start_heap_profiling();
 
     tracing_subscriber::fmt::init();
 
-    Arguments::from_args().run().await
+    match Arguments::from_args_safe() {
+        Ok(args) => {
+            if let Err(error) = args.run().await {
+                eprintln!("{}", error);
+            }
+        }
+        Err(error) => {
+            eprintln!("{}", error);
+
+            // https://github.com/marten-seemann/quic-interop-runner/blob/cd223804bf3f102c3567758ea100577febe486ff/interop.py#L102
+            // The interop runner wants us to exit with code 127 when an invalid argument is passed
+            std::process::exit(127);
+        }
+    };
 }
 
 #[derive(Debug, StructOpt)]
