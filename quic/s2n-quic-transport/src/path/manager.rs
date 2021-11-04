@@ -177,7 +177,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         self.paths
             .iter()
             .enumerate()
-            .find(|(_id, path)| path.handle.eq(handle))
+            .find(|(_id, path)| Path::eq_by_handle(path, handle))
             .map(|(id, path)| (Id(id as u8), path))
     }
 
@@ -187,7 +187,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         self.paths
             .iter_mut()
             .enumerate()
-            .find(|(_id, path)| path.handle.eq(handle))
+            .find(|(_id, path)| Path::eq_by_handle(path, handle))
             .map(|(id, path)| (Id(id as u8), path))
     }
 

@@ -1,7 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use cfg_if::cfg_if;
 pub use s2n_quic_core::event::{
     api as events,
     api::{ConnectionInfo, ConnectionMeta},
@@ -19,15 +18,11 @@ pub trait Provider {
 /// Provides an implementation to disable all logging
 pub mod disabled;
 
-cfg_if! {
-    if #[cfg(feature = "tracing-provider")] {
-        pub use self::tracing as default;
-        pub mod tracing;
-    } else {
-        pub use self::disabled as default;
-    }
-}
+#[cfg(feature = "tracing-provider")]
+pub mod tracing;
 
+// Events are disabled by default.
+pub use self::disabled as default;
 pub use default::Provider as Default;
 
 impl<S> Provider for S

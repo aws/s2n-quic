@@ -100,54 +100,61 @@ impl Future for Attempt {
     type Output = Result<Connection, connection::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match core::mem::replace(&mut self.state, AttemptState::Unreachable) {
-            AttemptState::Connect(request, mut opener, response) => {
-                match opener.poll_ready(cx) {
-                    Poll::Ready(Ok(())) => {
-                        match opener.try_send(request) {
-                            Ok(_) => {
-                                // transition to the waiting state
-                                self.state = AttemptState::Waiting(response);
-                            }
-                            Err(err) if err.is_full() => {
-                                // reset to the original state
-                                self.state =
-                                    AttemptState::Connect(err.into_inner(), opener, response);
+        loop {
+            match core::mem::replace(&mut self.state, AttemptState::Unreachable) {
+                AttemptState::Connect(request, mut opener, response) => {
+                    match opener.poll_ready(cx) {
+                        Poll::Ready(Ok(())) => {
+                            match opener.try_send(request) {
+                                Ok(_) => {
+                                    // transition to the waiting state
+                                    self.state = AttemptState::Waiting(response);
+                                    continue;
+                                }
+                                Err(err) if err.is_full() => {
+                                    // reset to the original state
+                                    self.state =
+                                        AttemptState::Connect(err.into_inner(), opener, response);
 
-                                // yield and wake up the task since the opener mis-reported its ready state
-                                cx.waker().wake_by_ref();
-                            }
-                            Err(_) => {
-                                // The endpoint has closed
-                                return Err(connection::Error::Unspecified).into();
+                                    // yield and wake up the task since the opener mis-reported its ready state
+                                    cx.waker().wake_by_ref();
+                                }
+                                Err(_) => {
+                                    // The endpoint has closed
+                                    return Err(connection::Error::Unspecified).into();
+                                }
                             }
                         }
+                        Poll::Ready(Err(_)) => {
+                            // The endpoint has closed
+                            return Err(connection::Error::Unspecified).into();
+                        }
+                        Poll::Pending => {
+                            // reset to the original state
+                            self.state = AttemptState::Connect(request, opener, response);
+                        }
                     }
-                    Poll::Ready(Err(_)) => {
-                        // The endpoint has closed
-                        return Err(connection::Error::Unspecified).into();
-                    }
-                    Poll::Pending => {
-                        // reset to the original state
-                        self.state = AttemptState::Connect(request, opener, response);
-                    }
-                }
 
-                Poll::Pending
-            }
-            AttemptState::Waiting(mut response) => match Pin::new(&mut response).poll(cx) {
-                Poll::Ready(Ok(res)) => Poll::Ready(res),
-                Poll::Ready(Err(_)) => {
-                    // The endpoint has closed
-                    Err(connection::Error::Unspecified).into()
+                    return Poll::Pending;
                 }
-                Poll::Pending => {
-                    self.state = AttemptState::Waiting(response);
-                    Poll::Pending
+                AttemptState::Waiting(mut response) => {
+                    return match Pin::new(&mut response).poll(cx) {
+                        Poll::Ready(Ok(res)) => Poll::Ready(res),
+                        Poll::Ready(Err(_)) => {
+                            // The endpoint has closed
+                            Err(connection::Error::Unspecified).into()
+                        }
+                        Poll::Pending => {
+                            self.state = AttemptState::Waiting(response);
+                            Poll::Pending
+                        }
+                    };
                 }
-            },
-            AttemptState::Unreachable => {
-                unreachable!("Unreachable is an immediate state and should not exist across polls");
+                AttemptState::Unreachable => {
+                    unreachable!(
+                        "Unreachable is an immediate state and should not exist across polls"
+                    );
+                }
             }
         }
     }

@@ -507,6 +507,21 @@ impl<Config: endpoint::Config> Path<Config> {
             }
         }
     }
+
+    // Compare a Path based on its PathHandle.
+    //
+    // Currently the local_address on the Client connection is unknown and set to
+    // a default un-specified value; therefore only the remote_address is used
+    // to compare Paths.
+    fn eq_by_handle(&self, handle: &Config::PathHandle) -> bool {
+        if Config::ENDPOINT_TYPE.is_client() {
+            // TODO: https://github.com/awslabs/s2n-quic/issues/954
+            // Possibly research a strategy to populate the local_address for Client endpoint
+            s2n_quic_core::path::Handle::eq(&self.handle.remote_address(), &handle.remote_address())
+        } else {
+            self.handle.eq(handle)
+        }
+    }
 }
 
 impl<Config: endpoint::Config> timer::Provider for Path<Config> {

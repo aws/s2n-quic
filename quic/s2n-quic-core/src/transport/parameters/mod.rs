@@ -1021,6 +1021,12 @@ impl ActiveConnectionIdLimit {
 connection_id_parameter!(InitialSourceConnectionId, UnboundedId, 0x0f);
 optional_transport_parameter!(InitialSourceConnectionId);
 
+impl From<connection::id::LocalId> for InitialSourceConnectionId {
+    fn from(id: connection::id::LocalId) -> Self {
+        InitialSourceConnectionId(id.into())
+    }
+}
+
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
 //# retry_source_connection_id (0x10):  The value that the server
 //#    included in the Source Connection ID field of a Retry packet; see
