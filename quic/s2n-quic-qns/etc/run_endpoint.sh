@@ -30,9 +30,9 @@ CLIENT_PARAMS+=" --disable-gso"
 
 if [ "$QNS_MODE" == "interop" ]; then
     if [ "$ROLE" == "server" ]; then
-        SERVER_PARAMS+=" --www-dir /www "
+        SERVER_PARAMS+=" --www-dir /www"
     elif [ "$ROLE" == "client" ]; then
-        CLIENT_PARAMS+=" --download-dir /downloads "
+        CLIENT_PARAMS+=" --download-dir /downloads"
     fi
 fi
 
@@ -44,9 +44,9 @@ fi
 
 if [ -d "/certs" ]; then
     if [ "$ROLE" == "server" ]; then
-        SERVER_ARGS=" --private-key /certs/priv.key --certificate /certs/cert.pem"
+        SERVER_ARGS+=" --private-key /certs/priv.key --certificate /certs/cert.pem"
     elif [ "$ROLE" == "client" ]; then
-        CLIENT_ARGS=" --ca /certs/cert.pem"
+        CLIENT_ARGS+=" --ca /certs/cert.pem"
     fi
 fi
 
