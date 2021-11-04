@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{interop, Result};
+use crate::{
+    interop::{self, Testcase},
+    Result,
+};
 use futures::future::try_join_all;
 use s2n_quic::{
     client::Connect,
@@ -45,14 +48,15 @@ pub struct Interop {
     #[structopt(short, long, default_value = "::")]
     local_ip: std::net::IpAddr,
 
+    #[structopt(long, env = "TESTCASE", possible_values = &Testcase::supported(is_supported_testcase))]
+    testcase: Option<Testcase>,
+
     #[structopt(min_values = 1, required = true)]
     requests: Vec<String>,
 }
 
 impl Interop {
     pub async fn run(&self) -> Result<()> {
-        self.check_testcase();
-
         let client = self.client()?;
 
         let mut connect = Connect::new((self.ip, self.port));
@@ -77,7 +81,7 @@ impl Interop {
         // Handshake Loss (multiconnect): Tests resilience of the handshake to high loss.
         // The client is expected to establish multiple connections, sequential or in parallel,
         // and use each connection to download a single file.
-        if let Some("multiconnect") = std::env::var("TESTCASE").ok().as_deref() {
+        if let Some(Testcase::Multiconnect) = self.testcase {
             for request in &self.requests {
                 create_connection(
                     client.clone(),
@@ -182,37 +186,30 @@ impl Interop {
             s2n_quic_core::crypto::tls::testing::certificates::CERT_PEM.into_certificate()?
         })
     }
+}
 
-    fn check_testcase(&self) {
-        let is_supported = match std::env::var("TESTCASE").ok().as_deref() {
-            Some("versionnegotiation") => false,
-            Some("handshake") => true,
-            Some("transfer") => true,
-            // TODO enable _only_ chacha20
-            Some("chacha20") => false,
-            // TODO figure out how to trigger a key update
-            Some("keyupdate") => false,
-            // TODO support retry packets on the client
-            Some("retry") => false,
-            Some("resumption") => false,
-            Some("zerortt") => false,
-            Some("http3") => false,
-            Some("multiconnect") => true,
-            Some("handshakecorruption") => true,
-            Some("transfercorruption") => true,
-            Some("ecn") => true,
-            Some("crosstraffic") => true,
-            Some("rebind-addr") => true,
-            Some("rebind-port") => true,
-            // TODO support active connection migration
-            Some("connectionmigration") => false,
-            None => true,
-            _ => false,
-        };
-
-        if !is_supported {
-            eprintln!("unsupported");
-            std::process::exit(127);
-        }
+fn is_supported_testcase(testcase: Testcase) -> bool {
+    use Testcase::*;
+    match testcase {
+        // TODO add the ability to override the QUIC version
+        VersionNegotiation => false,
+        Handshake => true,
+        Transfer => true,
+        // TODO enable _only_ chacha20 on supported ciphersuites
+        ChaCha20 => false,
+        // TODO add the ability to trigger a key update from the application
+        KeyUpdate => false,
+        // TODO implement retry functionality on the client
+        Retry => false,
+        // TODO support storing tickets
+        Resumption => false,
+        // TODO implement 0rtt
+        ZeroRtt => false,
+        // TODO integrate a H3 implementation
+        Http3 => false,
+        Multiconnect => true,
+        Ecn => true,
+        // TODO support the ability to actively migrate on the client
+        ConnectionMigration => false,
     }
 }

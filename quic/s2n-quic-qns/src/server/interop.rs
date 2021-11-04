@@ -1,7 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{file::File, interop, Result};
+use crate::{
+    file::File,
+    interop::{self, Testcase},
+    Result,
+};
 use core::convert::TryInto;
 use futures::stream::StreamExt;
 use s2n_quic::{
@@ -44,12 +48,13 @@ pub struct Interop {
 
     #[structopt(long)]
     disable_gso: bool,
+
+    #[structopt(long, env = "TESTCASE", possible_values = &Testcase::supported(is_supported_testcase))]
+    testcase: Option<Testcase>,
 }
 
 impl Interop {
     pub async fn run(&self) -> Result<()> {
-        self.check_testcase();
-
         let mut server = self.server()?;
 
         let www_dir: Arc<Path> = Arc::from(self.www_dir.as_path());
@@ -145,7 +150,7 @@ impl Interop {
             .build()?;
 
         let mut max_handshakes = 100;
-        if let Some("retry") = std::env::var("TESTCASE").ok().as_deref() {
+        if let Some(Testcase::Retry) = self.testcase {
             max_handshakes = 0;
         }
 
@@ -190,33 +195,28 @@ impl Interop {
             s2n_quic_core::crypto::tls::testing::certificates::KEY_PEM.into_private_key()?
         })
     }
+}
 
-    fn check_testcase(&self) {
-        let is_supported = match std::env::var("TESTCASE").ok().as_deref() {
-            Some("versionnegotiation") => false,
-            Some("handshake") => true,
-            Some("transfer") => true,
-            Some("chacha20") => true,
-            Some("retry") => true,
-            Some("resumption") => false,
-            Some("zerortt") => false,
-            Some("http3") => false,
-            Some("multiconnect") => true,
-            Some("handshakecorruption") => true,
-            Some("transfercorruption") => true,
-            Some("ecn") => true,
-            Some("crosstraffic") => true,
-            Some("rebind-addr") => true,
-            Some("rebind-port") => true,
-            Some("connectionmigration") => true,
-            None => true,
-            _ => false,
-        };
-
-        if !is_supported {
-            eprintln!("unsupported");
-            std::process::exit(127);
-        }
+fn is_supported_testcase(testcase: Testcase) -> bool {
+    use Testcase::*;
+    match testcase {
+        VersionNegotiation => true,
+        Handshake => true,
+        Transfer => true,
+        ChaCha20 => true,
+        // KeyUpdate is client only
+        KeyUpdate => false,
+        Retry => true,
+        // TODO support issuing tickets
+        Resumption => false,
+        // TODO implement 0rtt
+        ZeroRtt => false,
+        // TODO integrate a H3 implementation
+        Http3 => false,
+        // Multiconnect is client only
+        Multiconnect => false,
+        Ecn => true,
+        ConnectionMigration => true,
     }
 }
 
