@@ -42,11 +42,14 @@ if [ "$TEST_TYPE" == "MEASUREMENT" ] && [ -x "$(command -v s2n-quic-qns-release)
     unset RUST_LOG
 fi
 
+# https://github.com/marten-seemann/quic-interop-runner/blob/1dedeab03da41716bdc3ab84243328ac2409f9fe/README.md#building-a-quic-endpoint
+# The Interop Runner generates a key and a certificate chain and mounts it into /certs.
+# The server needs to load its private key from priv.key, and the certificate chain from cert.pem.
 if [ -d "/certs" ]; then
     if [ "$ROLE" == "server" ]; then
-        SERVER_ARGS+=" --private-key /certs/priv.key --certificate /certs/cert.pem"
+        SERVER_PARAMS+=" --private-key /certs/priv.key --certificate /certs/cert.pem"
     elif [ "$ROLE" == "client" ]; then
-        CLIENT_ARGS+=" --ca /certs/cert.pem"
+        CLIENT_PARAMS+=" --ca /certs/cert.pem"
     fi
 fi
 
