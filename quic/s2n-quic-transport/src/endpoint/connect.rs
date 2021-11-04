@@ -20,7 +20,7 @@ pub(crate) type ConnectionReceiver = oneshot::Receiver<Result<Connection, connec
 /// its been created.
 pub(crate) type ConnectionSender = oneshot::Sender<Result<Connection, connection::Error>>;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Connect {
     pub(crate) remote_address: RemoteAddress,
     pub(crate) hostname: Option<Sni>,
