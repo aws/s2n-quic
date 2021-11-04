@@ -45,7 +45,7 @@ pub struct Interop {
     #[structopt(short, long, default_value = "0.0.0.0")]
     local_ip: std::net::IpAddr,
 
-    #[structopt(min_values = "1")]
+    #[structopt(min_values = 1, required = true)]
     requests: Vec<String>,
 }
 
@@ -65,12 +65,12 @@ impl Interop {
 
         let download_dir = Arc::new(self.download_dir.clone());
 
-        if self.requests.is_empty() {
-            panic!("missing request");
-        }
-
         if self.requests.len() > 1 && download_dir.is_none() {
-            panic!("download dir must be specified if there are more than one request");
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "`--download-dir` must be specified if there is more than one request",
+            )
+            .into());
         }
 
         // https://github.com/marten-seemann/quic-interop-runner#test-cases
