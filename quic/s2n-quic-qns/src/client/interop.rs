@@ -21,7 +21,7 @@ use tokio::{fs::File, spawn};
 
 #[derive(Debug, StructOpt)]
 pub struct Interop {
-    #[structopt(short, long, default_value = "127.0.0.1")]
+    #[structopt(short, long, default_value = "::1")]
     ip: std::net::IpAddr,
 
     #[structopt(short, long, default_value = "443")]
@@ -42,7 +42,7 @@ pub struct Interop {
     #[structopt(long)]
     disable_gso: bool,
 
-    #[structopt(short, long, default_value = "0.0.0.0")]
+    #[structopt(short, long, default_value = "::")]
     local_ip: std::net::IpAddr,
 
     #[structopt(min_values = 1, required = true)]
