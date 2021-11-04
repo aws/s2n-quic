@@ -20,7 +20,13 @@ use s2n_quic_core::{
     event,
     packet::number::PacketNumberSpace,
     time::Timestamp,
-    transport::{self, parameters::ClientTransportParameters},
+    transport::{
+        self,
+        parameters::{
+            ActiveConnectionIdLimit, ClientTransportParameters, InitialFlowControlLimits,
+            InitialSourceConnectionId, ServerTransportParameters,
+        },
+    },
 };
 
 pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> {
@@ -36,6 +42,153 @@ pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPu
     pub local_id_registry: &'a mut connection::LocalIdRegistry,
     pub limits: &'a mut Limits,
     pub publisher: &'a mut Pub,
+}
+
+impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
+    SessionContext<'a, Config, Pub>
+{
+    // This is called by the client
+    fn on_server_params(
+        &mut self,
+        decoder: DecoderBuffer,
+    ) -> Result<(InitialFlowControlLimits, ActiveConnectionIdLimit), transport::Error> {
+        debug_assert!(Config::ENDPOINT_TYPE.is_client());
+
+        let (peer_parameters, remaining) =
+            ServerTransportParameters::decode(decoder).map_err(|_| {
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4
+                //# An endpoint SHOULD treat receipt of
+                //# duplicate transport parameters as a connection error of type
+                //# TRANSPORT_PARAMETER_ERROR.
+                transport::Error::TRANSPORT_PARAMETER_ERROR
+                    .with_reason("Invalid transport parameters")
+            })?;
+
+        remaining.ensure_empty().map(|_| {
+            transport::Error::TRANSPORT_PARAMETER_ERROR
+                .with_reason("Invalid bytes in transport parameters")
+        })?;
+
+        // TODO this needs to be compared with the randomly generated
+        // initial_connection_id that the client sends to the server
+        // self.validate_initial_connection_id(
+        //     &peer_parameters.initial_source_connection_id,
+        //     self.path.peer_connection_id.as_bytes(),
+        // )?;
+
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+        //= type=TODO
+        //= feature=Transport parameter ID validation
+        //# An endpoint MUST treat the following as a connection error of type
+        //# TRANSPORT_PARAMETER_ERROR or PROTOCOL_VIOLATION:
+        //#
+        //# *  absence of the retry_source_connection_id transport parameter from
+        //# the server after receiving a Retry packet,
+        //#
+        //# *  presence of the retry_source_connection_id transport parameter
+        //# when no Retry packet was received, or
+
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+        //# An endpoint MUST treat the absence of the
+        //# initial_source_connection_id transport parameter from either endpoint
+        //# or the absence of the original_destination_connection_id transport
+        //# parameter from the server as a connection error of type
+        //# TRANSPORT_PARAMETER_ERROR.
+        if peer_parameters.original_destination_connection_id.is_none() {
+            return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
+                .with_reason("missing original_destination_connection_id"));
+        }
+
+        // Load the peer's transport parameters into the connection's limits
+        self.limits.load_peer(&peer_parameters);
+
+        let initial_flow_control_limits = peer_parameters.flow_control_limits();
+        let active_connection_id_limit = peer_parameters.active_connection_id_limit;
+
+        Ok((initial_flow_control_limits, active_connection_id_limit))
+    }
+
+    // This is called by the server
+    fn on_client_params(
+        &mut self,
+        decoder: DecoderBuffer,
+    ) -> Result<(InitialFlowControlLimits, ActiveConnectionIdLimit), transport::Error> {
+        debug_assert!(Config::ENDPOINT_TYPE.is_server());
+
+        let (peer_parameters, remaining) =
+            ClientTransportParameters::decode(decoder).map_err(|_| {
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4
+                //# An endpoint SHOULD treat receipt of
+                //# duplicate transport parameters as a connection error of type
+                //# TRANSPORT_PARAMETER_ERROR.
+                transport::Error::TRANSPORT_PARAMETER_ERROR
+                    .with_reason("Invalid transport parameters")
+            })?;
+
+        remaining.ensure_empty().map(|_| {
+            transport::Error::TRANSPORT_PARAMETER_ERROR
+                .with_reason("Invalid bytes in transport parameters")
+        })?;
+
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+        //# An endpoint MUST treat the following as a connection error of type
+        //# TRANSPORT_PARAMETER_ERROR or PROTOCOL_VIOLATION:
+        self.validate_initial_connection_id(
+            &peer_parameters.initial_source_connection_id,
+            self.path.peer_connection_id.as_bytes(),
+        )?;
+
+        // Load the peer's transport parameters into the connection's limits
+        self.limits.load_peer(&peer_parameters);
+
+        let initial_flow_control_limits = peer_parameters.flow_control_limits();
+        let active_connection_id_limit = peer_parameters.active_connection_id_limit;
+
+        Ok((initial_flow_control_limits, active_connection_id_limit))
+    }
+
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+    //# Each endpoint includes the value of the Source Connection ID field
+    //# from the first Initial packet it sent in the
+    //# initial_source_connection_id transport parameter
+    //
+    // When the endpoint is a Server this is the peer's connection id.
+    //
+    // When the endpoint is a Client, this is the randomly generated
+    // initial_connection_id which is locally generated for the first Initial packet.
+    fn validate_initial_connection_id(
+        &self,
+        peer_value: &Option<InitialSourceConnectionId>,
+        expected_value: &[u8],
+    ) -> Result<(), transport::Error> {
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+        //# * a mismatch between values received from a peer in these transport
+        //# parameters and the value sent in the corresponding Destination or
+        //# Source Connection ID fields of Initial packets.
+        if let Some(peer_value) = peer_value {
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+            //# The values provided by a peer for these transport parameters MUST
+            //# match the values that an endpoint used in the Destination and Source
+            //# Connection ID fields of Initial packets that it sent (and received,
+            //# for servers).  Endpoints MUST validate that received transport
+            //# parameters match received connection ID values.
+            if peer_value.as_bytes().ct_eq(expected_value).unwrap_u8() == 0 {
+                return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
+                    .with_reason("initial_source_connection_id mismatch"));
+            }
+        } else {
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+            //# An endpoint MUST treat the absence of the
+            //# initial_source_connection_id transport parameter from either endpoint
+            //# or the absence of the original_destination_connection_id transport
+            //# parameter from the server as a connection error of type
+            //# TRANSPORT_PARAMETER_ERROR.
+            return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
+                .with_reason("missing initial_source_connection_id"));
+        }
+
+        Ok(())
+    }
 }
 
 impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
@@ -113,71 +266,14 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         }
 
         // Parse transport parameters
-        // TODO: This assumes we are a server, and needs to be changed for the client
         let param_decoder = DecoderBuffer::new(application_parameters.transport_parameters);
-        let (peer_parameters, remaining) = match ClientTransportParameters::decode(param_decoder) {
-            Ok(parameters) => parameters,
-            Err(_e) => {
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4
-                //# An endpoint SHOULD treat receipt of
-                //# duplicate transport parameters as a connection error of type
-                //# TRANSPORT_PARAMETER_ERROR.
-                return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
-                    .with_reason("Invalid transport parameters"));
-            }
+        let (peer_flow_control_limits, active_connection_id_limit) = match Config::ENDPOINT_TYPE {
+            endpoint::Type::Client => self.on_server_params(param_decoder)?,
+            endpoint::Type::Server => self.on_client_params(param_decoder)?,
         };
 
-        if !remaining.is_empty() {
-            return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
-                .with_reason("Invalid bytes in transport parameters"));
-        }
-
-        if let Some(initial_source_connection_id) = peer_parameters.initial_source_connection_id {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
-            //# The values provided by a peer for these transport parameters MUST
-            //# match the values that an endpoint used in the Destination and Source
-            //# Connection ID fields of Initial packets that it sent (and received,
-            //# for servers).  Endpoints MUST validate that received transport
-            //# parameters match received connection ID values.
-            if initial_source_connection_id
-                .as_bytes()
-                .ct_eq(self.path.peer_connection_id.as_bytes())
-                .unwrap_u8()
-                == 0
-            {
-                return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
-                    .with_reason("initial_source_connection_id mismatch"));
-            }
-        } else {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
-            //# An endpoint MUST treat the absence of the
-            //# initial_source_connection_id transport parameter from either endpoint
-            //# or the absence of the original_destination_connection_id transport
-            //# parameter from the server as a connection error of type
-            //# TRANSPORT_PARAMETER_ERROR.
-            return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
-                .with_reason("missing initial_source_connection_id"));
-        }
-
-        // TODO uncomment when the client is implemented
-        //if Config::ENDPOINT_TYPE.is_client()
-        //    && peer_parameters.original_destination_connection_id.is_none()
-        //{
-        //    return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
-        //        .with_reason("missing original_destination_connection_id"));
-        //}
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3
-        //= type=TODO
-        //= feature=Transport parameter ID validation
-        //= tracking-issue=353
-        //# An endpoint MUST treat the following as a connection error of type
-        //# TRANSPORT_PARAMETER_ERROR or PROTOCOL_VIOLATION:
-
-        // Load the peer's transport parameters into the connection's limits
-        self.limits.load_peer(&peer_parameters);
-
-        let peer_flow_control_limits = peer_parameters.flow_control_limits();
+        self.local_id_registry
+            .set_active_connection_id_limit(active_connection_id_limit.as_u64());
 
         let stream_manager = AbstractStreamManager::new(
             self.limits,
@@ -215,9 +311,6 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         self.publisher.on_key_update(event::builder::KeyUpdate {
             key_type: event::builder::KeyType::OneRtt { generation: 0 },
         });
-
-        self.local_id_registry
-            .set_active_connection_id_limit(peer_parameters.active_connection_id_limit.as_u64());
 
         Ok(())
     }
