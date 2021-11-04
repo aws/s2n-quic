@@ -6,6 +6,7 @@ use crate::{
     endpoint::handle::ConnectorSender,
 };
 use core::{
+    fmt,
     future::Future,
     pin::Pin,
     task::{Context, Poll},
@@ -20,10 +21,26 @@ pub(crate) type ConnectionReceiver = oneshot::Receiver<Result<Connection, connec
 /// its been created.
 pub(crate) type ConnectionSender = oneshot::Sender<Result<Connection, connection::Error>>;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Connect {
     pub(crate) remote_address: RemoteAddress,
     pub(crate) hostname: Option<Sni>,
+}
+
+impl fmt::Display for Connect {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if f.alternate() {
+            if let Some(hostname) = self.hostname.as_deref() {
+                write!(f, "{} at {}", hostname, &*self.remote_address)
+            } else {
+                write!(f, "{}", &*self.remote_address)
+            }
+        } else if let Some(hostname) = self.hostname.as_deref() {
+            write!(f, "{}", hostname)
+        } else {
+            write!(f, "{}", &*self.remote_address)
+        }
+    }
 }
 
 impl Connect {

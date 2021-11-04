@@ -40,6 +40,18 @@ impl Connection {
     /// // TODO
     /// ```
     #[inline]
+    pub fn handle(&self) -> Handle {
+        Handle(self.0.clone())
+    }
+
+    /// TODO
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// // TODO
+    /// ```
+    #[inline]
     pub fn split(self) -> (Handle, StreamAcceptor) {
         let handle = Handle(self.0.clone());
         let acceptor = StreamAcceptor(self.0);

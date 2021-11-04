@@ -1,8 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{file::File, Result};
-use bytes::Bytes;
+use crate::{
+    file::File,
+    interop::{self, Testcase},
+    Result,
+};
 use core::convert::TryInto;
 use futures::stream::StreamExt;
 use s2n_quic::{
@@ -45,12 +48,13 @@ pub struct Interop {
 
     #[structopt(long)]
     disable_gso: bool,
+
+    #[structopt(long, env = "TESTCASE", possible_values = &Testcase::supported(is_supported_testcase))]
+    testcase: Option<Testcase>,
 }
 
 impl Interop {
     pub async fn run(&self) -> Result<()> {
-        self.check_testcase();
-
         let mut server = self.server()?;
 
         let www_dir: Arc<Path> = Arc::from(self.www_dir.as_path());
@@ -105,11 +109,9 @@ impl Interop {
             }
         }
 
-        async fn handle_h09_stream(
-            mut stream: BidirectionalStream,
-            www_dir: Arc<Path>,
-        ) -> Result<()> {
-            let path = handle_h09_request(&mut stream).await?;
+        async fn handle_h09_stream(stream: BidirectionalStream, www_dir: Arc<Path>) -> Result<()> {
+            let (rx_stream, mut tx_stream) = stream.split();
+            let path = interop::read_request(rx_stream).await?;
             let mut abs_path = www_dir.to_path_buf();
             abs_path.extend(
                 path.split('/')
@@ -119,67 +121,15 @@ impl Interop {
             let mut file = File::open(&abs_path).await?;
             loop {
                 match file.next().await {
-                    Some(Ok(chunk)) => stream.send(chunk).await?,
+                    Some(Ok(chunk)) => tx_stream.send(chunk).await?,
                     Some(Err(err)) => {
-                        stream.reset(1u32.try_into()?)?;
+                        tx_stream.reset(1u32.try_into()?)?;
                         return Err(err.into());
                     }
                     None => {
-                        stream.finish()?;
+                        tx_stream.finish()?;
                         return Ok(());
                     }
-                }
-            }
-        }
-
-        async fn handle_h09_request(stream: &mut BidirectionalStream) -> Result<String> {
-            let mut path = String::new();
-            let mut chunks = vec![Bytes::new(), Bytes::new()];
-            let mut total_chunks = 0;
-            loop {
-                // grow the chunks
-                if chunks.len() == total_chunks {
-                    chunks.push(Bytes::new());
-                }
-                let (consumed, is_open) =
-                    stream.receive_vectored(&mut chunks[total_chunks..]).await?;
-                total_chunks += consumed;
-                if parse_h09_request(&chunks[..total_chunks], &mut path, is_open)? {
-                    return Ok(path);
-                }
-            }
-        }
-
-        fn parse_h09_request(chunks: &[Bytes], path: &mut String, is_open: bool) -> Result<bool> {
-            let mut bytes = chunks.iter().flat_map(|chunk| chunk.iter().cloned());
-
-            macro_rules! expect {
-                ($char:literal) => {
-                    match bytes.next() {
-                        Some($char) => {}
-                        None if is_open => return Ok(false),
-                        _ => return Err("invalid request".into()),
-                    }
-                };
-            }
-
-            expect!(b'G');
-            expect!(b'E');
-            expect!(b'T');
-            expect!(b' ');
-            expect!(b'/');
-
-            loop {
-                match bytes.next() {
-                    Some(c @ b'0'..=b'9') => path.push(c as char),
-                    Some(c @ b'a'..=b'z') => path.push(c as char),
-                    Some(c @ b'A'..=b'Z') => path.push(c as char),
-                    Some(b'.') => path.push('.'),
-                    Some(b'/') => path.push('/'),
-                    Some(b'-') => path.push('-'),
-                    Some(b'\n') | Some(b'\r') => return Ok(true),
-                    Some(c) => return Err(format!("invalid request {}", c as char).into()),
-                    None => return Ok(!is_open),
                 }
             }
         }
@@ -200,7 +150,7 @@ impl Interop {
             .build()?;
 
         let mut max_handshakes = 100;
-        if let Some("retry") = std::env::var("TESTCASE").ok().as_deref() {
+        if let Some(Testcase::Retry) = self.testcase {
             max_handshakes = 0;
         }
 
@@ -245,33 +195,28 @@ impl Interop {
             s2n_quic_core::crypto::tls::testing::certificates::KEY_PEM.into_private_key()?
         })
     }
+}
 
-    fn check_testcase(&self) {
-        let is_supported = match std::env::var("TESTCASE").ok().as_deref() {
-            Some("versionnegotiation") => false,
-            Some("handshake") => true,
-            Some("transfer") => true,
-            Some("chacha20") => true,
-            Some("retry") => true,
-            Some("resumption") => false,
-            Some("zerortt") => false,
-            Some("http3") => false,
-            Some("multiconnect") => true,
-            Some("handshakecorruption") => true,
-            Some("transfercorruption") => true,
-            Some("ecn") => true,
-            Some("crosstraffic") => true,
-            Some("rebind-addr") => true,
-            Some("rebind-port") => true,
-            Some("connectionmigration") => true,
-            None => true,
-            _ => false,
-        };
-
-        if !is_supported {
-            eprintln!("unsupported");
-            std::process::exit(127);
-        }
+fn is_supported_testcase(testcase: Testcase) -> bool {
+    use Testcase::*;
+    match testcase {
+        VersionNegotiation => true,
+        Handshake => true,
+        Transfer => true,
+        ChaCha20 => true,
+        // KeyUpdate is client only
+        KeyUpdate => false,
+        Retry => true,
+        // TODO support issuing tickets
+        Resumption => false,
+        // TODO implement 0rtt
+        ZeroRtt => false,
+        // TODO integrate a H3 implementation
+        Http3 => false,
+        // Multiconnect is client only
+        Multiconnect => false,
+        Ecn => true,
+        ConnectionMigration => true,
     }
 }
 
