@@ -94,9 +94,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         //# or the absence of the original_destination_connection_id transport
         //# parameter from the server as a connection error of type
         //# TRANSPORT_PARAMETER_ERROR.
-        if Config::ENDPOINT_TYPE.is_client()
-            && peer_parameters.original_destination_connection_id.is_none()
-        {
+        if peer_parameters.original_destination_connection_id.is_none() {
             return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
                 .with_reason("missing original_destination_connection_id"));
         }
