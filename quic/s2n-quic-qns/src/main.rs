@@ -36,11 +36,15 @@ async fn main() {
             }
         }
         Err(error) => {
-            eprintln!("{}", error);
+            if error.use_stderr() {
+                eprintln!("{}", error);
 
-            // https://github.com/marten-seemann/quic-interop-runner/blob/cd223804bf3f102c3567758ea100577febe486ff/interop.py#L102
-            // The interop runner wants us to exit with code 127 when an invalid argument is passed
-            std::process::exit(127);
+                // https://github.com/marten-seemann/quic-interop-runner/blob/cd223804bf3f102c3567758ea100577febe486ff/interop.py#L102
+                // The interop runner wants us to exit with code 127 when an invalid argument is passed
+                std::process::exit(127);
+            } else {
+                println!("{}", error);
+            }
         }
     };
 }
