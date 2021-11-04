@@ -109,7 +109,7 @@ impl Interop {
             requests: R,
             download_dir: Arc<Option<PathBuf>>,
         ) -> Result<()> {
-            eprintln!("connecting {:?}", connect);
+            eprintln!("connecting to {:#}", connect);
             let connection = client.connect(connect).await?;
 
             let mut streams = vec![];
@@ -131,7 +131,7 @@ impl Interop {
             request: String,
             download_dir: Arc<Option<PathBuf>>,
         ) -> Result<()> {
-            eprintln!("GET {:?}", request);
+            eprintln!("GET {}", request);
             let stream = connection.open_bidirectional_stream().await?;
             let (mut rx_stream, tx_stream) = stream.split();
 
