@@ -46,7 +46,8 @@ impl HandshakeStatus {
 
     /// Returns `true` if the handshake has been completed
     pub fn is_complete(&self) -> bool {
-        todo!()
+        // As long as it's not in progress it should be considered confirmed
+        !self.flag.is_idle()
     }
 
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) -> bool {
