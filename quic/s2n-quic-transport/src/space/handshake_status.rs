@@ -1,19 +1,24 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{contexts::WriteContext, sync::flag, transmission};
-use core::ops::{Deref, DerefMut};
-use s2n_quic_core::{frame::HandshakeDone, packet::number::PacketNumber};
+use crate::{
+    contexts::{OnTransmitError, WriteContext},
+    sync::flag,
+    transmission,
+};
+use s2n_quic_core::{ack, frame::HandshakeDone, packet::number::PacketNumber};
 
 pub type Flag = flag::Flag<HandshakeDoneWriter>;
 
 #[derive(Debug, Default)]
-pub struct HandshakeStatus(Flag);
+pub struct HandshakeStatus {
+    flag: Flag,
+}
 
 impl HandshakeStatus {
     /// This method is called on the server after the handshake has been completed
-    pub fn on_handshake_done(&mut self) {
-        if self.is_idle() {
+    pub fn on_handshake_complete(&mut self) {
+        if self.flag.is_idle() {
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.2
             //# The server MUST send a HANDSHAKE_DONE
             //# frame as soon as it completes the handshake.
@@ -21,7 +26,7 @@ impl HandshakeStatus {
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.2
             //# the TLS handshake is considered confirmed at the
             //# server when the handshake completes.
-            self.send();
+            self.flag.send();
         }
     }
 
@@ -30,13 +35,32 @@ impl HandshakeStatus {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.2
         //# At the client, the handshake is
         //# considered confirmed when a HANDSHAKE_DONE frame is received.
-        self.finish();
+        self.flag.finish();
     }
 
     /// Returns `true` if the handshake has been confirmed
     pub fn is_confirmed(&self) -> bool {
         // As long as it's not in progress it should be considered confirmed
-        !self.is_idle()
+        !self.flag.is_idle()
+    }
+
+    /// Returns `true` if the handshake has been completed
+    pub fn is_complete(&self) -> bool {
+        todo!()
+    }
+
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) -> bool {
+        self.flag.on_packet_ack(ack_set)
+    }
+
+    /// This method gets called when a packet loss is reported
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+        self.flag.on_packet_loss(ack_set)
+    }
+
+    /// Queries the component for any outgoing frames that need to get sent
+    pub fn on_transmit<C: WriteContext>(&mut self, context: &mut C) -> Result<(), OnTransmitError> {
+        self.flag.on_transmit(context)
     }
 }
 
@@ -53,27 +77,13 @@ impl flag::Writer for HandshakeDoneWriter {
     }
 }
 
-impl Deref for HandshakeStatus {
-    type Target = Flag;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for HandshakeStatus {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
 impl transmission::interest::Provider for HandshakeStatus {
     #[inline]
     fn transmission_interest<Q: transmission::interest::Query>(
         &self,
         query: &mut Q,
     ) -> transmission::interest::Result {
-        self.0.transmission_interest(query)
+        self.flag.transmission_interest(query)
     }
 }
 
@@ -111,7 +121,7 @@ mod tests {
             "status should not transmit in default state"
         );
 
-        status.on_handshake_done();
+        status.on_handshake_complete();
         assert!(status.is_confirmed());
 
         assert_eq!(
@@ -120,7 +130,7 @@ mod tests {
             "status should express interest in deliver after handshake done"
         );
 
-        status.on_handshake_done();
+        status.on_handshake_complete();
         assert_eq!(
             status.get_transmission_interest(),
             transmission::Interest::NewData,

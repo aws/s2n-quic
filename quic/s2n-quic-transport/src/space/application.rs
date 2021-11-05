@@ -305,6 +305,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     }
 
     /// Signals the handshake is done
+    // FIXME pretty sure this should be handshake 'confirmed'
     pub fn on_handshake_done(
         &mut self,
         path: &Path<Config>,

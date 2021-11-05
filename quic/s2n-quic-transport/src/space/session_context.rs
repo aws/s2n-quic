@@ -316,21 +316,23 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
     }
 
     fn on_handshake_complete(&mut self) -> Result<(), transport::Error> {
-        // After the handshake is done, the handshake crypto stream should be completely
+        // After the handshake is complete, the handshake crypto stream should be completely
         // finished
         if let Some(space) = self.handshake.as_mut() {
             space.crypto_stream.finish()?;
         }
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.2
+        //# The server MUST send a HANDSHAKE_DONE
+        //# frame as soon as it completes the handshake.
+        self.handshake_status.on_handshake_complete();
+
         if let Some(application) = self.application.as_mut() {
             if Config::ENDPOINT_TYPE.is_server() {
-                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.2
-                //# The server MUST send a HANDSHAKE_DONE
-                //# frame as soon as it completes the handshake.
-                self.handshake_status.on_handshake_done();
-
-                // All of the other spaces are discarded by the time the handshake is confirmed so
+                // All of the other spaces are discarded by the time the handshake is complete so
                 // we only need to notify the application space
+                //
+                // FIXME pretty sure this should be handshake 'confirmed'
                 application.on_handshake_done(self.path, self.local_id_registry, self.now);
             }
             Ok(())
