@@ -138,7 +138,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
             handshake: None,
             application: None,
             zero_rtt_crypto: None,
-            handshake_status: HandshakeStatus::default(),
+            handshake_status: HandshakeStatus::Pending,
         }
     }
 

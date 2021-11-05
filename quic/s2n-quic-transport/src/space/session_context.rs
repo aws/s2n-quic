@@ -322,7 +322,8 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             space.crypto_stream.finish()?;
         }
 
-        self.handshake_status.on_handshake_complete();
+        self.handshake_status
+            .on_handshake_complete(Config::ENDPOINT_TYPE);
 
         if let Some(application) = self.application.as_mut() {
             if Config::ENDPOINT_TYPE.is_server() {
