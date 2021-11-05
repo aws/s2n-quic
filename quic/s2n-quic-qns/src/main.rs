@@ -27,7 +27,9 @@ async fn main() {
     #[cfg(feature = "dhat")]
     let _dhat = dhat::Dhat::start_heap_profiling();
 
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
 
     match Arguments::from_args_safe() {
         Ok(args) => {
