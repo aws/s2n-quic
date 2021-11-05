@@ -19,20 +19,29 @@ impl HandshakeStatus {
     /// This method is called on the server after the handshake has been completed
     pub fn on_handshake_complete(&mut self) {
         if self.flag.is_idle() {
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.2
-            //# The server MUST send a HANDSHAKE_DONE
-            //# frame as soon as it completes the handshake.
+            // TODO: the following requirement was removed from the final RFC.
+            // Confirm if the implementation can be optimized by relaxing the
+            // implemenated requirement.
+            //
+            // removed: [https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.2]
+            // The server MUST send a HANDSHAKE_DONE
+            // frame as soon as it completes the handshake.
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.2
+            //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.2
             //# the TLS handshake is considered confirmed at the
             //# server when the handshake completes.
+            //
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.3
+            //= type=TODO
+            //# The HANDSHAKE_DONE frame MUST be retransmitted until it is
+            //# acknowledged.
             self.flag.send();
         }
     }
 
     /// This method is called on the client when the HANDSHAKE_DONE frame has been received
     pub fn on_handshake_done_received(&mut self) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.2
+        //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.2
         //# At the client, the handshake is
         //# considered confirmed when a HANDSHAKE_DONE frame is received.
         self.flag.finish();
@@ -128,14 +137,14 @@ mod tests {
         assert_eq!(
             status.get_transmission_interest(),
             transmission::Interest::NewData,
-            "status should express interest in deliver after handshake done"
+            "status should express interest in deliver after handshake complete"
         );
 
         status.on_handshake_complete();
         assert_eq!(
             status.get_transmission_interest(),
             transmission::Interest::NewData,
-            "status should accept duplicate calls to handshake_done"
+            "status should accept duplicate calls to handshake_complete"
         );
 
         status.on_transmit(&mut context).unwrap();

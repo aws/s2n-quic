@@ -21,7 +21,7 @@ pub struct Session {
     endpoint: endpoint::Type,
     pub(crate) connection: Connection,
     state: callback::State,
-    handshake_done: bool,
+    handshake_complete: bool,
     send_buffer: BytesMut,
 }
 
@@ -42,7 +42,7 @@ impl Session {
             endpoint,
             connection,
             state: Default::default(),
-            handshake_done: false,
+            handshake_complete: false,
             send_buffer: BytesMut::new(),
         })
     }
@@ -97,9 +97,9 @@ impl tls::Session for Session {
         match result {
             Poll::Ready(Ok(())) => {
                 // only emit handshake done once
-                if !self.handshake_done {
+                if !self.handshake_complete {
                     context.on_handshake_complete()?;
-                    self.handshake_done = true;
+                    self.handshake_complete = true;
                 }
                 Ok(())
             }

@@ -20,7 +20,7 @@ pub struct Session {
     rx_phase: HandshakePhase,
     tx_phase: HandshakePhase,
     emitted_zero_rtt_keys: bool,
-    emitted_handshake_done: bool,
+    emitted_handshake_complete: bool,
 }
 
 impl fmt::Debug for Session {
@@ -39,7 +39,7 @@ impl Session {
             rx_phase: Default::default(),
             tx_phase: Default::default(),
             emitted_zero_rtt_keys: false,
-            emitted_handshake_done: false,
+            emitted_handshake_complete: false,
         }
     }
 
@@ -164,14 +164,14 @@ impl tls::Session for Session {
             // to bail if nothing changed
             has_tried_receive = true;
 
-            // we're done with the handshake!
+            // the handshake is complete!
             if self.tx_phase == HandshakePhase::Application && !self.connection.is_handshaking() {
-                if !self.emitted_handshake_done {
+                if !self.emitted_handshake_complete {
                     self.rx_phase.transition();
                     context.on_handshake_complete()?;
                 }
 
-                self.emitted_handshake_done = true;
+                self.emitted_handshake_complete = true;
                 return Ok(());
             }
 
@@ -231,7 +231,7 @@ impl tls::Session for Session {
                             context.on_one_rtt_keys(key, header_key, application_parameters)?;
 
                             // Transition the tx_phase to Application
-                            // Note: the rx_phase is transitioned when the handshake is done
+                            // Note: the rx_phase is transitioned when the handshake is complete
                             self.tx_phase.transition();
                         }
                     }

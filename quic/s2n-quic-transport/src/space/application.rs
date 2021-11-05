@@ -304,9 +304,8 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             .update_pto_timer(path, timestamp, is_handshake_confirmed);
     }
 
-    /// Signals the handshake is done
-    // FIXME pretty sure this should be handshake 'confirmed'
-    pub fn on_handshake_done(
+    /// Signals the handshake is confirmed
+    pub fn on_handshake_confirmed(
         &mut self,
         path: &Path<Config>,
         local_id_registry: &mut connection::LocalIdRegistry,
@@ -767,7 +766,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         local_id_registry: &mut connection::LocalIdRegistry,
         handshake_status: &mut HandshakeStatus,
     ) -> Result<(), transport::Error> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.20
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.20
         //# A server MUST
         //# treat receipt of a HANDSHAKE_DONE frame as a connection error of type
         //# PROTOCOL_VIOLATION.
@@ -779,7 +778,12 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         }
 
         handshake_status.on_handshake_done_received();
-        self.on_handshake_done(path, local_id_registry, datagram.timestamp);
+
+        //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.2
+        //# At the
+        //# client, the handshake is considered confirmed when a HANDSHAKE_DONE
+        //# frame is received.
+        self.on_handshake_confirmed(path, local_id_registry, datagram.timestamp);
 
         Ok(())
     }
