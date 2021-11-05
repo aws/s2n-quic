@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+
+#
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+
+set -e
+
+case "$PS" in
+    server*)
+        ./bin/record \
+          ../../target/perf/quinn/bin/perf_server \
+            --port $SERVER_PORT
+        ;;
+    client*)
+        ./bin/record \
+          ../../target/perf/quinn/bin/perf_client \
+            --download-size "$DOWNLOAD_BYTES" \
+            --upload-size "$UPLOAD_BYTES" \
+            --duration $DURATION \
+            localhost:$SERVER_PORT
+        ;;
+esac

@@ -22,6 +22,7 @@ env:
   CDN: https://dnglbrstg7yg.cloudfront.net
   LOG_URL: logs/latest/SERVER_CLIENT/TEST/index.html
   H3_SPEC_VERSION: v0.1.8
+  QUINN_REF: 730fdaf723eef125c175fbcdba1ac3fe3324f7ce
 
 jobs:
   env:
@@ -71,11 +72,14 @@ jobs:
           echo "Matrix: $MATRIX"
           echo "::set-output name=matrix::$MATRIX"
 
-  build:
+  s2n-quic-qns:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         mode: ["debug", "release"]
+    # enable debug information
+    env:
+      RUSTFLAGS: "-g"
     steps:
       - uses: actions/checkout@v2
         with:
@@ -107,6 +111,51 @@ jobs:
         with:
           name: s2n-quic-qns-${{ matrix.mode }}
           path: s2n-quic-qns/
+
+  quinn:
+    runs-on: ubuntu-latest
+    # enable debug information
+    env:
+      RUSTFLAGS: "-g"
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          repository: quinn-rs/quinn
+          ref: ${{ env.QUINN_REF }}
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - uses: camshaft/rust-cache@v1
+
+      - name: Cache quinn
+        id: cache
+        uses: actions/cache@v2.1.6
+        continue-on-error: true
+        with:
+          path: |
+            target/release/perf_client
+            target/release/perf_server
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-quinn-${{ hashFiles('**/Cargo.*') }}-${{ hashFiles('**/*.rs') }}
+
+      - name: Build quinn
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: cargo build --bin perf_client --bin perf_server --release
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p quinn
+          cp target/release/perf_client quinn/perf_client
+          cp target/release/perf_server quinn/perf_server
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: quinn
+          path: quinn/
 
   tshark:
     runs-on: ubuntu-latest
@@ -146,7 +195,7 @@ jobs:
 
   interop:
     runs-on: ubuntu-latest
-    needs: [env, build, tshark]
+    needs: [env, s2n-quic-qns, tshark]
     strategy:
       matrix: ${{ fromJson(needs.env.outputs.matrix) }}
     steps:
@@ -370,7 +419,7 @@ jobs:
 
   bench:
     runs-on: ubuntu-latest
-    needs: [env, build, tshark]
+    needs: [env, s2n-quic-qns, tshark]
     steps:
       - uses: actions/checkout@v2
         with:
@@ -468,7 +517,7 @@ jobs:
 
   h3spec:
     runs-on: ubuntu-latest
-    needs: [build]
+    needs: [s2n-quic-qns]
 
     steps:
       - uses: actions/download-artifact@v2
@@ -495,3 +544,86 @@ jobs:
             --skip "MUST send unexpected_message TLS alert if KeyUpdate in 1-RTT is received [TLS 6]" \
             --skip "MUST send missing_extension TLS alert if the quic_transport_parameters extension does not included [TLS 8.2]" \
             --skip "MUST send unexpected_message TLS alert if EndOfEarlyData is received [TLS 8.3]"
+
+  perf:
+    runs-on: ubuntu-latest
+    needs: [quinn, s2n-quic-qns]
+    strategy:
+      matrix:
+        include:
+          - client: "quinn"
+            server: "s2n-quic"
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+
+      - uses: camshaft/gha-perf@v0.1
+
+      - name: Install inferno
+        uses: camshaft/install@v1
+        with:
+          crate: inferno
+          bins: inferno-collapse-perf,inferno-flamegraph
+
+      - name: Install ultraman
+        uses: camshaft/install@v1
+        with:
+          crate: ultraman
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: s2n-quic-qns-release
+          path: target/release/
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: quinn
+          path: target/perf/quinn
+
+      - name: Run script
+        env:
+          # ultraman wants a SHELL var to spawn tasks
+          SHELL: /bin/bash
+        run: |
+          set -e
+          mkdir -p target/perf/results
+          sudo ./scripts/perf/test 1000 0 ${{ matrix.server }} ${{ matrix.client }}
+          sudo ./scripts/perf/test 750 250 ${{ matrix.server }} ${{ matrix.client }}
+          sudo ./scripts/perf/test 500 500 ${{ matrix.server }} ${{ matrix.client }}
+          sudo ./scripts/perf/test 250 750 ${{ matrix.server }} ${{ matrix.client }}
+          sudo ./scripts/perf/test 0 1000 ${{ matrix.server }} ${{ matrix.client }}
+          chmod -R 666 target/perf/results
+
+      - name: Prepare artifacts
+        run: |
+          cd ./target/perf/results
+          zip perf.zip **/*.script
+          rm -rf **/*.script
+
+      - uses: aws-actions/configure-aws-credentials@v1.5.11
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-1
+
+      # TODO split this out into a report task once we have more than one matrix entry
+      - name: Generate report
+        run: |
+          cd target/perf/results
+          tree -H "." -L 1 -T "Performance Results" --noreport --charset utf-8 -P "*.svg" > index.html
+
+      - name: Upload results
+        id: s3
+        run: |
+          TARGET="${{ github.sha }}/perf"
+          aws s3 sync target/perf/results "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          URL="$CDN/$TARGET/index.html"
+          echo "::set-output name=URL::$URL"
+
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
+        with:
+          name: 'perf / report'
+          status: 'success'
+          url: "${{ steps.s3.outputs.URL }}"

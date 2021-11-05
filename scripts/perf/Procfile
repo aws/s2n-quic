@@ -1,0 +1,3 @@
+server: ./bin/$SERVER
+# wait for the server to boot
+client: sleep 1 && ./bin/$CLIENT

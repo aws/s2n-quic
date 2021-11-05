@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+
+#
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+
+set -e
+
+if [ -z "$TMP_DIR" ] || [ -z "$TEST" ]; then
+    eval $@
+    exit 0
+fi
+
+if command -v "perf" &> /dev/null; then
+    eval perf record --output $TMP_DIR/$TEST.$PS.perf --call-graph dwarf --event cycles -- $@
+    exit 0
+fi
+
+# TODO dtrace
+
+# if we don't have support for recording, just forward on the command
+eval $@
