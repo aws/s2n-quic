@@ -48,7 +48,7 @@ pub trait Context<Crypto: CryptoSuite> {
         application_parameters: ApplicationParameters,
     ) -> Result<(), transport::Error>;
 
-    fn on_handshake_done(&mut self) -> Result<(), transport::Error>;
+    fn on_handshake_complete(&mut self) -> Result<(), transport::Error>;
 
     /// Receives data from the initial packet space
     ///

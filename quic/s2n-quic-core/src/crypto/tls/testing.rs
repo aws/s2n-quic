@@ -402,7 +402,7 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
         Ok(())
     }
 
-    fn on_handshake_done(&mut self) -> Result<(), transport::Error> {
+    fn on_handshake_complete(&mut self) -> Result<(), transport::Error> {
         assert!(!self.handshake_done, "handshake done called multiple times");
         self.handshake_done = true;
         self.log("handshake done");

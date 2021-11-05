@@ -315,7 +315,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         Ok(())
     }
 
-    fn on_handshake_done(&mut self) -> Result<(), transport::Error> {
+    fn on_handshake_complete(&mut self) -> Result<(), transport::Error> {
         // After the handshake is done, the handshake crypto stream should be completely
         // finished
         if let Some(space) = self.handshake.as_mut() {
