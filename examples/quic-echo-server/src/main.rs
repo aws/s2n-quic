@@ -2,8 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use s2n_quic::Server;
-use s2n_quic_core::crypto::tls::testing::certificates::{CERT_PEM, KEY_PEM};
 use std::error::Error;
+
+pub static CERT_PEM: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../quic/s2n-quic-core/certs/cert.pem"
+));
+pub static KEY_PEM: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../quic/s2n-quic-core/certs/key.pem"
+));
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
