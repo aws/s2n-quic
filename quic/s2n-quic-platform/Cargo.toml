@@ -17,7 +17,7 @@ wipe = ["zeroize"]
 bolero-generator = { version = "0.6", default-features = false, optional = true }
 cfg-if = "1"
 errno = "0.2"
-futures = { version = "0.3", optional = true }
+futures = { version = "0.3", default-features = false, features = ["async-await"], optional = true }
 lazy_static = { version = "1", optional = true }
 pin-project = { version = "1", optional = true }
 s2n-quic-core = { version = "0.1.0", path = "../s2n-quic-core", default-features = false }
