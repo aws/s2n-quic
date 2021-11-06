@@ -13,7 +13,18 @@ if [ -z "$TMP_DIR" ] || [ -z "$TEST" ]; then
 fi
 
 if command -v "perf" &> /dev/null; then
-    eval perf record --output $TMP_DIR/$TEST.$PS.perf --call-graph dwarf --event cycles -- $@
+    eval perf record --output $TMP_DIR/$TEST.$PS.perf --call-graph dwarf --event cycles -- $@ &
+    PERF_PID=$!
+
+    # rewrite sigterm to sigint
+    function shutdown() {
+        kill -INT "$PERF_PID"
+    }
+
+    trap shutdown SIGTERM
+
+    wait $PERF_PID
+
     exit 0
 fi
 

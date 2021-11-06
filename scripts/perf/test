@@ -32,12 +32,12 @@ SERVER=$SERVER \
   TMP_DIR=$TMP_DIR \
   OUT_DIR=$OUT_DIR \
   TEST=$TEST \
-  ultraman start
+  ultraman start --no-timestamp
 
 function flamegraph() {
-  if [ -f "$OUT_DIR/$TEST.$0.0.stacks" ]; then
+  if [ -f "$OUT_DIR/$TEST.$0.1.stacks" ]; then
     echo "$0 - generating flamegraph"
-    inferno-flamegraph "$OUT_DIR/$TEST.$0.0.stacks" \
+    inferno-flamegraph "$OUT_DIR/$TEST.$0.1.stacks" \
       --title "$1 $0 - $TITLE" \
       > $OUT_DIR/$TEST.$0.svg
 

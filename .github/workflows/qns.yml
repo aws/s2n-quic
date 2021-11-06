@@ -94,7 +94,7 @@ jobs:
 
       - uses: camshaft/rust-cache@v1
         with:
-          key: ${{ matrix.mode }}
+          key: ${{ matrix.mode }}-${{ env.RUSTFLAGS }}
 
       - name: Run cargo build
         uses: actions-rs/cargo@v1.0.3
