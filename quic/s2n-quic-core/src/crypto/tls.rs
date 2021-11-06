@@ -48,7 +48,12 @@ pub trait Context<Crypto: CryptoSuite> {
         application_parameters: ApplicationParameters,
     ) -> Result<(), transport::Error>;
 
-    fn on_handshake_done(&mut self) -> Result<(), transport::Error>;
+    //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.1
+    //# The TLS handshake is considered complete when the
+    //# TLS stack has reported that the handshake is complete.  This happens
+    //# when the TLS stack has both sent a Finished message and verified the
+    //# peer's Finished message.
+    fn on_handshake_complete(&mut self) -> Result<(), transport::Error>;
 
     /// Receives data from the initial packet space
     ///

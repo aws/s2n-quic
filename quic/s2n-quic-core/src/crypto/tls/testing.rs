@@ -116,7 +116,7 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
 
     /// Returns true if `poll` should be called
     pub fn is_handshaking(&self) -> bool {
-        !(self.server.1.handshake_done && self.client.1.handshake_done)
+        !(self.server.1.handshake_complete && self.client.1.handshake_complete)
     }
 
     /// Continues progress of the handshake
@@ -164,7 +164,7 @@ pub struct Context<C: CryptoSuite> {
     pub handshake: Space<C::HandshakeKey>,
     pub application: Space<C::OneRttKey>,
     pub zero_rtt_crypto: Option<C::ZeroRttKey>,
-    pub handshake_done: bool,
+    pub handshake_complete: bool,
     pub sni: Option<Bytes>,
     pub alpn: Option<Bytes>,
     pub transport_parameters: Option<Bytes>,
@@ -177,7 +177,7 @@ impl<C: CryptoSuite> Default for Context<C> {
             handshake: Space::default(),
             application: Space::default(),
             zero_rtt_crypto: None,
-            handshake_done: false,
+            handshake_complete: false,
             sni: None,
             alpn: None,
             transport_parameters: None,
@@ -192,7 +192,7 @@ impl<C: CryptoSuite> fmt::Debug for Context<C> {
             .field("handshake", &self.handshake)
             .field("application", &self.application)
             .field("zero_rtt_crypto", &self.zero_rtt_crypto.is_some())
-            .field("handshake_done", &self.handshake_done)
+            .field("handshake_complete", &self.handshake_complete)
             .field("sni", &self.sni)
             .field("alpn", &self.alpn)
             .field("transport_parameters", &self.transport_parameters)
@@ -241,7 +241,7 @@ impl<C: CryptoSuite> Context<C> {
             self.application.crypto.is_some(),
             "missing application crypto"
         );
-        assert!(self.handshake_done);
+        assert!(self.handshake_complete);
         assert!(self.alpn.is_some());
         assert!(self.transport_parameters.is_some());
     }
@@ -402,10 +402,13 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
         Ok(())
     }
 
-    fn on_handshake_done(&mut self) -> Result<(), transport::Error> {
-        assert!(!self.handshake_done, "handshake done called multiple times");
-        self.handshake_done = true;
-        self.log("handshake done");
+    fn on_handshake_complete(&mut self) -> Result<(), transport::Error> {
+        assert!(
+            !self.handshake_complete,
+            "handshake complete called multiple times"
+        );
+        self.handshake_complete = true;
+        self.log("handshake complete");
         Ok(())
     }
 

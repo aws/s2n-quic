@@ -273,14 +273,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     }
 
     pub fn is_handshake_complete(&self) -> bool {
-        match Config::ENDPOINT_TYPE {
-            endpoint::Type::Server => self.is_handshake_confirmed(),
-            endpoint::Type::Client => {
-                // TODO https://github.com/awslabs/s2n-quic/issues/338
-                // Return true after the client has received the ServerFinished message
-                self.is_handshake_confirmed()
-            }
-        }
+        self.handshake_status.is_complete()
     }
 
     pub(crate) fn on_transmit_close(
