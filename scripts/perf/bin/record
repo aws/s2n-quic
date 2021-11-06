@@ -17,13 +17,13 @@ if command -v "perf" &> /dev/null; then
     PERF_PID=$!
 
     # rewrite sigterm to sigint
-    function shutdown() {
-        kill -INT "$PERF_PID"
+    function handle_term() {
+        kill -INT "$PERF_PID" 2>/dev/null
     }
 
-    trap shutdown SIGTERM
+    trap 'handle_term' TERM INT
 
-    wait $PERF_PID
+    wait $PERF_PID 2>/dev/null
 
     exit 0
 fi

@@ -34,18 +34,25 @@ SERVER=$SERVER \
   TEST=$TEST \
   ultraman start --no-timestamp
 
-function flamegraph() {
-  if [ -f "$OUT_DIR/$TEST.$0.1.stacks" ]; then
-    echo "$0 - generating flamegraph"
-    inferno-flamegraph "$OUT_DIR/$TEST.$0.1.stacks" \
-      --title "$1 $0 - $TITLE" \
-      > $OUT_DIR/$TEST.$0.svg
+function report() {
+  echo "$1 - generating report"
+  TMP_DIR=$TMP_DIR \
+    OUT_DIR=$OUT_DIR \
+    TEST=$TEST \
+    PS="$1.1" \
+    ./bin/report
 
-    echo "$0 - flamegraph available in $OUT_DIR/$TEST.$0.svg"
+  if [ -f "$OUT_DIR/$TEST.$1.1.stacks" ]; then
+    echo "$1 - generating flamegraph"
+    inferno-flamegraph "$OUT_DIR/$TEST.$1.1.stacks" \
+      --title "$2 $1 - $TITLE" \
+      > $OUT_DIR/$TEST.$1.svg
+
+    echo "$1 - flamegraph available in $OUT_DIR/$TEST.$1.svg"
   fi
 }
 
-flamegraph client $CLIENT
-flamegraph server $SERVER
+report client $CLIENT
+report server $SERVER
 
 rm -rf $TMP
