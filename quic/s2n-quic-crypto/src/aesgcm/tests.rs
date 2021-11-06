@@ -51,7 +51,11 @@ macro_rules! impl_tests {
             use hex_literal::hex;
             use testing::$name::Implementation;
 
-            fn ensure_match(impls: &[Implementation], input: &Input<KEY_LEN>) -> Vec<u8> {
+            fn ensure_match(
+                impls: &[Implementation],
+                input: &Input<KEY_LEN>,
+                flip_idx: Option<usize>,
+            ) -> Vec<u8> {
                 let mut outcomes = vec![];
                 let mut failed_decrypts = vec![];
 
@@ -74,6 +78,18 @@ macro_rules! impl_tests {
                         output: output.clone(),
                     };
                     outcomes.push(outcome);
+
+                    // flip some arbitrary index and make sure it doesn't authenticate
+                    if let Some(flip_idx) = flip_idx {
+                        let mut output = output.clone();
+                        let idx = flip_idx % output.len();
+                        output[idx] = !output[idx];
+
+                        let (encrypted, tag) = output.split_at_mut(payload.len());
+                        let tag = (&*tag).try_into().unwrap();
+
+                        assert!(key.decrypt(&input.nonce, aad, encrypted, tag).is_err());
+                    }
 
                     // decrypt the encrypted payload and make sure it matches
                     {
@@ -108,9 +124,42 @@ macro_rules! impl_tests {
 
                 assert!(!impls.is_empty());
 
-                check!().with_type().for_each(|input| {
-                    ensure_match(impls, input);
+                check!().with_type().for_each(|(input, flip_idx)| {
+                    ensure_match(impls, input, Some(*flip_idx));
                 })
+            }
+
+            /// ensures that we can't pull a valid payload out of thin air
+            #[test]
+            fn decrypt_failure_test() {
+                let impls = testing::$name::implementations();
+
+                assert!(!impls.is_empty());
+
+                check!()
+                    .with_type()
+                    .for_each(|(input, tag): &(Input<KEY_LEN>, [u8; TAG_LEN])| {
+                        for imp in impls {
+                            let key = imp.new(input.key);
+                            let name = imp.name();
+                            let (aad, ciphertext) = input.aad_and_payload();
+                            let mut ciphertext = ciphertext.to_vec();
+
+                            // ensure we have at least a tag in the payload
+                            ciphertext.extend(tag);
+
+                            let payload_len = ciphertext.len() - TAG_LEN;
+
+                            let (ciphertext, tag) = ciphertext.split_at_mut(payload_len);
+                            let tag = (&*tag).try_into().unwrap();
+
+                            assert!(
+                                key.decrypt(&input.nonce, aad, ciphertext, tag).is_err(),
+                                "{} authenticated a fabricated packet",
+                                name
+                            );
+                        }
+                    })
             }
 
             #[test]
@@ -122,7 +171,7 @@ macro_rules! impl_tests {
                 let tests = $test_vectors;
 
                 for (input, ciphertext_and_tag) in tests.iter() {
-                    let actual = ensure_match(impls, input);
+                    let actual = ensure_match(impls, input, None);
                     assert_eq!(&actual, ciphertext_and_tag);
                 }
             }
@@ -154,6 +203,7 @@ macro_rules! impl_tests {
                             aad_len: 0,
                             aad_and_payload: vec![1; payload_len],
                         },
+                        None,
                     );
                 }
             }

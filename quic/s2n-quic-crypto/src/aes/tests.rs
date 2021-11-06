@@ -89,6 +89,22 @@ impl_tests!(aes128, {
             hex!("00112233445566778899aabbccddeeff"),
             hex!("69c4e0d86a7b0430d8cdb78070b4c55a"),
         ),
+        // https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/aes/AESAVS.pdf
+        (
+            hex!("00000000000000000000000000000000"),
+            hex!("80000000000000000000000000000000"),
+            hex!("3ad78e726c1ec02b7ebfe92b23d9ec34"),
+        ),
+        (
+            hex!("00000000000000000000000000000000"),
+            hex!("c0000000000000000000000000000000"),
+            hex!("aae5939c8efdf2f04e60b9fe7117b2c2"),
+        ),
+        (
+            hex!("00000000000000000000000000000000"),
+            hex!("e0000000000000000000000000000000"),
+            hex!("f031d4d74f5dcbf39daaf8ca3af6e527"),
+        ),
     ]
 });
 
@@ -104,6 +120,22 @@ impl_tests!(aes256, {
             hex!("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
             hex!("00112233445566778899aabbccddeeff"),
             hex!("8ea2b7ca516745bfeafc49904b496089"),
+        ),
+        // https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/aes/AESAVS.pdf
+        (
+            hex!("0000000000000000000000000000000000000000000000000000000000000000"),
+            hex!("80000000000000000000000000000000"),
+            hex!("ddc6bf790c15760d8d9aeb6f9a75fd4e"),
+        ),
+        (
+            hex!("0000000000000000000000000000000000000000000000000000000000000000"),
+            hex!("c0000000000000000000000000000000"),
+            hex!("0a6bdc6d4c1e6280301fd8e97ddbe601"),
+        ),
+        (
+            hex!("0000000000000000000000000000000000000000000000000000000000000000"),
+            hex!("e0000000000000000000000000000000"),
+            hex!("9b80eefb7ebe2d2b16247aa0efc72f5d"),
         ),
     ]
 });

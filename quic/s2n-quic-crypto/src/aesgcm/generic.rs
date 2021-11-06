@@ -53,7 +53,7 @@ where
         aad: &[u8],
         mut payload: P,
     ) -> [u8; TAG_LEN] {
-        debug_assert!(
+        assert!(
             A::ROUNDS >= N,
             "The number of encryption rounds must be at least the batch size"
         );
@@ -85,22 +85,19 @@ where
         let mut partial_blocks = batch_rem;
         let payload_rem = payload_len % BLOCK_LEN;
 
-        // set to true if the ek0 counter can be encrypted alongside the last batch
-        let can_interleave_ek0;
         // set it to an out of bounds index if we don't need it
         let mut last_block_idx = N + 1;
 
-        if payload_rem == 0 {
-            can_interleave_ek0 = true;
-        } else {
+        if payload_rem > 0 {
             // add another partial block to be processed
             required_blocks += 1;
             partial_blocks += 1;
             // set the last block index to the batch remainder
             last_block_idx = batch_rem;
-            // we can only interleave ek0 if we have a spare block
-            can_interleave_ek0 = last_block_idx < N - 1;
         }
+
+        // set to true if the ek0 counter can be encrypted alongside the last batch
+        let can_interleave_ek0 = batch_rem < N - 1;
 
         required_blocks += payload_block_count;
 
@@ -284,6 +281,11 @@ where
         if tag.ct_eq(&expected_tag).into() {
             Ok(())
         } else {
+            // NOTE: We should ideally be zeroizing the payload when decryption fails
+            //       as the output could potentially have sensitive data. _However_,
+            //       in s2n-quic we zeroize all received packets anyway, so we would
+            //       end up zeroizing payloads twice. In the case that this code is used outside
+            //       of s2n-quic _please_ zeroize the `payload`.
             Err(Error)
         }
     }
