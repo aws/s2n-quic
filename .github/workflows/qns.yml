@@ -577,10 +577,13 @@ jobs:
           name: s2n-quic-qns-release
           path: target/release/
 
+      - name: Rename s2n-quic-qns
+        run: mv target/release/s2n-quic-qns-release target/release/s2n-quic-qns
+
       - uses: actions/download-artifact@v2
         with:
           name: quinn
-          path: target/perf/quinn
+          path: target/perf/quinn/bin/
 
       - name: Run script
         env:
