@@ -211,7 +211,7 @@
   },
   "transferloss": {
     "aioquic": ["client"],
-    "kwik": ["client"],
+    "kwik": [],
     "lsquic": ["client"],
     "msquic": [],
     "mvfst": ["client"],
@@ -239,7 +239,7 @@
   },
   "transfercorruption": {
     "aioquic": ["client"],
-    "kwik": ["client"],
+    "kwik": [],
     "lsquic": ["client"],
     "msquic": [],
     "mvfst": ["client"],
