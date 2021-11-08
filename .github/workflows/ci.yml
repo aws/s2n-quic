@@ -316,9 +316,6 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
-    env:
-      GRCOV_CONFIG: --branch --llvm --ignore-not-existing --source-dir .
-      GRCOV_IGNORE: --ignore '**/compliance/**' --ignore 'quic/s2n-quic-qns/**' --ignore '**/tests/**' --ignore '**/test/**' --ignore '**/testing/**' --ignore '**/testing.rs' --ignore '**/tests.rs' --ignore '**/.cargo/registry/**' --ignore '*flume*'
     steps:
       - uses: actions/checkout@v2
         with:
@@ -334,37 +331,38 @@ jobs:
         with:
           toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
           override: true
+          components: llvm-tools-preview
 
       - uses: camshaft/rust-cache@v1
 
-      - name: Install grcov
-        uses: camshaft/install@v1
-        with:
-          crate: grcov
-
-      - name: Install covfix
-        uses: camshaft/install@v1
-        with:
-          crate: rust-covfix
+      - name: Install cargo-llvm-cov
+        run: curl -LsSf https://github.com/taiki-e/cargo-llvm-cov/releases/latest/download/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz | tar xzf - -C ~/.cargo/bin
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1.0.3
         with:
-          command: test
-          args: --no-fail-fast --workspace --exclude s2n-quic-qns --all-features
-        env:
-          # From https://github.com/mozilla/grcov#example-how-to-generate-gcda-files-for-a-rust-project
-          RUSTFLAGS: -Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests
+          command: llvm-cov
+          args: --html --no-fail-fast --workspace --exclude s2n-quic-qns --exclude s2n-quic-events --exclude cargo-compliance --all-features
 
-      - name: Run grcov lcov
+      - uses: aws-actions/configure-aws-credentials@v1.5.11
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-1
+
+      - name: Upload results
+        id: s3
         run: |
-          eval grcov $GRCOV_CONFIG $GRCOV_IGNORE --output-type lcov --output-path coverage.unfiltered.lcov ./target/debug
+          TARGET="${{ github.sha }}/coverage"
+          aws s3 sync target/llvm-cov/html "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          URL="$CDN/$TARGET/index.html"
+          echo "::set-output name=URL::$URL"
 
-      - name: Run covfix
-        run: rust-covfix -o coverage.lcov coverage.unfiltered.lcov
-
-      # TODO: Switch to source coverage and create coverage report
-      #       See https://github.com/awslabs/s2n-quic/issues/226
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
+        with:
+          name: 'coverage / report'
+          status: 'success'
+          url: "${{ steps.s3.outputs.URL }}"
 
   examples:
     runs-on: ubuntu-latest
