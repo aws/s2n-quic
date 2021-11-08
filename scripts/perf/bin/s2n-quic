@@ -9,14 +9,12 @@ set -e
 
 case "$PS" in
     server*)
-        exec ./bin/record \
           ../../target/release/s2n-quic-qns \
             perf \
             server \
             --port $SERVER_PORT
         ;;
     client*)
-        ./bin/record \
           ../../target/release/s2n-quic-qns \
             perf \
             client \

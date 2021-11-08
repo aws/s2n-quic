@@ -9,12 +9,10 @@ set -e
 
 case "$PS" in
     server*)
-        exec ./bin/record \
           ../../target/perf/quinn/bin/perf_server \
             --port $SERVER_PORT
         ;;
     client*)
-        ./bin/record \
           ../../target/perf/quinn/bin/perf_client \
             --download-size "$DOWNLOAD_BYTES" \
             --upload-size "$UPLOAD_BYTES" \

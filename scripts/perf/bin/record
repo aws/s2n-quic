@@ -7,17 +7,16 @@
 
 set -e
 
+RECORD=""
+
 if [ -z "$TMP_DIR" ] || [ -z "$TEST" ]; then
-    exec $@
-    exit 0
+    return;
 fi
 
 if command -v "perf" &> /dev/null; then
-    exec perf record --output $TMP_DIR/$TEST.$PS.perf --call-graph dwarf --event cycles -- $@
-    exit 0
+    RECORD="perf record --output $TMP_DIR/$TEST.$PS.perf --call-graph dwarf --event cycles --"
+    return;
 fi
 
 # TODO dtrace
 
-# if we don't have support for recording, just forward on the command
-exec $@
