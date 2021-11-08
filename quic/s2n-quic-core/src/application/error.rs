@@ -27,7 +27,7 @@ impl core::fmt::Debug for Error {
 impl Error {
     /// An error code that can be used when the application cannot provide
     /// a more meaningful code.
-    pub const UNKNOWN: Self = Self(VarInt::MAX);
+    pub const UNKNOWN: Self = Self(VarInt::from_u8(0));
 
     /// Creates an `ApplicationErrorCode` from an unsigned integer.
     ///
