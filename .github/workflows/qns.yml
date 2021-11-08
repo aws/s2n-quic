@@ -619,7 +619,7 @@ jobs:
       - name: Generate report
         run: |
           cd target/perf/results
-          tree -H "." -L 1 -T "Performance Results" --noreport --charset utf-8 -P "*.svg" > index.html
+          tree -H "." -T "Performance Results" --noreport --charset utf-8 > index.html
 
       - name: Upload results
         id: s3
