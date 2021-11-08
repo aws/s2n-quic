@@ -7,7 +7,6 @@ edition = "2018"
 [dependencies]
 bytes = { version = "1", default-features = false }
 s2n-quic = { version = "0.1", path = "../../quic/s2n-quic" }
-s2n-quic-core = { version = "0.1", path = "../../quic/s2n-quic-core", features = ["testing"] }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
 
 [workspace]
