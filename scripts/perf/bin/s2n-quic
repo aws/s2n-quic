@@ -16,7 +16,7 @@ case "$PS" in
             --port $SERVER_PORT
         ;;
     client*)
-        exec ./bin/record \
+        ./bin/record \
           ../../target/release/s2n-quic-qns \
             perf \
             client \

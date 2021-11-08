@@ -14,7 +14,7 @@ case "$PS" in
             --port $SERVER_PORT
         ;;
     client*)
-        exec ./bin/record \
+        ./bin/record \
           ../../target/perf/quinn/bin/perf_client \
             --download-size "$DOWNLOAD_BYTES" \
             --upload-size "$UPLOAD_BYTES" \
