@@ -9,9 +9,4 @@ set -e
 
 ./scripts/perf/build
 
-# allow running perf without sudo
-if [ -f /proc/sys/kernel/perf_event_paranoid ]; then
-    sudo sh -c 'echo 1 >/proc/sys/kernel/perf_event_paranoid'
-fi
-
-./scripts/perf/test $@
+sudo env PATH="$PATH" ./scripts/perf/test $@

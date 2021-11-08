@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
 #
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
@@ -9,12 +9,12 @@ set -e
 
 case "$PS" in
     server*)
-        ./bin/record \
+        exec ./bin/record \
           ../../target/perf/quinn/bin/perf_server \
             --port $SERVER_PORT
         ;;
     client*)
-        ./bin/record \
+        exec ./bin/record \
           ../../target/perf/quinn/bin/perf_client \
             --download-size "$DOWNLOAD_BYTES" \
             --upload-size "$UPLOAD_BYTES" \
