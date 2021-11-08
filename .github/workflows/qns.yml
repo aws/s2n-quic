@@ -596,11 +596,11 @@ jobs:
         run: |
           set -e
           mkdir -p target/perf/results
-          sudo env "PATH=$PATH" ./scripts/perf/test 1000 0 ${{ matrix.server }} ${{ matrix.client }}
-          sudo env "PATH=$PATH" ./scripts/perf/test 750 250 ${{ matrix.server }} ${{ matrix.client }}
-          sudo env "PATH=$PATH" ./scripts/perf/test 500 500 ${{ matrix.server }} ${{ matrix.client }}
-          sudo env "PATH=$PATH" ./scripts/perf/test 250 750 ${{ matrix.server }} ${{ matrix.client }}
-          sudo env "PATH=$PATH" ./scripts/perf/test 0 1000 ${{ matrix.server }} ${{ matrix.client }}
+          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 1000 0 ${{ matrix.server }} ${{ matrix.client }}
+          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 750 250 ${{ matrix.server }} ${{ matrix.client }}
+          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 500 500 ${{ matrix.server }} ${{ matrix.client }}
+          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 250 750 ${{ matrix.server }} ${{ matrix.client }}
+          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 0 1000 ${{ matrix.server }} ${{ matrix.client }}
           sudo chown -R $(whoami) target/perf/results
 
       - name: Prepare artifacts
