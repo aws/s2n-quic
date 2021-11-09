@@ -117,7 +117,7 @@ impl<'a, S: Stream, Config: endpoint::Config> Normal<'a, S, Config> {
         {
             // send HANDSHAKE_DONE frames first, if needed, to ensure the handshake is confirmed as
             // soon as possible
-            let _ = self.handshake_status.on_transmit(context);
+            self.handshake_status.on_transmit(context);
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2
             //# An endpoint MAY include other frames with the PATH_CHALLENGE and

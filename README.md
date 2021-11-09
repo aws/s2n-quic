@@ -59,7 +59,7 @@ $ cargo bolero test varint -p s2n-quic-core -s NONE -T 30sec
 ```
 
 ```bash
-cargo bolero test "path::manager::fuzz_target" -p s2n-quic-transport -T30sec --toolchain nightly-2021-09-12
+cargo bolero test "path::manager::fuzz_target::cm_model_test" -p s2n-quic-transport -T 30sec --toolchain nightly-2021-09-12 -s NONE
 ```
 
 ### Testing all the things
