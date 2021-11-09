@@ -24,7 +24,7 @@ use std::{
 };
 use structopt::StructOpt;
 use tokio::spawn;
-use tracing::info;
+use tracing::debug;
 
 #[derive(Debug, StructOpt)]
 pub struct Interop {
@@ -94,7 +94,7 @@ impl Interop {
                         let context = connection
                             .query_event_context(|context: &MyConnectionContext| *context)
                             .expect("query should execute");
-                        println!("Final stats: {:?}", context);
+                        debug!("Final stats: {:?}", context);
                         return;
                     }
                     Err(err) => {
@@ -102,7 +102,7 @@ impl Interop {
                         let context = connection
                             .query_event_context(|context: &MyConnectionContext| *context)
                             .expect("query should execute");
-                        println!("Final stats: {:?}", context);
+                        debug!("Final stats: {:?}", context);
                         return;
                     }
                 }
@@ -248,7 +248,7 @@ impl Subscriber for EventSubscriber {
         meta: &events::ConnectionMeta,
         event: &events::ActivePathUpdated,
     ) {
-        info!("{:?} {:?}", meta.id, event);
+        debug!("{:?} {:?}", meta.id, event);
     }
 
     fn on_packet_sent(
@@ -265,6 +265,35 @@ impl Subscriber for EventSubscriber {
         _meta: &events::EndpointMeta,
         event: &events::PlatformFeatureConfigured,
     ) {
-        info!("{:?}", event.configuration)
+        debug!("{:?}", event.configuration)
+    }
+
+    fn on_frame_sent(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        meta: &events::ConnectionMeta,
+        event: &events::FrameSent,
+    ) {
+        if let events::EndpointType::Server { .. } = meta.endpoint_type {
+            if let events::Frame::HandshakeDone { .. } = event.frame {
+                debug!("{:?} Handshake is complete and confirmed at Server! HANDSHAKE_DONE frame was sent", meta)
+            }
+        }
+    }
+
+    fn on_frame_received(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        meta: &events::ConnectionMeta,
+        event: &events::FrameReceived,
+    ) {
+        if let events::EndpointType::Client { .. } = meta.endpoint_type {
+            if let events::Frame::HandshakeDone { .. } = event.frame {
+                debug!(
+                    "{:?} Handshake is confirmed at Client. HANDSHAKE_DONE frame was received",
+                    meta
+                )
+            }
+        }
     }
 }
