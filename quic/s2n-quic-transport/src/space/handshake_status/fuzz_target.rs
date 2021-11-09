@@ -39,7 +39,18 @@ impl Oracle {
         }
     }
 
+    fn can_transmit(&self) -> bool {
+        // if the server endpoint is complete but has not yet
+        // delivered the HANDSHAKE_DONE
+        if self.endpoint_type.is_server() && self.complete && !self.handshake_done_delivered {
+            return true;
+        }
+
+        false
+    }
+
     fn on_handshake_complete(&mut self) {
+        self.pending = false;
         self.complete = true;
         if self.endpoint_type.is_server() {
             self.confirmed = true;
@@ -109,7 +120,7 @@ struct Model {
 impl Model {
     fn new(endpoint_type: endpoint::Type) -> Self {
         Model {
-            subject: HandshakeStatus::Pending,
+            subject: HandshakeStatus::InProgress,
             oracle: Oracle::new(endpoint_type),
         }
     }
@@ -127,14 +138,22 @@ impl Model {
             Operation::ReceivedHandshakeDone {} => self.on_handshake_done_received(),
         }
     }
+
     fn on_complete(&mut self) {
-        self.subject
-            .on_handshake_complete(self.oracle.endpoint_type);
-        self.oracle.on_handshake_complete();
+        if !self.oracle.complete {
+            self.subject
+                .on_handshake_complete(self.oracle.endpoint_type);
+            self.oracle.on_handshake_complete();
+        }
     }
 
     fn packet_transmit(&mut self) {
-        if matches!(self.subject, HandshakeStatus::ServerCompleteConfirmed(_)) {
+        if self.oracle.can_transmit() {
+            assert!(matches!(
+                self.subject,
+                HandshakeStatus::ServerCompleteConfirmed(_)
+            ));
+
             let mut frame_buffer = OutgoingFrameBuffer::new();
             let mut context = MockWriteContext::new(
                 time::now(),
@@ -145,6 +164,9 @@ impl Model {
                 self.oracle.endpoint_type,
             );
             self.subject.on_transmit(&mut context);
+            // verify that the subject wrote a frame
+            assert!(!frame_buffer.is_empty());
+
             self.oracle.on_transmit();
         }
     }
@@ -191,9 +213,10 @@ impl Model {
         assert_eq!(self.subject.is_complete(), self.oracle.complete);
         assert_eq!(self.subject.is_confirmed(), self.oracle.confirmed);
 
-        if matches!(self.subject, HandshakeStatus::Pending) {
-            assert!(self.oracle.pending);
-        }
+        assert_eq!(
+            self.oracle.pending,
+            matches!(self.subject, HandshakeStatus::InProgress)
+        );
         if matches!(self.subject, HandshakeStatus::Confirmed) {
             assert!(self.oracle.complete);
             assert!(self.oracle.confirmed);
@@ -206,9 +229,9 @@ impl Model {
             }
 
             if self.oracle.handshake_done_sent {
-                assert!(!matches!(self.subject, HandshakeStatus::Pending));
+                assert!(!matches!(self.subject, HandshakeStatus::InProgress));
                 if let HandshakeStatus::ServerCompleteConfirmed(flag) = &self.subject {
-                    // HANDSHAKE_DONE should either needs transmisssion or is in-flight
+                    // HANDSHAKE_DONE should either needs transmission or is in-flight
                     assert!(!flag.is_idle());
                 }
             }

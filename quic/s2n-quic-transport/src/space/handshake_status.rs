@@ -6,61 +6,69 @@ use s2n_quic_core::{ack, frame::HandshakeDone, packet::number::PacketNumber};
 
 pub type Flag = flag::Flag<HandshakeDoneWriter>;
 
-// The handshake status is used to track the handshake progress. As the handshake
-// proceeds, it unlocks certain progress on the connection i.e. discarding keys,
-// sending and receiving 1-rtt packets.
-//
-// The handshake status transitions from Pending -> Complete -> Confirmed. However
-// the progress differs between the Client and Server. The chart below captures
-// these different requirements.
-//
-//         | Complete                 Confirmed
-// ---------------------------------------------------------
-//  server | TLS-completes            TLS-completes
-//         |
-//  client | TLS-completes            HANDSHAKE_DONE received
-//         |                          or 1-rtt acked
-//
-// TLS-completes: TLS stack reports the handshake as complete. This happens when
-//                the TLS stack has sent the Finished message and verified peer's
-//                Finished message.
-//
-// The major differences between the Client and Server include:
-// - the hanshake is complete and confirmed once the TLS-completes on the Server.
-// - the Server is required to send a HANDSHAKE_DONE frame once the handshake completes.
-// - the Client must wait for a HANDSHAKE_DONE (or an acked 1-rtt packet) to 'Confirm'
-// the handshake.
+/// The handshake status is used to track the handshake progress.
+///
+/// As the handshake proceeds, it unlocks certain progress on the connection i.e.
+/// discarding keys, sending and receiving 1-rtt packets.
+///
+/// The handshake status transitions from Pending -> Complete -> Confirmed. However
+/// the progress differs between the Client and Server. The chart below captures
+/// these different requirements.
+///
+/// |        | Complete         | Confirmed                  |
+/// |--------|------------------|----------------------------|
+/// | server | TLS-completes    | TLS-completes              |
+/// |        |                  |                            |
+/// | client | TLS-completes    | HANDSHAKE_DONE received    |
+/// |        |                  | or 1-rtt acked             |
+///
+/// TLS-completes: TLS stack reports the handshake as complete. This happens when
+///                the TLS stack has sent the Finished message and verified peer's
+///                Finished message.
+///
+/// The major differences between the Client and Server include:
+/// - the handshake is complete and confirmed once the TLS-completes on the Server.
+/// - the Server is required to send a HANDSHAKE_DONE frame once the handshake completes.
+/// - the Client must wait for a HANDSHAKE_DONE (or an acked 1-rtt packet) to 'Confirm'
+/// the handshake.
 #[derive(Debug)]
 pub enum HandshakeStatus {
-    // Awaiting handshake completion
-    Pending,
+    /// Awaiting handshake completion
+    InProgress,
 
-    // Client handshake Complete
-    //
-    // Transient state while client awaits HANDSHAKE_DONE or
-    // 1-rtt packet ack
+    /// Client handshake Complete
+    ///
+    /// Transient state while client awaits HANDSHAKE_DONE or
+    /// 1-rtt packet ack
     ClientComplete,
 
-    // Server handshake Complete
-    //
-    // Transient state where server awaits sending a HANDSHAKE_DONE
+    /// Server handshake Complete
+    ///
+    /// Transient state where server awaits sending a HANDSHAKE_DONE
     ServerCompleteConfirmed(Flag),
 
-    // Terminal state requiring no further action
+    /// Terminal state requiring no further action
     Confirmed,
+}
+
+impl Default for HandshakeStatus {
+    fn default() -> Self {
+        HandshakeStatus::InProgress
+    }
 }
 
 impl HandshakeStatus {
     /// Returns `true` if the handshake has been completed
+    #[inline]
     pub fn is_complete(&self) -> bool {
         // The handshake is complete once its not Pending
-        !matches!(self, HandshakeStatus::Pending)
+        !matches!(self, HandshakeStatus::InProgress)
     }
 
     /// Returns `true` if the handshake has been confirmed
     pub fn is_confirmed(&self) -> bool {
         match self {
-            HandshakeStatus::Pending | HandshakeStatus::ClientComplete => false,
+            HandshakeStatus::InProgress | HandshakeStatus::ClientComplete => false,
             HandshakeStatus::ServerCompleteConfirmed(_) => {
                 //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.2
                 //# the TLS handshake is considered confirmed at the
@@ -84,21 +92,24 @@ impl HandshakeStatus {
 
     /// This method is called after the TLS handshake has been completed
     pub fn on_handshake_complete(&mut self, endpoint_type: endpoint::Type) {
-        if let HandshakeStatus::Pending = self {
-            if endpoint_type.is_server() {
-                // TODO: the following requirement was removed from the final RFC.
-                // Confirm if the implementation can be optimized by relaxing the
-                // implemenated requirement.
-                //
-                // removed: [https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.2]
-                // The server MUST send a HANDSHAKE_DONE
-                // frame as soon as it completes the handshake.
-                let mut flag = Flag::default();
-                flag.send();
-                *self = HandshakeStatus::ServerCompleteConfirmed(flag);
-            } else {
-                *self = HandshakeStatus::ClientComplete;
-            }
+        debug_assert!(
+            matches!(self, Self::InProgress),
+            "on_handshake_complete should only be called once."
+        );
+
+        if endpoint_type.is_server() {
+            // TODO: the following requirement was removed from the final RFC.
+            // Confirm if the implementation can be optimized by relaxing the
+            // implemented requirement.
+            //
+            // removed: [https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.2]
+            // The server MUST send a HANDSHAKE_DONE
+            // frame as soon as it completes the handshake.
+            let mut flag = Flag::default();
+            flag.send();
+            *self = HandshakeStatus::ServerCompleteConfirmed(flag);
+        } else {
+            *self = HandshakeStatus::ClientComplete;
         }
     }
 
@@ -155,8 +166,6 @@ impl transmission::interest::Provider for HandshakeStatus {
         &self,
         query: &mut Q,
     ) -> transmission::interest::Result {
-        // TODO introduce a timer or mechanism to prevent the HANDSHAKE_DONE frame
-        // from being sent too often.
         if let HandshakeStatus::ServerCompleteConfirmed(flag) = self {
             flag.transmission_interest(query)
         } else {
@@ -186,7 +195,7 @@ mod tests {
             endpoint::Type::Server,
         );
 
-        let mut status = HandshakeStatus::Pending;
+        let mut status = HandshakeStatus::default();
 
         assert!(!status.is_confirmed());
         assert!(!status.is_complete());
@@ -214,13 +223,6 @@ mod tests {
             status.get_transmission_interest(),
             transmission::Interest::NewData,
             "status should express interest in deliver after handshake complete"
-        );
-
-        status.on_handshake_complete(endpoint::Type::Server);
-        assert_eq!(
-            status.get_transmission_interest(),
-            transmission::Interest::NewData,
-            "status should accept duplicate calls to handshake_complete"
         );
 
         status.on_transmit(&mut context);
@@ -257,7 +259,7 @@ mod tests {
             endpoint::Type::Client,
         );
 
-        let mut status = HandshakeStatus::Pending;
+        let mut status = HandshakeStatus::default();
 
         assert!(!status.is_complete());
         assert!(!status.is_confirmed());
