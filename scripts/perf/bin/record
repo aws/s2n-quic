@@ -1,0 +1,22 @@
+#!/bin/sh
+
+#
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+
+set -e
+
+RECORD=""
+
+if [ -z "$TMP_DIR" ] || [ -z "$TEST" ]; then
+    return;
+fi
+
+if command -v "perf" &> /dev/null; then
+    RECORD="perf record --output $TMP_DIR/$TEST.$PS.perf --call-graph dwarf --event cycles --"
+    return;
+fi
+
+# TODO dtrace
+

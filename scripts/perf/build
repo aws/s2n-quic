@@ -11,12 +11,17 @@ if ! command -v "inferno-collapse-perf" &> /dev/null; then
   cargo install inferno
 fi
 
-if [ ! -f target/perf/quinn/bin/perf_client ]; then
+if ! command -v "ultraman" &> /dev/null; then
+  cargo install ultraman
+fi
+
+if [ ! -f target/perf/quinn/bin/perf_client ] || [ ! -f target/perf/quinn/bin/perf_server ]; then
   mkdir -p target/perf/quinn
   cargo +stable install \
     --git https://github.com/quinn-rs/quinn \
     --rev 730fdaf723eef125c175fbcdba1ac3fe3324f7ce \
     --bin perf_client \
+    --bin perf_server \
     --root target/perf/quinn \
     --target-dir target/perf/quinn \
     perf
@@ -27,4 +32,3 @@ RUSTFLAGS="-g" cargo \
   build \
   --bin s2n-quic-qns \
   --release
-

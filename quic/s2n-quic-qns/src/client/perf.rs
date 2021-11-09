@@ -38,6 +38,9 @@ pub struct Perf {
 
     #[structopt(long)]
     disable_gso: bool,
+
+    #[structopt(short, long, default_value = "::")]
+    local_ip: std::net::IpAddr,
 }
 
 impl Perf {
@@ -52,7 +55,8 @@ impl Perf {
             if let Some(hostname) = self.hostname.as_deref() {
                 connect = connect.with_hostname(hostname);
             } else {
-                // TODO set insecure flag
+                // TODO allow skipping setting the hostname
+                connect = connect.with_hostname("localhost");
             }
             let connection = client.connect(connect).await?;
 
@@ -97,7 +101,8 @@ impl Perf {
             .build()?;
 
         // TODO support specifying a local addr
-        let mut io_builder = io::Default::builder();
+        let mut io_builder =
+            io::Default::builder().with_receive_address((self.local_ip, 0u16).into())?;
 
         if self.disable_gso {
             io_builder = io_builder.with_gso_disabled()?;

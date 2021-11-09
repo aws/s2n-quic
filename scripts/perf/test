@@ -9,69 +9,50 @@ set -e
 
 DOWNLOAD_MB=${1:-1000}
 UPLOAD_MB=${2:-0}
+SERVER=${3:-s2n-quic}
+CLIENT=${4:-quinn}
+DURATION=${5-10}
 
-TMP=$(mktemp -d -t s2n-quic-perf-XXXXXXXXXX)
-FILE="${DOWNLOAD_MB}MB-down-${UPLOAD_MB}MB-up"
+TEST="${DOWNLOAD_MB}MB-down-${UPLOAD_MB}MB-up"
 TITLE="${DOWNLOAD_MB}MB Download, ${UPLOAD_MB}MB Upload"
-DOWNLOAD_B=$(($DOWNLOAD_MB * 1000000))
-UPLOAD_B=$(($UPLOAD_MB * 1000000))
-OUT=target/perf/results
+DOWNLOAD_BYTES=$(($DOWNLOAD_MB * 1000000))
+UPLOAD_BYTES=$(($UPLOAD_MB * 1000000))
 
-mkdir -p $OUT
-chmod 766 $OUT
+TMP_DIR=$(mktemp -d -t s2n-quic-perf-XXXXXXXXXX)
+OUT_DIR="$(pwd)/target/perf/results/${CLIENT}-client-${SERVER}-server"
+mkdir -p $OUT_DIR
 
-RUST_BACKTRACE=1 perf record \
-  --output $TMP/$FILE.perf \
-  --call-graph dwarf \
-  --event cycles \
-  -- \
-  ./target/release/s2n-quic-qns \
-  perf \
-  server \
-  --connections 1 \
-  --port 4433 &
-PERF_PID=$!
+cd scripts/perf
+SERVER=$SERVER \
+  CLIENT=$CLIENT \
+  DOWNLOAD_BYTES=$DOWNLOAD_BYTES \
+  UPLOAD_BYTES=$UPLOAD_BYTES \
+  DURATION=$DURATION \
+  SERVER_PORT=4433 \
+  TMP_DIR=$TMP_DIR \
+  OUT_DIR=$OUT_DIR \
+  TEST=$TEST \
+  ultraman start --no-timestamp
 
-function stop_server() {
-  echo "shutting down server"
-  kill $PERF_PID
-  echo $1
-  exit 1
+function report() {
+  echo "$1 - generating report"
+  TMP_DIR=$TMP_DIR \
+    OUT_DIR=$OUT_DIR \
+    TEST=$TEST \
+    PS="$1.1" \
+    ./bin/report
+
+  if [ -f "$OUT_DIR/$TEST.$1.1.stacks" ]; then
+    echo "$1 - generating flamegraph"
+    inferno-flamegraph "$OUT_DIR/$TEST.$1.1.stacks" \
+      --title "$2 $1 - $TITLE" \
+      > $OUT_DIR/$TEST.$1.svg
+
+    echo "$1 - flamegraph available in $OUT_DIR/$TEST.$1.svg"
+  fi
 }
 
-echo "waiting for server to boot"
-sleep 3
-
-echo "executing request"
-./target/perf/quinn/bin/perf_client \
-  --download-size "$DOWNLOAD_B" \
-  --upload-size "$UPLOAD_B" \
-  --duration 10 \
-  localhost:4433 || stop_server "failed to finish the request"
-
-echo "waiting for server to shut down"
-wait $PERF_PID
-
-echo "folding events"
-perf script \
-  --input $TMP/$FILE.perf \
-  2>/dev/null \
-  > $OUT/$FILE.script
-chmod 666 $OUT/$FILE.script
-
-cat \
-  $OUT/$FILE.script \
-  | inferno-collapse-perf \
-  > $OUT/$FILE.folded
-chmod 666 $OUT/$FILE.folded
-
-echo "generating flamegraph"
-mkdir -p target/perf/results
-inferno-flamegraph $OUT/$FILE.folded \
-  --title "$TITLE" \
-  > $OUT/$FILE.svg
-chmod 666 $OUT/$FILE.svg
+report client $CLIENT
+report server $SERVER
 
 rm -rf $TMP
-
-echo "flamegraph available in $OUT/$FILE.svg"

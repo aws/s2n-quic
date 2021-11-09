@@ -389,67 +389,6 @@ jobs:
         # TODO make sure the example actually runs as well
         run: cargo build
 
-  perf:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          submodules: true
-
-      - uses: actions-rs/toolchain@v1.0.7
-        id: toolchain
-        with:
-          toolchain: stable
-          override: true
-
-      - uses: camshaft/gha-perf@v0.1
-
-      - name: Setup perf
-        run: |
-          sudo sh -c 'echo -1 >/proc/sys/kernel/perf_event_paranoid'
-
-      - uses: camshaft/rust-cache@v1
-
-      - name: Install inferno
-        uses: camshaft/install@v1
-        with:
-          crate: inferno
-          bins: inferno-collapse-perf,inferno-flamegraph
-
-      - name: Build
-        run: ./scripts/perf/build
-
-      - name: Run script
-        run: |
-          mkdir -p ./target/perf/results
-          sudo env "PATH=$PATH" ./scripts/perf/test-all
-
-      - name: Prepare artifacts
-        run: |
-          cd ./target/perf/results
-          zip perf.zip *.script
-          rm *.script
-
-      - uses: aws-actions/configure-aws-credentials@v1.5.11
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
-
-      - name: Upload results
-        id: s3
-        run: |
-          TARGET="${{ github.sha }}/perf"
-          aws s3 sync target/perf/results "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/index.html"
-          echo "::set-output name=URL::$URL"
-
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        with:
-          name: 'perf / report'
-          status: 'success'
-          url: "${{ steps.s3.outputs.URL }}"
-
   recovery-simulations:
     runs-on: ubuntu-latest
     steps:

@@ -9,5 +9,4 @@ set -e
 
 ./scripts/perf/build
 
-mkdir -p target/perf/results
-sudo env "PATH=$PATH" ./scripts/perf/test $@
+sudo env PATH="$PATH" ./scripts/perf/test $@

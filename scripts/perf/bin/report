@@ -1,0 +1,30 @@
+#!/bin/sh
+
+#
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+
+set -e
+
+if [ -z "$TMP_DIR" ] || [ -z "$OUT_DIR" ] || [ -z "$TEST" ]; then
+    exit 0
+fi
+
+if command -v "perf" &> /dev/null; then
+    echo "folding perf events"
+
+    perf script \
+      --input $TMP_DIR/$TEST.$PS.perf \
+      2>/dev/null \
+      > $OUT_DIR/$TEST.$PS.script
+
+    cat \
+      $OUT_DIR/$TEST.$PS.script \
+      | inferno-collapse-perf \
+      > $OUT_DIR/$TEST.$PS.stacks
+
+    exit 0
+fi
+
+# TODO implement dtrace
