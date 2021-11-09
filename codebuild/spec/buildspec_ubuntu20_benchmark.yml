@@ -1,0 +1,43 @@
+---
+version: 0.2
+env:
+  variables:
+    ARTIFACT_BUCKET: s3://s2n-quic-logs/main
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.9
+    commands:
+      - MAIN_SHA=$(echo $CODEBUILD_WEBHOOK_EVENT | jq -r .pull_request.head.sha )
+      - echo $MAIN_SHA
+      - curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg
+      - echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list
+      - apt update -y && apt install -y clang-12 sudo cmake gh
+      - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      - . $HOME/.cargo/env
+      - rustup default nightly
+  pre_build:
+    commands:
+      - MAIN_SHA=$(echo CODEBUILD_WEBHOOK_EVENT | jq -r .pull_request.head.sha )
+      - mkdir -p target/criterion || true
+      - aws s3 cp ${ARTIFACT_BUCKET}/${ARTIFACT_FILE}_${MAIN_SHA}.zip .
+      - unzip -o ${ARTIFACT_FILE}_${MAIN_SHA}.zip -d ./target/criterion
+  build:
+    commands:
+      - cargo bench --bench bench --load-baseline new --baseline main | tee bench.log
+  post_build:
+    commands:
+      - echo "Checking for negative results..."
+      - test $(grep -c 'Performance has regressed' ./bench.log ) -eq 0
+      - echo "Checking for positive/netrual results (must be > 0)"
+      - test $(grep -ce 'No change' -e 'Change within noise' -e 'Performance has improved' ./bench.log) -gt 0
+artifacts:
+  files:
+    - "**/index.html"
+    - "**/*.svg"
+    - "**/*.json"
+  base-directory: "target/criterion"
+  name: benchmark_$(CODEBUILD_RESOLVED_SOURCE_VERSION).zip
+  discard-paths: no
+

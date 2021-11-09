@@ -1,0 +1,25 @@
+---
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.x
+  pre_build:
+    commands:
+      - apt update -y && apt install -y clang-12 sudo cmake
+      - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      - . $HOME/.cargo/env
+      - rustup default nightly
+  build:
+    commands:
+      - cargo bench -- --save-baseline main
+artifacts:
+  files:
+    - "**/index.html"
+    - "**/*.svg"
+    - "**/*.json"
+  base-directory: "target/criterion"
+  name: benchmark_$(CODEBUILD_RESOLVED_SOURCE_VERSION).zip
+  discard-paths: no
+
