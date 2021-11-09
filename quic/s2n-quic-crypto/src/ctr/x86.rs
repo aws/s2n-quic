@@ -28,16 +28,6 @@ impl ctr::Ctr for Ctr {
     }
 
     #[inline(always)]
-    fn bit_counts(aad_len: usize, payload_len: usize) -> Self::Block {
-        let aad_bits = aad_len * 8;
-        let payload_bits = payload_len * 8;
-        unsafe {
-            debug_assert!(Avx2::is_supported());
-            _mm_set_epi32(0, aad_bits as _, 0, payload_bits as _).reverse()
-        }
-    }
-
-    #[inline(always)]
     fn block(&self) -> __m128i {
         self.0.reverse()
     }

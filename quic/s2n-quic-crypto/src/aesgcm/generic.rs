@@ -63,18 +63,15 @@ where
         // payload includes the tag so don't round up
         let payload_len = payload.len();
 
-        // create a block with the AAD and payload lengths
-        let bit_counts = C::bit_counts(aad_len, payload_len);
-
         // keep track of the number of blocks required to hash
         // start off with 1 for the `bit_counts` block
-        let mut required_blocks = 1;
+        let mut required_ghash_blocks = 1;
 
         // load the AAD into the first ghash batch
         let (mut ghash_blocks, mut aad_block_count) = aad_blocks(aad);
 
         // add the AAD blocks to the required size
-        required_blocks += aad_block_count;
+        required_ghash_blocks += aad_block_count;
 
         // initialize the cipher blocks to hold the encryption stream
         let mut cipher_blocks = [B::zeroed(); N];
@@ -90,19 +87,22 @@ where
 
         if payload_rem > 0 {
             // add another partial block to be processed
-            required_blocks += 1;
+            required_ghash_blocks += 1;
             partial_blocks += 1;
             // set the last block index to the batch remainder
             last_block_idx = batch_rem;
         }
 
         // set to true if the ek0 counter can be encrypted alongside the last batch
+        //
+        // this is only true if the batches have a spare slot at the end
         let can_interleave_ek0 = batch_rem < N - 1;
+        let mut did_interleave_ek0 = false;
 
-        required_blocks += payload_block_count;
+        required_ghash_blocks += payload_block_count;
 
         // initialize the ghash state with the number of blocks we plan on hashing
-        let mut ghash_state = self.ghash.start(required_blocks);
+        let mut ghash_state = self.ghash.start(required_ghash_blocks);
 
         // initialize the counter with the provided nonce
         let mut ctr = C::new(nonce);
@@ -113,7 +113,7 @@ where
         /// Performs a single batch which will interleave the AES-CTR stream
         /// cipher with the previous GHash batch
         macro_rules! batch {
-            ($ghash_check:expr, $ghash_after:expr) => {
+            ($($ghash_check:expr)?) => {
                 // initialize the cipher blocks with the current counter values
                 cipher_blocks.update(
                     #[inline(always)]
@@ -129,6 +129,7 @@ where
                     unsafe {
                         unsafe_assert!(cipher_blocks.len() > N - 1);
                         *cipher_blocks.get_unchecked_mut(N - 1) = ek0;
+                        did_interleave_ek0 = true;
                     }
                 }
 
@@ -137,7 +138,7 @@ where
                     &mut cipher_blocks,
                     #[inline(always)]
                     |idx| {
-                        if idx >= N || !($ghash_check) {
+                        if idx >= N $( || !($ghash_check))? {
                             return;
                         }
 
@@ -146,7 +147,6 @@ where
                             ghash_blocks.get_unchecked(idx)
                         };
                         self.ghash.update(&mut ghash_state, block);
-                        $ghash_after;
 
                         // force the compiler to interleave the AES and GHash instructions.
                         // without this, it will reorder and be drastically slower
@@ -157,7 +157,12 @@ where
         }
 
         // perform an initial batch for the AAD and initial payload
-        batch!(aad_block_count > 0, aad_block_count -= 1);
+        batch!(if let Some(next) = aad_block_count.checked_sub(1) {
+            aad_block_count = next;
+            true
+        } else {
+            false
+        });
 
         // iterate over all of the remaining full batches
         while let Some(count) = payload_block_count.checked_sub(N) {
@@ -184,7 +189,7 @@ where
             );
 
             // apply a full batch without any constraints
-            batch!(true, {});
+            batch!();
         }
 
         unsafe {
@@ -225,6 +230,10 @@ where
 
         // if we had spare capacity then extract the ek0 value, otherwise it needs
         // to be encrypted in its own round
+        debug_assert_eq!(
+            can_interleave_ek0, did_interleave_ek0,
+            "ek0 could have been interleaved but wasn't"
+        );
         if can_interleave_ek0 {
             ek0 = unsafe {
                 unsafe_assert!(cipher_blocks.len() > N - 1);
@@ -235,6 +244,7 @@ where
         }
 
         // hash the aad and payload bit counts
+        let bit_counts = B::from_array(bit_counts(aad_len, payload_len));
         self.ghash.update(&mut ghash_state, &bit_counts);
 
         // finalize the ghash and xor the tag with the encrypted ek0
@@ -318,4 +328,19 @@ where
     }
 
     (blocks, block_count)
+}
+
+#[inline(always)]
+fn bit_counts(aad_len: usize, payload_len: usize) -> [u8; BLOCK_LEN] {
+    use core::mem::size_of;
+
+    let aad_bits = (aad_len * 8) as u64;
+    let payload_bits = (payload_len * 8) as u64;
+
+    let mut counts = [0u8; BLOCK_LEN];
+
+    counts[..size_of::<u64>()].copy_from_slice(&aad_bits.to_be_bytes());
+    counts[size_of::<u64>()..].copy_from_slice(&payload_bits.to_be_bytes());
+
+    counts
 }

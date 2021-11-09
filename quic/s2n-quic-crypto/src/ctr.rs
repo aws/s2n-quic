@@ -10,7 +10,6 @@ pub trait Ctr {
     type Block: Block;
 
     fn new(nonce: &[u8; NONCE_LEN]) -> Self;
-    fn bit_counts(aad_len: usize, payload_len: usize) -> Self::Block;
     fn block(&self) -> Self::Block;
     fn increment(&mut self);
 }
