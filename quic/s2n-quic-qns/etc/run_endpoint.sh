@@ -49,7 +49,7 @@ if [ -d "/certs" ]; then
     if [ "$ROLE" == "server" ]; then
         SERVER_PARAMS+=" --private-key /certs/priv.key --certificate /certs/cert.pem"
     elif [ "$ROLE" == "client" ]; then
-        CLIENT_PARAMS+=" --ca /certs/cert.pem"
+        CLIENT_PARAMS+=" --ca /certs/ca.pem"
     fi
 fi
 
@@ -63,3 +63,4 @@ elif [ "$ROLE" == "server" ]; then
     $QNS_BIN $QNS_MODE server \
         $SERVER_PARAMS 2>&1 | tee $LOG
 fi
+
