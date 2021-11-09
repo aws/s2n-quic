@@ -16,22 +16,21 @@ use s2n_quic::{
     Client,
 };
 use std::{
+    collections::{hash_map::Entry, HashMap},
     path::{Path, PathBuf},
     sync::Arc,
 };
 use structopt::StructOpt;
-use tokio::{fs::File, spawn};
+use tokio::{fs::File, net::lookup_host, spawn};
+use url::{Host, Url};
 
 #[derive(Debug, StructOpt)]
 pub struct Interop {
-    #[structopt(short, long, default_value = "::1")]
-    ip: std::net::IpAddr,
+    #[structopt(short, long)]
+    ip: Option<std::net::IpAddr>,
 
     #[structopt(short, long, default_value = "443")]
     port: u16,
-
-    #[structopt(short, long)]
-    hostname: Option<String>,
 
     #[structopt(long)]
     ca: Option<PathBuf>,
@@ -52,23 +51,14 @@ pub struct Interop {
     testcase: Option<Testcase>,
 
     #[structopt(min_values = 1, required = true)]
-    requests: Vec<String>,
+    requests: Vec<Url>,
 }
 
 impl Interop {
     pub async fn run(&self) -> Result<()> {
         let client = self.client()?;
 
-        let mut connect = Connect::new((self.ip, self.port));
-        if let Some(hostname) = self.hostname.as_deref() {
-            connect = connect.with_hostname(hostname);
-        } else {
-            // TODO make this optional?
-            connect = connect.with_hostname("localhost");
-        }
-
         let download_dir = Arc::new(self.download_dir.clone());
-
         if self.requests.len() > 1 && download_dir.is_none() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -77,28 +67,37 @@ impl Interop {
             .into());
         }
 
+        let endpoints = self.endpoints().await?;
+
         // https://github.com/marten-seemann/quic-interop-runner#test-cases
         // Handshake Loss (multiconnect): Tests resilience of the handshake to high loss.
         // The client is expected to establish multiple connections, sequential or in parallel,
         // and use each connection to download a single file.
         if let Some(Testcase::Multiconnect) = self.testcase {
             for request in &self.requests {
-                create_connection(
-                    client.clone(),
-                    connect.clone(),
-                    core::iter::once(request.clone()),
-                    download_dir.clone(),
-                )
-                .await?;
+                let connect = endpoints.get(&request.host().unwrap()).unwrap().clone();
+                let requests = core::iter::once(request.path().to_string());
+                create_connection(client.clone(), connect, requests, download_dir.clone()).await?;
             }
         } else {
-            create_connection(
-                client.clone(),
-                connect.clone(),
-                self.requests.clone(),
-                download_dir,
-            )
-            .await?;
+            // establish a connection per endpoint rather than per request
+            for (host, connect) in endpoints.iter() {
+                let host = host.clone();
+                let connect = connect.clone();
+                let requests = self
+                    .requests
+                    .iter()
+                    .filter_map(|req| {
+                        if req.host().as_ref() == Some(&host) {
+                            Some(req.path().to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                create_connection(client.clone(), connect, requests, download_dir.clone()).await?;
+            }
         }
 
         return Ok(());
@@ -172,7 +171,7 @@ impl Interop {
         let client = Client::builder()
             .with_io(io)?
             .with_tls(tls)?
-            .with_event(event::disabled::Provider)?
+            .with_event(event::tracing::Provider::default())?
             .start()
             .unwrap();
 
@@ -185,6 +184,51 @@ impl Interop {
         } else {
             s2n_quic_core::crypto::tls::testing::certificates::CERT_PEM.into_certificate()?
         })
+    }
+
+    async fn endpoints(&self) -> Result<HashMap<Host<&str>, Connect>> {
+        let mut endpoints = HashMap::new();
+
+        for req in &self.requests {
+            if let Some(host) = req.host() {
+                if let Entry::Vacant(entry) = endpoints.entry(host.clone()) {
+                    let (ip, hostname) = match host {
+                        Host::Domain(domain) => {
+                            let ip = if let Some(ip) = self.ip {
+                                ip
+                            } else {
+                                lookup_host((domain, self.port))
+                                    .await?
+                                    .next()
+                                    .unwrap_or_else(|| {
+                                        panic!("host {:?} did not resolve to any addresses", domain)
+                                    })
+                                    .ip()
+                            };
+
+                            (ip, Some(domain))
+                        }
+                        Host::Ipv4(ip) => (ip.into(), None),
+                        Host::Ipv6(ip) => (ip.into(), None),
+                    };
+
+                    let port = req.port().unwrap_or(self.port);
+
+                    let connect = Connect::new((ip, port));
+
+                    let connect = if let Some(hostname) = hostname {
+                        connect.with_hostname(hostname)
+                    } else {
+                        // TODO make it optional
+                        connect.with_hostname("localhost")
+                    };
+
+                    entry.insert(connect);
+                }
+            }
+        }
+
+        Ok(endpoints)
     }
 }
 

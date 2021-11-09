@@ -1100,8 +1100,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut publisher,
             )?;
 
-            // Currently, the application space does not have any crypto state.
-            // If, at some point, we decide to add it, we need to call `update_crypto_state` here.
+            // Make progress on the handshake if we're the client
+            if Config::ENDPOINT_TYPE.is_client() && self.is_handshaking() {
+                self.update_crypto_state(datagram.timestamp, subscriber)?;
+            }
 
             // notify the connection a packet was processed
             self.on_processed_packet(datagram.timestamp);
