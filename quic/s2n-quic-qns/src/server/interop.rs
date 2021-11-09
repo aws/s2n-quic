@@ -213,8 +213,7 @@ fn is_supported_testcase(testcase: Testcase) -> bool {
         ZeroRtt => false,
         // TODO integrate a H3 implementation
         Http3 => false,
-        // Multiconnect is client only
-        Multiconnect => false,
+        Multiconnect => true,
         Ecn => true,
         ConnectionMigration => true,
     }
