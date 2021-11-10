@@ -1,10 +1,10 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3"
+target = "https://www.rfc-editor.org/rfc/rfc9001.txt#6.3"
 
 [[TODO]]
 quote = '''
 Endpoints responding to an apparent key update MUST NOT generate a
 timing side-channel signal that might indicate that the Key Phase bit
-was invalid (see Section 9.4).
+was invalid (see Section 9.5).
 '''
 tracking-issue = "318"
 feature = "Key update"
@@ -12,19 +12,19 @@ feature = "Key update"
 [[TODO]]
 quote = '''
 An endpoint MAY
-perform this process as part of packet processing, but this creates a
-timing signal that can be used by an attacker to learn when key
-updates happen and thus the value of the Key Phase bit in certain
-packets.
+generate new keys as part of packet processing, but this creates a
+timing signal that could be used by an attacker to learn when key
+updates happen and thus leak the value of the Key Phase bit.
 '''
 tracking-issue = "318"
 feature = "Key update"
 
 [[TODO]]
 quote = '''
-Endpoints MAY instead defer the creation of the next set of
-receive packet protection keys until some time after a key update
-completes, up to three times the PTO; see Section 6.5.
+For a short period after a key
+update completes, up to the PTO, endpoints MAY defer generation of
+the next set of receive packet protection keys.  This allows
+endpoints to retain only two sets of receive keys; see Section 6.5.
 '''
 tracking-issue = "478"
 feature = "Key update"

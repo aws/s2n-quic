@@ -1,4 +1,4 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#9.2"
+target = "https://www.rfc-editor.org/rfc/rfc9001.txt#9.2"
 
 [[exception]]
 quote = '''
@@ -13,8 +13,8 @@ s2n-quic.
 
 [[exception]]
 quote = '''
-QUIC extensions MUST describe how replay attacks affect their
-operation, or prohibit their use in 0-RTT.
+QUIC extensions MUST either describe how replay attacks affect their
+operation or prohibit the use of the extension in 0-RTT.
 '''
 reason = '''
 s2n-quic does not define any additional extensions

@@ -1,10 +1,10 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.4"
+target = "https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.4"
 
 [[TODO]]
 quote = '''
 While waiting for TLS processing to
 complete, an endpoint SHOULD buffer received packets if they might be
-processed using keys that aren't yet available.
+processed using keys that are not yet available.
 '''
 feature = "Async handshake"
 tracking-issue = "298"

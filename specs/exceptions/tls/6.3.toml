@@ -1,11 +1,10 @@
 [[exception]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3"
+target = "https://www.rfc-editor.org/rfc/rfc9001.txt#6.3"
 quote = '''
 An endpoint MAY
-perform this process as part of packet processing, but this creates a
-timing signal that can be used by an attacker to learn when key
-updates happen and thus the value of the Key Phase bit in certain
-packets.
+generate new keys as part of packet processing, but this creates a
+timing signal that could be used by an attacker to learn when key
+updates happen and thus leak the value of the Key Phase bit.
 '''
 reason = '''
 We are not performing key generations as part of packet processing, so we do not
