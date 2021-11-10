@@ -63,6 +63,7 @@ impl<B: Buffer> Queue<B> {
 
             // > On success, these calls return the number of characters sent.
             // > On error, -1 is returned, and errno is set appropriately.
+            println!("---------- sendmsg {:?} {:?}", msg, flags);
             match libc!(sendmsg(sockfd, msg, flags)) {
                 Ok(_len) => {
                     count += 1;
@@ -104,7 +105,8 @@ impl<B: Buffer> Queue<B> {
 
                     return Ok(count);
                 }
-                Err(_) => {
+                Err(err) => {
+                    println!("---------- err {:?}", err);
                     // Ignore other transmission errors
                     // - Permissions issues are observed in case of unsuitable iptable
                     //   rules. Those can be changed while the application is running.

@@ -275,15 +275,15 @@ impl Io {
         let rx;
         let tx;
 
-        cfg_if! {
-            if #[cfg(any(s2n_quic_platform_socket_msg, s2n_quic_platform_socket_mmsg))] {
-                rx = socket::Queue::<buffer::Buffer>::new(buffer::Buffer::default(), max_segments.into());
-                tx = socket::Queue::<buffer::Buffer>::new(buffer::Buffer::default(), max_segments.into());
-            } else {
-                rx = Default::default();
-                tx = Default::default();
-            }
-        }
+        // cfg_if! {
+        // if #[cfg(any(s2n_quic_platform_socket_msg, s2n_quic_platform_socket_mmsg))] {
+        //     rx = socket::Queue::<buffer::Buffer>::new(buffer::Buffer::default(), max_segments.into());
+        //     tx = socket::Queue::<buffer::Buffer>::new(buffer::Buffer::default(), max_segments.into());
+        // } else {
+        rx = Default::default();
+        tx = Default::default();
+        // }
+        // }
 
         let instance = Instance {
             clock,
@@ -480,15 +480,15 @@ impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
             mut endpoint,
         } = self;
 
-        cfg_if! {
-            if #[cfg(any(s2n_quic_platform_socket_msg, s2n_quic_platform_socket_mmsg))] {
-                let rx_socket = tokio::io::unix::AsyncFd::new(rx_socket)?;
-                let tx_socket = tokio::io::unix::AsyncFd::new(tx_socket)?;
-            } else {
-                let rx_socket = async_fd_shim::AsyncFd::new(rx_socket)?;
-                let tx_socket = async_fd_shim::AsyncFd::new(tx_socket)?;
-            }
-        }
+        // cfg_if! {
+        //     if #[cfg(any(s2n_quic_platform_socket_msg, s2n_quic_platform_socket_mmsg))] {
+        //         let rx_socket = tokio::io::unix::AsyncFd::new(rx_socket)?;
+        //         let tx_socket = tokio::io::unix::AsyncFd::new(tx_socket)?;
+        //     } else {
+        let rx_socket = async_fd_shim::AsyncFd::new(rx_socket)?;
+        let tx_socket = async_fd_shim::AsyncFd::new(tx_socket)?;
+        // }
+        // }
 
         /// Even if there is no progress to be made, wake up the task at least once a second
         const DEFAULT_TIMEOUT: Duration = Duration::from_secs(1);
