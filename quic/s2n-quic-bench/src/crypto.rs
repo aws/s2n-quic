@@ -3,14 +3,12 @@
 
 use criterion::Criterion;
 
-mod crypto;
-mod frame;
-mod packet;
-mod varint;
+mod aes;
+mod aesgcm;
+mod ghash;
 
 pub fn benchmarks(c: &mut Criterion) {
-    crypto::benchmarks(c);
-    frame::benchmarks(c);
-    packet::benchmarks(c);
-    varint::benchmarks(c);
+    aes::benchmarks(c);
+    aesgcm::benchmarks(c);
+    ghash::benchmarks(c);
 }
