@@ -394,7 +394,7 @@
         $("#client").append(result.clients.map(e => makeButton("client", e)));
         $("#server").append(result.servers.map(e => makeButton("server", e)));
         if (result.hasOwnProperty("tests"))
-            $("#test").append(Object.keys(result.tests).map(e => makeButton("test", e, makeTooltip(result.tests[e].name, result.tests[e].desc))));
+        $("#test").append(Object.keys(result.tests).map(e => makeButton("test", e, makeTooltip(result.tests[e].name, result.tests[e].desc))));
         else {
             // TODO: this else can eventually be removed, when all past runs have the test descriptions in the json
             const tcases = result.results.concat(result.measurements).flat().map(x => [x.abbr, x.name]).filter((e, i, a) => a.map(x => x[0]).indexOf(e[0]) === i);
