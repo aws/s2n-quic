@@ -391,7 +391,7 @@ fn get_algo_type(
     // NOTE: we don't have CCM support implemented currently
 
     // NOTE: CCM_8 is not allowed by QUIC
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-34.txt#5.3
+    //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.3
     //# QUIC can use any of the cipher suites defined in [TLS13] with the
     //# exception of TLS_AES_128_CCM_8_SHA256.
 
