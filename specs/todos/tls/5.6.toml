@@ -1,11 +1,4 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.6"
-
-[[TODO]]
-quote = '''
-A client MUST only use 0-RTT keys to protect data that is idempotent.
-'''
-tracking-issue = "319"
-feature = "0-RTT"
+target = "https://www.rfc-editor.org/rfc/rfc9001.txt#5.6"
 
 [[TODO]]
 quote = '''
@@ -17,9 +10,9 @@ feature = "0-RTT"
 
 [[TODO]]
 quote = '''
-A client
-otherwise treats 0-RTT keys as equivalent to 1-RTT keys, except that
-it MUST NOT send ACKs with 0-RTT keys.
+A client otherwise treats 0-RTT keys as equivalent to 1-RTT keys,
+except that it cannot send certain frames with 0-RTT keys; see
+Section 12.5 of [QUIC-TRANSPORT].
 '''
 tracking-issue = "319"
 feature = "0-RTT"
@@ -57,3 +50,20 @@ Once a client has installed 1-RTT keys, it MUST NOT send any more
 tracking-issue = "319"
 feature = "0-RTT"
 
+[[TODO]]
+quote = '''
+A client
+therefore MUST NOT use 0-RTT for application data unless specifically
+requested by the application that is in use.
+'''
+tracking-issue = "319"
+feature = "0-RTT"
+
+[[TODO]]
+quote = '''
+An application protocol that uses QUIC MUST include a profile that
+defines acceptable use of 0-RTT; otherwise, 0-RTT can only be used to
+carry QUIC frames that do not carry application data.
+'''
+tracking-issue = "319"
+feature = "0-RTT"

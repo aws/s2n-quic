@@ -67,7 +67,7 @@ impl NegotiatedCiphersuite {
     }
 
     /// Update the ciphersuite as defined in
-    /// https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6
+    /// https://www.rfc-editor.org/rfc/rfc9001.txt#6
     pub fn update(&self) -> Self {
         dispatch!(self, |cipher| cipher.update().into())
     }

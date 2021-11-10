@@ -48,7 +48,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         //# datagram with a payload that is smaller than the smallest allowed
         //# maximum datagram size of 1200 bytes.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#9.3
+        //= https://www.rfc-editor.org/rfc/rfc9001.txt#9.3
         //# First, the packet
         //# containing a ClientHello MUST be padded to a minimum size.
         if datagram.payload_len < 1200 {
@@ -305,7 +305,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             endpoint_context.event_subscriber,
         )?;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.3
+        //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.3
         //= type=TODO
         //= tracking-issue=299
         //# If the

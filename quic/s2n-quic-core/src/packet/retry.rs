@@ -60,14 +60,14 @@ pub struct Retry<'a> {
     pub retry_integrity_tag: &'a [u8],
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.8
+//= https://www.rfc-editor.org/rfc/rfc9001.txt#5.8
 //# Retry Pseudo-Packet {
 //#   ODCID Length (8),
 //#   Original Destination Connection ID (0..160),
 //#   Header Form (1) = 1,
 //#   Fixed Bit (1) = 1,
 //#   Long Packet Type (2) = 3,
-//#   Type-Specific Bits (4),
+//#   Unused (4),
 //#   Version (32),
 //#   DCID Len (8),
 //#   Destination Connection ID (0..160),
@@ -174,7 +174,7 @@ impl<'a> Retry<'a> {
             //# by the server; a client MUST ignore these bits.
             // The last 4 bits are unused. They are set to 0x0f here to allow easy testing with
             // example packets provided in the RFC.
-            // https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.2
+            // https://www.rfc-editor.org/rfc/rfc9001.txt#A.2
             tag: (retry_tag!() << 4) | 0x0f,
             version: initial_packet.version,
             destination_connection_id: initial_packet.source_connection_id(),

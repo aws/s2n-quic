@@ -1,8 +1,8 @@
 [[exception]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.2"
+target = "https://www.rfc-editor.org/rfc/rfc9001.txt#6.2"
 quote = '''
 An endpoint
-MAY treat consecutive key updates as a connection error of type
+MAY treat such consecutive key updates as a connection error of type
 KEY_UPDATE_ERROR.
 '''
 reason = '''
@@ -10,7 +10,7 @@ Returning this error would indicate that a key update is in progress, revealing 
 '''
 
 [[exception]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.2"
+target = "https://www.rfc-editor.org/rfc/rfc9001.txt#6.2"
 quote = '''
 An endpoint that receives an acknowledgement that is carried in a
 packet protected with old keys where any acknowledged packet was

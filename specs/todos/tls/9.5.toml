@@ -1,18 +1,18 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#9.5"
+target = "https://www.rfc-editor.org/rfc/rfc9001.txt#9.5"
 
 [[TODO]]
 quote = '''
 For authentication to be
-free from side-channels, the entire process of header protection
+free from side channels, the entire process of header protection
 removal, packet number recovery, and packet protection removal MUST
-be applied together without timing and other side-channels.
+be applied together without timing and other side channels.
 '''
 tracking-issue = "212"
 
 [[TODO]]
 quote = '''
 For the sending of packets, construction and protection of packet
-payloads and packet numbers MUST be free from side-channels that
+payloads and packet numbers MUST be free from side channels that
 would reveal the packet number or its encoded size.
 '''
 tracking-issue = "328"

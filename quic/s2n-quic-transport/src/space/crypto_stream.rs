@@ -61,7 +61,7 @@ impl CryptoStream {
         self.is_finished = true;
         self.tx.finish();
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.3
+        //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.3
         //# When TLS
         //# provides keys for a higher encryption level, if there is data from
         //# a previous encryption level that TLS has not consumed, this MUST
@@ -74,7 +74,7 @@ impl CryptoStream {
     }
 
     pub fn on_crypto_frame(&mut self, frame: CryptoRef) -> Result<(), transport::Error> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.3
+        //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.3
         //# *  If the packet is from a previously installed encryption level, it
         //# MUST NOT contain data that extends past the end of previously
         //# received data in that flow.  Implementations MUST treat any

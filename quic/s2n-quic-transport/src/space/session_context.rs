@@ -258,9 +258,9 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         }
 
         if Config::ENDPOINT_TYPE.is_client() {
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.3
+            //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9.3
             //# Therefore, a client SHOULD discard 0-RTT keys as soon as it installs
-            //# 1-RTT keys, since they have no use after that moment.
+            //# 1-RTT keys as they have no use after that moment.
 
             *self.zero_rtt_crypto = None;
         }

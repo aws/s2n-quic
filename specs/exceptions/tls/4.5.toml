@@ -1,10 +1,10 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.5"
+target = "https://www.rfc-editor.org/rfc/rfc9001.txt#4.5"
 
 [[exception]]
 quote = '''
 Clients SHOULD NOT reuse tickets as
 that allows entities other than the server to correlate connections;
-see Section C.4 of [TLS13].
+see Appendix C.4 of [TLS13].
 '''
 reason = '''
 Because session resumption tickets are handled outside of s2n-quic,
