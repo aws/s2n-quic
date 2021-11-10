@@ -995,7 +995,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             )?;
 
             if Self::Config::ENDPOINT_TYPE.is_server() {
-                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
+                //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9.1
                 //# a server MUST discard Initial keys when it first
                 //# successfully processes a Handshake packet.
                 self.space_manager.discard_initial(
@@ -1030,29 +1030,29 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
+        //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.7
         //# Endpoints in either role MUST NOT decrypt 1-RTT packets from
         //# their peer prior to completing the handshake.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
+        //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.7
         //# A server MUST NOT process
         //# incoming 1-RTT protected packets before the TLS handshake is
         //# complete.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
+        //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.7
         //# Even if it has 1-RTT secrets, a client MUST NOT
         //# process incoming 1-RTT protected packets before the TLS handshake is
         //# complete.
 
         if !self.space_manager.is_handshake_complete() {
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
+            //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.7
             //= type=TODO
             //= tracking-issue=320
             //# Received
             //# packets protected with 1-RTT keys MAY be stored and later decrypted
             //# and used once the handshake is complete.
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
+            //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.7
             //= type=TODO
             //= tracking-issue=320
             //= feature=0-RTT

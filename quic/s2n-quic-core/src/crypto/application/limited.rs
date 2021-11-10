@@ -3,7 +3,7 @@
 
 use crate::crypto::OneRttKey;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+//= https://www.rfc-editor.org/rfc/rfc9001.txt#6.6
 //# Endpoints MUST count the number of encrypted packets for each set of
 //# keys.
 pub struct Key<K> {

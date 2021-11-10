@@ -30,27 +30,28 @@ pub trait HeaderKey: Send {
     fn sealing_sample_len(&self) -> usize;
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.4.1
+//= https://www.rfc-editor.org/rfc/rfc9001.txt#5.4.1
 //# The output of this algorithm is a 5 byte mask that is applied to the
 //# protected header fields using exclusive OR.
 
 pub const HEADER_PROTECTION_MASK_LEN: usize = 5;
 pub type HeaderProtectionMask = [u8; HEADER_PROTECTION_MASK_LEN];
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.4.1
-//# Figure 4 shows a sample algorithm for applying header protection.
+//= https://www.rfc-editor.org/rfc/rfc9001.txt#5.4.1
+//# Figure 6 shows a sample algorithm for applying header protection.
 //# Removing header protection only differs in the order in which the
-//# packet number length (pn_length) is determined.
+//# packet number length (pn_length) is determined (here "^" is used to
+//# represent exclusive OR).
 //#
 //# mask = header_protection(hp_key, sample)
 //#
 //# pn_length = (packet[0] & 0x03) + 1
 //# if (packet[0] & 0x80) == 0x80:
-//#    # Long header: 4 bits masked
-//#    packet[0] ^= mask[0] & 0x0f
+//# # Long header: 4 bits masked
+//# packet[0] ^= mask[0] & 0x0f
 //# else:
-//#    # Short header: 5 bits masked
-//#    packet[0] ^= mask[0] & 0x1f
+//# # Short header: 5 bits masked
+//# packet[0] ^= mask[0] & 0x1f
 //#
 //# # pn_offset is the start of the Packet Number field.
 //# packet[pn_offset:pn_offset+pn_length] ^= mask[1:1+pn_length]

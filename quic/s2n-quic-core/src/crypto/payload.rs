@@ -155,12 +155,12 @@ fn header_protection_sample(
 ) -> Result<&[u8], DecoderError> {
     let buffer = buffer.skip(header_len)?;
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.4.2
-    //# In sampling the packet
-    //# ciphertext, the Packet Number field is assumed to be 4 bytes long
+    //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.4.2
+    //# in sampling packet ciphertext for header protection, the Packet Number field is
+    //# assumed to be 4 bytes long
     let buffer = buffer.skip(PacketNumberLen::MAX_LEN)?;
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.4.2
+    //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.4.2
     //# An endpoint MUST discard packets that are not long enough to contain
     //# a complete sample.
     let (sample, _) = buffer.decode_slice(sample_len)?;

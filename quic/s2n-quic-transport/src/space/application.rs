@@ -47,11 +47,11 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     pub spin_bit: SpinBit,
     /// The crypto suite for application data
     /// TODO: What about ZeroRtt?
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
+    //= https://www.rfc-editor.org/rfc/rfc9001.txt#6.3
     //# For this reason, endpoints MUST be able to retain two sets of packet
     //# protection keys for receiving packets: the current and the next.
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1
+    //= https://www.rfc-editor.org/rfc/rfc9001.txt#6.1
     //# An endpoint MUST NOT initiate a key update prior to having confirmed
     //# the handshake (Section 4.1.2).
     key_set: KeySet<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttKey>,
@@ -60,7 +60,7 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7
     //# Endpoints MUST explicitly negotiate an application protocol.
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.1
+    //= https://www.rfc-editor.org/rfc/rfc9001.txt#8.1
     //# Unless
     //# another mechanism is used for agreeing on an application protocol,
     //# endpoints MUST use ALPN for this purpose.
@@ -411,16 +411,17 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         let decrypted = self.key_set.decrypt_packet(
             packet,
             largest_acked,
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
-            //# Endpoints MAY instead defer the creation of the next set of
-            //# receive packet protection keys until some time after a key update
-            //# completes, up to three times the PTO; see Section 6.5.
+            //= https://www.rfc-editor.org/rfc/rfc9001.txt#6.3
+            //# For a short period after a key
+            //# update completes, up to the PTO, endpoints MAY defer generation of
+            //# the next set of receive packet protection keys.  This allows
+            //# endpoints to retain only two sets of receive keys; see Section 6.5.
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
+            //= https://www.rfc-editor.org/rfc/rfc9001.txt#6.5
             //# An endpoint MAY allow a period of approximately the Probe Timeout
-            //# (PTO; see [QUIC-RECOVERY]) after receiving a packet that uses the new
-            //# key generation before it creates the next set of packet protection
-            //# keys.
+            //# (PTO; see [QUIC-RECOVERY]) after promoting the next set of receive
+            //# keys to be current before it creates the subsequent set of packet
+            //# protection keys.
             datagram.timestamp
                 + path
                     .rtt_estimator
@@ -432,11 +433,11 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             });
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#9.5
+        //= https://www.rfc-editor.org/rfc/rfc9001.txt#9.5
         //# For authentication to be
-        //# free from side-channels, the entire process of header protection
+        //# free from side channels, the entire process of header protection
         //# removal, packet number recovery, and packet protection removal MUST
-        //# be applied together without timing and other side-channels.
+        //# be applied together without timing and other side channels.
 
         // We perform decryption prior to checking for duplicate to avoid short-circuiting
         // and maintain constant-time operation.
@@ -591,10 +592,10 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         local_id_registry: &mut connection::LocalIdRegistry,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.2
+        //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.2
         //= type=TODO
         //= tracking-issue=297
-        //# A client MAY consider the handshake to be confirmed when it receives
+        //# a client MAY consider the handshake to be confirmed when it receives
         //# an acknowledgement for a 1-RTT packet.
 
         let path = &mut path_manager[path_id];

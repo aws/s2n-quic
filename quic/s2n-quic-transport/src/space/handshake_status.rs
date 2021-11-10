@@ -98,13 +98,9 @@ impl HandshakeStatus {
         );
 
         if endpoint_type.is_server() {
-            // TODO: the following requirement was removed from the final RFC.
-            // Confirm if the implementation can be optimized by relaxing the
-            // implemented requirement.
-            //
-            // removed: [https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.2]
-            // The server MUST send a HANDSHAKE_DONE
-            // frame as soon as it completes the handshake.
+            //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.2
+            //# The server MUST send a HANDSHAKE_DONE
+            //# frame as soon as the handshake is complete.
             let mut flag = Flag::default();
             flag.send();
             *self = HandshakeStatus::ServerCompleteConfirmed(flag);

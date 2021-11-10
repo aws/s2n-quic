@@ -203,7 +203,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
             }
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.4
+        //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.4
         //# An endpoint SHOULD continue
         //# to respond to packets that can be processed during this time.
         // We make a best effort to process all of the packet spaces we have available. There isn't

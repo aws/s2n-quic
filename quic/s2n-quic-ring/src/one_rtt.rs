@@ -22,7 +22,7 @@ mod tests {
     use ring::hkdf;
     use s2n_quic_core::crypto::Key;
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.5
+    //= https://www.rfc-editor.org/rfc/rfc9001.txt#A.5
     //# In this example, TLS produces an application write secret from which
     //# a server uses HKDF-Expand-Label to produce four values: a key, an IV,
     //# a header protection key, and the secret that will be used after keys
@@ -32,18 +32,18 @@ mod tests {
     //#     = 9ac312a7f877468ebe69422748ad00a1
     //#       5443f18203a07d6060f688f30f21632b
     //#
-    //# key = HKDF-Expand-Label(secret, "quic key", _, 32)
+    //# key = HKDF-Expand-Label(secret, "quic key", "", 32)
     //#     = c6d98ff3441c3fe1b2182094f69caa2e
     //#       d4b716b65488960a7a984979fb23e1c8
     //#
-    //# iv  = HKDF-Expand-Label(secret, "quic iv", _, 12)
+    //# iv  = HKDF-Expand-Label(secret, "quic iv", "", 12)
     //#     = e0459b3474bdd0e44a41c144
     //#
-    //# hp  = HKDF-Expand-Label(secret, "quic hp", _, 32)
+    //# hp  = HKDF-Expand-Label(secret, "quic hp", "", 32)
     //#     = 25a282b9e82f06f21f488917a4fc8f1b
     //#       73573685608597d0efcb076b0ab7a7a4
     //#
-    //# ku  = HKDF-Expand-Label(secret, "quic ku", _, 32)
+    //# ku  = HKDF-Expand-Label(secret, "quic ku", "", 32)
     //#     = 1223504755036d556342ee9361d25342
     //#       1a826c9ecdf3c7148684b36b714881f9
     const SECRET: [u8; 32] =

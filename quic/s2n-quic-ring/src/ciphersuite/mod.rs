@@ -60,7 +60,7 @@ macro_rules! impl_ciphersuite {
             }
 
             /// Update the ciphersuite as defined in
-            /// https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6
+            /// https://www.rfc-editor.org/rfc/rfc9001.txt#6
             #[inline]
             pub fn update(&self) -> Self {
                 let secret: hkdf::Prk = self
@@ -180,7 +180,7 @@ macro_rules! impl_ciphersuite {
                 $cipher.tag_len()
             }
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+            //= https://www.rfc-editor.org/rfc/rfc9001.txt#6.6
             //# Any TLS cipher suite that is specified for use with QUIC MUST define
             //# limits on the use of the associated AEAD function that preserves
             //# margins for confidentiality and integrity.
@@ -251,7 +251,7 @@ macro_rules! impl_ciphersuite {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+//= https://www.rfc-editor.org/rfc/rfc9001.txt#6.6
 //# For AEAD_AES_128_GCM and AEAD_AES_256_GCM, the confidentiality limit
 //# is 2^23 encrypted packets; see Appendix B.1.
 impl_ciphersuite!(
@@ -269,7 +269,7 @@ impl_ciphersuite!(
     tls_aes_256_gcm_sha384_test
 );
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+//= https://www.rfc-editor.org/rfc/rfc9001.txt#6.6
 //# For
 //# AEAD_CHACHA20_POLY1305, the confidentiality limit is greater than the
 //# number of possible packets (2^62) and so can be disregarded.

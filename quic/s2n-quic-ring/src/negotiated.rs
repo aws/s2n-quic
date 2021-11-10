@@ -40,7 +40,7 @@ impl KeyPair {
     }
 
     /// Update the ciphersuite as defined in
-    /// <https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6>
+    /// <https://www.rfc-editor.org/rfc/rfc9001.txt#6>
     #[inline]
     pub fn update(&self) -> Self {
         Self {
@@ -124,7 +124,7 @@ macro_rules! negotiated_crypto {
             }
 
             /// Update the ciphersuite as defined in
-            /// <https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6>
+            /// <https://www.rfc-editor.org/rfc/rfc9001.txt#6>
             #[inline]
             pub fn update(&self) -> Self {
                 Self(self.0.update())

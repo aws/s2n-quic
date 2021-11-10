@@ -154,13 +154,13 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
             } else if has_transmission(space_manager.handshake(), transmission_constraint) {
                 Some(PacketNumberSpace::Handshake)
             } else {
-                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9
+                //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9
                 //# These packets MAY also include PADDING frames.
                 Some(PacketNumberSpace::Initial)
             }
         };
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4
+        //= https://www.rfc-editor.org/rfc/rfc9001.txt#4
         //# When packets of different types need to be sent,
         //# endpoints SHOULD use coalesced packets to send them in the same UDP
         //# datagram.
@@ -243,7 +243,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                             ),
                         });
 
-                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
+                    //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9.1
                     //# a client MUST discard Initial keys when it first sends a
                     //# Handshake packet
 
@@ -276,7 +276,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 }
             };
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.2
+            //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9.2
             //# An endpoint MUST discard its handshake keys when the TLS handshake is
             //# confirmed (Section 4.1.2).
             if space_manager.is_handshake_confirmed() {
@@ -289,7 +289,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
             encoder
         };
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9
+        //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9
         //# Though an endpoint might retain older keys, new data MUST be sent at
         //# the highest currently-available encryption level.
 

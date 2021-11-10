@@ -99,7 +99,7 @@ macro_rules! packet_space_api {
                     space.on_discard(path, path_id, publisher);
                 }
 
-                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
+                //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9.1
                 //# Endpoints MUST NOT send
                 //# Initial packets after this point.
                 // By discarding a space, we are no longer capable of sending packets with those
