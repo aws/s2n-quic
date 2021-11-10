@@ -148,7 +148,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         let mut packet_number = self.tx_packet_numbers.next();
 
         if self.recovery_manager.requires_probe() {
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
+            //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.4
             //# If the sender wants to elicit a faster acknowledgement on PTO, it can
             //# skip a packet number to eliminate the acknowledgment delay.
 
@@ -295,7 +295,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             "Clients are never in an anti-amplification state"
         );
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.6
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#A.6
         //# When a server is blocked by anti-amplification limits, receiving a
         //# datagram unblocks it, even if none of the packets in the datagram are
         //# successfully processed.  In such a case, the PTO timer will need to
@@ -314,7 +314,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         // Retire the local connection ID used during the handshake to reduce linkability
         local_id_registry.retire_handshake_connection_id(timestamp);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
         //# A sender SHOULD restart its PTO timer every time an ack-eliciting
         //# packet is sent or acknowledged, when the handshake is confirmed
         //# (Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are

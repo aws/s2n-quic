@@ -18,7 +18,7 @@ use core::{
 #[cfg(not(feature = "std"))]
 use num_traits::Float as _;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3
 //#                 New Path or      +------------+
 //#            persistent congestion |   Slow     |
 //#        (O)---------------------->|   Start    |
@@ -74,7 +74,7 @@ impl State {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.2
 //# If the congestion window is reduced immediately, a
 //# single packet can be sent prior to reduction.  This speeds up loss
 //# recovery if the data in the lost packet is retransmitted and is
@@ -143,12 +143,13 @@ pub struct CubicCongestionController {
     max_datagram_size: u16,
     congestion_window: f32,
     state: State,
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#B.2
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#B.2
     //# The sum of the size in bytes of all sent packets
-    //# that contain at least one ack-eliciting or PADDING frame, and have
+    //# that contain at least one ack-eliciting or PADDING frame and have
     //# not been acknowledged or declared lost.  The size does not include
-    //# IP or UDP overhead, but does include the QUIC header and AEAD
-    //# overhead.  Packets only containing ACK frames do not count towards
+    //# IP or UDP overhead, but does include the QUIC header and
+    //# Authenticated Encryption with Associated Data (AEAD) overhead.
+    //# Packets only containing ACK frames do not count toward
     //# bytes_in_flight to ensure congestion control does not impede
     //# congestion feedback.
     bytes_in_flight: BytesInFlight,
@@ -227,19 +228,19 @@ impl CongestionController for CubicCongestionController {
         if self.under_utilized {
             self.state.on_app_limited(ack_receive_time);
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8
+            //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.8
             //# When bytes in flight is smaller than the congestion window and
-            //# sending is not pacing limited, the congestion window is under-
-            //# utilized.  When this occurs, the congestion window SHOULD NOT be
-            //# increased in either slow start or congestion avoidance.  This can
-            //# happen due to insufficient application data or flow control limits.
+            //# sending is not pacing limited, the congestion window is
+            //# underutilized.  This can happen due to insufficient application data
+            //# or flow control limits.  When this occurs, the congestion window
+            //# SHOULD NOT be increased in either slow start or congestion avoidance.
             return;
         }
 
         // Check if this ack causes the controller to exit recovery
         if let State::Recovery(recovery_start_time, _) = self.state {
             if largest_acked_time_sent > recovery_start_time {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
+                //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.2
                 //# A recovery period ends and the sender enters congestion avoidance
                 //# when a packet sent during the recovery period is acknowledged.
                 self.state = State::congestion_avoidance(ack_receive_time)
@@ -248,7 +249,7 @@ impl CongestionController for CubicCongestionController {
 
         match self.state {
             SlowStart => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.1
+                //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.1
                 //# While a sender is in slow start, the congestion window increases by
                 //# the number of bytes acknowledged when each acknowledgment is
                 //# processed.  This results in exponential growth of the congestion
@@ -306,11 +307,11 @@ impl CongestionController for CubicCongestionController {
         self.bytes_in_flight -= lost_bytes;
         self.on_congestion_event(timestamp);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
         //# When persistent congestion is declared, the sender's congestion
         //# window MUST be reduced to the minimum congestion window
         //# (kMinimumWindow), similar to a TCP sender's response on an RTO
-        //# ([RFC5681]).
+        //# [RFC5681].
         if persistent_congestion {
             self.congestion_window = self.cubic.minimum_window();
             self.state = State::SlowStart;
@@ -327,27 +328,27 @@ impl CongestionController for CubicCongestionController {
 
         // Enter recovery period.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.1
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.1
         //# The sender MUST exit slow start and enter a recovery period when a
         //# packet is lost or when the ECN-CE count reported by its peer
         //# increases.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.2
         //# If the congestion window is reduced immediately, a
         //# single packet can be sent prior to reduction.  This speeds up loss
         //# recovery if the data in the lost packet is retransmitted and is
         //# similar to TCP as described in Section 5 of [RFC6675].
         self.state = Recovery(event_time, RequiresTransmission);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.2
         //# Implementations MAY reduce the congestion window immediately upon
         //# entering a recovery period or use other mechanisms, such as
-        //# Proportional Rate Reduction ([PRR]), to reduce the congestion window
+        //# Proportional Rate Reduction [PRR], to reduce the congestion window
         //# more gradually.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.2
         //# The minimum congestion window is the smallest value the congestion
-        //# window can decrease to as a response to loss, increase in the peer-
+        //# window can attain in response to loss, an increase in the peer-
         //# reported ECN-CE count, or persistent congestion.
         self.congestion_window = self.cubic.multiplicative_decrease(self.congestion_window);
 
@@ -355,7 +356,7 @@ impl CongestionController for CubicCongestionController {
         self.slow_start.on_congestion_event(self.congestion_window);
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.2
     //# If the maximum datagram size changes during the connection, the
     //# initial congestion window SHOULD be recalculated with the new size.
     //# If the maximum datagram size is decreased in order to complete the
@@ -385,12 +386,13 @@ impl CongestionController for CubicCongestionController {
         }
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.4
-    //# When packet protection keys are discarded (see Section 4.8 of
-    //# [QUIC-TLS]), all packets that were sent with those keys can no longer
-    //# be acknowledged because their acknowledgements cannot be processed
-    //# anymore.  The sender MUST discard all recovery state associated with
-    //# those packets and MUST remove them from the count of bytes in flight.
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.4
+    //# When Initial and Handshake packet protection keys are discarded (see
+    //# Section 4.9 of [QUIC-TLS]), all packets that were sent with those
+    //# keys can no longer be acknowledged because their acknowledgments
+    //# cannot be processed.  The sender MUST discard all recovery state
+    //# associated with those packets and MUST remove them from the count of
+    //# bytes in flight.
     #[inline]
     fn on_packet_discarded(&mut self, bytes_sent: usize) {
         self.bytes_in_flight
@@ -420,10 +422,11 @@ impl CubicCongestionController {
         }
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
-    //# Endpoints SHOULD use an initial congestion window of 10 times the
-    //# maximum datagram size (max_datagram_size), limited to the larger
-    //# of 14720 bytes or twice the maximum datagram size.
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.2
+    //# Endpoints SHOULD use an initial congestion
+    //# window of ten times the maximum datagram size (max_datagram_size),
+    //# while limiting the window to the larger of 14,720 bytes or twice the
+    //# maximum datagram size.
     #[inline]
     fn initial_window(max_datagram_size: u16) -> u32 {
         const INITIAL_WINDOW_LIMIT: u32 = 14720;
@@ -704,9 +707,9 @@ impl Cubic {
         self.k = Duration::from_secs(0);
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.2
     //# The minimum congestion window is the smallest value the congestion
-    //# window can decrease to as a response to loss, increase in the peer-
+    //# window can attain in response to loss, an increase in the peer-
     //# reported ECN-CE count, or persistent congestion.  The RECOMMENDED
     //# value is 2 * max_datagram_size.
     #[inline]

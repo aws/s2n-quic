@@ -7,17 +7,19 @@ use core::{
     time::Duration,
 };
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2
-//# When no previous RTT is available, the initial RTT SHOULD be set to 333ms,
-//# resulting in a 1 second initial timeout, as recommended in [RFC6298].
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.2
+//# When no previous RTT is available, the initial RTT
+//# SHOULD be set to 333 milliseconds.  This results in handshakes
+//# starting with a PTO of 1 second, as recommended for TCP's initial
+//# RTO; see Section 2 of [RFC6298].
 pub const DEFAULT_INITIAL_RTT: Duration = Duration::from_millis(333);
 const ZERO_DURATION: Duration = Duration::from_millis(0);
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
-//# The RECOMMENDED value of the timer granularity (kGranularity) is 1ms.
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#6.1.2
+//# The RECOMMENDED value of the timer granularity (kGranularity) is 1 millisecond.
 pub const K_GRANULARITY: Duration = Duration::from_millis(1);
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.1
 //# The RECOMMENDED value for kPersistentCongestionThreshold is 3, which
 //# results in behavior that is approximately equivalent to a TCP sender
 //# declaring an RTO after two TLPs.
@@ -44,7 +46,7 @@ pub struct RttEstimator {
 impl RttEstimator {
     /// Creates a new RTT Estimator with default initial values using the given `max_ack_delay`.
     pub fn new(max_ack_delay: Duration) -> Self {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.3
         //# Before any RTT samples are available for a new path or when the
         //# estimator is reset, the estimator is initialized using the initial RTT;
         //# see Section 6.2.2.
@@ -103,42 +105,41 @@ impl RttEstimator {
         self.max_ack_delay
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
     //# The PTO period is the amount of time that a sender ought to wait for
     //# an acknowledgement of a sent packet.
     #[inline]
     pub fn pto_period(&self, pto_backoff: u32, space: PacketNumberSpace) -> Duration {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
         //# When an ack-eliciting packet is transmitted, the sender schedules a
         //# timer for the PTO period as follows:
         //#
         //# PTO = smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay
         let mut pto_period = self.smoothed_rtt();
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
         //# The PTO period MUST be at least kGranularity, to avoid the timer
         //# expiring immediately.
         pto_period += max(4 * self.rttvar(), K_GRANULARITY);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
         //# When the PTO is armed for Initial or Handshake packet number spaces,
         //# the max_ack_delay in the PTO period computation is set to 0, since
         //# the peer is expected to not delay these packets intentionally; see
-        //# 13.2.1 of [QUIC-TRANSPORT].
+        //# Section 13.2.1 of [QUIC-TRANSPORT].
         if space.is_application_data() {
             pto_period += self.max_ack_delay;
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-        //# Even when there are ack-
-        //# eliciting packets in-flight in multiple packet number spaces, the
-        //# exponential increase in probe timeout occurs across all spaces to
-        //# prevent excess load on the network.  For example, a timeout in the
-        //# Initial packet number space doubles the length of the timeout in the
-        //# Handshake packet number space.
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
+        //# Even when there are ack-eliciting packets in flight in multiple
+        //# packet number spaces, the exponential increase in PTO occurs across
+        //# all spaces to prevent excess load on the network.  For example, a
+        //# timeout in the Initial packet number space doubles the length of
+        //# the timeout in the Handshake packet number space.
         pto_period *= pto_backoff;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
         //# The PTO period is the amount of time that a sender ought to wait for
         //# an acknowledgement of a sent packet.
         pto_period
@@ -158,10 +159,10 @@ impl RttEstimator {
 
         if self.first_rtt_sample.is_none() {
             self.first_rtt_sample = Some(timestamp);
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
+            //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.2
             //# min_rtt MUST be set to the latest_rtt on the first RTT sample.
             self.min_rtt = self.latest_rtt;
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+            //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.3
             //# On the first RTT sample after initialization, smoothed_rtt and rttvar
             //# are set as follows:
             //#
@@ -172,32 +173,32 @@ impl RttEstimator {
             return;
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.2
         //# min_rtt MUST be set to the lesser of min_rtt and latest_rtt
         //# (Section 5.1) on all other samples.
         self.min_rtt = min(self.min_rtt, self.latest_rtt);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
-        //# when adjusting an RTT sample using peer-reported acknowledgement
-        //# delays, an endpoint:
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.3
+        //# when adjusting an RTT sample using peer-reported
+        //# acknowledgment delays, an endpoint:
         //#
-        //# *  MAY ignore the acknowledgement delay for Initial packets, since
-        //#    these acknowledgements are not delayed by the peer (Section 13.2.1
+        //# *  MAY ignore the acknowledgment delay for Initial packets, since
+        //#    these acknowledgments are not delayed by the peer (Section 13.2.1
         //#    of [QUIC-TRANSPORT]);
         if space.is_initial() {
             ack_delay = ZERO_DURATION;
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.3
         //# To account for this, the endpoint SHOULD ignore
-        //# max_ack_delay until the handshake is confirmed (Section 4.1.2 of
-        //# [QUIC-TLS]).
+        //# max_ack_delay until the handshake is confirmed, as defined in
+        //# Section 4.1.2 of [QUIC-TLS].
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.3
         //# *  SHOULD ignore the peer's max_ack_delay until the handshake is
         //#    confirmed;
         if is_handshake_confirmed {
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+            //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.3
             //# *  MUST use the lesser of the acknowledgement delay and the peer's
             //#    max_ack_delay after the handshake is confirmed; and
             ack_delay = min(ack_delay, self.max_ack_delay);
@@ -205,13 +206,13 @@ impl RttEstimator {
 
         let mut adjusted_rtt = self.latest_rtt;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.3
         //# *  MUST NOT subtract the acknowledgement delay from the RTT sample if
         //#    the resulting value is smaller than the min_rtt.
         if self.min_rtt + ack_delay < self.latest_rtt {
             adjusted_rtt -= ack_delay;
         } else if !is_handshake_confirmed {
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+            //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.3
             //# Therefore, prior to handshake
             //# confirmation, an endpoint MAY ignore RTT samples if adjusting the RTT
             //# sample for acknowledgement delay causes the sample to be less than
@@ -219,15 +220,15 @@ impl RttEstimator {
             return;
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.3
         //# On subsequent RTT samples, smoothed_rtt and rttvar evolve as follows:
         //#
-        //# ack_delay = decoded acknowledgement delay from ACK frame
+        //# ack_delay = decoded acknowledgment delay from ACK frame
         //# if (handshake confirmed):
-        //#   ack_delay = min(ack_delay, max_ack_delay)
+        //# ack_delay = min(ack_delay, max_ack_delay)
         //# adjusted_rtt = latest_rtt
-        //# if (min_rtt + ack_delay < latest_rtt):
-        //#   adjusted_rtt = latest_rtt - ack_delay
+        //# if (latest_rtt >= min_rtt + ack_delay):
+        //#     adjusted_rtt = latest_rtt - ack_delay
         //# smoothed_rtt = 7/8 * smoothed_rtt + 1/8 * adjusted_rtt
         //# rttvar_sample = abs(smoothed_rtt - adjusted_rtt)
         //# rttvar = 3/4 * rttvar + 1/4 * rttvar_sample
@@ -239,11 +240,11 @@ impl RttEstimator {
     /// Calculates the persistent congestion threshold used for determining
     /// if persistent congestion is being encountered.
     pub fn persistent_congestion_threshold(&self) -> Duration {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.1
         //# The persistent congestion duration is computed as follows:
         //#
         //# (smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay) *
-        //#    kPersistentCongestionThreshold
+        //#     kPersistentCongestionThreshold
         //#
         //# Unlike the PTO computation in Section 6.2, this duration includes the
         //# max_ack_delay irrespective of the packet number spaces in which
@@ -251,8 +252,8 @@ impl RttEstimator {
         //#
         //# This duration allows a sender to send as many packets before
         //# establishing persistent congestion, including some in response to PTO
-        //# expiration, as TCP does with Tail Loss Probes ([RACK]) and a
-        //# Retransmission Timeout ([RFC5681]).
+        //# expiration, as TCP does with Tail Loss Probes [RFC8985] and an RTO
+        //# [RFC5681].
         (self.smoothed_rtt + max(4 * self.rttvar, K_GRANULARITY) + self.max_ack_delay)
             * K_PERSISTENT_CONGESTION_THRESHOLD
     }
@@ -260,7 +261,7 @@ impl RttEstimator {
     /// Allows min_rtt and smoothed_rtt to be overwritten on the next RTT sample
     /// after persistent congestion is established.
     pub fn on_persistent_congestion(&mut self) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.2
         //# Endpoints SHOULD set the min_rtt to the newest RTT sample after
         //# persistent congestion is established.
         self.first_rtt_sample = None;
@@ -327,10 +328,10 @@ mod test {
         );
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.3
     //= type=test
     //# *  MUST use the lesser of the acknowledgement delay and the peer's
-    //#    max_ack_delay after the handshake is confirmed;.
+    //#    max_ack_delay after the handshake is confirmed;
     #[test]
     fn max_ack_delay() {
         let mut rtt_estimator = RttEstimator::new(Duration::from_millis(10));
@@ -352,7 +353,7 @@ mod test {
             PacketNumberSpace::ApplicationData,
         );
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.3
         //= type=test
         //# *  MUST use the lesser of the acknowledgement delay and the peer's
         //# max_ack_delay after the handshake is confirmed; and
@@ -373,13 +374,13 @@ mod test {
             PacketNumberSpace::ApplicationData,
         );
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.3
         //= type=test
         //# To account for this, the endpoint SHOULD ignore
-        //# max_ack_delay until the handshake is confirmed (Section 4.1.2 of
-        //# [QUIC-TLS]).
+        //# max_ack_delay until the handshake is confirmed, as defined in
+        //# Section 4.1.2 of [QUIC-TLS].
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.3
         //= type=test
         //# *  SHOULD ignore the peer's max_ack_delay until the handshake is
         //# confirmed;
@@ -404,7 +405,7 @@ mod test {
             PacketNumberSpace::ApplicationData,
         );
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.2
         //= type=test
         //# min_rtt MUST be set to the latest_rtt on the first RTT sample.
         assert_eq!(rtt_estimator.min_rtt, rtt_sample);
@@ -448,7 +449,7 @@ mod test {
             PacketNumberSpace::ApplicationData,
         );
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.2
         //= type=test
         //# min_rtt MUST be set to the lesser of min_rtt and latest_rtt
         //# (Section 5.1) on all other samples.
@@ -465,7 +466,7 @@ mod test {
         );
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.3
     //= type=test
     //# *  MUST NOT subtract the acknowledgement delay from the RTT sample if
     //#    the resulting value is smaller than the min_rtt.
@@ -495,7 +496,7 @@ mod test {
         );
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.3
     //= type=test
     //# Therefore, prior to handshake
     //# confirmation, an endpoint MAY ignore RTT samples if adjusting the RTT
@@ -524,11 +525,11 @@ mod test {
         assert_eq!(rtt_estimator.smoothed_rtt, smoothed_rtt);
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.3
     //= type=test
-    //# *  MAY ignore the acknowledgement delay for Initial packets, since
-    //#    these acknowledgements are not delayed by the peer (Section 13.2.1
-    //#    of [QUIC-TRANSPORT]);
+    //# *  MAY ignore the acknowledgment delay for Initial packets, since
+    //     these acknowledgments are not delayed by the peer (Section 13.2.1
+    //     of [QUIC-TRANSPORT]);
     #[test]
     fn initial_space() {
         let mut rtt_estimator = RttEstimator::new(Duration::from_millis(10));
@@ -559,7 +560,7 @@ mod test {
         );
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.1
     //= type=test
     //# The persistent congestion duration is computed as follows:
     //#
@@ -583,7 +584,7 @@ mod test {
 
         rtt_estimator.rttvar = Duration::from_millis(0);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.1
         //= type=test
         //# The RECOMMENDED value for kPersistentCongestionThreshold is 3, which
         //# results in behavior that is approximately equivalent to a TCP sender
@@ -625,7 +626,7 @@ mod test {
             PacketNumberSpace::Initial,
         );
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.2
         //= type=test
         //# Endpoints SHOULD set the min_rtt to the newest RTT sample after
         //# persistent congestion is established.
@@ -633,7 +634,7 @@ mod test {
         assert_eq!(rtt_estimator.smoothed_rtt(), rtt_sample);
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
     //= type=test
     //# The PTO period MUST be at least kGranularity, to avoid the timer
     //# expiring immediately.

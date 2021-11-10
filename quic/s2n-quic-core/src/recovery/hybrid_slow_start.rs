@@ -40,7 +40,7 @@ impl HybridSlowStart {
             sample_count: 0,
             last_min_rtt: None,
             cur_min_rtt: None,
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.1
+            //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.1
             //# A sender begins in slow start because the slow start threshold
             //# is initialized to an infinite value.
             threshold: f32::MAX,

@@ -89,7 +89,7 @@ macro_rules! packet_space_api {
                 path_id: path::Id,
                 publisher: &mut Pub,
             ) {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2
+                //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.2
                 //# When Initial or Handshake keys are discarded, the PTO and loss
                 //# detection timers MUST be reset, because discarding keys indicates
                 //# forward progress and the loss detection timer might have been set for
@@ -382,7 +382,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 impl<Config: endpoint::Config> timer::Provider for PacketSpaceManager<Config> {
     #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
         //# When ack-eliciting packets in multiple packet number spaces are in
         //# flight, the timer MUST be set to the earlier value of the Initial and
         //# Handshake packet number spaces.

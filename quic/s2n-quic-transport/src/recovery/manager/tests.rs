@@ -35,11 +35,12 @@ use std::{collections::HashSet, net::SocketAddr};
 type Manager = super::Manager<Config>;
 type Path = super::Path<Config>;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.2
 //= type=test
 //# When no previous RTT is available, the initial RTT
-//# SHOULD be set to 333ms, resulting in a 1 second initial timeout, as
-//# recommended in [RFC6298].
+//# SHOULD be set to 333 milliseconds.  This results in handshakes
+//# starting with a PTO of 1 second, as recommended for TCP's initial
+//# RTO; see Section 2 of [RFC6298].
 #[test]
 fn one_second_pto_when_no_previous_rtt_available() {
     let space = PacketNumberSpace::Handshake;
@@ -69,7 +70,7 @@ fn one_second_pto_when_no_previous_rtt_available() {
     );
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.5
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#A.5
 //= type=test
 #[test]
 fn on_packet_sent() {
@@ -133,7 +134,7 @@ fn on_packet_sent() {
 
             let expected_pto;
             if outcome.ack_elicitation.is_ack_eliciting() {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+                //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
                 //= type=test
                 //# A sender SHOULD restart its PTO timer every time an ack-eliciting
                 //# packet is sent
@@ -256,7 +257,7 @@ fn on_packet_sent_across_multiple_paths() {
     // checking outcome.is_congestion_controlled
     assert_eq!(actual_sent_packet.sent_bytes as usize, outcome.bytes_sent);
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
     //= type=test
     //# A sender SHOULD restart its PTO timer every time an ack-eliciting
     //# packet is sent
@@ -301,7 +302,7 @@ fn on_packet_sent_across_multiple_paths() {
     // checking outcome.is_congestion_controlled
     assert_eq!(actual_sent_packet.sent_bytes as usize, outcome.bytes_sent);
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
     //= type=test
     //# A sender SHOULD restart its PTO timer every time an ack-eliciting
     //# packet is sent
@@ -310,7 +311,7 @@ fn on_packet_sent_across_multiple_paths() {
     assert_eq!(Some(expected_pto), manager.pto.timer.next_expiration());
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.7
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#A.7
 //= type=test
 #[test]
 fn on_ack_frame() {
@@ -374,7 +375,7 @@ fn on_ack_frame() {
     let ack_receive_time = ack_receive_time + Duration::from_secs(1);
     ack_packets(1..=3, ack_receive_time, &mut context, &mut manager, None);
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.1
     //= type=test
     //# An RTT sample MUST NOT be generated on receiving an ACK frame that
     //# does not newly acknowledge at least one ack-eliciting packet.
@@ -973,7 +974,7 @@ fn process_new_acked_packets_failed_ecn_validation_does_not_cause_congestion_eve
     assert!(!context.path().ecn_controller.is_capable());
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#5.1
 //= type=test
 //# To avoid generating multiple RTT samples for a single packet, an ACK
 //# frame SHOULD NOT be used to update RTT estimates if it does not newly
@@ -1243,7 +1244,7 @@ fn rtt_update_when_receiving_ack_from_multiple_paths() {
     assert_eq!(second_path.congestion_controller.on_rtt_update, 0);
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.10
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#A.10
 //= type=test
 #[test]
 fn detect_and_remove_lost_packets() {
@@ -1338,7 +1339,7 @@ fn detect_and_remove_lost_packets() {
     let now = time_sent;
     manager.detect_and_remove_lost_packets(now, &mut context, &mut Publisher::default());
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.1.2
     //= type=test
     //# Once a later packet within the same packet number space has been
     //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
@@ -1369,7 +1370,7 @@ fn detect_and_remove_lost_packets() {
 
     let expected_loss_time =
         sent_packets.get(not_lost).unwrap().time_sent + expected_time_threshold;
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.1.2
     //= type=test
     //# If packets sent prior to the largest acknowledged packet cannot yet
     //# be declared lost, then a timer SHOULD be set for the remaining time.
@@ -1729,7 +1730,7 @@ fn detect_and_remove_lost_packets_mtu_probe() {
 
 #[test]
 fn persistent_congestion() {
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
     //= type=test
     //# A sender that does not have state for all packet
     //# number spaces or an implementation that cannot compare send times
@@ -1830,14 +1831,14 @@ fn persistent_congestion() {
         None,
     );
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.3
-    //# Packets 2 through 8 are declared lost when the acknowledgement for
-    //# packet 9 is received at t = 12.2.
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.3
+    //# Packets 2 through 8 are declared lost when the acknowledgment for
+    //# packet 9 is received at "t = 12.2".
     assert_eq!(7, context.on_packet_loss_count);
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.3
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.3
     //# The congestion period is calculated as the time between the oldest
-    //# and newest lost packets: 8 - 1 = 7.
+    //# and newest lost packets: "8 - 1 = 7".
     assert!(
         context
             .path()
@@ -1870,7 +1871,7 @@ fn persistent_congestion() {
         None,
     );
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.2
     //= type=test
     //# Endpoints SHOULD set the min_rtt to the newest RTT sample after
     //# persistent congestion is established.
@@ -1884,7 +1885,7 @@ fn persistent_congestion() {
     );
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6
 //= type=test
 #[test]
 fn persistent_congestion_multiple_periods() {
@@ -2001,7 +2002,7 @@ fn persistent_congestion_multiple_periods() {
     );
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
 //= type=test
 //# The persistent congestion period SHOULD NOT start until there is at
 //# least one RTT sample.
@@ -2070,7 +2071,7 @@ fn persistent_congestion_period_does_not_start_until_rtt_sample() {
     );
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
 //= type=test
 #[test]
 fn update_pto_timer() {
@@ -2103,7 +2104,7 @@ fn update_pto_timer() {
     manager.pto.timer.set(now + Duration::from_secs(10));
     manager.update_pto_timer(context.path(), now, is_handshake_confirmed);
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.2.1
     //= type=test
     //# If no additional data can be sent, the server's PTO timer MUST NOT be
     //# armed until datagrams have been received from the client, because
@@ -2139,9 +2140,9 @@ fn update_pto_timer() {
     let is_handshake_confirmed = false;
     manager.update_pto_timer(context.path(), now, is_handshake_confirmed);
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
     //= type=test
-    //# An endpoint MUST NOT set its PTO timer for the application data
+    //# An endpoint MUST NOT set its PTO timer for the Application Data
     //# packet number space until the handshake is confirmed.
     assert!(!manager.pto.timer.is_armed());
 
@@ -2179,7 +2180,7 @@ fn update_pto_timer() {
     );
     manager.update_pto_timer(context.path(), now, is_handshake_confirmed);
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
     //# When an ack-eliciting packet is transmitted, the sender schedules a
     //# timer for the PTO period as follows:
     //#
@@ -2193,11 +2194,11 @@ fn update_pto_timer() {
     );
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.2.1
 //= type=test
 //# That is,
-//# the client MUST set the probe timer if the client has not received an
-//# acknowledgement for one of its Handshake packets and the handshake is
+//# the client MUST set the PTO timer if the client has not received an
+//# acknowledgment for any of its Handshake packets and the handshake is
 //# not confirmed (see Section 4.1.2 of [QUIC-TLS]), even if there are no
 //# packets in flight.
 #[test]
@@ -2225,7 +2226,7 @@ fn pto_armed_if_handshake_not_confirmed() {
 
     assert!(manager.pto.timer.is_armed());
 }
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
 //= type=test
 //# The PTO period MUST be at least kGranularity, to avoid the timer
 //# expiring immediately.
@@ -2264,7 +2265,7 @@ fn pto_must_be_at_least_k_granularity() {
     assert!(manager.pto.timer.next_expiration().unwrap() >= now + K_GRANULARITY);
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
 //= type=test
 #[test]
 fn on_timeout() {
@@ -2282,7 +2283,7 @@ fn on_timeout() {
     manager.loss_timer.set(now + Duration::from_secs(10));
     manager.on_timeout(now, &mut context, &mut Publisher::default());
     assert_eq!(context.on_packet_loss_count, 0);
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
     //= type=test
     //# The PTO timer MUST NOT be set if a timer is set for time threshold
     //# loss detection; see Section 6.1.2.
@@ -2308,7 +2309,7 @@ fn on_timeout() {
     manager.loss_timer.set(now - Duration::from_secs(1));
     manager.on_timeout(now, &mut context, &mut Publisher::default());
     assert_eq!(context.on_packet_loss_count, 1);
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
     //= type=test
     //# The PTO timer MUST NOT be set if a timer is set for time threshold
     //# loss detection; see Section 6.1.2.
@@ -2335,7 +2336,7 @@ fn on_timeout() {
 
     // Loss timer is not armed, pto timer is expired with bytes in flight
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
     //= type=test
     //# When a PTO timer expires, the PTO backoff MUST be increased,
     //# resulting in the PTO period being set to twice its current value.
@@ -2355,21 +2356,21 @@ fn on_timeout() {
     manager.on_timeout(now, &mut context, &mut Publisher::default());
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.4
     //= type=test
     //# When a PTO timer expires, a sender MUST send at least one ack-
     //# eliciting packet in the packet number space as a probe.
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.4
     //= type=test
     //# An endpoint
     //# MAY send up to two full-sized datagrams containing ack-eliciting
-    //# packets, to avoid an expensive consecutive PTO expiration due to a
-    //# single lost datagram or transmit data from multiple packet number
+    //# packets to avoid an expensive consecutive PTO expiration due to a
+    //# single lost datagram or to transmit data from multiple packet number
     //# spaces.
     assert_eq!(manager.pto.state, RequiresTransmission(2));
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2
     //= type=test
     //# A PTO timer expiration event does not indicate packet loss and MUST
     //# NOT cause prior unacknowledged packets to be marked as lost.
@@ -2435,15 +2436,16 @@ fn on_transmit() {
     context.write_frame_forced(&frame::Padding { length: 1 });
     assert!(!context.ack_elicitation().is_ack_eliciting());
     manager.on_transmit(&mut context);
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.4
     //= type=test
     //# All probe packets sent on a PTO MUST be ack-eliciting.
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.4
     //= type=test
-    //# When the PTO timer expires, an ack-eliciting packet MUST be sent.
+    //# When a PTO timer expires, a sender MUST send at least one ack-
+    //# eliciting packet in the packet number space as a probe.
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.4
     //= type=test
     //# When there is no data to send, the sender SHOULD send
     //# a PING or other ack-eliciting frame in a single packet, re-arming the
@@ -2455,13 +2457,14 @@ fn on_transmit() {
     manager.pto.state = RequiresTransmission(1);
     context.write_frame_forced(&frame::Ping);
     manager.on_transmit(&mut context);
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.4
     //= type=test
     //# All probe packets sent on a PTO MUST be ack-eliciting.
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.4
     //= type=test
-    //# When the PTO timer expires, an ack-eliciting packet MUST be sent.
+    //# When a PTO timer expires, a sender MUST send at least one ack-
+    //# eliciting packet in the packet number space as a probe.
     assert!(context.ack_elicitation().is_ack_eliciting());
     assert_eq!(manager.pto.state, PtoState::Idle);
 
@@ -2565,7 +2568,7 @@ fn requires_probe() {
     assert!(!manager.requires_probe());
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.5
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.5
 //= type=test
 //# A sender MUST however count these packets as being additionally in
 //# flight, since these packets add network load without establishing
@@ -2598,13 +2601,13 @@ fn probe_packets_count_towards_bytes_in_flight() {
     assert_eq!(context.path().congestion_controller.bytes_in_flight, 100);
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.1
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#6.1.1
 //= type=test
 //# The RECOMMENDED initial value for the packet reordering threshold
 //# (kPacketThreshold) is 3, based on best practices for TCP loss
-//# detection ([RFC5681], [RFC6675]).
+//# detection [RFC5681] [RFC6675].
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.1
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#6.1.1
 //= type=test
 //# In order to remain similar to TCP,
 //# implementations SHOULD NOT use a packet threshold less than 3; see
@@ -2615,10 +2618,10 @@ fn packet_reorder_threshold_at_least_three() {
     assert!(K_PACKET_THRESHOLD >= 3);
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#6.1.2
 //= type=test
-//# The RECOMMENDED time threshold (kTimeThreshold), expressed as a
-//# round-trip time multiplier, is 9/8.
+//# The RECOMMENDED time threshold (kTimeThreshold), expressed as an
+//# RTT multiplier, is 9/8.
 #[test]
 fn time_threshold_multiplier_equals_nine_eighths() {
     let mut rtt_estimator = RttEstimator::new(Duration::from_millis(10));
@@ -2637,10 +2640,10 @@ fn time_threshold_multiplier_equals_nine_eighths() {
 
 #[test]
 fn timer_granularity() {
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.1.2
     //= type=test
     //# The RECOMMENDED value of the
-    //# timer granularity (kGranularity) is 1ms.
+    //# timer granularity (kGranularity) is 1 millisecond.
     assert_eq!(Duration::from_millis(1), K_GRANULARITY);
 
     let mut rtt_estimator = RttEstimator::new(Duration::from_millis(0));
@@ -2652,7 +2655,7 @@ fn timer_granularity() {
         PacketNumberSpace::Initial,
     );
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.1.2
     //= type=test
     //# To avoid declaring
     //# packets as lost too early, this time threshold MUST be set to at

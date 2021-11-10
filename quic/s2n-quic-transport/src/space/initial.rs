@@ -111,7 +111,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         let mut packet_number = self.tx_packet_numbers.next();
 
         if self.recovery_manager.requires_probe() {
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
+            //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.4
             //# If the sender wants to elicit a faster acknowledgement on PTO, it can
             //# skip a packet number to eliminate the acknowledgment delay.
 
@@ -236,7 +236,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             "Clients are never in an anti-amplification state"
         );
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.6
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#A.6
         //# When a server is blocked by anti-amplification limits, receiving a
         //# datagram unblocks it, even if none of the packets in the datagram are
         //# successfully processed.  In such a case, the PTO timer will need to

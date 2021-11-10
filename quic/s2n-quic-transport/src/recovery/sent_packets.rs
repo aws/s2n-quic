@@ -8,9 +8,9 @@ use s2n_quic_core::{
     packet::number::Map as PacketNumberMap, time::Timestamp,
 };
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.1
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#A.1
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.1.1
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#A.1.1
 
 pub type SentPackets = PacketNumberMap<SentPacketInfo>;
 
