@@ -170,7 +170,15 @@ impl<'a> EncryptedInitial<'a> {
             payload,
         } = self;
 
-        let (header, payload) = crate::crypto::decrypt(crypto, packet_number, payload)?;
+        println!(
+            "event: attempting inital decrypt. packet_number {:?}",
+            packet_number
+        );
+        let (header, payload) =
+            crate::crypto::decrypt(crypto, packet_number, payload).map_err(|err| {
+                println!("event: initial decrypt error {:?} {}", packet_number, err);
+                err
+            })?;
 
         let header = header.into_less_safe_slice();
 

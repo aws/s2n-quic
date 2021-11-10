@@ -64,6 +64,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         now: Timestamp,
         ack_manager: AckManager,
     ) -> Self {
+        println!("event: created initial space");
         Self {
             ack_manager,
             key,
@@ -231,6 +232,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
     ) {
+        println!("event: initial space. amplification unblocked");
         debug_assert!(
             Config::ENDPOINT_TYPE.is_server(),
             "Clients are never in an anti-amplification state"
@@ -268,6 +270,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         path_id: path::Id,
         publisher: &mut Pub,
     ) {
+        println!("event: discard initial space");
         self.recovery_manager
             .on_packet_number_space_discarded(path, path_id, publisher);
     }

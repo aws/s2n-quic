@@ -208,6 +208,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
 
                         let time = clock.get_time();
                         if let Err(err) = self.create_client_connection(request, time) {
+                            println!("event: failed to create a client connection {:?}", err);
                             // TODO report that the connection was not successfuly created
                             // TODO emit event
                             dbg!(err);
@@ -370,7 +371,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 });
                 None
             }
-            _ => {
+            err => {
+                println!("event: connection dropped {:?}", err);
                 // Outcome is non_exhaustive so drop on things we don't understand
                 // TODO emit drop event
                 None
@@ -537,9 +539,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 ) {
                     match err {
                         ProcessingError::DuplicatePacket => {
+                            println!("event: error processing packet, duplicate {:?}", err);
                             // We discard duplicate packets
                         }
                         ProcessingError::ConnectionError(err) => {
+                            println!("event: error processing packet, conn error {:?}", err);
                             conn.close(
                                 err,
                                 endpoint_context.connection_close_formatter,
@@ -549,7 +553,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             );
                             return Err(());
                         }
-                        ProcessingError::CryptoError(_) => {
+                        ProcessingError::CryptoError(err) => {
+                            println!("event: error processing packet, crypto error {:?}", err);
                             // CryptoErrors returned as a result of a packet failing decryption
                             // will be silently discarded, but are a potential indication of a
                             // stateless reset from the peer
@@ -713,6 +718,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     ) {
                         // TODO send a minimal connection close frame
                         // TODO emit event
+                        println!("event: error while handling initial packet {:?}", err);
                         dbg!(err);
                     }
                 }
@@ -754,6 +760,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 }
             }
         } else {
+            println!("event: need to handle packet for client {:?}", packet);
             // TODO: Find out what is required for the client. It seems like
             // those should at least send stateless resets on Initial packets
         }

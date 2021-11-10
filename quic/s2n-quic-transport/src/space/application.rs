@@ -96,6 +96,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         sni: Option<Sni>,
         alpn: Bytes,
     ) -> Self {
+        println!("event: created application space");
         let key_set = KeySet::new(key);
 
         Self {
@@ -290,6 +291,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
     ) {
+        println!("event: application space. amplification unblocked");
         debug_assert!(
             Config::ENDPOINT_TYPE.is_server(),
             "Clients are never in an anti-amplification state"
@@ -431,6 +433,11 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             publisher.on_key_update(event::builder::KeyUpdate {
                 key_type: event::builder::KeyType::OneRtt { generation },
             });
+        } else {
+            println!(
+                "event: decryption with keyset failed generation {}",
+                self.key_set.generation
+            );
         }
 
         //= https://www.rfc-editor.org/rfc/rfc9001.txt#9.5
@@ -579,6 +586,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         //# with a CRYPTO_BUFFER_EXCEEDED error code.
 
         // we currently just discard CRYPTO frames post-handshake
+        println!("event: crypto frame discarded in application space");
         Ok(())
     }
 

@@ -27,6 +27,7 @@ use s2n_quic_core::{
     time::{timer, Timestamp},
     transport,
 };
+use std::num::NonZeroU64;
 
 pub struct HandshakeSpace<Config: endpoint::Config> {
     pub ack_manager: AckManager,
@@ -64,6 +65,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         now: Timestamp,
         ack_manager: AckManager,
     ) -> Self {
+        println!("event: created handshake space");
         Self {
             ack_manager,
             key,
@@ -228,6 +230,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
     ) {
+        println!("event: handshake space. amplification unblocked");
         debug_assert!(
             Config::ENDPOINT_TYPE.is_server(),
             "Clients are never in an anti-amplification state"
@@ -265,6 +268,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         path_id: path::Id,
         publisher: &mut Pub,
     ) {
+        println!("event: discard handshake space");
         self.recovery_manager
             .on_packet_number_space_discarded(path, path_id, publisher);
     }
@@ -315,7 +319,20 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         publisher: &mut Pub,
     ) -> Result<CleartextHandshake<'a>, ProcessingError> {
         let packet_number_decoder = self.packet_number_decoder();
-        let packet = protected.unprotect(&self.header_key, packet_number_decoder)?;
+        println!(
+            "event: using packet number for decoding: {}",
+            packet_number_decoder
+        );
+        let packet = protected.unprotect(&self.header_key, packet_number_decoder);
+
+        let packet = match packet {
+            Ok(p) => p,
+            Err(err) => {
+                println!("event: failed tring to unprotect {}", err);
+
+                return Err(s2n_quic_core::connection::ProcessingError::CryptoError(err));
+            }
+        };
 
         if self.is_duplicate(packet.packet_number, path_id, path, publisher) {
             return Err(ProcessingError::DuplicatePacket);

@@ -285,11 +285,27 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .map_err(|err| {
                 use connection::ProcessingError;
                 match err {
-                    ProcessingError::CryptoError(err) => err.into(),
-                    ProcessingError::ConnectionError(err) => err,
+                    ProcessingError::CryptoError(err) => {
+                        println!(
+                            "event: endpoint initial. error processing packet, crypto error {:?}",
+                            err
+                        );
+                        err.into()
+                    }
+                    ProcessingError::ConnectionError(err) => {
+                        println!(
+                            "event: endpoint initial. error processing packet, conn error {:?}",
+                            err
+                        );
+                        err
+                    }
                     // this is the first packet this connection has received
                     // so getting this error would be incorrect
                     ProcessingError::DuplicatePacket => {
+                        println!(
+                            "event: endpoint initial. error processing packet, duplicate {:?}",
+                            err
+                        );
                         debug_assert!(false, "got duplicate packet error on first packet");
                         transport::Error::INTERNAL_ERROR.into()
                     }

@@ -168,6 +168,7 @@ impl tls::Session for Session {
             if self.tx_phase == HandshakePhase::Application && !self.connection.is_handshaking() {
                 if !self.emitted_handshake_complete {
                     self.rx_phase.transition();
+                    println!("event: TLS handshake complete");
                     context.on_handshake_complete()?;
                 }
 

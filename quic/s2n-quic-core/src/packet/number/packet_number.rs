@@ -89,6 +89,10 @@ impl fmt::Display for PacketNumber {
 }
 
 impl PacketNumber {
+    pub fn new(n: NonZeroU64) -> Self {
+        PacketNumber(n)
+    }
+
     /// Creates a PacketNumber for a given VarInt and PacketNumberSpace
     #[inline]
     pub(crate) const fn from_varint(value: VarInt, space: PacketNumberSpace) -> Self {

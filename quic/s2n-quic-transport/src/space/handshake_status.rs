@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{contexts::WriteContext, endpoint, sync::flag, transmission};
-use s2n_quic_core::{ack, frame::HandshakeDone, packet::number::PacketNumber};
+use s2n_quic_core::{ack, event, frame::HandshakeDone, packet::number::PacketNumber};
 
 pub type Flag = flag::Flag<HandshakeDoneWriter>;
 
@@ -87,15 +87,21 @@ impl HandshakeStatus {
             //# At the client, the handshake is
             //# considered confirmed when a HANDSHAKE_DONE frame is received.
             *self = HandshakeStatus::Confirmed;
+            println!("event: handshake confirmed");
         }
     }
 
     /// This method is called after the TLS handshake has been completed
-    pub fn on_handshake_complete(&mut self, endpoint_type: endpoint::Type) {
+    pub fn on_handshake_complete<Pub: event::ConnectionPublisher>(
+        &mut self,
+        endpoint_type: endpoint::Type,
+        _publisher: &'_ mut Pub,
+    ) {
         debug_assert!(
             matches!(self, Self::InProgress),
             "on_handshake_complete should only be called once."
         );
+        println!("event: handshake complete");
 
         if endpoint_type.is_server() {
             //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.2
@@ -104,6 +110,7 @@ impl HandshakeStatus {
             let mut flag = Flag::default();
             flag.send();
             *self = HandshakeStatus::ServerCompleteConfirmed(flag);
+            println!("event: handshake confirmed");
         } else {
             *self = HandshakeStatus::ClientComplete;
         }
@@ -117,6 +124,7 @@ impl HandshakeStatus {
             // acknowledged by the peer. Once it is delivered, the state
             // can transition to Confirmed.
             if flag.on_packet_ack(ack_set) {
+                println!("event: HANDSHAKE_DONE delivered");
                 *self = HandshakeStatus::Confirmed;
             }
         }

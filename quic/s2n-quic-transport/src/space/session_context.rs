@@ -320,10 +320,12 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         // finished
         if let Some(space) = self.handshake.as_mut() {
             space.crypto_stream.finish()?;
+        } else {
+            println!("event: crypto stream finish failed");
         }
 
         self.handshake_status
-            .on_handshake_complete(Config::ENDPOINT_TYPE);
+            .on_handshake_complete(Config::ENDPOINT_TYPE, self.publisher);
 
         if let Some(application) = self.application.as_mut() {
             if Config::ENDPOINT_TYPE.is_server() {
@@ -337,6 +339,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             }
             Ok(())
         } else {
+            println!("event: session context. handhsake complete failed");
             Err(transport::Error::INTERNAL_ERROR
                 .with_reason("handshake cannot be completed without application keys"))
         }

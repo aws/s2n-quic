@@ -866,15 +866,23 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
-        if let Some((space, _status)) = self.space_manager.initial_mut() {
-            let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
+        let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
-            let packet = space.validate_and_decrypt_packet(
-                packet,
-                path_id,
-                &self.path_manager[path_id],
-                &mut publisher,
-            )?;
+        if let Some((space, _status)) = self.space_manager.initial_mut() {
+            let packet = space
+                .validate_and_decrypt_packet(
+                    packet,
+                    path_id,
+                    &self.path_manager[path_id],
+                    &mut publisher,
+                )
+                .map_err(|err| {
+                    println!(
+                        "event: failed validating/decrypting inital packet {:?}",
+                        err
+                    );
+                    err
+                })?;
 
             publisher.on_packet_received(event::builder::PacketReceived {
                 packet_header: event::builder::PacketHeader::new(
@@ -890,6 +898,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 random_generator,
                 subscriber,
             )?;
+        } else {
+            println!("event: dropped packet in initial space. no initial space");
         }
 
         Ok(())
@@ -971,12 +981,20 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         if let Some((space, handshake_status)) = self.space_manager.handshake_mut() {
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
-            let packet = space.validate_and_decrypt_packet(
-                packet,
-                path_id,
-                &self.path_manager[path_id],
-                &mut publisher,
-            )?;
+            let packet = space
+                .validate_and_decrypt_packet(
+                    packet,
+                    path_id,
+                    &self.path_manager[path_id],
+                    &mut publisher,
+                )
+                .map_err(|err| {
+                    println!(
+                        "event: failed validating/decrypting handshake packet {:?}",
+                        err
+                    );
+                    err
+                })?;
 
             publisher.on_packet_received(event::builder::PacketReceived {
                 packet_header: event::builder::PacketHeader::new(
@@ -1019,6 +1037,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             // notify the connection a packet was processed
             self.on_processed_packet(datagram.timestamp);
+        } else {
+            println!("event: dropped packet in handshake space. no handshake space");
         }
 
         Ok(())
@@ -1067,19 +1087,25 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             //# The client MAY drop these packets, or it MAY buffer them in
             //# anticipation of later packets that allow it to compute the key.
 
+            println!("event: dropped packet in application space. handshake not complete");
             return Ok(());
         }
 
         if let Some((space, handshake_status)) = self.space_manager.application_mut() {
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
-            let packet = space.validate_and_decrypt_packet(
-                packet,
-                datagram,
-                path_id,
-                &self.path_manager[path_id],
-                &mut publisher,
-            )?;
+            let packet = space
+                .validate_and_decrypt_packet(
+                    packet,
+                    datagram,
+                    path_id,
+                    &self.path_manager[path_id],
+                    &mut publisher,
+                )
+                .map_err(|err| {
+                    println!("event: failed validating/decrypting 1-rtt packet {:?}", err);
+                    err
+                })?;
 
             // Connection Ids are issued to the peer after the handshake is
             // confirmed and the handshake space is discarded. Therefore only
@@ -1118,6 +1144,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     publisher.quic_version(),
                 ),
             });
+        } else {
+            println!("event: dropped packet in application space. no application space");
         }
 
         Ok(())
