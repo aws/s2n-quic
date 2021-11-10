@@ -1077,8 +1077,7 @@ impl Pto {
 
     //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
     //# A sender SHOULD restart its PTO timer every time an ack-eliciting
-    //# packet is sent or acknowledged, when the handshake is confirmed
-    //# (Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are
+    //# packet is sent or acknowledged, or when Initial or Handshake keys are
     //# discarded (Section 4.9 of [QUIC-TLS]).
     pub fn update(&mut self, base_timestamp: Timestamp, pto_period: Duration) {
         self.timer.set(base_timestamp + pto_period);

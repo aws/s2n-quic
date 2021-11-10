@@ -316,9 +316,17 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
         //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
         //# A sender SHOULD restart its PTO timer every time an ack-eliciting
-        //# packet is sent or acknowledged, when the handshake is confirmed
-        //# (Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are
+        //# packet is sent or acknowledged, or when Initial or Handshake keys are
         //# discarded (Section 4.9 of [QUIC-TLS]).
+
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
+        //# An endpoint MUST NOT set its PTO timer for the Application Data
+        //# packet number space until the handshake is confirmed.
+
+        // Since we maintain a separate PTO timer for each packet space, we don't have to update
+        // it when the Initial or Handshake keys are discarded. However, we do need to update the
+        // PTO timer when the handshake is confirmed, as the Application space PTO timer is not
+        // started until the handshake is confirmed.
         self.recovery_manager
             .update_pto_timer(path, timestamp, true)
     }
