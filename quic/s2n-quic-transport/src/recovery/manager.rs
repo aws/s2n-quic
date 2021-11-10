@@ -714,6 +714,13 @@ impl<Config: endpoint::Config> Manager<Config> {
                 }
 
                 //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
+                //= type=TODO
+                //= tracking-issue=973
+                //# These two packets MUST be ack-eliciting, since a receiver is required
+                //# to acknowledge only ack-eliciting packets within its maximum
+                //# acknowledgment delay; see Section 13.2 of [QUIC-TRANSPORT].
+
+                //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
                 //# A sender establishes persistent congestion after the receipt of an
                 //# acknowledgment if two packets that are ack-eliciting are declared
                 //# lost, and:
