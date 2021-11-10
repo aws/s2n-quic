@@ -1,6 +1,6 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1"
+target = "https://www.rfc-editor.org/rfc/rfc9002.txt#5.1"
 
-# 5.1.  Generating RTT samples
+# 5.1.  Generating RTT Samples
 #
 # An endpoint generates an RTT sample on receiving an ACK frame that
 # meets the following two conditions:
@@ -28,8 +28,8 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1"
 # An RTT sample MUST NOT be generated on receiving an ACK frame that
 # does not newly acknowledge at least one ack-eliciting packet.  A peer
 # usually does not send an ACK frame when only non-ack-eliciting
-# packets are received.  Therefore an ACK frame that contains
-# acknowledgements for only non-ack-eliciting packets could include an
+# packets are received.  Therefore, an ACK frame that contains
+# acknowledgments for only non-ack-eliciting packets could include an
 # arbitrarily large ACK Delay value.  Ignoring such ACK frames avoids
 # complications in subsequent smoothed_rtt and rttvar computations.
 # 

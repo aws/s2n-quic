@@ -1,62 +1,62 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3"
+target = "https://www.rfc-editor.org/rfc/rfc9002.txt#5.3"
 
 # 5.3.  Estimating smoothed_rtt and rttvar
 #
-# smoothed_rtt is an exponentially-weighted moving average of an
-# endpoint's RTT samples, and rttvar is the variation in the RTT
-# samples, estimated using a mean variation.
+# smoothed_rtt is an exponentially weighted moving average of an
+# endpoint's RTT samples, and rttvar estimates the variation in the RTT
+# samples using a mean variation.
 # 
 # The calculation of smoothed_rtt uses RTT samples after adjusting them
-# for acknowledgement delays.  These delays are decoded from the ACK
+# for acknowledgment delays.  These delays are decoded from the ACK
 # Delay field of ACK frames as described in Section 19.3 of
 # [QUIC-TRANSPORT].
 # 
-# The peer might report acknowledgement delays that are larger than the
+# The peer might report acknowledgment delays that are larger than the
 # peer's max_ack_delay during the handshake (Section 13.2.1 of
 # [QUIC-TRANSPORT]).  To account for this, the endpoint SHOULD ignore
-# max_ack_delay until the handshake is confirmed (Section 4.1.2 of
-# [QUIC-TLS]).  When they occur, these large acknowledgement delays are
-# likely to be non-repeating and limited to the handshake.  The
-# endpoint can therefore use them without limiting them to the
-# max_ack_delay, avoiding unnecessary inflation of the RTT estimate.
+# max_ack_delay until the handshake is confirmed, as defined in
+# Section 4.1.2 of [QUIC-TLS].  When they occur, these large
+# acknowledgment delays are likely to be non-repeating and limited to
+# the handshake.  The endpoint can therefore use them without limiting
+# them to the max_ack_delay, avoiding unnecessary inflation of the RTT
+# estimate.
 # 
-# Note however that a large acknowledgement delay can result in a
-# substantially inflated smoothed_rtt, if there is either an error in
-# the peer's reporting of the acknowledgement delay or in the
-# endpoint's min_rtt estimate.  Therefore, prior to handshake
-# confirmation, an endpoint MAY ignore RTT samples if adjusting the RTT
-# sample for acknowledgement delay causes the sample to be less than
-# the min_rtt.
+# Note that a large acknowledgment delay can result in a substantially
+# inflated smoothed_rtt if there is an error either in the peer's
+# reporting of the acknowledgment delay or in the endpoint's min_rtt
+# estimate.  Therefore, prior to handshake confirmation, an endpoint
+# MAY ignore RTT samples if adjusting the RTT sample for acknowledgment
+# delay causes the sample to be less than the min_rtt.
 # 
-# After the handshake is confirmed, any acknowledgement delays reported
+# After the handshake is confirmed, any acknowledgment delays reported
 # by the peer that are greater than the peer's max_ack_delay are
 # attributed to unintentional but potentially repeating delays, such as
-# scheduler latency at the peer or loss of previous acknowledgements.
-# Excess delays could also be due to a non-compliant receiver.
+# scheduler latency at the peer or loss of previous acknowledgments.
+# Excess delays could also be due to a noncompliant receiver.
 # Therefore, these extra delays are considered effectively part of path
 # delay and incorporated into the RTT estimate.
 # 
 # Therefore, when adjusting an RTT sample using peer-reported
-# acknowledgement delays, an endpoint:
+# acknowledgment delays, an endpoint:
 # 
-# *  MAY ignore the acknowledgement delay for Initial packets, since
-#    these acknowledgements are not delayed by the peer (Section 13.2.1
+# *  MAY ignore the acknowledgment delay for Initial packets, since
+#    these acknowledgments are not delayed by the peer (Section 13.2.1
 #    of [QUIC-TRANSPORT]);
 # 
 # *  SHOULD ignore the peer's max_ack_delay until the handshake is
 #    confirmed;
 # 
-# *  MUST use the lesser of the acknowledgement delay and the peer's
+# *  MUST use the lesser of the acknowledgment delay and the peer's
 #    max_ack_delay after the handshake is confirmed; and
 # 
-# *  MUST NOT subtract the acknowledgement delay from the RTT sample if
+# *  MUST NOT subtract the acknowledgment delay from the RTT sample if
 #    the resulting value is smaller than the min_rtt.  This limits the
 #    underestimation of the smoothed_rtt due to a misreporting peer.
 # 
 # Additionally, an endpoint might postpone the processing of
-# acknowledgements when the corresponding decryption keys are not
+# acknowledgments when the corresponding decryption keys are not
 # immediately available.  For example, a client might receive an
-# acknowledgement for a 0-RTT packet that it cannot decrypt because
+# acknowledgment for a 0-RTT packet that it cannot decrypt because
 # 1-RTT packet protection keys are not yet available to it.  In such
 # cases, an endpoint SHOULD subtract such local delays from its RTT
 # sample until the handshake is confirmed.
@@ -80,7 +80,9 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3"
 # RTT samples for the network path are recorded in latest_rtt; see
 # Section 5.1.  On the first RTT sample after initialization, the
 # estimator is reset using that sample.  This ensures that the
-# estimator retains no history of past samples.
+# estimator retains no history of past samples.  Packets sent on other
+# paths do not contribute RTT samples to the current path, as described
+# in Section 9.4 of [QUIC-TRANSPORT].
 # 
 # On the first RTT sample after initialization, smoothed_rtt and rttvar
 # are set as follows:
@@ -90,11 +92,11 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3"
 # 
 # On subsequent RTT samples, smoothed_rtt and rttvar evolve as follows:
 # 
-# ack_delay = decoded acknowledgement delay from ACK frame
+# ack_delay = decoded acknowledgment delay from ACK frame
 # if (handshake confirmed):
 #   ack_delay = min(ack_delay, max_ack_delay)
 # adjusted_rtt = latest_rtt
-# if (min_rtt + ack_delay < latest_rtt):
+# if (latest_rtt >= min_rtt + ack_delay):
 #   adjusted_rtt = latest_rtt - ack_delay
 # smoothed_rtt = 7/8 * smoothed_rtt + 1/8 * adjusted_rtt
 # rttvar_sample = abs(smoothed_rtt - adjusted_rtt)
@@ -104,24 +106,23 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3"
 level = "SHOULD"
 quote = '''
 To account for this, the endpoint SHOULD ignore
-max_ack_delay until the handshake is confirmed (Section 4.1.2 of
-[QUIC-TLS]).
+max_ack_delay until the handshake is confirmed, as defined in
+Section 4.1.2 of [QUIC-TLS].
 '''
 
 [[spec]]
 level = "MAY"
 quote = '''
-Therefore, prior to handshake
-confirmation, an endpoint MAY ignore RTT samples if adjusting the RTT
-sample for acknowledgement delay causes the sample to be less than
-the min_rtt.
+Therefore, prior to handshake confirmation, an endpoint
+MAY ignore RTT samples if adjusting the RTT sample for acknowledgment
+delay causes the sample to be less than the min_rtt.
 '''
 
 [[spec]]
 level = "MAY"
 quote = '''
-*  MAY ignore the acknowledgement delay for Initial packets, since
-these acknowledgements are not delayed by the peer (Section 13.2.1
+*  MAY ignore the acknowledgment delay for Initial packets, since
+these acknowledgments are not delayed by the peer (Section 13.2.1
 of [QUIC-TRANSPORT]);
 '''
 
@@ -135,14 +136,14 @@ confirmed;
 [[spec]]
 level = "MUST"
 quote = '''
-*  MUST use the lesser of the acknowledgement delay and the peer's
+*  MUST use the lesser of the acknowledgment delay and the peer's
 max_ack_delay after the handshake is confirmed; and
 '''
 
 [[spec]]
 level = "MUST"
 quote = '''
-*  MUST NOT subtract the acknowledgement delay from the RTT sample if
+*  MUST NOT subtract the acknowledgment delay from the RTT sample if
 the resulting value is smaller than the min_rtt.
 '''
 

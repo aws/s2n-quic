@@ -1,4 +1,4 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.7"
+target = "https://www.rfc-editor.org/rfc/rfc9002.txt#7.7"
 
 # 7.7.  Pacing
 #
@@ -19,28 +19,29 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.7"
 # the congestion controller.
 # 
 # Timely delivery of ACK frames is important for efficient loss
-# recovery.  Packets containing only ACK frames SHOULD therefore not be
-# paced, to avoid delaying their delivery to the peer.
+# recovery.  To avoid delaying their delivery to the peer, packets
+# containing only ACK frames SHOULD therefore not be paced.
 # 
 # Endpoints can implement pacing as they choose.  A perfectly paced
 # sender spreads packets exactly evenly over time.  For a window-based
 # congestion controller, such as the one in this document, that rate
-# can be computed by averaging the congestion window over the round-
-# trip time.  Expressed as a rate in bytes:
+# can be computed by averaging the congestion window over the RTT.
+# Expressed as a rate in units of bytes per time, where
+# congestion_window is in bytes:
 # 
 # rate = N * congestion_window / smoothed_rtt
 # 
-# Or, expressed as an inter-packet interval:
+# Or expressed as an inter-packet interval in units of time:
 # 
-# interval = smoothed_rtt * packet_size / congestion_window / N
+# interval = ( smoothed_rtt * packet_size / congestion_window ) / N
 # 
 # Using a value for "N" that is small, but at least 1 (for example,
-# 1.25) ensures that variations in round-trip time do not result in
-# under-utilization of the congestion window.
+# 1.25) ensures that variations in RTT do not result in
+# underutilization of the congestion window.
 # 
 # Practical considerations, such as packetization, scheduling delays,
 # and computational efficiency, can cause a sender to deviate from this
-# rate over time periods that are much shorter than a round-trip time.
+# rate over time periods that are much shorter than an RTT.
 # 
 # One possible implementation strategy for pacing uses a leaky bucket
 # algorithm, where the capacity of the "bucket" is limited to the
@@ -77,7 +78,7 @@ receiver can absorb larger bursts MAY use a higher limit.
 [[spec]]
 level = "SHOULD"
 quote = '''
-Packets containing only ACK frames SHOULD therefore not be
-paced, to avoid delaying their delivery to the peer.
+To avoid delaying their delivery to the peer, packets
+containing only ACK frames SHOULD therefore not be paced.
 '''
 

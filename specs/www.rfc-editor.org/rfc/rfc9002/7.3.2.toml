@@ -1,11 +1,11 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2"
+target = "https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.2"
 
 # 7.3.2.  Recovery
 #
 # A NewReno sender enters a recovery period when it detects the loss of
-# a packet or the ECN-CE count reported by its peer increases.  A
+# a packet or when the ECN-CE count reported by its peer increases.  A
 # sender that is already in a recovery period stays in it and does not
-# re-enter it.
+# reenter it.
 # 
 # On entering a recovery period, a sender MUST set the slow start
 # threshold to half the value of the congestion window when loss is
@@ -14,14 +14,14 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2"
 # 
 # Implementations MAY reduce the congestion window immediately upon
 # entering a recovery period or use other mechanisms, such as
-# Proportional Rate Reduction ([PRR]), to reduce the congestion window
+# Proportional Rate Reduction [PRR], to reduce the congestion window
 # more gradually.  If the congestion window is reduced immediately, a
 # single packet can be sent prior to reduction.  This speeds up loss
 # recovery if the data in the lost packet is retransmitted and is
 # similar to TCP as described in Section 5 of [RFC6675].
 # 
 # The recovery period aims to limit congestion window reduction to once
-# per round trip.  Therefore during a recovery period, the congestion
+# per round trip.  Therefore, during a recovery period, the congestion
 # window does not change in response to new losses or increases in the
 # ECN-CE count.
 # 
@@ -29,7 +29,7 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2"
 # when a packet sent during the recovery period is acknowledged.  This
 # is slightly different from TCP's definition of recovery, which ends
 # when the lost segment that started recovery is acknowledged
-# ([RFC5681]).
+# [RFC5681].
 
 [[spec]]
 level = "MUST"
@@ -51,7 +51,7 @@ level = "MAY"
 quote = '''
 Implementations MAY reduce the congestion window immediately upon
 entering a recovery period or use other mechanisms, such as
-Proportional Rate Reduction ([PRR]), to reduce the congestion window
+Proportional Rate Reduction [PRR], to reduce the congestion window
 more gradually.
 '''
 

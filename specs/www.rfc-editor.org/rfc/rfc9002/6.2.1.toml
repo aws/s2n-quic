@@ -1,4 +1,4 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1"
+target = "https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1"
 
 # 6.2.1.  Computing PTO
 #
@@ -8,60 +8,58 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1"
 # PTO = smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay
 # 
 # The PTO period is the amount of time that a sender ought to wait for
-# an acknowledgement of a sent packet.  This time period includes the
-# estimated network roundtrip-time (smoothed_rtt), the variation in the
-# estimate (4*rttvar), and max_ack_delay, to account for the maximum
-# time by which a receiver might delay sending an acknowledgement.
+# an acknowledgment of a sent packet.  This time period includes the
+# estimated network RTT (smoothed_rtt), the variation in the estimate
+# (4*rttvar), and max_ack_delay, to account for the maximum time by
+# which a receiver might delay sending an acknowledgment.
 # 
 # When the PTO is armed for Initial or Handshake packet number spaces,
 # the max_ack_delay in the PTO period computation is set to 0, since
 # the peer is expected to not delay these packets intentionally; see
-# 13.2.1 of [QUIC-TRANSPORT].
+# Section 13.2.1 of [QUIC-TRANSPORT].
 # 
-# The PTO period MUST be at least kGranularity, to avoid the timer
+# The PTO period MUST be at least kGranularity to avoid the timer
 # expiring immediately.
 # 
 # When ack-eliciting packets in multiple packet number spaces are in
 # flight, the timer MUST be set to the earlier value of the Initial and
 # Handshake packet number spaces.
 # 
-# An endpoint MUST NOT set its PTO timer for the application data
+# An endpoint MUST NOT set its PTO timer for the Application Data
 # packet number space until the handshake is confirmed.  Doing so
 # prevents the endpoint from retransmitting information in packets when
 # either the peer does not yet have the keys to process them or the
-# endpoint does not yet have the keys to process their
-# acknowledgements.  For example, this can happen when a client sends
-# 0-RTT packets to the server; it does so without knowing whether the
-# server will be able to decrypt them.  Similarly, this can happen when
-# a server sends 1-RTT packets before confirming that the client has
-# verified the server's certificate and can therefore read these 1-RTT
-# packets.
+# endpoint does not yet have the keys to process their acknowledgments.
+# For example, this can happen when a client sends 0-RTT packets to the
+# server; it does so without knowing whether the server will be able to
+# decrypt them.  Similarly, this can happen when a server sends 1-RTT
+# packets before confirming that the client has verified the server's
+# certificate and can therefore read these 1-RTT packets.
 # 
 # A sender SHOULD restart its PTO timer every time an ack-eliciting
-# packet is sent or acknowledged, when the handshake is confirmed
-# (Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are
+# packet is sent or acknowledged, or when Initial or Handshake keys are
 # discarded (Section 4.9 of [QUIC-TLS]).  This ensures the PTO is
-# always set based on the latest estimate of the round-trip time and
-# for the correct packet across packet number spaces.
+# always set based on the latest estimate of the RTT and for the
+# correct packet across packet number spaces.
 # 
 # When a PTO timer expires, the PTO backoff MUST be increased,
 # resulting in the PTO period being set to twice its current value.
-# The PTO backoff factor is reset when an acknowledgement is received,
+# The PTO backoff factor is reset when an acknowledgment is received,
 # except in the following case.  A server might take longer to respond
 # to packets during the handshake than otherwise.  To protect such a
 # server from repeated client probes, the PTO backoff is not reset at a
 # client that is not yet certain that the server has finished
 # validating the client's address.  That is, a client does not reset
-# the PTO backoff factor on receiving acknowledgements in Initial
+# the PTO backoff factor on receiving acknowledgments in Initial
 # packets.
 # 
 # This exponential reduction in the sender's rate is important because
 # consecutive PTOs might be caused by loss of packets or
-# acknowledgements due to severe congestion.  Even when there are ack-
-# eliciting packets in-flight in multiple packet number spaces, the
-# exponential increase in probe timeout occurs across all spaces to
-# prevent excess load on the network.  For example, a timeout in the
-# Initial packet number space doubles the length of the timeout in the
+# acknowledgments due to severe congestion.  Even when there are ack-
+# eliciting packets in flight in multiple packet number spaces, the
+# exponential increase in PTO occurs across all spaces to prevent
+# excess load on the network.  For example, a timeout in the Initial
+# packet number space doubles the length of the timeout in the
 # Handshake packet number space.
 # 
 # The total length of time over which consecutive PTOs expire is
@@ -75,7 +73,7 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1"
 [[spec]]
 level = "MUST"
 quote = '''
-The PTO period MUST be at least kGranularity, to avoid the timer
+The PTO period MUST be at least kGranularity to avoid the timer
 expiring immediately.
 '''
 
@@ -90,7 +88,7 @@ Handshake packet number spaces.
 [[spec]]
 level = "MUST"
 quote = '''
-An endpoint MUST NOT set its PTO timer for the application data
+An endpoint MUST NOT set its PTO timer for the Application Data
 packet number space until the handshake is confirmed.
 '''
 
@@ -98,8 +96,7 @@ packet number space until the handshake is confirmed.
 level = "SHOULD"
 quote = '''
 A sender SHOULD restart its PTO timer every time an ack-eliciting
-packet is sent or acknowledged, when the handshake is confirmed
-(Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are
+packet is sent or acknowledged, or when Initial or Handshake keys are
 discarded (Section 4.9 of [QUIC-TLS]).
 '''
 

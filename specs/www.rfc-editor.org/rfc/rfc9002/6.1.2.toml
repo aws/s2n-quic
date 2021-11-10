@@ -1,4 +1,4 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2"
+target = "https://www.rfc-editor.org/rfc/rfc9002.txt#6.1.2"
 
 # 6.1.2.  Time Threshold
 #
@@ -18,24 +18,23 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2"
 # cases:
 # 
 # *  the latest RTT sample is lower than the smoothed RTT, perhaps due
-#    to reordering where the acknowledgement encountered a shorter
-#    path;
+#    to reordering where the acknowledgment encountered a shorter path;
 # 
 # *  the latest RTT sample is higher than the smoothed RTT, perhaps due
 #    to a sustained increase in the actual RTT, but the smoothed RTT
 #    has not yet caught up.
 # 
-# The RECOMMENDED time threshold (kTimeThreshold), expressed as a
-# round-trip time multiplier, is 9/8.  The RECOMMENDED value of the
-# timer granularity (kGranularity) is 1ms.
+# The RECOMMENDED time threshold (kTimeThreshold), expressed as an RTT
+# multiplier, is 9/8.  The RECOMMENDED value of the timer granularity
+# (kGranularity) is 1 millisecond.
 # 
-# Note:  TCP's RACK ([RACK]) specifies a slightly larger threshold,
-#    equivalent to 5/4, for a similar purpose.  Experience with QUIC
-#    shows that 9/8 works well.
+#    |  Note: TCP's RACK [RFC8985] specifies a slightly larger
+#    |  threshold, equivalent to 5/4, for a similar purpose.
+#    |  Experience with QUIC shows that 9/8 works well.
 # 
 # Implementations MAY experiment with absolute thresholds, thresholds
-# from previous connections, adaptive thresholds, or including RTT
-# variation.  Smaller thresholds reduce reordering resilience and
+# from previous connections, adaptive thresholds, or the including of
+# RTT variation.  Smaller thresholds reduce reordering resilience and
 # increase spurious retransmissions, and larger thresholds increase
 # loss detection delay.
 
@@ -66,22 +65,22 @@ be declared lost, then a timer SHOULD be set for the remaining time.
 [[spec]]
 level = "SHOULD"
 quote = '''
-The RECOMMENDED time threshold (kTimeThreshold), expressed as a
-round-trip time multiplier, is 9/8.
+The RECOMMENDED time threshold (kTimeThreshold), expressed as an RTT
+multiplier, is 9/8.
 '''
 
 [[spec]]
 level = "SHOULD"
 quote = '''
-The RECOMMENDED value of the
-timer granularity (kGranularity) is 1ms.
+The RECOMMENDED value of the timer granularity
+(kGranularity) is 1 millisecond.
 '''
 
 [[spec]]
 level = "MAY"
 quote = '''
 Implementations MAY experiment with absolute thresholds, thresholds
-from previous connections, adaptive thresholds, or including RTT
-variation.
+from previous connections, adaptive thresholds, or the including of
+RTT variation.
 '''
 

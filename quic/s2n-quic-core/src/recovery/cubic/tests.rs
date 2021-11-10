@@ -119,7 +119,7 @@ fn multiplicative_decrease() {
 }
 
 #[test]
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.8
 //= type=test
 fn is_congestion_limited() {
     let max_datagram_size = 1000;
@@ -164,12 +164,12 @@ fn is_congestion_window_under_utilized() {
     assert!(!cc.is_congestion_window_under_utilized());
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.2
 //= type=test
 //# Endpoints SHOULD use an initial congestion
-//# window of 10 times the maximum datagram size (max_datagram_size),
-//# limited to the larger of 14720 bytes or twice the maximum datagram
-//# size.
+//# window of ten times the maximum datagram size (max_datagram_size),
+//# while limiting the window to the larger of 14,720 bytes or twice the
+//# maximum datagram size.
 #[test]
 fn initial_window() {
     let mut max_datagram_size = 1200;
@@ -191,7 +191,7 @@ fn initial_window() {
     );
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.2
 //= type=test
 //# The RECOMMENDED
 //# value is 2 * max_datagram_size.
@@ -471,7 +471,7 @@ fn on_packet_lost() {
     cc.on_packets_lost(100, false, now + Duration::from_secs(10));
 
     assert_eq!(cc.bytes_in_flight, 100_000u32 - 100);
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.1
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.1
     //= type=test
     //# The sender MUST exit slow start and enter a recovery period when a
     //# packet is lost or when the ECN-CE count reported by its peer
@@ -480,11 +480,11 @@ fn on_packet_lost() {
         cc.state,
         Recovery(now + Duration::from_secs(10), RequiresTransmission)
     );
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.2
     //= type=test
     //# Implementations MAY reduce the congestion window immediately upon
     //# entering a recovery period or use other mechanisms, such as
-    //# Proportional Rate Reduction ([PRR]), to reduce the congestion window
+    //# Proportional Rate Reduction [PRR], to reduce the congestion window
     //# more gradually.
     assert_delta!(cc.congestion_window, 100_000.0 * BETA_CUBIC, 0.001);
     assert_delta!(cc.slow_start.threshold, 100_000.0 * BETA_CUBIC, 0.001);
@@ -520,12 +520,12 @@ fn on_packet_lost_already_in_recovery() {
     assert_delta!(cc.congestion_window, 10000.0, 0.001);
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
 //= type=test
 //# When persistent congestion is declared, the sender's congestion
 //# window MUST be reduced to the minimum congestion window
 //# (kMinimumWindow), similar to a TCP sender's response on an RTO
-//# ([RFC5681]).
+//# [RFC5681].
 #[test]
 fn on_packet_lost_persistent_congestion() {
     let mut cc = CubicCongestionController::new(1000);
@@ -543,7 +543,7 @@ fn on_packet_lost_persistent_congestion() {
     assert_eq!(cc.cubic.k, Duration::from_millis(0));
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.2
 //= type=test
 //# If the maximum datagram size is decreased in order to complete the
 //# handshake, the congestion window SHOULD be set to the new initial
@@ -563,7 +563,7 @@ fn on_mtu_update_decrease() {
     );
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.2
 //= type=test
 //# If the maximum datagram size changes during the connection, the
 //# initial congestion window SHOULD be recalculated with the new size.
@@ -595,7 +595,7 @@ fn on_mtu_update_increase() {
     assert_delta!(cc.congestion_window / mtu as f32, cwnd_in_bytes, 0.001);
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.4
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#6.4
 //= type=test
 //# The sender MUST discard all recovery state associated with
 //# those packets and MUST remove them from the count of bytes in flight.
@@ -616,12 +616,13 @@ fn on_packet_discarded() {
     assert_eq!(Recovery(now, FastRetransmission::Idle), cc.state);
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.8
 //= type=test
 //# When bytes in flight is smaller than the congestion window and
-//# sending is not pacing limited, the congestion window is under-
-//# utilized. When this occurs, the congestion window SHOULD NOT be
-//# increased in either slow start or congestion avoidance.
+//# sending is not pacing limited, the congestion window is
+//# underutilized.  This can happen due to insufficient application data
+//# or flow control limits.  When this occurs, the congestion window
+//# SHOULD NOT be increased in either slow start or congestion avoidance.
 #[test]
 fn on_packet_ack_limited() {
     let mut cc = CubicCongestionController::new(5000);
@@ -705,7 +706,7 @@ fn on_packet_ack_utilized_then_under_utilized() {
 }
 
 #[test]
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.2
 //= type=test
 fn on_packet_ack_recovery_to_congestion_avoidance() {
     let mut cc = CubicCongestionController::new(5000);
@@ -730,7 +731,7 @@ fn on_packet_ack_recovery_to_congestion_avoidance() {
 }
 
 #[test]
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.2
 //= type=test
 fn on_packet_ack_slow_start_to_congestion_avoidance() {
     let mut cc = CubicCongestionController::new(5000);

@@ -1,4 +1,4 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1"
+target = "https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.1"
 
 # 7.6.1.  Duration
 #
@@ -13,8 +13,8 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1"
 # 
 # This duration allows a sender to send as many packets before
 # establishing persistent congestion, including some in response to PTO
-# expiration, as TCP does with Tail Loss Probes ([RACK]) and a
-# Retransmission Timeout ([RFC5681]).
+# expiration, as TCP does with Tail Loss Probes [RFC8985] and an RTO
+# [RFC5681].
 # 
 # Larger values of kPersistentCongestionThreshold cause the sender to
 # become less responsive to persistent congestion in the network, which
@@ -28,8 +28,7 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1"
 # 
 # This design does not use consecutive PTO events to establish
 # persistent congestion, since application patterns impact PTO
-# expirations.  For example, a sender that sends small amounts of data
-# 
+# expiration.  For example, a sender that sends small amounts of data
 # with silence periods between them restarts the PTO timer every time
 # it sends, potentially preventing the PTO timer from expiring for a
 # long period of time, even when no acknowledgments are being received.

@@ -1,4 +1,4 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.3"
+target = "https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.3"
 
 # 7.3.3.  Congestion Avoidance
 #

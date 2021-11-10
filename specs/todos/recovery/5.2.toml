@@ -1,10 +1,10 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2"
+target = "https://www.rfc-editor.org/rfc/rfc9002.txt#5.2"
 
 [[TODO]]
 quote = '''
-Endpoints MAY re-establish the min_rtt at other times in the
-connection, such as when traffic volume is low and an acknowledgement
-is received with a low acknowledgement delay.
+Endpoints MAY reestablish the min_rtt at other times in the
+connection, such as when traffic volume is low and an acknowledgment
+is received with a low acknowledgment delay.
 '''
 feature = "Re-establishing min_rtt"
 tracking-issue = "249"

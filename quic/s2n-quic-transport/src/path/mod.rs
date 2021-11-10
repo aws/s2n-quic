@@ -443,14 +443,14 @@ impl<Config: endpoint::Config> Path<Config> {
             transmission::Constraint::AmplificationLimited
         } else if self.congestion_controller.is_congestion_limited() {
             if self.congestion_controller.requires_fast_retransmission() {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
+                //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.2
                 //# If the congestion window is reduced immediately, a
                 //# single packet can be sent prior to reduction.  This speeds up loss
                 //# recovery if the data in the lost packet is retransmitted and is
                 //# similar to TCP as described in Section 5 of [RFC6675].
                 transmission::Constraint::RetransmissionOnly
             } else {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7
+                //= https://www.rfc-editor.org/rfc/rfc9002.txt#7
                 //# An endpoint MUST NOT send a packet if it would cause bytes_in_flight
                 //# (see Appendix B.2) to be larger than the congestion window, unless
                 //# the packet is sent on a PTO timer expiration (see Section 6.2) or

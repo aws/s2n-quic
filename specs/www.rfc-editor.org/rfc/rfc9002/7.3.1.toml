@@ -1,4 +1,4 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.1"
+target = "https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.1"
 
 # 7.3.1.  Slow Start
 #
@@ -15,7 +15,7 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.1"
 # packet is lost or when the ECN-CE count reported by its peer
 # increases.
 # 
-# A sender re-enters slow start any time the congestion window is less
+# A sender reenters slow start any time the congestion window is less
 # than the slow start threshold, which only occurs after persistent
 # congestion is declared.
 

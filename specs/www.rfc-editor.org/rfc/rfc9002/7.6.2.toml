@@ -1,18 +1,22 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2"
+target = "https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2"
 
 # 7.6.2.  Establishing Persistent Congestion
 #
-# A sender establishes persistent congestion on receiving an
-# acknowledgement if at least two ack-eliciting packets are declared
+# A sender establishes persistent congestion after the receipt of an
+# acknowledgment if two packets that are ack-eliciting are declared
 # lost, and:
 # 
-# *  all packets, across all packet number spaces, sent between these
-#    two send times are declared lost;
+# *  across all packet number spaces, none of the packets sent between
+#    the send times of these two packets are acknowledged;
 # 
 # *  the duration between the send times of these two packets exceeds
 #    the persistent congestion duration (Section 7.6.1); and
 # 
-# *  a prior RTT sample existed when both packets were sent.
+# *  a prior RTT sample existed when these two packets were sent.
+# 
+# These two packets MUST be ack-eliciting, since a receiver is required
+# to acknowledge only ack-eliciting packets within its maximum
+# acknowledgment delay; see Section 13.2 of [QUIC-TRANSPORT].
 # 
 # The persistent congestion period SHOULD NOT start until there is at
 # least one RTT sample.  Before the first RTT sample, a sender arms its
@@ -26,12 +30,22 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2"
 # number spaces.  A sender that does not have state for all packet
 # number spaces or an implementation that cannot compare send times
 # across packet number spaces MAY use state for just the packet number
-# space that was acknowledged.
+# space that was acknowledged.  This might result in erroneously
+# declaring persistent congestion, but it will not lead to a failure to
+# detect persistent congestion.
 # 
 # When persistent congestion is declared, the sender's congestion
 # window MUST be reduced to the minimum congestion window
 # (kMinimumWindow), similar to a TCP sender's response on an RTO
-# ([RFC5681]).
+# [RFC5681].
+
+[[spec]]
+level = "MUST"
+quote = '''
+These two packets MUST be ack-eliciting, since a receiver is required
+to acknowledge only ack-eliciting packets within its maximum
+acknowledgment delay; see Section 13.2 of [QUIC-TRANSPORT].
+'''
 
 [[spec]]
 level = "SHOULD"
@@ -63,6 +77,6 @@ quote = '''
 When persistent congestion is declared, the sender's congestion
 window MUST be reduced to the minimum congestion window
 (kMinimumWindow), similar to a TCP sender's response on an RTO
-([RFC5681]).
+[RFC5681].
 '''
 

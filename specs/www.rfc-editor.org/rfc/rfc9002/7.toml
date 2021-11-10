@@ -1,25 +1,29 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7"
+target = "https://www.rfc-editor.org/rfc/rfc9002.txt#7"
 
 # 7.  Congestion Control
 #
 # This document specifies a sender-side congestion controller for QUIC
-# similar to TCP NewReno ([RFC6582]).
+# similar to TCP NewReno [RFC6582].
 # 
 # The signals QUIC provides for congestion control are generic and are
 # designed to support different sender-side algorithms.  A sender can
-# unilaterally choose a different algorithm to use, such as Cubic
-# ([RFC8312]).
+# unilaterally choose a different algorithm to use, such as CUBIC
+# [RFC8312].
 # 
 # If a sender uses a different controller than that specified in this
 # document, the chosen controller MUST conform to the congestion
 # control guidelines specified in Section 3.1 of [RFC8085].
 # 
 # Similar to TCP, packets containing only ACK frames do not count
-# towards bytes in flight and are not congestion controlled.  Unlike
+# toward bytes in flight and are not congestion controlled.  Unlike
 # TCP, QUIC can detect the loss of these packets and MAY use that
 # information to adjust the congestion controller or the rate of ACK-
 # only packets being sent, but this document does not describe a
 # mechanism for doing so.
+# 
+# The congestion controller is per path, so packets sent on other paths
+# do not alter the current path's congestion controller, as described
+# in Section 9.4 of [QUIC-TRANSPORT].
 # 
 # The algorithm in this document specifies and uses the controller's
 # congestion window in bytes.
