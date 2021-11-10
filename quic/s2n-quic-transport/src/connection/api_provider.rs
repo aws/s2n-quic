@@ -60,8 +60,6 @@ pub(crate) trait ConnectionApiProvider: Sync + Send {
 
     fn remote_address(&self) -> Result<SocketAddress, connection::Error>;
 
-    fn error(&self) -> Option<connection::Error>;
-
     fn query_event_context(&self, query: &mut dyn Query) -> Result<(), connection::Error>;
 
     fn query_event_context_mut(&self, query: &mut dyn QueryMut) -> Result<(), connection::Error>;

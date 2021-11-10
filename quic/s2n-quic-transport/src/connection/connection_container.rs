@@ -280,14 +280,6 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
         self.api_read_call(|conn| conn.remote_address())
     }
 
-    fn error(&self) -> Option<connection::Error> {
-        let err = self.api_read_call(|conn| Ok(conn.error()));
-        match err {
-            Ok(err) => err,
-            Err(err) => Some(err),
-        }
-    }
-
     #[inline]
     fn query_event_context(&self, query: &mut dyn Query) -> Result<(), connection::Error> {
         self.api_read_call(|conn| {
