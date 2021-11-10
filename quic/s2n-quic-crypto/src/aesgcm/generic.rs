@@ -15,7 +15,6 @@ use core::{
     marker::PhantomData,
     sync::atomic::{compiler_fence, Ordering},
 };
-use subtle::ConstantTimeEq;
 
 pub struct AesGcm<Aes, GHash, Ctr, const N: usize> {
     aes: Aes,
@@ -47,12 +46,7 @@ where
     [B; N]: Batch<Block = B> + BatchMut + Zeroed,
 {
     #[inline(always)]
-    fn aesgcm<P: Payload<B>>(
-        &self,
-        nonce: &[u8; NONCE_LEN],
-        aad: &[u8],
-        mut payload: P,
-    ) -> [u8; TAG_LEN] {
+    fn aesgcm<P: Payload<B>>(&self, nonce: &[u8; NONCE_LEN], aad: &[u8], mut payload: P) -> B {
         assert!(
             A::ROUNDS >= N,
             "The number of encryption rounds must be at least the batch size"
@@ -248,7 +242,7 @@ where
         self.ghash.update(&mut ghash_state, &bit_counts);
 
         // finalize the ghash and xor the tag with the encrypted ek0
-        self.ghash.finish(ghash_state).xor(ek0).into_array()
+        self.ghash.finish(ghash_state).xor(ek0)
     }
 }
 
@@ -269,7 +263,7 @@ where
         payload: &mut [u8],
         tag: &mut [u8; TAG_LEN],
     ) {
-        *tag = Self::aesgcm(self, nonce, aad, payload)
+        *tag = Self::aesgcm(self, nonce, aad, payload).into_array()
     }
 
     #[inline(always)]
@@ -288,16 +282,20 @@ where
         // we don't want the compiler to perform any tag checks until the very end
         compiler_fence(Ordering::SeqCst);
 
-        if tag.ct_eq(&expected_tag).into() {
-            Ok(())
-        } else {
+        let tag = B::from_array(*tag);
+        let eq_res = tag.ct_ensure_eq(expected_tag);
+
+        // we don't want the compiler to reorder anything from the tag check
+        compiler_fence(Ordering::SeqCst);
+
+        eq_res.map_err(|_| {
             // NOTE: We should ideally be zeroizing the payload when decryption fails
             //       as the output could potentially have sensitive data. _However_,
             //       in s2n-quic we zeroize all received packets anyway, so we would
             //       end up zeroizing payloads twice. In the case that this code is used outside
             //       of s2n-quic _please_ zeroize the `payload`.
-            Err(Error)
-        }
+            Error
+        })
     }
 }
 

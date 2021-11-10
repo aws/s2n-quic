@@ -30,6 +30,43 @@ impl Block for __m128i {
             _mm_xor_si128(self, x)
         }
     }
+
+    #[inline(always)]
+    fn ct_ensure_eq(self, b: Self) -> Result<(), ()> {
+        // The generated code for this is:
+        //
+        // ```
+        // vmovdqa xmm0, xmmword ptr [rsi]
+        // vpxor   xmm0, xmm0, xmmword ptr [rdi]
+        // vptest  xmm0, xmm0
+        // setne   al
+        // ret
+        // ```
+        //
+        // See: https://godbolt.org/z/Geoq9G83b
+        //
+        // We should be able assume both `vpxor` and `vptest` are constant time.
+        //
+        // By preventing inlining, we can ensure the compiler doesn't perform a direct jump based on the
+        // `CF` and `ZF` flags at the caller location, but instead reads from the return value.
+        #[inline(never)]
+        #[target_feature(enable = "avx2")]
+        unsafe fn avx_ct_eq(a: __m128i, b: __m128i) -> Result<(), ()> {
+            let c = a.xor(b);
+            let c: [u64; 2] = core::mem::transmute(c);
+            let res = c[0] | c[1];
+            if res == 0 {
+                Ok(())
+            } else {
+                Err(())
+            }
+        }
+
+        unsafe {
+            debug_assert!(Avx2::is_supported());
+            avx_ct_eq(self, b)
+        }
+    }
 }
 
 impl Batch for __m128i {
@@ -86,6 +123,19 @@ impl M128iExt for __m128i {
     }
 
     #[inline(always)]
+    fn into_slice(self, bytes: &mut [u8]) {
+        unsafe {
+            debug_assert!(Avx2::is_supported());
+            unsafe_assert!(bytes.len() <= LEN);
+            copy_128(
+                &self as *const _ as *const u8,
+                bytes.as_mut_ptr(),
+                bytes.len(),
+            );
+        }
+    }
+
+    #[inline(always)]
     fn mask(self, len: usize) -> Self {
         unsafe {
             debug_assert!(Avx2::is_supported());
@@ -107,19 +157,6 @@ impl M128iExt for __m128i {
             let mask = _mm_loadu_si128(offset as *const _ as *const _);
 
             _mm_and_si128(self, mask)
-        }
-    }
-
-    #[inline(always)]
-    fn into_slice(self, bytes: &mut [u8]) {
-        unsafe {
-            debug_assert!(Avx2::is_supported());
-            unsafe_assert!(bytes.len() <= LEN);
-            copy_128(
-                &self as *const _ as *const u8,
-                bytes.as_mut_ptr(),
-                bytes.len(),
-            );
         }
     }
 }

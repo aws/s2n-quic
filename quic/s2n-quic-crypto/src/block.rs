@@ -10,6 +10,7 @@ pub trait Block: Copy + Zeroed {
     fn from_array(array: [u8; LEN]) -> Self;
     fn into_array(self) -> [u8; LEN];
     fn xor(self, other: Self) -> Self;
+    fn ct_ensure_eq(self, b: Self) -> Result<(), ()>;
 }
 
 pub trait Batch {
