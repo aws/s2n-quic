@@ -233,9 +233,8 @@ if args.prev_version:
             break
 
     for impl in out['all_impls']:
-        pair_results = []
-
         if 'server' in out["results_diff"]:
+            pair_results = []
             for test in sorted(tests.keys()):
                 server_diff = results_diff.get(impl, {}).get(S2N_QUIC, {}).get(test)
                 if server_diff:
@@ -249,6 +248,7 @@ if args.prev_version:
             out["results_diff"]["server"].append(pair_results)
 
         if 'client' in out["results_diff"]:
+            pair_results = []
             for test in sorted(tests.keys()):
                 client_diff = results_diff.get(S2N_QUIC, {}).get(impl, {}).get(test)
                 if client_diff:
