@@ -334,6 +334,8 @@ pub trait ConnectionTrait: 'static + Send + Sized {
 
     fn remote_address(&self) -> Result<SocketAddress, connection::Error>;
 
+    fn error(&self) -> Option<connection::Error>;
+
     fn query_event_context(&self, query: &mut dyn event::query::Query);
 
     fn query_event_context_mut(&mut self, query: &mut dyn event::query::QueryMut);

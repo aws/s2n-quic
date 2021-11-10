@@ -265,6 +265,10 @@ impl connection::Trait for TestConnection {
         todo!()
     }
 
+    fn error(&self) -> Option<connection::Error> {
+        None
+    }
+
     fn query_event_context(&self, _query: &mut dyn event::query::Query) {
         todo!()
     }

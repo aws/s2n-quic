@@ -33,6 +33,7 @@ use s2n_quic_core::{
     inet::SocketAddress,
     recovery::K_GRANULARITY,
     time::Timestamp,
+    transport,
 };
 
 // Intrusive list adapter for managing the list of `done` connections
@@ -458,8 +459,25 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
         if interests.finalization != node.done_connections_link.is_linked() {
             if interests.finalization {
                 if <C::Config as endpoint::Config>::ENDPOINT_TYPE.is_client() {
-                    if let Some(_sender) = self.waiting_for_open.remove(&id) {
-                        todo!("respond with the connection's error");
+                    if let Some(sender) = self.waiting_for_open.remove(&id) {
+                        let err = node.inner.read(|conn| conn.error());
+                        let err = match err {
+                            Ok(Some(err)) => {
+                                // error from connection
+                                err
+                            }
+                            Ok(None) => {
+                                // connection expressed finalization without error
+                                transport::Error::NO_ERROR.into()
+                            }
+                            Err(_err) => {
+                                // error acquiring a lock
+                                transport::Error::INTERNAL_ERROR
+                                    .with_reason("failed to acquire connection lock")
+                                    .into()
+                            }
+                        };
+                        let _ = sender.send(Err(err));
                     }
                 }
 

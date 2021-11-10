@@ -138,8 +138,8 @@ impl Interop {
 
             if let Some(download_dir) = download_dir.as_ref() {
                 let mut abs_path = download_dir.to_path_buf();
-                abs_path.push(Path::new(&request));
-                let mut file = File::open(&abs_path).await?;
+                abs_path.push(Path::new(request.trim_start_matches('/')));
+                let mut file = File::create(&abs_path).await?;
                 tokio::io::copy(&mut rx_stream, &mut file).await?;
             } else {
                 let mut stdout = tokio::io::stdout();

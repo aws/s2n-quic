@@ -1386,6 +1386,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         Ok(*self.path_manager.active_path().handle.remote_address())
     }
 
+    fn error(&self) -> Option<connection::Error> {
+        self.error.err()
+    }
+
     #[inline]
     fn query_event_context(&self, query: &mut dyn event::query::Query) {
         <Config::EventSubscriber as event::Subscriber>::query(&self.event_context.context, query);
