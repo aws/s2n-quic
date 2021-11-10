@@ -1,4 +1,4 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.7"
+target = "https://www.rfc-editor.org/rfc/rfc9002.txt#7.7"
 
 [[TODO]]
 quote = '''
@@ -33,8 +33,8 @@ tracking-issue = "146"
 
 [[TODO]]
 quote = '''
-Packets containing only ACK frames SHOULD therefore not be
-paced, to avoid delaying their delivery to the peer.
+To avoid delaying their delivery to the peer, packets
+containing only ACK frames SHOULD therefore not be paced.
 '''
 feature = "Packet pacing"
 tracking-issue = "146"
