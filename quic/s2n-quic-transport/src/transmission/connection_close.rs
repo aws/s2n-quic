@@ -31,9 +31,9 @@ impl<'a> transmission::interest::Provider for Payload<'a> {
         &self,
         query: &mut Q,
     ) -> transmission::interest::Result {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-34.txt#3
+        //= https://www.rfc-editor.org/rfc/rfc9002.txt#3
         //# Packets containing frames besides ACK or CONNECTION_CLOSE frames
-        //# count toward congestion control limits and are considered in-
+        //# count toward congestion control limits and are considered to be in
         //# flight.
 
         // this packet only contains a CONNECTION_CLOSE so bypass the CC
