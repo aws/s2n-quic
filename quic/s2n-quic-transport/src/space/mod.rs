@@ -283,16 +283,16 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         context: &mut connection::ConnectionTransmissionContext<Config>,
         packet_buffer: &mut endpoint::PacketBuffer,
     ) -> Option<Bytes> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.3
-        //# When sending CONNECTION_CLOSE, the goal is to ensure that the peer
-        //# will process the frame.  Generally, this means sending the frame in a
-        //# packet with the highest level of packet protection to avoid the
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.3
+        //# When sending a CONNECTION_CLOSE frame, the goal is to ensure that the
+        //# peer will process the frame.  Generally, this means sending the frame
+        //# in a packet with the highest level of packet protection to avoid the
         //# packet being discarded.
         let mut can_send_initial = self.initial.is_some();
         let mut can_send_handshake = self.handshake.is_some();
         let can_send_application = self.application.is_some();
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.3
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.3
         //# After the handshake is confirmed (see
         //# Section 4.1.2 of [QUIC-TLS]), an endpoint MUST send any
         //# CONNECTION_CLOSE frames in a 1-RTT packet.
@@ -305,7 +305,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
             );
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.3
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.3
         //# A client will always know whether the server has Handshake keys
         //# (see Section 17.2.2.1), but it is possible that a server does not
         //# know whether the client has Handshake keys.  Under these

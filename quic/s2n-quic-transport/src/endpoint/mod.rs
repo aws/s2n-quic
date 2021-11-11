@@ -524,7 +524,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         //# manipulating observed traffic.
                     })?;
 
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.1
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.1
                 //# An endpoint
                 //# that is closing is not required to process any received frame.
 

@@ -160,13 +160,14 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> tx::Message
     fn write_payload(&mut self, buffer: &mut [u8], gso_offset: usize) -> usize {
         let len = self.packet.len();
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.1
-        //# Note:  Allowing retransmission of a closing packet is an exception to
-        //# the requirement that a new packet number be used for each packet
-        //# in Section 12.3.  Sending new packet numbers is primarily of
-        //# advantage to loss recovery and congestion control, which are not
-        //# expected to be relevant for a closed connection.  Retransmitting
-        //# the final packet requires less state.
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.1
+        //# |  Note: Allowing retransmission of a closing packet is an
+        //# |  exception to the requirement that a new packet number be used
+        //# |  for each packet; see Section 12.3.  Sending new packet numbers
+        //# |  is primarily of advantage to loss recovery and congestion
+        //# |  control, which are not expected to be relevant for a closed
+        //# |  connection.  Retransmitting the final packet requires less
+        //# |  state.
         buffer[..len].copy_from_slice(self.packet);
 
         self.path.on_bytes_transmitted(len);
@@ -255,7 +256,7 @@ enum TransmissionState {
     Transmitting,
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.1
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.1
 //# An endpoint SHOULD limit the rate at which it generates packets in
 //# the closing state.  For instance, an endpoint could wait for a
 //# progressively increasing number of received packets or amount of time

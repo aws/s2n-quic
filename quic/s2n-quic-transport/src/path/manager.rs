@@ -430,13 +430,12 @@ impl<Config: endpoint::Config> Manager<Config> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
         //# Endpoints SHOULD abandon path validation based on a timer.
         //
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.4
         //# When
         //# setting this timer, implementations are cautioned that the new path
-        //# could have a longer round-trip time than the original. A value of
-        //# three times the larger of the current Probe Timeout (PTO) or the PTO
-        //# for the new path (that is, using kInitialRtt as defined in
-        //# [QUIC-RECOVERY]) is RECOMMENDED.
+        //# could have a longer round-trip time than the original.  A value of
+        //# three times the larger of the current PTO or the PTO for the new path
+        //# (using kInitialRtt, as defined in [QUIC-RECOVERY]) is RECOMMENDED.
         let abandon_duration = self[path_id].pto_period(PacketNumberSpace::ApplicationData);
         let abandon_duration = 3 * abandon_duration.max(
             self.active_path()

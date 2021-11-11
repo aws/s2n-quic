@@ -106,7 +106,7 @@ impl From<connection::Error> for ConnectionState {
             | connection::Error::Application { initiator, .. }
                 if initiator.is_local() =>
             {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.1
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.1
                 //# An endpoint enters the closing state after initiating an immediate
                 //# close.
                 ConnectionState::Closing
@@ -307,7 +307,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
     }
 
     fn on_processed_packet(&mut self, timestamp: Timestamp) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
         //# An endpoint restarts its idle timer when a packet from its peer is
         //# received and processed successfully.
         if let Some(duration) = self.get_idle_timer_duration() {
@@ -317,7 +317,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
     }
 
     fn on_ack_eliciting_packet_sent(&mut self, timestamp: Timestamp) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
         //# An endpoint also restarts its
         //# idle timer when sending an ack-eliciting packet if no other ack-
         //# eliciting packets have been sent since last receiving and processing
@@ -501,7 +501,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         self.state = error.into();
         self.error = Err(error);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.3
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
         //# An endpoint that wishes to communicate a fatal
         //# connection error MUST use a CONNECTION_CLOSE frame if it is able.
 
@@ -528,12 +528,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut context,
                 packet_buffer,
             ) {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2
                 //# The closing and draining connection states exist to ensure that
                 //# connections close cleanly and that delayed or reordered packets are
                 //# properly discarded.  These states SHOULD persist for at least three
-                //# times the current Probe Timeout (PTO) interval as defined in
-                //# [QUIC-RECOVERY].
+                //# times the current PTO interval as defined in [QUIC-RECOVERY].
                 let timeout = 3 * self.current_pto();
 
                 self.close_sender.close(packet, timeout, timestamp);
@@ -545,12 +544,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             }
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.1
         //# In the closing state, an endpoint retains only enough information to
         //# generate a packet containing a CONNECTION_CLOSE frame and to identify
         //# packets as belonging to the connection.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.1
         //# An endpoint's selected connection ID and the QUIC version are
         //# sufficient information to identify packets for a closing connection;
         //# the endpoint MAY discard all other connection state.
@@ -570,7 +569,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         // We don't discard the application space so the application can
         // be notified and read what happened.
         if let Some((application, _handshake_status)) = self.space_manager.application_mut() {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2
             //# A CONNECTION_CLOSE frame
             //# causes all streams to immediately become closed; open streams can be
             //# assumed to be implicitly reset.
@@ -720,7 +719,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), connection::Error> {
         if self.close_sender.on_timeout(timestamp).is_ready() {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2
             //# Once its closing or draining state ends, an endpoint SHOULD discard
             //# all connection state.
             self.state = ConnectionState::Finished;
@@ -807,7 +806,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# connection migration before the handshake is confirmed, as defined
         //# in section 4.1.2 of [QUIC-TLS].
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.1
         //# An endpoint in the closing state MUST either discard
         //# packets received from an unvalidated address or limit the cumulative
         //# size of packets it sends to an unvalidated address to three times the
@@ -829,7 +828,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         });
 
         if matches!(self.state, ConnectionState::Closing) {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.1
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.1
             //# An endpoint in the closing
             //# state sends a packet containing a CONNECTION_CLOSE frame in response
             //# to any incoming packet that it attributes to the connection.
@@ -1273,7 +1272,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 interests.finalization = self.close_sender.finalization_status().is_final();
             }
             ConnectionState::Draining | ConnectionState::Finished => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.2
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.2
                 //# While otherwise identical to the closing state, an
                 //# endpoint in the draining state MUST NOT send any packets.
                 interests.transmission = false;
