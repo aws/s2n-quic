@@ -45,6 +45,9 @@ impl Handle {
 
     #[inline]
     pub(crate) fn update_msg_hdr(self, msghdr: &mut msghdr) {
+        // when sending a packet, we start out with no cmsg items
+        msghdr.msg_controllen = 0;
+
         msghdr.set_remote_address(&self.remote_address.0);
 
         #[cfg(s2n_quic_platform_pktinfo)]

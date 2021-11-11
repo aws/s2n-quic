@@ -49,10 +49,10 @@ pub trait Encoder {
 impl Encoder for libc::msghdr {
     fn encode_cmsg<T: Copy + ?Sized>(&mut self, level: libc::c_int, ty: libc::c_int, value: T) {
         unsafe {
-            // If it's equal to the max len it means it's empty so reset it to 0
-            if self.msg_controllen as usize == MAX_LEN {
-                self.msg_controllen = 0;
-            }
+            debug_assert_ne!(
+                self.msg_controllen as usize, MAX_LEN,
+                "msg_controllen should be reset when encoding a msg"
+            );
 
             let cmsg =
                 // Safety: the msg_control buffer should always be allocated to MAX_LEN
