@@ -155,6 +155,8 @@ impl Interop {
 
         let tls = s2n_quic::provider::tls::default::Client::builder()
             .with_certificate(ca)?
+            // the "amplificationlimit" tests generates a very large chain so bump the limit
+            .with_max_cert_chain_depth(10)?
             .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
             .with_key_logging()?
             .build()?;

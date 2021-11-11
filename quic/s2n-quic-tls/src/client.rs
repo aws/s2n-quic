@@ -70,6 +70,11 @@ impl Builder {
         Ok(self)
     }
 
+    pub fn with_max_cert_chain_depth(mut self, len: u16) -> Result<Self, Error> {
+        self.config.set_max_cert_chain_depth(len)?;
+        Ok(self)
+    }
+
     pub fn with_key_logging(mut self) -> Result<Self, Error> {
         use crate::keylog::KeyLog;
 

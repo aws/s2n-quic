@@ -113,6 +113,12 @@ impl Builder {
         Ok(self)
     }
 
+    pub fn with_max_cert_chain_depth(self, len: u16) -> Result<Self, rustls::Error> {
+        // TODO is there a way to configure this?
+        let _ = len;
+        Ok(self)
+    }
+
     pub fn with_alpn_protocols<P: Iterator<Item = I>, I: AsRef<[u8]>>(
         mut self,
         protocols: P,

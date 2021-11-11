@@ -66,6 +66,14 @@ impl Builder {
         Ok(self)
     }
 
+    pub fn set_max_cert_chain_depth(&mut self, depth: u16) -> Result<&mut Self, Error> {
+        call!(s2n_config_set_max_cert_chain_depth(
+            self.as_mut_ptr(),
+            depth
+        ))?;
+        Ok(self)
+    }
+
     pub fn set_cipher_preference(&mut self, name: &str) -> Result<&mut Self, Error> {
         let name = CString::new(name).map_err(|_| Error::InvalidInput)?;
         call!(s2n_config_set_cipher_preferences(
