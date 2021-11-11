@@ -7,6 +7,7 @@ license = "Apache-2.0"
 
 [features]
 default = ["vendored"]
+pq = []
 vendored = ["openssl-sys/vendored"]
 
 [dependencies]
@@ -14,7 +15,7 @@ libc = "0.2"
 openssl-sys = { version = "<= 0.9.68" } # Pin to this version until s2n-tls supports OpenSSL 3.0
 
 [build-dependencies]
-bindgen = "0.59"
+bindgen = { version = "0.59", default-features = false, features = ["runtime"] }
 cmake = "0.1"
 heck = "0.3"
 
