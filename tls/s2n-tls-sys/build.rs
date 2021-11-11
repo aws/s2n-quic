@@ -18,10 +18,17 @@ fn main() -> Result<(), Box<dyn 'static + std::error::Error>> {
     // if we've using vendored bindings then this doesn't need to be built
 
     if is_vendored() {
-        let dst = cmake::Config::new("s2n")
+        let mut config = cmake::Config::new("s2n");
+
+        config
             .register_dep("openssl")
-            .build_arg("BUILD_TESTING=off")
-            .build();
+            .configure_arg("-DBUILD_TESTING=off");
+
+        if env("CARGO_FEATURE_PQ").is_none() {
+            config.configure_arg("-DS2N_NO_PQ=on");
+        }
+
+        let dst = config.build();
 
         println!(
             "cargo:rustc-link-search=native={}",

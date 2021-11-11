@@ -7,6 +7,7 @@ license = "Apache-2.0"
 
 [features]
 default = ["vendored"]
+pq = []
 vendored = ["openssl-sys/vendored"]
 
 [dependencies]
