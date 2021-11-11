@@ -41,6 +41,21 @@ impl<B: Buffer> Queue<B> {
         let mut entries = self.0.occupied_mut();
 
         for entry in entries.iter_mut() {
+            // macOS doesn't like when msg_control have valid pointers but the len is 0
+            //
+            // If that's the case here, then set the `msg_control` to null and restore it after
+            // calling sendmsg.
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            let msg_control = {
+                let msg_control = entry.0.msg_control;
+
+                if entry.0.msg_controllen == 0 {
+                    entry.0.msg_control = core::ptr::null_mut();
+                }
+
+                msg_control
+            };
+
             // Safety: calling a libc function is inherently unsafe as rust cannot
             // make any invariant guarantees. This has to be reviewed by humans instead
             // so the [docs](https://linux.die.net/man/2/sendmsg) are inlined here:
@@ -63,7 +78,14 @@ impl<B: Buffer> Queue<B> {
 
             // > On success, these calls return the number of characters sent.
             // > On error, -1 is returned, and errno is set appropriately.
-            match libc!(sendmsg(sockfd, msg, flags)) {
+            let result = libc!(sendmsg(sockfd, msg, flags));
+
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            {
+                entry.0.msg_control = msg_control;
+            }
+
+            match result {
                 Ok(_len) => {
                     count += 1;
 
