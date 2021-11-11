@@ -461,7 +461,7 @@ impl MaxIdleTimeout {
 
     /// Loads a value setting from a peer's transport parameter
     pub fn load_peer(&mut self, peer: &Self) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
         //# Each endpoint advertises a max_idle_timeout, but the effective value
         //# at an endpoint is computed as the minimum of the two advertised
         //# values.

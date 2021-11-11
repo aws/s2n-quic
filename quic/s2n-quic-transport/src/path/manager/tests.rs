@@ -1200,14 +1200,13 @@ fn connection_migration_new_path_abandon_timer() {
     //= type=test
     //# Endpoints SHOULD abandon path validation based on a timer.
     //
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.4
     //= type=test
-    //# When
+    //# Endpoints SHOULD abandon path validation based on a timer.  When
     //# setting this timer, implementations are cautioned that the new path
-    //# could have a longer round-trip time than the original. A value of
-    //# three times the larger of the current Probe Timeout (PTO) or the PTO
-    //# for the new path (that is, using kInitialRtt as defined in
-    //# [QUIC-RECOVERY]) is RECOMMENDED.
+    //# could have a longer round-trip time than the original.  A value of
+    //# three times the larger of the current PTO or the PTO for the new path
+    //# (using kInitialRtt, as defined in [QUIC-RECOVERY]) is RECOMMENDED.
     // abandon_duration should use max pto_period: second path
     let abandon_time = now + (second_path_pto * 3);
     manager[second_path_id].on_timeout(
