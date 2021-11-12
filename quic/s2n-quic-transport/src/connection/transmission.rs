@@ -166,10 +166,12 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
         //# datagram.
         // here we query all of the spaces to try and fill the current datagram
 
+        let is_mtu_probing = self.context.transmission_mode.is_mtu_probing();
+
         let encoder = if let Some((space, handshake_status)) = space_manager
             .initial_mut()
             // MTU probes are only sent in the Application Space
-            .filter(!self.context.transmission_mode.is_mtu_probing())
+            .filter(|_| !is_mtu_probing)
         {
             self.context.min_packet_len = pn_space_to_pad
                 .filter(|pn_space| pn_space.is_initial())
@@ -229,7 +231,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
         let encoder = if let Some((space, handshake_status)) = space_manager
             .handshake_mut()
             // MTU probes are only sent in the Application Space
-            .filter(!self.context.transmission_mode.is_mtu_probing())
+            .filter(|_| !is_mtu_probing)
         {
             self.context.min_packet_len = pn_space_to_pad
                 .filter(|pn_space| pn_space.is_handshake())
