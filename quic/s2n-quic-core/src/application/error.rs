@@ -9,7 +9,7 @@ use crate::{
 };
 use core::{convert::TryFrom, ops};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#20.2
 //# The management of application error codes is left to application
 //# protocols.
 

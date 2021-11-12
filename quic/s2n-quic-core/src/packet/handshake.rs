@@ -21,7 +21,7 @@ use crate::{
 };
 use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.4
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.4
 //# Handshake Packet {
 //#   Header Form (1) = 1,
 //#   Fixed Bit (1) = 1,
@@ -38,7 +38,7 @@ use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder,
 //#   Packet Payload (..),
 //# }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.4
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.4
 //# A Handshake packet uses long headers with a type value of 0x2
 macro_rules! handshake_tag {
     () => {
@@ -70,7 +70,7 @@ impl<'a> ProtectedHandshake<'a> {
     ) -> DecoderBufferMutResult<ProtectedHandshake> {
         let mut decoder = HeaderDecoder::new_long(&buffer);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2
         //# Endpoints that receive a version 1 long header
         //# with a value larger than 20 MUST drop the packet.
         let destination_connection_id = decoder.decode_destination_connection_id(&buffer)?;

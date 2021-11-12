@@ -126,13 +126,13 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 self.context.path().transmission_constraint()
             };
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.1
         //# A client MUST expand the payload of all UDP datagrams carrying
         //# Initial packets to at least the smallest allowed maximum datagram
         //# size of 1200 bytes by adding PADDING frames to the Initial packet or
         //# by coalescing the Initial packet; see Section 12.2.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.1
         //# Similarly, a
         //# server MUST expand the payload of all UDP datagrams carrying ack-
         //# eliciting Initial packets to at least the smallest allowed maximum
@@ -190,7 +190,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                     if Config::ENDPOINT_TYPE.is_server()
                         && !outcome.ack_elicitation().is_ack_eliciting()
                     {
-                        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
+                        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.1
                         //# Similarly, a
                         //# server MUST expand the payload of all UDP datagrams carrying ack-
                         //# eliciting Initial packets to at least the smallest allowed maximum
@@ -306,11 +306,11 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
             // Pad the packet when sending path validation frames so that MTU is also validated.
             let path = &self.context.path_manager[self.context.path_id];
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.1
             //# An endpoint MUST expand datagrams that contain a PATH_CHALLENGE frame
             //# to at least the smallest allowed maximum datagram size of 1200 bytes.
             //
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2
             //# An endpoint MUST expand datagrams that contain a PATH_RESPONSE frame
             //# to at least the smallest allowed maximum datagram size of 1200 bytes.
             // Pad the packet when sending path validation frames so that MTU is also validated.

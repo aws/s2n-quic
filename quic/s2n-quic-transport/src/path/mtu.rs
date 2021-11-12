@@ -34,7 +34,7 @@ enum State {
     SearchComplete,
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.3
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#14.3
 //# Endpoints SHOULD set the initial value of BASE_PLPMTU (Section 5.1 of
 //# [DPLPMTUD]) to be consistent with QUIC's smallest allowed maximum
 //# datagram size.
@@ -293,7 +293,7 @@ impl Controller {
             return;
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.4
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.4
         //# Endpoints could limit the content of PMTU probes to PING and PADDING
         //# frames, since packets that are larger than the current maximum
         //# datagram size are more likely to be dropped by the network.
@@ -878,7 +878,7 @@ mod test {
         assert_eq!(State::SearchComplete, controller.state);
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.4
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.4
     //= type=test
     //# Endpoints could limit the content of PMTU probes to PING and PADDING
     //# frames, since packets that are larger than the current maximum

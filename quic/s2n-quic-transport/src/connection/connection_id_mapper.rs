@@ -269,8 +269,8 @@ impl ConnectionIdMapper {
         peer_stateless_reset_token: &stateless_reset::Token,
     ) -> Option<InternalConnectionId> {
         let mut guard = self.state.borrow_mut();
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
-        //# When comparing a datagram to Stateless Reset Token values, endpoints
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1
+        //# When comparing a datagram to stateless reset token values, endpoints
         //# MUST perform the comparison without leaking information about the
         //# value of the token.
         // The given value is hashed using SipHash13 which is a secure PRF and

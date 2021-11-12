@@ -3,7 +3,7 @@
 
 use crate::varint::VarInt;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.4
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.4
 //# An endpoint uses a RESET_STREAM frame (type=0x04) to abruptly
 //# terminate the sending part of a stream.
 
@@ -13,7 +13,7 @@ macro_rules! reset_stream_tag {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.4
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.4
 //# RESET_STREAM Frame {
 //#   Type (i) = 0x04,
 //#   Stream ID (i),
@@ -21,19 +21,19 @@ macro_rules! reset_stream_tag {
 //#   Final Size (i),
 //# }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.4
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.4
 //# RESET_STREAM frames contain the following fields:
 //#
-//# Stream ID:  A variable-length integer encoding of the Stream ID of
-//#    the stream being terminated.
+//# Stream ID:  A variable-length integer encoding of the stream ID of
+//# the stream being terminated.
 //#
 //# Application Protocol Error Code:  A variable-length integer
-//#    containing the application protocol error code (see Section 20.2)
-//#    that indicates why the stream is being closed.
+//# containing the application protocol error code (see Section 20.2)
+//# that indicates why the stream is being closed.
 //#
 //# Final Size:  A variable-length integer indicating the final size of
-//#    the stream by the RESET_STREAM sender, in unit of bytes; see
-//#    Section 4.5.
+//# the stream by the RESET_STREAM sender, in units of bytes; see
+//# Section 4.5.
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ResetStream {

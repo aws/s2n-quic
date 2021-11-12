@@ -26,7 +26,7 @@ pub struct Settings {
     /// to decode the ACK Delay field in the ACK frame
     pub ack_delay_exponent: u8,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.4
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.2.4
     //# A receiver that sends only non-ack-eliciting packets, such as ACK
     //# frames, might not receive an acknowledgement for a long period of
     //# time.  This could cause the receiver to maintain state for a large
@@ -47,7 +47,7 @@ impl Default for Settings {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.3
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.3
 //# ACK Delay:  A variable-length integer encoding the acknowledgement
 //#    delay in microseconds; see Section 13.2.5.  It is decoded by
 //#    multiplying the value in the field by 2 to the power of the
@@ -58,7 +58,7 @@ impl Default for Settings {
 //#    resolution.
 
 impl Settings {
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.2.1
     //# An endpoint MUST acknowledge all ack-eliciting Initial and Handshake
     //# packets immediately
     pub const EARLY: Self = Self {

@@ -21,7 +21,7 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#13.2
 //# Endpoints acknowledge all packets they receive and process.  However,
 //# only ack-eliciting packets cause an ACK frame to be sent within the
 //# maximum ack delay.  Packets that are not ack-eliciting are only
@@ -146,9 +146,9 @@ impl AckManager {
             // reset the counter
             self.transmissions_since_elicitation = Counter::new(0);
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.4
-            //# When a packet containing an ACK frame is sent, the largest
-            //# acknowledged in that frame may be saved.
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.2.4
+            //# When a packet containing an ACK frame is sent, the Largest
+            //# Acknowledged field in that frame can be saved.
             self.ack_eliciting_transmissions
                 .on_transmit(AckElicitingTransmission {
                     sent_in_packet: context.packet_number(),
@@ -217,10 +217,10 @@ impl AckManager {
             return;
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.4.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.1
         //# ECN counts are only incremented when QUIC packets from the received
         //# IP packet are processed.  As such, duplicate QUIC packets are not
-        //# processed and do not increase ECN counts; see Section 21.9 for
+        //# processed and do not increase ECN counts; see Section 21.10 for
         //# relevant security concerns.
         self.ecn_counts.increment(processed_packet.datagram.ecn);
 
@@ -228,7 +228,7 @@ impl AckManager {
         self.transmission_state.on_update(&self.ack_ranges);
         self.processed_packets_since_transmission += 1;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.5
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.2.5
         //# An endpoint measures the delays intentionally introduced between the
         //# time the packet with the largest packet number is received and the
         //# time an acknowledgment is sent.  The endpoint encodes this
@@ -243,7 +243,7 @@ impl AckManager {
         if processed_packet.is_ack_eliciting() {
             let mut should_activate = false;
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.2.1
             //# In order to assist loss detection at the sender, an endpoint SHOULD
             //# generate and send an ACK frame without delay when it receives an ack-
             //# eliciting packet either:
@@ -253,14 +253,14 @@ impl AckManager {
 
             should_activate |= !is_largest;
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.2.1
             //# *  when the packet has a packet number larger than the highest-
             //#    numbered ack-eliciting packet that has been received and there are
             //#    missing packets between that packet and this packet.
 
             should_activate |= !is_ordered;
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.2.1
             //# Similarly, packets marked with the ECN Congestion Experienced (CE)
             //# codepoint in the IP header SHOULD be acknowledged immediately, to
             //# reduce the peer's response time to congestion events.
@@ -276,7 +276,7 @@ impl AckManager {
 
             should_activate |= self.processed_packets_since_transmission >= packet_tolerance;
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.3
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3.3
             //# An endpoint that receives a PATH_CHALLENGE on an active path SHOULD
             //# send a non-probing packet in response.
             should_activate |= processed_packet.path_challenge_on_active_path;
@@ -284,7 +284,7 @@ impl AckManager {
             if should_activate {
                 self.transmission_state.activate();
             } else if !self.ack_delay_timer.is_armed() {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.2
                 //# Endpoints acknowledge all packets they receive and process.  However,
                 //# only ack-eliciting packets cause an ACK frame to be sent within the
                 //# maximum ack delay.  Packets that are not ack-eliciting are only

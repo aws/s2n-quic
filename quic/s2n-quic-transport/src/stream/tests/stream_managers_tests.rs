@@ -639,21 +639,19 @@ fn max_data_replenishes_connection_flow_control_window() {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#4.6
 //= type=test
-//# A receiver MUST
-//# ignore any MAX_STREAMS frame that does not increase the stream limit.
+//# MAX_STREAMS frames that do not increase the stream limit MUST be ignored.
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.11
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.11
 //= type=test
-//# MAX_STREAMS frames that do not increase the stream limit MUST be
-//# ignored.
+//# MAX_STREAMS frames that do not increase the stream limit MUST be ignored.
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#4.6
 //= type=test
 //# Endpoints MUST NOT exceed the limit set by their peer.
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.11
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.11
 //= type=test
 //# An endpoint MUST NOT open more streams than permitted by the current
 //# stream limit set by its peer.
@@ -702,7 +700,7 @@ fn max_streams_replenishes_stream_control_capacity() {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#4.6
 //= type=test
 //# An endpoint MUST NOT wait
 //# to receive this signal before advertising additional credit, since
@@ -795,15 +793,15 @@ fn peer_closing_streams_transmits_max_streams() {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#4.6
 //= type=test
 //# An endpoint that is unable to open a new stream due to the peer's
 //# limits SHOULD send a STREAMS_BLOCKED frame (Section 19.14).
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.14
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.14
 //= type=test
 //# A sender SHOULD send a STREAMS_BLOCKED frame (type=0x16 or 0x17) when
-//# it wishes to open a stream, but is unable to due to the maximum
+//# it wishes to open a stream but is unable to do so due to the maximum
 //# stream limit set by its peer; see Section 19.11.
 #[test]
 fn send_streams_blocked_frame_when_blocked_by_peer() {
@@ -967,7 +965,7 @@ fn streams_blocked_period() {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#4.1
 //= type=test
 //# To keep the
 //# connection from closing, a sender that is flow control limited SHOULD
@@ -1057,13 +1055,13 @@ where
     );
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#4.1
 //= type=test
 //# A sender SHOULD send a
 //# STREAM_DATA_BLOCKED or DATA_BLOCKED frame to indicate to the receiver
 //# that it has data to write but is blocked by flow control limits.
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.12
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.12
 //= type=test
 //# A sender SHOULD send a DATA_BLOCKED frame (type=0x14) when it wishes
 //# to send data, but is unable to do so due to connection-level flow
@@ -1200,18 +1198,17 @@ fn send_data_blocked_frame_when_blocked_by_connection_flow_limits() {
     );
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#4.6
 //= type=test
-//# An endpoint
-//# that receives a frame with a stream ID exceeding the limit it has
-//# sent MUST treat this as a connection error of type STREAM_LIMIT_ERROR
-//# (Section 11).
+//# An endpoint that receives a frame with a stream ID exceeding the limit it has
+//# sent MUST treat this as a connection error of type
+//# STREAM_LIMIT_ERROR; see Section 11 for details on error handling.
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.11
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.11
 //= type=test
 //# An endpoint MUST terminate a connection
-//# with a STREAM_LIMIT_ERROR error if a peer opens more streams than was
-//# permitted.
+//# with an error of type STREAM_LIMIT_ERROR if a peer opens more streams
+//# than was permitted.
 #[test]
 fn stream_limit_error_on_peer_open_stream_too_large() {
     let mut manager = create_stream_manager(endpoint::Type::Server);
@@ -1876,7 +1873,7 @@ fn max_data_causes_on_connection_window_available_to_be_called_on_streams() {
         stream.on_connection_window_available_retrieve_window = 220
     });
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.1
     //= type=test
     //# A sender MUST ignore any MAX_STREAM_DATA or MAX_DATA frames that do
     //# not increase flow control limits.

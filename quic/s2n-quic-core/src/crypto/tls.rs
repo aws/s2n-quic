@@ -20,7 +20,7 @@ pub struct ApplicationParameters<'a> {
     pub transport_parameters: &'a [u8],
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#4
 //= type=TODO
 //= tracking-issue=332
 //# To avoid excessive buffering at multiple layers, QUIC implementations

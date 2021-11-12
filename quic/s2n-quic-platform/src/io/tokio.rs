@@ -171,12 +171,12 @@ impl Io {
             convert_addr_to_std(rx_socket.local_addr()?)?,
         );
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14
         //# UDP datagrams MUST NOT be fragmented at the IP layer.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14
-        //# In IPv4 ([IPv4]), the DF bit MUST be set if possible, to prevent
-        //# fragmentation on the path.
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14
+        //# In IPv4 [IPv4], the Don't Fragment (DF) bit MUST be set if possible, to
+        //# prevent fragmentation on the path.
 
         //= https://tools.ietf.org/rfc/rfc8899.txt#3
         //# In IPv4, a probe packet MUST be sent with the Don't

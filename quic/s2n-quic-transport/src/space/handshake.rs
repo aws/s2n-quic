@@ -422,7 +422,7 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
     fn on_rtt_update(&mut self) {}
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.4
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.4
 //# The payload of this packet contains CRYPTO frames and could contain
 //# PING, PADDING, or ACK frames.  Handshake packets MAY contain
 //# CONNECTION_CLOSE frames of type 0x1c.  Endpoints MUST treat receipt
@@ -464,7 +464,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for HandshakeSpace<Config> {
         _datagram: &DatagramInfo,
         _path: &mut Path<Config>,
     ) -> Result<(), transport::Error> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.4
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.4
         //# Handshake packets MAY contain
         //# CONNECTION_CLOSE frames of type 0x1c.
 

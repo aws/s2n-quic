@@ -32,7 +32,7 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.1
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#3.1
 //#          o
 //#          | Create Stream (Sending)
 //#          | Peer Creates Bidirectional Stream
@@ -44,9 +44,6 @@ use s2n_quic_core::{
 //#          |                           |
 //#          | Send STREAM /             |
 //#          |      STREAM_DATA_BLOCKED  |
-//#          |                           |
-//#          | Peer Creates              |
-//#          |      Bidirectional Stream |
 //#          v                           |
 //#      +-------+                       |
 //#      | Send  | Send RESET_STREAM     |
@@ -220,7 +217,7 @@ impl StreamFlowController {
 
     /// Updates the `MAXIMUM_STREAM_DATA` value which was communicated by a peer
     pub fn set_max_stream_data(&mut self, max_stream_data: VarInt) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.1
         //# A sender MUST ignore any MAX_STREAM_DATA or MAX_DATA frames that do
         //# not increase flow control limits.
         if max_stream_data <= self.max_stream_data {
@@ -306,7 +303,7 @@ impl StreamFlowController {
         stream_id: StreamId,
         context: &mut W,
     ) -> Result<(), OnTransmitError> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.1
         //# To keep the
         //# connection from closing, a sender that is flow control limited SHOULD
         //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
@@ -361,18 +358,18 @@ impl OutgoingDataFlowController for StreamFlowController {
         }
         self.state = StreamFlowControllerState::Ready;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.1
         //# A sender SHOULD send a
         //# STREAM_DATA_BLOCKED or DATA_BLOCKED frame to indicate to the receiver
         //# that it has data to write but is blocked by flow control limits.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.1
         //# To keep the
         //# connection from closing, a sender that is flow control limited SHOULD
         //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
         //# has no ack-eliciting packets in flight.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.13
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.13
         //# A sender SHOULD send a STREAM_DATA_BLOCKED frame (type=0x15) when it
         //# wishes to send data, but is unable to do so due to stream-level flow
         //# control.
@@ -415,10 +412,10 @@ impl OutgoingDataFlowController for StreamFlowController {
 
     fn finish(&mut self) {
         self.state = StreamFlowControllerState::Finished;
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.3
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#3.3
         //# A sender MUST NOT send a STREAM or
         //# STREAM_DATA_BLOCKED frame for a stream in the "Reset Sent" state or
-        //# any terminal state, that is, after sending a RESET_STREAM frame.
+        //# any terminal state -- that is, after sending a RESET_STREAM frame.
         self.stream_data_blocked_sync.stop_sync();
     }
 }
@@ -543,14 +540,14 @@ impl SendStream {
         frame: &StopSending,
         events: &mut StreamEvents,
     ) -> Result<(), transport::Error> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.5
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#3.5
         //# A STOP_SENDING frame requests that the receiving endpoint send a
         //# RESET_STREAM frame.  An endpoint that receives a STOP_SENDING frame
-        //# MUST send a RESET_STREAM frame if the stream is in the Ready or Send
-        //# state.  If the stream is in the "Data Sent" state, the endpoint MAY
-        //# defer sending the RESET_STREAM frame until the packets containing
-        //# outstanding data are acknowledged or declared lost.  If any
-        //# outstanding data is declared lost, the endpoint SHOULD send a
+        //# MUST send a RESET_STREAM frame if the stream is in the "Ready" or
+        //# "Send" state.  If the stream is in the "Data Sent" state, the
+        //# endpoint MAY defer sending the RESET_STREAM frame until the packets
+        //# containing outstanding data are acknowledged or declared lost.  If
+        //# any outstanding data is declared lost, the endpoint SHOULD send a
         //# RESET_STREAM frame instead of retransmitting the data.
 
         // We do not track whether we transmit a range for the first time or
@@ -563,9 +560,9 @@ impl SendStream {
         // cases as if the user of the `Stream` would have triggered a reset,
         // and we can delegate to the same method.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.5
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#3.5
         //# An endpoint SHOULD copy the error code from the STOP_SENDING frame to
-        //# the RESET_STREAM frame it sends, but MAY use any application error
+        //# the RESET_STREAM frame it sends, but it can use any application error
         //# code.
         let error = StreamError::StreamReset(frame.application_error_code.into());
 
@@ -940,7 +937,7 @@ impl SendStream {
             self.final_state_observed = true;
         };
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#3.1
         //# An endpoint MAY send a RESET_STREAM as the first frame that mentions
         //# a stream; this causes the sending part of that stream to open and
         //# then immediately transition to the "Reset Sent" state.
@@ -993,7 +990,7 @@ impl StreamInterestProvider for SendStream {
     #[inline]
     fn stream_interests(&self, interests: &mut StreamInterests) {
         match self.state {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.3
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#3.3
             //# A sender MUST NOT send any of these frames from a terminal state
             //# ("Data Recvd" or "Reset Recvd").
             SendStreamState::Sending if self.final_state_observed => {
@@ -1004,10 +1001,10 @@ impl StreamInterestProvider for SendStream {
                     return;
                 }
             }
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.3
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#3.3
             //# A sender MUST NOT send a STREAM or
             //# STREAM_DATA_BLOCKED frame for a stream in the "Reset Sent" state or
-            //# any terminal state, that is, after sending a RESET_STREAM frame.
+            //# any terminal state -- that is, after sending a RESET_STREAM frame.
             SendStreamState::ResetSent(_) => {
                 interests.with_transmission(|query| self.reset_sync.transmission_interest(query))
             }

@@ -33,7 +33,7 @@ impl Default for Probe {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.1
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#9.1
 //# A packet containing only probing frames is a "probing packet", and a
 //# packet containing any other frame is a "non-probing packet".
 impl BitOr<Probe> for Probe {
@@ -61,7 +61,7 @@ pub trait Probing {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.1
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#9.1
 //# PATH_CHALLENGE, PATH_RESPONSE, NEW_CONNECTION_ID, and PADDING frames
 //# are "probing frames", and all other frames are "non-probing frames".
 impl<AckRanges> Probing for crate::frame::Ack<AckRanges> {}
@@ -105,7 +105,7 @@ impl<Data> Probing for crate::frame::Stream<Data> {}
 impl Probing for crate::frame::StreamDataBlocked {}
 impl Probing for crate::frame::StreamsBlocked {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.1
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#9.1
 //= type=test
 //# A packet containing only probing frames is a "probing packet", and a
 //# packet containing any other frame is a "non-probing packet".

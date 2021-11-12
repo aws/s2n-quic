@@ -5,7 +5,7 @@ use crate::frame::Tag;
 use core::convert::TryInto;
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.17
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.17
 //# Endpoints can use PATH_CHALLENGE frames (type=0x1a) to check
 //# reachability to the peer and for path validation during connection
 //# migration.
@@ -16,13 +16,13 @@ macro_rules! path_challenge_tag {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.17
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.17
 //# PATH_CHALLENGE Frame {
 //#   Type (i) = 0x1a,
 //#   Data (64),
 //# }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.17
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.17
 //# PATH_CHALLENGE frames contain the following fields:
 //#
 //# Data:  This 8-byte field contains arbitrary data.

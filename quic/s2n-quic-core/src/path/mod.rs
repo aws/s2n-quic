@@ -14,8 +14,9 @@ use bolero_generator::*;
 
 pub mod migration;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14
-//# The maximum datagram size MUST be at least 1200 bytes.
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#14
+//# QUIC MUST NOT be used if the network path cannot support a
+//# maximum datagram size of at least 1200 bytes.
 pub const MINIMUM_MTU: u16 = 1200;
 
 // TODO decide on better defaults

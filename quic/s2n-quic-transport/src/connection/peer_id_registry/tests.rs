@@ -34,14 +34,15 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.2
 //= type=test
 //# An endpoint SHOULD limit the number of connection IDs it has retired
-//# locally and have not yet been acknowledged. An endpoint SHOULD allow
-//# for sending and tracking a number of RETIRE_CONNECTION_ID frames of
-//# at least twice the active_connection_id limit.  An endpoint MUST NOT
-//# forget a connection ID without retiring it, though it MAY choose to
-//# treat having connection IDs in need of retirement that exceed this
+//# locally for which RETIRE_CONNECTION_ID frames have not yet been
+//# acknowledged.  An endpoint SHOULD allow for sending and tracking a
+//# number of RETIRE_CONNECTION_ID frames of at least twice the value of
+//# the active_connection_id_limit transport parameter.  An endpoint MUST
+//# NOT forget a connection ID without retiring it, though it MAY choose
+//# to treat having connection IDs in need of retirement that exceed this
 //# limit as a connection error of type CONNECTION_ID_LIMIT_ERROR.
 #[test]
 fn error_when_exceeding_retired_connection_id_limit() {
@@ -71,7 +72,7 @@ fn error_when_exceeding_retired_connection_id_limit() {
     assert_eq!(Some(ExceededRetiredConnectionIdLimit), result.err());
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
 //= type=test
 //# After processing a NEW_CONNECTION_ID frame and
 //# adding and retiring active connection IDs, if the number of active
@@ -107,7 +108,7 @@ fn error_when_exceeding_active_connection_id_limit() {
     assert_eq!(Some(ExceededActiveConnectionIdLimit), result.err());
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
 //= type=test
 //# Receipt of the same frame multiple times MUST NOT be treated as a
 //# connection error.
@@ -127,7 +128,7 @@ fn no_error_when_duplicate() {
     assert_eq!(PendingRetirement, reg.registered_ids[1].status);
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
 //= type=test
 //# The value of the active_connection_id_limit parameter MUST be at least 2.
 #[test]
@@ -150,13 +151,14 @@ fn active_connection_id_limit_must_be_at_least_2() {
     );
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
 //= type=test
 //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
 //# previously issued connection ID with a different Stateless Reset
-//# Token or a different sequence number, or if a sequence number is used
-//# for different connection IDs, the endpoint MAY treat that receipt as
-//# a connection error of type PROTOCOL_VIOLATION.
+//# Token field value or a different Sequence Number field value, or if a
+//# sequence number is used for different connection IDs, the endpoint
+//# MAY treat that receipt as a connection error of type
+//# PROTOCOL_VIOLATION.
 #[test]
 fn duplicate_new_id_different_token_or_sequence_number() {
     let id_1 = id(b"id01");
@@ -174,13 +176,14 @@ fn duplicate_new_id_different_token_or_sequence_number() {
     assert_eq!(Some(InvalidNewConnectionId), result.err());
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
 //= type=test
 //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
 //# previously issued connection ID with a different Stateless Reset
-//# Token or a different sequence number, or if a sequence number is used
-//# for different connection IDs, the endpoint MAY treat that receipt as
-//# a connection error of type PROTOCOL_VIOLATION.
+//# Token field value or a different Sequence Number field value, or if a
+//# sequence number is used for different connection IDs, the endpoint
+//# MAY treat that receipt as a connection error of type
+//# PROTOCOL_VIOLATION.
 #[test]
 fn non_duplicate_new_id_same_token_or_sequence_number() {
     let id_1 = id(b"id01");
@@ -194,7 +197,7 @@ fn non_duplicate_new_id_same_token_or_sequence_number() {
     let mut result = reg.on_new_connection_id(&id_3, 1, 0, &TEST_TOKEN_2);
     assert_eq!(Some(InvalidNewConnectionId), result.err());
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.2
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.2
     //= type=test
     //# Endpoints are not required to compare new values
     //# against all previous values, but a duplicate value MAY be treated as
@@ -204,7 +207,7 @@ fn non_duplicate_new_id_same_token_or_sequence_number() {
     assert_eq!(Some(InvalidNewConnectionId), result.err());
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
 //= type=test
 //# A receiver MUST ignore any Retire Prior To fields that do not
 //# increase the largest received Retire Prior To value.
@@ -223,7 +226,7 @@ fn ignore_retire_prior_to_that_does_not_increase() {
     assert_eq!(1, reg.retire_prior_to);
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.2
 //= type=test
 //# Upon receipt of an increased Retire Prior To field, the peer MUST
 //# stop using the corresponding connection IDs and retire them with
@@ -305,9 +308,9 @@ fn retire_connection_id_when_retire_prior_to_increases() {
     // ID 1 was removed
     assert_eq!(reg.registered_ids.len(), 1);
     assert_eq!(id_2, reg.registered_ids[0].id);
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1
     //= type=test
-    //# An endpoint MUST NOT check for any Stateless Reset Tokens associated
+    //# An endpoint MUST NOT check for any stateless reset tokens associated
     //# with connection IDs it has not used or for connection IDs that have
     //# been retired.
     assert_eq!(
@@ -321,13 +324,14 @@ fn retire_connection_id_when_retire_prior_to_increases() {
     );
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
 //= type=test
-//# An endpoint that receives a NEW_CONNECTION_ID frame with a sequence
-//# number smaller than the Retire Prior To field of a previously
-//# received NEW_CONNECTION_ID frame MUST send a corresponding
-//# RETIRE_CONNECTION_ID frame that retires the newly received connection
-//# ID, unless it has already done so for that sequence number.
+//# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
+//# previously issued connection ID with a different Stateless Reset
+//# Token field value or a different Sequence Number field value, or if a
+//# sequence number is used for different connection IDs, the endpoint
+//# MAY treat that receipt as a connection error of type
+//# PROTOCOL_VIOLATION.
 #[test]
 fn retire_new_connection_id_if_sequence_number_smaller_than_retire_prior_to() {
     let id_1 = id(b"id01");
@@ -456,20 +460,21 @@ pub fn consume_new_id_should_error_if_no_ids_are_available() {
 fn error_conversion() {
     let mut transport_error: transport::Error;
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
     //= type=test
     //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
     //# previously issued connection ID with a different Stateless Reset
-    //# Token or a different sequence number, or if a sequence number is used
-    //# for different connection IDs, the endpoint MAY treat that receipt as
-    //# a connection error of type PROTOCOL_VIOLATION.
+    //# Token field value or a different Sequence Number field value, or if a
+    //# sequence number is used for different connection IDs, the endpoint
+    //# MAY treat that receipt as a connection error of type
+    //# PROTOCOL_VIOLATION.
     transport_error = PeerIdRegistrationError::InvalidNewConnectionId.into();
     assert_eq!(
         transport::Error::PROTOCOL_VIOLATION.code,
         transport_error.code
     );
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
     //= type=test
     //# After processing a NEW_CONNECTION_ID frame and
     //# adding and retiring active connection IDs, if the number of active
@@ -482,7 +487,7 @@ fn error_conversion() {
         transport_error.code
     );
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.2
     //= type=test
     //# An endpoint MUST NOT forget a connection ID without retiring it,
     //# though it MAY choose to treat having connection IDs in need of

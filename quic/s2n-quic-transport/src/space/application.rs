@@ -57,7 +57,7 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     key_set: KeySet<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttKey>,
     header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttHeaderKey,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#7
     //# Endpoints MUST explicitly negotiate an application protocol.
 
     //= https://www.rfc-editor.org/rfc/rfc9001.txt#8.1
@@ -572,7 +572,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         _datagram: &DatagramInfo,
         _path: &mut Path<Config>,
     ) -> Result<(), transport::Error> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.5
         //# Once the handshake completes, if an endpoint is unable to buffer all
         //# data in a CRYPTO frame, it MAY discard that CRYPTO frame and all
         //# CRYPTO frames received in the future, or it MAY close the connection
@@ -660,8 +660,8 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
     }
 
     fn handle_new_token_frame(&mut self, frame: NewToken) -> Result<(), transport::Error> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.7
-        //# Servers MUST treat receipt
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.7
+        //# A server MUST treat receipt
         //# of a NEW_TOKEN frame as a connection error of type
         //# PROTOCOL_VIOLATION.
         if Config::ENDPOINT_TYPE.is_server() {
@@ -682,7 +682,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         if path_manager.active_path().peer_connection_id.is_empty() {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
             //# An endpoint that is sending packets with a zero-length Destination
             //# Connection ID MUST treat receipt of a NEW_CONNECTION_ID frame as a
             //# connection error of type PROTOCOL_VIOLATION.
@@ -725,16 +725,16 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
             .try_into()
             .map_err(|_err| transport::Error::PROTOCOL_VIOLATION)?;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.16
         //# The sequence number specified in a RETIRE_CONNECTION_ID frame MUST
         //# NOT refer to the Destination Connection ID field of the packet in
         //# which the frame is contained.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.16
         //# The peer MAY treat this as a
         //# connection error of type PROTOCOL_VIOLATION.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.16
         //# Receipt of a RETIRE_CONNECTION_ID frame containing a sequence number
         //# greater than any previously sent to the peer MUST be treated as a
         //# connection error of type PROTOCOL_VIOLATION.

@@ -34,7 +34,7 @@ impl TxPacketNumbers {
     ) -> Result<(), transport::Error> {
         let largest = ack_set.largest();
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.1
         //# An endpoint SHOULD treat receipt of an acknowledgment for a packet it
         //# did not send as a connection error of type PROTOCOL_VIOLATION, if it
         //# is able to detect the condition.
@@ -54,11 +54,13 @@ impl TxPacketNumbers {
 
     /// Called after a packet is transmitted with a given packet number
     pub fn on_transmit(&mut self, packet_number: PacketNumber) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#12.3
         //# A QUIC endpoint MUST NOT reuse a packet number within the same packet
         //# number space in one connection.  If the packet number for sending
-        //# reaches 2^62 - 1, the sender MUST close the connection without
-        //# sending a CONNECTION_CLOSE frame or any further packets
+        //# reaches 2^62-1, the sender MUST close the connection without sending
+        //# a CONNECTION_CLOSE frame or any further packets; an endpoint MAY send
+        //# a Stateless Reset (Section 10.3) in response to further packets that
+        //# it receives.
 
         // Assuming a constant TX rate of 10,000 packets/second, it would take
         // (2^62 - 1)packets / 10,000packets-per-second  ~= 4.6e14seconds = ~14,000,000years to overflow.

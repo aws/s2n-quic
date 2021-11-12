@@ -119,7 +119,7 @@ impl<'a, S: Stream, Config: endpoint::Config> Normal<'a, S, Config> {
             // soon as possible
             self.handshake_status.on_transmit(context);
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2
             //# An endpoint MAY include other frames with the PATH_CHALLENGE and
             //# PATH_RESPONSE frames used for path validation.
             // prioritize PATH_CHALLENGE and PATH_RESPONSE frames higher than app data

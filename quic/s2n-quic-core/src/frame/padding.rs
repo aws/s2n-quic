@@ -4,11 +4,11 @@
 use crate::frame::Tag;
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.1
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.1
 //# A PADDING frame (type=0x00) has no semantic value.  PADDING frames
 //# can be used to increase the size of a packet.  Padding can be used to
-//# increase an initial client packet to the minimum required size, or to
-//# provide protection against traffic analysis for protected packets.
+//# increase an Initial packet to the minimum required size or to provide
+//# protection against traffic analysis for protected packets.
 
 macro_rules! padding_tag {
     () => {
@@ -16,7 +16,7 @@ macro_rules! padding_tag {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.1
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.1
 //# PADDING Frame {
 //#   Type (i) = 0x00,
 //# }

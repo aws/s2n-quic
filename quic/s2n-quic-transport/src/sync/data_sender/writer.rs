@@ -78,7 +78,7 @@ pub struct Crypto;
 impl FrameWriter for Crypto {
     type Context = ();
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.6
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.6
     //# The stream does not have an explicit end, so CRYPTO frames do not
     //# have a FIN bit.
     const WRITES_FIN: bool = false;
@@ -129,7 +129,7 @@ impl FrameWriter for Crypto {
         _writer_context: Self::Context,
         _context: &mut W,
     ) -> Result<(), FitError> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.6
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.6
         //# The stream does not have an explicit end, so CRYPTO frames do not
         //# have a FIN bit.
         // do nothing

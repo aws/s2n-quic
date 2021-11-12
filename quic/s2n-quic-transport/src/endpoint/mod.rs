@@ -315,7 +315,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         match outcome {
             Outcome::Allow => Some(()),
             Outcome::Retry { delay: _ } => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.2
                 //# A server can also use a Retry packet to defer the state and
                 //# processing costs of connection establishment.  Requiring the server
                 //# to provide a different connection ID, along with the
@@ -344,7 +344,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             }
             #[allow(unused_variables)]
             Outcome::Close { delay } => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.2
                 //= type=TODO
                 //= tracking-issue=270
                 //# If a server refuses to accept a new connection, it SHOULD send an
@@ -400,12 +400,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
         ) {
             (packet, remaining)
         } else {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.2
             //# Servers MUST drop incoming packets under all other circumstances.
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
-            //# However, endpoints MUST treat any packet ending
-            //# in a valid stateless reset token as a stateless reset, as other QUIC
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
+            //# However, endpoints MUST treat any packet ending in a
+            //# valid stateless reset token as a Stateless Reset, as other QUIC
             //# versions might allow the use of a long header.
 
             // The packet may be a stateless reset, check before returning.
@@ -514,12 +514,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         // Otherwise we should introduce an Error code that signifies
                         // it should be silently ignored.
 
-                        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+                        //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
                         //# If the peer
                         //# violates this requirement, the endpoint MUST either drop the incoming
-                        //# packets on that path without generating a stateless reset or proceed
+                        //# packets on that path without generating a Stateless Reset or proceed
                         //# with path validation and allow the peer to migrate.  Generating a
-                        //# stateless reset or closing the connection would allow third parties
+                        //# Stateless Reset or closing the connection would allow third parties
                         //# in the network to cause connections to close by spoofing or otherwise
                         //# manipulating observed traffic.
                     })?;
@@ -554,15 +554,15 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             // will be silently discarded, but are a potential indication of a
                             // stateless reset from the peer
 
-                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
+                            //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.1
                             //# Due to packet reordering or loss, a client might receive packets for
                             //# a connection that are encrypted with a key it has not yet computed.
-                            //# The client MAY drop these packets, or MAY buffer them in anticipation
-                            //# of later packets that allow it to compute the key.
+                            //# The client MAY drop these packets, or it MAY buffer them in
+                            //# anticipation of later packets that allow it to compute the key.
                             //
                             // Packets that fail decryption are discarded rather than buffered.
 
-                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
+                            //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1
                             //# Endpoints MAY skip this check if any packet from a datagram is
                             //# successfully processed.  However, the comparison MUST be performed
                             //# when the first packet in an incoming datagram either cannot be
@@ -619,16 +619,16 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             }
                         };
 
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
                     //= type=TODO
                     //= tracking-issue=140
-                    //# Additionally, a server MAY consider the client address validated if
-                    //# the client uses a connection ID chosen by the server and the
-                    //# connection ID contains at least 64 bits of entropy.
+                    //# Additionally, an endpoint MAY consider the peer address validated if
+                    //# the peer uses a connection ID chosen by the endpoint and the
+                    //# connection ID contains at least 64 bits of entropy
 
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
-                    //# In response to processing an Initial containing a token that was
-                    //# provided in a Retry packet, a server cannot send another Retry
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.2
+                    //# In response to processing an Initial packet containing a token that
+                    //# was provided in a Retry packet, a server cannot send another Retry
                     //# packet; it can only refuse the connection or permit it to proceed.
                     let retry_token_dcid = if !packet.token().is_empty() {
                         let mut context = token::Context::new(
@@ -640,20 +640,19 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             .token
                             .validate_token(&mut context, packet.token())
                         {
-                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
-                            //# If the
-                            //# validation succeeds, the server SHOULD then allow the handshake to
-                            //# proceed.
+                            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
+                            //# If the validation succeeds, the server SHOULD then allow
+                            //# the handshake to proceed.
                             Some(id)
                         } else {
-                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+                            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
                             //= type=TODO
                             //= tracking-issue=344
-                            //# If the token is invalid then the
+                            //# If the token is invalid, then the
                             //# server SHOULD proceed as if the client did not have a validated
-                            //# address, including potentially sending a Retry.
+                            //# address, including potentially sending a Retry packet.
 
-                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
+                            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.2
                             //= type=TODO
                             //= tracking-issue=344
                             //# Instead, the
@@ -666,13 +665,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
                                 },
                             );
 
-                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+                            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
                             //# Servers MAY
                             //# discard any Initial packet that does not carry the expected token.
                             return;
                         }
                     } else {
-                        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
+                        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.2
                         //# Upon receiving the client's Initial packet, the server can request
                         //# address validation by sending a Retry packet (Section 17.2.5)
                         //# containing a token.
@@ -696,7 +695,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                                 },
                             );
 
-                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.1
+                            //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.1
                             //# A server MUST NOT send more than one Retry
                             //# packet in response to a single UDP datagram.
                             return;
@@ -719,33 +718,33 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 }
                 _ => {
                     let is_short_header_packet = matches!(packet, ProtectedPacket::Short(_));
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1
                     //# Endpoints MAY skip this check if any packet from a datagram is
                     //# successfully processed.  However, the comparison MUST be performed
                     //# when the first packet in an incoming datagram either cannot be
                     //# associated with a connection, or cannot be decrypted.
 
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
-                    //# However, endpoints MUST treat any packet ending
-                    //# in a valid stateless reset token as a stateless reset, as other QUIC
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
+                    //# However, endpoints MUST treat any packet ending in a
+                    //# valid stateless reset token as a Stateless Reset, as other QUIC
                     //# versions might allow the use of a long header.
                     let is_stateless_reset = self
                         .close_on_matching_stateless_reset(payload, timestamp)
                         .is_some();
 
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
-                    //# For instance, an endpoint MAY send a stateless reset in
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3.2
+                    //# For instance, an endpoint MAY send a Stateless Reset in
                     //# response to any further incoming packets.
 
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
-                    //# An endpoint MAY send a stateless reset in response to receiving a packet
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
+                    //# An endpoint MAY send a Stateless Reset in response to receiving a packet
                     //# that it cannot associate with an active connection.
 
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
                     //# Because the stateless reset token is not available
                     //# until connection establishment is complete or near completion,
                     //# ignoring an unknown packet with a long header might be as effective
-                    //# as sending a stateless reset.
+                    //# as sending a Stateless Reset.
                     if !is_stateless_reset
                         && Cfg::StatelessResetTokenGenerator::ENABLED
                         && is_short_header_packet
@@ -801,11 +800,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
     ) -> Option<InternalConnectionId> {
         let buffer = DecoderBuffer::new(payload);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
-        //# The endpoint identifies a
-        //# received datagram as a stateless reset by comparing the last 16 bytes
-        //# of the datagram with all Stateless Reset Tokens associated with the
-        //# remote address on which the datagram was received.
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1
+        //# The endpoint
+        //# identifies a received datagram as a Stateless Reset by comparing the
+        //# last 16 bytes of the datagram with all stateless reset tokens
+        //# associated with the remote address on which the datagram was
+        //# received.
         let token_index = payload.len().checked_sub(StatelessResetTokenLen)?;
         let buffer = buffer.skip(token_index).ok()?;
         let (token, _) = buffer.decode().ok()?;
@@ -829,9 +829,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         let close_packet_buffer = &mut self.close_packet_buffer;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1
         //# If the last 16 bytes of the datagram are identical in value to a
-        //# Stateless Reset Token, the endpoint MUST enter the draining period
+        //# stateless reset token, the endpoint MUST enter the draining period
         //# and not send any further packets on this connection.
         self.connections.with_connection(internal_id, |conn| {
             conn.close(

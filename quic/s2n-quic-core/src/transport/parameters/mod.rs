@@ -49,12 +49,11 @@ pub trait TransportParameterValidator: Sized {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1
-//# endpoints store the value of the server transport
-//# parameters from a connection and apply them to any 0-RTT packets that
-//# are sent in subsequent connections to that peer.
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4.1
+//# To enable 0-RTT, endpoints store the values of the server transport
+//# parameters with any session tickets it receives on the connection.
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4.1
 //# *  active_connection_id_limit
 //# *  initial_max_data
 //# *  initial_max_stream_data_bidi_local
@@ -63,7 +62,7 @@ pub trait TransportParameterValidator: Sized {
 //# *  initial_max_streams_bidi
 //# *  initial_max_streams_uni
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4.1
 //# A client MUST NOT use remembered values for the following parameters:
 //# ack_delay_exponent, max_ack_delay, initial_source_connection_id,
 //# original_destination_connection_id, preferred_address,
@@ -117,7 +116,7 @@ impl<
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18
 //# The extension_data field of the quic_transport_parameters extension
 //# defined in [QUIC-TLS] contains the QUIC transport parameters.  They
 //# are encoded as a sequence of transport parameters, as shown in
@@ -151,17 +150,17 @@ decoder_value!(
     }
 );
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18
 //# Transport Parameter {
-//#   Transport Parameter ID (i),
-//#   Transport Parameter Length (i),
-//#   Transport Parameter Value (..),
+//#    Transport Parameter ID (i),
+//#    Transport Parameter Length (i),
+//#    Transport Parameter Value (..),
 //# }
 //#
-//#                Figure 21: Transport Parameter Encoding
+//# Figure 21: Transport Parameter Encoding
 //#
 //# The Transport Parameter Length field contains the length of the
-//# Transport Parameter Value field.
+//# Transport Parameter Value field in bytes.
 //#
 //# QUIC encodes transport parameters into a sequence of bytes, which is
 //# then included in the cryptographic handshake.
@@ -438,8 +437,8 @@ macro_rules! connection_id_parameter {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
-//# original_destination_connection_id (0x00): The value of the
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//# original_destination_connection_id (0x00): This parameter is the value of the
 //#    Destination Connection ID field from the first Initial packet sent
 //#    by the client; see Section 7.3.  This transport parameter is only
 //#    sent by a server.
@@ -447,9 +446,9 @@ macro_rules! connection_id_parameter {
 connection_id_parameter!(OriginalDestinationConnectionId, InitialId, 0x00);
 optional_transport_parameter!(OriginalDestinationConnectionId);
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
-//# max_idle_timeout (0x01):  The max idle timeout is a value in
-//#    milliseconds that is encoded as an integer; see (Section 10.2).
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//# max_idle_timeout (0x01):  The maximum idle timeout is a value in
+//#    milliseconds that is encoded as an integer; see (Section 10.1).
 //#    Idle timeout is disabled when both endpoints omit this transport
 //#    parameter or specify a value of 0.
 
@@ -489,7 +488,7 @@ impl MaxIdleTimeout {
     pub fn as_duration(&self) -> Option<Duration> {
         let duration = Duration::from_millis(self.0.as_u64());
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
         //# Idle timeout is disabled when both endpoints omit this transport
         //# parameter or specify a value of 0.
         if duration == Duration::from_secs(0) {
@@ -517,7 +516,7 @@ impl From<MaxIdleTimeout> for Duration {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
 //# stateless_reset_token (0x02):  A stateless reset token is used in
 //#    verifying a stateless reset; see Section 10.3.  This parameter is
 //#    a sequence of 16 bytes.  This transport parameter MUST NOT be sent
@@ -548,7 +547,7 @@ impl TransportParameter for stateless_reset::Token {
 
 impl TransportParameterValidator for stateless_reset::Token {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
 //# max_udp_payload_size (0x03):  The maximum UDP payload size parameter
 //#    is an integer value that limits the size of UDP payloads that the
 //#    endpoint is willing to receive.  UDP datagrams with payloads
@@ -585,7 +584,7 @@ impl TryFrom<u16> for MaxUdpPayloadSize {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
 //# initial_max_data (0x04):  The initial maximum data parameter is an
 //#    integer value that contains the initial value for the maximum
 //#    amount of data that can be sent on the connection.  This is
@@ -635,16 +634,16 @@ impl InitialMaxData {
 
 impl TransportParameterValidator for InitialMaxData {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
 //# initial_max_stream_data_bidi_local (0x05):  This parameter is an
 //#    integer value specifying the initial flow control limit for
 //#    locally-initiated bidirectional streams.  This limit applies to
 //#    newly created bidirectional streams opened by the endpoint that
 //#    sends the transport parameter.  In client transport parameters,
 //#    this applies to streams with an identifier with the least
-//#    significant two bits set to 0x0; in server transport parameters,
+//#    significant two bits set to 0x00; in server transport parameters,
 //#    this applies to streams with the least significant two bits set to
-//#    0x1.
+//#    0x01.
 
 varint_transport_parameter!(InitialMaxStreamDataBidiLocal, 0x05);
 
@@ -655,15 +654,15 @@ impl InitialMaxStreamDataBidiLocal {
 
 impl TransportParameterValidator for InitialMaxStreamDataBidiLocal {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
 //# initial_max_stream_data_bidi_remote (0x06):  This parameter is an
 //#    integer value specifying the initial flow control limit for peer-
 //#    initiated bidirectional streams.  This limit applies to newly
 //#    created bidirectional streams opened by the endpoint that receives
 //#    the transport parameter.  In client transport parameters, this
 //#    applies to streams with an identifier with the least significant
-//#    two bits set to 0x1; in server transport parameters, this applies
-//#    to streams with the least significant two bits set to 0x0.
+//#    two bits set to 0x01; in server transport parameters, this applies
+//#    to streams with the least significant two bits set to 0x00.
 
 varint_transport_parameter!(InitialMaxStreamDataBidiRemote, 0x06);
 
@@ -674,15 +673,15 @@ impl InitialMaxStreamDataBidiRemote {
 
 impl TransportParameterValidator for InitialMaxStreamDataBidiRemote {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
 //# initial_max_stream_data_uni (0x07):  This parameter is an integer
 //#    value specifying the initial flow control limit for unidirectional
 //#    streams.  This limit applies to newly created unidirectional
 //#    streams opened by the endpoint that receives the transport
 //#    parameter.  In client transport parameters, this applies to
 //#    streams with an identifier with the least significant two bits set
-//#    to 0x3; in server transport parameters, this applies to streams
-//#    with the least significant two bits set to 0x2.
+//#    to 0x03; in server transport parameters, this applies to streams
+//#    with the least significant two bits set to 0x02.
 
 varint_transport_parameter!(InitialMaxStreamDataUni, 0x07);
 
@@ -693,14 +692,15 @@ impl InitialMaxStreamDataUni {
 
 impl TransportParameterValidator for InitialMaxStreamDataUni {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
 //# initial_max_streams_bidi (0x08):  The initial maximum bidirectional
 //#    streams parameter is an integer value that contains the initial
-//#    maximum number of bidirectional streams the peer may initiate.  If
-//#    this parameter is absent or zero, the peer cannot open
-//#    bidirectional streams until a MAX_STREAMS frame is sent.  Setting
-//#    this parameter is equivalent to sending a MAX_STREAMS
-//#    (Section 19.11) of the corresponding type with the same value.
+//#    maximum number of bidirectional streams the endpoint that receives
+//#    this transport parameter is permitted to initiate.  If this
+//#    parameter is absent or zero, the peer cannot open bidirectional
+//#    streams until a MAX_STREAMS frame is sent.  Setting this parameter
+//#    is equivalent to sending a MAX_STREAMS (Section 19.11) of the
+//#    corresponding type with the same value.
 
 varint_transport_parameter!(InitialMaxStreamsBidi, 0x08);
 
@@ -711,7 +711,7 @@ impl InitialMaxStreamsBidi {
 
 impl TransportParameterValidator for InitialMaxStreamsBidi {
     fn validate(self) -> Result<Self, DecoderError> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.6
         //# If a max_streams transport parameter or a MAX_STREAMS frame is
         //# received with a value greater than 2^60, this would allow a maximum
         //# stream ID that cannot be expressed as a variable-length integer; see
@@ -729,11 +729,12 @@ impl TransportParameterValidator for InitialMaxStreamsBidi {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
 //# initial_max_streams_uni (0x09):  The initial maximum unidirectional
 //#    streams parameter is an integer value that contains the initial
-//#    maximum number of unidirectional streams the peer may initiate.
-//#    If this parameter is absent or zero, the peer cannot open
+//#    maximum number of unidirectional streams the endpoint that
+//#    receives this transport parameter is permitted to initiate.  If
+//#    this parameter is absent or zero, the peer cannot open
 //#    unidirectional streams until a MAX_STREAMS frame is sent.  Setting
 //#    this parameter is equivalent to sending a MAX_STREAMS
 //#    (Section 19.11) of the corresponding type with the same value.
@@ -747,7 +748,7 @@ impl InitialMaxStreamsUni {
 
 impl TransportParameterValidator for InitialMaxStreamsUni {
     fn validate(self) -> Result<Self, DecoderError> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.6
         //# If a max_streams transport parameter or a MAX_STREAMS frame is
         //# received with a value greater than 2^60, this would allow a maximum
         //# stream ID that cannot be expressed as a variable-length integer; see
@@ -765,7 +766,7 @@ impl TransportParameterValidator for InitialMaxStreamsUni {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
 //# ack_delay_exponent (0x0a):  The acknowledgement delay exponent is an
 //#    integer value indicating an exponent used to decode the ACK Delay
 //#    field in the ACK frame (Section 19.3).  If this value is absent, a
@@ -790,16 +791,15 @@ impl TransportParameterValidator for AckDelayExponent {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
-//# max_ack_delay (0x0b):  The maximum acknowledgement delay is an
-//#    integer value indicating the maximum amount of time in
-//#    milliseconds by which the endpoint will delay sending
-//#    acknowledgments.  This value SHOULD include the receiver's
-//#    expected delays in alarms firing.  For example, if a receiver sets
-//#    a timer for 5ms and alarms commonly fire up to 1ms late, then it
-//#    should send a max_ack_delay of 6ms.  If this value is absent, a
-//#    default of 25 milliseconds is assumed.  Values of 2^14 or greater
-//#    are invalid.
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//# max_ack_delay (0x0b):  The maximum acknowledgment delay is an integer
+//#    value indicating the maximum amount of time in milliseconds by
+//#    which the endpoint will delay sending acknowledgments.  This value
+//#    SHOULD include the receiver's expected delays in alarms firing.
+//#    For example, if a receiver sets a timer for 5ms and alarms
+//#    commonly fire up to 1ms late, then it should send a max_ack_delay
+//#    of 6ms.  If this value is absent, a default of 25 milliseconds is
+//#    assumed.  Values of 2^14 or greater are invalid.
 
 duration_transport_parameter!(MaxAckDelay, 0x0b, VarInt::from_u8(25));
 
@@ -818,7 +818,7 @@ impl TransportParameterValidator for MaxAckDelay {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
 //# disable_active_migration (0x0c): The disable active migration
 //#    transport parameter is included if the endpoint does not support
 //#    active connection migration (Section 9) on the address being used
@@ -860,18 +860,18 @@ impl TransportParameter for MigrationSupport {
 
 impl TransportParameterValidator for MigrationSupport {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
 //# preferred_address (0x0d):  The server's preferred address is used to
 //#    effect a change in server address at the end of the handshake, as
 //#    described in Section 9.6.  This transport parameter is only sent
 //#    by a server.  Servers MAY choose to only send a preferred address
 //#    of one address family by sending an all-zero address and port
-//#    (0.0.0.0:0 or ::.0) for the other family.  IP addresses are
+//#    (0.0.0.0:0 or [::]:0) for the other family.  IP addresses are
 //#    encoded in network byte order.
 
 optional_transport_parameter!(PreferredAddress);
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
 //# Preferred Address {
 //#   IPv4 Address (32),
 //#   IPv4 Port (16),
@@ -974,20 +974,20 @@ impl EncoderValue for PreferredAddress {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
-//# active_connection_id_limit (0x0e):  The active connection ID limit is
-//#    an integer value specifying the maximum number of connection IDs
-//#    from the peer that an endpoint is willing to store.  This value
-//#    includes the connection ID received during the handshake, that
-//#    received in the preferred_address transport parameter, and those
-//#    received in NEW_CONNECTION_ID frames.  The value of the
-//#    active_connection_id_limit parameter MUST be at least 2.  An
-//#    endpoint that receives a value less than 2 MUST close the
-//#    connection with an error of type TRANSPORT_PARAMETER_ERROR.  If
-//#    this transport parameter is absent, a default of 2 is assumed.  If
-//#    an endpoint issues a zero-length connection ID, it will never send
-//#    a NEW_CONNECTION_ID frame and therefore ignores the
-//#    active_connection_id_limit value received from its peer.
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//# active_connection_id_limit (0x0e):  This is an integer value
+//#   specifying the maximum number of connection IDs from the peer that
+//#   an endpoint is willing to store.  This value includes the
+//#   connection ID received during the handshake, that received in the
+//#   preferred_address transport parameter, and those received in
+//#   NEW_CONNECTION_ID frames.  The value of the
+//#   active_connection_id_limit parameter MUST be at least 2.  An
+//#   endpoint that receives a value less than 2 MUST close the
+//#   connection with an error of type TRANSPORT_PARAMETER_ERROR.  If
+//#   this transport parameter is absent, a default of 2 is assumed.  If
+//#   an endpoint issues a zero-length connection ID, it will never send
+//#   a NEW_CONNECTION_ID frame and therefore ignores the
+//#   active_connection_id_limit value received from its peer.
 
 varint_transport_parameter!(ActiveConnectionIdLimit, 0x0e, VarInt::from_u8(2));
 
@@ -1013,10 +1013,10 @@ impl ActiveConnectionIdLimit {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
-//# initial_source_connection_id (0x0f):  The value that the endpoint
-//#    included in the Source Connection ID field of the first Initial
-//#    packet it sends for the connection; see Section 7.3.
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//# initial_source_connection_id (0x0f):  This is the value that the
+//# endpoint included in the Source Connection ID field of the first
+//# Initial packet it sends for the connection; see Section 7.3.
 
 connection_id_parameter!(InitialSourceConnectionId, UnboundedId, 0x0f);
 optional_transport_parameter!(InitialSourceConnectionId);
@@ -1027,17 +1027,17 @@ impl From<connection::id::LocalId> for InitialSourceConnectionId {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
-//# retry_source_connection_id (0x10):  The value that the server
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//# retry_source_connection_id (0x10):  This is the value that the server
 //#    included in the Source Connection ID field of a Retry packet; see
 //#    Section 7.3.  This transport parameter is only sent by a server.
 
 connection_id_parameter!(RetrySourceConnectionId, LocalId, 0x10);
 optional_transport_parameter!(RetrySourceConnectionId);
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
-//# If present, transport parameters that set initial flow control limits
-//# (initial_max_stream_data_bidi_local,
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//# If present, transport parameters that set initial per-stream flow
+//# control limits (initial_max_stream_data_bidi_local,
 //# initial_max_stream_data_bidi_remote, and initial_max_stream_data_uni)
 //# are equivalent to sending a MAX_STREAM_DATA frame (Section 19.10) on
 //# every stream of the corresponding type immediately after opening.  If
@@ -1135,7 +1135,7 @@ impl<
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
 //# A client MUST NOT include any server-only transport parameter:
 //# original_destination_connection_id, preferred_address,
 //# retry_source_connection_id, or stateless_reset_token.  A server MUST
@@ -1237,7 +1237,7 @@ macro_rules! impl_transport_parameters {
                                     concat!(stringify!($field), " is not allowed in this context")
                                 );
 
-                                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4
+                                //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4
                                 //# An endpoint MUST NOT send a parameter more than once in a given
                                 //# transport parameters extension.
                                 s2n_codec::decoder_invariant!(
@@ -1248,7 +1248,7 @@ macro_rules! impl_transport_parameters {
                                 let (value, inner_buffer) =
                                     inner_buffer.decode::<TransportParameterCodec<$field_ty>>()?;
 
-                                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4
+                                //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4
                                 //# An endpoint MUST treat receipt of a transport parameter with an
                                 //# invalid value as a connection error of type
                                 //# TRANSPORT_PARAMETER_ERROR.
@@ -1258,7 +1258,7 @@ macro_rules! impl_transport_parameters {
                             }
                         )*
                         _ => {
-                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.2
+                            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4.2
                             //# An endpoint MUST ignore transport parameters that it does
                             //# not support.
 
@@ -1458,7 +1458,7 @@ mod snapshot_tests {
         let _ = encoded_output;
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.2
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4.2
     //= type=test
     //# An endpoint MUST ignore transport parameters that it does
     //# not support.
