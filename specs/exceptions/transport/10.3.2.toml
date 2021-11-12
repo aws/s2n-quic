@@ -1,4 +1,4 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.2"
 
 [[exception]]
 quote = '''
@@ -11,7 +11,7 @@ by s2n-quic.
 
 [[exception]]
 quote = '''
-The same Stateless Reset Token MUST NOT be used for multiple
+The same stateless reset token MUST NOT be used for multiple
 connection IDs.
 '''
 reason = '''
@@ -22,7 +22,7 @@ by s2n-quic.
 [[exception]]
 quote = '''
 This method for
-choosing the Stateless Reset Token means that the combination of
+choosing the stateless reset token means that the combination of
 connection ID and static key MUST NOT be used for another connection.
 '''
 reason = '''
@@ -34,7 +34,7 @@ unenforceable.
 [[exception]]
 quote = '''
 A connection ID from a
-connection that is reset by revealing the Stateless Reset Token MUST
+connection that is reset by revealing the stateless reset token MUST
 NOT be reused for new connections at nodes that share a static key.
 '''
 reason = '''

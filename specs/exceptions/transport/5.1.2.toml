@@ -1,4 +1,4 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.2"
 
 [[exception]]
 quote = '''

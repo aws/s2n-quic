@@ -1,11 +1,11 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1"
+target = "https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1"
 
 [[exception]]
 quote = '''
-The endpoint identifies a
-received datagram as a stateless reset by comparing the last 16 bytes
-of the datagram with all Stateless Reset Tokens associated with the
-remote address on which the datagram was received.
+The endpoint identifies a received datagram as a Stateless Reset by comparing the
+last 16 bytes of the datagram with all stateless reset tokens
+associated with the remote address on which the datagram was
+received.
 '''
 reason = '''
 s2n-quic maintains a hash map of all Stateless Reset Tokens to the connection

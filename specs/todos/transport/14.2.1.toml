@@ -1,4 +1,4 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2.1"
+target = "https://www.rfc-editor.org/rfc/rfc9000.txt#14.2.1"
 
 [[TODO]]
 quote = '''
@@ -11,7 +11,7 @@ tracking-issue = "628"
 [[TODO]]
 quote = '''
 QUIC endpoints using PMTUD SHOULD validate ICMP messages to protect
-from off-path injection as specified in [RFC8201] and Section 5.2 of
+from packet injection as specified in [RFC8201] and Section 5.2 of
 [RFC8085].
 '''
 feature = "Incorporate PTB messages into DPLPMTUD"
@@ -29,8 +29,8 @@ tracking-issue = "628"
 [[TODO]]
 quote = '''
 ICMP message validation MUST include matching IP addresses and UDP
-ports ([RFC8085]) and, when possible, connection IDs to an active
-QUIC session.
+ports [RFC8085] and, when possible, connection IDs to an active QUIC
+session.
 '''
 feature = "Incorporate PTB messages into DPLPMTUD"
 tracking-issue = "628"
@@ -45,8 +45,8 @@ tracking-issue = "628"
 
 [[TODO]]
 quote = '''
-An endpoint MUST NOT increase PMTU based on ICMP messages; see
-Section 3, clause 6 of [DPLPMTUD].
+An endpoint MUST NOT increase the PMTU based on ICMP messages; see
+Item 6 in Section 3 of [DPLPMTUD].
 '''
 feature = "Incorporate PTB messages into DPLPMTUD"
 tracking-issue = "628"

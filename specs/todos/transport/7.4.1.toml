@@ -1,10 +1,10 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1"
+target = "https://www.rfc-editor.org/rfc/rfc9000.txt#7.4.1"
 
 [[TODO]]
 quote = '''
 The client
 MUST use the server's new values in the handshake instead; if the
-server does not provide new values, the default value is used.
+server does not provide new values, the default values are used.
 '''
 tracking-issue = "354"
 feature = "0-RTT"
@@ -30,7 +30,7 @@ feature = "0-RTT"
 quote = '''
 In particular, a server that accepts 0-RTT data
 MUST NOT set values for the following parameters (Section 18.2) that
-are smaller than the remembered value of the parameters.
+are smaller than the remembered values of the parameters.
 '''
 tracking-issue = "355"
 feature = "0-RTT"
@@ -38,7 +38,7 @@ feature = "0-RTT"
 [[TODO]]
 quote = '''
 The applicable
-subset of transport parameters that permit sending of application
+subset of transport parameters that permit the sending of application
 data SHOULD be set to non-zero values for 0-RTT.
 '''
 tracking-issue = "355"
@@ -81,8 +81,8 @@ feature = "0-RTT"
 [[TODO]]
 quote = '''
 A
-server MAY treat use of updated transport parameters in 0-RTT as a
-connection error of type PROTOCOL_VIOLATION.
+server MAY treat the use of updated transport parameters in 0-RTT as
+a connection error of type PROTOCOL_VIOLATION.
 '''
 tracking-issue = "355"
 feature = "0-RTT"

@@ -1,7 +1,7 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15"
+target = "https://www.rfc-editor.org/rfc/rfc9000.txt#19.15"
 
 [[exception]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15"
+target = "https://www.rfc-editor.org/rfc/rfc9000.txt#19.15"
 quote = '''
 An endpoint MUST NOT send this frame if it currently requires that
 its peer send packets with a zero-length Destination Connection ID.

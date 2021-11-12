@@ -1,11 +1,11 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4"
+target = "https://www.rfc-editor.org/rfc/rfc9000.txt#9.4"
 
 [[exception]]
 quote = '''
 On confirming a peer's ownership of its new address, an endpoint MUST
 immediately reset the congestion controller and round-trip time
 estimator for the new path to initial values (see Appendices A.3 and
-B.3 in [QUIC-RECOVERY]) unless the only change in the peer's address
+B.3 of [QUIC-RECOVERY]) unless the only change in the peer's address
 is its port number.
 '''
 reason = '''
