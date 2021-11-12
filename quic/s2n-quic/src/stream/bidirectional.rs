@@ -6,7 +6,7 @@ use s2n_quic_transport::stream::Stream;
 /// An QUIC stream that may both send and receive data.
 ///
 /// The [`BidirectionalStream`] implements the required send and receive operations described in the
-/// [QUIC Transport RFC](https://tools.ietf.org/html/draft-ietf-quic-transport-28#section-2)
+/// [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000.html#name-streams)
 #[derive(Debug)]
 pub struct BidirectionalStream(Stream);
 

@@ -6,7 +6,7 @@ use s2n_quic_transport::stream;
 /// A QUIC stream that is only allowed to send data.
 ///
 /// The [`SendStream`] implements the required send operations described in the
-/// [QUIC Transport RFC](https://tools.ietf.org/html/draft-ietf-quic-transport-28#section-2)
+/// [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000.html#name-streams)
 #[derive(Debug)]
 pub struct SendStream(stream::SendStream);
 

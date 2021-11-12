@@ -38,12 +38,12 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             "only servers can accept new initial connections"
         );
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.1
         //# A client MUST expand the payload of all UDP datagrams carrying
         //# Initial packets to at least the smallest allowed maximum datagram
         //# size of 1200 bytes
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.1
         //# A server MUST discard an Initial packet that is carried in a UDP
         //# datagram with a payload that is smaller than the smallest allowed
         //# maximum datagram size of 1200 bytes.
@@ -71,7 +71,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             // ID as the initial_connection_id.
             initial_connection_id = datagram.destination_connection_id;
         } else {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
             //# When an Initial packet is sent by a client that has not previously
             //# received an Initial or Retry packet from the server, the client
             //# populates the Destination Connection ID field with an unpredictable
@@ -92,7 +92,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 .generate(&connection_info);
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2
         //# Endpoints that receive a version 1 long header
         //# with a value larger than 20 MUST drop the packet.
         let source_connection_id = packet
@@ -100,9 +100,9 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .try_into()
             .map_err(transport::Error::from)?;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.2
-        //# Changing Destination Connection ID also results in a change
-        //# to the keys used to protect the Initial packet.
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.2
+        //# Changing the Destination Connection ID field also results in
+        //# a change to the keys used to protect the Initial packet.
         let (initial_key, initial_header_key) =
             <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialKey::new_server(
                 datagram.destination_connection_id.as_bytes(),
@@ -157,7 +157,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         transport_parameters.load_limits(&limits);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
         //# A server includes the Destination Connection ID field from the first
         //# Initial packet it received from the client in the
         //# original_destination_connection_id transport parameter; if the server
@@ -179,7 +179,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             );
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
         //# Each endpoint includes the value of the Source Connection ID field
         //# from the first Initial packet it sent in the
         //# initial_source_connection_id transport parameter
@@ -190,12 +190,13 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 .expect("connection ID already validated"),
         );
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
-        //# The active connection ID limit is an integer value specifying the
-        //# maximum number of connection IDs from the peer that an endpoint is
-        //# willing to store. This value includes the connection ID received
-        //# during the handshake, that received in the preferred_address transport
-        //# parameter, and those received in NEW_CONNECTION_ID frames.
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+        //# active_connection_id_limit (0x0e):  This is an integer value
+        //#    specifying the maximum number of connection IDs from the peer that
+        //#    an endpoint is willing to store.  This value includes the
+        //#    connection ID received during the handshake, that received in the
+        //#    preferred_address transport parameter, and those received in
+        //#    NEW_CONNECTION_ID frames.
         transport_parameters.active_connection_id_limit = s2n_quic_core::varint::VarInt::from(
             connection::peer_id_registry::ACTIVE_CONNECTION_ID_LIMIT,
         )
@@ -247,7 +248,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             peer_id_registry,
             space_manager,
             wakeup_handle,
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
             //# A server MUST set the Destination Connection ID it
             //# uses for sending packets based on the first received Initial packet.
             peer_connection_id: source_connection_id,

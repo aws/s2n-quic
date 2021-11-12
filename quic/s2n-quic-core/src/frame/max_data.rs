@@ -3,7 +3,7 @@
 
 use crate::varint::VarInt;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.9
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.9
 //# A MAX_DATA frame (type=0x10) is used in flow control to inform the
 //# peer of the maximum amount of data that can be sent on the connection
 //# as a whole.
@@ -14,13 +14,13 @@ macro_rules! max_data_tag {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.9
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.9
 //# MAX_DATA Frame {
 //#   Type (i) = 0x10,
 //#   Maximum Data (i),
 //# }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.9
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.9
 //# MAX_DATA frames contain the following field:
 //#
 //# Maximum Data:  A variable-length integer indicating the maximum

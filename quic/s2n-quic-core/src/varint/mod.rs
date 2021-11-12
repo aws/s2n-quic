@@ -10,7 +10,7 @@ use s2n_codec::{decoder_value, Encoder, EncoderValue};
 #[cfg(any(test, feature = "generator"))]
 use bolero_generator::*;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#16
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#16
 //# QUIC packets and frames commonly use a variable-length encoding for
 //# non-negative integer values.  This encoding ensures that smaller
 //# integer values need fewer bytes to encode.
@@ -20,13 +20,13 @@ use bolero_generator::*;
 //# the integer encoding length in bytes.  The integer value is encoded
 //# on the remaining bits, in network byte order.
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#16
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#16
 //# This means that integers are encoded on 1, 2, 4, or 8 bytes and can
-//# encode 6, 14, 30, or 62 bit values respectively.  Table 4 summarizes
-//# the encoding properties.
+//# encode 6-, 14-, 30-, or 62-bit values, respectively.  Table 4
+//# summarizes the encoding properties.
 //#
 //#        +======+========+=============+=======================+
-//#        | 2Bit | Length | Usable Bits | Range                 |
+//#        | 2MSB | Length | Usable Bits | Range                 |
 //#        +======+========+=============+=======================+
 //#        | 00   | 1      | 6           | 0-63                  |
 //#        +------+--------+-------------+-----------------------+
@@ -117,12 +117,12 @@ mod tests {
         }
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#16
-    //# For example, the eight byte sequence c2 19 7c 5e ff 14 e8 8c (in
-    //# hexadecimal) decodes to the decimal value 151288809941952652; the
-    //# four byte sequence 9d 7f 3e 7d decodes to 494878333; the two byte
-    //# sequence 7b bd decodes to 15293; and the single byte 25 decodes to 37
-    //# (as does the two byte sequence 40 25).
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#A.1
+    //# For example, the eight-byte sequence 0xc2197c5eff14e88c decodes to
+    //# the decimal value 151,288,809,941,952,652; the four-byte sequence
+    //# 0x9d7f3e7d decodes to 494,878,333; the two-byte sequence 0x7bbd
+    //# decodes to 15,293; and the single byte 0x25 decodes to 37 (as does
+    //# the two-byte sequence 0x4025).
 
     macro_rules! sequence_test {
         ($name:ident($input:expr, $expected:expr)) => {

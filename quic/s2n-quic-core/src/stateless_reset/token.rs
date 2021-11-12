@@ -7,7 +7,7 @@ use core::convert::{TryFrom, TryInto};
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
 use subtle::ConstantTimeEq;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
 //# Stateless Reset {
 //#   Fixed Bits (2) = 1,
 //#   Unpredictable Bits (38..),
@@ -60,8 +60,8 @@ impl AsMut<[u8]> for Token {
 }
 
 impl PartialEq for Token {
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
-    //# When comparing a datagram to Stateless Reset Token values, endpoints
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1
+    //# When comparing a datagram to stateless reset token values, endpoints
     //# MUST perform the comparison without leaking information about the
     //# value of the token.
     fn eq(&self, other: &Self) -> bool {
@@ -150,9 +150,9 @@ pub mod testing {
 mod tests {
     use crate::stateless_reset::token::{testing::TEST_TOKEN_1, LEN};
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1
     //= type=test
-    //# When comparing a datagram to Stateless Reset Token values, endpoints
+    //# When comparing a datagram to stateless reset token values, endpoints
     //# MUST perform the comparison without leaking information about the
     //# value of the token.
     #[test]

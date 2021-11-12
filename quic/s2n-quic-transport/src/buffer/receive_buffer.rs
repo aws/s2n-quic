@@ -61,7 +61,7 @@ fn align_offset(offset: u64, alignment: usize) -> u64 {
     (offset / (alignment as u64)) * (alignment as u64)
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#2.2
 //# Endpoints MUST be able to deliver stream data to an application as an
 //# ordered byte-stream.
 

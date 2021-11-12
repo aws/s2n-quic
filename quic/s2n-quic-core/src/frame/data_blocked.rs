@@ -3,7 +3,7 @@
 
 use crate::varint::VarInt;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.12
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.12
 //# A sender SHOULD send a DATA_BLOCKED frame (type=0x14) when it wishes
 //# to send data, but is unable to do so due to connection-level flow
 //# control; see Section 4.  DATA_BLOCKED frames can be used as input to
@@ -15,13 +15,13 @@ macro_rules! data_blocked_tag {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.12
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.12
 //# DATA_BLOCKED Frame {
 //#   Type (i) = 0x14,
 //#   Maximum Data (i),
 //# }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.12
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.12
 //# DATA_BLOCKED frames contain the following field:
 //#
 //# Maximum Data:  A variable-length integer indicating the connection-

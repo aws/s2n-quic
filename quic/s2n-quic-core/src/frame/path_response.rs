@@ -4,7 +4,7 @@
 use crate::frame::Tag;
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.18
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.18
 //# A PATH_RESPONSE frame (type=0x1b) is sent in response to a
 //# PATH_CHALLENGE frame.
 
@@ -15,7 +15,7 @@ macro_rules! path_response_tag {
 }
 use crate::frame::path_challenge::{PathChallenge, DATA_LEN};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.18
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.18
 //# PATH_RESPONSE Frame {
 //#   Type (i) = 0x1b,
 //#   Data (64),

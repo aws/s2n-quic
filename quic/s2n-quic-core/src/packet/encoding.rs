@@ -154,7 +154,7 @@ pub trait PacketEncoder<K: CryptoKey, H: HeaderKey, Payload: PacketPayloadEncode
         // view of remaining capacity.
         estimator.write_repeated(key.tag_len(), 0);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
         //# To achieve that end,
         //# the endpoint SHOULD ensure that all packets it sends are at least 22
         //# bytes longer than the minimum connection ID length that it requests

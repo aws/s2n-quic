@@ -4,10 +4,10 @@
 use crate::{application, frame::Tag, varint::VarInt};
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.19
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.19
 //# An endpoint sends a CONNECTION_CLOSE frame (type=0x1c or 0x1d) to
 //# notify its peer that the connection is being closed.  The
-//# CONNECTION_CLOSE with a frame type of 0x1c is used to signal errors
+//# CONNECTION_CLOSE frame with a type of 0x1c is used to signal errors
 //# at only the QUIC layer, or the absence of errors (with the NO_ERROR
 //# code).  The CONNECTION_CLOSE frame with a type of 0x1d is used to
 //# signal an error with the application that uses QUIC.
@@ -20,7 +20,7 @@ macro_rules! connection_close_tag {
 const QUIC_ERROR_TAG: u8 = 0x1c;
 const APPLICATION_ERROR_TAG: u8 = 0x1d;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.19
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.19
 //# CONNECTION_CLOSE Frame {
 //#   Type (i) = 0x1c..0x1d,
 //#   Error Code (i),
@@ -29,30 +29,32 @@ const APPLICATION_ERROR_TAG: u8 = 0x1d;
 //#   Reason Phrase (..),
 //# }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.19
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.19
 //# CONNECTION_CLOSE frames contain the following fields:
 //#
-//# Error Code:  A variable-length integer error code that indicates the
-//#    reason for closing this connection.  A CONNECTION_CLOSE frame of
-//#    type 0x1c uses codes from the space defined in Section 20.1.  A
-//#    CONNECTION_CLOSE frame of type 0x1d uses codes from the
-//#    application protocol error code space; see Section 20.2.
+//# Error Code:  A variable-length integer that indicates the reason for
+//# closing this connection.  A CONNECTION_CLOSE frame of type 0x1c
+//# uses codes from the space defined in Section 20.1.  A
+//# CONNECTION_CLOSE frame of type 0x1d uses codes defined by the
+//# application protocol; see Section 20.2.
 //#
 //# Frame Type:  A variable-length integer encoding the type of frame
-//#    that triggered the error.  A value of 0 (equivalent to the mention
-//#    of the PADDING frame) is used when the frame type is unknown.  The
-//#    application-specific variant of CONNECTION_CLOSE (type 0x1d) does
-//#    not include this field.
+//# that triggered the error.  A value of 0 (equivalent to the mention
+//# of the PADDING frame) is used when the frame type is unknown.  The
+//# application-specific variant of CONNECTION_CLOSE (type 0x1d) does
+//# not include this field.
 //#
 //# Reason Phrase Length:  A variable-length integer specifying the
-//#    length of the reason phrase in bytes.  Because a CONNECTION_CLOSE
-//#    frame cannot be split between packets, any limits on packet size
-//#    will also limit the space available for a reason phrase.
+//# length of the reason phrase in bytes.  Because a CONNECTION_CLOSE
+//# frame cannot be split between packets, any limits on packet size
+//# will also limit the space available for a reason phrase.
 //#
-//# Reason Phrase:  A human-readable explanation for why the connection
-//#    was closed.  This can be zero length if the sender chooses not to
-//#    give details beyond the Error Code.  This SHOULD be a UTF-8
-//#    encoded string [RFC3629].
+//# Reason Phrase:  Additional diagnostic information for the closure.
+//# This can be zero length if the sender chooses not to give details
+//# beyond the Error Code value.  This SHOULD be a UTF-8 encoded
+//# string [RFC3629], though the frame does not carry information,
+//# such as language tags, that would aid comprehension by any entity
+//# other than the one that created the text.
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ConnectionClose<'a> {

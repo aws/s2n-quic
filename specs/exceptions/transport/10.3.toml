@@ -1,8 +1,8 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3"
+target = "https://www.rfc-editor.org/rfc/rfc9000.txt#10.3"
 
 [[exception]]
 quote = '''
-An endpoint MAY send a stateless reset in response to a packet with a
+An endpoint MAY send a Stateless Reset in response to a packet with a
 long header.
 '''
 reason = '''
@@ -15,8 +15,8 @@ as sending a stateless reset.
 [[exception]]
 quote = '''
 An
-endpoint that sends a stateless reset in response to a packet that is
-43 bytes or shorter SHOULD send a stateless reset that is one byte
+endpoint that sends a Stateless Reset in response to a packet that is
+43 bytes or shorter SHOULD send a Stateless Reset that is one byte
 shorter than the packet it responds to.
 '''
 reason = '''

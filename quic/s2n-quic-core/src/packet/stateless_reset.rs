@@ -8,15 +8,15 @@ use crate::{
 };
 use core::ops::RangeInclusive;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
 //# Stateless Reset {
 //#   Fixed Bits (2) = 1,
 //#   Unpredictable Bits (38..),
 //#   Stateless Reset Token (128),
 //# }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
-//# Endpoints MUST send stateless reset packets formatted as a packet
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
+//# Endpoints MUST send Stateless Resets formatted as a packet
 //# with a short header.
 const TAG: u8 = 0b0100_0000;
 const TAG_OFFSET: u8 = 2;
@@ -43,22 +43,23 @@ pub fn encode_packet<R: random::Generator>(
     random_generator: &mut R,
     packet_buf: &mut [u8],
 ) -> Option<usize> {
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
-    //# These values assume that the Stateless Reset Token is the same length
-    //# as the minimum expansion of the packet protection AEAD. Additional
-    //# unpredictable bytes are necessary if the endpoint could have negotiated
-    //# a packet protection scheme with a larger minimum expansion.
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
+    //# These values assume that the stateless reset token is the same length
+    //# as the minimum expansion of the packet protection AEAD.  Additional
+    //# unpredictable bytes are necessary if the endpoint could have
+    //# negotiated a packet protection scheme with a larger minimum
+    //# expansion.
     // The tag length for all cipher suites defined in TLS 1.3 is 16 bytes, but
     // we will calculate based on a given max tag length to allow for future cipher
     // suites with larger tags.
     let min_len = min_indistinguishable_packet_len(max_tag_len);
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
-    //# An endpoint MUST NOT send a stateless reset that is three times or
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
+    //# An endpoint MUST NOT send a Stateless Reset that is three times or
     //# more larger than the packet it receives to avoid being used for
     //# amplification.
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.3
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.3
     //# An endpoint MUST ensure that every Stateless Reset that it sends is
     //# smaller than the packet that triggered it, unless it maintains state
     //# sufficient to prevent looping.
@@ -110,7 +111,7 @@ fn generate_unpredictable_bits<R: random::Generator>(
     // from a valid packet.
     let len = gen_range_biased(random_generator, min_len..=buffer.len());
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
     //# The remainder of the first byte
     //# and an arbitrary number of bytes following it are set to values that
     //# SHOULD be indistinguishable from random.
@@ -182,7 +183,7 @@ mod tests {
             });
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
     //= type=test
     //# The remainder of the first byte
     //# and an arbitrary number of bytes following it are set to values that
@@ -218,22 +219,22 @@ mod tests {
         )
         .unwrap();
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
         //= type=test
-        //# An endpoint MUST NOT send a stateless reset that is three times or
+        //# An endpoint MUST NOT send a Stateless Reset that is three times or
         //# more larger than the packet it receives to avoid being used for
         //# amplification.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.3
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.3
         //= type=test
         //# An endpoint MUST ensure that every Stateless Reset that it sends is
         //# smaller than the packet that triggered it, unless it maintains state
         //# sufficient to prevent looping.
         assert!(packet_len < triggering_packet_len);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
         //= type=test
-        //# Endpoints MUST send stateless reset packets formatted as a packet
+        //# Endpoints MUST send Stateless Resets formatted as a packet
         //# with a short header.
         assert!(matches!(&buffer[0] >> 4, short_tag!()));
 
@@ -332,9 +333,9 @@ mod tests {
                     assert!(packet_len <= max_len);
                     assert!(packet_len >= min_len);
 
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
                     //= type=test
-                    //# Endpoints MUST send stateless reset packets formatted as a packet
+                    //# Endpoints MUST send Stateless Resets formatted as a packet
                     //# with a short header.
                     assert!(matches!(&buffer[0] >> 4, short_tag!()));
 

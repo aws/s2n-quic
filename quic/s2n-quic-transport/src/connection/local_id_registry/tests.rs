@@ -81,7 +81,7 @@ fn minimum_lifetime() {
     );
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1
 //= type=test
 //# As a trivial example, this means the same connection ID
 //# MUST NOT be issued more than once on the same connection.
@@ -96,7 +96,7 @@ fn same_connection_id_must_not_be_issued_for_same_connection() {
     );
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
 //= type=test
 //# The sequence number on
 //# each newly issued connection ID MUST increase by 1.
@@ -219,7 +219,7 @@ fn on_retire_connection_id() {
 
     reg1.set_active_connection_id_limit(2);
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.16
     //= type=test
     //# Receipt of a RETIRE_CONNECTION_ID frame containing a sequence number
     //# greater than any previously sent to the peer MUST be treated as a
@@ -236,13 +236,13 @@ fn on_retire_connection_id() {
 
     let rtt = Duration::from_millis(500);
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.16
     //= type=test
     //# The sequence number specified in a RETIRE_CONNECTION_ID frame MUST
     //# NOT refer to the Destination Connection ID field of the packet in
     //# which the frame is contained.
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.16
     //= type=test
     //# The peer MAY treat this as a
     //# connection error of type PROTOCOL_VIOLATION.
@@ -274,14 +274,14 @@ fn on_retire_connection_id() {
         reg1.connection_id_interest()
     );
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
     //= type=test
     //# When an endpoint issues a connection ID, it MUST accept packets that
     //# carry this connection ID for the duration of the connection or until
     //# its peer invalidates the connection ID via a RETIRE_CONNECTION_ID
     //# frame (Section 19.16).
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.2
     //= type=test
     //# The endpoint SHOULD continue to
     //# accept the previously issued connection IDs until they are retired by
@@ -422,7 +422,7 @@ fn endpoint_must_not_provide_more_ids_than_peer_limit() {
     let _ = reg1.register_connection_id(&ext_id_3, None, TEST_TOKEN_3);
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
 //= type=test
 //# An endpoint MAY
 //# send connection IDs that temporarily exceed a peer's limit if the
@@ -460,7 +460,7 @@ fn endpoint_may_exceed_limit_temporarily() {
         .is_ok());
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
 //= type=test
 //# An endpoint MAY also limit the issuance of
 //# connection IDs to reduce the amount of per-path state it maintains,

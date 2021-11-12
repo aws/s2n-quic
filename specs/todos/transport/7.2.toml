@@ -1,4 +1,4 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000.txt#7.2"
 
 [[TODO]]
 quote = '''
@@ -11,10 +11,10 @@ feature = "Client IDs"
 
 [[TODO]]
 quote = '''
-Once a client
-has received a valid Initial packet from the server, it MUST discard
-any subsequent packet it receives with a different Source Connection
-ID.
+Once a
+client has received a valid Initial packet from the server, it MUST
+discard any subsequent packet it receives on that connection with a
+different Source Connection ID.
 '''
 tracking-issue = "351"
 feature = "Client IDs"

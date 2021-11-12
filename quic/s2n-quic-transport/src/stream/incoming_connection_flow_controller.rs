@@ -36,11 +36,6 @@ impl ValueToFrameWriter<VarInt> for MaxDataToFrameWriter {
 /// incoming data
 #[derive(Debug)]
 struct IncomingConnectionFlowControllerImpl {
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
-    //= type=exception
-    //= reason=The implementation will always send the largest value automatically
-    //# Once a receiver advertises a limit for the connection or a stream, it
-    //# MAY advertise a smaller limit, but this has no effect.
     /// Synchronizes the read window to the remote peer
     pub(super) read_window_sync: IncrementalValueSync<VarInt, MaxDataToFrameWriter>,
     /// The relative flow control window we want to maintain
@@ -91,10 +86,10 @@ impl IncomingConnectionFlowControllerImpl {
 
     pub fn acquire_window(&mut self, desired: VarInt) -> Result<(), transport::Error> {
         if self.remaining_window() < desired {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
-            //# A receiver MUST close the connection with a FLOW_CONTROL_ERROR error
-            //# (Section 11) if the sender violates the advertised connection or
-            //# stream data limits.
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.1
+            //# A receiver MUST close the connection with an error of type
+            //# FLOW_CONTROL_ERROR if the sender violates the advertised connection
+            //# or stream data limits; see Section 11 for details on error handling.
             return Err(transport::Error::FLOW_CONTROL_ERROR);
         }
 

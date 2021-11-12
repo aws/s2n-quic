@@ -22,7 +22,7 @@ use smallvec::SmallVec;
 /// The amount of ConnectionIds we can register without dynamic memory allocation
 const NR_STATIC_REGISTRABLE_IDS: usize = 5;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
 //# An endpoint that initiates migration and requires non-zero-length
 //# connection IDs SHOULD ensure that the pool of connection IDs
 //# available to its peer allows the peer to use a new connection ID on
@@ -84,7 +84,7 @@ pub struct LocalIdRegistry {
 #[derive(Debug)]
 struct LocalIdInfo {
     id: connection::LocalId,
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
     //# Each Connection ID has an associated sequence number to assist in
     //# detecting when NEW_CONNECTION_ID or RETIRE_CONNECTION_ID frames refer
     //# to the same value.
@@ -252,7 +252,7 @@ impl LocalIdRegistry {
         // so it starts in the `Active` status.
         handshake_connection_id_info.status = Active;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
         //# The sequence number of the initial connection ID is 0.
         debug_assert_eq!(handshake_connection_id_info.sequence_number, 0);
 
@@ -266,7 +266,7 @@ impl LocalIdRegistry {
 
     /// Sets the active connection id limit
     pub fn set_active_connection_id_limit(&mut self, active_connection_id_limit: u64) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
         //# An endpoint MAY also limit the issuance of
         //# connection IDs to reduce the amount of per-path state it maintains,
         //# such as path validation status, as its peer might interact with it
@@ -287,7 +287,7 @@ impl LocalIdRegistry {
         stateless_reset_token: stateless_reset::Token,
     ) -> Result<(), LocalIdRegistrationError> {
         if self.registered_ids.iter().any(|id_info| id_info.id == *id) {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1
             //# As a trivial example, this means the same connection ID
             //# MUST NOT be issued more than once on the same connection.
             return Err(LocalIdRegistrationError::ConnectionIdInUse);
@@ -314,7 +314,7 @@ impl LocalIdRegistry {
                 stateless_reset_token,
                 status: PendingIssuance,
             });
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
             //# The sequence number on
             //# each newly issued connection ID MUST increase by 1.
             self.next_sequence_number += 1;
@@ -353,13 +353,13 @@ impl LocalIdRegistry {
         self.update_timers()
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
     //# When an endpoint issues a connection ID, it MUST accept packets that
     //# carry this connection ID for the duration of the connection or until
     //# its peer invalidates the connection ID via a RETIRE_CONNECTION_ID
     //# frame (Section 19.16).
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.2
     //# The endpoint SHOULD continue to
     //# accept the previously issued connection IDs until they are retired by
     //# the peer.
@@ -371,7 +371,7 @@ impl LocalIdRegistry {
         rtt: Duration,
         timestamp: Timestamp,
     ) -> Result<(), LocalIdRegistrationError> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.16
         //# Receipt of a RETIRE_CONNECTION_ID frame containing a sequence number
         //# greater than any previously sent to the peer MUST be treated as a
         //# connection error of type PROTOCOL_VIOLATION.
@@ -389,12 +389,12 @@ impl LocalIdRegistry {
 
         if let Some(mut id_info) = id_info {
             if id_info.id == *destination_connection_id {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.16
                 //# The sequence number specified in a RETIRE_CONNECTION_ID frame MUST
                 //# NOT refer to the Destination Connection ID field of the packet in
                 //# which the frame is contained.
 
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.16
                 //# The peer MAY treat this as a
                 //# connection error of type PROTOCOL_VIOLATION.
                 return Err(LocalIdRegistrationError::InvalidSequenceNumber);
@@ -520,7 +520,7 @@ impl LocalIdRegistry {
         if let Some(handshake_id_info) = self
             .registered_ids
             .iter_mut()
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
             //# The sequence number of the initial connection ID is 0.
             .find(|id_info| id_info.sequence_number == 0 && !id_info.is_retired())
         {
@@ -562,7 +562,7 @@ impl LocalIdRegistry {
     }
 
     fn check_active_connection_id_limit(&self, active_count: u8, new_count: u8) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
         //# An endpoint MAY
         //# send connection IDs that temporarily exceed a peer's limit if the
         //# NEW_CONNECTION_ID frame also requires the retirement of any excess,
@@ -573,7 +573,7 @@ impl LocalIdRegistry {
                 .iter()
                 .filter(|id_info| id_info.sequence_number < self.retire_prior_to)
                 .count() as u8;
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
             //# An endpoint MAY
             //# send connection IDs that temporarily exceed a peer's limit if the
             //# NEW_CONNECTION_ID frame also requires the retirement of any excess,

@@ -115,9 +115,9 @@ impl<Config: endpoint::Config> Path<Config> {
     ) -> Path<Config> {
         let state = match Config::ENDPOINT_TYPE {
             Type::Server => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
-                //# If the client IP address has changed, the server MUST
-                //# adhere to the anti-amplification limits found in Section 8.1.
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
+                //# If the client IP address has changed, the
+                //# server MUST adhere to the anti-amplification limit; see Section 8.
                 // Start each path in State::AmplificationLimited until it has been validated.
                 State::AmplificationLimited {
                     tx_allowance: Default::default(),
@@ -191,13 +191,13 @@ impl<Config: endpoint::Config> Path<Config> {
     pub fn on_bytes_received(&mut self, bytes: usize) -> bool {
         let was_at_amplification_limit = self.at_amplification_limit();
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
         //# For the purposes of
         //# avoiding amplification prior to address validation, servers MUST
         //# count all of the payload bytes received in datagrams that are
         //# uniquely attributed to a single connection.
         //
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
         //# Prior to validating the client address, servers MUST NOT send more
         //# than three times as many bytes as the number of bytes they have
         //# received.
@@ -231,15 +231,15 @@ impl<Config: endpoint::Config> Path<Config> {
     /// Only PATH_CHALLENGE and PATH_RESPONSE frames should be transmitted here.
     #[inline]
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2
         //# A PATH_RESPONSE frame MUST be sent on the network path where the
-        //# PATH_CHALLENGE was received.
+        //# PATH_CHALLENGE frame was received.
         if let Some(response_data) = &mut self.response_data {
             let frame = frame::PathResponse {
                 data: response_data,
             };
             if context.write_frame(&frame).is_some() {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2
                 //# An endpoint MUST NOT send more than one PATH_RESPONSE frame in
                 //# response to one PATH_CHALLENGE frame; see Section 13.3.
                 self.response_data = None;
@@ -270,7 +270,7 @@ impl<Config: endpoint::Config> Path<Config> {
 
     #[inline]
     pub fn on_path_challenge(&mut self, response: &challenge::Data) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2
         //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
         //# echoing the data contained in the PATH_CHALLENGE frame in a
         //# PATH_RESPONSE frame.
@@ -286,7 +286,7 @@ impl<Config: endpoint::Config> Path<Config> {
 
             return true;
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3
             //= type=TODO
             //# After verifying a new client address, the server SHOULD send new
             //# address validation tokens (Section 8) to the client.
@@ -396,15 +396,15 @@ impl<Config: endpoint::Config> Path<Config> {
         }
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.1
     //# The server MUST also limit the number of bytes it sends before
     //# validating the address of the client; see Section 8.
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.2
     //# All QUIC
     //# packets that are not sent in a PMTU probe SHOULD be sized to fit
     //# within the maximum datagram size to avoid the datagram being
-    //# fragmented or dropped ([RFC8085]).
+    //# fragmented or dropped [RFC8085].
 
     //= https://tools.ietf.org/rfc/rfc8899.txt#3
     //# A PL MUST NOT send a datagram (other than a probe
@@ -436,7 +436,7 @@ impl<Config: endpoint::Config> Path<Config> {
     #[inline]
     pub fn transmission_constraint(&self) -> transmission::Constraint {
         if self.at_amplification_limit() {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
             //# Prior to validating the client address, servers MUST NOT send more
             //# than three times as many bytes as the number of bytes they have
             //# received.
@@ -470,7 +470,7 @@ impl<Config: endpoint::Config> Path<Config> {
     ///       TODO: Evaluate if this approach is too conservative
     #[inline]
     pub fn at_amplification_limit(&self) -> bool {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
         //# Prior to validating the client address, servers MUST NOT send more
         //# than three times as many bytes as the number of bytes they have
         //# received.
@@ -543,7 +543,7 @@ impl<Config: endpoint::Config> transmission::interest::Provider for Path<Config>
         &self,
         query: &mut Q,
     ) -> transmission::interest::Result {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2
         //# An endpoint MUST NOT delay transmission of a
         //# packet containing a PATH_RESPONSE frame unless constrained by
         //# congestion control.
@@ -637,7 +637,7 @@ mod tests {
         path.on_transmit(&mut context); // send response data
 
         // Expectation:
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2
         //= type=test
         //# An endpoint MUST NOT send more than one PATH_RESPONSE frame in
         //# response to one PATH_CHALLENGE frame; see Section 13.3.
@@ -782,7 +782,7 @@ mod tests {
         assert!(path.response_data.is_some());
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2
     //= type=test
     //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
     //# echoing the data contained in the PATH_CHALLENGE frame in a
@@ -860,23 +860,23 @@ mod tests {
 
     #[test]
     fn amplification_limit_test() {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
         //= type=test
         //# If the client IP address has changed, the server MUST
-        //# adhere to the anti-amplification limits found in Section 8.1.
+        //# adhere to the anti-amplification limit; see Section 8.
         // This is tested here by verifying a new Path starts in State::AmplificationLimited
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
         //= type=test
         //# For the purposes of
         //# avoiding amplification prior to address validation, servers MUST
         //# count all of the payload bytes received in datagrams that are
         //# uniquely attributed to a single connection.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
         //= type=test
         //# If the client IP address has changed, the server MUST
-        //# adhere to the anti-amplification limits found in Section 8.1.
+        //# adhere to the anti-amplification limit; see Section 8.
         // This tests the IP change because a new path is created when a new peer_address is
         // detected. This new path should always start in State::Pending.
         let mut path = testing::helper_path_server();
@@ -934,23 +934,23 @@ mod tests {
 
     #[test]
     fn amplification_limited_mtu_test() {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
         //= type=test
         //# Prior to validating the client address, servers MUST NOT send more
         //# than three times as many bytes as the number of bytes they have
         //# received.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.1
         //= type=test
         //# The server MUST also limit the number of bytes it sends before
         //# validating the address of the client; see Section 8.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.2
         //= type=test
         //# All QUIC
         //# packets that are not sent in a PMTU probe SHOULD be sized to fit
         //# within the maximum datagram size to avoid the datagram being
-        //# fragmented or dropped ([RFC8085]).
+        //# fragmented or dropped [RFC8085].
 
         //= https://tools.ietf.org/rfc/rfc8899.txt#3
         //= type=test

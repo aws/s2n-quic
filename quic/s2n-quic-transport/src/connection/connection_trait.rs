@@ -49,7 +49,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     fn is_handshaking(&self) -> bool;
 
     /// Initiates closing the connection as described in
-    /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
+    /// https://www.rfc-editor.org/rfc/rfc9000.txt#10
     fn close(
         &mut self,
         error: connection::Error,
@@ -193,7 +193,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.1
         //# If a client receives a packet that uses a different version than it
         //# initially selected, it MUST discard that packet.
         if let Some(version) = packet.version() {
@@ -258,7 +258,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
             {
                 payload = remaining;
 
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.2
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#12.2
                 //# Senders MUST NOT coalesce QUIC packets
                 //# with different connection IDs into a single UDP datagram.  Receivers
                 //# SHOULD ignore any subsequent packets with a different Destination
@@ -281,15 +281,15 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                     return Err(err);
                 }
             } else {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.2
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#12.2
                 //# Every QUIC packet that is coalesced into a single UDP datagram is
                 //# separate and complete.  The receiver of coalesced QUIC packets MUST
                 //# individually process each QUIC packet and separately acknowledge
                 //# them, as if they were received as the payload of different UDP
                 //# datagrams.  For example, if decryption fails (because the keys are
-                //# not available or any other reason), the receiver MAY either discard
-                //# or buffer the packet for later processing and MUST attempt to process
-                //# the remaining packets.
+                //# not available or for any other reason), the receiver MAY either
+                //# discard or buffer the packet for later processing and MUST attempt to
+                //# process the remaining packets.
 
                 // we choose to discard the rest of the datagram on parsing errors since it would
                 // be difficult to recover from an invalid packet.

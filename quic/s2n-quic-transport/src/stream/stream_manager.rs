@@ -275,16 +275,16 @@ impl<S: StreamTrait> StreamManagerState<S> {
                     return Err(transport::Error::NO_ERROR.with_reason("Connection was closed"));
                 }
 
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
-                //# Endpoints MUST NOT exceed the limit set by their peer. An endpoint
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.6
+                //# Endpoints MUST NOT exceed the limit set by their peer.  An endpoint
                 //# that receives a frame with a stream ID exceeding the limit it has
-                //# sent MUST treat this as a connection error of type STREAM_LIMIT_ERROR
-                //# (Section 11).
+                //# sent MUST treat this as a connection error of type
+                //# STREAM_LIMIT_ERROR; see Section 11 for details on error handling.
                 self.stream_controller.on_remote_open_stream(stream_id)?;
 
                 // We must create ALL streams which a lower Stream ID too:
 
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.2
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#3.2
                 //# Before a stream is created, all streams of the same type with lower-
                 //# numbered stream IDs MUST be created.  This ensures that the creation
                 //# order for streams is consistent on both endpoints.
@@ -301,7 +301,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
                         .expect("Expect a valid Stream ID");
                 }
 
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.1
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#2.1
                 //# A QUIC
                 //# endpoint MUST NOT reuse a stream ID within a connection.
 
@@ -516,10 +516,10 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             return Err(error).into();
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.6
         //# Endpoints MUST NOT exceed the limit set by their peer.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.11
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.11
         //# An endpoint MUST NOT open more streams than permitted by the current
         //# stream limit set by its peer.
         if self
@@ -706,13 +706,13 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     /// Calculates the period for sending STREAMS_BLOCKED, STREAM_DATA_BLOCKED and
     /// DATA_BLOCKED frames when blocked, according to the idle timeout and latest RTT estimates
     fn blocked_sync_period(&self, rtt_estimator: &RttEstimator) -> Duration {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.1
         //# To keep the
         //# connection from closing, a sender that is flow control limited SHOULD
         //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
         //# has no ack-eliciting packets in flight.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
         //# To avoid excessively small idle timeout periods, endpoints MUST
         //# increase the idle timeout period to be at least three times the
         //# current Probe Timeout (PTO).  This allows for multiple PTOs to
@@ -868,7 +868,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
 
     /// This is called when a `STREAMS_BLOCKED` frame had been received
     pub fn on_streams_blocked(&mut self, _frame: &StreamsBlocked) -> Result<(), transport::Error> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.6
         //= type=TODO
         //= tracking-issue=244
         //= feature=Stream concurrency

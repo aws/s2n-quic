@@ -19,7 +19,7 @@ use s2n_codec::{
     EncoderValue,
 };
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5
 //# Retry Packet {
 //#   Header Form (1) = 1,
 //#   Fixed Bit (1) = 1,
@@ -34,21 +34,21 @@ use s2n_codec::{
 //#   Retry Integrity Tag (128),
 //# }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5
-//# A Retry packet uses a long packet header with a type value of 0x3.
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5
+//# a Retry packet uses a long packet header with a type value of 0x03.
 macro_rules! retry_tag {
     () => {
         0b1111u8
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5
 //#   Retry Token:  An opaque token that the server can use to validate the
 //#      client's address.
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5
-//#   Retry Integrity Tag:  See the Retry Packet Integrity section of
-//#      [QUIC-TLS].
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5
+//#   Retry Integrity Tag:  Defined in Section 5.8 ("Retry Packet
+//#      Integrity") of [QUIC-TLS].
 
 #[derive(Debug)]
 pub struct Retry<'a> {
@@ -119,7 +119,7 @@ impl<'a> Retry<'a> {
         token_format: &mut T,
         packet_buf: &mut [u8],
     ) -> Option<Range<usize>> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.1
         //# This value MUST NOT be equal to the Destination
         //# Connection ID field of the packet sent by the client.
         debug_assert_ne!(
@@ -169,7 +169,7 @@ impl<'a> Retry<'a> {
         // back to the client.
 
         Self {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5
             //# The value in the Unused field is set to an arbitrary value
             //# by the server; a client MUST ignore these bits.
             // The last 4 bits are unused. They are set to 0x0f here to allow easy testing with
@@ -192,7 +192,7 @@ impl<'a> Retry<'a> {
     ) -> DecoderBufferMutResult<Retry> {
         let mut decoder = HeaderDecoder::new_long(&buffer);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2
         //# Endpoints that receive a version 1 long header
         //# with a value larger than 20 MUST drop the packet.
         let destination_connection_id = decoder.decode_destination_connection_id(&buffer)?;
@@ -209,7 +209,7 @@ impl<'a> Retry<'a> {
 
         let buffer_len = buffer.len().saturating_sub(retry::INTEGRITY_TAG_LEN);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.2
         //# A client MUST discard a Retry packet with a zero-length
         //# Retry Token field.
         decoder_invariant!(buffer_len > 0, "Token cannot be empty");
@@ -327,7 +327,7 @@ mod tests {
             _ => panic!("expected retry packet type"),
         };
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
         //= type=test
         //# For this design to work,
         //# the token MUST be covered by integrity protection against
@@ -341,7 +341,7 @@ mod tests {
 
     #[test]
     fn test_decode_no_token() {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.2
         //= type=test
         //# A client MUST discard a Retry packet with a zero-length
         //# Retry Token field.

@@ -33,20 +33,22 @@ use smallvec::SmallVec;
 /// The amount of ConnectionIds we can register without dynamic memory allocation
 const NR_STATIC_REGISTRABLE_IDS: usize = 5;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
-//# The active connection ID limit is an integer value specifying the
-//# maximum number of connection IDs from the peer that an endpoint is
-//# willing to store. This value includes the connection ID received
-//# during the handshake, that received in the preferred_address transport
-//# parameter, and those received in NEW_CONNECTION_ID frames.  The value
-//# of the active_connection_id_limit parameter MUST be at least 2.
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//# This is an integer value
+//# specifying the maximum number of connection IDs from the peer that
+//# an endpoint is willing to store.  This value includes the
+//# connection ID received during the handshake, that received in the
+//# preferred_address transport parameter, and those received in
+//# NEW_CONNECTION_ID frames.  The value of the
+//# active_connection_id_limit parameter MUST be at least 2.
 // A value of 3 is sufficient for a client to probe multiple paths and for a server to respond
 // to connection migrations from a client.
 pub const ACTIVE_CONNECTION_ID_LIMIT: u8 = 3;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
-//# An endpoint SHOULD allow for sending and tracking a number of
-//# RETIRE_CONNECTION_ID frames of at least twice the active_connection_id limit.
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.2
+//# An endpoint SHOULD allow for sending and tracking a
+//# number of RETIRE_CONNECTION_ID frames of at least twice the value of
+//# the active_connection_id_limit transport parameter.
 const RETIRED_CONNECTION_ID_LIMIT: u8 = ACTIVE_CONNECTION_ID_LIMIT * 2;
 
 #[derive(Debug)]
@@ -64,12 +66,12 @@ pub struct PeerIdRegistry {
 #[derive(Debug, Clone)]
 struct PeerIdInfo {
     id: connection::PeerId,
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
     //# Each Connection ID has an associated sequence number to assist in
     //# detecting when NEW_CONNECTION_ID or RETIRE_CONNECTION_ID frames refer
     //# to the same value.
     sequence_number: u32,
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
     //# A 128-bit value that will be used for a stateless reset when the
     //# associated connection ID is used.
     stateless_reset_token: Option<stateless_reset::Token>,
@@ -83,12 +85,13 @@ impl PeerIdInfo {
         self.status.is_active() && self.sequence_number < retire_prior_to
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
     //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
     //# previously issued connection ID with a different Stateless Reset
-    //# Token or a different sequence number, or if a sequence number is used
-    //# for different connection IDs, the endpoint MAY treat that receipt as
-    //# a connection error of type PROTOCOL_VIOLATION.
+    //# Token field value or a different Sequence Number field value, or if a
+    //# sequence number is used for different connection IDs, the endpoint
+    //# MAY treat that receipt as a connection error of type
+    //# PROTOCOL_VIOLATION.
     fn validate_new_connection_id(
         &self,
         new_id: &connection::PeerId,
@@ -108,7 +111,7 @@ impl PeerIdInfo {
             // This was a valid duplicate new connection ID
             return Ok(true);
         } else if sequence_number_is_equal || reset_token_is_equal {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.2
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.2
             //# Endpoints are not required to compare new values
             //# against all previous values, but a duplicate value MAY be treated as
             //# a connection error of type PROTOCOL_VIOLATION.
@@ -190,14 +193,15 @@ impl PeerIdRegistrationError {
 impl From<PeerIdRegistrationError> for transport::Error {
     fn from(err: PeerIdRegistrationError) -> Self {
         let transport_error = match err {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
             //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
             //# previously issued connection ID with a different Stateless Reset
-            //# Token or a different sequence number, or if a sequence number is used
-            //# for different connection IDs, the endpoint MAY treat that receipt as
-            //# a connection error of type PROTOCOL_VIOLATION.
+            //# Token field value or a different Sequence Number field value, or if a
+            //# sequence number is used for different connection IDs, the endpoint
+            //# MAY treat that receipt as a connection error of type
+            //# PROTOCOL_VIOLATION.
             PeerIdRegistrationError::InvalidNewConnectionId => transport::Error::PROTOCOL_VIOLATION,
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
             //# After processing a NEW_CONNECTION_ID frame and
             //# adding and retiring active connection IDs, if the number of active
             //# connection IDs exceeds the value advertised in its
@@ -206,7 +210,7 @@ impl From<PeerIdRegistrationError> for transport::Error {
             PeerIdRegistrationError::ExceededActiveConnectionIdLimit => {
                 transport::Error::CONNECTION_ID_LIMIT_ERROR
             }
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.2
             //# An endpoint MUST NOT forget a connection ID without retiring it,
             //# though it MAY choose to treat having connection IDs in need of
             //# retirement that exceed this limit as a connection error of type
@@ -263,7 +267,7 @@ impl PeerIdRegistry {
 
         self.registered_ids.push(PeerIdInfo {
             id: peer_id,
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
             //# The sequence number of the initial connection ID is 0.
             sequence_number: 0,
             stateless_reset_token,
@@ -296,7 +300,7 @@ impl PeerIdRegistry {
         retire_prior_to: u32,
         stateless_reset_token: &stateless_reset::Token,
     ) -> Result<(), PeerIdRegistrationError> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
         //# A receiver MUST ignore any Retire Prior To fields that do not
         //# increase the largest received Retire Prior To value.
         self.retire_prior_to = self.retire_prior_to.max(retire_prior_to);
@@ -314,7 +318,7 @@ impl PeerIdRegistry {
             )?;
 
             if id_info.is_retire_ready(self.retire_prior_to) {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.2
                 //# Upon receipt of an increased Retire Prior To field, the peer MUST
                 //# stop using the corresponding connection IDs and retire them with
                 //# RETIRE_CONNECTION_ID frames before adding the newly provided
@@ -333,7 +337,7 @@ impl PeerIdRegistry {
             }
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
         //# Receipt of the same frame multiple times MUST NOT be treated as a
         //# connection error.
         if !is_duplicate {
@@ -344,7 +348,7 @@ impl PeerIdRegistry {
                 status: New,
             };
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
             //# An endpoint that receives a NEW_CONNECTION_ID frame with a sequence
             //# number smaller than the Retire Prior To field of a previously
             //# received NEW_CONNECTION_ID frame MUST send a corresponding
@@ -412,13 +416,13 @@ impl PeerIdRegistry {
                 if ack_set.contains(packet_number) {
                     if let Some(token) = id_info.stateless_reset_token {
                         // Stop tracking the stateless reset token
-                        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
-                        //# An endpoint MUST NOT check for any Stateless Reset Tokens associated
+                        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1
+                        //# An endpoint MUST NOT check for any stateless reset tokens associated
                         //# with connection IDs it has not used or for connection IDs that have
                         //# been retired.
                         mapper_state.stateless_reset_map.remove(&token);
                     }
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.2
                     //# An endpoint MUST NOT forget a connection ID without retiring it
                     // Don't retain the ID since the retirement was acknowledged
                     return false;
@@ -456,8 +460,8 @@ impl PeerIdRegistry {
         for id_info in self.registered_ids.iter_mut() {
             if id_info.status == New {
                 // Start tracking the stateless reset token
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
-                //# An endpoint MUST NOT check for any Stateless Reset Tokens associated
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1
+                //# An endpoint MUST NOT check for any stateless reset tokens associated
                 //# with connection IDs it has not used or for connection IDs that have
                 //# been retired.
                 if let Some(token) = id_info.stateless_reset_token {
@@ -515,7 +519,7 @@ impl PeerIdRegistry {
                 .count()
         );
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
         //# After processing a NEW_CONNECTION_ID frame and
         //# adding and retiring active connection IDs, if the number of active
         //# connection IDs exceeds the value advertised in its
@@ -541,13 +545,14 @@ impl PeerIdRegistry {
                 .count()
         );
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.2
         //# An endpoint SHOULD limit the number of connection IDs it has retired
-        //# locally and have not yet been acknowledged. An endpoint SHOULD allow
-        //# for sending and tracking a number of RETIRE_CONNECTION_ID frames of
-        //# at least twice the active_connection_id limit.  An endpoint MUST NOT
-        //# forget a connection ID without retiring it, though it MAY choose to
-        //# treat having connection IDs in need of retirement that exceed this
+        //# locally for which RETIRE_CONNECTION_ID frames have not yet been
+        //# acknowledged.  An endpoint SHOULD allow for sending and tracking a
+        //# number of RETIRE_CONNECTION_ID frames of at least twice the value of
+        //# the active_connection_id_limit transport parameter.  An endpoint MUST
+        //# NOT forget a connection ID without retiring it, though it MAY choose
+        //# to treat having connection IDs in need of retirement that exceed this
         //# limit as a connection error of type CONNECTION_ID_LIMIT_ERROR.
         if retired_id_count > RETIRED_CONNECTION_ID_LIMIT as usize {
             return Err(ExceededRetiredConnectionIdLimit);

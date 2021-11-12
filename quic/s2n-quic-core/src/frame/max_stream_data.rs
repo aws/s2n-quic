@@ -3,7 +3,7 @@
 
 use crate::varint::VarInt;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.10
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.10
 //# A MAX_STREAM_DATA frame (type=0x11) is used in flow control to inform
 //# a peer of the maximum amount of data that can be sent on a stream.
 
@@ -13,22 +13,22 @@ macro_rules! max_stream_data_tag {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.10
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.10
 //# MAX_STREAM_DATA Frame {
 //#   Type (i) = 0x11,
 //#   Stream ID (i),
 //#   Maximum Stream Data (i),
 //# }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.10
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.10
 //# MAX_STREAM_DATA frames contain the following fields:
 //#
-//# Stream ID:  The stream ID of the stream that is affected encoded as a
-//#    variable-length integer.
+//# Stream ID:  The stream ID of the affected stream, encoded as a
+//# variable-length integer.
 //#
 //# Maximum Stream Data:  A variable-length integer indicating the
-//#    maximum amount of data that can be sent on the identified stream,
-//#    in units of bytes.
+//# maximum amount of data that can be sent on the identified stream,
+//# in units of bytes.
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct MaxStreamData {

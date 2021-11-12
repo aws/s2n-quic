@@ -53,12 +53,12 @@ impl transmission::interest::Provider for State {
 impl Challenge {
     pub fn new(abandon_duration: Duration, data: Data) -> Self {
         Self {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.1
             //# An endpoint SHOULD NOT probe a new path with packets containing a
             //# PATH_CHALLENGE frame more frequently than it would send an Initial
             //# packet.
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.1
             //# An endpoint MAY send multiple PATH_CHALLENGE frames to guard against
             //# packet loss.
 
@@ -85,7 +85,7 @@ impl Challenge {
         match self.state {
             State::RequiresTransmission(0) => self.state = State::PendingResponse,
             State::RequiresTransmission(remaining) => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.1
                 //# However, an endpoint SHOULD NOT send multiple
                 //# PATH_CHALLENGE frames in a single packet.
                 let frame = frame::PathChallenge { data: &self.data };
@@ -196,7 +196,7 @@ mod tests {
     };
     use testing::*;
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.1
     //= type=test
     //# An endpoint MAY send multiple PATH_CHALLENGE frames to guard against
     //# packet loss.
@@ -213,7 +213,7 @@ mod tests {
         assert!(!challenge.abandon_timer.is_armed());
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.1
     //= type=test
     //# An endpoint SHOULD NOT probe a new path with packets containing a
     //# PATH_CHALLENGE frame more frequently than it would send an Initial
@@ -236,7 +236,7 @@ mod tests {
         helper.challenge.on_transmit(&mut context);
 
         // Expectation:
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.1
         //= type=test
         //# However, an endpoint SHOULD NOT send multiple
         //# PATH_CHALLENGE frames in a single packet.

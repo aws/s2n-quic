@@ -233,6 +233,6 @@ macro_rules! ietf_test {
     };
 }
 
-ietf_test!(quic_transport_29, "draft-ietf-quic-transport-29.txt");
+ietf_test!(rfc9000, "rfc9000.txt");
 ietf_test!(rfc2616, "rfc2616.txt");
 ietf_test!(rfc791, "rfc791.txt");

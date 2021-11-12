@@ -16,7 +16,7 @@ use s2n_codec::{decoder_value, Encoder, EncoderValue};
 #[cfg(any(test, feature = "generator"))]
 use bolero_generator::*;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1
 //# Each connection possesses a set of connection identifiers, or
 //# connection IDs, each of which can identify the connection.
 //# Connection IDs are independently selected by endpoints; each endpoint
@@ -194,7 +194,7 @@ id!(PeerId, 0);
 // server or a client, and thus the minimum length of the ID is not validated.
 id!(UnboundedId, 0);
 // The randomly generated ID the client sends when first contacting a server.
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
 //# When an Initial packet is sent by a client that has not previously
 //# received an Initial or Retry packet from the server, the client
 //# populates the Destination Connection ID field with an unpredictable
@@ -294,7 +294,7 @@ impl<T: 'static + Validator + Generator + Send> Format for T {}
 
 /// A validator for a connection ID format
 pub trait Validator {
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.2
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.2
     //# An endpoint that uses this design MUST
     //# either use the same connection ID length for all connections or
     //# encode the length of the connection ID such that it can be recovered

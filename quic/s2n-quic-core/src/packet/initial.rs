@@ -20,7 +20,7 @@ use crate::{
 };
 use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.2
 //# Initial Packet {
 //#   Header Form (1) = 1,
 //#   Fixed Bit (1) = 1,
@@ -39,7 +39,7 @@ use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder,
 //#   Packet Payload (..),
 //# }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.2
 //# An Initial packet uses long headers with a type value of 0x0.
 macro_rules! initial_tag {
     () => {
@@ -47,11 +47,11 @@ macro_rules! initial_tag {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.2
 //# Token Length:  A variable-length integer specifying the length of the
-//#    Token field, in bytes.  This value is zero if no token is present.
+//# Token field, in bytes.  This value is 0 if no token is present.
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.2
 //# Token:  The value of the token that was previously provided in a
 //#    Retry packet or NEW_TOKEN frame; see Section 8.1.
 
@@ -81,7 +81,7 @@ impl<'a> ProtectedInitial<'a> {
     ) -> DecoderBufferMutResult<ProtectedInitial> {
         let mut decoder = HeaderDecoder::new_long(&buffer);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2
         //# In order to
         //# properly form a Version Negotiation packet, servers SHOULD be able
         //# to read longer connection IDs from other QUIC versions.

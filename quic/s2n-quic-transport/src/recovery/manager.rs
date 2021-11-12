@@ -422,7 +422,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         let is_handshake_confirmed = context.is_handshake_confirmed();
         let (largest_newly_acked_packet_number, largest_newly_acked_info) = largest_newly_acked;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.4
         //# Packets sent on the old path MUST NOT contribute to
         //# congestion control or RTT estimation for the new path.
         should_update_rtt &= context.path_id() == largest_newly_acked_info.path_id;
@@ -831,10 +831,10 @@ impl<Config: endpoint::Config> Manager<Config> {
 
             let mut is_mtu_probe = false;
             if sent_info.sent_bytes as usize > path.mtu_controller.mtu() {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.4
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.4
                 //# Loss of a QUIC packet that is carried in a PMTU probe is therefore not a
                 //# reliable indication of congestion and SHOULD NOT trigger a congestion
-                //# control reaction; see Section 3, Bullet 7 of [DPLPMTUD].
+                //# control reaction; see Item 7 in Section 3 of [DPLPMTUD].
 
                 //= https://tools.ietf.org/rfc/rfc8899.txt#3
                 //# Loss of a probe packet SHOULD NOT be treated as an

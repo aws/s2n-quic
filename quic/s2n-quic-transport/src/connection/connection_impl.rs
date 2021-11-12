@@ -73,10 +73,10 @@ enum ConnectionState {
     /// The connection is active
     Active,
     /// The connection is closing, as described in
-    /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
+    /// https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
     Closing,
     /// The connection is draining, as described in
-    /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
+    /// https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
     Draining,
     /// The connection was drained, and is in its terminal state.
     /// The connection will be removed from the endpoint when it reached this state.
@@ -91,11 +91,11 @@ impl From<connection::Error> for ConnectionState {
                 ConnectionState::Finished
             }
             connection::Error::NoValidPath => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
                 //# When an endpoint has no validated path on which to send packets, it
                 //# MAY discard connection state.
 
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3.2
                 //# If an endpoint has no state about the last validated peer address, it
                 //# MUST close the connection silently by discarding all connection
                 //# state.
@@ -114,16 +114,16 @@ impl From<connection::Error> for ConnectionState {
             connection::Error::Closed { .. }
             | connection::Error::Transport { .. }
             | connection::Error::Application { .. } => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.2
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.2
                 //# The draining state is entered once an endpoint receives a
                 //# CONNECTION_CLOSE frame, which indicates that its peer is closing or
                 //# draining.
                 ConnectionState::Draining
             }
             connection::Error::StatelessReset => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1
                 //# If the last 16 bytes of the datagram are identical in value to a
-                //# Stateless Reset Token, the endpoint MUST enter the draining period
+                //# stateless reset token, the endpoint MUST enter the draining period
                 //# and not send any further packets on this connection.
                 ConnectionState::Draining
             }
@@ -287,15 +287,17 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
 
     /// Returns the idle timeout based on transport parameters of both peers
     fn get_idle_timer_duration(&self) -> Option<Duration> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
         //# Each endpoint advertises a max_idle_timeout, but the effective value
         //# at an endpoint is computed as the minimum of the two advertised
-        //# values.  By announcing a max_idle_timeout, an endpoint commits to
-        //# initiating an immediate close (Section 10.2) if it abandons the
-        //# connection prior to the effective value.
+        //# values (or the sole advertised value, if only one endpoint advertises
+        //# a non-zero value).  By announcing a max_idle_timeout, an endpoint
+        //# commits to initiating an immediate close (Section 10.2) if it
+        //# abandons the connection prior to the effective value.
+
         let mut duration = self.limits.max_idle_timeout()?;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
         //# To avoid excessively small idle timeout periods, endpoints MUST
         //# increase the idle timeout period to be at least three times the
         //# current Probe Timeout (PTO).  This allows for multiple PTOs to
@@ -472,7 +474,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Initiates closing the connection as described in
-    /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
+    /// https://www.rfc-editor.org/rfc/rfc9000.txt#10
     fn close(
         &mut self,
         error: connection::Error,
@@ -800,7 +802,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     ) -> Result<path::Id, connection::Error> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
         //# The design of QUIC relies on endpoints retaining a stable address
         //# for the duration of the handshake.  An endpoint MUST NOT initiate
         //# connection migration before the handshake is confirmed, as defined
@@ -903,14 +905,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         if let Some((space, handshake_status)) = self.space_manager.initial_mut() {
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2
             //= type=TODO
             //= tracking-issue=336
             //# Invalid packets that lack strong integrity protection, such as
             //# Initial, Retry, or Version Negotiation, MAY be discarded.
             // Attempt to validate some of the enclosed frames?
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.2
             //= type=TODO
             //= tracking-issue=385
             //# This token MUST be repeated by the client in all
@@ -951,13 +953,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.1
         //= type=TODO
         //= tracking-issue=337
-        //# The client MAY drop these packets, or MAY buffer them in anticipation
-        //# of later packets that allow it to compute the key.
+        //# The client MAY drop these packets, or it MAY buffer them in
+        //# anticipation of later packets that allow it to compute the key.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.2
         //= type=TODO
         //= tracking-issue=340
         //# Clients are not able to send Handshake packets prior to
@@ -1002,13 +1004,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     path_id,
                     &mut publisher,
                 );
-
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
-                //# Once the server has successfully processed a
-                //# Handshake packet from the client, it can consider the client address
-                //# to have been validated.
-                self.path_manager[path_id].on_handshake_packet();
             }
+
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
+            //# Once an endpoint has successfully processed a
+            //# Handshake packet from the peer, it can consider the peer address to
+            //# have been validated.
+            self.path_manager[path_id].on_handshake_packet();
 
             // try to move the crypto state machine forward
             self.update_crypto_state(datagram.timestamp, subscriber)?;
@@ -1058,10 +1060,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             //# The server MAY retain these packets for
             //# later decryption in anticipation of receiving a ClientHello.
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.1
             //= type=TODO
-            //# The client MAY drop these packets, or MAY buffer them in anticipation
-            //# of later packets that allow it to compute the key.
+            //# The client MAY drop these packets, or it MAY buffer them in
+            //# anticipation of later packets that allow it to compute the key.
 
             return Ok(());
         }
@@ -1132,7 +1134,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         publisher.on_packet_received(event::builder::PacketReceived {
             packet_header: event::builder::PacketHeader::VersionNegotiation {},
         });
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#6.2
         //= type=TODO
         //= feature=Version negotiation handler
         //= tracking-issue=349
@@ -1140,7 +1142,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# current connection attempt if it receives a Version Negotiation
         //# packet, with the following two exceptions.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#6.2
         //= type=TODO
         //= feature=Version negotiation handler
         //= tracking-issue=349
@@ -1149,7 +1151,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# processed any other packet, including an earlier Version Negotiation
         //# packet.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#6.2
         //= type=TODO
         //= feature=Version negotiation handler
         //= tracking-issue=349
@@ -1176,7 +1178,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 version: publisher.quic_version(),
             },
         });
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.2
         //= type=TODO
         //= tracking-issue=339
         //# If the packet is a 0-RTT packet, the server MAY buffer a limited
@@ -1202,14 +1204,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 version: publisher.quic_version(),
             },
         });
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
         //= type=TODO
         //= tracking-issue=386
         //= feature=Client Retry
         //# The client MUST NOT use
         //# the token provided in a Retry for future connections.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
         //= type=TODO
         //= tracking-issue=386
         //= feature=Client Retry
@@ -1218,7 +1220,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# connection attempt and cannot be used in subsequent connection
         //# attempts.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
         //= type=TODO
         //= tracking-issue=393
         //= feature=Client Retry

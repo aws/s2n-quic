@@ -85,14 +85,14 @@ impl CryptoStream {
             return Err(transport::Error::PROTOCOL_VIOLATION);
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.5
         //= type=TODO
         //= tracking-issue=356
         //= feature=Crypto buffer limits
         //# Implementations MUST support buffering at least 4096 bytes of data
         //# received in out-of-order CRYPTO frames.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.5
         //= type=TODO
         //= tracking-issue=356
         //= feature=Crypto buffer limits
@@ -102,7 +102,7 @@ impl CryptoStream {
         //TODO we need to limit the buffer size here
 
         self.rx.write_at(frame.offset, frame.data).map_err(|_| {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.5
             //# If an endpoint does not expand its buffer, it MUST close
             //# the connection with a CRYPTO_BUFFER_EXCEEDED error code.
 

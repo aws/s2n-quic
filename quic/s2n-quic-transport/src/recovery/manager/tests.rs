@@ -1049,7 +1049,7 @@ fn no_rtt_update_when_not_acknowledging_the_largest_acknowledged_packet() {
     assert_eq!(1, context.on_rtt_update_count);
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#9.4
 //= type=test
 //# Packets sent on the old path MUST NOT contribute to
 //# congestion control or RTT estimation for the new path.
@@ -1674,11 +1674,11 @@ fn detect_and_remove_lost_packets_nothing_lost() {
     assert_eq!(context.path().congestion_controller.on_packets_lost, 0);
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.4
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#14.4
 //= type=test
 //# Loss of a QUIC packet that is carried in a PMTU probe is therefore not a
 //# reliable indication of congestion and SHOULD NOT trigger a congestion
-//# control reaction; see Section 3, Bullet 7 of [DPLPMTUD].
+//# control reaction; see Item 7 in Section 3 of [DPLPMTUD].
 
 //= https://tools.ietf.org/rfc/rfc8899.txt#3
 //= type=test

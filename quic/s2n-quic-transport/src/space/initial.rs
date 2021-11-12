@@ -425,7 +425,7 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
     fn on_rtt_update(&mut self) {}
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.2
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.2
 //# The payload of an Initial packet includes a CRYPTO frame (or frames)
 //# containing a cryptographic handshake message, ACK frames, or both.
 //# PING, PADDING, and CONNECTION_CLOSE frames of type 0x1c are also
@@ -467,7 +467,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
         _datagram: &DatagramInfo,
         _path: &mut Path<Config>,
     ) -> Result<(), transport::Error> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.2
         //# CONNECTION_CLOSE frames of type 0x1c are also
         //# permitted.
 

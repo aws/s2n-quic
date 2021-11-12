@@ -600,15 +600,15 @@ pub trait PacketSpace<Config: endpoint::Config> {
             });
             match frame {
                 Frame::Padding(frame) => {
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.1
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.1
                     //# A PADDING frame (type=0x00) has no semantic value.  PADDING frames
                     //# can be used to increase the size of a packet.  Padding can be used to
-                    //# increase an initial client packet to the minimum required size, or to
-                    //# provide protection against traffic analysis for protected packets.
+                    //# increase an Initial packet to the minimum required size or to provide
+                    //# protection against traffic analysis for protected packets.
                     let _ = on_frame_processed!(frame);
                 }
                 Frame::Ping(frame) => {
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.2
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.2
                     //# Endpoints can use PING frames (type=0x01) to verify that their peers
                     //# are still alive or to check reachability to the peer.
                     let _ = on_frame_processed!(frame);
@@ -616,7 +616,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 Frame::Crypto(frame) => {
                     let on_error = on_frame_processed!(frame);
 
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.5
                     //# Packets containing
                     //# discarded CRYPTO frames MUST be acknowledged because the packet has
                     //# been received and processed by the transport even though the CRYPTO
@@ -705,7 +705,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 Frame::PathChallenge(frame) => {
                     let on_error = on_frame_processed!(frame);
 
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.3
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3.3
                     //# An endpoint that receives a PATH_CHALLENGE on an active path SHOULD
                     //# send a non-probing packet in response.
                     if path_manager.active_path_id() == path_id {
@@ -755,12 +755,12 @@ pub trait PacketSpace<Config: endpoint::Config> {
             publisher,
         )?;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.1
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.1
         //# A packet MUST NOT be acknowledged until packet protection has been
         //# successfully removed and all frames contained in the packet have been
         //# processed.  For STREAM frames, this means the data has been enqueued
         //# in preparation to be received by the application protocol, but it
-        //# does not require that data is delivered and consumed.
+        //# does not require that data be delivered and consumed.
         //#
         //# Once the packet has been fully processed, a receiver acknowledges
         //# receipt by sending one or more ACK frames containing the packet

@@ -1,5 +1,5 @@
 [[TODO]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1"
+target = "https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.1"
 tracking-issue = "409"
 feature = "Connection migration"
 quote = '''
@@ -8,7 +8,7 @@ packet loss.
 '''
 
 [[TODO]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1"
+target = "https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.1"
 tracking-issue = "409"
 feature = "Connection migration"
 quote = '''
@@ -17,7 +17,7 @@ PATH_CHALLENGE frames in a single packet.
 '''
 
 [[TODO]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1"
+target = "https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.1"
 tracking-issue = "410"
 feature = "Connection migration"
 quote = '''
@@ -26,7 +26,7 @@ to at least the smallest allowed maximum datagram size of 1200 bytes.
 '''
 
 [[TODO]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2"
 tracking-issue = "410"
 feature = "Client connection migration"
 quote = '''
@@ -35,7 +35,7 @@ to at least the smallest allowed maximum datagram size of 1200 bytes.
 '''
 
 [[TODO]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1"
+target = "https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.1"
 tracking-issue = "411"
 feature = "Connection migration"
 quote = '''
@@ -45,26 +45,26 @@ packet.
 '''
 
 [[TODO]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2"
 tracking-issue = "405"
 feature = "Connection migration"
 quote = '''
 A PATH_RESPONSE frame MUST be sent on the network path where the
-PATH_CHALLENGE was received.
+PATH_CHALLENGE frame was received.
 '''
 
 [[TODO]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2"
 tracking-issue = "405"
 feature = "Connection migration"
 quote = '''
 This requirement MUST NOT be enforced by the endpoint that initiates
-path validation as that would enable an attack on migration; see
+path validation, as that would enable an attack on migration; see
 Section 9.3.3.
 '''
 
 [[TODO]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000.txt#8.2"
 tracking-issue = "414"
 feature = "Connection migration"
 quote = '''

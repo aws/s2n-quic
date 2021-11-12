@@ -6,7 +6,7 @@ use super::{BidirectionalStream, SendStream};
 /// An enum of all the possible types of QUIC streams that may be opened by a local endpoint.
 ///
 /// The [`LocalStream`] implements the required operations described in the
-/// [QUIC Transport RFC](https://tools.ietf.org/html/draft-ietf-quic-transport-28#section-2)
+/// [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000.html#name-streams)
 #[derive(Debug)]
 pub enum LocalStream {
     Bidirectional(BidirectionalStream),

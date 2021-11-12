@@ -3,10 +3,10 @@
 
 use super::Tag;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.3.1
 //# Key Phase:  The next bit (0x04) of byte 0 indicates the key phase,
-//#    which allows a recipient of a packet to identify the packet
-//#    protection keys that are used to protect the packet.
+//# which allows a recipient of a packet to identify the packet
+//# protection keys that are used to protect the packet.
 
 const KEY_PHASE_MASK: u8 = 0x04;
 
