@@ -8,7 +8,7 @@ use crate::{
     transmission::{self, interest::Provider},
 };
 use bolero::{check, generator::*};
-use s2n_quic_core::{ack, packet};
+use s2n_quic_core::{ack, event::testing::Publisher, packet};
 use s2n_quic_platform::time;
 
 #[derive(Debug)]
@@ -142,7 +142,7 @@ impl Model {
     fn on_complete(&mut self) {
         if !self.oracle.complete {
             self.subject
-                .on_handshake_complete(self.oracle.endpoint_type);
+                .on_handshake_complete(self.oracle.endpoint_type, &mut Publisher::default());
             self.oracle.on_handshake_complete();
         }
     }

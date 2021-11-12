@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::provider::event::{self, ConnectionInfo, ConnectionMeta, Event, Meta};
+use crate::provider::event::{ConnectionInfo, ConnectionMeta, Event, Meta};
 use tracing::debug;
 
 #[derive(Debug, Default)]

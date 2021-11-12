@@ -27,7 +27,6 @@ use s2n_quic_core::{
     time::{timer, Timestamp},
     transport,
 };
-use std::num::NonZeroU64;
 
 pub struct HandshakeSpace<Config: endpoint::Config> {
     pub ack_manager: AckManager,

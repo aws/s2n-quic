@@ -185,7 +185,7 @@ mod fuzz_target;
 mod tests {
     use super::*;
     use crate::{contexts::testing::*, transmission::interest::Provider};
-    use s2n_quic_core::endpoint;
+    use s2n_quic_core::{endpoint, event::testing::Publisher};
     use s2n_quic_platform::time;
 
     #[test]
@@ -219,7 +219,7 @@ mod tests {
         //= type=test
         //# the TLS handshake is considered confirmed at the
         //# server when the handshake completes.
-        status.on_handshake_complete(endpoint::Type::Server);
+        status.on_handshake_complete(endpoint::Type::Server, &mut Publisher::default());
         assert!(status.is_confirmed());
         assert!(status.is_complete());
 
@@ -284,7 +284,7 @@ mod tests {
         assert!(!status.is_complete());
         assert!(!status.is_confirmed());
 
-        status.on_handshake_complete(endpoint::Type::Client);
+        status.on_handshake_complete(endpoint::Type::Client, &mut Publisher::default());
         assert!(status.is_complete());
 
         assert!(
