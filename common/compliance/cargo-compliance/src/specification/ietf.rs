@@ -219,7 +219,6 @@ impl<'a> Parser<'a> {
 
 macro_rules! ietf_test {
     ($name:ident, $file:expr) => {
-        #[ignore] // TODO: https://github.com/awslabs/s2n-quic/issues/649
         #[test]
         fn $name() {
             let res = parse(include_str!(concat!(
@@ -233,6 +232,6 @@ macro_rules! ietf_test {
     };
 }
 
-ietf_test!(quic_transport_29, "draft-ietf-quic-transport-29.txt");
+ietf_test!(rfc9000, "rfc9000.txt");
 ietf_test!(rfc2616, "rfc2616.txt");
 ietf_test!(rfc791, "rfc791.txt");
