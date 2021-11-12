@@ -63,4 +63,4 @@ case "$@" in
      ;;
 esac
 
-python3 run.py --server s2n-quic --debug "$@"
+python3 run.py --debug "$@"
