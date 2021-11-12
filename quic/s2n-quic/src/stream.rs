@@ -29,7 +29,7 @@ pub type Result<T, E = Error> = core::result::Result<T, E>;
 /// An enum of all the possible types of QUIC streams.
 ///
 /// The [`Stream`] implements the required operations described in the
-/// [QUIC Transport RFC](https://tools.ietf.org/html/draft-ietf-quic-transport-28#section-2)
+/// [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000.html#name-streams)
 #[derive(Debug)]
 pub enum Stream {
     Bidirectional(BidirectionalStream),

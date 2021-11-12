@@ -12,7 +12,7 @@ use core::{
 //
 // For the scope of the QUIC implementation 24-bit integers are needed
 // for u24 encoded packet numbers:
-// https://tools.ietf.org/html/draft-ietf-quic-transport-22#section-17.1
+// https://www.rfc-editor.org/rfc/rfc9000.html#name-packet-number-encoding-and-
 //
 // 48-bit integers are also implemented for completeness.
 macro_rules! unaligned_integer_type {
