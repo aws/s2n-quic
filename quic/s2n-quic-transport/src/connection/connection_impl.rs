@@ -632,30 +632,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 let mut outcome = transmission::Outcome::new(PacketNumber::default());
                 let path_id = self.path_manager.active_path_id();
 
-                while !self.path_manager.active_path().at_amplification_limit()
-                    && queue
-                        .push(ConnectionTransmission {
-                            context: transmission_context!(
-                                self,
-                                &mut outcome,
-                                path_id,
-                                timestamp,
-                                transmission::Mode::Normal,
-                                subscriber,
-                            ),
-                            space_manager: &mut self.space_manager,
-                        })
-                        .is_ok()
-                {
-                    count += 1;
-                }
-
-                if outcome.ack_elicitation.is_ack_eliciting() {
-                    self.on_ack_eliciting_packet_sent(timestamp);
-                }
-
                 // Send an MTU probe if necessary
-                let path_id = self.path_manager.active_path_id();
+                // MTU probes are prioritized over other data so they are not blocked by the
+                // congestion controller, as they are critical to achieving maximum throughput.
                 if self
                     .path_manager
                     .active_path()
@@ -676,6 +655,29 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         .is_ok()
                 {
                     count += 1;
+                }
+
+                // Send all other data for the active path
+                while !self.path_manager.active_path().at_amplification_limit()
+                    && queue
+                        .push(ConnectionTransmission {
+                            context: transmission_context!(
+                                self,
+                                &mut outcome,
+                                path_id,
+                                timestamp,
+                                transmission::Mode::Normal,
+                                subscriber,
+                            ),
+                            space_manager: &mut self.space_manager,
+                        })
+                        .is_ok()
+                {
+                    count += 1;
+                }
+
+                if outcome.ack_elicitation.is_ack_eliciting() {
+                    self.on_ack_eliciting_packet_sent(timestamp);
                 }
 
                 // PathValidationOnly handles transmission on non-active paths. Transmission
