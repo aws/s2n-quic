@@ -203,6 +203,7 @@ where
                         let (key, header_key) =
                             RingHandshakeKey::new(self.endpoint, aead_algo, pair)
                                 .expect("invalid cipher");
+                        println!("event: s2n-tls re-generating handshake keys");
                         self.context.on_handshake_keys(key, header_key)?;
 
                         self.state.tx_phase.transition();
@@ -216,6 +217,7 @@ where
                             // Safety: conn needs to outlive params
                             get_application_params(conn)?
                         };
+                        println!("event: s2n-tls re-generating 1-rtt keys");
                         self.context.on_one_rtt_keys(key, header_key, params)?;
 
                         self.state.tx_phase.transition();

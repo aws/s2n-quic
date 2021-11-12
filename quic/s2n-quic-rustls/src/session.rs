@@ -219,6 +219,7 @@ impl tls::Session for Session {
                         quic::KeyChange::Handshake { keys } => {
                             let (key, header_key) = PacketKeys::new(keys);
 
+                            println!("event: rustls re-generating handshake keys");
                             context.on_handshake_keys(key, header_key)?;
 
                             // Transition both phases to Handshake
@@ -229,6 +230,7 @@ impl tls::Session for Session {
                             let (key, header_key) = OneRttKey::new(keys, next);
                             let application_parameters = self.application_parameters()?;
 
+                            println!("event: rustls re-generating 1-rtt keys");
                             context.on_one_rtt_keys(key, header_key, application_parameters)?;
 
                             // Transition the tx_phase to Application
