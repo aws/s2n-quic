@@ -21,7 +21,7 @@ use std::{
     sync::Arc,
 };
 use structopt::StructOpt;
-use tokio::{fs::File, net::lookup_host, spawn};
+use tokio::{fs::File, io::AsyncWriteExt, net::lookup_host, spawn};
 use url::{Host, Url};
 
 #[derive(Debug, StructOpt)]
@@ -141,9 +141,11 @@ impl Interop {
                 abs_path.push(Path::new(request.trim_start_matches('/')));
                 let mut file = File::create(&abs_path).await?;
                 tokio::io::copy(&mut rx_stream, &mut file).await?;
+                file.flush().await?;
             } else {
                 let mut stdout = tokio::io::stdout();
                 tokio::io::copy(&mut rx_stream, &mut stdout).await?;
+                stdout.flush().await?;
             };
 
             Ok(())
