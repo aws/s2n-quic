@@ -242,8 +242,10 @@ impl<'a> Iterator for Iter<'a> {
         // in the buffer.
         self.cmsghdr =
             unsafe { libc::CMSG_NXTHDR(self.msghdr, current).as_ref() }.filter(|cmsghdr| {
-                // make sure we have a length, otherwise it'll loop forever
-                cmsghdr.cmsg_len > 0
+                // CMSG_NXTHDR on some operating systems returns the previous pointer when its
+                // length is zero, so check if the previous pointer is the same as
+                // the current one. Also check if the length is zero, otherwise it'll loop forever.
+                cmsghdr.cmsg_len > 0 && !core::ptr::eq(*cmsghdr, current)
             });
         Some(current)
     }
