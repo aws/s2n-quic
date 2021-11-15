@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use rustls::{cipher_suite as ciphers, quic, SupportedCipherSuite};
-use s2n_quic_core::crypto::{self, CryptoError, HeaderProtectionMask};
+use s2n_quic_core::crypto::{self, CryptoError, HeaderProtectionMask, HEADER_PROTECTION_MASK_LEN};
 
 pub struct PacketKey(quic::PacketKey);
 
@@ -118,14 +118,25 @@ impl crypto::HandshakeKey for PacketKeys {}
 
 pub struct HeaderProtectionKey(quic::HeaderProtectionKey);
 
+impl HeaderProtectionKey {
+    fn get_mask(&self, ciphertext_sample: &[u8]) -> HeaderProtectionMask {
+        let mut mask = [0xff; HEADER_PROTECTION_MASK_LEN];
+
+        let (packet_tag, packet_number) = mask.split_first_mut().unwrap();
+        self.0
+            .encrypt_in_place(ciphertext_sample, packet_tag, packet_number)
+            .unwrap();
+
+        for byte in &mut mask {
+            *byte ^= 0xff;
+        }
+        mask
+    }
+}
+
 impl crypto::HeaderKey for HeaderProtectionKey {
     fn opening_header_protection_mask(&self, ciphertext_sample: &[u8]) -> HeaderProtectionMask {
-        let mut mask = HeaderProtectionMask::default();
-        let (first, packet_number) = mask.split_at_mut(1);
-        self.0
-            .decrypt_in_place(ciphertext_sample, &mut first[0], packet_number)
-            .unwrap();
-        mask
+        self.get_mask(ciphertext_sample)
     }
 
     fn opening_sample_len(&self) -> usize {
@@ -133,12 +144,7 @@ impl crypto::HeaderKey for HeaderProtectionKey {
     }
 
     fn sealing_header_protection_mask(&self, ciphertext_sample: &[u8]) -> HeaderProtectionMask {
-        let mut mask = HeaderProtectionMask::default();
-        let (first, packet_number) = mask.split_at_mut(1);
-        self.0
-            .encrypt_in_place(ciphertext_sample, &mut first[0], packet_number)
-            .unwrap();
-        mask
+        self.get_mask(ciphertext_sample)
     }
 
     fn sealing_sample_len(&self) -> usize {

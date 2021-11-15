@@ -399,6 +399,7 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
         self.log("1-rtt keys");
         self.application.crypto = Some(key);
         self.on_application_params(params);
+
         Ok(())
     }
 
