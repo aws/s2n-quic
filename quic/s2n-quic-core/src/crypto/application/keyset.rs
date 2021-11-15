@@ -71,7 +71,7 @@ impl<K: OneRttKey> KeySet<K> {
     fn rotate_phase(&mut self) {
         self.generation += 1;
         self.key_phase = KeyPhase::next_phase(self.key_phase);
-        println!("event: application keyset phase rotate",);
+        // println!("event: application keyset phase rotate",);
     }
 
     /// Derive a new key based on the active key, and store it in the non-active slot
@@ -95,7 +95,7 @@ impl<K: OneRttKey> KeySet<K> {
 
     /// Set the timer to derive a new key after timestamp
     pub fn set_derivation_timer(&mut self, timestamp: Timestamp) {
-        println!("event: application set_derivation_timer called",);
+        // println!("event: application set_derivation_timer called",);
         self.key_derivation_timer.set(timestamp)
     }
 
@@ -118,11 +118,11 @@ impl<K: OneRttKey> KeySet<K> {
         let packet_phase = packet.key_phase();
         let phase_switch = phase_to_use != (packet_phase as u8);
         phase_to_use ^= phase_switch as u8;
-        println!(
-            "event: keyset update in progress {}, key_phase {}",
-            self.key_update_in_progress(),
-            phase_to_use
-        );
+        // println!(
+        //     "event: keyset update in progress {}, key_phase {}",
+        //     self.key_update_in_progress(),
+        //     phase_to_use
+        // );
 
         if self.key_update_in_progress() && phase_switch {
             //= https://www.rfc-editor.org/rfc/rfc9001.txt#6.5
@@ -262,7 +262,7 @@ impl<K: OneRttKey> KeySet<K> {
             .poll_expiration(timestamp)
             .is_ready()
         {
-            println!("event: keyset timeout",);
+            // println!("event: keyset timeout",);
 
             //= https://www.rfc-editor.org/rfc/rfc9001.txt#6.5
             //# An endpoint SHOULD retain old read keys for no more than three times
