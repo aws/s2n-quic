@@ -299,7 +299,8 @@ impl<Config: endpoint::Config> Manager<Config> {
             migration::Outcome::Allow => {
                 // no-op: allow the migration to continue
             }
-            migration::Outcome::Deny => {
+            migration::Outcome::Deny(reason) => {
+                publisher.on_connection_migration_denied(reason.into_event());
                 // Even though this returns an error, it is ignored by the endpoint and the connection remains open.
                 // TODO return a specialized enum for dropping the packet (see https://github.com/awslabs/s2n-quic/issues/669)
                 return Err(

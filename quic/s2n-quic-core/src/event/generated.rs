@@ -190,6 +190,16 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub enum DenyReason {
+        #[non_exhaustive]
+        PortScopeChanged {},
+        #[non_exhaustive]
+        IpScopeChange {},
+        #[non_exhaustive]
+        ConnectionMigrationDisabled {},
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " The current state of the ECN controller for the path"]
     pub enum EcnState {
         #[non_exhaustive]
@@ -402,6 +412,14 @@ pub mod api {
     }
     impl<'a> Event for EcnStateChanged<'a> {
         const NAME: &'static str = "recovery:ecn_state_changed";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct ConnectionMigrationDenied {
+        pub reason: DenyReason,
+    }
+    impl Event for ConnectionMigrationDenied {
+        const NAME: &'static str = "connectivity:connection_migration_denied";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1186,6 +1204,23 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub enum DenyReason {
+        PortScopeChanged,
+        IpScopeChange,
+        ConnectionMigrationDisabled,
+    }
+    impl IntoEvent<api::DenyReason> for DenyReason {
+        #[inline]
+        fn into_event(self) -> api::DenyReason {
+            use api::DenyReason::*;
+            match self {
+                Self::PortScopeChanged => PortScopeChanged {},
+                Self::IpScopeChange => IpScopeChange {},
+                Self::ConnectionMigrationDisabled => ConnectionMigrationDisabled {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " The current state of the ECN controller for the path"]
     pub enum EcnState {
         Testing,
@@ -1556,6 +1591,19 @@ pub mod builder {
             api::EcnStateChanged {
                 path: path.into_event(),
                 state: state.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ConnectionMigrationDenied {
+        pub reason: DenyReason,
+    }
+    impl IntoEvent<api::ConnectionMigrationDenied> for ConnectionMigrationDenied {
+        #[inline]
+        fn into_event(self) -> api::ConnectionMigrationDenied {
+            let ConnectionMigrationDenied { reason } = self;
+            api::ConnectionMigrationDenied {
+                reason: reason.into_event(),
             }
         }
     }
@@ -2078,6 +2126,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `ConnectionMigrationDenied` event is triggered"]
+        #[inline]
+        fn on_connection_migration_denied(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &ConnectionMigrationDenied,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `VersionInformation` event is triggered"]
         #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
@@ -2403,6 +2463,16 @@ mod traits {
             (self.1).on_ecn_state_changed(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_connection_migration_denied(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &ConnectionMigrationDenied,
+        ) {
+            (self.0).on_connection_migration_denied(&mut context.0, meta, event);
+            (self.1).on_connection_migration_denied(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
             (self.0).on_version_information(meta, event);
             (self.1).on_version_information(meta, event);
@@ -2678,6 +2748,8 @@ mod traits {
         fn on_connection_id_updated(&mut self, event: builder::ConnectionIdUpdated);
         #[doc = "Publishes a `EcnStateChanged` event to the publisher's subscriber"]
         fn on_ecn_state_changed(&mut self, event: builder::EcnStateChanged);
+        #[doc = "Publishes a `ConnectionMigrationDenied` event to the publisher's subscriber"]
+        fn on_connection_migration_denied(&mut self, event: builder::ConnectionMigrationDenied);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
         fn quic_version(&self) -> u32;
     }
@@ -2884,6 +2956,15 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_connection_migration_denied(&mut self, event: builder::ConnectionMigrationDenied) {
+            let event = event.into_event();
+            self.subscriber
+                .on_connection_migration_denied(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn quic_version(&self) -> u32 {
             self.quic_version
         }
@@ -2913,6 +2994,7 @@ pub mod testing {
         pub datagram_dropped: u32,
         pub connection_id_updated: u32,
         pub ecn_state_changed: u32,
+        pub connection_migration_denied: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -3085,6 +3167,14 @@ pub mod testing {
         ) {
             self.ecn_state_changed += 1;
         }
+        fn on_connection_migration_denied(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::ConnectionMigrationDenied,
+        ) {
+            self.connection_migration_denied += 1;
+        }
         fn on_version_information(
             &mut self,
             _meta: &api::EndpointMeta,
@@ -3176,6 +3266,7 @@ pub mod testing {
         pub datagram_dropped: u32,
         pub connection_id_updated: u32,
         pub ecn_state_changed: u32,
+        pub connection_migration_denied: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -3283,6 +3374,9 @@ pub mod testing {
         }
         fn on_ecn_state_changed(&mut self, _event: builder::EcnStateChanged) {
             self.ecn_state_changed += 1;
+        }
+        fn on_connection_migration_denied(&mut self, _event: builder::ConnectionMigrationDenied) {
+            self.connection_migration_denied += 1;
         }
         fn quic_version(&self) -> u32 {
             1

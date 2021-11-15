@@ -170,3 +170,8 @@ struct EcnStateChanged<'a> {
     path: Path<'a>,
     state: EcnState,
 }
+
+#[event("connectivity:connection_migration_denied")]
+struct ConnectionMigrationDenied {
+    reason: DenyReason,
+}
