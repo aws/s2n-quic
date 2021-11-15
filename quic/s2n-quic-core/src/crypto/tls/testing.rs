@@ -3,7 +3,10 @@
 
 use crate::{
     application::Sni,
-    crypto::{tls, CryptoSuite, Key},
+    crypto::{
+        header_crypto::{LONG_HEADER_MASK, SHORT_HEADER_MASK},
+        tls, CryptoSuite, HeaderKey, Key,
+    },
     transport,
 };
 use bytes::Bytes;
@@ -100,11 +103,11 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
 
         let server = server_endpoint.new_server_session(&TEST_SERVER_TRANSPORT_PARAMS);
         let mut server_context = Context::default();
-        server_context.initial.crypto = Some(S::InitialKey::new_server(sni.as_bytes()).0);
+        server_context.initial.crypto = Some(S::InitialKey::new_server(sni.as_bytes()));
 
         let client = client_endpoint.new_client_session(&TEST_CLIENT_TRANSPORT_PARAMS, sni.clone());
         let mut client_context = Context::default();
-        client_context.initial.crypto = Some(C::InitialKey::new_client(sni.as_bytes()).0);
+        client_context.initial.crypto = Some(C::InitialKey::new_client(sni.as_bytes()));
 
         Self {
             server: (server, server_context),
@@ -160,10 +163,10 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
 
 /// Harness to ensure a TLS implementation adheres to the session contract
 pub struct Context<C: CryptoSuite> {
-    pub initial: Space<C::InitialKey>,
-    pub handshake: Space<C::HandshakeKey>,
-    pub application: Space<C::OneRttKey>,
-    pub zero_rtt_crypto: Option<C::ZeroRttKey>,
+    pub initial: Space<C::InitialKey, C::InitialHeaderKey>,
+    pub handshake: Space<C::HandshakeKey, C::HandshakeHeaderKey>,
+    pub application: Space<C::OneRttKey, C::OneRttHeaderKey>,
+    pub zero_rtt_crypto: Option<(C::ZeroRttKey, C::ZeroRttHeaderKey)>,
     pub handshake_complete: bool,
     pub sni: Option<Bytes>,
     pub alpn: Option<Bytes>,
@@ -257,13 +260,13 @@ impl<C: CryptoSuite> Context<C> {
     }
 }
 
-pub struct Space<K: Key> {
-    pub crypto: Option<K>,
+pub struct Space<K: Key, Hk: HeaderKey> {
+    pub crypto: Option<(K, Hk)>,
     pub rx: VecDeque<Bytes>,
     pub tx: VecDeque<Bytes>,
 }
 
-impl<K: Key> Default for Space<K> {
+impl<K: Key, Hk: HeaderKey> Default for Space<K, Hk> {
     fn default() -> Self {
         Self {
             crypto: None,
@@ -273,7 +276,7 @@ impl<K: Key> Default for Space<K> {
     }
 }
 
-impl<K: Key> fmt::Debug for Space<K> {
+impl<K: Key, Hk: HeaderKey> fmt::Debug for Space<K, Hk> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Space")
             .field("crypto", &self.crypto.is_some())
@@ -283,8 +286,8 @@ impl<K: Key> fmt::Debug for Space<K> {
     }
 }
 
-impl<K: Key> Space<K> {
-    pub fn transfer<O: Key>(&mut self, other: &mut Space<O>) {
+impl<K: Key, Hk: HeaderKey> Space<K, Hk> {
+    pub fn transfer<O: Key, Ohk: HeaderKey>(&mut self, other: &mut Space<O, Ohk>) {
         self.rx.extend(other.tx.drain(..));
         other.rx.extend(self.tx.drain(..));
     }
@@ -311,12 +314,19 @@ impl<K: Key> Space<K> {
         }
     }
 
-    fn finish<O: Key>(&self, other: &Space<O>) {
-        let crypto_a = self.crypto.as_ref().expect("missing crypto");
-        let crypto_b = other.crypto.as_ref().expect("missing crypto");
+    fn finish<O: Key, Ohk: HeaderKey>(&self, other: &Space<O, Ohk>) {
+        let (crypto_a, crypto_a_hk) = self.crypto.as_ref().expect("missing crypto");
+        let (crypto_b, crypto_b_hk) = other.crypto.as_ref().expect("missing crypto");
 
+        // ensure payloads can be encrypted and decrypted in both directions
         seal_open(crypto_a, crypto_b);
         seal_open(crypto_b, crypto_a);
+
+        // ensure packet protection keys can be applied in both directions
+        protect_unprotect(crypto_a_hk, crypto_b_hk, LONG_HEADER_MASK);
+        protect_unprotect(crypto_b_hk, crypto_a_hk, LONG_HEADER_MASK);
+        protect_unprotect(crypto_a_hk, crypto_b_hk, SHORT_HEADER_MASK);
+        protect_unprotect(crypto_b_hk, crypto_a_hk, SHORT_HEADER_MASK);
     }
 }
 
@@ -355,25 +365,49 @@ fn seal_open<S: Key, O: Key>(sealer: &S, opener: &O) {
     );
 }
 
+fn protect_unprotect<P: HeaderKey, U: HeaderKey>(protect: &P, unprotect: &U, tag_mask: u8) {
+    let sample = [1u8; 1000];
+    assert!(protect.sealing_sample_len() <= sample.len());
+    assert!(unprotect.opening_sample_len() <= sample.len());
+
+    let mut protected_mask =
+        protect.sealing_header_protection_mask(&sample[..protect.sealing_sample_len()]);
+    let mut unprotected_mask =
+        unprotect.opening_header_protection_mask(&sample[..unprotect.opening_sample_len()]);
+
+    let protect_name = core::any::type_name::<P>();
+    let unprotect_name = core::any::type_name::<U>();
+
+    // we only care about certain bits being the same so mask out the others
+    protected_mask[0] &= tag_mask;
+    unprotected_mask[0] &= tag_mask;
+
+    assert_eq!(
+        &protected_mask, &unprotected_mask,
+        "{} -> {}",
+        protect_name, unprotect_name
+    );
+}
+
 impl<C: CryptoSuite> tls::Context<C> for Context<C> {
     fn on_handshake_keys(
         &mut self,
         key: C::HandshakeKey,
-        _header_key: C::HandshakeHeaderKey,
+        header_key: C::HandshakeHeaderKey,
     ) -> Result<(), transport::Error> {
         assert!(
             self.handshake.crypto.is_none(),
             "handshake keys emitted multiple times"
         );
         self.log("handshake keys");
-        self.handshake.crypto = Some(key);
+        self.handshake.crypto = Some((key, header_key));
         Ok(())
     }
 
     fn on_zero_rtt_keys(
         &mut self,
         key: C::ZeroRttKey,
-        _header_key: C::ZeroRttHeaderKey,
+        header_key: C::ZeroRttHeaderKey,
         params: tls::ApplicationParameters,
     ) -> Result<(), transport::Error> {
         assert!(
@@ -381,7 +415,7 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
             "0-rtt keys emitted multiple times"
         );
         self.log("0-rtt keys");
-        self.zero_rtt_crypto = Some(key);
+        self.zero_rtt_crypto = Some((key, header_key));
         self.on_application_params(params);
         Ok(())
     }
@@ -389,7 +423,7 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
     fn on_one_rtt_keys(
         &mut self,
         key: C::OneRttKey,
-        _header_key: C::OneRttHeaderKey,
+        header_key: C::OneRttHeaderKey,
         params: tls::ApplicationParameters,
     ) -> Result<(), transport::Error> {
         assert!(
@@ -397,7 +431,7 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
             "1-rtt keys emitted multiple times"
         );
         self.log("1-rtt keys");
-        self.application.crypto = Some(key);
+        self.application.crypto = Some((key, header_key));
         self.on_application_params(params);
 
         Ok(())

@@ -57,11 +57,11 @@ pub type HeaderProtectionMask = [u8; HEADER_PROTECTION_MASK_LEN];
 //# packet[pn_offset:pn_offset+pn_length] ^= mask[1:1+pn_length]
 
 const LONG_HEADER_TAG: u8 = 0x80;
-const LONG_HEADER_MASK: u8 = 0x0f;
-const SHORT_HEADER_MASK: u8 = 0x1f;
+pub(crate) const LONG_HEADER_MASK: u8 = 0x0f;
+pub(crate) const SHORT_HEADER_MASK: u8 = 0x1f;
 
 #[inline(always)]
-fn mask_from_packet_tag(tag: u8) -> u8 {
+pub(crate) fn mask_from_packet_tag(tag: u8) -> u8 {
     if tag & LONG_HEADER_TAG == LONG_HEADER_TAG {
         LONG_HEADER_MASK
     } else {

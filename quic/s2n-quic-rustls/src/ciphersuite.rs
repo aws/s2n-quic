@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use rustls::{cipher_suite as ciphers, quic, SupportedCipherSuite};
-use s2n_quic_core::crypto::{self, CryptoError, HeaderProtectionMask, HEADER_PROTECTION_MASK_LEN};
+use s2n_quic_core::crypto::{self, CryptoError, HeaderProtectionMask};
 
 pub struct PacketKey(quic::PacketKey);
 
@@ -120,16 +120,20 @@ pub struct HeaderProtectionKey(quic::HeaderProtectionKey);
 
 impl HeaderProtectionKey {
     fn get_mask(&self, ciphertext_sample: &[u8]) -> HeaderProtectionMask {
-        let mut mask = [0xff; HEADER_PROTECTION_MASK_LEN];
+        let mut mask = HeaderProtectionMask::default();
+
+        // tell rustls we need all of the packet number mask by setting the pn length to 4
+        let tag = 0b0000_0011;
+        mask[0] = tag;
 
         let (packet_tag, packet_number) = mask.split_first_mut().unwrap();
         self.0
             .encrypt_in_place(ciphertext_sample, packet_tag, packet_number)
             .unwrap();
 
-        for byte in &mut mask {
-            *byte ^= 0xff;
-        }
+        // rustls XORs the mask with the original tag so undo that operation
+        mask[0] ^= tag;
+
         mask
     }
 }
