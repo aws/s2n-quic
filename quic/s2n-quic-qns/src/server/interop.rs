@@ -295,4 +295,13 @@ impl Subscriber for EventSubscriber {
             }
         }
     }
+
+    fn on_connection_migration_denied(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        meta: &events::ConnectionMeta,
+        event: &events::ConnectionMigrationDenied,
+    ) {
+        debug!("{:?} {:?}", meta.id, event);
+    }
 }
