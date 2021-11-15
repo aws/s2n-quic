@@ -1,4 +1,4 @@
-FROM martenseemann/quic-network-simulator-endpoint:latest
+FROM wesleyrosenblum/quic-network-simulator-endpoint:latest
 
 # install libcrypto
 RUN set -eux; \

@@ -38,7 +38,7 @@ RUN set -eux; \
      cp target/release/perf_client .; \
      rm -rf target
 
-FROM martenseemann/quic-network-simulator-endpoint:latest
+FROM wesleyrosenblum/quic-network-simulator-endpoint:latest
 
 ENV RUST_BACKTRACE="1"
 
