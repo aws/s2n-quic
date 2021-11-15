@@ -1,6 +1,4 @@
-# This QNS image is patched to prevent address rebinds from changing the port scope
-# TODO: https://github.com/awslabs/s2n-quic/issues/757
-FROM wesleyrosenblum/quic-network-simulator-endpoint:latest
+FROM martenseemann/quic-network-simulator-endpoint:latest
 
 # install libcrypto
 RUN set -eux; \
