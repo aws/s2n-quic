@@ -173,7 +173,7 @@ pub trait CryptoSuite {
 use crate::packet::number::{
     PacketNumber, PacketNumberLen, PacketNumberSpace, TruncatedPacketNumber,
 };
-use s2n_codec::{DecoderBufferMut, DecoderError, Encoder, EncoderBuffer};
+use s2n_codec::{DecoderBuffer, DecoderBufferMut, DecoderError, Encoder, EncoderBuffer};
 
 /// Protects an `EncryptedPayload` into a `ProtectedPayload`
 #[inline]
@@ -181,10 +181,25 @@ pub fn protect<'a, K: HeaderKey>(
     crypto: &K,
     payload: EncryptedPayload<'a>,
 ) -> Result<ProtectedPayload<'a>, DecoderError> {
-    let sample = payload.header_protection_sample(crypto.sealing_sample_len())?;
-    let mask = crypto.sealing_header_protection_mask(sample);
+    let header_len = payload.header_len;
+    let packet_number_len = payload.packet_number_len.bytesize();
+    let sample_len = crypto.sealing_sample_len();
 
-    Ok(apply_header_protection(mask, payload))
+    let orig_payload = payload.buffer.into_less_safe_slice();
+    {
+        let (first, payload) = orig_payload.split_at_mut(1);
+        let first = first.get_mut(0).unwrap();
+
+        let (_, payload) = payload.split_at_mut(header_len - 1);
+        let (pn_bytes, payload) = payload.split_at_mut(packet_number_len);
+
+        let (_, payload) = payload.split_at_mut(PacketNumberLen::MAX_LEN - packet_number_len);
+        let (sample, _) = payload.split_at_mut(sample_len);
+
+        crypto.protect(sample, first, pn_bytes).unwrap();
+    }
+
+    Ok(ProtectedPayload::new(header_len, orig_payload))
 }
 
 /// Removes packet protection from a `ProtectedPayload` into a `EncryptedPayload`
@@ -195,10 +210,31 @@ pub fn unprotect<'a, K: HeaderKey>(
     space: PacketNumberSpace,
     payload: ProtectedPayload<'a>,
 ) -> Result<(TruncatedPacketNumber, EncryptedPayload<'a>), DecoderError> {
-    let sample = payload.header_protection_sample(crypto.opening_sample_len())?;
-    let mask = crypto.opening_header_protection_mask(sample);
+    let header_len = payload.header_len;
+    let sample_len = crypto.sealing_sample_len();
+    let orig_payload = payload.buffer.into_less_safe_slice();
+    let (packet_number, packet_number_len) = {
+        let (first, payload) = orig_payload.split_at_mut(1);
+        let first = first.get_mut(0).unwrap();
 
-    remove_header_protection(space, mask, payload)
+        let (_, payload) = payload.split_at_mut(header_len - 1);
+        let (pn_bytes, payload) = payload.split_at_mut(PacketNumberLen::MAX_LEN);
+
+        let (sample, _) = payload.split_at_mut(sample_len);
+
+        crypto.unprotect(sample, first, pn_bytes, space).unwrap();
+
+        let packet_number_len = space.new_packet_number_len(*first);
+        let (packet_number, _) =
+            packet_number_len.decode_truncated_packet_number(DecoderBuffer::new(pn_bytes))?;
+
+        (packet_number, packet_number_len)
+    };
+
+    Ok((
+        packet_number,
+        EncryptedPayload::new(header_len, packet_number_len, orig_payload),
+    ))
 }
 
 /// Encrypts a cleartext payload with a crypto key into a `EncryptedPayload`

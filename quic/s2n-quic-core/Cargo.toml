@@ -33,32 +33,32 @@ ip_network = "0.4"
 plotters = { version = "0.3", default-features = false, features = ["svg_backend", "line_series"] }
 s2n-codec = { version = "0.1", path = "../../common/s2n-codec", features = ["testing"] }
 
-[[test]]
-name = "crypto"
-path = "tests/crypto/fuzz_target.rs"
-harness = false
+# [[test]]
+# name = "crypto"
+# path = "tests/crypto/fuzz_target.rs"
+# harness = false
 
-[[test]]
-name = "frame"
-path = "tests/frame/fuzz_target.rs"
-harness = false
+# [[test]]
+# name = "frame"
+# path = "tests/frame/fuzz_target.rs"
+# harness = false
 
-[[test]]
-name = "packet"
-path = "tests/packet/fuzz_target.rs"
-harness = false
-required-features = ["testing"]
+# [[test]]
+# name = "packet"
+# path = "tests/packet/fuzz_target.rs"
+# harness = false
+# required-features = ["testing"]
 
-[[test]]
-name = "transport_parameters"
-path = "tests/transport_parameters/fuzz_target.rs"
-harness = false
+# [[test]]
+# name = "transport_parameters"
+# path = "tests/transport_parameters/fuzz_target.rs"
+# harness = false
 
-[[test]]
-name = "varint"
-path = "tests/varint/fuzz_target.rs"
-harness = false
+# [[test]]
+# name = "varint"
+# path = "tests/varint/fuzz_target.rs"
+# harness = false
 
-[[test]]
-name = "recovery-simulation"
-path = "tests/recovery/simulation.rs"
+# [[test]]
+# name = "recovery-simulation"
+# path = "tests/recovery/simulation.rs"

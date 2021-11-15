@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto::{EncryptedPayload, ProtectedPayload},
+    crypto::{CryptoError, EncryptedPayload, ProtectedPayload},
     packet::number::{PacketNumberSpace, TruncatedPacketNumber},
 };
 use s2n_codec::{DecoderBuffer, DecoderError};
@@ -28,6 +28,21 @@ pub trait HeaderKey: Send {
     /// Returns the sample size needed for the header protection
     /// buffer
     fn sealing_sample_len(&self) -> usize;
+
+    fn unprotect(
+        &self,
+        ciphertext_sample: &[u8],
+        first: &mut u8,
+        packet_number: &mut [u8],
+        space: PacketNumberSpace,
+    ) -> Result<(), CryptoError>;
+
+    fn protect(
+        &self,
+        sample: &[u8],
+        first: &mut u8,
+        packet_number_bytes: &mut [u8],
+    ) -> Result<(), CryptoError>;
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.4.1
@@ -61,7 +76,7 @@ const LONG_HEADER_MASK: u8 = 0x0f;
 const SHORT_HEADER_MASK: u8 = 0x1f;
 
 #[inline(always)]
-fn mask_from_packet_tag(tag: u8) -> u8 {
+pub fn mask_from_packet_tag(tag: u8) -> u8 {
     if tag & LONG_HEADER_TAG == LONG_HEADER_TAG {
         LONG_HEADER_MASK
     } else {
@@ -70,13 +85,13 @@ fn mask_from_packet_tag(tag: u8) -> u8 {
 }
 
 #[inline(always)]
-fn xor_mask(payload: &mut [u8], mask: &[u8]) {
+pub fn xor_mask(payload: &mut [u8], mask: &[u8]) {
     for (payload_byte, mask_byte) in payload.iter_mut().zip(&mask[1..]) {
         *payload_byte ^= mask_byte;
     }
 }
 
-#[inline]
+#[allow(unused)]
 pub(crate) fn apply_header_protection(
     mask: HeaderProtectionMask,
     payload: EncryptedPayload,
@@ -94,7 +109,7 @@ pub(crate) fn apply_header_protection(
     ProtectedPayload::new(header_len, payload)
 }
 
-#[inline]
+#[allow(unused)]
 pub(crate) fn remove_header_protection(
     space: PacketNumberSpace,
     mask: HeaderProtectionMask,

@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{ciphersuite::TLS_AES_128_GCM_SHA256 as Ciphersuite, header_key::HeaderKey};
-use s2n_quic_core::crypto::{
-    self, CryptoError, HeaderProtectionMask, Key, ZeroRttHeaderKey, ZeroRttKey,
+use s2n_quic_core::{
+    crypto::{self, CryptoError, HeaderProtectionMask, Key, ZeroRttHeaderKey, ZeroRttKey},
+    packet::number::PacketNumberSpace,
 };
 
 #[derive(Debug)]
@@ -71,6 +72,26 @@ impl crypto::HeaderKey for RingZeroRttHeaderKey {
 
     fn sealing_sample_len(&self) -> usize {
         self.0.sealing_sample_len()
+    }
+
+    fn unprotect(
+        &self,
+        ciphertext_sample: &[u8],
+        first: &mut u8,
+        packet_number: &mut [u8],
+        space: PacketNumberSpace,
+    ) -> Result<(), CryptoError> {
+        self.0
+            .unprotect(ciphertext_sample, first, packet_number, space)
+    }
+
+    fn protect(
+        &self,
+        sample: &[u8],
+        first: &mut u8,
+        packet_number: &mut [u8],
+    ) -> Result<(), CryptoError> {
+        self.0.protect(sample, first, packet_number)
     }
 }
 

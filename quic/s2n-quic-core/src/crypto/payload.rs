@@ -52,6 +52,7 @@ impl<'a> ProtectedPayload<'a> {
         self.buffer.get_checked_range(range)
     }
 
+    #[allow(unused)]
     pub(crate) fn header_protection_sample(
         &self,
         sample_len: usize,
@@ -140,12 +141,39 @@ impl<'a> EncryptedPayload<'a> {
         )
     }
 
-    pub(crate) fn header_protection_sample(
-        &self,
-        sample_len: usize,
-    ) -> Result<&[u8], DecoderError> {
+    pub fn header_protection_sample(&self, sample_len: usize) -> Result<&[u8], DecoderError> {
         header_protection_sample(self.buffer.peek(), self.header_len, sample_len)
     }
+
+    //pub fn header_protection_raw_data(
+    //    &self,
+    //    // buffer: DecoderBufferMut<'a>,
+    //    // pn_len: usize,
+    //    sample_len: usize,
+    //) -> Result<(&'a [u8], &'a mut u8, &'a mut [u8]), DecoderError> {
+    //    let header_len = self.header_len;
+    //    let packet_number_len = self.packet_number_len.bytesize();
+
+    //    let (first, buffer) = self.buffer.decode_slice(1)?;
+    //    let first = first.into_less_safe_slice().as_mut().first_mut().unwrap();
+
+    //    let buffer = buffer.skip(header_len - 1)?;
+    //    let (pn_bytes, buffer) = buffer.decode_slice(packet_number_len)?;
+    //    let pn_bytes = pn_bytes.into_less_safe_slice();
+
+    //    //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.4.2
+    //    //# in sampling packet ciphertext for header protection, the Packet Number field is
+    //    //# assumed to be 4 bytes long
+    //    let buffer = buffer.skip(PacketNumberLen::MAX_LEN - packet_number_len)?;
+
+    //    //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.4.2
+    //    //# An endpoint MUST discard packets that are not long enough to contain
+    //    //# a complete sample.
+    //    let (sample, _) = buffer.decode_slice(sample_len)?;
+    //    let sample = sample.into_less_safe_slice();
+
+    //    Ok((sample, first, pn_bytes))
+    //}
 }
 
 fn header_protection_sample(
@@ -167,3 +195,30 @@ fn header_protection_sample(
 
     Ok(sample.into_less_safe_slice())
 }
+
+//fn header_protection_raw_data(
+//    buffer: &mut DecoderBufferMut,
+//    header_len: usize,
+//    pn_len: usize,
+//    sample_len: usize,
+//) -> Result<(&[u8], &mut u8, &mut [u8]), DecoderError> {
+//    let (first, buffer) = buffer.decode_slice(1)?;
+//    let first = first.into_less_safe_slice().as_mut().first_mut().unwrap();
+
+//    let buffer = buffer.skip(header_len - 1)?;
+//    let (pn_bytes, buffer) = buffer.decode_slice(pn_len)?;
+//    let pn_bytes = pn_bytes.into_less_safe_slice();
+
+//    //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.4.2
+//    //# in sampling packet ciphertext for header protection, the Packet Number field is
+//    //# assumed to be 4 bytes long
+//    let buffer = buffer.skip(PacketNumberLen::MAX_LEN - pn_len)?;
+
+//    //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.4.2
+//    //# An endpoint MUST discard packets that are not long enough to contain
+//    //# a complete sample.
+//    let (sample, _) = buffer.decode_slice(sample_len)?;
+//    let sample = sample.into_less_safe_slice();
+
+//    Ok((sample, first, pn_bytes))
+//}

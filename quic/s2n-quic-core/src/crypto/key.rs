@@ -33,11 +33,14 @@ pub trait Key: Send {
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
-    use crate::crypto::{
-        retry::{IntegrityTag, INTEGRITY_TAG_LEN},
-        CryptoError, HandshakeHeaderKey, HandshakeKey, HeaderKey as CryptoHeaderKey,
-        HeaderProtectionMask, InitialHeaderKey, InitialKey, OneRttHeaderKey, OneRttKey, RetryKey,
-        ZeroRttHeaderKey, ZeroRttKey,
+    use crate::{
+        crypto::{
+            retry::{IntegrityTag, INTEGRITY_TAG_LEN},
+            CryptoError, HandshakeHeaderKey, HandshakeKey, HeaderKey as CryptoHeaderKey,
+            HeaderProtectionMask, InitialHeaderKey, InitialKey, OneRttHeaderKey, OneRttKey,
+            RetryKey, ZeroRttHeaderKey, ZeroRttKey,
+        },
+        packet::number::PacketNumberSpace,
     };
 
     #[derive(Debug)]
@@ -162,6 +165,25 @@ pub mod testing {
 
         fn sealing_sample_len(&self) -> usize {
             0
+        }
+
+        fn unprotect(
+            &self,
+            _ciphertext_sample: &[u8],
+            _first: &mut u8,
+            _packet_number: &mut [u8],
+            _space: PacketNumberSpace,
+        ) -> Result<(), CryptoError> {
+            Ok(())
+        }
+
+        fn protect(
+            &self,
+            _sample: &[u8],
+            _first: &mut u8,
+            _packet_number: &mut [u8],
+        ) -> Result<(), CryptoError> {
+            Ok(())
         }
     }
 

@@ -156,4 +156,23 @@ impl HeaderKey for FuzzCrypto {
     fn sealing_sample_len(&self) -> usize {
         size_of::<HeaderProtectionMask>()
     }
+
+    fn unprotect(
+        &self,
+        _ciphertext_sample: &[u8],
+        _first: &mut u8,
+        _packet_number: &mut [u8],
+        _space: PacketNumberSpace,
+    ) -> Result<(), CryptoError> {
+        Ok(())
+    }
+
+    fn protect(
+        &self,
+        _sample: &[u8],
+        _first: &mut u8,
+        _packet_number: &mut [u8],
+    ) -> Result<(), CryptoError> {
+        Ok(())
+    }
 }

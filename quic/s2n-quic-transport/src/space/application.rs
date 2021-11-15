@@ -433,7 +433,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             publisher.on_key_update(event::builder::KeyUpdate {
                 key_type: event::builder::KeyType::OneRtt { generation },
             });
-        } else {
+        } else if decrypted.is_err() {
             println!(
                 "event: decryption with keyset failed generation {}",
                 self.key_set.generation

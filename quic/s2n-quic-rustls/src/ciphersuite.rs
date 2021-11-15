@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use rustls::{cipher_suite as ciphers, quic, SupportedCipherSuite};
-use s2n_quic_core::crypto::{self, CryptoError, HeaderProtectionMask};
+use s2n_quic_core::{
+    crypto::{self, CryptoError, HeaderProtectionMask},
+    packet::number::PacketNumberSpace,
+};
 
 pub struct PacketKey(quic::PacketKey);
 
@@ -144,6 +147,29 @@ impl crypto::HeaderKey for HeaderProtectionKey {
     fn sealing_sample_len(&self) -> usize {
         self.0.sample_len()
     }
+
+    fn unprotect(
+        &self,
+        ciphertext_sample: &[u8],
+        first: &mut u8,
+        packet_number: &mut [u8],
+        _space: PacketNumberSpace,
+    ) -> Result<(), CryptoError> {
+        self.0
+            .decrypt_in_place(ciphertext_sample, first, packet_number)
+            .map_err(|_err| crypto::CryptoError::DECRYPT_ERROR)
+    }
+
+    fn protect(
+        &self,
+        sample: &[u8],
+        first: &mut u8,
+        packet_number: &mut [u8],
+    ) -> Result<(), CryptoError> {
+        self.0
+            .encrypt_in_place(sample, first, packet_number)
+            .map_err(|_err| crypto::CryptoError::DECRYPT_ERROR)
+    }
 }
 
 impl crypto::ZeroRttHeaderKey for HeaderProtectionKey {}
@@ -170,6 +196,26 @@ impl crypto::HeaderKey for HeaderProtectionKeys {
 
     fn sealing_sample_len(&self) -> usize {
         self.sealer.sealing_sample_len()
+    }
+
+    fn unprotect(
+        &self,
+        ciphertext_sample: &[u8],
+        first: &mut u8,
+        packet_number: &mut [u8],
+        space: PacketNumberSpace,
+    ) -> Result<(), CryptoError> {
+        self.opener
+            .unprotect(ciphertext_sample, first, packet_number, space)
+    }
+
+    fn protect(
+        &self,
+        sample: &[u8],
+        first: &mut u8,
+        packet_number: &mut [u8],
+    ) -> Result<(), CryptoError> {
+        self.sealer.protect(sample, first, packet_number)
     }
 }
 
