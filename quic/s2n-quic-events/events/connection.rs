@@ -176,7 +176,7 @@ struct ConnectionMigrationDenied {
     reason: DenyReason,
 }
 
-#[event("security:handshake_info")]
+#[event("connectivity:handshake_status")]
 struct HandshakeStatus {
     info: HandshakeInfo,
 }
