@@ -210,6 +210,9 @@ fn parse_h09_request(chunks: &[Bytes], path: &mut String, is_open: bool) -> Resu
     expect!(b' ');
     expect!(b'/');
 
+    // reset the copied path in case this isn't the first time a path is being parsed
+    path.clear();
+
     loop {
         match bytes.next() {
             Some(c @ b'0'..=b'9') => path.push(c as char),
@@ -223,4 +226,35 @@ fn parse_h09_request(chunks: &[Bytes], path: &mut String, is_open: bool) -> Resu
             None => return Ok(!is_open),
         }
     }
+}
+
+#[test]
+fn parse_h09_request_test() {
+    macro_rules! test {
+        ([$($chunk:expr),* $(,)?], $expected:pat) => {{
+            let chunks = [$(Bytes::from_static($chunk.as_bytes())),*];
+            let mut path = String::new();
+
+            for idx in 0..chunks.len() {
+                let _ = parse_h09_request(&chunks[..idx], &mut path, true);
+            }
+
+            let result = parse_h09_request(&chunks, &mut path, false);
+            let result = result.map(|has_request| if has_request { Some(path) } else { None });
+            let result = result.as_ref().map(|v| v.as_deref());
+
+            assert!(matches!(result, $expected), "{:?}", result);
+        }}
+    }
+
+    test!([], Err(_));
+    test!(["GET /"], Ok(Some("")));
+    test!(["GET /abc"], Ok(Some("abc")));
+    test!(["GET /abc/123"], Ok(Some("abc/123")));
+    test!(["GET /CAPS/lower"], Ok(Some("CAPS/lower")));
+    test!(["GET /abc\rextra stuff"], Ok(Some("abc")));
+    test!(
+        ["G", "E", "T", " ", "/", "t", "E", "s", "T"],
+        Ok(Some("tEsT"))
+    );
 }
