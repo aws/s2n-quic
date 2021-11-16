@@ -119,13 +119,15 @@ impl crypto::HandshakeKey for PacketKeys {}
 pub struct HeaderProtectionKey(quic::HeaderProtectionKey);
 
 impl HeaderProtectionKey {
-    // rustls changed their api to apply the header protection rather than returning
-    // the mask. This method exists for extracting the mask from rustls by calling
-    // the `encrypt_in_place` api and reversing the operation it applies.
-    //
-    // The primary motivation for extracting the mask from rustls is to maintain API
-    // compatibility with other tls providers (s2n-tls) and have one common code
-    // for applying and removing header protection.
+    /// Returns the header protection mask for the given ciphertext sample
+    ///
+    /// Rustls API applies the header protection rather than returning
+    /// the mask. This method exists for extracting the mask from rustls by calling
+    /// the `encrypt_in_place` api and reversing the operation it applies.
+    ///
+    /// The primary motivation for extracting the mask from rustls is to maintain API
+    /// compatibility with other tls providers (s2n-tls) and have one common code
+    /// for applying and removing header protection.
     fn get_mask(&self, ciphertext_sample: &[u8]) -> HeaderProtectionMask {
         let mut mask = HeaderProtectionMask::default();
 
