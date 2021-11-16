@@ -61,7 +61,7 @@ pub(crate) const LONG_HEADER_MASK: u8 = 0x0f;
 pub(crate) const SHORT_HEADER_MASK: u8 = 0x1f;
 
 #[inline(always)]
-pub(crate) fn mask_from_packet_tag(tag: u8) -> u8 {
+fn mask_from_packet_tag(tag: u8) -> u8 {
     if tag & LONG_HEADER_TAG == LONG_HEADER_TAG {
         LONG_HEADER_MASK
     } else {

@@ -367,8 +367,6 @@ fn seal_open<S: Key, O: Key>(sealer: &S, opener: &O) {
 
 fn protect_unprotect<P: HeaderKey, U: HeaderKey>(protect: &P, unprotect: &U, tag_mask: u8) {
     let sample = [1u8; 1000];
-    assert!(protect.sealing_sample_len() <= sample.len());
-    assert!(unprotect.opening_sample_len() <= sample.len());
 
     let mut protected_mask =
         protect.sealing_header_protection_mask(&sample[..protect.sealing_sample_len()]);
