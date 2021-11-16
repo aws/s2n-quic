@@ -767,13 +767,14 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         Ok(())
     }
 
-    fn handle_handshake_done_frame(
+    fn handle_handshake_done_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: HandshakeDone,
         datagram: &DatagramInfo,
         path: &mut Path<Config>,
         local_id_registry: &mut connection::LocalIdRegistry,
         handshake_status: &mut HandshakeStatus,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.20
         //# A server MUST
@@ -786,7 +787,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
                 .with_frame_type(frame.tag().into()));
         }
 
-        handshake_status.on_handshake_done_received();
+        handshake_status.on_handshake_done_received(publisher);
 
         //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.2
         //# At the

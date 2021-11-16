@@ -305,4 +305,13 @@ impl Subscriber for EventSubscriber {
     ) {
         debug!("{:?} {:?}", meta.id, event);
     }
+
+    fn on_handshake_status(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        meta: &events::ConnectionMeta,
+        event: &events::HandshakeStatus,
+    ) {
+        debug!("{:?} {:?}", meta.id, event);
+    }
 }

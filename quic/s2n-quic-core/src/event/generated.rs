@@ -213,6 +213,15 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " Events tracking the progress of handshake status"]
+    pub enum HandshakeInfo {
+        #[non_exhaustive]
+        HandshakeComplete {},
+        #[non_exhaustive]
+        HandshakeConfirmed {},
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Application level protocol"]
     pub struct AlpnInformation<'a> {
         pub chosen_alpn: &'a [u8],
@@ -420,6 +429,14 @@ pub mod api {
     }
     impl Event for ConnectionMigrationDenied {
         const NAME: &'static str = "connectivity:connection_migration_denied";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct HandshakeStatus {
+        pub info: HandshakeInfo,
+    }
+    impl Event for HandshakeStatus {
+        const NAME: &'static str = "security:handshake_info";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1241,6 +1258,22 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Events tracking the progress of handshake status"]
+    pub enum HandshakeInfo {
+        HandshakeComplete,
+        HandshakeConfirmed,
+    }
+    impl IntoEvent<api::HandshakeInfo> for HandshakeInfo {
+        #[inline]
+        fn into_event(self) -> api::HandshakeInfo {
+            use api::HandshakeInfo::*;
+            match self {
+                Self::HandshakeComplete => HandshakeComplete {},
+                Self::HandshakeConfirmed => HandshakeConfirmed {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Application level protocol"]
     pub struct AlpnInformation<'a> {
         pub chosen_alpn: &'a [u8],
@@ -1604,6 +1637,19 @@ pub mod builder {
             let ConnectionMigrationDenied { reason } = self;
             api::ConnectionMigrationDenied {
                 reason: reason.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct HandshakeStatus {
+        pub info: HandshakeInfo,
+    }
+    impl IntoEvent<api::HandshakeStatus> for HandshakeStatus {
+        #[inline]
+        fn into_event(self) -> api::HandshakeStatus {
+            let HandshakeStatus { info } = self;
+            api::HandshakeStatus {
+                info: info.into_event(),
             }
         }
     }
@@ -2138,6 +2184,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `HandshakeStatus` event is triggered"]
+        #[inline]
+        fn on_handshake_status(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &HandshakeStatus,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `VersionInformation` event is triggered"]
         #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
@@ -2473,6 +2531,16 @@ mod traits {
             (self.1).on_connection_migration_denied(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_handshake_status(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &HandshakeStatus,
+        ) {
+            (self.0).on_handshake_status(&mut context.0, meta, event);
+            (self.1).on_handshake_status(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
             (self.0).on_version_information(meta, event);
             (self.1).on_version_information(meta, event);
@@ -2750,6 +2818,8 @@ mod traits {
         fn on_ecn_state_changed(&mut self, event: builder::EcnStateChanged);
         #[doc = "Publishes a `ConnectionMigrationDenied` event to the publisher's subscriber"]
         fn on_connection_migration_denied(&mut self, event: builder::ConnectionMigrationDenied);
+        #[doc = "Publishes a `HandshakeStatus` event to the publisher's subscriber"]
+        fn on_handshake_status(&mut self, event: builder::HandshakeStatus);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
         fn quic_version(&self) -> u32;
     }
@@ -2965,6 +3035,15 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_handshake_status(&mut self, event: builder::HandshakeStatus) {
+            let event = event.into_event();
+            self.subscriber
+                .on_handshake_status(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn quic_version(&self) -> u32 {
             self.quic_version
         }
@@ -2995,6 +3074,7 @@ pub mod testing {
         pub connection_id_updated: u32,
         pub ecn_state_changed: u32,
         pub connection_migration_denied: u32,
+        pub handshake_status: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -3175,6 +3255,14 @@ pub mod testing {
         ) {
             self.connection_migration_denied += 1;
         }
+        fn on_handshake_status(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::HandshakeStatus,
+        ) {
+            self.handshake_status += 1;
+        }
         fn on_version_information(
             &mut self,
             _meta: &api::EndpointMeta,
@@ -3267,6 +3355,7 @@ pub mod testing {
         pub connection_id_updated: u32,
         pub ecn_state_changed: u32,
         pub connection_migration_denied: u32,
+        pub handshake_status: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -3377,6 +3466,9 @@ pub mod testing {
         }
         fn on_connection_migration_denied(&mut self, _event: builder::ConnectionMigrationDenied) {
             self.connection_migration_denied += 1;
+        }
+        fn on_handshake_status(&mut self, _event: builder::HandshakeStatus) {
+            self.handshake_status += 1;
         }
         fn quic_version(&self) -> u32 {
             1

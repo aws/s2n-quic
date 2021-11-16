@@ -481,13 +481,14 @@ pub trait PacketSpace<Config: endpoint::Config> {
         path: &mut Path<Config>,
     ) -> Result<(), transport::Error>;
 
-    fn handle_handshake_done_frame(
+    fn handle_handshake_done_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: HandshakeDone,
         _datagram: &DatagramInfo,
         _path: &mut Path<Config>,
         _local_id_registry: &mut connection::LocalIdRegistry,
         _handshake_status: &mut HandshakeStatus,
+        _publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         Err(transport::Error::PROTOCOL_VIOLATION
             .with_reason(Self::INVALID_FRAME_ERROR)
@@ -728,6 +729,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                         &mut path_manager[path_id],
                         local_id_registry,
                         handshake_status,
+                        publisher,
                     )
                     .map_err(on_error)?;
                 }

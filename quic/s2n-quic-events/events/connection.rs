@@ -175,3 +175,8 @@ struct EcnStateChanged<'a> {
 struct ConnectionMigrationDenied {
     reason: DenyReason,
 }
+
+#[event("security:handshake_info")]
+struct HandshakeStatus {
+    info: HandshakeInfo,
+}

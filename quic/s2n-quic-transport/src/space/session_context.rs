@@ -323,7 +323,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         }
 
         self.handshake_status
-            .on_handshake_complete(Config::ENDPOINT_TYPE);
+            .on_handshake_complete(Config::ENDPOINT_TYPE, self.publisher);
 
         if let Some(application) = self.application.as_mut() {
             if Config::ENDPOINT_TYPE.is_server() {

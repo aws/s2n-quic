@@ -490,3 +490,11 @@ enum EcnState {
     /// ECN capability has been confirmed
     Capable,
 }
+
+/// Events tracking the progress of handshake status
+enum HandshakeInfo {
+    /// The handshake has completed
+    HandshakeComplete,
+    /// The handshake has been confirmed
+    HandshakeConfirmed,
+}
