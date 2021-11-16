@@ -172,7 +172,8 @@ impl Model {
     }
 
     fn packet_acked(&mut self, ack_handshake_done: bool) {
-        self.subject.on_packet_ack(&AckSetMock(ack_handshake_done));
+        self.subject
+            .on_packet_ack(&AckSetMock(ack_handshake_done), &mut Publisher::default());
         self.oracle.on_packet_ack(ack_handshake_done);
     }
 

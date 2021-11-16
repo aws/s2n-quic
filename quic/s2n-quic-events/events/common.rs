@@ -497,4 +497,6 @@ enum HandshakeInfo {
     HandshakeComplete,
     /// The handshake has been confirmed
     HandshakeConfirmed,
+    /// A previously send HANDSHAKE_DONE was delivered to the peer
+    HandshakeDoneDelivered,
 }

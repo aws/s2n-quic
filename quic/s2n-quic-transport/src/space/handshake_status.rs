@@ -129,12 +129,19 @@ impl HandshakeStatus {
 
     /// Used for tracking when the HANDSHAKE_DONE frame has been delivered
     /// to the peer.
-    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+    pub fn on_packet_ack<A: ack::Set, Pub: event::ConnectionPublisher>(
+        &mut self,
+        ack_set: &A,
+        publisher: &mut Pub,
+    ) {
         if let HandshakeStatus::ServerCompleteConfirmed(flag) = self {
             // The server is required to re-transmit the frame until it is
             // acknowledged by the peer. Once it is delivered, the state
             // can transition to Confirmed.
             if flag.on_packet_ack(ack_set) {
+                publisher.on_handshake_status(event::builder::HandshakeStatus {
+                    info: event::builder::HandshakeInfo::HandshakeDoneDelivered,
+                });
                 *self = HandshakeStatus::Confirmed;
             }
         }
@@ -247,7 +254,7 @@ mod tests {
             .expect("status should write HANDSHAKE_DONE frames")
             .packet_nr;
 
-        status.on_packet_ack(&packet_number);
+        status.on_packet_ack(&packet_number, &mut Publisher::default());
         assert!(status.is_confirmed());
 
         assert!(

@@ -2882,10 +2882,11 @@ impl<'a> recovery::Context<Config> for MockContext<'a> {
         Ok(())
     }
 
-    fn on_new_packet_ack(
+    fn on_new_packet_ack<Pub: event::ConnectionPublisher>(
         &mut self,
         _datagram: &DatagramInfo,
         _packet_number_range: &PacketNumberRange,
+        _publisher: &mut Pub,
     ) {
         self.on_new_packet_ack_count += 1;
     }

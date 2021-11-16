@@ -528,12 +528,14 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
             .on_packet_ack(datagram, packet_number_range)
     }
 
-    fn on_new_packet_ack(
+    fn on_new_packet_ack<Pub: event::ConnectionPublisher>(
         &mut self,
         _datagram: &DatagramInfo,
         packet_number_range: &PacketNumberRange,
+        publisher: &mut Pub,
     ) {
-        self.handshake_status.on_packet_ack(packet_number_range);
+        self.handshake_status
+            .on_packet_ack(packet_number_range, publisher);
         self.ping.on_packet_ack(packet_number_range);
         self.stream_manager.on_packet_ack(packet_number_range);
         self.local_id_registry.on_packet_ack(packet_number_range);
