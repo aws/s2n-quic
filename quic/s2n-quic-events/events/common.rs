@@ -473,6 +473,12 @@ enum DropReason {
     RejectedConnectionAttempt,
 }
 
+enum DenyReason {
+    PortScopeChanged,
+    IpScopeChange,
+    ConnectionMigrationDisabled,
+}
+
 /// The current state of the ECN controller for the path
 enum EcnState {
     /// ECN capability is being actively tested

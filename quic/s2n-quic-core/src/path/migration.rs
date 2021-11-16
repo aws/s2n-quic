@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    event,
     event::{
         api::{Path, SocketAddress},
         IntoEvent,
@@ -72,7 +73,30 @@ pub enum Outcome {
     ///
     /// The connection will drop the packet that attempted to migrate and not reserve any state
     /// for the new path.
-    Deny,
+    Deny(DenyReason),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DenyReason {
+    // The new address uses a port in a different scope
+    PortScopeChanged,
+    // The new address uses an IP in a different scope
+    IpScopeChanged,
+    // All connection migrations are disabled
+    ConnectionMigrationDisabled,
+}
+
+impl IntoEvent<event::builder::ConnectionMigrationDenied> for DenyReason {
+    fn into_event(self) -> event::builder::ConnectionMigrationDenied {
+        let reason = match self {
+            DenyReason::PortScopeChanged => event::builder::DenyReason::PortScopeChanged,
+            DenyReason::IpScopeChanged => event::builder::DenyReason::IpScopeChange,
+            DenyReason::ConnectionMigrationDisabled => {
+                event::builder::DenyReason::ConnectionMigrationDisabled
+            }
+        };
+        event::builder::ConnectionMigrationDenied { reason }
+    }
 }
 
 /// Validates a path migration attempt from an active path to another
@@ -104,7 +128,7 @@ pub mod default {
             //       port scopes for the same connection. Additional research may
             //       be required to determine if this countermeasure needs to be relaxed.
             if PortScope::new(active_addr.port()) != PortScope::new(packet_addr.port()) {
-                return Outcome::Deny;
+                return Outcome::Deny(DenyReason::PortScopeChanged);
             }
 
             //= https://www.rfc-editor.org/rfc/rfc9000.txt#21.5.6
@@ -124,7 +148,7 @@ pub mod default {
             // establishing a connection
             match (active_addr.unicast_scope(), packet_addr.unicast_scope()) {
                 (Some(a), Some(b)) if a == b => Outcome::Allow,
-                _ => Outcome::Deny,
+                _ => Outcome::Deny(DenyReason::IpScopeChanged),
             }
         }
     }
@@ -177,7 +201,7 @@ pub mod disabled {
     impl super::Validator for Validator {
         fn on_migration_attempt(&mut self, _attempt: &Attempt) -> Outcome {
             // deny all migration attempts
-            Outcome::Deny
+            Outcome::Deny(DenyReason::ConnectionMigrationDisabled)
         }
     }
 }
