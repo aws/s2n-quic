@@ -492,11 +492,13 @@ enum EcnState {
 }
 
 /// Events tracking the progress of handshake status
-enum HandshakeInfo {
+enum HandshakeStatus {
     /// The handshake has completed
-    HandshakeComplete,
+    Complete,
     /// The handshake has been confirmed
-    HandshakeConfirmed,
-    /// A previously send HANDSHAKE_DONE was delivered to the peer
+    Confirmed,
+    /// A HANDSHAKE_DONE frame was delivered to the peer
     HandshakeDoneDelivered,
+    /// A HANDSHAKE_DONE frame was received
+    HandshakeDoneReceived,
 }

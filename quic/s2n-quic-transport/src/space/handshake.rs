@@ -403,7 +403,6 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
 
     fn on_new_packet_ack<Pub: event::ConnectionPublisher>(
         &mut self,
-        _datagram: &DatagramInfo,
         packet_number_range: &PacketNumberRange,
         _publisher: &mut Pub,
     ) {

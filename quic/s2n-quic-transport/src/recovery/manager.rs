@@ -412,7 +412,7 @@ impl<Config: endpoint::Config> Manager<Config> {
 
             if let Some((start, end)) = newly_acked_range {
                 // notify components of packets that are newly acked
-                context.on_new_packet_ack(datagram, &PacketNumberRange::new(start, end), publisher);
+                context.on_new_packet_ack(&PacketNumberRange::new(start, end), publisher);
             }
         }
 
@@ -971,7 +971,6 @@ pub trait Context<Config: endpoint::Config> {
 
     fn on_new_packet_ack<Pub: event::ConnectionPublisher>(
         &mut self,
-        _datagram: &DatagramInfo,
         packet_number_range: &PacketNumberRange,
         publisher: &mut Pub,
     );

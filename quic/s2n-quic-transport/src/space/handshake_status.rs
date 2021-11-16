@@ -88,8 +88,11 @@ impl HandshakeStatus {
     /// frame has been received
     pub fn on_handshake_done_received<Pub: ConnectionPublisher>(&mut self, publisher: &mut Pub) {
         if let HandshakeStatus::ClientComplete = self {
-            publisher.on_handshake_status(event::builder::HandshakeStatus {
-                info: event::builder::HandshakeInfo::HandshakeConfirmed,
+            publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
+                status: event::builder::HandshakeStatus::HandshakeDoneReceived,
+            });
+            publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
+                status: event::builder::HandshakeStatus::Confirmed,
             });
             //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.2
             //# At the client, the handshake is
@@ -108,13 +111,13 @@ impl HandshakeStatus {
             matches!(self, Self::InProgress),
             "on_handshake_complete should only be called once."
         );
-        publisher.on_handshake_status(event::builder::HandshakeStatus {
-            info: event::builder::HandshakeInfo::HandshakeComplete,
+        publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
+            status: event::builder::HandshakeStatus::Complete,
         });
 
         if endpoint_type.is_server() {
-            publisher.on_handshake_status(event::builder::HandshakeStatus {
-                info: event::builder::HandshakeInfo::HandshakeConfirmed,
+            publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
+                status: event::builder::HandshakeStatus::Confirmed,
             });
             //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.2
             //# The server MUST send a HANDSHAKE_DONE
@@ -139,8 +142,8 @@ impl HandshakeStatus {
             // acknowledged by the peer. Once it is delivered, the state
             // can transition to Confirmed.
             if flag.on_packet_ack(ack_set) {
-                publisher.on_handshake_status(event::builder::HandshakeStatus {
-                    info: event::builder::HandshakeInfo::HandshakeDoneDelivered,
+                publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
+                    status: event::builder::HandshakeStatus::HandshakeDoneDelivered,
                 });
                 *self = HandshakeStatus::Confirmed;
             }

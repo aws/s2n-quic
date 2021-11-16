@@ -214,13 +214,15 @@ pub mod api {
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     #[doc = " Events tracking the progress of handshake status"]
-    pub enum HandshakeInfo {
+    pub enum HandshakeStatus {
         #[non_exhaustive]
-        HandshakeComplete {},
+        Complete {},
         #[non_exhaustive]
-        HandshakeConfirmed {},
+        Confirmed {},
         #[non_exhaustive]
         HandshakeDoneDelivered {},
+        #[non_exhaustive]
+        HandshakeDoneReceived {},
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -434,11 +436,11 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    pub struct HandshakeStatus {
-        pub info: HandshakeInfo,
+    pub struct HandshakeStatusUpdated {
+        pub status: HandshakeStatus,
     }
-    impl Event for HandshakeStatus {
-        const NAME: &'static str = "security:handshake_info";
+    impl Event for HandshakeStatusUpdated {
+        const NAME: &'static str = "connectivity:handshake_status_updated";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1261,19 +1263,21 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     #[doc = " Events tracking the progress of handshake status"]
-    pub enum HandshakeInfo {
-        HandshakeComplete,
-        HandshakeConfirmed,
+    pub enum HandshakeStatus {
+        Complete,
+        Confirmed,
         HandshakeDoneDelivered,
+        HandshakeDoneReceived,
     }
-    impl IntoEvent<api::HandshakeInfo> for HandshakeInfo {
+    impl IntoEvent<api::HandshakeStatus> for HandshakeStatus {
         #[inline]
-        fn into_event(self) -> api::HandshakeInfo {
-            use api::HandshakeInfo::*;
+        fn into_event(self) -> api::HandshakeStatus {
+            use api::HandshakeStatus::*;
             match self {
-                Self::HandshakeComplete => HandshakeComplete {},
-                Self::HandshakeConfirmed => HandshakeConfirmed {},
+                Self::Complete => Complete {},
+                Self::Confirmed => Confirmed {},
                 Self::HandshakeDoneDelivered => HandshakeDoneDelivered {},
+                Self::HandshakeDoneReceived => HandshakeDoneReceived {},
             }
         }
     }
@@ -1645,15 +1649,15 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    pub struct HandshakeStatus {
-        pub info: HandshakeInfo,
+    pub struct HandshakeStatusUpdated {
+        pub status: HandshakeStatus,
     }
-    impl IntoEvent<api::HandshakeStatus> for HandshakeStatus {
+    impl IntoEvent<api::HandshakeStatusUpdated> for HandshakeStatusUpdated {
         #[inline]
-        fn into_event(self) -> api::HandshakeStatus {
-            let HandshakeStatus { info } = self;
-            api::HandshakeStatus {
-                info: info.into_event(),
+        fn into_event(self) -> api::HandshakeStatusUpdated {
+            let HandshakeStatusUpdated { status } = self;
+            api::HandshakeStatusUpdated {
+                status: status.into_event(),
             }
         }
     }
@@ -2188,13 +2192,13 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
-        #[doc = "Called when the `HandshakeStatus` event is triggered"]
+        #[doc = "Called when the `HandshakeStatusUpdated` event is triggered"]
         #[inline]
-        fn on_handshake_status(
+        fn on_handshake_status_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
             meta: &ConnectionMeta,
-            event: &HandshakeStatus,
+            event: &HandshakeStatusUpdated,
         ) {
             let _ = context;
             let _ = meta;
@@ -2535,14 +2539,14 @@ mod traits {
             (self.1).on_connection_migration_denied(&mut context.1, meta, event);
         }
         #[inline]
-        fn on_handshake_status(
+        fn on_handshake_status_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
             meta: &ConnectionMeta,
-            event: &HandshakeStatus,
+            event: &HandshakeStatusUpdated,
         ) {
-            (self.0).on_handshake_status(&mut context.0, meta, event);
-            (self.1).on_handshake_status(&mut context.1, meta, event);
+            (self.0).on_handshake_status_updated(&mut context.0, meta, event);
+            (self.1).on_handshake_status_updated(&mut context.1, meta, event);
         }
         #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
@@ -2822,8 +2826,8 @@ mod traits {
         fn on_ecn_state_changed(&mut self, event: builder::EcnStateChanged);
         #[doc = "Publishes a `ConnectionMigrationDenied` event to the publisher's subscriber"]
         fn on_connection_migration_denied(&mut self, event: builder::ConnectionMigrationDenied);
-        #[doc = "Publishes a `HandshakeStatus` event to the publisher's subscriber"]
-        fn on_handshake_status(&mut self, event: builder::HandshakeStatus);
+        #[doc = "Publishes a `HandshakeStatusUpdated` event to the publisher's subscriber"]
+        fn on_handshake_status_updated(&mut self, event: builder::HandshakeStatusUpdated);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
         fn quic_version(&self) -> u32;
     }
@@ -3039,10 +3043,10 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
-        fn on_handshake_status(&mut self, event: builder::HandshakeStatus) {
+        fn on_handshake_status_updated(&mut self, event: builder::HandshakeStatusUpdated) {
             let event = event.into_event();
             self.subscriber
-                .on_handshake_status(self.context, &self.meta, &event);
+                .on_handshake_status_updated(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -3078,7 +3082,7 @@ pub mod testing {
         pub connection_id_updated: u32,
         pub ecn_state_changed: u32,
         pub connection_migration_denied: u32,
-        pub handshake_status: u32,
+        pub handshake_status_updated: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -3259,13 +3263,13 @@ pub mod testing {
         ) {
             self.connection_migration_denied += 1;
         }
-        fn on_handshake_status(
+        fn on_handshake_status_updated(
             &mut self,
             _context: &mut Self::ConnectionContext,
             _meta: &api::ConnectionMeta,
-            _event: &api::HandshakeStatus,
+            _event: &api::HandshakeStatusUpdated,
         ) {
-            self.handshake_status += 1;
+            self.handshake_status_updated += 1;
         }
         fn on_version_information(
             &mut self,
@@ -3359,7 +3363,7 @@ pub mod testing {
         pub connection_id_updated: u32,
         pub ecn_state_changed: u32,
         pub connection_migration_denied: u32,
-        pub handshake_status: u32,
+        pub handshake_status_updated: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -3471,8 +3475,8 @@ pub mod testing {
         fn on_connection_migration_denied(&mut self, _event: builder::ConnectionMigrationDenied) {
             self.connection_migration_denied += 1;
         }
-        fn on_handshake_status(&mut self, _event: builder::HandshakeStatus) {
-            self.handshake_status += 1;
+        fn on_handshake_status_updated(&mut self, _event: builder::HandshakeStatusUpdated) {
+            self.handshake_status_updated += 1;
         }
         fn quic_version(&self) -> u32 {
             1

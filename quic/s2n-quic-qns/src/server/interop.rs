@@ -306,11 +306,11 @@ impl Subscriber for EventSubscriber {
         debug!("{:?} {:?}", meta.id, event);
     }
 
-    fn on_handshake_status(
+    fn on_handshake_status_updated(
         &mut self,
         _context: &mut Self::ConnectionContext,
         meta: &events::ConnectionMeta,
-        event: &events::HandshakeStatus,
+        event: &events::HandshakeStatusUpdated,
     ) {
         debug!("{:?} {:?}", meta.id, event);
     }
