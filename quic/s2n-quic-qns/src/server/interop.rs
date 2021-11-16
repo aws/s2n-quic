@@ -123,6 +123,7 @@ impl Interop {
                 match file.next().await {
                     Some(Ok(chunk)) => tx_stream.send(chunk).await?,
                     Some(Err(err)) => {
+                        eprintln!("error opening {:?}", abs_path);
                         tx_stream.reset(1u32.try_into()?)?;
                         return Err(err.into());
                     }
