@@ -118,14 +118,38 @@ impl crypto::HandshakeKey for PacketKeys {}
 
 pub struct HeaderProtectionKey(quic::HeaderProtectionKey);
 
+impl HeaderProtectionKey {
+    /// Returns the header protection mask for the given ciphertext sample
+    ///
+    /// Rustls API applies the header protection rather than returning
+    /// the mask. This method exists for extracting the mask from rustls by calling
+    /// the `encrypt_in_place` api and reversing the operation it applies.
+    ///
+    /// The primary motivation for extracting the mask from rustls is to maintain API
+    /// compatibility with other tls providers (s2n-tls) and have one common code
+    /// for applying and removing header protection.
+    fn get_mask(&self, ciphertext_sample: &[u8]) -> HeaderProtectionMask {
+        let mut mask = HeaderProtectionMask::default();
+
+        // tell rustls we need all of the packet number mask by setting the pn length to 4
+        let tag = 0b0000_0011;
+        mask[0] = tag;
+
+        let (packet_tag, packet_number) = mask.split_first_mut().unwrap();
+        self.0
+            .encrypt_in_place(ciphertext_sample, packet_tag, packet_number)
+            .unwrap();
+
+        // rustls XORs the mask with the original tag so undo that operation
+        mask[0] ^= tag;
+
+        mask
+    }
+}
+
 impl crypto::HeaderKey for HeaderProtectionKey {
     fn opening_header_protection_mask(&self, ciphertext_sample: &[u8]) -> HeaderProtectionMask {
-        let mut mask = HeaderProtectionMask::default();
-        let (first, packet_number) = mask.split_at_mut(1);
-        self.0
-            .decrypt_in_place(ciphertext_sample, &mut first[0], packet_number)
-            .unwrap();
-        mask
+        self.get_mask(ciphertext_sample)
     }
 
     fn opening_sample_len(&self) -> usize {
@@ -133,12 +157,7 @@ impl crypto::HeaderKey for HeaderProtectionKey {
     }
 
     fn sealing_header_protection_mask(&self, ciphertext_sample: &[u8]) -> HeaderProtectionMask {
-        let mut mask = HeaderProtectionMask::default();
-        let (first, packet_number) = mask.split_at_mut(1);
-        self.0
-            .encrypt_in_place(ciphertext_sample, &mut first[0], packet_number)
-            .unwrap();
-        mask
+        self.get_mask(ciphertext_sample)
     }
 
     fn sealing_sample_len(&self) -> usize {
