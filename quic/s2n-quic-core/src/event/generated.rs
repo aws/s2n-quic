@@ -919,7 +919,6 @@ pub mod api {
         use super::api;
         #[derive(Clone, Debug)]
         pub struct Subscriber {
-            root: tracing::Span,
             client: tracing::Span,
             server: tracing::Span,
         }
@@ -928,11 +927,7 @@ pub mod api {
                 let root = tracing :: span ! (target : "s2n_quic" , tracing :: Level :: DEBUG , "s2n_quic");
                 let client = tracing :: span ! (parent : root . id () , tracing :: Level :: DEBUG , "client");
                 let server = tracing :: span ! (parent : root . id () , tracing :: Level :: DEBUG , "server");
-                Self {
-                    root,
-                    client,
-                    server,
-                }
+                Self { client, server }
             }
         }
         impl super::Subscriber for Subscriber {

@@ -64,7 +64,6 @@ impl ToTokens for Output {
 
                     #[derive(Clone, Debug)]
                     pub struct Subscriber {
-                        root: tracing::Span,
                         client: tracing::Span,
                         server: tracing::Span,
                     }
@@ -76,7 +75,6 @@ impl ToTokens for Output {
                             let server = tracing::span!(parent: root.id(), tracing::Level::DEBUG, "server");
 
                             Self {
-                                root,
                                 client,
                                 server,
                             }
