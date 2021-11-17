@@ -27,6 +27,7 @@ use s2n_quic_core::{
     time::{timer, Timestamp},
     transport,
 };
+use smallvec::SmallVec;
 
 pub struct InitialSpace<Config: endpoint::Config> {
     pub ack_manager: AckManager,
@@ -42,6 +43,7 @@ pub struct InitialSpace<Config: endpoint::Config> {
     //# same encryption level.
     pub crypto_stream: CryptoStream,
     pub tx_packet_numbers: TxPacketNumbers,
+    pub received_hello_message: bool,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager<Config>,
 }
@@ -70,6 +72,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             header_key,
             crypto_stream: CryptoStream::new(),
             tx_packet_numbers: TxPacketNumbers::new(PacketNumberSpace::Initial, now),
+            received_hello_message: false,
             processed_packet_numbers: SlidingWindow::default(),
             recovery_manager: recovery::Manager::new(PacketNumberSpace::Initial),
         }
@@ -326,6 +329,82 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
 
         Ok(packet.decrypt(&self.key)?)
     }
+
+    fn parse_client_hello<Pub: event::ConnectionPublisher>(
+        &mut self,
+        publisher: &mut Pub,
+    ) -> Result<(), transport::Error> {
+        debug_assert!(Config::ENDPOINT_TYPE.is_server());
+        if let Some(payload) = self.parse_hello(tls::HandshakeType::ClientHello)? {
+            publisher.on_tls_client_hello(event::builder::TlsClientHello { payload: &payload });
+        }
+        Ok(())
+    }
+
+    fn parse_server_hello<Pub: event::ConnectionPublisher>(
+        &mut self,
+        publisher: &mut Pub,
+    ) -> Result<(), transport::Error> {
+        debug_assert!(Config::ENDPOINT_TYPE.is_client());
+        if let Some(payload) = self.parse_hello(tls::HandshakeType::ServerHello)? {
+            publisher.on_tls_server_hello(event::builder::TlsServerHello { payload: &payload });
+        }
+        Ok(())
+    }
+
+    fn parse_hello(
+        &mut self,
+        msg_type: tls::HandshakeType,
+    ) -> Result<Option<SmallVec<[&[u8]; 5]>>, transport::Error> {
+        debug_assert!(!self.received_hello_message);
+
+        let crypto_stream = &self.crypto_stream.rx;
+        debug_assert_eq!(crypto_stream.consumed_len(), 0);
+
+        let mut chunks = crypto_stream.iter().peekable();
+        let buffer = s2n_codec::DecoderBuffer::new(chunks.peek().unwrap_or(&&[][..]));
+
+        let (header, _) = buffer.decode::<tls::HandshakeHeader>().map_err(|_| {
+            transport::Error::PROTOCOL_VIOLATION
+                .with_reason("initial crypto is missing hello header")
+        })?;
+
+        if header.msg_type() != Some(msg_type) {
+            return Err(transport::Error::PROTOCOL_VIOLATION
+                .with_reason("first TLS message should be a hello message"));
+        }
+
+        let len = header.len() as u64;
+
+        // TODO make this configurable?
+        const MAX_HELLO_SIZE: u64 = 2 << 16;
+
+        if len > MAX_HELLO_SIZE {
+            return Err(transport::Error::CRYPTO_BUFFER_EXCEEDED
+                .with_reason("hello message cannot exceed 16k"));
+        }
+
+        // wait until we have more chunks
+        if crypto_stream.total_received_len() < len {
+            return Ok(None);
+        }
+
+        self.received_hello_message = true;
+
+        let payload = chunks
+            .enumerate()
+            .map(|(idx, chunk)| {
+                if idx == 0 {
+                    // trim off the message header
+                    &chunk[core::mem::size_of::<tls::HandshakeHeader>()..]
+                } else {
+                    chunk
+                }
+            })
+            .collect();
+
+        Ok(Some(payload))
+    }
 }
 
 impl<Config: endpoint::Config> timer::Provider for InitialSpace<Config> {
@@ -439,13 +518,22 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
 impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
     const INVALID_FRAME_ERROR: &'static str = "invalid frame in initial space";
 
-    fn handle_crypto_frame(
+    fn handle_crypto_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: CryptoRef,
         _datagram: &DatagramInfo,
         _path: &mut Path<Config>,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         self.crypto_stream.on_crypto_frame(frame)?;
+
+        // try to parse out the hello message if we haven't yet
+        if !self.received_hello_message {
+            match Config::ENDPOINT_TYPE {
+                endpoint::Type::Server => self.parse_client_hello(publisher)?,
+                endpoint::Type::Client => self.parse_server_hello(publisher)?,
+            }
+        }
 
         Ok(())
     }

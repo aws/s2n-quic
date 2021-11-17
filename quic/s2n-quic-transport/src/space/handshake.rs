@@ -434,11 +434,12 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
 impl<Config: endpoint::Config> PacketSpace<Config> for HandshakeSpace<Config> {
     const INVALID_FRAME_ERROR: &'static str = "invalid frame in handshake space";
 
-    fn handle_crypto_frame(
+    fn handle_crypto_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: CryptoRef,
         _datagram: &DatagramInfo,
         _path: &mut Path<Config>,
+        _publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         self.crypto_stream.on_crypto_frame(frame)?;
 

@@ -180,3 +180,13 @@ struct ConnectionMigrationDenied {
 struct HandshakeStatusUpdated {
     status: HandshakeStatus,
 }
+
+#[event("tls:client_hello")]
+struct TlsClientHello<'a> {
+    payload: &'a [&'a [u8]],
+}
+
+#[event("tls:server_hello")]
+struct TlsServerHello<'a> {
+    payload: &'a [&'a [u8]],
+}

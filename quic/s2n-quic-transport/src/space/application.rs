@@ -572,11 +572,12 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
 impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> {
     const INVALID_FRAME_ERROR: &'static str = "invalid frame in application space";
 
-    fn handle_crypto_frame(
+    fn handle_crypto_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         _frame: CryptoRef,
         _datagram: &DatagramInfo,
         _path: &mut Path<Config>,
+        _publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.5
         //# Once the handshake completes, if an endpoint is unable to buffer all

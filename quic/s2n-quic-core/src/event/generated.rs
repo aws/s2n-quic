@@ -444,6 +444,22 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub struct TlsClientHello<'a> {
+        pub payload: &'a [&'a [u8]],
+    }
+    impl<'a> Event for TlsClientHello<'a> {
+        const NAME: &'static str = "tls:client_hello";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct TlsServerHello<'a> {
+        pub payload: &'a [&'a [u8]],
+    }
+    impl<'a> Event for TlsServerHello<'a> {
+        const NAME: &'static str = "tls:server_hello";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " QUIC version"]
     pub struct VersionInformation<'a> {
         pub server_versions: &'a [u32],
@@ -1662,6 +1678,32 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct TlsClientHello<'a> {
+        pub payload: &'a [&'a [u8]],
+    }
+    impl<'a> IntoEvent<api::TlsClientHello<'a>> for TlsClientHello<'a> {
+        #[inline]
+        fn into_event(self) -> api::TlsClientHello<'a> {
+            let TlsClientHello { payload } = self;
+            api::TlsClientHello {
+                payload: payload.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct TlsServerHello<'a> {
+        pub payload: &'a [&'a [u8]],
+    }
+    impl<'a> IntoEvent<api::TlsServerHello<'a>> for TlsServerHello<'a> {
+        #[inline]
+        fn into_event(self) -> api::TlsServerHello<'a> {
+            let TlsServerHello { payload } = self;
+            api::TlsServerHello {
+                payload: payload.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " QUIC version"]
     pub struct VersionInformation<'a> {
         pub server_versions: &'a [u32],
@@ -2204,6 +2246,30 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `TlsClientHello` event is triggered"]
+        #[inline]
+        fn on_tls_client_hello(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &TlsClientHello,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `TlsServerHello` event is triggered"]
+        #[inline]
+        fn on_tls_server_hello(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &TlsServerHello,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `VersionInformation` event is triggered"]
         #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
@@ -2549,6 +2615,26 @@ mod traits {
             (self.1).on_handshake_status_updated(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_tls_client_hello(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &TlsClientHello,
+        ) {
+            (self.0).on_tls_client_hello(&mut context.0, meta, event);
+            (self.1).on_tls_client_hello(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_tls_server_hello(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &TlsServerHello,
+        ) {
+            (self.0).on_tls_server_hello(&mut context.0, meta, event);
+            (self.1).on_tls_server_hello(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
             (self.0).on_version_information(meta, event);
             (self.1).on_version_information(meta, event);
@@ -2828,6 +2914,10 @@ mod traits {
         fn on_connection_migration_denied(&mut self, event: builder::ConnectionMigrationDenied);
         #[doc = "Publishes a `HandshakeStatusUpdated` event to the publisher's subscriber"]
         fn on_handshake_status_updated(&mut self, event: builder::HandshakeStatusUpdated);
+        #[doc = "Publishes a `TlsClientHello` event to the publisher's subscriber"]
+        fn on_tls_client_hello(&mut self, event: builder::TlsClientHello);
+        #[doc = "Publishes a `TlsServerHello` event to the publisher's subscriber"]
+        fn on_tls_server_hello(&mut self, event: builder::TlsServerHello);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
         fn quic_version(&self) -> u32;
     }
@@ -3052,6 +3142,24 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_tls_client_hello(&mut self, event: builder::TlsClientHello) {
+            let event = event.into_event();
+            self.subscriber
+                .on_tls_client_hello(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_tls_server_hello(&mut self, event: builder::TlsServerHello) {
+            let event = event.into_event();
+            self.subscriber
+                .on_tls_server_hello(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn quic_version(&self) -> u32 {
             self.quic_version
         }
@@ -3083,6 +3191,8 @@ pub mod testing {
         pub ecn_state_changed: u32,
         pub connection_migration_denied: u32,
         pub handshake_status_updated: u32,
+        pub tls_client_hello: u32,
+        pub tls_server_hello: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -3271,6 +3381,22 @@ pub mod testing {
         ) {
             self.handshake_status_updated += 1;
         }
+        fn on_tls_client_hello(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::TlsClientHello,
+        ) {
+            self.tls_client_hello += 1;
+        }
+        fn on_tls_server_hello(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::TlsServerHello,
+        ) {
+            self.tls_server_hello += 1;
+        }
         fn on_version_information(
             &mut self,
             _meta: &api::EndpointMeta,
@@ -3364,6 +3490,8 @@ pub mod testing {
         pub ecn_state_changed: u32,
         pub connection_migration_denied: u32,
         pub handshake_status_updated: u32,
+        pub tls_client_hello: u32,
+        pub tls_server_hello: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -3477,6 +3605,12 @@ pub mod testing {
         }
         fn on_handshake_status_updated(&mut self, _event: builder::HandshakeStatusUpdated) {
             self.handshake_status_updated += 1;
+        }
+        fn on_tls_client_hello(&mut self, _event: builder::TlsClientHello) {
+            self.tls_client_hello += 1;
+        }
+        fn on_tls_server_hello(&mut self, _event: builder::TlsServerHello) {
+            self.tls_server_hello += 1;
         }
         fn quic_version(&self) -> u32 {
             1

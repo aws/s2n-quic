@@ -589,6 +589,17 @@ impl StreamReceiveBuffer {
         })
     }
 
+    /// Iterates over all of the chunks waiting to be received
+    pub fn iter(&self) -> impl Iterator<Item = &[u8]> {
+        self.slots.iter().scan((), |_, slot| {
+            if let SlotState::Received(buffer) = slot {
+                Some(buffer.as_ref())
+            } else {
+                None
+            }
+        })
+    }
+
     /// Pops a buffer from the front of the receive queue as long as the `transform` function returns a
     /// non-empty buffer.
     fn pop_transform<F: Fn(&mut BytesMut) -> BytesMut>(

@@ -455,11 +455,12 @@ macro_rules! default_frame_handler {
 pub trait PacketSpace<Config: endpoint::Config> {
     const INVALID_FRAME_ERROR: &'static str;
 
-    fn handle_crypto_frame(
+    fn handle_crypto_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: CryptoRef,
         datagram: &DatagramInfo,
         path: &mut Path<Config>,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error>;
 
     #[allow(clippy::too_many_arguments)]
@@ -623,8 +624,13 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     //# been received and processed by the transport even though the CRYPTO
                     //# frame was discarded.
 
-                    self.handle_crypto_frame(frame.into(), datagram, &mut path_manager[path_id])
-                        .map_err(on_error)?;
+                    self.handle_crypto_frame(
+                        frame.into(),
+                        datagram,
+                        &mut path_manager[path_id],
+                        publisher,
+                    )
+                    .map_err(on_error)?;
                 }
                 Frame::Ack(frame) => {
                     let on_error = on_frame_processed!(frame);
