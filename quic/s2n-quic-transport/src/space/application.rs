@@ -528,12 +528,13 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
             .on_packet_ack(datagram, packet_number_range)
     }
 
-    fn on_new_packet_ack(
+    fn on_new_packet_ack<Pub: event::ConnectionPublisher>(
         &mut self,
-        _datagram: &DatagramInfo,
         packet_number_range: &PacketNumberRange,
+        publisher: &mut Pub,
     ) {
-        self.handshake_status.on_packet_ack(packet_number_range);
+        self.handshake_status
+            .on_packet_ack(packet_number_range, publisher);
         self.ping.on_packet_ack(packet_number_range);
         self.stream_manager.on_packet_ack(packet_number_range);
         self.local_id_registry.on_packet_ack(packet_number_range);
@@ -545,9 +546,14 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
             .on_packet_ack(datagram, packet_number_range);
     }
 
-    fn on_packet_loss(&mut self, packet_number_range: &PacketNumberRange) {
+    fn on_packet_loss<Pub: event::ConnectionPublisher>(
+        &mut self,
+        packet_number_range: &PacketNumberRange,
+        publisher: &mut Pub,
+    ) {
         self.ack_manager.on_packet_loss(packet_number_range);
-        self.handshake_status.on_packet_loss(packet_number_range);
+        self.handshake_status
+            .on_packet_loss(packet_number_range, publisher);
         self.ping.on_packet_loss(packet_number_range);
         self.stream_manager.on_packet_loss(packet_number_range);
         self.local_id_registry.on_packet_loss(packet_number_range);
@@ -767,13 +773,14 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         Ok(())
     }
 
-    fn handle_handshake_done_frame(
+    fn handle_handshake_done_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: HandshakeDone,
         datagram: &DatagramInfo,
         path: &mut Path<Config>,
         local_id_registry: &mut connection::LocalIdRegistry,
         handshake_status: &mut HandshakeStatus,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.20
         //# A server MUST
@@ -786,7 +793,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
                 .with_frame_type(frame.tag().into()));
         }
 
-        handshake_status.on_handshake_done_received();
+        handshake_status.on_handshake_done_received(publisher);
 
         //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.2
         //# At the

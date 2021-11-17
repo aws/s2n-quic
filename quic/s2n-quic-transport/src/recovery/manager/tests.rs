@@ -1495,7 +1495,7 @@ fn detect_lost_packets_persistent_cogestion_path_aware() {
     assert_eq!(bytes_in_flight, 9);
 
     let (max_persistent_congestion_period, _sent_packets_to_remove) =
-        manager.detect_lost_packets(now, &mut context);
+        manager.detect_lost_packets(now, &mut context, &mut Publisher::default());
 
     // Expectation:
     assert_eq!(max_persistent_congestion_period, Duration::from_secs(2));
@@ -2882,10 +2882,10 @@ impl<'a> recovery::Context<Config> for MockContext<'a> {
         Ok(())
     }
 
-    fn on_new_packet_ack(
+    fn on_new_packet_ack<Pub: event::ConnectionPublisher>(
         &mut self,
-        _datagram: &DatagramInfo,
         _packet_number_range: &PacketNumberRange,
+        _publisher: &mut Pub,
     ) {
         self.on_new_packet_ack_count += 1;
     }
@@ -2898,7 +2898,11 @@ impl<'a> recovery::Context<Config> for MockContext<'a> {
         self.on_packet_ack_count += 1;
     }
 
-    fn on_packet_loss(&mut self, packet_number_range: &PacketNumberRange) {
+    fn on_packet_loss<Pub: event::ConnectionPublisher>(
+        &mut self,
+        packet_number_range: &PacketNumberRange,
+        _publisher: &mut Pub,
+    ) {
         self.on_packet_loss_count += 1;
         self.lost_packets.insert(packet_number_range.start());
     }

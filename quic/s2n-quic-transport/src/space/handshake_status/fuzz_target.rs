@@ -8,7 +8,7 @@ use crate::{
     transmission::{self, interest::Provider},
 };
 use bolero::{check, generator::*};
-use s2n_quic_core::{ack, packet};
+use s2n_quic_core::{ack, event::testing::Publisher, packet};
 use s2n_quic_platform::time;
 
 #[derive(Debug)]
@@ -142,7 +142,7 @@ impl Model {
     fn on_complete(&mut self) {
         if !self.oracle.complete {
             self.subject
-                .on_handshake_complete(self.oracle.endpoint_type);
+                .on_handshake_complete(self.oracle.endpoint_type, &mut Publisher::default());
             self.oracle.on_handshake_complete();
         }
     }
@@ -172,13 +172,14 @@ impl Model {
     }
 
     fn packet_acked(&mut self, ack_handshake_done: bool) {
-        self.subject.on_packet_ack(&AckSetMock(ack_handshake_done));
+        self.subject
+            .on_packet_ack(&AckSetMock(ack_handshake_done), &mut Publisher::default());
         self.oracle.on_packet_ack(ack_handshake_done);
     }
 
     fn packet_loss(&mut self, lost_handshake_done: bool) {
         self.subject
-            .on_packet_loss(&AckSetMock(lost_handshake_done));
+            .on_packet_loss(&AckSetMock(lost_handshake_done), &mut Publisher::default());
 
         // perform some checks before calling `oracle.on_packet_loss`
         if self.oracle.endpoint_type.is_server() {
@@ -205,7 +206,8 @@ impl Model {
     }
 
     fn on_handshake_done_received(&mut self) {
-        self.subject.on_handshake_done_received();
+        self.subject
+            .on_handshake_done_received(&mut Publisher::default());
         self.oracle.on_handshake_done_received();
     }
 

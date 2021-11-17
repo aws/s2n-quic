@@ -490,3 +490,23 @@ enum EcnState {
     /// ECN capability has been confirmed
     Capable,
 }
+
+/// Events tracking the progress of handshake status
+enum HandshakeStatus {
+    /// The handshake has completed.
+    Complete,
+    /// The handshake has been confirmed.
+    Confirmed,
+    /// A HANDSHAKE_DONE frame was delivered or received.
+    ///
+    /// A Client endpoint receives a HANDSHAKE_DONE frame and
+    /// only a Server is allowed to send the HANDSHAKE_DONE
+    /// frame.
+    HandshakeDoneAcked,
+
+    /// A HANDSHAKE_DONE frame was declared lost.
+    ///
+    /// The Server is responsible for re-transmitting the
+    /// HANDSHAKE_DONE frame until it is acked by the peer.
+    HandshakeDoneLost,
+}

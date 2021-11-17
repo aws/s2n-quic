@@ -306,8 +306,13 @@ impl<Config: endpoint::Config> Manager<Config> {
                 }),
         );
 
-        let (largest_newly_acked, includes_ack_eliciting) =
-            self.process_ack_range(&mut newly_acked_packets, datagram, &frame, context)?;
+        let (largest_newly_acked, includes_ack_eliciting) = self.process_ack_range(
+            &mut newly_acked_packets,
+            datagram,
+            &frame,
+            context,
+            publisher,
+        )?;
 
         //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.1
         //# An endpoint generates an RTT sample on receiving an ACK frame that
@@ -346,12 +351,17 @@ impl<Config: endpoint::Config> Manager<Config> {
     }
 
     // Process ack_range and return largest_newly_acked and if the packet is ack eliciting.
-    fn process_ack_range<A: frame::ack::AckRanges, Ctx: Context<Config>>(
+    fn process_ack_range<
+        A: frame::ack::AckRanges,
+        Ctx: Context<Config>,
+        Pub: event::ConnectionPublisher,
+    >(
         &mut self,
         newly_acked_packets: &mut SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
         datagram: &DatagramInfo,
         frame: &frame::Ack<A>,
         context: &mut Ctx,
+        publisher: &mut Pub,
     ) -> Result<(Option<PacketDetails>, bool), transport::Error> {
         let mut largest_newly_acked: Option<PacketDetails> = None;
         let mut includes_ack_eliciting = false;
@@ -402,7 +412,7 @@ impl<Config: endpoint::Config> Manager<Config> {
 
             if let Some((start, end)) = newly_acked_range {
                 // notify components of packets that are newly acked
-                context.on_new_packet_ack(datagram, &PacketNumberRange::new(start, end));
+                context.on_new_packet_ack(&PacketNumberRange::new(start, end), publisher);
             }
         }
 
@@ -645,7 +655,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         // TODO: Investigate a more efficient mechanism for managing sent_packets
         //       See https://github.com/awslabs/s2n-quic/issues/69
         let (max_persistent_congestion_period, sent_packets_to_remove) =
-            self.detect_lost_packets(now, context);
+            self.detect_lost_packets(now, context, publisher);
 
         self.remove_lost_packets(
             now,
@@ -656,10 +666,11 @@ impl<Config: endpoint::Config> Manager<Config> {
         );
     }
 
-    fn detect_lost_packets<Ctx: Context<Config>>(
+    fn detect_lost_packets<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         now: Timestamp,
         context: &mut Ctx,
+        publisher: &mut Pub,
     ) -> (Duration, Vec<PacketDetails>) {
         let largest_acked_packet = self
             .largest_acked_packet
@@ -710,7 +721,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     // TODO merge contiguous packet numbers
                     let range =
                         PacketNumberRange::new(unacked_packet_number, unacked_packet_number);
-                    context.on_packet_loss(&range);
+                    context.on_packet_loss(&range, publisher);
                 }
 
                 //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
@@ -959,13 +970,17 @@ pub trait Context<Config: endpoint::Config> {
         packet_number_range: &PacketNumberRange,
     ) -> Result<(), transport::Error>;
 
-    fn on_new_packet_ack(
+    fn on_new_packet_ack<Pub: event::ConnectionPublisher>(
         &mut self,
-        datagram: &DatagramInfo,
         packet_number_range: &PacketNumberRange,
+        publisher: &mut Pub,
     );
     fn on_packet_ack(&mut self, datagram: &DatagramInfo, packet_number_range: &PacketNumberRange);
-    fn on_packet_loss(&mut self, packet_number_range: &PacketNumberRange);
+    fn on_packet_loss<Pub: event::ConnectionPublisher>(
+        &mut self,
+        packet_number_range: &PacketNumberRange,
+        publisher: &mut Pub,
+    );
     fn on_rtt_update(&mut self);
 }
 

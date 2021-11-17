@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{contexts::WriteContext, endpoint, sync::flag, transmission};
-use s2n_quic_core::{ack, frame::HandshakeDone, packet::number::PacketNumber};
+use s2n_quic_core::{
+    ack,
+    event::{self, ConnectionPublisher},
+    frame::HandshakeDone,
+    packet::number::PacketNumber,
+};
 
 pub type Flag = flag::Flag<HandshakeDoneWriter>;
 
@@ -81,8 +86,14 @@ impl HandshakeStatus {
 
     /// This method is called on the client when the HANDSHAKE_DONE
     /// frame has been received
-    pub fn on_handshake_done_received(&mut self) {
+    pub fn on_handshake_done_received<Pub: ConnectionPublisher>(&mut self, publisher: &mut Pub) {
         if let HandshakeStatus::ClientComplete = self {
+            publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
+                status: event::builder::HandshakeStatus::HandshakeDoneAcked,
+            });
+            publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
+                status: event::builder::HandshakeStatus::Confirmed,
+            });
             //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.2
             //# At the client, the handshake is
             //# considered confirmed when a HANDSHAKE_DONE frame is received.
@@ -91,13 +102,23 @@ impl HandshakeStatus {
     }
 
     /// This method is called after the TLS handshake has been completed
-    pub fn on_handshake_complete(&mut self, endpoint_type: endpoint::Type) {
+    pub fn on_handshake_complete<Pub: ConnectionPublisher>(
+        &mut self,
+        endpoint_type: endpoint::Type,
+        publisher: &mut Pub,
+    ) {
         debug_assert!(
             matches!(self, Self::InProgress),
             "on_handshake_complete should only be called once."
         );
+        publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
+            status: event::builder::HandshakeStatus::Complete,
+        });
 
         if endpoint_type.is_server() {
+            publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
+                status: event::builder::HandshakeStatus::Confirmed,
+            });
             //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.2
             //# The server MUST send a HANDSHAKE_DONE
             //# frame as soon as the handshake is complete.
@@ -111,12 +132,19 @@ impl HandshakeStatus {
 
     /// Used for tracking when the HANDSHAKE_DONE frame has been delivered
     /// to the peer.
-    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+    pub fn on_packet_ack<A: ack::Set, Pub: event::ConnectionPublisher>(
+        &mut self,
+        ack_set: &A,
+        publisher: &mut Pub,
+    ) {
         if let HandshakeStatus::ServerCompleteConfirmed(flag) = self {
             // The server is required to re-transmit the frame until it is
             // acknowledged by the peer. Once it is delivered, the state
             // can transition to Confirmed.
             if flag.on_packet_ack(ack_set) {
+                publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
+                    status: event::builder::HandshakeStatus::HandshakeDoneAcked,
+                });
                 *self = HandshakeStatus::Confirmed;
             }
         }
@@ -124,12 +152,20 @@ impl HandshakeStatus {
 
     /// Used for tracking when the HANDSHAKE_DONE frame needs to be
     /// re-transmitted.
-    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+    pub fn on_packet_loss<A: ack::Set, Pub: event::ConnectionPublisher>(
+        &mut self,
+        ack_set: &A,
+        publisher: &mut Pub,
+    ) {
         if let HandshakeStatus::ServerCompleteConfirmed(flag) = self {
             //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.3
             //# The HANDSHAKE_DONE frame MUST be retransmitted until it is
             //# acknowledged.
-            flag.on_packet_loss(ack_set)
+            if flag.on_packet_loss(ack_set) {
+                publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
+                    status: event::builder::HandshakeStatus::HandshakeDoneLost,
+                });
+            }
         }
     }
 
@@ -177,7 +213,7 @@ mod fuzz_target;
 mod tests {
     use super::*;
     use crate::{contexts::testing::*, transmission::interest::Provider};
-    use s2n_quic_core::endpoint;
+    use s2n_quic_core::{endpoint, event::testing::Publisher};
     use s2n_quic_platform::time;
 
     #[test]
@@ -211,7 +247,7 @@ mod tests {
         //= type=test
         //# the TLS handshake is considered confirmed at the
         //# server when the handshake completes.
-        status.on_handshake_complete(endpoint::Type::Server);
+        status.on_handshake_complete(endpoint::Type::Server, &mut Publisher::default());
         assert!(status.is_confirmed());
         assert!(status.is_complete());
 
@@ -229,7 +265,7 @@ mod tests {
             .expect("status should write HANDSHAKE_DONE frames")
             .packet_nr;
 
-        status.on_packet_ack(&packet_number);
+        status.on_packet_ack(&packet_number, &mut Publisher::default());
         assert!(status.is_confirmed());
 
         assert!(
@@ -272,11 +308,11 @@ mod tests {
         );
 
         // the handshake must be complete prior to being confirmed
-        status.on_handshake_done_received();
+        status.on_handshake_done_received(&mut Publisher::default());
         assert!(!status.is_complete());
         assert!(!status.is_confirmed());
 
-        status.on_handshake_complete(endpoint::Type::Client);
+        status.on_handshake_complete(endpoint::Type::Client, &mut Publisher::default());
         assert!(status.is_complete());
 
         assert!(
@@ -291,11 +327,11 @@ mod tests {
         );
 
         // confirm the client handshake
-        status.on_handshake_done_received();
+        status.on_handshake_done_received(&mut Publisher::default());
         assert!(status.is_confirmed());
 
         // try calling it multiple times
-        status.on_handshake_done_received();
+        status.on_handshake_done_received(&mut Publisher::default());
         assert!(status.is_confirmed());
     }
 }

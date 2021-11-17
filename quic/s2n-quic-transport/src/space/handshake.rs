@@ -401,10 +401,10 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
             .on_packet_ack(datagram, packet_number_range)
     }
 
-    fn on_new_packet_ack(
+    fn on_new_packet_ack<Pub: event::ConnectionPublisher>(
         &mut self,
-        _datagram: &DatagramInfo,
         packet_number_range: &PacketNumberRange,
+        _publisher: &mut Pub,
     ) {
         self.crypto_stream.on_packet_ack(packet_number_range);
     }
@@ -414,7 +414,11 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
             .on_packet_ack(datagram, packet_number_range);
     }
 
-    fn on_packet_loss(&mut self, packet_number_range: &PacketNumberRange) {
+    fn on_packet_loss<Pub: event::ConnectionPublisher>(
+        &mut self,
+        packet_number_range: &PacketNumberRange,
+        _publisher: &mut Pub,
+    ) {
         self.crypto_stream.on_packet_loss(packet_number_range);
         self.ack_manager.on_packet_loss(packet_number_range);
     }
