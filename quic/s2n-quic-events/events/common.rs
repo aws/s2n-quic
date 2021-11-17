@@ -29,8 +29,19 @@ struct Path<'a> {
     id: u64,
 }
 
+#[derive(Clone)]
 struct ConnectionId<'a> {
     bytes: &'a [u8],
+}
+
+impl<'a> core::fmt::Debug for ConnectionId<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(f, "0x")?;
+        for byte in self.bytes {
+            write!(f, "{:02x}", byte)?;
+        }
+        Ok(())
+    }
 }
 
 macro_rules! impl_conn_id {
@@ -51,9 +62,26 @@ impl_conn_id!(PeerId);
 impl_conn_id!(UnboundedId);
 impl_conn_id!(InitialId);
 
+#[derive(Clone)]
 enum SocketAddress<'a> {
     IpV4 { ip: &'a [u8; 4], port: u16 },
     IpV6 { ip: &'a [u8; 16], port: u16 },
+}
+
+impl<'a> core::fmt::Debug for SocketAddress<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            Self::IpV4 { ip, port } => {
+                let addr = crate::inet::SocketAddressV4::new(**ip, *port);
+                write!(f, "{}", addr)?;
+            }
+            Self::IpV6 { ip, port } => {
+                let addr = crate::inet::SocketAddressV6::new(**ip, *port);
+                write!(f, "{}", addr)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl<'a> SocketAddress<'a> {
@@ -440,9 +468,19 @@ impl IntoEvent<builder::Location> for crate::endpoint::Location {
     }
 }
 
+#[exhaustive]
 enum EndpointType {
     Server,
     Client,
+}
+
+impl core::fmt::Display for EndpointType {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Client {} => write!(f, "client"),
+            Self::Server {} => write!(f, "server"),
+        }
+    }
 }
 
 impl IntoEvent<api::EndpointType> for crate::endpoint::Type {

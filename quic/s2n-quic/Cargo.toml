@@ -31,7 +31,7 @@ std = [
     "thiserror"
 ]
 tokio-runtime = ["tokio", "s2n-quic-platform/tokio-runtime"]
-tracing-provider = ["tracing"]
+tracing-provider = ["tracing", "s2n-quic-core/event-tracing"]
 
 [dependencies]
 bytes = { version = "1", default-features = false }

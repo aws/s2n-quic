@@ -17,6 +17,7 @@ struct Output {
     pub connection_publisher: TokenStream,
     pub connection_publisher_subscriber: TokenStream,
     pub tuple_subscriber: TokenStream,
+    pub tracing_subscriber: TokenStream,
     pub builders: TokenStream,
     pub api: TokenStream,
     pub testing_fields: TokenStream,
@@ -35,6 +36,7 @@ impl ToTokens for Output {
             connection_publisher,
             connection_publisher_subscriber,
             tuple_subscriber,
+            tracing_subscriber,
             builders,
             api,
             testing_fields,
@@ -55,6 +57,50 @@ impl ToTokens for Output {
                 #api
 
                 #extra
+
+                #[cfg(feature = "event-tracing")]
+                pub mod tracing {
+                    use super::api;
+
+                    #[derive(Clone, Debug)]
+                    pub struct Subscriber {
+                        root: tracing::Span,
+                        client: tracing::Span,
+                        server: tracing::Span,
+                    }
+
+                    impl Default for Subscriber {
+                        fn default() -> Self {
+                            let root = tracing::span!(target: "s2n_quic", tracing::Level::DEBUG, "s2n_quic");
+                            let client = tracing::span!(parent: root.id(), tracing::Level::DEBUG, "client");
+                            let server = tracing::span!(parent: root.id(), tracing::Level::DEBUG, "server");
+
+                            Self {
+                                root,
+                                client,
+                                server,
+                            }
+                        }
+                    }
+
+                    impl super::Subscriber for Subscriber {
+                        type ConnectionContext = tracing::Span;
+
+                        fn create_connection_context(&mut self, meta: &api::ConnectionMeta, _info: &api::ConnectionInfo) -> Self::ConnectionContext {
+                            let parent = match meta.endpoint_type {
+                                api::EndpointType::Client {} => {
+                                    self.client.id()
+                                }
+                                api::EndpointType::Server {} => {
+                                    self.server.id()
+                                }
+                            };
+                            tracing::span!(target: "s2n_quic", parent: parent, tracing::Level::DEBUG, "conn", id = meta.id)
+                        }
+
+                        #tracing_subscriber
+                    }
+                }
             }
 
             pub mod builder {
