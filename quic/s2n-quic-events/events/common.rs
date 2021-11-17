@@ -397,7 +397,7 @@ enum PacketHeader {
 
 impl builder::PacketHeader {
     pub fn new(
-        packet_number: crate::packet::number::PacketNumber,
+        packet_number: &crate::packet::number::PacketNumber,
         version: u32,
     ) -> builder::PacketHeader {
         use crate::packet::number::PacketNumberSpace;
@@ -501,7 +501,7 @@ impl IntoEvent<builder::EndpointType> for crate::endpoint::Type {
     }
 }
 
-enum DropReason {
+enum DatagramDropReason {
     DecodingFailed,
     InvalidRetryToken,
     ConnectionNotAllowed,
@@ -511,7 +511,33 @@ enum DropReason {
     RejectedConnectionAttempt,
 }
 
-enum DenyReason {
+enum ProtectedSpace {
+    Initial {},
+    Handshake {},
+    ZeroRtt {},
+    OneRtt {},
+}
+
+enum PacketDropReason<'a> {
+    ConnectionError {},
+    HandshakeNotComplete,
+    VersionMismatch {
+        version: u32,
+    },
+    ConnectionIdMismatch {
+        packet_cid: &'a [u8],
+    },
+    UnprotectFailed {
+        space: ProtectedSpace,
+        path: Path<'a>,
+    },
+    DecryptionFailed {
+        path: Path<'a>,
+        packet_header: PacketHeader,
+    },
+}
+
+enum MigrationDenyReason {
     PortScopeChanged,
     IpScopeChange,
     ConnectionMigrationDisabled,

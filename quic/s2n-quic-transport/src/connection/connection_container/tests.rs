@@ -276,6 +276,21 @@ impl connection::Trait for TestConnection {
     fn query_event_context_mut(&mut self, _query: &mut dyn event::query::QueryMut) {
         todo!()
     }
+
+    fn emit_event<F>(
+        &mut self,
+        _timestamp: Timestamp,
+        _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        _f: F,
+    ) where
+        F: FnOnce(
+            &mut event::ConnectionPublisherSubscriber<
+                <Self::Config as endpoint::Config>::EventSubscriber,
+            >,
+        ),
+    {
+        todo!()
+    }
 }
 
 struct TestLock {

@@ -171,7 +171,7 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    pub enum DropReason {
+    pub enum DatagramDropReason {
         #[non_exhaustive]
         DecodingFailed {},
         #[non_exhaustive]
@@ -189,7 +189,41 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    pub enum DenyReason {
+    pub enum ProtectedSpace {
+        #[non_exhaustive]
+        Initial {},
+        #[non_exhaustive]
+        Handshake {},
+        #[non_exhaustive]
+        ZeroRtt {},
+        #[non_exhaustive]
+        OneRtt {},
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub enum PacketDropReason<'a> {
+        #[non_exhaustive]
+        ConnectionError {},
+        #[non_exhaustive]
+        HandshakeNotComplete {},
+        #[non_exhaustive]
+        VersionMismatch { version: u32 },
+        #[non_exhaustive]
+        ConnectionIdMismatch { packet_cid: &'a [u8] },
+        #[non_exhaustive]
+        UnprotectFailed {
+            space: ProtectedSpace,
+            path: Path<'a>,
+        },
+        #[non_exhaustive]
+        DecryptionFailed {
+            path: Path<'a>,
+            packet_header: PacketHeader,
+        },
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub enum MigrationDenyReason {
         #[non_exhaustive]
         PortScopeChanged {},
         #[non_exhaustive]
@@ -332,6 +366,15 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " Packet was lost"]
+    pub struct PacketDropped<'a> {
+        pub reason: PacketDropReason<'a>,
+    }
+    impl<'a> Event for PacketDropped<'a> {
+        const NAME: &'static str = "recovery:packet_dropped";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Crypto key updated"]
     pub struct KeyUpdate {
         pub key_type: KeyType,
@@ -398,7 +441,7 @@ pub mod api {
     #[doc = " Datagram dropped by a connection"]
     pub struct DatagramDropped {
         pub len: u16,
-        pub reason: DropReason,
+        pub reason: DatagramDropReason,
     }
     impl Event for DatagramDropped {
         const NAME: &'static str = "transport:datagram_dropped";
@@ -428,7 +471,7 @@ pub mod api {
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub struct ConnectionMigrationDenied {
-        pub reason: DenyReason,
+        pub reason: MigrationDenyReason,
     }
     impl Event for ConnectionMigrationDenied {
         const NAME: &'static str = "connectivity:connection_migration_denied";
@@ -516,7 +559,7 @@ pub mod api {
     #[doc = " Datagram dropped by the endpoint"]
     pub struct EndpointDatagramDropped {
         pub len: u16,
-        pub reason: DropReason,
+        pub reason: DatagramDropReason,
     }
     impl Event for EndpointDatagramDropped {
         const NAME: &'static str = "transport:datagram_dropped";
@@ -842,7 +885,7 @@ pub mod api {
     }
     impl builder::PacketHeader {
         pub fn new(
-            packet_number: crate::packet::number::PacketNumber,
+            packet_number: &crate::packet::number::PacketNumber,
             version: u32,
         ) -> builder::PacketHeader {
             use crate::packet::number::PacketNumberSpace;
@@ -1075,6 +1118,17 @@ pub mod api {
                     bytes_in_flight,
                 } = event;
                 tracing :: event ! (target : "recovery_metrics" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , min_rtt = tracing :: field :: debug (min_rtt) , smoothed_rtt = tracing :: field :: debug (smoothed_rtt) , latest_rtt = tracing :: field :: debug (latest_rtt) , rtt_variance = tracing :: field :: debug (rtt_variance) , max_ack_delay = tracing :: field :: debug (max_ack_delay) , pto_count = tracing :: field :: debug (pto_count) , congestion_window = tracing :: field :: debug (congestion_window) , bytes_in_flight = tracing :: field :: debug (bytes_in_flight));
+            }
+            #[inline]
+            fn on_packet_dropped(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::PacketDropped,
+            ) {
+                let id = context.id();
+                let api::PacketDropped { reason } = event;
+                tracing :: event ! (target : "packet_dropped" , parent : id , tracing :: Level :: DEBUG , reason = tracing :: field :: debug (reason));
             }
             #[inline]
             fn on_key_update(
@@ -1698,7 +1752,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    pub enum DropReason {
+    pub enum DatagramDropReason {
         DecodingFailed,
         InvalidRetryToken,
         ConnectionNotAllowed,
@@ -1707,10 +1761,10 @@ pub mod builder {
         InvalidSourceConnectionId,
         RejectedConnectionAttempt,
     }
-    impl IntoEvent<api::DropReason> for DropReason {
+    impl IntoEvent<api::DatagramDropReason> for DatagramDropReason {
         #[inline]
-        fn into_event(self) -> api::DropReason {
-            use api::DropReason::*;
+        fn into_event(self) -> api::DatagramDropReason {
+            use api::DatagramDropReason::*;
             match self {
                 Self::DecodingFailed => DecodingFailed {},
                 Self::InvalidRetryToken => InvalidRetryToken {},
@@ -1723,15 +1777,80 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    pub enum DenyReason {
+    pub enum ProtectedSpace {
+        Initial,
+        Handshake,
+        ZeroRtt,
+        OneRtt,
+    }
+    impl IntoEvent<api::ProtectedSpace> for ProtectedSpace {
+        #[inline]
+        fn into_event(self) -> api::ProtectedSpace {
+            use api::ProtectedSpace::*;
+            match self {
+                Self::Initial => Initial {},
+                Self::Handshake => Handshake {},
+                Self::ZeroRtt => ZeroRtt {},
+                Self::OneRtt => OneRtt {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub enum PacketDropReason<'a> {
+        ConnectionError,
+        HandshakeNotComplete,
+        VersionMismatch {
+            version: u32,
+        },
+        ConnectionIdMismatch {
+            packet_cid: &'a [u8],
+        },
+        UnprotectFailed {
+            space: ProtectedSpace,
+            path: Path<'a>,
+        },
+        DecryptionFailed {
+            path: Path<'a>,
+            packet_header: PacketHeader,
+        },
+    }
+    impl<'a> IntoEvent<api::PacketDropReason<'a>> for PacketDropReason<'a> {
+        #[inline]
+        fn into_event(self) -> api::PacketDropReason<'a> {
+            use api::PacketDropReason::*;
+            match self {
+                Self::ConnectionError => ConnectionError {},
+                Self::HandshakeNotComplete => HandshakeNotComplete {},
+                Self::VersionMismatch { version } => VersionMismatch {
+                    version: version.into_event(),
+                },
+                Self::ConnectionIdMismatch { packet_cid } => ConnectionIdMismatch {
+                    packet_cid: packet_cid.into_event(),
+                },
+                Self::UnprotectFailed { space, path } => UnprotectFailed {
+                    space: space.into_event(),
+                    path: path.into_event(),
+                },
+                Self::DecryptionFailed {
+                    path,
+                    packet_header,
+                } => DecryptionFailed {
+                    path: path.into_event(),
+                    packet_header: packet_header.into_event(),
+                },
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub enum MigrationDenyReason {
         PortScopeChanged,
         IpScopeChange,
         ConnectionMigrationDisabled,
     }
-    impl IntoEvent<api::DenyReason> for DenyReason {
+    impl IntoEvent<api::MigrationDenyReason> for MigrationDenyReason {
         #[inline]
-        fn into_event(self) -> api::DenyReason {
-            use api::DenyReason::*;
+        fn into_event(self) -> api::MigrationDenyReason {
+            use api::MigrationDenyReason::*;
             match self {
                 Self::PortScopeChanged => PortScopeChanged {},
                 Self::IpScopeChange => IpScopeChange {},
@@ -1965,6 +2084,19 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct PacketDropped<'a> {
+        pub reason: PacketDropReason<'a>,
+    }
+    impl<'a> IntoEvent<api::PacketDropped<'a>> for PacketDropped<'a> {
+        #[inline]
+        fn into_event(self) -> api::PacketDropped<'a> {
+            let PacketDropped { reason } = self;
+            api::PacketDropped {
+                reason: reason.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct KeyUpdate {
         pub key_type: KeyType,
     }
@@ -2061,7 +2193,7 @@ pub mod builder {
     #[derive(Clone, Debug)]
     pub struct DatagramDropped {
         pub len: u16,
-        pub reason: DropReason,
+        pub reason: DatagramDropReason,
     }
     impl IntoEvent<api::DatagramDropped> for DatagramDropped {
         #[inline]
@@ -2115,7 +2247,7 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct ConnectionMigrationDenied {
-        pub reason: DenyReason,
+        pub reason: MigrationDenyReason,
     }
     impl IntoEvent<api::ConnectionMigrationDenied> for ConnectionMigrationDenied {
         #[inline]
@@ -2249,7 +2381,7 @@ pub mod builder {
     #[derive(Clone, Debug)]
     pub struct EndpointDatagramDropped {
         pub len: u16,
-        pub reason: DropReason,
+        pub reason: DatagramDropReason,
     }
     impl IntoEvent<api::EndpointDatagramDropped> for EndpointDatagramDropped {
         #[inline]
@@ -2560,6 +2692,18 @@ mod traits {
             context: &mut Self::ConnectionContext,
             meta: &ConnectionMeta,
             event: &RecoveryMetrics,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `PacketDropped` event is triggered"]
+        #[inline]
+        fn on_packet_dropped(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &PacketDropped,
         ) {
             let _ = context;
             let _ = meta;
@@ -2956,6 +3100,16 @@ mod traits {
             (self.1).on_recovery_metrics(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_packet_dropped(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &PacketDropped,
+        ) {
+            (self.0).on_packet_dropped(&mut context.0, meta, event);
+            (self.1).on_packet_dropped(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_key_update(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -3343,6 +3497,8 @@ mod traits {
         fn on_packet_lost(&mut self, event: builder::PacketLost);
         #[doc = "Publishes a `RecoveryMetrics` event to the publisher's subscriber"]
         fn on_recovery_metrics(&mut self, event: builder::RecoveryMetrics);
+        #[doc = "Publishes a `PacketDropped` event to the publisher's subscriber"]
+        fn on_packet_dropped(&mut self, event: builder::PacketDropped);
         #[doc = "Publishes a `KeyUpdate` event to the publisher's subscriber"]
         fn on_key_update(&mut self, event: builder::KeyUpdate);
         #[doc = "Publishes a `ConnectionStarted` event to the publisher's subscriber"]
@@ -3494,6 +3650,15 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_packet_dropped(&mut self, event: builder::PacketDropped) {
+            let event = event.into_event();
+            self.subscriber
+                .on_packet_dropped(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn on_key_update(&mut self, event: builder::KeyUpdate) {
             let event = event.into_event();
             self.subscriber
@@ -3631,6 +3796,7 @@ pub mod testing {
         pub frame_received: u32,
         pub packet_lost: u32,
         pub recovery_metrics: u32,
+        pub packet_dropped: u32,
         pub key_update: u32,
         pub connection_started: u32,
         pub connection_closed: u32,
@@ -3743,6 +3909,14 @@ pub mod testing {
             _event: &api::RecoveryMetrics,
         ) {
             self.recovery_metrics += 1;
+        }
+        fn on_packet_dropped(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::PacketDropped,
+        ) {
+            self.packet_dropped += 1;
         }
         fn on_key_update(
             &mut self,
@@ -3930,6 +4104,7 @@ pub mod testing {
         pub frame_received: u32,
         pub packet_lost: u32,
         pub recovery_metrics: u32,
+        pub packet_dropped: u32,
         pub key_update: u32,
         pub connection_started: u32,
         pub connection_closed: u32,
@@ -4023,6 +4198,9 @@ pub mod testing {
         }
         fn on_recovery_metrics(&mut self, _event: builder::RecoveryMetrics) {
             self.recovery_metrics += 1;
+        }
+        fn on_packet_dropped(&mut self, _event: builder::PacketDropped) {
+            self.packet_dropped += 1;
         }
         fn on_key_update(&mut self, _event: builder::KeyUpdate) {
             self.key_update += 1;

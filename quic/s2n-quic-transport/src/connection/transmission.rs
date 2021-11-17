@@ -188,7 +188,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                         .publisher
                         .on_packet_sent(event::builder::PacketSent {
                             packet_header: event::builder::PacketHeader::new(
-                                outcome.packet_number,
+                                &outcome.packet_number,
                                 self.context.publisher.quic_version(),
                             ),
                         });
@@ -248,7 +248,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                         .publisher
                         .on_packet_sent(event::builder::PacketSent {
                             packet_header: event::builder::PacketHeader::new(
-                                outcome.packet_number,
+                                &outcome.packet_number,
                                 self.context.publisher.quic_version(),
                             ),
                         });
@@ -346,7 +346,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                         .publisher
                         .on_packet_sent(event::builder::PacketSent {
                             packet_header: event::builder::PacketHeader::new(
-                                outcome.packet_number,
+                                &outcome.packet_number,
                                 self.context.publisher.quic_version(),
                             ),
                         });

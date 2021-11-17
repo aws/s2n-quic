@@ -89,10 +89,10 @@ pub enum DenyReason {
 impl IntoEvent<event::builder::ConnectionMigrationDenied> for DenyReason {
     fn into_event(self) -> event::builder::ConnectionMigrationDenied {
         let reason = match self {
-            DenyReason::PortScopeChanged => event::builder::DenyReason::PortScopeChanged,
-            DenyReason::IpScopeChanged => event::builder::DenyReason::IpScopeChange,
+            DenyReason::PortScopeChanged => event::builder::MigrationDenyReason::PortScopeChanged,
+            DenyReason::IpScopeChanged => event::builder::MigrationDenyReason::IpScopeChange,
             DenyReason::ConnectionMigrationDisabled => {
-                event::builder::DenyReason::ConnectionMigrationDisabled
+                event::builder::MigrationDenyReason::ConnectionMigrationDisabled
             }
         };
         event::builder::ConnectionMigrationDenied { reason }

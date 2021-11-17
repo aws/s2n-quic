@@ -866,7 +866,7 @@ impl<Config: endpoint::Config> Manager<Config> {
 
             publisher.on_packet_lost(event::builder::PacketLost {
                 packet_header: event::builder::PacketHeader::new(
-                    packet_number,
+                    &packet_number,
                     publisher.quic_version(),
                 ),
                 path: event::builder::Path {

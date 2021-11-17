@@ -341,7 +341,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                                     .publisher
                                     .on_packet_sent(event::builder::PacketSent {
                                         packet_header: event::builder::PacketHeader::new(
-                                            outcome.packet_number,
+                                            &outcome.packet_number,
                                             context.publisher.quic_version(),
                                         ),
                                     });
@@ -594,7 +594,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
             let path = &path_manager[path_id];
             publisher.on_frame_received(event::builder::FrameReceived {
                 packet_header: event::builder::PacketHeader::new(
-                    packet_number,
+                    &packet_number,
                     publisher.quic_version(),
                 ),
                 path: path_event!(path, path_id),

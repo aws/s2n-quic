@@ -878,7 +878,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             publisher.on_packet_received(event::builder::PacketReceived {
                 packet_header: event::builder::PacketHeader::new(
-                    packet.packet_number,
+                    &packet.packet_number,
                     packet.version,
                 ),
             });
@@ -980,7 +980,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             publisher.on_packet_received(event::builder::PacketReceived {
                 packet_header: event::builder::PacketHeader::new(
-                    packet.packet_number,
+                    &packet.packet_number,
                     packet.version,
                 ),
             });
@@ -1047,7 +1047,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# process incoming 1-RTT protected packets before the TLS handshake is
         //# complete.
 
+        let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
         if !self.space_manager.is_handshake_complete() {
+            publisher.on_packet_dropped(event::builder::PacketDropped {
+                reason: event::builder::PacketDropReason::HandshakeNotComplete {},
+            });
+
             //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.7
             //= type=TODO
             //= tracking-issue=320
@@ -1071,8 +1076,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         }
 
         if let Some((space, handshake_status)) = self.space_manager.application_mut() {
-            let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
-
             let packet = space.validate_and_decrypt_packet(
                 packet,
                 datagram,
@@ -1114,7 +1117,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
             publisher.on_packet_received(event::builder::PacketReceived {
                 packet_header: event::builder::PacketHeader::new(
-                    packet.packet_number,
+                    &packet.packet_number,
                     publisher.quic_version(),
                 ),
             });
@@ -1404,6 +1407,22 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             &mut self.event_context.context,
             query,
         );
+    }
+
+    fn emit_event<F>(
+        &mut self,
+        timestamp: Timestamp,
+        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        f: F,
+    ) where
+        F: FnOnce(
+            &mut event::ConnectionPublisherSubscriber<
+                <Self::Config as endpoint::Config>::EventSubscriber,
+            >,
+        ),
+    {
+        let mut publisher = self.event_context.publisher(timestamp, subscriber);
+        f(&mut publisher);
     }
 }
 

@@ -18,7 +18,7 @@ use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     application,
     application::Sni,
-    event,
+    event::{self, ConnectionPublisher},
     inet::{DatagramInfo, SocketAddress},
     io::tx,
     packet::{
@@ -198,7 +198,11 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         //# initially selected, it MUST discard that packet.
         if let Some(version) = packet.version() {
             if version != self.quic_version() {
-                // TODO emit packet dropped event here with version mismatch reason
+                self.emit_event(datagram.timestamp, subscriber, |publisher| {
+                    publisher.on_packet_dropped(event::builder::PacketDropped {
+                        reason: event::builder::PacketDropReason::VersionMismatch { version },
+                    })
+                });
                 return Ok(());
             }
         }
@@ -266,7 +270,13 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 if datagram.destination_connection_id.as_bytes()
                     != packet.destination_connection_id()
                 {
-                    // TODO emit packet dropped event with different CID reason
+                    self.emit_event(datagram.timestamp, subscriber, |publisher| {
+                        publisher.on_packet_dropped(event::builder::PacketDropped {
+                            reason: event::builder::PacketDropReason::ConnectionIdMismatch {
+                                packet_cid: packet.destination_connection_id(),
+                            },
+                        })
+                    });
                     break;
                 }
 
@@ -278,6 +288,11 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                     // silently discarded, but this method could return an error on protocol
                     // violations which would result in shutting down the connection anyway. In this
                     // case this will return early without processing the remaining packets.
+                    self.emit_event(datagram.timestamp, subscriber, |publisher| {
+                        publisher.on_packet_dropped(event::builder::PacketDropped {
+                            reason: event::builder::PacketDropReason::ConnectionError {},
+                        })
+                    });
                     return Err(err);
                 }
             } else {
@@ -339,6 +354,18 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     fn query_event_context(&self, query: &mut dyn event::query::Query);
 
     fn query_event_context_mut(&mut self, query: &mut dyn event::query::QueryMut);
+
+    fn emit_event<F>(
+        &mut self,
+        timestamp: Timestamp,
+        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        f: F,
+    ) where
+        F: FnOnce(
+            &mut event::ConnectionPublisherSubscriber<
+                <Self::Config as endpoint::Config>::EventSubscriber,
+            >,
+        );
 }
 
 /// A lock that synchronizes connection state between the QUIC endpoint thread and application
