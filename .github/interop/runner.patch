@@ -9,7 +9,7 @@ index b26b2f8..b7652af 100755
  set -e
  
 diff --git a/docker-compose.yml b/docker-compose.yml
-index 7541cae..d815694 100644
+index 7541cae..ba1b4da 100644
 --- a/docker-compose.yml
 +++ b/docker-compose.yml
 @@ -2,7 +2,7 @@ version: "2.4"
@@ -37,24 +37,8 @@ index 7541cae..d815694 100644
        - REQUESTS=$REQUESTS
        - VERSION=$VERSION
      depends_on:
-@@ -81,6 +83,7 @@ services:
-         ipv4_address: 193.167.0.100
-         ipv6_address: fd00:cafe:cafe:0::100
-     extra_hosts:
-+      - "server:193.167.100.100"
-       - "server4:193.167.100.100"
-       - "server6:fd00:cafe:cafe:100::100"
-       - "server46:193.167.100.100"
-@@ -126,6 +129,7 @@ services:
-         ipv4_address: 193.167.0.90
-         ipv6_address: fd00:cafe:cafe:0::90
-     extra_hosts:
-+      - "server:193.167.100.100"
-       - "server4:193.167.100.110"
-       - "server6:fd00:cafe:cafe:100::110"
-       - "server46:193.167.100.110"
 diff --git a/implementations.json b/implementations.json
-index 3df16da..d1057b0 100644
+index 1feee36..3b120ca 100644
 --- a/implementations.json
 +++ b/implementations.json
 @@ -1,4 +1,9 @@
@@ -68,14 +52,14 @@ index 3df16da..d1057b0 100644
      "image": "martenseemann/quic-go-interop:latest",
      "url": "https://github.com/lucas-clemente/quic-go",
 diff --git a/interop.py b/interop.py
-index 4dea51d..6b73371 100644
+index 4dea51d..4c0d784 100644
 --- a/interop.py
 +++ b/interop.py
 @@ -124,6 +124,7 @@ class InteropRunner:
          cmd = (
              "CERTS=" + certs_dir.name + " "
              "TESTCASE_CLIENT=" + random_string(6) + " "
-+            "TEST_TYPE=TEST" + " "
++            "TEST_TYPE=TEST "
              "SERVER_LOGS=/dev/null "
              "CLIENT_LOGS=" + client_log_dir.name + " "
              "WWW=" + www_dir.name + " "
@@ -83,7 +67,7 @@ index 4dea51d..6b73371 100644
          cmd = (
              "CERTS=" + certs_dir.name + " "
              "TESTCASE_SERVER=" + random_string(6) + " "
-+            "TEST_TYPE=TEST" + " "
++            "TEST_TYPE=TEST "
              "SERVER_LOGS=" + server_log_dir.name + " "
              "CLIENT_LOGS=/dev/null "
              "WWW=" + www_dir.name + " "
@@ -95,15 +79,6 @@ index 4dea51d..6b73371 100644
              "WWW=" + testcase.www_dir() + " "
              "DOWNLOADS=" + testcase.download_dir() + " "
              "SERVER_LOGS=" + server_log_dir.name + " "
-@@ -403,7 +406,7 @@ class InteropRunner:
-                 status = TestResult.UNSUPPORTED
-             elif any("client exited with code 0" in str(line) for line in lines):
-                 try:
--                    status = testcase.check()
-+                    status = testcase.check(server_log_dir.name)
-                 except FileNotFoundError as e:
-                     logging.error(f"testcase.check() threw FileNotFoundError: {e}")
-                     status = TestResult.FAILED
 @@ -474,12 +477,6 @@ class InteropRunner:
                      client,
                      self._implementations[client]["image"],
@@ -131,18 +106,10 @@ index c2d6d1f..844bbd5 100644
  print("\nPulling the iperf endpoint...")
  os.system("docker pull martenseemann/quic-interop-iperf-endpoint")
 diff --git a/testcases.py b/testcases.py
-index 1d81d25..0572b54 100644
+index 1d81d25..0f8e3c5 100644
 --- a/testcases.py
 +++ b/testcases.py
-@@ -16,6 +16,7 @@ from typing import List
- from Crypto.Cipher import AES
- 
- from result import TestResult
-+from os import walk
- 
- KB = 1 << 10
- MB = 1 << 20
-@@ -90,6 +91,10 @@ class TestCase(abc.ABC):
+@@ -90,6 +90,10 @@ class TestCase(abc.ABC):
          """ The name of testcase presented to the endpoint Docker images"""
          return self.name()
  
@@ -153,220 +120,10 @@ index 1d81d25..0572b54 100644
      @staticmethod
      def scenario() -> str:
          """ Scenario for the ns3 simulator """
-@@ -175,6 +180,18 @@ class TestCase(abc.ABC):
-         logging.debug("Generated random file: %s of size: %d", filename, size)
-         return filename
- 
-+    def _check_cm(self, log_dir) -> TestResult:
-+        verify_string = 'ActivePathUpdated'
-+        log_file = log_dir + "/logs.txt"
-+
-+        f = open(log_file, "r")
-+        for line in f:
-+            if verify_string in line:
-+                return TestResult.SUCCEEDED
-+
-+        f.close()
-+        return TestResult.FAILED
-+
-     def _retry_sent(self) -> bool:
-         return len(self._client_trace().get_retry()) > 0
- 
-@@ -183,9 +200,6 @@ class TestCase(abc.ABC):
-         if len(versions) != 1:
-             logging.info("Expected exactly one version. Got %s", versions)
-             return False
--        if QUIC_VERSION not in versions:
--            logging.info("Wrong version. Expected %s, got %s", QUIC_VERSION, versions)
--            return False
- 
-         if len(self._files) == 0:
-             raise Exception("No test files generated.")
-@@ -271,7 +285,7 @@ class TestCase(abc.ABC):
-         pass
- 
-     @abc.abstractmethod
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         pass
- 
- 
-@@ -307,7 +321,7 @@ class TestCaseVersionNegotiation(TestCase):
-     def get_paths(self):
-         return [""]
- 
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         tr = self._client_trace()
-         initials = tr.get_initial(Direction.FROM_CLIENT)
-         dcid = ""
-@@ -342,7 +356,7 @@ class TestCaseHandshake(TestCase):
-         self._files = [self._generate_random_file(1 * KB)]
-         return self._files
- 
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         if not self._check_version_and_files():
+@@ -1201,54 +1205,26 @@ class TestCasePortRebinding(TestCaseTransfer):
+             logging.info("Server saw only a single client port in use; test broken?")
              return TestResult.FAILED
-         if self._retry_sent():
-@@ -377,7 +391,7 @@ class TestCaseLongRTT(TestCaseHandshake):
-         """ Scenario for the ns3 simulator """
-         return "simple-p2p --delay=750ms --bandwidth=10Mbps --queue=25"
  
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         num_handshakes = self._count_handshakes()
-         if num_handshakes != 1:
-             logging.info("Expected exactly 1 handshake. Got: %d", num_handshakes)
-@@ -416,7 +430,7 @@ class TestCaseTransfer(TestCase):
-         ]
-         return self._files
- 
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         num_handshakes = self._count_handshakes()
-         if num_handshakes != 1:
-             logging.info("Expected exactly 1 handshake. Got: %d", num_handshakes)
-@@ -447,7 +461,7 @@ class TestCaseChaCha20(TestCase):
-         self._files = [self._generate_random_file(3 * MB)]
-         return self._files
- 
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         num_handshakes = self._count_handshakes()
-         if num_handshakes != 1:
-             logging.info("Expected exactly 1 handshake. Got: %d", num_handshakes)
-@@ -489,7 +503,7 @@ class TestCaseMultiplexing(TestCase):
-             self._files.append(self._generate_random_file(32))
-         return self._files
- 
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         if not self._keylog_file():
-             logging.info("Can't check test result. SSLKEYLOG required.")
-             return TestResult.UNSUPPORTED
-@@ -570,7 +584,7 @@ class TestCaseRetry(TestCase):
-         logging.info("Didn't find any Initial packet using a Retry token.")
-         return False
- 
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         num_handshakes = self._count_handshakes()
-         if num_handshakes != 1:
-             logging.info("Expected exactly 1 handshake. Got: %d", num_handshakes)
-@@ -602,7 +616,7 @@ class TestCaseResumption(TestCase):
-         ]
-         return self._files
- 
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         if not self._keylog_file():
-             logging.info("Can't check test result. SSLKEYLOG required.")
-             return TestResult.UNSUPPORTED
-@@ -663,7 +677,7 @@ class TestCaseZeroRTT(TestCase):
-             )
-         return self._files
- 
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         num_handshakes = self._count_handshakes()
-         if num_handshakes != 2:
-             logging.info("Expected exactly 2 handshakes. Got: %d", num_handshakes)
-@@ -705,7 +719,7 @@ class TestCaseHTTP3(TestCase):
-         ]
-         return self._files
- 
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         num_handshakes = self._count_handshakes()
-         if num_handshakes != 1:
-             logging.info("Expected exactly 1 handshake. Got: %d", num_handshakes)
-@@ -748,7 +762,7 @@ class TestCaseAmplificationLimit(TestCase):
-         self._files = [self._generate_random_file(5 * KB)]
-         return self._files
- 
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         if not self._keylog_file():
-             logging.info("Can't check test result. SSLKEYLOG required.")
-             return TestResult.UNSUPPORTED
-@@ -859,7 +873,7 @@ class TestCaseBlackhole(TestCase):
-         self._files = [self._generate_random_file(10 * MB)]
-         return self._files
- 
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         num_handshakes = self._count_handshakes()
-         if num_handshakes != 1:
-             logging.info("Expected exactly 1 handshake. Got: %d", num_handshakes)
-@@ -892,7 +906,7 @@ class TestCaseKeyUpdate(TestCaseHandshake):
-         self._files = [self._generate_random_file(3 * MB)]
-         return self._files
- 
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         if not self._keylog_file():
-             logging.info("Can't check test result. SSLKEYLOG required.")
-             return TestResult.UNSUPPORTED
-@@ -976,7 +990,7 @@ class TestCaseHandshakeLoss(TestCase):
-             self._files.append(self._generate_random_file(1 * KB))
-         return self._files
- 
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         num_handshakes = self._count_handshakes()
-         if num_handshakes != self._num_runs:
-             logging.info(
-@@ -1015,7 +1029,7 @@ class TestCaseTransferLoss(TestCase):
-         self._files = [self._generate_random_file(2 * MB)]
-         return self._files
- 
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         num_handshakes = self._count_handshakes()
-         if num_handshakes != 1:
-             logging.info("Expected exactly 1 handshake. Got: %d", num_handshakes)
-@@ -1098,12 +1112,12 @@ class TestCaseECN(TestCaseHandshake):
-                 return True
-         return False
- 
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         if not self._keylog_file():
-             logging.info("Can't check test result. SSLKEYLOG required.")
-             return TestResult.UNSUPPORTED
- 
--        result = super(TestCaseECN, self).check()
-+        result = super(TestCaseECN, self).check(log_dir)
-         if result != TestResult.SUCCEEDED:
-             return result
- 
-@@ -1181,86 +1195,17 @@ class TestCasePortRebinding(TestCaseTransfer):
-         """ Scenario for the ns3 simulator """
-         return "rebind --delay=15ms --bandwidth=10Mbps --queue=25 --first-rebind=1s --rebind-freq=5s"
- 
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         if not self._keylog_file():
-             logging.info("Can't check test result. SSLKEYLOG required.")
-             return TestResult.UNSUPPORTED
- 
--        result = super(TestCasePortRebinding, self).check()
-+        result = self._check_cm(log_dir)
-         if result != TestResult.SUCCEEDED:
-             return result
- 
--        tr_server = self._server_trace()._get_packets(
--            self._server_trace()._get_direction_filter(Direction.FROM_SERVER) + " quic"
--        )
--
--        ports = list(set(getattr(p["udp"], "dstport") for p in tr_server))
--
--        logging.info("Server saw these client ports: %s", ports)
--        if len(ports) <= 1:
--            logging.info("Server saw only a single client port in use; test broken?")
--            return TestResult.FAILED
--
 -        last = None
 -        num_migrations = 0
 -        for p in tr_server:
@@ -394,15 +151,18 @@ index 1d81d25..0572b54 100644
 -
 -        tr_client = self._client_trace()._get_packets(
 -            self._client_trace()._get_direction_filter(Direction.FROM_CLIENT) + " quic"
--        )
--
--        challenges = list(
--            set(
--                getattr(p["quic"], "path_challenge.data")
++        tr_server2client = self._client_trace()._get_packets(
++            self._client_trace()._get_direction_filter(Direction.FROM_SERVER) + " quic"
+         )
+ 
+         challenges = list(
+             set(
+                 getattr(p["quic"], "path_challenge.data")
 -                for p in tr_server
--                if hasattr(p["quic"], "path_challenge.data")
--            )
--        )
++                for p in tr_server2client
+                 if hasattr(p["quic"], "path_challenge.data")
+             )
+         )
 -        if len(challenges) < num_migrations:
 -            logging.info(
 -                "Saw %d migrations, but only %d unique PATH_CHALLENGE frames",
@@ -410,90 +170,20 @@ index 1d81d25..0572b54 100644
 -                num_migrations,
 -            )
 -            return TestResult.FAILED
--
--        responses = list(
--            set(
--                getattr(p["quic"], "path_response.data")
++
++        tr_client2server = self._client_trace()._get_packets(
++            self._client_trace()._get_direction_filter(Direction.FROM_CLIENT) + " quic"
++        )
+ 
+         responses = list(
+             set(
+                 getattr(p["quic"], "path_response.data")
 -                for p in tr_client
--                if hasattr(p["quic"], "path_response.data")
--            )
--        )
--
--        unresponded = [c for c in challenges if c not in responses]
--        if unresponded != []:
--            logging.info("PATH_CHALLENGE without a PATH_RESPONSE: %s", unresponded)
--            return TestResult.FAILED
--
-         return TestResult.SUCCEEDED
- 
--
- class TestCaseAddressRebinding(TestCasePortRebinding):
-     @staticmethod
-     def name():
-@@ -1282,36 +1227,17 @@ class TestCaseAddressRebinding(TestCasePortRebinding):
-             + " --rebind-addr"
++                for p in tr_client2server
+                 if hasattr(p["quic"], "path_response.data")
+             )
          )
- 
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         if not self._keylog_file():
-             logging.info("Can't check test result. SSLKEYLOG required.")
-             return TestResult.UNSUPPORTED
- 
--        tr_server = self._server_trace()._get_packets(
--            self._server_trace()._get_direction_filter(Direction.FROM_SERVER) + " quic"
--        )
--
--        ips = set()
--        for p in tr_server:
--            ip_vers = "ip"
--            if "IPV6" in str(p.layers):
--                ip_vers = "ipv6"
--            ips.add(getattr(p[ip_vers], "dst"))
--
--        logging.info("Server saw these client addresses: %s", ips)
--        if len(ips) <= 1:
--            logging.info(
--                "Server saw only a single client IP address in use; test broken?"
--            )
--            return TestResult.FAILED
--
--        result = super(TestCaseAddressRebinding, self).check()
-+        result = self._check_cm(log_dir)
-         if result != TestResult.SUCCEEDED:
-             return result
- 
-         return TestResult.SUCCEEDED
- 
--
- class TestCaseIPv6(TestCaseTransfer):
-     @staticmethod
-     def name():
-@@ -1340,8 +1266,8 @@ class TestCaseIPv6(TestCaseTransfer):
-         ]
-         return self._files
- 
--    def check(self) -> TestResult:
--        result = super(TestCaseIPv6, self).check()
-+    def check(self, log_dir) -> TestResult:
-+        result = super(TestCaseIPv6, self).check(log_dir)
-         if result != TestResult.SUCCEEDED:
-             return result
- 
-@@ -1385,10 +1311,10 @@ class TestCaseConnectionMigration(TestCaseAddressRebinding):
-         ]
-         return self._files
- 
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         # The parent check() method ensures that the client changed addresses
-         # and that PATH_CHALLENGE/RESPONSE frames were sent and received
--        result = super(TestCaseConnectionMigration, self).check()
-+        result = super(TestCaseConnectionMigration, self).check(log_dir)
-         if result != TestResult.SUCCEEDED:
-             return result
- 
-@@ -1445,6 +1371,10 @@ class MeasurementGoodput(Measurement):
+@@ -1445,6 +1421,10 @@ class MeasurementGoodput(Measurement):
      def testname(p: Perspective):
          return "transfer"
  
@@ -504,24 +194,17 @@ index 1d81d25..0572b54 100644
      @staticmethod
      def abbreviation():
          return "G"
-@@ -1461,7 +1391,7 @@ class MeasurementGoodput(Measurement):
-         self._files = [self._generate_random_file(self.FILESIZE)]
-         return self._files
- 
--    def check(self) -> TestResult:
-+    def check(self, log_dir) -> TestResult:
-         num_handshakes = self._count_handshakes()
-         if num_handshakes != 1:
-             logging.info("Expected exactly 1 handshake. Got: %d", num_handshakes)
-@@ -1542,9 +1472,9 @@ TESTCASES = [
+@@ -1540,11 +1520,9 @@ TESTCASES = [
+     TestCaseHandshakeCorruption,
+     TestCaseTransferCorruption,
      TestCaseIPv6,
-     # The next three tests are disabled due to Wireshark not being able
-     # to decrypt packets sent on the new path.
+-    # The next three tests are disabled due to Wireshark not being able
+-    # to decrypt packets sent on the new path.
 -    # TestCasePortRebinding,
 -    # TestCaseAddressRebinding,
 -    # TestCaseConnectionMigration,
-+    TestCaseAddressRebinding,
 +    TestCasePortRebinding,
++    TestCaseAddressRebinding,
 +    TestCaseConnectionMigration,
  ]
  
