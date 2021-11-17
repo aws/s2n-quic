@@ -100,18 +100,22 @@ impl<W: Writer> Flag<W> {
     }
 
     /// This method gets called when a packet loss is reported
-    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) -> bool {
+        let mut lost = false;
         if let DeliveryState::InFlight { stable, latest } = &mut self.delivery {
             // If stable is lost, fall back on latest
             if ack_set.contains(*stable) {
+                lost = true;
                 *stable = *latest;
             }
 
             // Force retransmission
             if ack_set.contains(*latest) {
+                lost = true;
                 self.delivery = DeliveryState::RequiresRetransmission;
             }
         }
+        lost
     }
 
     /// Queries the component for any outgoing frames that need to get sent

@@ -179,7 +179,7 @@ impl Model {
 
     fn packet_loss(&mut self, lost_handshake_done: bool) {
         self.subject
-            .on_packet_loss(&AckSetMock(lost_handshake_done));
+            .on_packet_loss(&AckSetMock(lost_handshake_done), &mut Publisher::default());
 
         // perform some checks before calling `oracle.on_packet_loss`
         if self.oracle.endpoint_type.is_server() {

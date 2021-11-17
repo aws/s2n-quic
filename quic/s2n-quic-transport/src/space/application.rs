@@ -546,9 +546,14 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
             .on_packet_ack(datagram, packet_number_range);
     }
 
-    fn on_packet_loss(&mut self, packet_number_range: &PacketNumberRange) {
+    fn on_packet_loss<Pub: event::ConnectionPublisher>(
+        &mut self,
+        packet_number_range: &PacketNumberRange,
+        publisher: &mut Pub,
+    ) {
         self.ack_manager.on_packet_loss(packet_number_range);
-        self.handshake_status.on_packet_loss(packet_number_range);
+        self.handshake_status
+            .on_packet_loss(packet_number_range, publisher);
         self.ping.on_packet_loss(packet_number_range);
         self.stream_manager.on_packet_loss(packet_number_range);
         self.local_id_registry.on_packet_loss(packet_number_range);

@@ -89,7 +89,7 @@ impl HandshakeStatus {
     pub fn on_handshake_done_received<Pub: ConnectionPublisher>(&mut self, publisher: &mut Pub) {
         if let HandshakeStatus::ClientComplete = self {
             publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
-                status: event::builder::HandshakeStatus::HandshakeDoneReceived,
+                status: event::builder::HandshakeStatus::HandshakeDoneAcked,
             });
             publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
                 status: event::builder::HandshakeStatus::Confirmed,
@@ -143,7 +143,7 @@ impl HandshakeStatus {
             // can transition to Confirmed.
             if flag.on_packet_ack(ack_set) {
                 publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
-                    status: event::builder::HandshakeStatus::HandshakeDoneDelivered,
+                    status: event::builder::HandshakeStatus::HandshakeDoneAcked,
                 });
                 *self = HandshakeStatus::Confirmed;
             }
@@ -152,12 +152,20 @@ impl HandshakeStatus {
 
     /// Used for tracking when the HANDSHAKE_DONE frame needs to be
     /// re-transmitted.
-    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+    pub fn on_packet_loss<A: ack::Set, Pub: event::ConnectionPublisher>(
+        &mut self,
+        ack_set: &A,
+        publisher: &mut Pub,
+    ) {
         if let HandshakeStatus::ServerCompleteConfirmed(flag) = self {
             //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.3
             //# The HANDSHAKE_DONE frame MUST be retransmitted until it is
             //# acknowledged.
-            flag.on_packet_loss(ack_set)
+            if flag.on_packet_loss(ack_set) {
+                publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
+                    status: event::builder::HandshakeStatus::HandshakeDoneLost,
+                });
+            }
         }
     }
 

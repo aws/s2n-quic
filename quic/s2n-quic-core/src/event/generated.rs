@@ -220,9 +220,9 @@ pub mod api {
         #[non_exhaustive]
         Confirmed {},
         #[non_exhaustive]
-        HandshakeDoneDelivered {},
+        HandshakeDoneAcked {},
         #[non_exhaustive]
-        HandshakeDoneReceived {},
+        HandshakeDoneLost {},
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1266,8 +1266,8 @@ pub mod builder {
     pub enum HandshakeStatus {
         Complete,
         Confirmed,
-        HandshakeDoneDelivered,
-        HandshakeDoneReceived,
+        HandshakeDoneAcked,
+        HandshakeDoneLost,
     }
     impl IntoEvent<api::HandshakeStatus> for HandshakeStatus {
         #[inline]
@@ -1276,8 +1276,8 @@ pub mod builder {
             match self {
                 Self::Complete => Complete {},
                 Self::Confirmed => Confirmed {},
-                Self::HandshakeDoneDelivered => HandshakeDoneDelivered {},
-                Self::HandshakeDoneReceived => HandshakeDoneReceived {},
+                Self::HandshakeDoneAcked => HandshakeDoneAcked {},
+                Self::HandshakeDoneLost => HandshakeDoneLost {},
             }
         }
     }

@@ -655,7 +655,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         // TODO: Investigate a more efficient mechanism for managing sent_packets
         //       See https://github.com/awslabs/s2n-quic/issues/69
         let (max_persistent_congestion_period, sent_packets_to_remove) =
-            self.detect_lost_packets(now, context);
+            self.detect_lost_packets(now, context, publisher);
 
         self.remove_lost_packets(
             now,
@@ -666,10 +666,11 @@ impl<Config: endpoint::Config> Manager<Config> {
         );
     }
 
-    fn detect_lost_packets<Ctx: Context<Config>>(
+    fn detect_lost_packets<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         now: Timestamp,
         context: &mut Ctx,
+        publisher: &mut Pub,
     ) -> (Duration, Vec<PacketDetails>) {
         let largest_acked_packet = self
             .largest_acked_packet
@@ -720,7 +721,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     // TODO merge contiguous packet numbers
                     let range =
                         PacketNumberRange::new(unacked_packet_number, unacked_packet_number);
-                    context.on_packet_loss(&range);
+                    context.on_packet_loss(&range, publisher);
                 }
 
                 //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
@@ -975,7 +976,11 @@ pub trait Context<Config: endpoint::Config> {
         publisher: &mut Pub,
     );
     fn on_packet_ack(&mut self, datagram: &DatagramInfo, packet_number_range: &PacketNumberRange);
-    fn on_packet_loss(&mut self, packet_number_range: &PacketNumberRange);
+    fn on_packet_loss<Pub: event::ConnectionPublisher>(
+        &mut self,
+        packet_number_range: &PacketNumberRange,
+        publisher: &mut Pub,
+    );
     fn on_rtt_update(&mut self);
 }
 
