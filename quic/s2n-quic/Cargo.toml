@@ -31,7 +31,7 @@ std = [
     "thiserror"
 ]
 tokio-runtime = ["tokio", "s2n-quic-platform/tokio-runtime"]
-tracing-provider = ["tracing", "s2n-quic-core/event-tracing"]
+tracing-provider = ["s2n-quic-core/event-tracing"]
 
 [dependencies]
 bytes = { version = "1", default-features = false }
@@ -54,7 +54,6 @@ tokio = { version = "1", optional = true, default-features = false }
 zerocopy = { version = "0.6", optional = true }
 zerocopy-derive = { version = "0.3", optional = true }
 zeroize = { version = "1", default-features = false }
-tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]
 bolero = { version = "0.6" }
