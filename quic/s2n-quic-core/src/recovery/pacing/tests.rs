@@ -157,7 +157,7 @@ fn get_interval(
         pacer.on_packet_sent(
             now,
             max_datagram_size as usize,
-            &rtt_estimator,
+            rtt_estimator,
             congestion_window,
             max_datagram_size,
             slow_start,
