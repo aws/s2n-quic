@@ -519,23 +519,23 @@ enum ProtectedSpace {
 }
 
 enum PacketDropReason<'a> {
-    /// A connection error can happen due to protocol violation
-    /// and retults in the connection being closed.
+    /// A connection error occured and is no longer able to process packets.
     ConnectionError { path: Path<'a> },
-    /// Short packets can only be processed once the handshake
-    /// has completed.
+    /// The handshake needed to be complete before processing the packet.
+    ///
+    /// To ensure the connection stays secure, short packets can only be processed
+    /// once the handshake has completed.
     HandshakeNotComplete { path: Path<'a> },
-    /// The packet specified in the version must match the version
-    /// negotiated during the handshake.
+    /// The packet contained a version which did not match the version negotiated
+    /// during the handshake.
     VersionMismatch { version: u32, path: Path<'a> },
-    /// A single UDP datagram must not coalesce packets with
-    /// different Destination Connection Id.
+    /// A datagram contained more than one destination connection ID, which is
+    /// unallowed.
     ConnectionIdMismatch {
         packet_cid: &'a [u8],
         path: Path<'a>,
     },
-    /// There was a failure when attempting to remove header
-    /// protection.
+    /// There was a failure when attempting to remove header protection.
     UnprotectFailed {
         space: ProtectedSpace,
         path: Path<'a>,

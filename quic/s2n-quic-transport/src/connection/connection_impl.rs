@@ -1413,7 +1413,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         );
     }
 
-    fn emit_event<F>(
+    fn with_event_publisher<F>(
         &mut self,
         timestamp: Timestamp,
         path_id: path::Id,

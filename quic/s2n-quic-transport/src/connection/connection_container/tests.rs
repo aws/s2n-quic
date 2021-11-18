@@ -277,7 +277,7 @@ impl connection::Trait for TestConnection {
         todo!()
     }
 
-    fn emit_event<F>(
+    fn with_event_publisher<F>(
         &mut self,
         _timestamp: Timestamp,
         _path_id: path::Id,

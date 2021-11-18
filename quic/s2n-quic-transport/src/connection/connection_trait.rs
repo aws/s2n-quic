@@ -200,7 +200,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         //# initially selected, it MUST discard that packet.
         if let Some(version) = packet.version() {
             if version != self.quic_version() {
-                self.emit_event(
+                self.with_event_publisher(
                     datagram.timestamp,
                     path_id,
                     subscriber,
@@ -280,7 +280,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 if datagram.destination_connection_id.as_bytes()
                     != packet.destination_connection_id()
                 {
-                    self.emit_event(
+                    self.with_event_publisher(
                         datagram.timestamp,
                         path_id,
                         subscriber,
@@ -304,18 +304,20 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                     // silently discarded, but this method could return an error on protocol
                     // violations which would result in shutting down the connection anyway. In this
                     // case this will return early without processing the remaining packets.
-                    self.emit_event(
-                        datagram.timestamp,
-                        path_id,
-                        subscriber,
-                        |publisher, path| {
-                            publisher.on_packet_dropped(event::builder::PacketDropped {
-                                reason: event::builder::PacketDropReason::ConnectionError {
-                                    path: path_event!(path, path_id),
-                                },
-                            })
-                        },
-                    );
+                    if !payload.is_empty() {
+                        self.with_event_publisher(
+                            datagram.timestamp,
+                            path_id,
+                            subscriber,
+                            |publisher, path| {
+                                publisher.on_packet_dropped(event::builder::PacketDropped {
+                                    reason: event::builder::PacketDropReason::ConnectionError {
+                                        path: path_event!(path, path_id),
+                                    },
+                                })
+                            },
+                        );
+                    }
                     return Err(err);
                 }
             } else {
@@ -331,7 +333,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 //
                 // We choose to discard the rest of the datagram on parsing errors since it
                 // would be difficult to recover from an invalid packet.
-                self.emit_event(
+                self.with_event_publisher(
                     datagram.timestamp,
                     path_id,
                     subscriber,
@@ -388,7 +390,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
 
     fn query_event_context_mut(&mut self, query: &mut dyn event::query::QueryMut);
 
-    fn emit_event<F>(
+    fn with_event_publisher<F>(
         &mut self,
         timestamp: Timestamp,
         path_id: path::Id,

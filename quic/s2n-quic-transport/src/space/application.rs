@@ -439,17 +439,21 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                     .rtt_estimator
                     .pto_period(1, PacketNumberSpace::ApplicationData),
         );
-        if let Ok((_, Some(generation))) = decrypted {
-            publisher.on_key_update(event::builder::KeyUpdate {
-                key_type: event::builder::KeyType::OneRtt { generation },
-            });
-        } else if decrypted.is_err() {
-            publisher.on_packet_dropped(event::builder::PacketDropped {
-                reason: event::builder::PacketDropReason::DecryptionFailed {
-                    packet_header,
-                    path: path_event!(path, path_id),
-                },
-            });
+        match decrypted {
+            Ok((_, Some(generation))) => {
+                publisher.on_key_update(event::builder::KeyUpdate {
+                    key_type: event::builder::KeyType::OneRtt { generation },
+                });
+            }
+            Ok(_) => {}
+            Err(_) => {
+                publisher.on_packet_dropped(event::builder::PacketDropped {
+                    reason: event::builder::PacketDropReason::DecryptionFailed {
+                        packet_header,
+                        path: path_event!(path, path_id),
+                    },
+                });
+            }
         }
         //= https://www.rfc-editor.org/rfc/rfc9001.txt#9.5
         //# For authentication to be
