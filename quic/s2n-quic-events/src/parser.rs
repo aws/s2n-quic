@@ -72,14 +72,13 @@ impl Struct {
 
         let extra_attrs = &attrs.extra;
 
-        let destructure_fields = fields.iter().map(Field::destructure);
+        let destructure_fields: Vec<_> = fields.iter().map(Field::destructure).collect();
         let builder_fields = fields.iter().map(Field::builder);
         let builder_field_impls = fields.iter().map(Field::builder_impl);
         let api_fields = fields.iter().map(Field::api);
 
         output.builders.extend(quote!(
             #[derive(Clone, Debug)]
-            #extra_attrs
             pub struct #ident #generics {
                 #(#builder_fields)*
             }
@@ -88,7 +87,7 @@ impl Struct {
                 #[inline]
                 fn into_event(self) -> api::#ident #generics {
                     let #ident {
-                        #(#destructure_fields)*
+                        #(#destructure_fields),*
                     } = self;
 
                     api::#ident {
@@ -98,9 +97,15 @@ impl Struct {
             }
         ));
 
+        if attrs.derive {
+            output.api.extend(quote!(#[derive(Clone, Debug)]));
+        }
+
+        if !attrs.exhaustive {
+            output.api.extend(quote!(#[non_exhaustive]));
+        }
+
         output.api.extend(quote!(
-            #[derive(Clone, Debug)]
-            #[non_exhaustive]
             #extra_attrs
             pub struct #ident #generics {
                 #(#api_fields)*
@@ -150,6 +155,22 @@ impl Struct {
                         }
                     ));
 
+                    output.tracing_subscriber.extend(quote!(
+                        #[inline]
+                        fn #function(&mut self, meta: &api::EndpointMeta, event: &api::#ident) {
+                            let parent = match meta.endpoint_type {
+                                api::EndpointType::Client {} => {
+                                    self.client.id()
+                                }
+                                api::EndpointType::Server {} => {
+                                    self.server.id()
+                                }
+                            };
+                            let api::#ident { #(#destructure_fields),* } = event;
+                            tracing::event!(target: #snake, parent: parent, tracing::Level::DEBUG, #(#destructure_fields = tracing::field::debug(#destructure_fields)),*);
+                        }
+                    ));
+
                     output.endpoint_publisher.extend(quote!(
                         #[doc = #publisher_doc]
                         fn #function(&mut self, event: builder::#ident);
@@ -192,6 +213,15 @@ impl Struct {
                         fn #function(&mut self, context: &mut Self::ConnectionContext, meta: &ConnectionMeta, event: &#ident) {
                             (self.0).#function(&mut context.0, meta, event);
                             (self.1).#function(&mut context.1, meta, event);
+                        }
+                    ));
+
+                    output.tracing_subscriber.extend(quote!(
+                        #[inline]
+                        fn #function(&mut self, context: &mut Self::ConnectionContext, _meta: &api::ConnectionMeta, event: &api::#ident) {
+                            let id = context.id();
+                            let api::#ident { #(#destructure_fields),* } = event;
+                            tracing::event!(target: #snake, parent: id, tracing::Level::DEBUG, #(#destructure_fields = tracing::field::debug(#destructure_fields)),*);
                         }
                     ));
 
@@ -268,7 +298,6 @@ impl Enum {
 
         output.builders.extend(quote!(
             #[derive(Clone, Debug)]
-            #extra_attrs
             pub enum #ident #generics {
                 #(#builder_fields)*
             }
@@ -284,9 +313,15 @@ impl Enum {
             }
         ));
 
+        if attrs.derive {
+            output.api.extend(quote!(#[derive(Clone, Debug)]));
+        }
+
+        if !attrs.exhaustive {
+            output.api.extend(quote!(#[non_exhaustive]));
+        }
+
         output.api.extend(quote!(
-            #[derive(Clone, Debug)]
-            #[non_exhaustive]
             #extra_attrs
             pub enum #ident #generics {
                 #(#api_fields)*
@@ -300,6 +335,7 @@ struct ContainerAttrs {
     event_name: Option<syn::LitStr>,
     subject: Subject,
     exhaustive: bool,
+    derive: bool,
     extra: TokenStream,
 }
 
@@ -312,6 +348,7 @@ impl ContainerAttrs {
             subject: Subject::Connection,
             // default to #[non_exhaustive]
             exhaustive: false,
+            derive: true,
             extra: quote!(),
         };
 
@@ -322,6 +359,9 @@ impl ContainerAttrs {
                 v.subject = attr.parse_args().unwrap();
             } else if attr.path.is_ident("exhaustive") {
                 v.exhaustive = true;
+            } else if attr.path.is_ident("derive") {
+                v.derive = false;
+                attr.to_tokens(&mut v.extra);
             } else {
                 attr.to_tokens(&mut v.extra)
             }
@@ -400,7 +440,7 @@ impl Field {
 
     fn destructure(&self) -> TokenStream {
         let Self { ident, .. } = self;
-        quote!(#ident, )
+        quote!(#ident)
     }
 
     fn builder(&self) -> TokenStream {
@@ -507,7 +547,7 @@ impl Variant {
             let destructure = fields.iter().map(Field::destructure);
             let fields = fields.iter().map(Field::builder_impl);
 
-            quote!(Self::#ident { #(#destructure)* } => #ident { #(#fields)* },)
+            quote!(Self::#ident { #(#destructure),* } => #ident { #(#fields)* },)
         }
     }
 }

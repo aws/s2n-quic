@@ -34,13 +34,13 @@ pub mod api {
         pub remote_cid: ConnectionId<'a>,
         pub id: u64,
     }
-    #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[derive(Clone)]
     pub struct ConnectionId<'a> {
         pub bytes: &'a [u8],
     }
-    #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[derive(Clone)]
     pub enum SocketAddress<'a> {
         #[non_exhaustive]
         IpV4 { ip: &'a [u8; 4], port: u16 },
@@ -163,7 +163,6 @@ pub mod api {
         Remote {},
     }
     #[derive(Clone, Debug)]
-    #[non_exhaustive]
     pub enum EndpointType {
         #[non_exhaustive]
         Server {},
@@ -586,6 +585,15 @@ pub mod api {
         #[non_exhaustive]
         MaxMtu { mtu: u16 },
     }
+    impl<'a> core::fmt::Debug for ConnectionId<'a> {
+        fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+            write!(f, "0x")?;
+            for byte in self.bytes {
+                write!(f, "{:02x}", byte)?;
+            }
+            Ok(())
+        }
+    }
     macro_rules! impl_conn_id {
         ($name:ident) => {
             impl<'a> IntoEvent<builder::ConnectionId<'a>> for &'a crate::connection::id::$name {
@@ -602,6 +610,21 @@ pub mod api {
     impl_conn_id!(PeerId);
     impl_conn_id!(UnboundedId);
     impl_conn_id!(InitialId);
+    impl<'a> core::fmt::Debug for SocketAddress<'a> {
+        fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+            match self {
+                Self::IpV4 { ip, port } => {
+                    let addr = crate::inet::SocketAddressV4::new(**ip, *port);
+                    write!(f, "{}", addr)?;
+                }
+                Self::IpV6 { ip, port } => {
+                    let addr = crate::inet::SocketAddressV6::new(**ip, *port);
+                    write!(f, "{}", addr)?;
+                }
+            }
+            Ok(())
+        }
+    }
     impl<'a> SocketAddress<'a> {
         #[inline]
         pub fn ip(&self) -> &'a [u8] {
@@ -855,6 +878,14 @@ pub mod api {
             }
         }
     }
+    impl core::fmt::Display for EndpointType {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            match self {
+                Self::Client {} => write!(f, "client"),
+                Self::Server {} => write!(f, "server"),
+            }
+        }
+    }
     impl IntoEvent<api::EndpointType> for crate::endpoint::Type {
         fn into_event(self) -> api::EndpointType {
             match self {
@@ -881,6 +912,461 @@ pub mod api {
     impl From<PlatformRxError> for std::io::Error {
         fn from(error: PlatformRxError) -> Self {
             Self::from_raw_os_error(error.errno)
+        }
+    }
+    #[cfg(feature = "event-tracing")]
+    pub mod tracing {
+        use super::api;
+        #[derive(Clone, Debug)]
+        pub struct Subscriber {
+            client: tracing::Span,
+            server: tracing::Span,
+        }
+        impl Default for Subscriber {
+            fn default() -> Self {
+                let root = tracing :: span ! (target : "s2n_quic" , tracing :: Level :: DEBUG , "s2n_quic");
+                let client = tracing :: span ! (parent : root . id () , tracing :: Level :: DEBUG , "client");
+                let server = tracing :: span ! (parent : root . id () , tracing :: Level :: DEBUG , "server");
+                Self { client, server }
+            }
+        }
+        impl super::Subscriber for Subscriber {
+            type ConnectionContext = tracing::Span;
+            fn create_connection_context(
+                &mut self,
+                meta: &api::ConnectionMeta,
+                _info: &api::ConnectionInfo,
+            ) -> Self::ConnectionContext {
+                let parent = match meta.endpoint_type {
+                    api::EndpointType::Client {} => self.client.id(),
+                    api::EndpointType::Server {} => self.server.id(),
+                };
+                tracing :: span ! (target : "s2n_quic" , parent : parent , tracing :: Level :: DEBUG , "conn" , id = meta . id)
+            }
+            #[inline]
+            fn on_alpn_information(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::AlpnInformation,
+            ) {
+                let id = context.id();
+                let api::AlpnInformation { chosen_alpn } = event;
+                tracing :: event ! (target : "alpn_information" , parent : id , tracing :: Level :: DEBUG , chosen_alpn = tracing :: field :: debug (chosen_alpn));
+            }
+            #[inline]
+            fn on_sni_information(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::SniInformation,
+            ) {
+                let id = context.id();
+                let api::SniInformation { chosen_sni } = event;
+                tracing :: event ! (target : "sni_information" , parent : id , tracing :: Level :: DEBUG , chosen_sni = tracing :: field :: debug (chosen_sni));
+            }
+            #[inline]
+            fn on_packet_sent(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::PacketSent,
+            ) {
+                let id = context.id();
+                let api::PacketSent { packet_header } = event;
+                tracing :: event ! (target : "packet_sent" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
+            }
+            #[inline]
+            fn on_packet_received(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::PacketReceived,
+            ) {
+                let id = context.id();
+                let api::PacketReceived { packet_header } = event;
+                tracing :: event ! (target : "packet_received" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
+            }
+            #[inline]
+            fn on_active_path_updated(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::ActivePathUpdated,
+            ) {
+                let id = context.id();
+                let api::ActivePathUpdated { previous, active } = event;
+                tracing :: event ! (target : "active_path_updated" , parent : id , tracing :: Level :: DEBUG , previous = tracing :: field :: debug (previous) , active = tracing :: field :: debug (active));
+            }
+            #[inline]
+            fn on_path_created(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::PathCreated,
+            ) {
+                let id = context.id();
+                let api::PathCreated { active, new } = event;
+                tracing :: event ! (target : "path_created" , parent : id , tracing :: Level :: DEBUG , active = tracing :: field :: debug (active) , new = tracing :: field :: debug (new));
+            }
+            #[inline]
+            fn on_frame_sent(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::FrameSent,
+            ) {
+                let id = context.id();
+                let api::FrameSent {
+                    packet_header,
+                    path_id,
+                    frame,
+                } = event;
+                tracing :: event ! (target : "frame_sent" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path_id = tracing :: field :: debug (path_id) , frame = tracing :: field :: debug (frame));
+            }
+            #[inline]
+            fn on_frame_received(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::FrameReceived,
+            ) {
+                let id = context.id();
+                let api::FrameReceived {
+                    packet_header,
+                    path,
+                    frame,
+                } = event;
+                tracing :: event ! (target : "frame_received" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , frame = tracing :: field :: debug (frame));
+            }
+            #[inline]
+            fn on_packet_lost(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::PacketLost,
+            ) {
+                let id = context.id();
+                let api::PacketLost {
+                    packet_header,
+                    path,
+                    bytes_lost,
+                    is_mtu_probe,
+                } = event;
+                tracing :: event ! (target : "packet_lost" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , bytes_lost = tracing :: field :: debug (bytes_lost) , is_mtu_probe = tracing :: field :: debug (is_mtu_probe));
+            }
+            #[inline]
+            fn on_recovery_metrics(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::RecoveryMetrics,
+            ) {
+                let id = context.id();
+                let api::RecoveryMetrics {
+                    path,
+                    min_rtt,
+                    smoothed_rtt,
+                    latest_rtt,
+                    rtt_variance,
+                    max_ack_delay,
+                    pto_count,
+                    congestion_window,
+                    bytes_in_flight,
+                } = event;
+                tracing :: event ! (target : "recovery_metrics" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , min_rtt = tracing :: field :: debug (min_rtt) , smoothed_rtt = tracing :: field :: debug (smoothed_rtt) , latest_rtt = tracing :: field :: debug (latest_rtt) , rtt_variance = tracing :: field :: debug (rtt_variance) , max_ack_delay = tracing :: field :: debug (max_ack_delay) , pto_count = tracing :: field :: debug (pto_count) , congestion_window = tracing :: field :: debug (congestion_window) , bytes_in_flight = tracing :: field :: debug (bytes_in_flight));
+            }
+            #[inline]
+            fn on_key_update(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::KeyUpdate,
+            ) {
+                let id = context.id();
+                let api::KeyUpdate { key_type } = event;
+                tracing :: event ! (target : "key_update" , parent : id , tracing :: Level :: DEBUG , key_type = tracing :: field :: debug (key_type));
+            }
+            #[inline]
+            fn on_connection_started(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::ConnectionStarted,
+            ) {
+                let id = context.id();
+                let api::ConnectionStarted { path } = event;
+                tracing :: event ! (target : "connection_started" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path));
+            }
+            #[inline]
+            fn on_connection_closed(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::ConnectionClosed,
+            ) {
+                let id = context.id();
+                let api::ConnectionClosed { error } = event;
+                tracing :: event ! (target : "connection_closed" , parent : id , tracing :: Level :: DEBUG , error = tracing :: field :: debug (error));
+            }
+            #[inline]
+            fn on_duplicate_packet(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::DuplicatePacket,
+            ) {
+                let id = context.id();
+                let api::DuplicatePacket {
+                    packet_header,
+                    path,
+                    error,
+                } = event;
+                tracing :: event ! (target : "duplicate_packet" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , error = tracing :: field :: debug (error));
+            }
+            #[inline]
+            fn on_datagram_sent(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::DatagramSent,
+            ) {
+                let id = context.id();
+                let api::DatagramSent { len, gso_offset } = event;
+                tracing :: event ! (target : "datagram_sent" , parent : id , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , gso_offset = tracing :: field :: debug (gso_offset));
+            }
+            #[inline]
+            fn on_datagram_received(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::DatagramReceived,
+            ) {
+                let id = context.id();
+                let api::DatagramReceived { len } = event;
+                tracing :: event ! (target : "datagram_received" , parent : id , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len));
+            }
+            #[inline]
+            fn on_datagram_dropped(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::DatagramDropped,
+            ) {
+                let id = context.id();
+                let api::DatagramDropped { len, reason } = event;
+                tracing :: event ! (target : "datagram_dropped" , parent : id , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , reason = tracing :: field :: debug (reason));
+            }
+            #[inline]
+            fn on_connection_id_updated(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::ConnectionIdUpdated,
+            ) {
+                let id = context.id();
+                let api::ConnectionIdUpdated {
+                    path_id,
+                    cid_consumer,
+                    previous,
+                    current,
+                } = event;
+                tracing :: event ! (target : "connection_id_updated" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , cid_consumer = tracing :: field :: debug (cid_consumer) , previous = tracing :: field :: debug (previous) , current = tracing :: field :: debug (current));
+            }
+            #[inline]
+            fn on_ecn_state_changed(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::EcnStateChanged,
+            ) {
+                let id = context.id();
+                let api::EcnStateChanged { path, state } = event;
+                tracing :: event ! (target : "ecn_state_changed" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , state = tracing :: field :: debug (state));
+            }
+            #[inline]
+            fn on_connection_migration_denied(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::ConnectionMigrationDenied,
+            ) {
+                let id = context.id();
+                let api::ConnectionMigrationDenied { reason } = event;
+                tracing :: event ! (target : "connection_migration_denied" , parent : id , tracing :: Level :: DEBUG , reason = tracing :: field :: debug (reason));
+            }
+            #[inline]
+            fn on_handshake_status_updated(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::HandshakeStatusUpdated,
+            ) {
+                let id = context.id();
+                let api::HandshakeStatusUpdated { status } = event;
+                tracing :: event ! (target : "handshake_status_updated" , parent : id , tracing :: Level :: DEBUG , status = tracing :: field :: debug (status));
+            }
+            #[inline]
+            fn on_tls_client_hello(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::TlsClientHello,
+            ) {
+                let id = context.id();
+                let api::TlsClientHello { payload } = event;
+                tracing :: event ! (target : "tls_client_hello" , parent : id , tracing :: Level :: DEBUG , payload = tracing :: field :: debug (payload));
+            }
+            #[inline]
+            fn on_tls_server_hello(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::TlsServerHello,
+            ) {
+                let id = context.id();
+                let api::TlsServerHello { payload } = event;
+                tracing :: event ! (target : "tls_server_hello" , parent : id , tracing :: Level :: DEBUG , payload = tracing :: field :: debug (payload));
+            }
+            #[inline]
+            fn on_version_information(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::VersionInformation,
+            ) {
+                let parent = match meta.endpoint_type {
+                    api::EndpointType::Client {} => self.client.id(),
+                    api::EndpointType::Server {} => self.server.id(),
+                };
+                let api::VersionInformation {
+                    server_versions,
+                    client_versions,
+                    chosen_version,
+                } = event;
+                tracing :: event ! (target : "version_information" , parent : parent , tracing :: Level :: DEBUG , server_versions = tracing :: field :: debug (server_versions) , client_versions = tracing :: field :: debug (client_versions) , chosen_version = tracing :: field :: debug (chosen_version));
+            }
+            #[inline]
+            fn on_endpoint_packet_sent(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::EndpointPacketSent,
+            ) {
+                let parent = match meta.endpoint_type {
+                    api::EndpointType::Client {} => self.client.id(),
+                    api::EndpointType::Server {} => self.server.id(),
+                };
+                let api::EndpointPacketSent { packet_header } = event;
+                tracing :: event ! (target : "endpoint_packet_sent" , parent : parent , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
+            }
+            #[inline]
+            fn on_endpoint_packet_received(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::EndpointPacketReceived,
+            ) {
+                let parent = match meta.endpoint_type {
+                    api::EndpointType::Client {} => self.client.id(),
+                    api::EndpointType::Server {} => self.server.id(),
+                };
+                let api::EndpointPacketReceived { packet_header } = event;
+                tracing :: event ! (target : "endpoint_packet_received" , parent : parent , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
+            }
+            #[inline]
+            fn on_endpoint_datagram_sent(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::EndpointDatagramSent,
+            ) {
+                let parent = match meta.endpoint_type {
+                    api::EndpointType::Client {} => self.client.id(),
+                    api::EndpointType::Server {} => self.server.id(),
+                };
+                let api::EndpointDatagramSent { len, gso_offset } = event;
+                tracing :: event ! (target : "endpoint_datagram_sent" , parent : parent , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , gso_offset = tracing :: field :: debug (gso_offset));
+            }
+            #[inline]
+            fn on_endpoint_datagram_received(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::EndpointDatagramReceived,
+            ) {
+                let parent = match meta.endpoint_type {
+                    api::EndpointType::Client {} => self.client.id(),
+                    api::EndpointType::Server {} => self.server.id(),
+                };
+                let api::EndpointDatagramReceived { len } = event;
+                tracing :: event ! (target : "endpoint_datagram_received" , parent : parent , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len));
+            }
+            #[inline]
+            fn on_endpoint_datagram_dropped(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::EndpointDatagramDropped,
+            ) {
+                let parent = match meta.endpoint_type {
+                    api::EndpointType::Client {} => self.client.id(),
+                    api::EndpointType::Server {} => self.server.id(),
+                };
+                let api::EndpointDatagramDropped { len, reason } = event;
+                tracing :: event ! (target : "endpoint_datagram_dropped" , parent : parent , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , reason = tracing :: field :: debug (reason));
+            }
+            #[inline]
+            fn on_platform_tx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTx) {
+                let parent = match meta.endpoint_type {
+                    api::EndpointType::Client {} => self.client.id(),
+                    api::EndpointType::Server {} => self.server.id(),
+                };
+                let api::PlatformTx { count } = event;
+                tracing :: event ! (target : "platform_tx" , parent : parent , tracing :: Level :: DEBUG , count = tracing :: field :: debug (count));
+            }
+            #[inline]
+            fn on_platform_tx_error(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::PlatformTxError,
+            ) {
+                let parent = match meta.endpoint_type {
+                    api::EndpointType::Client {} => self.client.id(),
+                    api::EndpointType::Server {} => self.server.id(),
+                };
+                let api::PlatformTxError { errno } = event;
+                tracing :: event ! (target : "platform_tx_error" , parent : parent , tracing :: Level :: DEBUG , errno = tracing :: field :: debug (errno));
+            }
+            #[inline]
+            fn on_platform_rx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRx) {
+                let parent = match meta.endpoint_type {
+                    api::EndpointType::Client {} => self.client.id(),
+                    api::EndpointType::Server {} => self.server.id(),
+                };
+                let api::PlatformRx { count } = event;
+                tracing :: event ! (target : "platform_rx" , parent : parent , tracing :: Level :: DEBUG , count = tracing :: field :: debug (count));
+            }
+            #[inline]
+            fn on_platform_rx_error(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::PlatformRxError,
+            ) {
+                let parent = match meta.endpoint_type {
+                    api::EndpointType::Client {} => self.client.id(),
+                    api::EndpointType::Server {} => self.server.id(),
+                };
+                let api::PlatformRxError { errno } = event;
+                tracing :: event ! (target : "platform_rx_error" , parent : parent , tracing :: Level :: DEBUG , errno = tracing :: field :: debug (errno));
+            }
+            #[inline]
+            fn on_platform_feature_configured(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::PlatformFeatureConfigured,
+            ) {
+                let parent = match meta.endpoint_type {
+                    api::EndpointType::Client {} => self.client.id(),
+                    api::EndpointType::Server {} => self.server.id(),
+                };
+                let api::PlatformFeatureConfigured { configuration } = event;
+                tracing :: event ! (target : "platform_feature_configured" , parent : parent , tracing :: Level :: DEBUG , configuration = tracing :: field :: debug (configuration));
+            }
         }
     }
 }
@@ -1165,9 +1651,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " A context from which the event is being emitted"]
-    #[doc = ""]
-    #[doc = " An event can occur in the context of an Endpoint or Connection"]
     pub enum Subject {
         Endpoint,
         Connection { id: u64 },
@@ -1185,7 +1668,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Used to disambiguate events that can occur for the local or the remote endpoint."]
     pub enum Location {
         Local,
         Remote,
@@ -1258,7 +1740,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " The current state of the ECN controller for the path"]
     pub enum EcnState {
         Testing,
         Unknown,
@@ -1278,7 +1759,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Events tracking the progress of handshake status"]
     pub enum HandshakeStatus {
         Complete,
         Confirmed,
@@ -1298,7 +1778,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Application level protocol"]
     pub struct AlpnInformation<'a> {
         pub chosen_alpn: &'a [u8],
     }
@@ -1312,7 +1791,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Server Name Indication"]
     pub struct SniInformation<'a> {
         pub chosen_sni: &'a str,
     }
@@ -1326,7 +1804,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Packet was sent by a connection"]
     pub struct PacketSent {
         pub packet_header: PacketHeader,
     }
@@ -1340,7 +1817,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Packet was received by a connection"]
     pub struct PacketReceived {
         pub packet_header: PacketHeader,
     }
@@ -1354,7 +1830,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Active path was updated"]
     pub struct ActivePathUpdated<'a> {
         pub previous: Path<'a>,
         pub active: Path<'a>,
@@ -1370,7 +1845,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " A new path was created"]
     pub struct PathCreated<'a> {
         pub active: Path<'a>,
         pub new: Path<'a>,
@@ -1386,7 +1860,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Frame was sent"]
     pub struct FrameSent {
         pub packet_header: PacketHeader,
         pub path_id: u64,
@@ -1408,7 +1881,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Frame was received"]
     pub struct FrameReceived<'a> {
         pub packet_header: PacketHeader,
         pub path: Path<'a>,
@@ -1430,7 +1902,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Packet was lost"]
     pub struct PacketLost<'a> {
         pub packet_header: PacketHeader,
         pub path: Path<'a>,
@@ -1455,7 +1926,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Recovery metrics updated"]
     pub struct RecoveryMetrics<'a> {
         pub path: Path<'a>,
         pub min_rtt: Duration,
@@ -1495,7 +1965,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Crypto key updated"]
     pub struct KeyUpdate {
         pub key_type: KeyType,
     }
@@ -1509,7 +1978,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Connection started"]
     pub struct ConnectionStarted<'a> {
         pub path: Path<'a>,
     }
@@ -1523,7 +1991,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Connection closed"]
     pub struct ConnectionClosed {
         pub error: crate::connection::Error,
     }
@@ -1537,7 +2004,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Duplicate packet received"]
     pub struct DuplicatePacket<'a> {
         pub packet_header: PacketHeader,
         pub path: Path<'a>,
@@ -1559,7 +2025,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Datagram sent by a connection"]
     pub struct DatagramSent {
         pub len: u16,
         #[doc = " The GSO offset at which this datagram was written"]
@@ -1581,7 +2046,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Datagram received by a connection"]
     pub struct DatagramReceived {
         pub len: u16,
     }
@@ -1595,7 +2059,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Datagram dropped by a connection"]
     pub struct DatagramDropped {
         pub len: u16,
         pub reason: DropReason,
@@ -1611,7 +2074,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " ConnectionId updated"]
     pub struct ConnectionIdUpdated<'a> {
         pub path_id: u64,
         #[doc = " The endpoint that updated its connection id"]
@@ -1704,7 +2166,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " QUIC version"]
     pub struct VersionInformation<'a> {
         pub server_versions: &'a [u32],
         pub client_versions: &'a [u32],
@@ -1726,7 +2187,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Packet was sent by the endpoint"]
     pub struct EndpointPacketSent {
         pub packet_header: PacketHeader,
     }
@@ -1740,7 +2200,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Packet was received by the endpoint"]
     pub struct EndpointPacketReceived {
         pub packet_header: PacketHeader,
     }
@@ -1754,7 +2213,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Datagram sent by the endpoint"]
     pub struct EndpointDatagramSent {
         pub len: u16,
         #[doc = " The GSO offset at which this datagram was written"]
@@ -1776,7 +2234,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Datagram received by the endpoint"]
     pub struct EndpointDatagramReceived {
         pub len: u16,
     }
@@ -1790,7 +2247,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Datagram dropped by the endpoint"]
     pub struct EndpointDatagramDropped {
         pub len: u16,
         pub reason: DropReason,
@@ -1806,7 +2262,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Emitted when the platform sends at least one packet"]
     pub struct PlatformTx {
         #[doc = " The number of packets sent"]
         pub count: usize,
@@ -1821,7 +2276,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Emitted when the platform returns an error while sending datagrams"]
     pub struct PlatformTxError {
         #[doc = " The error code returned by the platform"]
         pub errno: i32,
@@ -1836,7 +2290,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Emitted when the platform receives at least one packet"]
     pub struct PlatformRx {
         #[doc = " The number of packets received"]
         pub count: usize,
@@ -1851,7 +2304,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Emitted when the platform returns an error while receiving datagrams"]
     pub struct PlatformRxError {
         #[doc = " The error code returned by the platform"]
         pub errno: i32,
@@ -1866,7 +2318,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Emitted when a platform feature is configured"]
     pub struct PlatformFeatureConfigured {
         pub configuration: PlatformFeatureConfiguration,
     }

@@ -29,6 +29,8 @@ async fn main() {
 
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_level(false)
+        .with_timer(tracing_subscriber::fmt::time::uptime())
         .init();
 
     match Arguments::from_args_safe() {

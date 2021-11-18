@@ -172,7 +172,10 @@ impl Interop {
             .with_io(io)?
             .with_tls(tls)?
             .with_endpoint_limits(limits)?
-            .with_event(EventSubscriber(1))?
+            .with_event((
+                EventSubscriber(1),
+                s2n_quic::provider::event::tracing::Subscriber::default(),
+            ))?
             .start()
             .unwrap();
 
@@ -242,15 +245,6 @@ impl Subscriber for EventSubscriber {
         }
     }
 
-    fn on_active_path_updated(
-        &mut self,
-        _context: &mut Self::ConnectionContext,
-        meta: &events::ConnectionMeta,
-        event: &events::ActivePathUpdated,
-    ) {
-        debug!("{:?} {:?}", meta.id, event);
-    }
-
     fn on_packet_sent(
         &mut self,
         context: &mut Self::ConnectionContext,
@@ -258,60 +252,5 @@ impl Subscriber for EventSubscriber {
         _event: &events::PacketSent,
     ) {
         context.packet_sent += 1;
-    }
-
-    fn on_platform_feature_configured(
-        &mut self,
-        _meta: &events::EndpointMeta,
-        event: &events::PlatformFeatureConfigured,
-    ) {
-        debug!("{:?}", event.configuration)
-    }
-
-    fn on_frame_sent(
-        &mut self,
-        _context: &mut Self::ConnectionContext,
-        meta: &events::ConnectionMeta,
-        event: &events::FrameSent,
-    ) {
-        if let events::EndpointType::Server { .. } = meta.endpoint_type {
-            if let events::Frame::HandshakeDone { .. } = event.frame {
-                debug!("{:?} Handshake is complete and confirmed at Server! HANDSHAKE_DONE frame was sent", meta)
-            }
-        }
-    }
-
-    fn on_frame_received(
-        &mut self,
-        _context: &mut Self::ConnectionContext,
-        meta: &events::ConnectionMeta,
-        event: &events::FrameReceived,
-    ) {
-        if let events::EndpointType::Client { .. } = meta.endpoint_type {
-            if let events::Frame::HandshakeDone { .. } = event.frame {
-                debug!(
-                    "{:?} Handshake is confirmed at Client. HANDSHAKE_DONE frame was received",
-                    meta
-                )
-            }
-        }
-    }
-
-    fn on_connection_migration_denied(
-        &mut self,
-        _context: &mut Self::ConnectionContext,
-        meta: &events::ConnectionMeta,
-        event: &events::ConnectionMigrationDenied,
-    ) {
-        debug!("{:?} {:?}", meta.id, event);
-    }
-
-    fn on_handshake_status_updated(
-        &mut self,
-        _context: &mut Self::ConnectionContext,
-        meta: &events::ConnectionMeta,
-        event: &events::HandshakeStatusUpdated,
-    ) {
-        debug!("{:?} {:?}", meta.id, event);
     }
 }
