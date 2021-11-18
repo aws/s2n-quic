@@ -203,13 +203,16 @@ pub mod api {
     #[non_exhaustive]
     pub enum PacketDropReason<'a> {
         #[non_exhaustive]
-        ConnectionError {},
+        ConnectionError { path: Path<'a> },
         #[non_exhaustive]
-        HandshakeNotComplete {},
+        HandshakeNotComplete { path: Path<'a> },
         #[non_exhaustive]
-        VersionMismatch { version: u32 },
+        VersionMismatch { version: u32, path: Path<'a> },
         #[non_exhaustive]
-        ConnectionIdMismatch { packet_cid: &'a [u8] },
+        ConnectionIdMismatch {
+            packet_cid: &'a [u8],
+            path: Path<'a>,
+        },
         #[non_exhaustive]
         UnprotectFailed {
             space: ProtectedSpace,
@@ -220,6 +223,8 @@ pub mod api {
             path: Path<'a>,
             packet_header: PacketHeader,
         },
+        #[non_exhaustive]
+        DecodingFailed { path: Path<'a> },
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -366,12 +371,12 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    #[doc = " Packet was lost"]
+    #[doc = " Packet was dropped with the given reason"]
     pub struct PacketDropped<'a> {
         pub reason: PacketDropReason<'a>,
     }
     impl<'a> Event for PacketDropped<'a> {
-        const NAME: &'static str = "recovery:packet_dropped";
+        const NAME: &'static str = "transport:packet_dropped";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1797,13 +1802,19 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub enum PacketDropReason<'a> {
-        ConnectionError,
-        HandshakeNotComplete,
+        ConnectionError {
+            path: Path<'a>,
+        },
+        HandshakeNotComplete {
+            path: Path<'a>,
+        },
         VersionMismatch {
             version: u32,
+            path: Path<'a>,
         },
         ConnectionIdMismatch {
             packet_cid: &'a [u8],
+            path: Path<'a>,
         },
         UnprotectFailed {
             space: ProtectedSpace,
@@ -1813,19 +1824,28 @@ pub mod builder {
             path: Path<'a>,
             packet_header: PacketHeader,
         },
+        DecodingFailed {
+            path: Path<'a>,
+        },
     }
     impl<'a> IntoEvent<api::PacketDropReason<'a>> for PacketDropReason<'a> {
         #[inline]
         fn into_event(self) -> api::PacketDropReason<'a> {
             use api::PacketDropReason::*;
             match self {
-                Self::ConnectionError => ConnectionError {},
-                Self::HandshakeNotComplete => HandshakeNotComplete {},
-                Self::VersionMismatch { version } => VersionMismatch {
-                    version: version.into_event(),
+                Self::ConnectionError { path } => ConnectionError {
+                    path: path.into_event(),
                 },
-                Self::ConnectionIdMismatch { packet_cid } => ConnectionIdMismatch {
+                Self::HandshakeNotComplete { path } => HandshakeNotComplete {
+                    path: path.into_event(),
+                },
+                Self::VersionMismatch { version, path } => VersionMismatch {
+                    version: version.into_event(),
+                    path: path.into_event(),
+                },
+                Self::ConnectionIdMismatch { packet_cid, path } => ConnectionIdMismatch {
                     packet_cid: packet_cid.into_event(),
+                    path: path.into_event(),
                 },
                 Self::UnprotectFailed { space, path } => UnprotectFailed {
                     space: space.into_event(),
@@ -1837,6 +1857,9 @@ pub mod builder {
                 } => DecryptionFailed {
                     path: path.into_event(),
                     packet_header: packet_header.into_event(),
+                },
+                Self::DecodingFailed { path } => DecodingFailed {
+                    path: path.into_event(),
                 },
             }
         }

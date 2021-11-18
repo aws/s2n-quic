@@ -280,6 +280,7 @@ impl connection::Trait for TestConnection {
     fn emit_event<F>(
         &mut self,
         _timestamp: Timestamp,
+        _path_id: path::Id,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         _f: F,
     ) where
@@ -287,6 +288,7 @@ impl connection::Trait for TestConnection {
             &mut event::ConnectionPublisherSubscriber<
                 <Self::Config as endpoint::Config>::EventSubscriber,
             >,
+            &path::Path<Self::Config>,
         ),
     {
         todo!()

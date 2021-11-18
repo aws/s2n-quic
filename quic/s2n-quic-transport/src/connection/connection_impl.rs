@@ -15,7 +15,8 @@ use crate::{
         ProcessingError,
     },
     contexts::{ConnectionApiCallContext, ConnectionOnTransmitError},
-    endpoint, path,
+    endpoint,
+    path::{self, path_event},
     recovery::RttEstimator,
     space::{PacketSpace, PacketSpaceManager},
     stream, transmission,
@@ -1049,8 +1050,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
         if !self.space_manager.is_handshake_complete() {
+            let path = &self.path_manager[path_id];
             publisher.on_packet_dropped(event::builder::PacketDropped {
-                reason: event::builder::PacketDropReason::HandshakeNotComplete {},
+                reason: event::builder::PacketDropReason::HandshakeNotComplete {
+                    path: path_event!(path, path_id),
+                },
             });
 
             //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.7
@@ -1412,6 +1416,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     fn emit_event<F>(
         &mut self,
         timestamp: Timestamp,
+        path_id: path::Id,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         f: F,
     ) where
@@ -1419,10 +1424,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             &mut event::ConnectionPublisherSubscriber<
                 <Self::Config as endpoint::Config>::EventSubscriber,
             >,
+            &path::Path<Self::Config>,
         ),
     {
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
-        f(&mut publisher);
+        let path = &self.path_manager[path_id];
+        f(&mut publisher, path);
     }
 }
 
