@@ -10,7 +10,9 @@ use crate::{
         ConnectionIdMapper, Parameters as ConnectionParameters, ProcessingError,
     },
     contexts::ConnectionOnTransmitError,
-    endpoint, path, stream,
+    endpoint,
+    path::{self, path_event},
+    stream,
 };
 use bytes::Bytes;
 use core::task::{Context, Poll};
@@ -18,7 +20,7 @@ use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     application,
     application::Sni,
-    event,
+    event::{self, ConnectionPublisher, IntoEvent},
     inet::{DatagramInfo, SocketAddress},
     io::tx,
     packet::{
@@ -198,7 +200,19 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         //# initially selected, it MUST discard that packet.
         if let Some(version) = packet.version() {
             if version != self.quic_version() {
-                // TODO emit packet dropped event here with version mismatch reason
+                self.with_event_publisher(
+                    datagram.timestamp,
+                    path_id,
+                    subscriber,
+                    |publisher, path| {
+                        publisher.on_packet_dropped(event::builder::PacketDropped {
+                            reason: event::builder::PacketDropReason::VersionMismatch {
+                                version,
+                                path: path_event!(path, path_id),
+                            },
+                        })
+                    },
+                );
                 return Ok(());
             }
         }
@@ -266,7 +280,19 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 if datagram.destination_connection_id.as_bytes()
                     != packet.destination_connection_id()
                 {
-                    // TODO emit packet dropped event with different CID reason
+                    self.with_event_publisher(
+                        datagram.timestamp,
+                        path_id,
+                        subscriber,
+                        |publisher, path| {
+                            publisher.on_packet_dropped(event::builder::PacketDropped {
+                                reason: event::builder::PacketDropReason::ConnectionIdMismatch {
+                                    packet_cid: packet.destination_connection_id(),
+                                    path: path_event!(path, path_id),
+                                },
+                            })
+                        },
+                    );
                     break;
                 }
 
@@ -278,6 +304,20 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                     // silently discarded, but this method could return an error on protocol
                     // violations which would result in shutting down the connection anyway. In this
                     // case this will return early without processing the remaining packets.
+                    if !payload.is_empty() {
+                        self.with_event_publisher(
+                            datagram.timestamp,
+                            path_id,
+                            subscriber,
+                            |publisher, path| {
+                                publisher.on_packet_dropped(event::builder::PacketDropped {
+                                    reason: event::builder::PacketDropReason::ConnectionError {
+                                        path: path_event!(path, path_id),
+                                    },
+                                })
+                            },
+                        );
+                    }
                     return Err(err);
                 }
             } else {
@@ -290,11 +330,21 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 //# not available or for any other reason), the receiver MAY either
                 //# discard or buffer the packet for later processing and MUST attempt to
                 //# process the remaining packets.
-
-                // we choose to discard the rest of the datagram on parsing errors since it would
-                // be difficult to recover from an invalid packet.
-
-                // TODO emit packet dropped event with packet corruption reason
+                //
+                // We choose to discard the rest of the datagram on parsing errors since it
+                // would be difficult to recover from an invalid packet.
+                self.with_event_publisher(
+                    datagram.timestamp,
+                    path_id,
+                    subscriber,
+                    |publisher, path| {
+                        publisher.on_packet_dropped(event::builder::PacketDropped {
+                            reason: event::builder::PacketDropReason::DecodingFailed {
+                                path: path_event!(path, path_id),
+                            },
+                        })
+                    },
+                );
 
                 break;
             }
@@ -339,6 +389,20 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     fn query_event_context(&self, query: &mut dyn event::query::Query);
 
     fn query_event_context_mut(&mut self, query: &mut dyn event::query::QueryMut);
+
+    fn with_event_publisher<F>(
+        &mut self,
+        timestamp: Timestamp,
+        path_id: path::Id,
+        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        f: F,
+    ) where
+        F: FnOnce(
+            &mut event::ConnectionPublisherSubscriber<
+                <Self::Config as endpoint::Config>::EventSubscriber,
+            >,
+            &path::Path<Self::Config>,
+        );
 }
 
 /// A lock that synchronizes connection state between the QUIC endpoint thread and application

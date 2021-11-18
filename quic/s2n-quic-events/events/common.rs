@@ -501,7 +501,7 @@ impl IntoEvent<builder::EndpointType> for crate::endpoint::Type {
     }
 }
 
-enum DropReason {
+enum DatagramDropReason {
     DecodingFailed,
     InvalidRetryToken,
     ConnectionNotAllowed,
@@ -511,7 +511,48 @@ enum DropReason {
     RejectedConnectionAttempt,
 }
 
-enum DenyReason {
+enum ProtectedSpace {
+    Initial {},
+    Handshake {},
+    ZeroRtt {},
+    OneRtt {},
+}
+
+enum PacketDropReason<'a> {
+    /// A connection error occured and is no longer able to process packets.
+    ConnectionError { path: Path<'a> },
+    /// The handshake needed to be complete before processing the packet.
+    ///
+    /// To ensure the connection stays secure, short packets can only be processed
+    /// once the handshake has completed.
+    HandshakeNotComplete { path: Path<'a> },
+    /// The packet contained a version which did not match the version negotiated
+    /// during the handshake.
+    VersionMismatch { version: u32, path: Path<'a> },
+    /// A datagram contained more than one destination connection ID, which is
+    /// unallowed.
+    ConnectionIdMismatch {
+        packet_cid: &'a [u8],
+        path: Path<'a>,
+    },
+    /// There was a failure when attempting to remove header protection.
+    UnprotectFailed {
+        space: ProtectedSpace,
+        path: Path<'a>,
+    },
+    /// There was a failure when attempting to decrypt the packet.
+    DecryptionFailed {
+        path: Path<'a>,
+        packet_header: PacketHeader,
+    },
+    /// Packet decoding failed.
+    ///
+    /// The payload is decoded one packet at a time. If decoding fails
+    /// then the remaining packets are also discarded.
+    DecodingFailed { path: Path<'a> },
+}
+
+enum MigrationDenyReason {
     PortScopeChanged,
     IpScopeChange,
     ConnectionMigrationDisabled,

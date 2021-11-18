@@ -315,13 +315,35 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         publisher: &mut Pub,
     ) -> Result<CleartextHandshake<'a>, ProcessingError> {
         let packet_number_decoder = self.packet_number_decoder();
-        let packet = protected.unprotect(&self.header_key, packet_number_decoder)?;
+
+        let packet = protected
+            .unprotect(&self.header_key, packet_number_decoder)
+            .map_err(|err| {
+                publisher.on_packet_dropped(event::builder::PacketDropped {
+                    reason: event::builder::PacketDropReason::UnprotectFailed {
+                        space: event::builder::ProtectedSpace::Handshake,
+                        path: path_event!(path, path_id),
+                    },
+                });
+                err
+            })?;
 
         if self.is_duplicate(packet.packet_number, path_id, path, publisher) {
             return Err(ProcessingError::DuplicatePacket);
         }
 
-        Ok(packet.decrypt(&self.key)?)
+        let packet_header =
+            event::builder::PacketHeader::new(packet.packet_number, publisher.quic_version());
+        let decrypted = packet.decrypt(&self.key).map_err(|err| {
+            publisher.on_packet_dropped(event::builder::PacketDropped {
+                reason: event::builder::PacketDropReason::DecryptionFailed {
+                    packet_header,
+                    path: path_event!(path, path_id),
+                },
+            });
+            err
+        })?;
+        Ok(decrypted)
     }
 }
 

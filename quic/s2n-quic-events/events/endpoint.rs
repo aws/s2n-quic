@@ -58,5 +58,5 @@ struct EndpointDatagramReceived {
 /// Datagram dropped by the endpoint
 struct EndpointDatagramDropped {
     len: u16,
-    reason: DropReason,
+    reason: DatagramDropReason,
 }

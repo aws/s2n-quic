@@ -95,6 +95,12 @@ struct RecoveryMetrics<'a> {
     bytes_in_flight: u32,
 }
 
+#[event("transport:packet_dropped")]
+/// Packet was dropped with the given reason
+struct PacketDropped<'a> {
+    reason: PacketDropReason<'a>,
+}
+
 #[event("security:key_update")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.2.1
 /// Crypto key updated
@@ -150,7 +156,7 @@ struct DatagramReceived {
 /// Datagram dropped by a connection
 struct DatagramDropped {
     len: u16,
-    reason: DropReason,
+    reason: DatagramDropReason,
 }
 
 #[event("connectivity:connection_id_updated")]
@@ -173,7 +179,7 @@ struct EcnStateChanged<'a> {
 
 #[event("connectivity:connection_migration_denied")]
 struct ConnectionMigrationDenied {
-    reason: DenyReason,
+    reason: MigrationDenyReason,
 }
 
 #[event("connectivity:handshake_status_updated")]

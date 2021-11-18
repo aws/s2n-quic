@@ -366,7 +366,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 );
                 publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
                     len: payload_len as u16,
-                    reason: event::builder::DropReason::RejectedConnectionAttempt,
+                    reason: event::builder::DatagramDropReason::RejectedConnectionAttempt,
                 });
                 None
             }
@@ -423,7 +423,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 );
                 publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
                     len: payload_len as u16,
-                    reason: event::builder::DropReason::DecodingFailed,
+                    reason: event::builder::DatagramDropReason::DecodingFailed,
                 });
             }
 
@@ -449,7 +449,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         {
             publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
                 len: payload_len as u16,
-                reason: event::builder::DropReason::UnsupportedVersion,
+                reason: event::builder::DatagramDropReason::UnsupportedVersion,
             });
             return;
         }
@@ -462,7 +462,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     publisher.on_endpoint_datagram_dropped(
                         event::builder::EndpointDatagramDropped {
                             len: payload_len as u16,
-                            reason: event::builder::DropReason::InvalidDestinationConnectionId,
+                            reason:
+                                event::builder::DatagramDropReason::InvalidDestinationConnectionId,
                         },
                     );
                     return;
@@ -604,20 +605,21 @@ impl<Cfg: Config> Endpoint<Cfg> {
         if Cfg::ENDPOINT_TYPE.is_server() {
             match packet {
                 ProtectedPacket::Initial(packet) => {
-                    let source_connection_id =
-                        match connection::PeerId::try_from_bytes(packet.source_connection_id()) {
-                            Some(connection_id) => connection_id,
-                            None => {
-                                publisher.on_endpoint_datagram_dropped(
+                    let source_connection_id = match connection::PeerId::try_from_bytes(
+                        packet.source_connection_id(),
+                    ) {
+                        Some(connection_id) => connection_id,
+                        None => {
+                            publisher.on_endpoint_datagram_dropped(
                                     event::builder::EndpointDatagramDropped {
                                         len: payload_len as u16,
                                         reason:
-                                            event::builder::DropReason::InvalidSourceConnectionId,
+                                            event::builder::DatagramDropReason::InvalidSourceConnectionId,
                                     },
                                 );
-                                return;
-                            }
-                        };
+                            return;
+                        }
+                    };
 
                     //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
                     //= type=TODO
@@ -661,7 +663,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             publisher.on_endpoint_datagram_dropped(
                                 event::builder::EndpointDatagramDropped {
                                     len: payload_len as u16,
-                                    reason: event::builder::DropReason::InvalidRetryToken,
+                                    reason: event::builder::DatagramDropReason::InvalidRetryToken,
                                 },
                             );
 
@@ -691,7 +693,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             publisher.on_endpoint_datagram_dropped(
                                 event::builder::EndpointDatagramDropped {
                                     len: payload_len as u16,
-                                    reason: event::builder::DropReason::ConnectionNotAllowed,
+                                    reason:
+                                        event::builder::DatagramDropReason::ConnectionNotAllowed,
                                 },
                             );
 

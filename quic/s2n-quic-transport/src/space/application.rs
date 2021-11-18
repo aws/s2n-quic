@@ -405,9 +405,21 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         publisher: &mut Pub,
     ) -> Result<CleartextShort<'a>, ProcessingError> {
         let largest_acked = self.ack_manager.largest_received_packet_number_acked();
-        let packet = protected.unprotect(&self.header_key, largest_acked)?;
-        let packet_number = packet.packet_number;
+        let packet = protected
+            .unprotect(&self.header_key, largest_acked)
+            .map_err(|err| {
+                publisher.on_packet_dropped(event::builder::PacketDropped {
+                    reason: event::builder::PacketDropReason::UnprotectFailed {
+                        space: event::builder::ProtectedSpace::OneRtt,
+                        path: path_event!(path, path_id),
+                    },
+                });
+                err
+            })?;
 
+        let packet_number = packet.packet_number;
+        let packet_header =
+            event::builder::PacketHeader::new(packet.packet_number, publisher.quic_version());
         let decrypted = self.key_set.decrypt_packet(
             packet,
             largest_acked,
@@ -427,12 +439,22 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                     .rtt_estimator
                     .pto_period(1, PacketNumberSpace::ApplicationData),
         );
-        if let Ok((_, Some(generation))) = decrypted {
-            publisher.on_key_update(event::builder::KeyUpdate {
-                key_type: event::builder::KeyType::OneRtt { generation },
-            });
+        match decrypted {
+            Ok((_, Some(generation))) => {
+                publisher.on_key_update(event::builder::KeyUpdate {
+                    key_type: event::builder::KeyType::OneRtt { generation },
+                });
+            }
+            Ok(_) => {}
+            Err(_) => {
+                publisher.on_packet_dropped(event::builder::PacketDropped {
+                    reason: event::builder::PacketDropReason::DecryptionFailed {
+                        packet_header,
+                        path: path_event!(path, path_id),
+                    },
+                });
+            }
         }
-
         //= https://www.rfc-editor.org/rfc/rfc9001.txt#9.5
         //# For authentication to be
         //# free from side channels, the entire process of header protection

@@ -869,13 +869,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     packet_number,
                     publisher.quic_version(),
                 ),
-                path: event::builder::Path {
-                    local_addr: path.local_address().into_event(),
-                    local_cid: path.local_connection_id.into_event(),
-                    remote_addr: path.remote_address().into_event(),
-                    remote_cid: path.peer_connection_id.into_event(),
-                    id: current_path_id.into_event(),
-                },
+                path: path_event!(path, current_path_id),
                 bytes_lost: sent_info.sent_bytes,
                 is_mtu_probe,
             });

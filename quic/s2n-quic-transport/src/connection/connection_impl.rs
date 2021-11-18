@@ -15,7 +15,8 @@ use crate::{
         ProcessingError,
     },
     contexts::{ConnectionApiCallContext, ConnectionOnTransmitError},
-    endpoint, path,
+    endpoint,
+    path::{self, path_event},
     recovery::RttEstimator,
     space::{PacketSpace, PacketSpaceManager},
     stream, transmission,
@@ -1047,7 +1048,15 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# process incoming 1-RTT protected packets before the TLS handshake is
         //# complete.
 
+        let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
         if !self.space_manager.is_handshake_complete() {
+            let path = &self.path_manager[path_id];
+            publisher.on_packet_dropped(event::builder::PacketDropped {
+                reason: event::builder::PacketDropReason::HandshakeNotComplete {
+                    path: path_event!(path, path_id),
+                },
+            });
+
             //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.7
             //= type=TODO
             //= tracking-issue=320
@@ -1071,8 +1080,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         }
 
         if let Some((space, handshake_status)) = self.space_manager.application_mut() {
-            let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
-
             let packet = space.validate_and_decrypt_packet(
                 packet,
                 datagram,
@@ -1404,6 +1411,25 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             &mut self.event_context.context,
             query,
         );
+    }
+
+    fn with_event_publisher<F>(
+        &mut self,
+        timestamp: Timestamp,
+        path_id: path::Id,
+        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        f: F,
+    ) where
+        F: FnOnce(
+            &mut event::ConnectionPublisherSubscriber<
+                <Self::Config as endpoint::Config>::EventSubscriber,
+            >,
+            &path::Path<Self::Config>,
+        ),
+    {
+        let mut publisher = self.event_context.publisher(timestamp, subscriber);
+        let path = &self.path_manager[path_id];
+        f(&mut publisher, path);
     }
 }
 
