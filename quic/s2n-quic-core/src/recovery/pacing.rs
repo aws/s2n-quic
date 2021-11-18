@@ -22,7 +22,10 @@ const SLOW_START_N: f32 = 2.0;
 //# Senders SHOULD limit bursts to the initial congestion window
 const MAX_BURST_PACKETS: u16 = 10;
 
+/// A packet pacer that returns departure times that evenly distribute bursts of packets over time
+#[derive(Default)]
 pub struct Pacer {
+    // The capacity of the current
     capacity: usize,
     next_packet_departure_time: Option<Timestamp>,
 }
@@ -30,14 +33,6 @@ pub struct Pacer {
 // TODO: Remove when used
 #[allow(dead_code)]
 impl Pacer {
-    /// Constructs a new `Pacer` with the given `max_datagram_size`
-    pub fn new(max_datagram_size: u16) -> Self {
-        Self {
-            capacity: (MAX_BURST_PACKETS * max_datagram_size) as usize,
-            next_packet_departure_time: None,
-        }
-    }
-
     /// Called when each packet has been written
     #[inline]
     pub fn on_packet_sent(
@@ -50,7 +45,10 @@ impl Pacer {
         slow_start: bool,
     ) {
         match self.next_packet_departure_time {
-            None => self.next_packet_departure_time = Some(now),
+            None => {
+                self.next_packet_departure_time = Some(now);
+                self.capacity = (MAX_BURST_PACKETS * max_datagram_size) as usize;
+            }
             Some(next_packet_departure_time) if self.capacity == 0 => {
                 let interval = Self::interval(
                     rtt_estimator,
@@ -68,8 +66,9 @@ impl Pacer {
         self.capacity = self.capacity.saturating_sub(bytes_sent);
     }
 
-    /// Returns the earliest time that a packet may be transmitted, or `None` if there is
-    /// no restriction on the transmission time.
+    /// Returns the earliest time that a packet may be transmitted.
+    ///
+    /// If the time is in the past or is `None`, the packet should be transmitted immediately.
     pub fn earliest_departure_time(&self) -> Option<Timestamp> {
         self.next_packet_departure_time
     }
@@ -82,6 +81,8 @@ impl Pacer {
         max_datagram_size: u16,
         slow_start: bool,
     ) -> Duration {
+        debug_assert_ne!(congestion_window, 0);
+
         let n = if slow_start { SLOW_START_N } else { N };
 
         //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.7
