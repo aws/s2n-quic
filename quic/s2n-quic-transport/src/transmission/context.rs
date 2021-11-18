@@ -115,7 +115,7 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
 
         self.publisher.on_frame_sent(event::builder::FrameSent {
             packet_header: event::builder::PacketHeader::new(
-                &self.packet_number,
+                self.packet_number,
                 self.publisher.quic_version(),
             ),
             path_id: self.path_id.into_event(),
@@ -139,7 +139,7 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
 
         self.publisher.on_frame_sent(event::builder::FrameSent {
             packet_header: event::builder::PacketHeader::new(
-                &self.packet_number,
+                self.packet_number,
                 self.publisher.quic_version(),
             ),
             path_id: self.path_id.into_event(),

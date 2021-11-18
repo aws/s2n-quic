@@ -885,7 +885,7 @@ pub mod api {
     }
     impl builder::PacketHeader {
         pub fn new(
-            packet_number: &crate::packet::number::PacketNumber,
+            packet_number: crate::packet::number::PacketNumber,
             version: u32,
         ) -> builder::PacketHeader {
             use crate::packet::number::PacketNumberSpace;

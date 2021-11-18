@@ -90,7 +90,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         if let Err(error) = packet_check {
             publisher.on_duplicate_packet(event::builder::DuplicatePacket {
                 packet_header: event::builder::PacketHeader::new(
-                    &packet_number,
+                    packet_number,
                     publisher.quic_version(),
                 ),
                 path: path_event!(path, path_id),
@@ -327,13 +327,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
                 publisher.on_packet_dropped(event::builder::PacketDropped {
                     reason: event::builder::PacketDropReason::UnprotectFailed {
                         space: event::builder::ProtectedSpace::Initial,
-                        path: event::builder::Path {
-                            local_addr: path.local_address().into_event(),
-                            local_cid: path.local_connection_id.into_event(),
-                            remote_addr: path.remote_address().into_event(),
-                            remote_cid: path.peer_connection_id.into_event(),
-                            id: path_id.into_event(),
-                        },
+                        path: path_event!(path, path_id),
                     },
                 });
                 err
@@ -344,18 +338,12 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         }
 
         let packet_header =
-            event::builder::PacketHeader::new(&packet.packet_number, publisher.quic_version());
+            event::builder::PacketHeader::new(packet.packet_number, publisher.quic_version());
         let decrypted = packet.decrypt(&self.key).map_err(|err| {
             publisher.on_packet_dropped(event::builder::PacketDropped {
                 reason: event::builder::PacketDropReason::DecryptionFailed {
                     packet_header,
-                    path: event::builder::Path {
-                        local_addr: path.local_address().into_event(),
-                        local_cid: path.local_connection_id.into_event(),
-                        remote_addr: path.remote_address().into_event(),
-                        remote_cid: path.peer_connection_id.into_event(),
-                        id: path_id.into_event(),
-                    },
+                    path: path_event!(path, path_id),
                 },
             });
             err

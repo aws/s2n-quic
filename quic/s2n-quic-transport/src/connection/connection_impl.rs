@@ -878,7 +878,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             publisher.on_packet_received(event::builder::PacketReceived {
                 packet_header: event::builder::PacketHeader::new(
-                    &packet.packet_number,
+                    packet.packet_number,
                     packet.version,
                 ),
             });
@@ -980,7 +980,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             publisher.on_packet_received(event::builder::PacketReceived {
                 packet_header: event::builder::PacketHeader::new(
-                    &packet.packet_number,
+                    packet.packet_number,
                     packet.version,
                 ),
             });
@@ -1117,7 +1117,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
             publisher.on_packet_received(event::builder::PacketReceived {
                 packet_header: event::builder::PacketHeader::new(
-                    &packet.packet_number,
+                    packet.packet_number,
                     publisher.quic_version(),
                 ),
             });

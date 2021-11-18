@@ -95,8 +95,8 @@ struct RecoveryMetrics<'a> {
     bytes_in_flight: u32,
 }
 
-#[event("recovery:packet_dropped")]
-/// Packet was lost
+#[event("transport:packet_dropped")]
+/// Packet was dropped with the given reason
 struct PacketDropped<'a> {
     reason: PacketDropReason<'a>,
 }

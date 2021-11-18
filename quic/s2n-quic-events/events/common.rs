@@ -397,7 +397,7 @@ enum PacketHeader {
 
 impl builder::PacketHeader {
     pub fn new(
-        packet_number: &crate::packet::number::PacketNumber,
+        packet_number: crate::packet::number::PacketNumber,
         version: u32,
     ) -> builder::PacketHeader {
         use crate::packet::number::PacketNumberSpace;
@@ -519,18 +519,25 @@ enum ProtectedSpace {
 }
 
 enum PacketDropReason<'a> {
+    /// A connection error can happen due to protocol violation
+    /// and retults in the connection being closed.
     ConnectionError {},
+    /// Short packets can only be processed once the handshake
+    /// has completed.
     HandshakeNotComplete,
-    VersionMismatch {
-        version: u32,
-    },
-    ConnectionIdMismatch {
-        packet_cid: &'a [u8],
-    },
+    /// The packet specified in the version must match the version
+    /// negotiated during the handshake.
+    VersionMismatch { version: u32 },
+    /// A single UDP datagram must not coalesce packets with
+    /// different Destination Connection Id.
+    ConnectionIdMismatch { packet_cid: &'a [u8] },
+    /// There was a failure when attempting to remove header
+    /// protection.
     UnprotectFailed {
         space: ProtectedSpace,
         path: Path<'a>,
     },
+    /// There was a failure when attempting to decrypt the packet.
     DecryptionFailed {
         path: Path<'a>,
         packet_header: PacketHeader,
