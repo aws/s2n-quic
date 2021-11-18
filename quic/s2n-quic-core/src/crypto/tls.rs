@@ -106,6 +106,28 @@ pub trait Session: CryptoSuite + Sized + Send + Debug {
     fn poll<C: Context<Self>>(&mut self, context: &mut C) -> Result<(), transport::Error>;
 }
 
+macro_rules! handshake_type {
+    ($($variant:ident($value:literal)),* $(,)?) => {
+        #[derive(Debug, PartialEq, Eq, AsBytes, Unaligned)]
+        #[repr(u8)]
+        pub enum HandshakeType {
+            $($variant = $value),*
+        }
+
+        impl TryFrom<u8> for HandshakeType {
+            type Error = ();
+
+            #[inline]
+            fn try_from(value: u8) -> Result<Self, Self::Error> {
+                match value {
+                    $($value => Ok(Self::$variant),)*
+                    _ => Err(()),
+                }
+            }
+        }
+    };
+}
+
 //= https://www.rfc-editor.org/rfc/rfc5246.txt#A.4
 //# enum {
 //#     hello_request(0), client_hello(1), server_hello(2),
@@ -115,41 +137,18 @@ pub trait Session: CryptoSuite + Sized + Send + Debug {
 //#     finished(20)
 //#     (255)
 //# } HandshakeType;
-#[derive(Debug, PartialEq, Eq, AsBytes, Unaligned)]
-#[repr(u8)]
-pub enum HandshakeType {
-    HelloRequest = 0,
-    ClientHello = 1,
-    ServerHello = 2,
-    Certificate = 11,
-    ServerKeyExchange = 12,
-    CertificateRequest = 13,
-    ServerHelloDone = 14,
-    CertificateVerify = 15,
-    ClientKeyExchange = 16,
-    Finished = 20,
-}
-
-impl TryFrom<u8> for HandshakeType {
-    type Error = ();
-
-    #[inline]
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::HelloRequest),
-            1 => Ok(Self::ClientHello),
-            2 => Ok(Self::ServerHello),
-            11 => Ok(Self::Certificate),
-            12 => Ok(Self::ServerKeyExchange),
-            13 => Ok(Self::CertificateRequest),
-            14 => Ok(Self::ServerHelloDone),
-            15 => Ok(Self::CertificateVerify),
-            16 => Ok(Self::ClientKeyExchange),
-            20 => Ok(Self::Finished),
-            _ => Err(()),
-        }
-    }
-}
+handshake_type!(
+    HelloRequest(0),
+    ClientHello(1),
+    ServerHello(2),
+    Certificate(11),
+    ServerKeyExchange(12),
+    CertificateRequest(13),
+    ServerHelloDone(14),
+    CertificateVerify(15),
+    ClientKeyExchange(16),
+    Finished(20),
+);
 
 //= https://www.rfc-editor.org/rfc/rfc5246.txt#A.4
 //# struct {
