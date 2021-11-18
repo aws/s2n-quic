@@ -25,6 +25,8 @@ pub struct Pacer {
     next_packet_departure_time: Option<Timestamp>,
 }
 
+// TODO: Remove when used
+#[allow(dead_code)]
 impl Pacer {
     /// Constructs a new `Pacer` with the given `max_datagram_size`
     pub fn new(max_datagram_size: u16) -> Self {
