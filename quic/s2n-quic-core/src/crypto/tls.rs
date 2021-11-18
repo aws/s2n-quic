@@ -3,8 +3,9 @@
 
 use crate::{application::Sni, crypto::CryptoSuite, transport};
 pub use bytes::{Bytes, BytesMut};
-use core::fmt::Debug;
+use core::{convert::TryFrom, fmt::Debug};
 use s2n_codec::EncoderValue;
+use zerocopy::{AsBytes, FromBytes, Unaligned};
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
@@ -104,3 +105,93 @@ pub trait Endpoint: 'static + Sized + Send {
 pub trait Session: CryptoSuite + Sized + Send + Debug {
     fn poll<C: Context<Self>>(&mut self, context: &mut C) -> Result<(), transport::Error>;
 }
+
+macro_rules! handshake_type {
+    ($($variant:ident($value:literal)),* $(,)?) => {
+        #[derive(Debug, PartialEq, Eq, AsBytes, Unaligned)]
+        #[repr(u8)]
+        pub enum HandshakeType {
+            $($variant = $value),*
+        }
+
+        impl TryFrom<u8> for HandshakeType {
+            type Error = ();
+
+            #[inline]
+            fn try_from(value: u8) -> Result<Self, Self::Error> {
+                match value {
+                    $($value => Ok(Self::$variant),)*
+                    _ => Err(()),
+                }
+            }
+        }
+    };
+}
+
+//= https://www.rfc-editor.org/rfc/rfc5246.txt#A.4
+//# enum {
+//#     hello_request(0), client_hello(1), server_hello(2),
+//#     certificate(11), server_key_exchange (12),
+//#     certificate_request(13), server_hello_done(14),
+//#     certificate_verify(15), client_key_exchange(16),
+//#     finished(20)
+//#     (255)
+//# } HandshakeType;
+handshake_type!(
+    HelloRequest(0),
+    ClientHello(1),
+    ServerHello(2),
+    Certificate(11),
+    ServerKeyExchange(12),
+    CertificateRequest(13),
+    ServerHelloDone(14),
+    CertificateVerify(15),
+    ClientKeyExchange(16),
+    Finished(20),
+);
+
+//= https://www.rfc-editor.org/rfc/rfc5246.txt#A.4
+//# struct {
+//#     HandshakeType msg_type;
+//#     uint24 length;
+//#     select (HandshakeType) {
+//#         case hello_request:       HelloRequest;
+//#         case client_hello:        ClientHello;
+//#         case server_hello:        ServerHello;
+//#         case certificate:         Certificate;
+//#         case server_key_exchange: ServerKeyExchange;
+//#         case certificate_request: CertificateRequest;
+//#         case server_hello_done:   ServerHelloDone;
+//#         case certificate_verify:  CertificateVerify;
+//#         case client_key_exchange: ClientKeyExchange;
+//#         case finished:            Finished;
+//#   } body;
+//# } Handshake;
+#[derive(Clone, Copy, Debug, AsBytes, FromBytes, Unaligned)]
+#[repr(C)]
+pub struct HandshakeHeader {
+    msg_type: u8,
+    length: [u8; 3],
+}
+
+impl HandshakeHeader {
+    #[inline]
+    pub fn msg_type(self) -> Option<HandshakeType> {
+        HandshakeType::try_from(self.msg_type).ok()
+    }
+
+    #[inline]
+    pub fn len(self) -> usize {
+        let mut len = [0u8; 4];
+        len[1..].copy_from_slice(&self.length);
+        let len = u32::from_be_bytes(len);
+        len as _
+    }
+
+    #[inline]
+    pub fn is_empty(self) -> bool {
+        self.len() == 0
+    }
+}
+
+s2n_codec::zerocopy_value_codec!(HandshakeHeader);

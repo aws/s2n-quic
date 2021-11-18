@@ -343,9 +343,14 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
     }
 
     fn receive_initial(&mut self, max_len: Option<usize>) -> Option<Bytes> {
-        self.initial
-            .as_mut()
-            .map(Box::as_mut)?
+        let space = self.initial.as_deref_mut()?;
+
+        // don't pass the buffer until we have a full hello message
+        if !space.received_hello_message {
+            return None;
+        }
+
+        space
             .crypto_stream
             .rx
             .pop_watermarked(max_len.unwrap_or(usize::MAX))
@@ -354,8 +359,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
     fn receive_handshake(&mut self, max_len: Option<usize>) -> Option<Bytes> {
         self.handshake
-            .as_mut()
-            .map(Box::as_mut)?
+            .as_deref_mut()?
             .crypto_stream
             .rx
             .pop_watermarked(max_len.unwrap_or(usize::MAX))
