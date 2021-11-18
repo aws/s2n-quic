@@ -933,7 +933,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         //# received an Initial or Retry packet from the server, the client
         //# populates the Destination Connection ID field with an unpredictable
         //# value.
-        let initial_connection_id = {
+        let original_destination_connection_id = {
             let mut data = [0u8; InitialId::MIN_LEN];
             endpoint_context
                 .random_generator
@@ -946,12 +946,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
         //# stateless_reset_token transport parameter because their transport
         //# parameters do not have confidentiality protection.
         //
-        // The initial_connection_id is a random value used to establish the connection.
-        // Since the connection is not yet secured, the client must not set a
+        // The original_destination_connection_id is a random value used to establish the
+        // connection. Since the connection is not yet secured, the client must not set a
         // stateless_reset_token.
-        let peer_id_registry = self
-            .connection_id_mapper
-            .create_client_peer_id_registry(internal_connection_id);
+        let peer_id_registry = self.connection_id_mapper.create_client_peer_id_registry(
+            internal_connection_id,
+            original_destination_connection_id,
+        );
 
         let congestion_controller = {
             let path_info = congestion_controller::PathInfo::new(&remote_address);
@@ -995,11 +996,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
         //# sent by a client is used to determine packet protection keys for
         //# Initial packets.
         //
-        // Use the randomly generated `initial_connection_id` to generate the packet
+        // Use the randomly generated `original_destination_connection_id` to generate the packet
         // protection keys.
         let (initial_key, initial_header_key) =
             <<Cfg::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialKey::new_client(
-                initial_connection_id.as_bytes(),
+                original_destination_connection_id.as_bytes(),
             );
         let tls_session = endpoint_context
             .tls
@@ -1032,7 +1033,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             peer_id_registry,
             space_manager,
             wakeup_handle,
-            peer_connection_id: initial_connection_id,
+            peer_connection_id: original_destination_connection_id,
             local_connection_id,
             path_handle,
             congestion_controller,

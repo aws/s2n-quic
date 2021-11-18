@@ -13,7 +13,7 @@ use core::fmt;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     ack,
-    connection::limits::Limits,
+    connection::{limits::Limits, PeerId},
     crypto::{tls, tls::Session, CryptoSuite},
     event::{self, ConnectionPublisher as _, IntoEvent},
     frame::{
@@ -168,6 +168,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     pub fn poll_crypto<Pub: event::ConnectionPublisher>(
         &mut self,
         path: &Path<Config>,
+        original_destination_connection_id: Option<PeerId>,
         local_id_registry: &mut connection::LocalIdRegistry,
         limits: &mut Limits,
         now: Timestamp,
@@ -177,6 +178,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
             let mut context: SessionContext<Config, Pub> = SessionContext {
                 now,
                 initial: &mut self.initial,
+                original_destination_connection_id,
                 handshake: &mut self.handshake,
                 application: &mut self.application,
                 zero_rtt_crypto: &mut self.zero_rtt_crypto,

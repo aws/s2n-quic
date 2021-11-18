@@ -504,8 +504,10 @@ fn error_conversion() {
 pub fn client_peer_id_registry_should_not_register_cid() {
     let mut random_generator = random::testing::Generator(123);
     let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
-    let reg =
-        mapper.create_client_peer_id_registry(InternalConnectionIdGenerator::new().generate_id());
+    let reg = mapper.create_client_peer_id_registry(
+        InternalConnectionIdGenerator::new().generate_id(),
+        id(b"id01"),
+    );
 
     assert!(reg.registered_ids.is_empty());
     assert!(reg.is_empty());

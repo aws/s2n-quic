@@ -258,6 +258,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         let space_manager = &mut self.space_manager;
         space_manager.poll_crypto(
             self.path_manager.active_path(),
+            self.path_manager.original_destination_connection_id(),
             &mut self.local_id_registry,
             &mut self.limits,
             timestamp,
