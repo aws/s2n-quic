@@ -18,6 +18,8 @@ const N: f32 = 1.25;
 const SLOW_START_N: f32 = 2.0;
 
 // TODO: this should be aligned with GSO max segments
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.7
+//# Senders SHOULD limit bursts to the initial congestion window
 const MAX_BURST_PACKETS: u16 = 10;
 
 pub struct Pacer {
@@ -72,7 +74,7 @@ impl Pacer {
         self.next_packet_departure_time
     }
 
-    // Recalculate the interval between batches of paced packets
+    // Recalculate the interval between bursts of paced packets
     #[inline]
     fn interval(
         rtt_estimator: &RttEstimator,
@@ -94,14 +96,12 @@ impl Pacer {
         //# Or expressed as an inter-packet interval in units of time:
         //#
         //# interval = ( smoothed_rtt * packet_size / congestion_window ) / N
+
         // `MAX_BURST_PACKETS` is incorporated into the formula since we are trying to spread
-        // batches of packets evenly over time.
-        Duration::from_secs_f32(
-            (rtt_estimator.smoothed_rtt() * (MAX_BURST_PACKETS * max_datagram_size) as u32
-                / congestion_window)
-                .as_secs_f32()
-                / n,
-        )
+        // bursts of packets evenly over time.
+
+        let burst_size = (MAX_BURST_PACKETS * max_datagram_size) as u32;
+        (rtt_estimator.smoothed_rtt() * burst_size / congestion_window).div_f32(n)
     }
 }
 
