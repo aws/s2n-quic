@@ -44,12 +44,8 @@ impl Pacer {
         max_datagram_size: u16,
         slow_start: bool,
     ) {
-        match self.next_packet_departure_time {
-            None => {
-                self.next_packet_departure_time = Some(now);
-                self.capacity = (MAX_BURST_PACKETS * max_datagram_size) as usize;
-            }
-            Some(next_packet_departure_time) if self.capacity == 0 => {
+        if self.capacity == 0 {
+            if let Some(next_packet_departure_time) = self.next_packet_departure_time {
                 let interval = Self::interval(
                     rtt_estimator,
                     congestion_window,
@@ -58,9 +54,10 @@ impl Pacer {
                 );
                 self.next_packet_departure_time =
                     Some((next_packet_departure_time + interval).max(now));
-                self.capacity = (MAX_BURST_PACKETS * max_datagram_size) as usize;
+            } else {
+                self.next_packet_departure_time = Some(now);
             }
-            Some(_) => {}
+            self.capacity = (MAX_BURST_PACKETS * max_datagram_size) as usize;
         }
 
         self.capacity = self.capacity.saturating_sub(bytes_sent);
