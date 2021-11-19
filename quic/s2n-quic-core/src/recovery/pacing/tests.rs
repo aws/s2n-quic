@@ -27,6 +27,19 @@ fn earliest_departure_time() {
 }
 
 #[test]
+fn on_packet_sent_large_bytes_sent() {
+    let mut pacer = Pacer::default();
+
+    let now = NoopClock.get_time();
+    let rtt = RttEstimator::new(Duration::default());
+    let cwnd = 12000;
+
+    pacer.on_packet_sent(now, usize::MAX, &rtt, cwnd, MINIMUM_MTU, false);
+
+    assert_eq!(Some(now), pacer.earliest_departure_time());
+}
+
+#[test]
 fn slow_start() {
     test_one_rtt(true);
 }

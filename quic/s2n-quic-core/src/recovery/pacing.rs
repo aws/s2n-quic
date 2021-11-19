@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    counter::{Counter, Saturating},
     recovery::RttEstimator,
     time::{Duration, Timestamp},
 };
@@ -37,7 +38,7 @@ const MAX_BURST_PACKETS: u16 = 10;
 #[derive(Default)]
 pub struct Pacer {
     // The capacity of the current departure time slot
-    capacity: usize,
+    capacity: Counter<u32, Saturating>,
     // The time the next packet should be transmitted
     next_packet_departure_time: Option<Timestamp>,
 }
@@ -69,10 +70,10 @@ impl Pacer {
             } else {
                 self.next_packet_departure_time = Some(now);
             }
-            self.capacity = (MAX_BURST_PACKETS * max_datagram_size) as usize;
+            self.capacity = Counter::new((MAX_BURST_PACKETS * max_datagram_size) as u32);
         }
 
-        self.capacity = self.capacity.saturating_sub(bytes_sent);
+        self.capacity -= bytes_sent as u32;
     }
 
     /// Returns the earliest time that a packet may be transmitted.
