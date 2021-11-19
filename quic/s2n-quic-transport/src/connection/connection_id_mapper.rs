@@ -335,12 +335,8 @@ impl ConnectionIdMapper {
     pub fn create_client_peer_id_registry(
         &mut self,
         internal_id: InternalConnectionId,
-        original_destination_connection_id: connection::PeerId,
     ) -> PeerIdRegistry {
-        let mut registry = PeerIdRegistry::new(internal_id, self.state.clone());
-
-        registry.set_original_destination_connection_id(original_destination_connection_id);
-        registry
+        PeerIdRegistry::new(internal_id, self.state.clone())
     }
 }
 

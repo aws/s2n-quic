@@ -949,10 +949,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
         // The original_destination_connection_id is a random value used to establish the
         // connection. Since the connection is not yet secured, the client must not set a
         // stateless_reset_token.
-        let peer_id_registry = self.connection_id_mapper.create_client_peer_id_registry(
-            internal_connection_id,
-            original_destination_connection_id,
-        );
+        let peer_id_registry = self
+            .connection_id_mapper
+            .create_client_peer_id_registry(internal_connection_id);
 
         let congestion_controller = {
             let path_info = congestion_controller::PathInfo::new(&remote_address);

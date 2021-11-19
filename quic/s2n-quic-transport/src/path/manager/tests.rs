@@ -49,10 +49,7 @@ fn manager_server(
 fn manager_client(first_path: ClientPath) -> ClientManager {
     let mut random_generator = random::testing::Generator(123);
     let peer_id_registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Client)
-        .create_client_peer_id_registry(
-            InternalConnectionIdGenerator::new().generate_id(),
-            first_path.peer_connection_id,
-        );
+        .create_client_peer_id_registry(InternalConnectionIdGenerator::new().generate_id());
     ClientManager::new(first_path, peer_id_registry)
 }
 
