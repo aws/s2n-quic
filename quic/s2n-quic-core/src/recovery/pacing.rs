@@ -25,8 +25,9 @@ const MAX_BURST_PACKETS: u16 = 10;
 /// A packet pacer that returns departure times that evenly distribute bursts of packets over time
 #[derive(Default)]
 pub struct Pacer {
-    // The capacity of the current
+    // The capacity of the current departure time slot
     capacity: usize,
+    // The time the next packet should be transmitted
     next_packet_departure_time: Option<Timestamp>,
 }
 
