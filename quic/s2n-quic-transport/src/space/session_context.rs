@@ -91,10 +91,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         let expected_value = self
             .original_destination_connection_id
             .expect("client generates and stores the initial destination connection id");
-        if let Some(peer_value) =
-            // self.client_initial_connection_id,
-            peer_parameters.original_destination_connection_id
-        {
+        if let Some(peer_value) = peer_parameters.original_destination_connection_id {
             //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
             //# The values provided by a peer for these transport parameters MUST
             //# match the values that an endpoint used in the Destination and Source

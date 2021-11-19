@@ -1295,15 +1295,9 @@ impl_transport_parameters!(
         max_ack_delay: MaxAckDelay,
         migration_support: MigrationSupport,
         active_connection_id_limit: ActiveConnectionIdLimit,
-        // This parameter is the
-        // value of the Destination Connection ID field from the first
-        // Initial packet sent by the client
         original_destination_connection_id: OriginalDestinationConnectionId,
         stateless_reset_token: StatelessResetToken,
         preferred_address: PreferredAddress,
-        // This is the value that the
-        // endpoint included in the Source Connection ID field of the first
-        // Initial packet it sends for the connection
         initial_source_connection_id: Option<InitialSourceConnectionId>,
         retry_source_connection_id: RetrySourceConnectionId,
     }
