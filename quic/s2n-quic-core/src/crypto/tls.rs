@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{application::Sni, crypto::CryptoSuite, transport};
+use crate::{application::Sni, connection::InitialId, crypto::CryptoSuite, transport};
 pub use bytes::{Bytes, BytesMut};
 use core::{convert::TryFrom, fmt::Debug};
 use s2n_codec::EncoderValue;
@@ -47,6 +47,7 @@ pub trait Context<Crypto: CryptoSuite> {
         key: Crypto::OneRttKey,
         header_key: Crypto::OneRttHeaderKey,
         application_parameters: ApplicationParameters,
+        initial_id: InitialId,
     ) -> Result<(), transport::Error>;
 
     //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.1
@@ -90,12 +91,14 @@ pub trait Endpoint: 'static + Sized + Send {
     fn new_server_session<Params: EncoderValue>(
         &mut self,
         transport_parameters: &Params,
+        initial_id: InitialId,
     ) -> Self::Session;
 
     fn new_client_session<Params: EncoderValue>(
         &mut self,
         transport_parameters: &Params,
         sni: Sni,
+        initial_id: InitialId,
     ) -> Self::Session;
 
     /// The maximum length of a tag for any algorithm that may be negotiated

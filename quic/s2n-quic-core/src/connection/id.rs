@@ -229,6 +229,15 @@ impl From<InitialId> for UnboundedId {
     }
 }
 
+impl From<InitialId> for PeerId {
+    fn from(id: InitialId) -> Self {
+        PeerId {
+            bytes: id.bytes,
+            len: id.len,
+        }
+    }
+}
+
 // A LocalId may be converted to an InitialId, but InitialId has a higher
 // minimum length, so conversion may not succeed.
 impl TryFrom<LocalId> for InitialId {

@@ -207,7 +207,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let tls_session = endpoint_context
             .tls
-            .new_server_session(&transport_parameters);
+            .new_server_session(&transport_parameters, original_destination_connection_id);
 
         let path_info = congestion_controller::PathInfo::new(&remote_address);
         let congestion_controller = endpoint_context

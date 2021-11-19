@@ -938,7 +938,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             endpoint_context
                 .random_generator
                 .public_random_fill(&mut data);
-            PeerId::try_from_bytes(&data).expect("PeerId creation failed.")
+            InitialId::try_from_bytes(&data).expect("InitialId creation failed.")
         };
 
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
@@ -1008,6 +1008,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .new_client_session(
                 &transport_parameters,
                 hostname.expect("application should provide a valid server name"),
+                original_destination_connection_id,
             );
         let space_manager = PacketSpaceManager::new(
             tls_session,
@@ -1032,7 +1033,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             peer_id_registry,
             space_manager,
             wakeup_handle,
-            peer_connection_id: original_destination_connection_id,
+            peer_connection_id: original_destination_connection_id.into(),
             local_connection_id,
             path_handle,
             congestion_controller,

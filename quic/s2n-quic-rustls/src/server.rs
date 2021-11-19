@@ -4,7 +4,7 @@
 use crate::{certificate, encode_transport_parameters, session::Session};
 use rustls::{quic, ServerConfig};
 use s2n_codec::EncoderValue;
-use s2n_quic_core::{application::Sni, crypto::tls};
+use s2n_quic_core::{application::Sni, connection::InitialId, crypto::tls};
 use std::sync::Arc;
 
 pub struct Server {
@@ -43,6 +43,7 @@ impl tls::Endpoint for Server {
     fn new_server_session<Params: EncoderValue>(
         &mut self,
         transport_parameters: &Params,
+        initial_id: InitialId,
     ) -> Self::Session {
         use quic::ServerQuicExt;
 
@@ -57,13 +58,14 @@ impl tls::Endpoint for Server {
         )
         .expect("could not create rustls server session");
 
-        Session::new(session.into())
+        Session::new(session.into(), initial_id)
     }
 
     fn new_client_session<Params: EncoderValue>(
         &mut self,
         _transport_parameters: &Params,
         _sni: Sni,
+        _initial_id: InitialId,
     ) -> Self::Session {
         panic!("cannot create a client session from a server config");
     }

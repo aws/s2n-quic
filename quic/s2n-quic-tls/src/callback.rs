@@ -5,6 +5,7 @@ use bytes::BytesMut;
 use core::{ffi::c_void, marker::PhantomData};
 use s2n_quic_core::{
     application::Sni,
+    connection::InitialId,
     crypto::{tls, CryptoError, CryptoSuite},
     endpoint, transport,
 };
@@ -30,6 +31,7 @@ pub struct Callback<'a, T, C> {
     pub suite: PhantomData<C>,
     pub err: Option<transport::Error>,
     pub send_buffer: &'a mut BytesMut,
+    pub initial_id: InitialId,
 }
 
 impl<'a, T, C> Callback<'a, T, C>
@@ -216,7 +218,8 @@ where
                             // Safety: conn needs to outlive params
                             get_application_params(conn)?
                         };
-                        self.context.on_one_rtt_keys(key, header_key, params)?;
+                        self.context
+                            .on_one_rtt_keys(key, header_key, params, self.initial_id)?;
 
                         self.state.tx_phase.transition();
                     }

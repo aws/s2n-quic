@@ -11,6 +11,7 @@ use rustls::{
 };
 use s2n_quic_core::{
     application::Sni,
+    connection::InitialId,
     crypto::{self, tls, CryptoError},
     transport,
 };
@@ -21,6 +22,7 @@ pub struct Session {
     tx_phase: HandshakePhase,
     emitted_zero_rtt_keys: bool,
     emitted_handshake_complete: bool,
+    initial_id: InitialId,
 }
 
 impl fmt::Debug for Session {
@@ -33,13 +35,14 @@ impl fmt::Debug for Session {
 }
 
 impl Session {
-    pub fn new(connection: Connection) -> Self {
+    pub fn new(connection: Connection, initial_id: InitialId) -> Self {
         Self {
             connection,
             rx_phase: Default::default(),
             tx_phase: Default::default(),
             emitted_zero_rtt_keys: false,
             emitted_handshake_complete: false,
+            initial_id,
         }
     }
 
@@ -228,7 +231,12 @@ impl tls::Session for Session {
                             let (key, header_key) = OneRttKey::new(keys, next);
                             let application_parameters = self.application_parameters()?;
 
-                            context.on_one_rtt_keys(key, header_key, application_parameters)?;
+                            context.on_one_rtt_keys(
+                                key,
+                                header_key,
+                                application_parameters,
+                                self.initial_id,
+                            )?;
 
                             // Transition the tx_phase to Application
                             // Note: the rx_phase is transitioned when the handshake is complete

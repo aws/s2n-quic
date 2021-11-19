@@ -32,7 +32,7 @@ use core::{
 use s2n_quic_core::{
     application,
     application::Sni,
-    connection::{id::Generator as _, PeerId},
+    connection::id::Generator as _,
     event::{self, ConnectionPublisher as _, IntoEvent as _},
     inet::{DatagramInfo, SocketAddress},
     io::tx,
@@ -138,8 +138,6 @@ impl From<connection::Error> for ConnectionState {
 
 #[derive(Debug)]
 pub struct ConnectionImpl<Config: endpoint::Config> {
-    /// The random Destination Connection Id the Client uses prior to Server response.
-    original_destination_connection_id: Option<PeerId>,
     /// The local ID registry which should be utilized by the connection
     local_id_registry: connection::LocalIdRegistry,
     /// The timers which are used within the connection
@@ -260,7 +258,6 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         let space_manager = &mut self.space_manager;
         space_manager.poll_crypto(
             self.path_manager.active_path(),
-            self.original_destination_connection_id,
             &mut self.local_id_registry,
             &mut self.limits,
             timestamp,
@@ -447,12 +444,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             },
         });
 
-        let original_destination_connection_id = match Self::Config::ENDPOINT_TYPE {
-            s2n_quic_core::endpoint::Type::Client => Some(parameters.peer_connection_id),
-            s2n_quic_core::endpoint::Type::Server => None,
-        };
         let mut connection = Self {
-            original_destination_connection_id,
             local_id_registry: parameters.local_id_registry,
             timers: Default::default(),
             accept_state: AcceptState::Handshaking,

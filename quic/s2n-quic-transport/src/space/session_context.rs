@@ -15,7 +15,7 @@ use bytes::Bytes;
 use s2n_codec::{DecoderBuffer, DecoderValue};
 use s2n_quic_core::{
     ack,
-    connection::PeerId,
+    connection::InitialId,
     crypto::{tls, CryptoSuite},
     ct::ConstantTimeEq,
     event,
@@ -29,12 +29,12 @@ use s2n_quic_core::{
         },
     },
 };
+use std::ops::Not;
 
 pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> {
     pub now: Timestamp,
     pub path: &'a Path<Config>,
     pub initial: &'a mut Option<Box<InitialSpace<Config>>>,
-    pub original_destination_connection_id: Option<PeerId>,
     pub handshake: &'a mut Option<Box<HandshakeSpace<Config>>>,
     pub application: &'a mut Option<Box<ApplicationSpace<Config>>>,
     pub zero_rtt_crypto: &'a mut Option<
@@ -53,6 +53,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
     fn on_server_params(
         &mut self,
         decoder: DecoderBuffer,
+        initial_id: InitialId,
     ) -> Result<(InitialFlowControlLimits, ActiveConnectionIdLimit), transport::Error> {
         debug_assert!(Config::ENDPOINT_TYPE.is_client());
 
@@ -88,9 +89,6 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         //# *  presence of the retry_source_connection_id transport parameter
         //# when no Retry packet was received, or
 
-        let expected_value = self
-            .original_destination_connection_id
-            .expect("client generates and stores the initial destination connection id");
         if let Some(peer_value) = peer_parameters.original_destination_connection_id {
             //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
             //# The values provided by a peer for these transport parameters MUST
@@ -100,9 +98,9 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             //# parameters match received connection ID values.
             if peer_value
                 .as_bytes()
-                .ct_eq(expected_value.as_bytes())
-                .unwrap_u8()
-                == 0
+                .ct_eq(initial_id.as_bytes())
+                .not()
+                .into()
             {
                 return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
                     .with_reason("original_destination_connection_id mismatch"));
@@ -191,7 +189,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             //# Connection ID fields of Initial packets that it sent (and received,
             //# for servers).  Endpoints MUST validate that received transport
             //# parameters match received connection ID values.
-            if peer_value.as_bytes().ct_eq(expected_value).unwrap_u8() == 0 {
+            if peer_value.as_bytes().ct_eq(expected_value).not().into() {
                 return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
                     .with_reason("initial_source_connection_id mismatch"));
             }
@@ -270,6 +268,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttKey,
         header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttHeaderKey,
         application_parameters: tls::ApplicationParameters,
+        initial_id: InitialId,
     ) -> Result<(), transport::Error> {
         if self.application.is_some() {
             return Err(transport::Error::INTERNAL_ERROR
@@ -287,7 +286,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         // Parse transport parameters
         let param_decoder = DecoderBuffer::new(application_parameters.transport_parameters);
         let (peer_flow_control_limits, active_connection_id_limit) = match Config::ENDPOINT_TYPE {
-            endpoint::Type::Client => self.on_server_params(param_decoder)?,
+            endpoint::Type::Client => self.on_server_params(param_decoder, initial_id)?,
             endpoint::Type::Server => self.on_client_params(param_decoder)?,
         };
 
