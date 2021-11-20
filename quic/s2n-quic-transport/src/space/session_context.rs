@@ -33,6 +33,7 @@ use std::ops::Not;
 
 pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> {
     pub now: Timestamp,
+    pub initial_id: InitialId,
     pub path: &'a Path<Config>,
     pub initial: &'a mut Option<Box<InitialSpace<Config>>>,
     pub handshake: &'a mut Option<Box<HandshakeSpace<Config>>>,
@@ -98,7 +99,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             //# parameters match received connection ID values.
             if peer_value
                 .as_bytes()
-                .ct_eq(initial_id.as_bytes())
+                .ct_eq(self.initial_id.as_bytes())
                 .not()
                 .into()
             {
