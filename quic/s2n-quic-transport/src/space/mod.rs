@@ -185,7 +185,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         if let Some(session_info) = self.session_info.as_mut() {
             let mut context: SessionContext<Config, Pub> = SessionContext {
                 now,
-                initial_id: &mut session_info.initial_id,
+                initial_id: &session_info.initial_id,
                 initial: &mut self.initial,
                 handshake: &mut self.handshake,
                 application: &mut self.application,

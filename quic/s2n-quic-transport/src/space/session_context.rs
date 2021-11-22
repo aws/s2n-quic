@@ -33,7 +33,7 @@ use s2n_quic_core::{
 
 pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> {
     pub now: Timestamp,
-    pub initial_id: &'a mut InitialId,
+    pub initial_id: &'a InitialId,
     pub path: &'a Path<Config>,
     pub initial: &'a mut Option<Box<InitialSpace<Config>>>,
     pub handshake: &'a mut Option<Box<HandshakeSpace<Config>>>,
