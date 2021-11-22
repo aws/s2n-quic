@@ -12,6 +12,7 @@ use crate::{
     stream::AbstractStreamManager,
 };
 use bytes::Bytes;
+use core::ops::Not;
 use s2n_codec::{DecoderBuffer, DecoderValue};
 use s2n_quic_core::{
     ack,
@@ -29,11 +30,10 @@ use s2n_quic_core::{
         },
     },
 };
-use std::ops::Not;
 
 pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> {
     pub now: Timestamp,
-    pub initial_id: InitialId,
+    pub initial_id: &'a mut InitialId,
     pub path: &'a Path<Config>,
     pub initial: &'a mut Option<Box<InitialSpace<Config>>>,
     pub handshake: &'a mut Option<Box<HandshakeSpace<Config>>>,
