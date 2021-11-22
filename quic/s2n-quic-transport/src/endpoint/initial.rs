@@ -52,6 +52,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         //# First, the packet
         //# containing a ClientHello MUST be padded to a minimum size.
         if datagram.payload_len < 1200 {
+            // TODO emit event on_client_initial_packet_error
             return Err(transport::Error::PROTOCOL_VIOLATION
                 .with_reason("packet too small")
                 .into());
@@ -79,6 +80,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             //# length.
             original_destination_connection_id =
                 datagram.destination_connection_id.try_into().map_err(|_| {
+                    // TODO emit event on_client_initial_packet_error
                     transport::Error::PROTOCOL_VIOLATION
                         .with_reason("destination connection id too short")
                 })?;
@@ -95,6 +97,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2
         //# Endpoints that receive a version 1 long header
         //# with a value larger than 20 MUST drop the packet.
+        // TODO emit event on_client_initial_packet_error
         let source_connection_id = packet
             .source_connection_id()
             .try_into()
@@ -291,12 +294,14 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                     // this is the first packet this connection has received
                     // so getting this error would be incorrect
                     ProcessingError::DuplicatePacket => {
+                        // TODO emit event on_client_initial_packet_error
                         debug_assert!(false, "got duplicate packet error on first packet");
                         transport::Error::INTERNAL_ERROR.into()
                     }
                 }
             })?;
 
+        // TODO emit event on_client_initial_packet_error
         connection.handle_remaining_packets(
             &header.path,
             datagram,

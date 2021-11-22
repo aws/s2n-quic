@@ -311,6 +311,14 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         let context = self.config.context();
         let outcome = context.endpoint_limits.on_connection_attempt(&attempt);
+        let mut publisher = event::EndpointPublisherSubscriber::new(
+            event::builder::EndpointMeta {
+                endpoint_type: Cfg::ENDPOINT_TYPE,
+                timestamp,
+            },
+            None,
+            context.event_subscriber,
+        );
 
         match outcome {
             Outcome::Allow => Some(()),
@@ -342,8 +350,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
                 None
             }
-            #[allow(unused_variables)]
-            Outcome::Close { delay } => {
+            Outcome::Close { delay: _ } => {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.2
                 //= type=TODO
                 //= tracking-issue=270
@@ -351,19 +358,14 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 //# Initial packet containing a CONNECTION_CLOSE frame with error code
                 //# CONNECTION_REFUSED.
 
-                // TODO emit event
+                publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
+                    len: payload_len as u16,
+                    reason: event::builder::DatagramDropReason::RejectedConnectionAttempt,
+                });
 
                 None
             }
             Outcome::Drop => {
-                let mut publisher = event::EndpointPublisherSubscriber::new(
-                    event::builder::EndpointMeta {
-                        endpoint_type: Cfg::ENDPOINT_TYPE,
-                        timestamp,
-                    },
-                    None,
-                    self.config.context().event_subscriber,
-                );
                 publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
                     len: payload_len as u16,
                     reason: event::builder::DatagramDropReason::RejectedConnectionAttempt,
@@ -371,8 +373,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 None
             }
             _ => {
+                publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
+                    len: payload_len as u16,
+                    reason: event::builder::DatagramDropReason::RejectedConnectionAttempt,
+                });
                 // Outcome is non_exhaustive so drop on things we don't understand
-                // TODO emit drop event
                 None
             }
         }
@@ -681,23 +686,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             .connection_allowed(header, &packet, payload_len, timestamp)
                             .is_none()
                         {
-                            let mut publisher = event::EndpointPublisherSubscriber::new(
-                                event::builder::EndpointMeta {
-                                    endpoint_type: Cfg::ENDPOINT_TYPE,
-                                    timestamp,
-                                },
-                                None,
-                                self.config.context().event_subscriber,
-                            );
-
-                            publisher.on_endpoint_datagram_dropped(
-                                event::builder::EndpointDatagramDropped {
-                                    len: payload_len as u16,
-                                    reason:
-                                        event::builder::DatagramDropReason::ConnectionNotAllowed,
-                                },
-                            );
-
                             //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.1
                             //# A server MUST NOT send more than one Retry
                             //# packet in response to a single UDP datagram.
@@ -721,6 +709,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 }
                 _ => {
                     let is_short_header_packet = matches!(packet, ProtectedPacket::Short(_));
+                    let version = packet.version();
                     //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1
                     //# Endpoints MAY skip this check if any packet from a datagram is
                     //# successfully processed.  However, the comparison MUST be performed
@@ -752,15 +741,56 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         && Cfg::StatelessResetTokenGenerator::ENABLED
                         && is_short_header_packet
                     {
+                        let mut publisher = event::EndpointPublisherSubscriber::new(
+                            event::builder::EndpointMeta {
+                                endpoint_type: Cfg::ENDPOINT_TYPE,
+                                timestamp,
+                            },
+                            version,
+                            self.config.context().event_subscriber,
+                        );
+                        publisher
+                            .on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
+                            len: payload_len as u16,
+                            reason:
+                                event::builder::DatagramDropReason::UnknownDestinationConnectionId,
+                        });
+
                         self.enqueue_stateless_reset(header, datagram, &destination_connection_id);
                     }
                 }
             }
         } else {
-            // TODO: Find out what is required for the client. It seems like
-            // those should at least send stateless resets on Initial packets
+            match packet {
+                ProtectedPacket::VersionNegotiation(_packet) => {
+                    // TODO: Handle version negotiation packets
+                }
+                _ => {
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
+                    //# Because the stateless reset token is not available
+                    //# until connection establishment is complete or near completion,
+                    //# ignoring an unknown packet with a long header might be as effective
+                    //# as sending a Stateless Reset.
+                    //
+                    // It's not possible to process the packets so simply drop the datagram.
+
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.2
+                    //# A server sends its first Initial packet in response to a client Initial.
+                    //
+                    // Only a client is allowed to initiate a new connection. If an unknown
+                    // Initial packet is seen, then either the connection closed or the peer
+                    // sent an invalid packet.
+
+                    publisher.on_endpoint_datagram_dropped(
+                        event::builder::EndpointDatagramDropped {
+                            len: payload_len as u16,
+                            reason:
+                                event::builder::DatagramDropReason::UnknownDestinationConnectionId,
+                        },
+                    );
+                }
+            }
         }
-        // TODO: Handle version negotiation packets
     }
 
     /// Enqueues sending a stateless reset to a peer.

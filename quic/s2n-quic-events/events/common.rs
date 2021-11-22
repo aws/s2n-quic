@@ -502,12 +502,24 @@ impl IntoEvent<builder::EndpointType> for crate::endpoint::Type {
 }
 
 enum DatagramDropReason {
+    /// There was an error while attempting to decode the datagram.
     DecodingFailed,
+    /// There was an error while parsing the Retry token.
     InvalidRetryToken,
-    ConnectionNotAllowed,
+    /// The peer specified an unsupported QUIC version.
     UnsupportedVersion,
+    /// The peer sent an invalid Destination Connection Id.
     InvalidDestinationConnectionId,
+    /// The peer sent an invalid Source Connection Id.
     InvalidSourceConnectionId,
+    /// The Destination Connection Id is unknown and does not map to a Connection.
+    ///
+    /// Connections are mapped to Destination Connections Ids (DCID) and packets
+    /// in a Datagram are routed to a connection based on the DCID in the first
+    /// packet. If a Connection is not found for the specified DCID then the
+    /// datagram can not be processed and is dropped.
+    UnknownDestinationConnectionId,
+    /// The connection attempt was rejected.
     RejectedConnectionAttempt,
 }
 
