@@ -12,9 +12,11 @@ use crate::{
     stream::AbstractStreamManager,
 };
 use bytes::Bytes;
+use core::ops::Not;
 use s2n_codec::{DecoderBuffer, DecoderValue};
 use s2n_quic_core::{
     ack,
+    connection::InitialId,
     crypto::{tls, CryptoSuite},
     ct::ConstantTimeEq,
     event,
@@ -31,6 +33,7 @@ use s2n_quic_core::{
 
 pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> {
     pub now: Timestamp,
+    pub initial_id: &'a InitialId,
     pub path: &'a Path<Config>,
     pub initial: &'a mut Option<Box<InitialSpace<Config>>>,
     pub handshake: &'a mut Option<Box<HandshakeSpace<Config>>>,
@@ -69,32 +72,46 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 .with_reason("Invalid bytes in transport parameters")
         })?;
 
-        // TODO this needs to be compared with the randomly generated
-        // initial_connection_id that the client sends to the server
-        // self.validate_initial_connection_id(
-        //     &peer_parameters.initial_source_connection_id,
-        //     self.path.peer_connection_id.as_bytes(),
-        // )?;
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+        //# An endpoint MUST treat the following as a connection error of type
+        //# TRANSPORT_PARAMETER_ERROR or PROTOCOL_VIOLATION:
+        self.validate_initial_source_connection_id(
+            &peer_parameters.initial_source_connection_id,
+            self.path.peer_connection_id.as_bytes(),
+        )?;
 
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
         //= type=TODO
         //= feature=Transport parameter ID validation
-        //# An endpoint MUST treat the following as a connection error of type
-        //# TRANSPORT_PARAMETER_ERROR or PROTOCOL_VIOLATION:
-        //#
         //# *  absence of the retry_source_connection_id transport parameter from
         //# the server after receiving a Retry packet,
         //#
         //# *  presence of the retry_source_connection_id transport parameter
         //# when no Retry packet was received, or
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
-        //# An endpoint MUST treat the absence of the
-        //# initial_source_connection_id transport parameter from either endpoint
-        //# or the absence of the original_destination_connection_id transport
-        //# parameter from the server as a connection error of type
-        //# TRANSPORT_PARAMETER_ERROR.
-        if peer_parameters.original_destination_connection_id.is_none() {
+        if let Some(peer_value) = peer_parameters.original_destination_connection_id {
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+            //# The values provided by a peer for these transport parameters MUST
+            //# match the values that an endpoint used in the Destination and Source
+            //# Connection ID fields of Initial packets that it sent (and received,
+            //# for servers).  Endpoints MUST validate that received transport
+            //# parameters match received connection ID values.
+            if peer_value
+                .as_bytes()
+                .ct_eq(self.initial_id.as_bytes())
+                .not()
+                .into()
+            {
+                return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
+                    .with_reason("original_destination_connection_id mismatch"));
+            }
+        } else {
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+            //# An endpoint MUST treat the absence of the
+            //# initial_source_connection_id transport parameter from either endpoint
+            //# or the absence of the original_destination_connection_id transport
+            //# parameter from the server as a connection error of type
+            //# TRANSPORT_PARAMETER_ERROR.
             return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
                 .with_reason("missing original_destination_connection_id"));
         }
@@ -133,7 +150,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
         //# An endpoint MUST treat the following as a connection error of type
         //# TRANSPORT_PARAMETER_ERROR or PROTOCOL_VIOLATION:
-        self.validate_initial_connection_id(
+        self.validate_initial_source_connection_id(
             &peer_parameters.initial_source_connection_id,
             self.path.peer_connection_id.as_bytes(),
         )?;
@@ -156,7 +173,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
     //
     // When the endpoint is a Client, this is the randomly generated
     // initial_connection_id which is locally generated for the first Initial packet.
-    fn validate_initial_connection_id(
+    fn validate_initial_source_connection_id(
         &self,
         peer_value: &Option<InitialSourceConnectionId>,
         expected_value: &[u8],
@@ -172,7 +189,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             //# Connection ID fields of Initial packets that it sent (and received,
             //# for servers).  Endpoints MUST validate that received transport
             //# parameters match received connection ID values.
-            if peer_value.as_bytes().ct_eq(expected_value).unwrap_u8() == 0 {
+            if peer_value.as_bytes().ct_eq(expected_value).not().into() {
                 return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
                     .with_reason("initial_source_connection_id mismatch"));
             }

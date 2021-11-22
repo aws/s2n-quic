@@ -13,7 +13,7 @@ use core::fmt;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     ack,
-    connection::limits::Limits,
+    connection::{limits::Limits, InitialId},
     crypto::{tls, tls::Session, CryptoSuite},
     event::{self, ConnectionPublisher as _, IntoEvent},
     frame::{
@@ -45,8 +45,13 @@ pub(crate) use initial::InitialSpace;
 pub(crate) use session_context::SessionContext;
 pub(crate) use tx_packet_numbers::TxPacketNumbers;
 
+struct SessionInfo<Config: endpoint::Config> {
+    session: <Config::TLSEndpoint as tls::Endpoint>::Session,
+    initial_id: InitialId,
+}
+
 pub struct PacketSpaceManager<Config: endpoint::Config> {
-    session: Option<<Config::TLSEndpoint as tls::Endpoint>::Session>,
+    session_info: Option<SessionInfo<Config>>,
     initial: Option<Box<InitialSpace<Config>>>,
     handshake: Option<Box<HandshakeSpace<Config>>>,
     application: Option<Box<ApplicationSpace<Config>>>,
@@ -116,6 +121,7 @@ macro_rules! packet_space_api {
 
 impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     pub fn new<Pub: event::ConnectionPublisher>(
+        initial_id: InitialId,
         session: <Config::TLSEndpoint as tls::Endpoint>::Session,
         initial_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialKey,
         header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialHeaderKey,
@@ -128,7 +134,10 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
             key_type: event::builder::KeyType::Initial,
         });
         Self {
-            session: Some(session),
+            session_info: Some(SessionInfo {
+                session,
+                initial_id,
+            }),
             initial: Some(Box::new(InitialSpace::new(
                 initial_key,
                 header_key,
@@ -173,9 +182,10 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         now: Timestamp,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        if let Some(session) = self.session.as_mut() {
+        if let Some(session_info) = self.session_info.as_mut() {
             let mut context: SessionContext<Config, Pub> = SessionContext {
                 now,
+                initial_id: &session_info.initial_id,
                 initial: &mut self.initial,
                 handshake: &mut self.handshake,
                 application: &mut self.application,
@@ -187,11 +197,11 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 publisher,
             };
 
-            session.poll(&mut context)?;
+            session_info.session.poll(&mut context)?;
 
             // The TLS session is no longer needed
             if self.is_handshake_confirmed() {
-                self.session = None;
+                self.session_info = None;
             }
         }
 

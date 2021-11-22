@@ -235,6 +235,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         );
 
         let space_manager = PacketSpaceManager::new(
+            original_destination_connection_id,
             tls_session,
             initial_key,
             initial_header_key,

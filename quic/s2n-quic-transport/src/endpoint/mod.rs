@@ -760,7 +760,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             // TODO: Find out what is required for the client. It seems like
             // those should at least send stateless resets on Initial packets
         }
-
         // TODO: Handle version negotiation packets
     }
 
@@ -933,12 +932,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
         //# received an Initial or Retry packet from the server, the client
         //# populates the Destination Connection ID field with an unpredictable
         //# value.
-        let initial_connection_id = {
+        let original_destination_connection_id = {
             let mut data = [0u8; InitialId::MIN_LEN];
             endpoint_context
                 .random_generator
                 .public_random_fill(&mut data);
-            PeerId::try_from_bytes(&data).expect("PeerId creation failed.")
+            InitialId::try_from_bytes(&data).expect("InitialId creation failed.")
         };
 
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
@@ -946,8 +945,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
         //# stateless_reset_token transport parameter because their transport
         //# parameters do not have confidentiality protection.
         //
-        // The initial_connection_id is a random value used to establish the connection.
-        // Since the connection is not yet secured, the client must not set a
+        // The original_destination_connection_id is a random value used to establish the
+        // connection. Since the connection is not yet secured, the client must not set a
         // stateless_reset_token.
         let peer_id_registry = self
             .connection_id_mapper
@@ -995,11 +994,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
         //# sent by a client is used to determine packet protection keys for
         //# Initial packets.
         //
-        // Use the randomly generated `initial_connection_id` to generate the packet
+        // Use the randomly generated `original_destination_connection_id` to generate the packet
         // protection keys.
         let (initial_key, initial_header_key) =
             <<Cfg::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialKey::new_client(
-                initial_connection_id.as_bytes(),
+                original_destination_connection_id.as_bytes(),
             );
         let tls_session = endpoint_context
             .tls
@@ -1010,6 +1009,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 hostname.expect("application should provide a valid server name"),
             );
         let space_manager = PacketSpaceManager::new(
+            original_destination_connection_id,
             tls_session,
             initial_key,
             initial_header_key,
@@ -1032,7 +1032,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             peer_id_registry,
             space_manager,
             wakeup_handle,
-            peer_connection_id: initial_connection_id,
+            peer_connection_id: original_destination_connection_id.into(),
             local_connection_id,
             path_handle,
             congestion_controller,
