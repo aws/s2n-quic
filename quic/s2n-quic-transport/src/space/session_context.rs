@@ -54,7 +54,6 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
     fn on_server_params(
         &mut self,
         decoder: DecoderBuffer,
-        initial_id: InitialId,
     ) -> Result<(InitialFlowControlLimits, ActiveConnectionIdLimit), transport::Error> {
         debug_assert!(Config::ENDPOINT_TYPE.is_client());
 
@@ -269,7 +268,6 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttKey,
         header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttHeaderKey,
         application_parameters: tls::ApplicationParameters,
-        initial_id: InitialId,
     ) -> Result<(), transport::Error> {
         if self.application.is_some() {
             return Err(transport::Error::INTERNAL_ERROR
@@ -287,7 +285,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         // Parse transport parameters
         let param_decoder = DecoderBuffer::new(application_parameters.transport_parameters);
         let (peer_flow_control_limits, active_connection_id_limit) = match Config::ENDPOINT_TYPE {
-            endpoint::Type::Client => self.on_server_params(param_decoder, initial_id)?,
+            endpoint::Type::Client => self.on_server_params(param_decoder)?,
             endpoint::Type::Server => self.on_client_params(param_decoder)?,
         };
 

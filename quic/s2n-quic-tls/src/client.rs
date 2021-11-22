@@ -3,7 +3,7 @@
 
 use crate::{certificate::IntoCertificate, keylog::KeyLogHandle, params::Params, session::Session};
 use s2n_codec::EncoderValue;
-use s2n_quic_core::{application::Sni, connection::InitialId, crypto::tls, endpoint};
+use s2n_quic_core::{application::Sni, crypto::tls, endpoint};
 use s2n_tls::{
     config::{self, Config},
     error::Error,
@@ -107,11 +107,7 @@ impl Builder {
 impl tls::Endpoint for Client {
     type Session = Session;
 
-    fn new_server_session<Params: EncoderValue>(
-        &mut self,
-        _params: &Params,
-        _initial_id: InitialId,
-    ) -> Self::Session {
+    fn new_server_session<Params: EncoderValue>(&mut self, _params: &Params) -> Self::Session {
         panic!("cannot create a server session from a client config");
     }
 
@@ -119,12 +115,10 @@ impl tls::Endpoint for Client {
         &mut self,
         params: &Params,
         sni: Sni,
-        initial_id: InitialId,
     ) -> Self::Session {
         let config = self.config.clone();
         self.params.with(params, |params| {
-            let mut session =
-                Session::new(endpoint::Type::Client, config, params, initial_id).unwrap();
+            let mut session = Session::new(endpoint::Type::Client, config, params).unwrap();
             session
                 .connection
                 .set_sni(sni.as_bytes())

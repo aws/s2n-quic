@@ -5,7 +5,6 @@ use crate::callback::{self, Callback};
 use bytes::BytesMut;
 use core::{marker::PhantomData, task::Poll};
 use s2n_quic_core::{
-    connection::InitialId,
     crypto::{tls, CryptoError, CryptoSuite},
     endpoint, transport,
 };
@@ -24,16 +23,10 @@ pub struct Session {
     state: callback::State,
     handshake_complete: bool,
     send_buffer: BytesMut,
-    initial_id: InitialId,
 }
 
 impl Session {
-    pub fn new(
-        endpoint: endpoint::Type,
-        config: Config,
-        params: &[u8],
-        initial_id: InitialId,
-    ) -> Result<Self, Error> {
+    pub fn new(endpoint: endpoint::Type, config: Config, params: &[u8]) -> Result<Self, Error> {
         let mut connection = Connection::new(match endpoint {
             endpoint::Type::Server => Mode::Server,
             endpoint::Type::Client => Mode::Client,
@@ -51,7 +44,6 @@ impl Session {
             state: Default::default(),
             handshake_complete: false,
             send_buffer: BytesMut::new(),
-            initial_id,
         })
     }
 
@@ -90,7 +82,6 @@ impl tls::Session for Session {
             suite: PhantomData,
             err: None,
             send_buffer: &mut self.send_buffer,
-            initial_id: self.initial_id,
         };
 
         unsafe {

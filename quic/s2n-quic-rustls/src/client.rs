@@ -5,7 +5,7 @@ use crate::{certificate, encode_transport_parameters, session::Session};
 use core::convert::TryFrom;
 use rustls::{quic, ClientConfig};
 use s2n_codec::EncoderValue;
-use s2n_quic_core::{application::Sni, connection::InitialId, crypto::tls};
+use s2n_quic_core::{application::Sni, crypto::tls};
 use std::sync::Arc;
 
 pub struct Client {
@@ -45,7 +45,6 @@ impl tls::Endpoint for Client {
     fn new_server_session<Params: EncoderValue>(
         &mut self,
         _transport_parameters: &Params,
-        _initial_id: InitialId,
     ) -> Self::Session {
         panic!("cannot create a server session from a client config");
     }
@@ -54,7 +53,6 @@ impl tls::Endpoint for Client {
         &mut self,
         transport_parameters: &Params,
         sni: Sni,
-        initial_id: InitialId,
     ) -> Self::Session {
         use quic::ClientQuicExt;
 
@@ -72,7 +70,7 @@ impl tls::Endpoint for Client {
         )
         .expect("could not create rustls client session");
 
-        Session::new(session.into(), initial_id)
+        Session::new(session.into())
     }
 
     fn max_tag_length(&self) -> usize {

@@ -760,7 +760,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             // TODO: Find out what is required for the client. It seems like
             // those should at least send stateless resets on Initial packets
         }
-
         // TODO: Handle version negotiation packets
     }
 
@@ -1008,7 +1007,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .new_client_session(
                 &transport_parameters,
                 hostname.expect("application should provide a valid server name"),
-                original_destination_connection_id,
             );
         let space_manager = PacketSpaceManager::new(
             original_destination_connection_id,

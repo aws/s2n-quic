@@ -5,9 +5,7 @@ use crate::{
     application::Sni,
     crypto::{
         header_crypto::{LONG_HEADER_MASK, SHORT_HEADER_MASK},
-        tls,
-        tls::InitialId,
-        CryptoSuite, HeaderKey, Key,
+        tls, CryptoSuite, HeaderKey, Key,
     },
     transport,
 };
@@ -45,7 +43,6 @@ impl super::Endpoint for Endpoint {
     fn new_server_session<Params: EncoderValue>(
         &mut self,
         _transport_parameters: &Params,
-        _initial_id: InitialId,
     ) -> Self::Session {
         Session
     }
@@ -54,7 +51,6 @@ impl super::Endpoint for Endpoint {
         &mut self,
         _transport_parameters: &Params,
         _sni: Sni,
-        _initial_id: InitialId,
     ) -> Self::Session {
         Session
     }
@@ -105,16 +101,11 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
     {
         use crate::crypto::InitialKey;
 
-        let server =
-            server_endpoint.new_server_session(&TEST_SERVER_TRANSPORT_PARAMS, InitialId::TEST_ID);
+        let server = server_endpoint.new_server_session(&TEST_SERVER_TRANSPORT_PARAMS);
         let mut server_context = Context::default();
         server_context.initial.crypto = Some(S::InitialKey::new_server(sni.as_bytes()));
 
-        let client = client_endpoint.new_client_session(
-            &TEST_CLIENT_TRANSPORT_PARAMS,
-            sni.clone(),
-            InitialId::TEST_ID,
-        );
+        let client = client_endpoint.new_client_session(&TEST_CLIENT_TRANSPORT_PARAMS, sni.clone());
         let mut client_context = Context::default();
         client_context.initial.crypto = Some(C::InitialKey::new_client(sni.as_bytes()));
 
@@ -432,7 +423,6 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
         key: C::OneRttKey,
         header_key: C::OneRttHeaderKey,
         params: tls::ApplicationParameters,
-        _initial_id: InitialId,
     ) -> Result<(), transport::Error> {
         assert!(
             self.application.crypto.is_none(),
