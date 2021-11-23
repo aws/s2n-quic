@@ -607,183 +607,143 @@ impl<Cfg: Config> Endpoint<Cfg> {
             return;
         }
 
-        if Cfg::ENDPOINT_TYPE.is_server() {
-            match packet {
-                ProtectedPacket::Initial(packet) => {
-                    let source_connection_id = match connection::PeerId::try_from_bytes(
-                        packet.source_connection_id(),
-                    ) {
+        match (Cfg::ENDPOINT_TYPE, packet) {
+            (s2n_quic_core::endpoint::Type::Server, ProtectedPacket::Initial(packet)) => {
+                let source_connection_id =
+                    match connection::PeerId::try_from_bytes(packet.source_connection_id()) {
                         Some(connection_id) => connection_id,
                         None => {
                             publisher.on_endpoint_datagram_dropped(
-                                    event::builder::EndpointDatagramDropped {
-                                        len: payload_len as u16,
-                                        reason:
-                                            event::builder::DatagramDropReason::InvalidSourceConnectionId,
-                                    },
-                                );
+                           event::builder::EndpointDatagramDropped {
+                               len: payload_len as u16,
+                               reason:
+                                   event::builder::DatagramDropReason::InvalidSourceConnectionId,
+                           },
+                       );
                             return;
                         }
                     };
 
-                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
-                    //= type=TODO
-                    //= tracking-issue=140
-                    //# Additionally, an endpoint MAY consider the peer address validated if
-                    //# the peer uses a connection ID chosen by the endpoint and the
-                    //# connection ID contains at least 64 bits of entropy
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
+                //= type=TODO
+                //= tracking-issue=140
+                //# Additionally, an endpoint MAY consider the peer address validated if
+                //# the peer uses a connection ID chosen by the endpoint and the
+                //# connection ID contains at least 64 bits of entropy
 
-                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.2
-                    //# In response to processing an Initial packet containing a token that
-                    //# was provided in a Retry packet, a server cannot send another Retry
-                    //# packet; it can only refuse the connection or permit it to proceed.
-                    let retry_token_dcid = if !packet.token().is_empty() {
-                        let mut context = token::Context::new(
-                            &remote_address,
-                            &source_connection_id,
-                            endpoint_context.random_generator,
-                        );
-                        if let Some(id) = endpoint_context
-                            .token
-                            .validate_token(&mut context, packet.token())
-                        {
-                            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
-                            //# If the validation succeeds, the server SHOULD then allow
-                            //# the handshake to proceed.
-                            Some(id)
-                        } else {
-                            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
-                            //= type=TODO
-                            //= tracking-issue=344
-                            //# If the token is invalid, then the
-                            //# server SHOULD proceed as if the client did not have a validated
-                            //# address, including potentially sending a Retry packet.
-
-                            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.2
-                            //= type=TODO
-                            //= tracking-issue=344
-                            //# Instead, the
-                            //# server SHOULD immediately close (Section 10.2) the connection with an
-                            //# INVALID_TOKEN error.
-                            publisher.on_endpoint_datagram_dropped(
-                                event::builder::EndpointDatagramDropped {
-                                    len: payload_len as u16,
-                                    reason: event::builder::DatagramDropReason::InvalidRetryToken,
-                                },
-                            );
-
-                            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
-                            //# Servers MAY
-                            //# discard any Initial packet that does not carry the expected token.
-                            return;
-                        }
-                    } else {
-                        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.2
-                        //# Upon receiving the client's Initial packet, the server can request
-                        //# address validation by sending a Retry packet (Section 17.2.5)
-                        //# containing a token.
-                        if self
-                            .connection_allowed(header, &packet, payload_len, timestamp)
-                            .is_none()
-                        {
-                            //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.1
-                            //# A server MUST NOT send more than one Retry
-                            //# packet in response to a single UDP datagram.
-                            return;
-                        }
-
-                        None
-                    };
-
-                    if let Err(err) = self.handle_initial_packet(
-                        header,
-                        datagram,
-                        packet,
-                        remaining,
-                        retry_token_dcid,
-                    ) {
-                        // TODO send a minimal connection close frame
-                        // TODO emit event
-                        dbg!(err);
-                    }
-                }
-                _ => {
-                    let is_short_header_packet = matches!(packet, ProtectedPacket::Short(_));
-                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1
-                    //# Endpoints MAY skip this check if any packet from a datagram is
-                    //# successfully processed.  However, the comparison MUST be performed
-                    //# when the first packet in an incoming datagram either cannot be
-                    //# associated with a connection, or cannot be decrypted.
-
-                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
-                    //# However, endpoints MUST treat any packet ending in a
-                    //# valid stateless reset token as a Stateless Reset, as other QUIC
-                    //# versions might allow the use of a long header.
-                    let is_stateless_reset = self
-                        .close_on_matching_stateless_reset(payload, timestamp)
-                        .is_some();
-
-                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3.2
-                    //# For instance, an endpoint MAY send a Stateless Reset in
-                    //# response to any further incoming packets.
-
-                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
-                    //# An endpoint MAY send a Stateless Reset in response to receiving a packet
-                    //# that it cannot associate with an active connection.
-
-                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
-                    //# Because the stateless reset token is not available
-                    //# until connection establishment is complete or near completion,
-                    //# ignoring an unknown packet with a long header might be as effective
-                    //# as sending a Stateless Reset.
-                    if !is_stateless_reset
-                        && Cfg::StatelessResetTokenGenerator::ENABLED
-                        && is_short_header_packet
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.2
+                //# In response to processing an Initial packet containing a token that
+                //# was provided in a Retry packet, a server cannot send another Retry
+                //# packet; it can only refuse the connection or permit it to proceed.
+                let retry_token_dcid = if !packet.token().is_empty() {
+                    let mut context = token::Context::new(
+                        &remote_address,
+                        &source_connection_id,
+                        endpoint_context.random_generator,
+                    );
+                    if let Some(id) = endpoint_context
+                        .token
+                        .validate_token(&mut context, packet.token())
                     {
-                        let mut publisher = event::EndpointPublisherSubscriber::new(
-                            event::builder::EndpointMeta {
-                                endpoint_type: Cfg::ENDPOINT_TYPE,
-                                timestamp,
-                            },
-                            None,
-                            self.config.context().event_subscriber,
-                        );
-                        publisher
-                            .on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
-                            len: payload_len as u16,
-                            reason:
-                                event::builder::DatagramDropReason::UnknownDestinationConnectionId,
-                        });
+                        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
+                        //# If the validation succeeds, the server SHOULD then allow
+                        //# the handshake to proceed.
+                        Some(id)
+                    } else {
+                        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
+                        //= type=TODO
+                        //= tracking-issue=344
+                        //# If the token is invalid, then the
+                        //# server SHOULD proceed as if the client did not have a validated
+                        //# address, including potentially sending a Retry packet.
 
-                        self.enqueue_stateless_reset(header, datagram, &destination_connection_id);
+                        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.2
+                        //= type=TODO
+                        //= tracking-issue=344
+                        //# Instead, the
+                        //# server SHOULD immediately close (Section 10.2) the connection with an
+                        //# INVALID_TOKEN error.
+                        publisher.on_endpoint_datagram_dropped(
+                            event::builder::EndpointDatagramDropped {
+                                len: payload_len as u16,
+                                reason: event::builder::DatagramDropReason::InvalidRetryToken,
+                            },
+                        );
+
+                        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
+                        //# Servers MAY
+                        //# discard any Initial packet that does not carry the expected token.
+                        return;
                     }
+                } else {
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.2
+                    //# Upon receiving the client's Initial packet, the server can request
+                    //# address validation by sending a Retry packet (Section 17.2.5)
+                    //# containing a token.
+                    if self
+                        .connection_allowed(header, &packet, payload_len, timestamp)
+                        .is_none()
+                    {
+                        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.1
+                        //# A server MUST NOT send more than one Retry
+                        //# packet in response to a single UDP datagram.
+                        return;
+                    }
+
+                    None
+                };
+
+                if let Err(err) = self.handle_initial_packet(
+                    header,
+                    datagram,
+                    packet,
+                    remaining,
+                    retry_token_dcid,
+                ) {
+                    // TODO send a minimal connection close frame
+                    // TODO emit event
+                    dbg!(err);
                 }
             }
-        } else {
-            match packet {
-                _ => {
-                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
-                    //# Because the stateless reset token is not available
-                    //# until connection establishment is complete or near completion,
-                    //# ignoring an unknown packet with a long header might be as effective
-                    //# as sending a Stateless Reset.
-                    //
-                    // It's not possible to process the packets so simply drop the datagram.
+            (_, packet) => {
+                publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
+                    len: payload_len as u16,
+                    reason: event::builder::DatagramDropReason::UnknownDestinationConnectionId,
+                });
 
-                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.2
-                    //# A server sends its first Initial packet in response to a client Initial.
-                    //
-                    // Only a client is allowed to initiate a new connection. If an unknown
-                    // Initial packet is seen, then either the connection closed or the peer
-                    // sent an invalid packet.
+                let is_short_header_packet = matches!(packet, ProtectedPacket::Short(_));
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1
+                //# Endpoints MAY skip this check if any packet from a datagram is
+                //# successfully processed.  However, the comparison MUST be performed
+                //# when the first packet in an incoming datagram either cannot be
+                //# associated with a connection, or cannot be decrypted.
 
-                    publisher.on_endpoint_datagram_dropped(
-                        event::builder::EndpointDatagramDropped {
-                            len: payload_len as u16,
-                            reason:
-                                event::builder::DatagramDropReason::UnknownDestinationConnectionId,
-                        },
-                    );
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
+                //# However, endpoints MUST treat any packet ending in a
+                //# valid stateless reset token as a Stateless Reset, as other QUIC
+                //# versions might allow the use of a long header.
+                let is_stateless_reset = self
+                    .close_on_matching_stateless_reset(payload, timestamp)
+                    .is_some();
+
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3.2
+                //# For instance, an endpoint MAY send a Stateless Reset in
+                //# response to any further incoming packets.
+
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
+                //# An endpoint MAY send a Stateless Reset in response to receiving a packet
+                //# that it cannot associate with an active connection.
+
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
+                //# Because the stateless reset token is not available
+                //# until connection establishment is complete or near completion,
+                //# ignoring an unknown packet with a long header might be as effective
+                //# as sending a Stateless Reset.
+                if !is_stateless_reset
+                    && Cfg::StatelessResetTokenGenerator::ENABLED
+                    && is_short_header_packet
+                {
+                    self.enqueue_stateless_reset(header, datagram, &destination_connection_id);
                 }
             }
         }
