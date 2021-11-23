@@ -511,7 +511,7 @@ enum DatagramDropReason {
     RejectedConnectionAttempt,
 }
 
-enum ProtectedSpace {
+enum KeySpace {
     Initial {},
     Handshake {},
     ZeroRtt {},
@@ -537,7 +537,7 @@ enum PacketDropReason<'a> {
     },
     /// There was a failure when attempting to remove header protection.
     UnprotectFailed {
-        space: ProtectedSpace,
+        space: KeySpace,
         path: Path<'a>,
     },
     /// There was a failure when attempting to decrypt the packet.

@@ -189,7 +189,7 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    pub enum ProtectedSpace {
+    pub enum KeySpace {
         #[non_exhaustive]
         Initial {},
         #[non_exhaustive]
@@ -214,10 +214,7 @@ pub mod api {
             path: Path<'a>,
         },
         #[non_exhaustive]
-        UnprotectFailed {
-            space: ProtectedSpace,
-            path: Path<'a>,
-        },
+        UnprotectFailed { space: KeySpace, path: Path<'a> },
         #[non_exhaustive]
         DecryptionFailed {
             path: Path<'a>,
@@ -386,6 +383,14 @@ pub mod api {
     }
     impl Event for KeyUpdate {
         const NAME: &'static str = "security:key_update";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct KeySpaceDiscarded {
+        pub space: KeySpace,
+    }
+    impl Event for KeySpaceDiscarded {
+        const NAME: &'static str = "security:key_space_discarded";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1147,6 +1152,17 @@ pub mod api {
                 tracing :: event ! (target : "key_update" , parent : id , tracing :: Level :: DEBUG , key_type = tracing :: field :: debug (key_type));
             }
             #[inline]
+            fn on_key_space_discarded(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::KeySpaceDiscarded,
+            ) {
+                let id = context.id();
+                let api::KeySpaceDiscarded { space } = event;
+                tracing :: event ! (target : "key_space_discarded" , parent : id , tracing :: Level :: DEBUG , space = tracing :: field :: debug (space));
+            }
+            #[inline]
             fn on_connection_started(
                 &mut self,
                 context: &mut Self::ConnectionContext,
@@ -1782,16 +1798,16 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    pub enum ProtectedSpace {
+    pub enum KeySpace {
         Initial,
         Handshake,
         ZeroRtt,
         OneRtt,
     }
-    impl IntoEvent<api::ProtectedSpace> for ProtectedSpace {
+    impl IntoEvent<api::KeySpace> for KeySpace {
         #[inline]
-        fn into_event(self) -> api::ProtectedSpace {
-            use api::ProtectedSpace::*;
+        fn into_event(self) -> api::KeySpace {
+            use api::KeySpace::*;
             match self {
                 Self::Initial => Initial {},
                 Self::Handshake => Handshake {},
@@ -1817,7 +1833,7 @@ pub mod builder {
             path: Path<'a>,
         },
         UnprotectFailed {
-            space: ProtectedSpace,
+            space: KeySpace,
             path: Path<'a>,
         },
         DecryptionFailed {
@@ -2129,6 +2145,19 @@ pub mod builder {
             let KeyUpdate { key_type } = self;
             api::KeyUpdate {
                 key_type: key_type.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct KeySpaceDiscarded {
+        pub space: KeySpace,
+    }
+    impl IntoEvent<api::KeySpaceDiscarded> for KeySpaceDiscarded {
+        #[inline]
+        fn into_event(self) -> api::KeySpaceDiscarded {
+            let KeySpaceDiscarded { space } = self;
+            api::KeySpaceDiscarded {
+                space: space.into_event(),
             }
         }
     }
@@ -2744,6 +2773,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `KeySpaceDiscarded` event is triggered"]
+        #[inline]
+        fn on_key_space_discarded(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &KeySpaceDiscarded,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `ConnectionStarted` event is triggered"]
         #[inline]
         fn on_connection_started(
@@ -3143,6 +3184,16 @@ mod traits {
             (self.1).on_key_update(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_key_space_discarded(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &KeySpaceDiscarded,
+        ) {
+            (self.0).on_key_space_discarded(&mut context.0, meta, event);
+            (self.1).on_key_space_discarded(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_connection_started(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -3524,6 +3575,8 @@ mod traits {
         fn on_packet_dropped(&mut self, event: builder::PacketDropped);
         #[doc = "Publishes a `KeyUpdate` event to the publisher's subscriber"]
         fn on_key_update(&mut self, event: builder::KeyUpdate);
+        #[doc = "Publishes a `KeySpaceDiscarded` event to the publisher's subscriber"]
+        fn on_key_space_discarded(&mut self, event: builder::KeySpaceDiscarded);
         #[doc = "Publishes a `ConnectionStarted` event to the publisher's subscriber"]
         fn on_connection_started(&mut self, event: builder::ConnectionStarted);
         #[doc = "Publishes a `ConnectionClosed` event to the publisher's subscriber"]
@@ -3691,6 +3744,15 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_key_space_discarded(&mut self, event: builder::KeySpaceDiscarded) {
+            let event = event.into_event();
+            self.subscriber
+                .on_key_space_discarded(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn on_connection_started(&mut self, event: builder::ConnectionStarted) {
             let event = event.into_event();
             self.subscriber
@@ -3821,6 +3883,7 @@ pub mod testing {
         pub recovery_metrics: u32,
         pub packet_dropped: u32,
         pub key_update: u32,
+        pub key_space_discarded: u32,
         pub connection_started: u32,
         pub connection_closed: u32,
         pub duplicate_packet: u32,
@@ -3948,6 +4011,14 @@ pub mod testing {
             _event: &api::KeyUpdate,
         ) {
             self.key_update += 1;
+        }
+        fn on_key_space_discarded(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::KeySpaceDiscarded,
+        ) {
+            self.key_space_discarded += 1;
         }
         fn on_connection_started(
             &mut self,
@@ -4129,6 +4200,7 @@ pub mod testing {
         pub recovery_metrics: u32,
         pub packet_dropped: u32,
         pub key_update: u32,
+        pub key_space_discarded: u32,
         pub connection_started: u32,
         pub connection_closed: u32,
         pub duplicate_packet: u32,
@@ -4227,6 +4299,9 @@ pub mod testing {
         }
         fn on_key_update(&mut self, _event: builder::KeyUpdate) {
             self.key_update += 1;
+        }
+        fn on_key_space_discarded(&mut self, _event: builder::KeySpaceDiscarded) {
+            self.key_space_discarded += 1;
         }
         fn on_connection_started(&mut self, _event: builder::ConnectionStarted) {
             self.connection_started += 1;

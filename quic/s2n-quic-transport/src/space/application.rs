@@ -410,7 +410,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             .map_err(|err| {
                 publisher.on_packet_dropped(event::builder::PacketDropped {
                     reason: event::builder::PacketDropReason::UnprotectFailed {
-                        space: event::builder::ProtectedSpace::OneRtt,
+                        space: event::builder::KeySpace::OneRtt,
                         path: path_event!(path, path_id),
                     },
                 });
