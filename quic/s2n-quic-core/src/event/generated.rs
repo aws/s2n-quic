@@ -177,13 +177,13 @@ pub mod api {
         #[non_exhaustive]
         InvalidRetryToken {},
         #[non_exhaustive]
-        ConnectionNotAllowed {},
-        #[non_exhaustive]
         UnsupportedVersion {},
         #[non_exhaustive]
         InvalidDestinationConnectionId {},
         #[non_exhaustive]
         InvalidSourceConnectionId {},
+        #[non_exhaustive]
+        UnknownDestinationConnectionId {},
         #[non_exhaustive]
         RejectedConnectionAttempt {},
     }
@@ -1776,10 +1776,10 @@ pub mod builder {
     pub enum DatagramDropReason {
         DecodingFailed,
         InvalidRetryToken,
-        ConnectionNotAllowed,
         UnsupportedVersion,
         InvalidDestinationConnectionId,
         InvalidSourceConnectionId,
+        UnknownDestinationConnectionId,
         RejectedConnectionAttempt,
     }
     impl IntoEvent<api::DatagramDropReason> for DatagramDropReason {
@@ -1789,10 +1789,10 @@ pub mod builder {
             match self {
                 Self::DecodingFailed => DecodingFailed {},
                 Self::InvalidRetryToken => InvalidRetryToken {},
-                Self::ConnectionNotAllowed => ConnectionNotAllowed {},
                 Self::UnsupportedVersion => UnsupportedVersion {},
                 Self::InvalidDestinationConnectionId => InvalidDestinationConnectionId {},
                 Self::InvalidSourceConnectionId => InvalidSourceConnectionId {},
+                Self::UnknownDestinationConnectionId => UnknownDestinationConnectionId {},
                 Self::RejectedConnectionAttempt => RejectedConnectionAttempt {},
             }
         }
