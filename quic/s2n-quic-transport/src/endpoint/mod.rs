@@ -709,7 +709,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 }
                 _ => {
                     let is_short_header_packet = matches!(packet, ProtectedPacket::Short(_));
-                    let version = packet.version();
                     //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1
                     //# Endpoints MAY skip this check if any packet from a datagram is
                     //# successfully processed.  However, the comparison MUST be performed
@@ -746,7 +745,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                                 endpoint_type: Cfg::ENDPOINT_TYPE,
                                 timestamp,
                             },
-                            version,
+                            None,
                             self.config.context().event_subscriber,
                         );
                         publisher
@@ -762,9 +761,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             }
         } else {
             match packet {
-                ProtectedPacket::VersionNegotiation(_packet) => {
-                    // TODO: Handle version negotiation packets
-                }
                 _ => {
                     //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
                     //# Because the stateless reset token is not available
