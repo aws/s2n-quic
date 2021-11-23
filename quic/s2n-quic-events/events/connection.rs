@@ -95,6 +95,13 @@ struct RecoveryMetrics<'a> {
     bytes_in_flight: u32,
 }
 
+#[event("recovery:congestion_event")]
+/// A congestion event (ECN or packet loss) has occurred
+struct CongestionEvent<'a> {
+    path: Path<'a>,
+    source: CongestionEventSource,
+}
+
 #[event("transport:packet_dropped")]
 /// Packet was dropped with the given reason
 struct PacketDropped<'a> {
