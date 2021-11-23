@@ -271,11 +271,9 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         path_id: path::Id,
         publisher: &mut Pub,
     ) {
-        publisher.on_key_space_discarded(
-            event::builder::KeySpaceDiscarded {
-                space: event::builder::KeySpace::Initial
-            }
-        );
+        publisher.on_key_space_discarded(event::builder::KeySpaceDiscarded {
+            space: event::builder::KeySpace::Initial,
+        });
         self.recovery_manager
             .on_packet_number_space_discarded(path, path_id, publisher);
     }

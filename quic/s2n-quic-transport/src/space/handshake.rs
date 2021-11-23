@@ -265,11 +265,9 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         path_id: path::Id,
         publisher: &mut Pub,
     ) {
-        publisher.on_key_space_discarded(
-            event::builder::KeySpaceDiscarded {
-                space: event::builder::KeySpace::Handshake
-            }
-        );
+        publisher.on_key_space_discarded(event::builder::KeySpaceDiscarded {
+            space: event::builder::KeySpace::Handshake,
+        });
         self.recovery_manager
             .on_packet_number_space_discarded(path, path_id, publisher);
     }
