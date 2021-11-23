@@ -108,6 +108,11 @@ struct KeyUpdate {
     key_type: KeyType,
 }
 
+#[event("security:key_space_discarded")]
+struct KeySpaceDiscarded {
+    space: KeySpace,
+}
+
 #[event("connectivity:connection_started")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.2
 /// Connection started

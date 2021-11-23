@@ -271,6 +271,9 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         path_id: path::Id,
         publisher: &mut Pub,
     ) {
+        publisher.on_key_space_discarded(event::builder::KeySpaceDiscarded {
+            space: event::builder::KeySpace::Initial,
+        });
         self.recovery_manager
             .on_packet_number_space_discarded(path, path_id, publisher);
     }
@@ -326,7 +329,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             .map_err(|err| {
                 publisher.on_packet_dropped(event::builder::PacketDropped {
                     reason: event::builder::PacketDropReason::UnprotectFailed {
-                        space: event::builder::ProtectedSpace::Initial,
+                        space: event::builder::KeySpace::Initial,
                         path: path_event!(path, path_id),
                     },
                 });
