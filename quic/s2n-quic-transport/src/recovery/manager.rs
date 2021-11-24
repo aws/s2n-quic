@@ -10,7 +10,7 @@ use crate::{
 };
 use core::{cmp::max, marker::PhantomData, time::Duration};
 use s2n_quic_core::{
-    event::{self, IntoEvent},
+    event::{self, builder::CongestionSource, IntoEvent},
     frame,
     frame::ack::EcnCounts,
     inet::{DatagramInfo, ExplicitCongestionNotification},
@@ -597,6 +597,11 @@ impl<Config: endpoint::Config> Manager<Config> {
                 .path_mut()
                 .congestion_controller
                 .on_congestion_event(datagram.timestamp);
+            let path = context.path();
+            publisher.on_congestion(event::builder::Congestion {
+                path: path_event!(path, path_id),
+                source: CongestionSource::ECN,
+            })
         }
 
         self.baseline_ecn_counts = ack_frame_ecn_counts.unwrap_or_default();
@@ -823,6 +828,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         publisher: &mut Pub,
     ) {
         let current_path_id = context.path_id();
+        let mut is_congestion_event = false;
 
         // Remove the lost packets and account for the bytes on the proper congestion controller
         for (packet_number, sent_info) in sent_packets_to_remove {
@@ -862,6 +868,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     now,
                 );
                 is_mtu_probe = false;
+                is_congestion_event = true;
             }
 
             publisher.on_packet_lost(event::builder::PacketLost {
@@ -900,6 +907,14 @@ impl<Config: endpoint::Config> Manager<Config> {
                 //# persistent congestion is established.
                 path.rtt_estimator.on_persistent_congestion();
             }
+        }
+
+        if is_congestion_event {
+            let path = context.path();
+            publisher.on_congestion(event::builder::Congestion {
+                path: path_event!(path, current_path_id),
+                source: CongestionSource::PacketLoss,
+            })
         }
     }
 

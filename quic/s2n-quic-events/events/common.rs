@@ -601,3 +601,11 @@ enum HandshakeStatus {
     /// HANDSHAKE_DONE frame until it is acked by the peer.
     HandshakeDoneLost,
 }
+
+/// The source that caused a congestion event
+enum CongestionSource {
+    /// Explicit Congestion Notification
+    ECN,
+    /// One or more packets were detected lost
+    PacketLoss,
+}
