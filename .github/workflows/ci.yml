@@ -141,7 +141,7 @@ jobs:
           command: doc
           args: --all-features --no-deps --workspace --exclude cargo-compliance --exclude compliance --exclude s2n-quic-qns
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.11
+      - uses: aws-actions/configure-aws-credentials@v1.6.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -294,7 +294,7 @@ jobs:
       - name: Run cargo compliance
         run: ./scripts/compliance ${{ github.sha }}
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.11
+      - uses: aws-actions/configure-aws-credentials@v1.6.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -344,7 +344,7 @@ jobs:
           command: llvm-cov
           args: --html --no-fail-fast --workspace --exclude s2n-quic-qns --exclude s2n-quic-events --exclude cargo-compliance --all-features
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.11
+      - uses: aws-actions/configure-aws-credentials@v1.6.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -409,7 +409,7 @@ jobs:
         run: |
           ./scripts/recovery-sim
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.11
+      - uses: aws-actions/configure-aws-credentials@v1.6.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -517,7 +517,7 @@ jobs:
           cd examples/quic-echo-server
           cargo build -Z timings --release
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.11
+      - uses: aws-actions/configure-aws-credentials@v1.6.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

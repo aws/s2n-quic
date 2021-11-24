@@ -298,7 +298,7 @@ jobs:
                 $from
           done
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.11
+      - uses: aws-actions/configure-aws-credentials@v1.6.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -389,7 +389,7 @@ jobs:
             results/**/result.json > \
               web/logs/latest/result.json
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.11
+      - uses: aws-actions/configure-aws-credentials@v1.6.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -491,7 +491,7 @@ jobs:
         if: github.event_name == 'push'
         run: sudo env "PATH=$PATH" "BUILD_S2N_QUIC=false" ./scripts/benchmark/run-all
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.11
+      - uses: aws-actions/configure-aws-credentials@v1.6.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -609,7 +609,7 @@ jobs:
           zip perf.zip **/*.script
           rm -rf **/*.script
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.11
+      - uses: aws-actions/configure-aws-credentials@v1.6.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
