@@ -591,7 +591,7 @@ enum HandshakeStatus {
 }
 
 /// The source that caused a congestion event
-enum CongestionEventSource {
+enum CongestionSource {
     /// Explicit Congestion Notification
     ECN,
     /// One or more packets were detected lost

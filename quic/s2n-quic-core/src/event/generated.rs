@@ -265,7 +265,7 @@ pub mod api {
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     #[doc = " The source that caused a congestion event"]
-    pub enum CongestionEventSource {
+    pub enum CongestionSource {
         #[non_exhaustive]
         ECN {},
         #[non_exhaustive]
@@ -380,13 +380,13 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    #[doc = " A congestion event (ECN or packet loss) has occurred"]
-    pub struct CongestionEvent<'a> {
+    #[doc = " Congestion (ECN or packet loss) has occurred"]
+    pub struct Congestion<'a> {
         pub path: Path<'a>,
-        pub source: CongestionEventSource,
+        pub source: CongestionSource,
     }
-    impl<'a> Event for CongestionEvent<'a> {
-        const NAME: &'static str = "recovery:congestion_event";
+    impl<'a> Event for Congestion<'a> {
+        const NAME: &'static str = "recovery:congestion";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1144,15 +1144,15 @@ pub mod api {
                 tracing :: event ! (target : "recovery_metrics" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , min_rtt = tracing :: field :: debug (min_rtt) , smoothed_rtt = tracing :: field :: debug (smoothed_rtt) , latest_rtt = tracing :: field :: debug (latest_rtt) , rtt_variance = tracing :: field :: debug (rtt_variance) , max_ack_delay = tracing :: field :: debug (max_ack_delay) , pto_count = tracing :: field :: debug (pto_count) , congestion_window = tracing :: field :: debug (congestion_window) , bytes_in_flight = tracing :: field :: debug (bytes_in_flight));
             }
             #[inline]
-            fn on_congestion_event(
+            fn on_congestion(
                 &mut self,
                 context: &mut Self::ConnectionContext,
                 _meta: &api::ConnectionMeta,
-                event: &api::CongestionEvent,
+                event: &api::Congestion,
             ) {
                 let id = context.id();
-                let api::CongestionEvent { path, source } = event;
-                tracing :: event ! (target : "congestion_event" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , source = tracing :: field :: debug (source));
+                let api::Congestion { path, source } = event;
+                tracing :: event ! (target : "congestion" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , source = tracing :: field :: debug (source));
             }
             #[inline]
             fn on_packet_dropped(
@@ -1950,14 +1950,14 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    pub enum CongestionEventSource {
+    pub enum CongestionSource {
         ECN,
         PacketLoss,
     }
-    impl IntoEvent<api::CongestionEventSource> for CongestionEventSource {
+    impl IntoEvent<api::CongestionSource> for CongestionSource {
         #[inline]
-        fn into_event(self) -> api::CongestionEventSource {
-            use api::CongestionEventSource::*;
+        fn into_event(self) -> api::CongestionSource {
+            use api::CongestionSource::*;
             match self {
                 Self::ECN => ECN {},
                 Self::PacketLoss => PacketLoss {},
@@ -2152,15 +2152,15 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    pub struct CongestionEvent<'a> {
+    pub struct Congestion<'a> {
         pub path: Path<'a>,
-        pub source: CongestionEventSource,
+        pub source: CongestionSource,
     }
-    impl<'a> IntoEvent<api::CongestionEvent<'a>> for CongestionEvent<'a> {
+    impl<'a> IntoEvent<api::Congestion<'a>> for Congestion<'a> {
         #[inline]
-        fn into_event(self) -> api::CongestionEvent<'a> {
-            let CongestionEvent { path, source } = self;
-            api::CongestionEvent {
+        fn into_event(self) -> api::Congestion<'a> {
+            let Congestion { path, source } = self;
+            api::Congestion {
                 path: path.into_event(),
                 source: source.into_event(),
             }
@@ -2780,13 +2780,13 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
-        #[doc = "Called when the `CongestionEvent` event is triggered"]
+        #[doc = "Called when the `Congestion` event is triggered"]
         #[inline]
-        fn on_congestion_event(
+        fn on_congestion(
             &mut self,
             context: &mut Self::ConnectionContext,
             meta: &ConnectionMeta,
-            event: &CongestionEvent,
+            event: &Congestion,
         ) {
             let _ = context;
             let _ = meta;
@@ -3195,14 +3195,14 @@ mod traits {
             (self.1).on_recovery_metrics(&mut context.1, meta, event);
         }
         #[inline]
-        fn on_congestion_event(
+        fn on_congestion(
             &mut self,
             context: &mut Self::ConnectionContext,
             meta: &ConnectionMeta,
-            event: &CongestionEvent,
+            event: &Congestion,
         ) {
-            (self.0).on_congestion_event(&mut context.0, meta, event);
-            (self.1).on_congestion_event(&mut context.1, meta, event);
+            (self.0).on_congestion(&mut context.0, meta, event);
+            (self.1).on_congestion(&mut context.1, meta, event);
         }
         #[inline]
         fn on_packet_dropped(
@@ -3602,8 +3602,8 @@ mod traits {
         fn on_packet_lost(&mut self, event: builder::PacketLost);
         #[doc = "Publishes a `RecoveryMetrics` event to the publisher's subscriber"]
         fn on_recovery_metrics(&mut self, event: builder::RecoveryMetrics);
-        #[doc = "Publishes a `CongestionEvent` event to the publisher's subscriber"]
-        fn on_congestion_event(&mut self, event: builder::CongestionEvent);
+        #[doc = "Publishes a `Congestion` event to the publisher's subscriber"]
+        fn on_congestion(&mut self, event: builder::Congestion);
         #[doc = "Publishes a `PacketDropped` event to the publisher's subscriber"]
         fn on_packet_dropped(&mut self, event: builder::PacketDropped);
         #[doc = "Publishes a `KeyUpdate` event to the publisher's subscriber"]
@@ -3757,10 +3757,10 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
-        fn on_congestion_event(&mut self, event: builder::CongestionEvent) {
+        fn on_congestion(&mut self, event: builder::Congestion) {
             let event = event.into_event();
             self.subscriber
-                .on_congestion_event(self.context, &self.meta, &event);
+                .on_congestion(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -3912,7 +3912,7 @@ pub mod testing {
         pub frame_received: u32,
         pub packet_lost: u32,
         pub recovery_metrics: u32,
-        pub congestion_event: u32,
+        pub congestion: u32,
         pub packet_dropped: u32,
         pub key_update: u32,
         pub connection_started: u32,
@@ -4027,13 +4027,13 @@ pub mod testing {
         ) {
             self.recovery_metrics += 1;
         }
-        fn on_congestion_event(
+        fn on_congestion(
             &mut self,
             _context: &mut Self::ConnectionContext,
             _meta: &api::ConnectionMeta,
-            _event: &api::CongestionEvent,
+            _event: &api::Congestion,
         ) {
-            self.congestion_event += 1;
+            self.congestion += 1;
         }
         fn on_packet_dropped(
             &mut self,
@@ -4229,7 +4229,7 @@ pub mod testing {
         pub frame_received: u32,
         pub packet_lost: u32,
         pub recovery_metrics: u32,
-        pub congestion_event: u32,
+        pub congestion: u32,
         pub packet_dropped: u32,
         pub key_update: u32,
         pub connection_started: u32,
@@ -4325,8 +4325,8 @@ pub mod testing {
         fn on_recovery_metrics(&mut self, _event: builder::RecoveryMetrics) {
             self.recovery_metrics += 1;
         }
-        fn on_congestion_event(&mut self, _event: builder::CongestionEvent) {
-            self.congestion_event += 1;
+        fn on_congestion(&mut self, _event: builder::Congestion) {
+            self.congestion += 1;
         }
         fn on_packet_dropped(&mut self, _event: builder::PacketDropped) {
             self.packet_dropped += 1;

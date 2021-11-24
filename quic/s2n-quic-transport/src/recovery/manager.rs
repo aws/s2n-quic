@@ -10,7 +10,7 @@ use crate::{
 };
 use core::{cmp::max, marker::PhantomData, time::Duration};
 use s2n_quic_core::{
-    event::{self, builder::CongestionEventSource, IntoEvent},
+    event::{self, builder::CongestionSource, IntoEvent},
     frame,
     frame::ack::EcnCounts,
     inet::{DatagramInfo, ExplicitCongestionNotification},
@@ -598,9 +598,9 @@ impl<Config: endpoint::Config> Manager<Config> {
                 .congestion_controller
                 .on_congestion_event(datagram.timestamp);
             let path = context.path();
-            publisher.on_congestion_event(event::builder::CongestionEvent {
+            publisher.on_congestion(event::builder::Congestion {
                 path: path_event!(path, path_id),
-                source: CongestionEventSource::ECN,
+                source: CongestionSource::ECN,
             })
         }
 
@@ -911,9 +911,9 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         if is_congestion_event {
             let path = context.path();
-            publisher.on_congestion_event(event::builder::CongestionEvent {
+            publisher.on_congestion(event::builder::Congestion {
                 path: path_event!(path, current_path_id),
-                source: CongestionEventSource::PacketLoss,
+                source: CongestionSource::PacketLoss,
             })
         }
     }
