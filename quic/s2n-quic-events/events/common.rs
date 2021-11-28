@@ -547,6 +547,8 @@ enum PacketDropReason<'a> {
         packet_cid: &'a [u8],
         path: Path<'a>,
     },
+    /// Received a Retry packet with SCID field equal to DCID field.
+    RetryScidEqualsDcid { path: Path<'a>, cid: &'a [u8] },
     /// There was a failure when attempting to remove header protection.
     UnprotectFailed { space: KeySpace, path: Path<'a> },
     /// There was a failure when attempting to decrypt the packet.

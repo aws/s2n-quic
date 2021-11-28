@@ -32,7 +32,7 @@ use core::{
 use s2n_quic_core::{
     application,
     application::Sni,
-    connection::id::Generator as _,
+    connection::{id::Generator as _, PeerId},
     event::{self, ConnectionPublisher as _, IntoEvent as _},
     inet::{DatagramInfo, SocketAddress},
     io::tx,
@@ -867,6 +867,20 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+        //= type=TODO
+        //# Once a
+        //# client has received a valid Initial packet from the server, it MUST
+        //# discard any subsequent packet it receives on that connection with a
+        //# different Source Connection ID.
+        //
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+        //= type=TODO
+        //# Any further changes to the Destination Connection ID are only
+        //# permitted if the values are taken from NEW_CONNECTION_ID frames; if
+        //# subsequent Initial packets include a different Source Connection ID,
+        //# they MUST be discarded.
+
         if let Some((space, _status)) = self.space_manager.initial_mut() {
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
@@ -1202,10 +1216,15 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     fn handle_retry_packet(
         &mut self,
         datagram: &DatagramInfo,
-        _path_id: path::Id,
-        _packet: ProtectedRetry,
+        path_id: path::Id,
+        packet: ProtectedRetry,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
+        debug_assert!(
+            !packet.retry_token.is_empty(),
+            "A non-empty token field is verified by the decoder"
+        );
+
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
         publisher.on_packet_received(event::builder::PacketReceived {
@@ -1213,6 +1232,68 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 version: publisher.quic_version(),
             },
         });
+
+        if Self::Config::ENDPOINT_TYPE.is_client() {
+            match self.space_manager.retry_info() {
+                Some(_retry_token) => {
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.2
+                    //# A client MUST accept and process at most one Retry packet for each
+                    //# connection attempt.
+                    //
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.2
+                    //= type=TODO
+                    //# After the client has received and processed an
+                    //# Initial or Retry packet from the server, it MUST discard any
+                    //# subsequent Retry packets that it receives.
+                    //
+                    // TODO: Check if a valid Initial packet has been received.
+                    return Ok(());
+                }
+                None => {
+                    let path = &mut self.path_manager[path_id];
+
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.1
+                    //# A client MUST
+                    //# discard a Retry packet that contains a Source Connection ID field
+                    //# that is identical to the Destination Connection ID field of its
+                    //# Initial packet.
+                    if packet.source_connection_id() == packet.destination_connection_id() {
+                        publisher.on_packet_dropped(event::builder::PacketDropped {
+                            reason: event::builder::PacketDropReason::RetryScidEqualsDcid {
+                                path: path_event!(path, path_id),
+                                cid: packet.source_connection_id(),
+                            },
+                        });
+                        return Err(ProcessingError::RetryScidEqualsDcid);
+                    }
+
+                    let retry_source_connection_id =
+                        PeerId::try_from_bytes(packet.source_connection_id())
+                            // TODO: Are the CID bytes validated at this point or should this return
+                            // an error?
+                            .expect("CID bytes have been validated");
+
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.1
+                    //# The client MUST use the value from the Source
+                    //# Connection ID field of the Retry packet in the Destination Connection
+                    //# ID field of subsequent packets that it sends.
+                    //
+                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+                    //# A client MUST change the Destination Connection ID it uses for
+                    //# sending packets in response to only the first received Initial or
+                    //# Retry packet.
+                    path.peer_connection_id = retry_source_connection_id;
+
+                    self.space_manager
+                        .on_retry_packet(retry_source_connection_id, packet.retry_token);
+
+                    if let Some((space, _handshake_status)) = self.space_manager.initial_mut() {
+                        space.on_retry_packet(&retry_source_connection_id);
+                    }
+                }
+            }
+        }
+
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
         //= type=TODO
         //= tracking-issue=386

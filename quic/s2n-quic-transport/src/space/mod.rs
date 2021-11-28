@@ -13,7 +13,7 @@ use core::fmt;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     ack,
-    connection::{limits::Limits, InitialId},
+    connection::{limits::Limits, InitialId, PeerId},
     crypto::{tls, tls::Session, CryptoSuite},
     event::{self, ConnectionPublisher as _, IntoEvent},
     frame::{
@@ -50,8 +50,19 @@ struct SessionInfo<Config: endpoint::Config> {
     initial_id: InitialId,
 }
 
+#[allow(dead_code)]
+//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.3
+//= type=TODO
+//# Subsequent Initial packets from the client include the connection ID
+//# and token values from the Retry packet.
+pub struct RetryInfo {
+    retry_id: PeerId,
+    retry_token: Bytes,
+}
+
 pub struct PacketSpaceManager<Config: endpoint::Config> {
     session_info: Option<SessionInfo<Config>>,
+    retry_info: Option<RetryInfo>,
     initial: Option<Box<InitialSpace<Config>>>,
     handshake: Option<Box<HandshakeSpace<Config>>>,
     application: Option<Box<ApplicationSpace<Config>>>,
@@ -138,6 +149,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 session,
                 initial_id,
             }),
+            retry_info: None,
             initial: Some(Box::new(InitialSpace::new(
                 initial_key,
                 header_key,
@@ -386,6 +398,18 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
             buffer
         })
+    }
+
+    pub fn on_retry_packet(&mut self, retry_source_connection_id: PeerId, retry_token: &[u8]) {
+        let retry_info = RetryInfo {
+            retry_token: Bytes::copy_from_slice(retry_token),
+            retry_id: retry_source_connection_id,
+        };
+        self.retry_info = Some(retry_info);
+    }
+
+    pub fn retry_info(&self) -> Option<&RetryInfo> {
+        self.retry_info.as_ref()
     }
 }
 

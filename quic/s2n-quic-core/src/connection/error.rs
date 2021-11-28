@@ -253,6 +253,8 @@ impl From<Error> for std::io::ErrorKind {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ProcessingError {
     DuplicatePacket,
+    /// Received a Retry packet with SCID field equal to DCID field.
+    RetryScidEqualsDcid,
     ConnectionError(Error),
     CryptoError(CryptoError),
     NonEmptyRetryToken,

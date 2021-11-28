@@ -214,6 +214,8 @@ pub mod api {
             path: Path<'a>,
         },
         #[non_exhaustive]
+        RetryScidEqualsDcid { path: Path<'a>, cid: &'a [u8] },
+        #[non_exhaustive]
         UnprotectFailed { space: KeySpace, path: Path<'a> },
         #[non_exhaustive]
         DecryptionFailed {
@@ -1864,6 +1866,10 @@ pub mod builder {
             packet_cid: &'a [u8],
             path: Path<'a>,
         },
+        RetryScidEqualsDcid {
+            path: Path<'a>,
+            cid: &'a [u8],
+        },
         UnprotectFailed {
             space: KeySpace,
             path: Path<'a>,
@@ -1897,6 +1903,10 @@ pub mod builder {
                 Self::ConnectionIdMismatch { packet_cid, path } => ConnectionIdMismatch {
                     packet_cid: packet_cid.into_event(),
                     path: path.into_event(),
+                },
+                Self::RetryScidEqualsDcid { path, cid } => RetryScidEqualsDcid {
+                    path: path.into_event(),
+                    cid: cid.into_event(),
                 },
                 Self::UnprotectFailed { space, path } => UnprotectFailed {
                     space: space.into_event(),
