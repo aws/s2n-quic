@@ -351,6 +351,20 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             });
             err
         })?;
+
+        if Config::ENDPOINT_TYPE.is_client() && !decrypted.token.is_empty() {
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.2
+            //# Initial packets sent by the server MUST set the Token Length field
+            //# to 0; clients that receive an Initial packet with a non-zero Token
+            //# Length field MUST either discard the packet or generate a
+            //# connection error of type PROTOCOL_VIOLATION.
+            return Err(transport::Error::PROTOCOL_VIOLATION
+                .with_reason(
+                    "initial packets sent by the server MUST set the Token Length field to 0",
+                )
+                .into());
+        }
+
         Ok(decrypted)
     }
 
