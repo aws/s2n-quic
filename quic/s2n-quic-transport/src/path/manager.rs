@@ -216,7 +216,32 @@ impl<Config: endpoint::Config> Manager<Config> {
         max_mtu: MaxMtu,
         publisher: &mut Pub,
     ) -> Result<(Id, bool), transport::Error> {
+        let valid_initial_received = !self.peer_id_registry.is_empty();
+
         if let Some((id, path)) = self.path_mut(path_handle) {
+            let source_cid_changed =
+                |scid| scid != path.peer_connection_id && valid_initial_received;
+
+            if datagram
+                .source_connection_id
+                .map_or(false, source_cid_changed)
+            {
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+                //# Once a client has received a valid Initial packet from the server, it MUST
+                //# discard any subsequent packet it receives on that connection with a
+                //# different Source Connection ID.
+
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+                //# Any further changes to the Destination Connection ID are only
+                //# permitted if the values are taken from NEW_CONNECTION_ID frames; if
+                //# subsequent Initial packets include a different Source Connection ID,
+                //# they MUST be discarded.
+
+                // This error will cause the packet to be dropped
+                return Err(transport::Error::PROTOCOL_VIOLATION
+                    .with_reason("source connection ID changed from the first Initial packet"));
+            }
+
             let unblocked = path.on_bytes_received(datagram.payload_len);
             return Ok((id, unblocked));
         }
