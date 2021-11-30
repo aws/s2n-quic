@@ -255,6 +255,7 @@ pub enum ProcessingError {
     DuplicatePacket,
     ConnectionError(Error),
     CryptoError(CryptoError),
+    NonEmptyRetryToken,
 }
 
 impl From<Error> for ProcessingError {

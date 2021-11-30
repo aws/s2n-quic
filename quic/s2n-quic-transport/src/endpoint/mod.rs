@@ -545,6 +545,16 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         ProcessingError::DuplicatePacket => {
                             // We discard duplicate packets
                         }
+                        ProcessingError::NonEmptyRetryToken => {
+                            //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.2
+                            //# Initial packets sent by the server MUST set the Token Length field
+                            //# to 0; clients that receive an Initial packet with a non-zero Token
+                            //# Length field MUST either discard the packet or generate a
+                            //# connection error of type PROTOCOL_VIOLATION.
+                            // We discard server initials with non empty retry tokens instead of closing
+                            // the connection to prevent an attacker that can spoof initial packets
+                            // from gaining the ability to close a connection by setting a retry token.
+                        }
                         ProcessingError::ConnectionError(err) => {
                             conn.close(
                                 err,

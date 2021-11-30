@@ -548,10 +548,7 @@ enum PacketDropReason<'a> {
         path: Path<'a>,
     },
     /// There was a failure when attempting to remove header protection.
-    UnprotectFailed {
-        space: KeySpace,
-        path: Path<'a>,
-    },
+    UnprotectFailed { space: KeySpace, path: Path<'a> },
     /// There was a failure when attempting to decrypt the packet.
     DecryptionFailed {
         path: Path<'a>,
@@ -562,6 +559,8 @@ enum PacketDropReason<'a> {
     /// The payload is decoded one packet at a time. If decoding fails
     /// then the remaining packets are also discarded.
     DecodingFailed { path: Path<'a> },
+    /// The client received a non-empty retry token.
+    NonEmptyRetryToken { path: Path<'a> },
 }
 
 enum MigrationDenyReason {

@@ -222,6 +222,8 @@ pub mod api {
         },
         #[non_exhaustive]
         DecodingFailed { path: Path<'a> },
+        #[non_exhaustive]
+        NonEmptyRetryToken { path: Path<'a> },
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1873,6 +1875,9 @@ pub mod builder {
         DecodingFailed {
             path: Path<'a>,
         },
+        NonEmptyRetryToken {
+            path: Path<'a>,
+        },
     }
     impl<'a> IntoEvent<api::PacketDropReason<'a>> for PacketDropReason<'a> {
         #[inline]
@@ -1905,6 +1910,9 @@ pub mod builder {
                     packet_header: packet_header.into_event(),
                 },
                 Self::DecodingFailed { path } => DecodingFailed {
+                    path: path.into_event(),
+                },
+                Self::NonEmptyRetryToken { path } => NonEmptyRetryToken {
                     path: path.into_event(),
                 },
             }
