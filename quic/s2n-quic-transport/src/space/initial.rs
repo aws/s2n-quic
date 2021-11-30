@@ -358,11 +358,12 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             //# to 0; clients that receive an Initial packet with a non-zero Token
             //# Length field MUST either discard the packet or generate a
             //# connection error of type PROTOCOL_VIOLATION.
-            return Err(transport::Error::PROTOCOL_VIOLATION
-                .with_reason(
-                    "initial packets sent by the server MUST set the Token Length field to 0",
-                )
-                .into());
+            publisher.on_packet_dropped(event::builder::PacketDropped {
+                reason: event::builder::PacketDropReason::NonEmptyRetryToken {
+                    path: path_event!(path, path_id),
+                },
+            });
+            return Err(ProcessingError::NonEmptyRetryToken);
         }
 
         Ok(decrypted)

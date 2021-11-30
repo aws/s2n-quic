@@ -294,6 +294,11 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                         debug_assert!(false, "got duplicate packet error on first packet");
                         transport::Error::INTERNAL_ERROR.into()
                     }
+                    // this error is only raised by the client
+                    ProcessingError::NonEmptyRetryToken => {
+                        debug_assert!(false, "got non empty retry token error on server");
+                        transport::Error::INTERNAL_ERROR.into()
+                    }
                 }
             })?;
 
