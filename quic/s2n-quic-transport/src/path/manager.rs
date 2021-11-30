@@ -541,6 +541,11 @@ impl<Config: endpoint::Config> Manager<Config> {
         random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+        //# A client MUST change the Destination Connection ID it uses for
+        //# sending packets in response to only the first received Initial or
+        //# Retry packet.
+        //
         // A QUIC client uses a randomly generated value as the Initial Connection Id
         // until it receives a packet from the Server. Upon receiving a Server packet,
         // the Client switches to using the new Destination Connection Id. The
