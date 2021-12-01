@@ -195,9 +195,15 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         if let Some(session_info) = self.session_info.as_mut() {
+            let retry_id = self
+                .retry_info
+                .as_ref()
+                .map(|retry_info| &retry_info.retry_id);
+
             let mut context: SessionContext<Config, Pub> = SessionContext {
                 now,
                 initial_id: &session_info.initial_id,
+                retry_id,
                 initial: &mut self.initial,
                 handshake: &mut self.handshake,
                 application: &mut self.application,
