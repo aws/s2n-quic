@@ -12,7 +12,7 @@ use crate::{
 use s2n_quic_core::{
     ack,
     connection::{self, PeerId},
-    event::{self, IntoEvent},
+    event::{self, builder::DatagramDropReason, IntoEvent},
     frame,
     frame::path_validation,
     inet::DatagramInfo,
@@ -890,7 +890,6 @@ macro_rules! path_event {
     }};
 }
 pub(crate) use path_event;
-use s2n_quic_core::event::builder::DatagramDropReason;
 
 #[cfg(test)]
 mod tests;
