@@ -216,7 +216,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         max_mtu: MaxMtu,
         publisher: &mut Pub,
     ) -> Result<(Id, bool), transport::Error> {
-        let valid_initial_received = !self.peer_id_registry.is_empty();
+        let valid_initial_received = self.valid_initial_received();
 
         if let Some((id, path)) = self.path_mut(path_handle) {
             let source_cid_changed =
@@ -487,6 +487,21 @@ impl<Config: endpoint::Config> Manager<Config> {
         self[path_id].set_challenge(challenge);
     }
 
+    /// Returns true if a valid initial packet has been received
+    pub fn valid_initial_received(&self) -> bool {
+        if Config::ENDPOINT_TYPE.is_server() {
+            // Since the path manager is owned by a connection, and a connection can only exist
+            // on the server if a valid initial has been received, we immediately return true
+            true
+        } else {
+            // A QUIC client uses a randomly generated value as the Initial Connection Id
+            // until it receives a packet from the Server. Upon receiving a Server packet,
+            // the Client switches to using the new Destination Connection Id. The
+            // PeerIdRegistry is expected to be empty until the first Server initial packet.
+            !self.peer_id_registry.is_empty()
+        }
+    }
+
     /// Writes any frames the path manager wishes to transmit to the given context
     #[inline]
     pub fn on_transmit<W: transmission::WriteContext>(&mut self, context: &mut W) {
@@ -566,11 +581,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        // A QUIC client uses a randomly generated value as the Initial Connection Id
-        // until it receives a packet from the Server. Upon receiving a Server packet,
-        // the Client switches to using the new Destination Connection Id. The
-        // PeerIdRegistry is expected to be empty until the first Server packet.
-        if self.peer_id_registry.is_empty() {
+        if !self.valid_initial_received() {
             //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
             //# Until a packet is received from the server, the client MUST
             //# use the same Destination Connection ID value on all packets in this
