@@ -284,6 +284,9 @@ jobs:
           done
           # remove files we don't do anything with to reduce the artifact size
           find results -name '*.qlog' -exec rm {} \;
+          # remove cross traffic and goodput packet captures as they are large and not useful
+          find results -maxdepth 7 -type d -path "**/crosstraffic/*/sim" | xargs rm -rf \;
+          find results -maxdepth 7 -type d -path "**/goodput/*/sim" | xargs rm -rf \;
 
           # Add index files for easy browsing
           find results -maxdepth 3 -type d -path "*/logs/*/*" | while read from; do
