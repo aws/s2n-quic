@@ -219,13 +219,11 @@ impl<Config: endpoint::Config> Manager<Config> {
         let valid_initial_received = self.valid_initial_received();
 
         if let Some((id, path)) = self.path_mut(path_handle) {
-            let source_cid_changed =
-                |scid| scid != path.peer_connection_id && valid_initial_received;
+            let source_cid_changed = datagram.source_connection_id.map_or(false, |scid| {
+                scid != path.peer_connection_id && valid_initial_received
+            });
 
-            if datagram
-                .source_connection_id
-                .map_or(false, source_cid_changed)
-            {
+            if source_cid_changed {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
                 //# Once a client has received a valid Initial packet from the server, it MUST
                 //# discard any subsequent packet it receives on that connection with a
