@@ -586,6 +586,10 @@ impl<Config: endpoint::Config> Manager<Config> {
         random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+        //# A client MUST change the Destination Connection ID it uses for
+        //# sending packets in response to only the first received Initial or
+        //# Retry packet.
         if !self.valid_initial_received() {
             //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
             //# Until a packet is received from the server, the client MUST

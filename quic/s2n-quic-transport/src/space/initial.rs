@@ -15,7 +15,8 @@ use crate::{
 use core::{fmt, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
-    crypto::{tls, CryptoSuite},
+    connection::PeerId,
+    crypto::{tls, CryptoSuite, InitialKey},
     event::{self, IntoEvent},
     frame::{ack::AckRanges, crypto::CryptoRef, Ack, ConnectionClose},
     inet::DatagramInfo,
@@ -76,6 +77,29 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             processed_packet_numbers: SlidingWindow::default(),
             recovery_manager: recovery::Manager::new(PacketNumberSpace::Initial),
         }
+    }
+
+    /// Re-calculate TLS state when the first Retry packet is received.
+    pub fn on_retry_packet(&mut self, retry_source_connection_id: &PeerId) {
+        debug_assert!(Config::ENDPOINT_TYPE.is_client());
+
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.2
+        //# Changing the Destination Connection ID field also results in
+        //# a change to the keys used to protect the Initial packet.
+        let (initial_key, initial_header_key) =
+                            <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialKey::new_client(
+                                retry_source_connection_id.as_bytes(),
+                            );
+
+        self.key = initial_key;
+        self.header_key = initial_header_key;
+
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.3
+        //= type=TODO
+        //# Other than updating the Destination Connection ID and Token fields,
+        //# the Initial packet sent by the client is subject to the same
+        //# restrictions as the first Initial packet.  A client MUST use the same
+        //# cryptographic handshake message it included in this packet.
     }
 
     /// Returns true if the packet number has already been processed

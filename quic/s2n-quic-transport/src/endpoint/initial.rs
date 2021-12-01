@@ -299,6 +299,14 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                         debug_assert!(false, "got non empty retry token error on server");
                         transport::Error::INTERNAL_ERROR.into()
                     }
+                    // this error is only emitted when processing a Retry packet
+                    ProcessingError::RetryScidEqualsDcid => {
+                        debug_assert!(
+                            false,
+                            "got a Retry packet error while processing an Initial packet"
+                        );
+                        transport::Error::INTERNAL_ERROR.into()
+                    }
                 }
             })?;
 
