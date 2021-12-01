@@ -93,7 +93,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                         .with_reason("retry_source_connection_id mismatch"));
                 }
             }
-            (Some(_), _transport_params_value @ None) => {
+            (Some(_), None) => {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
                 //# *  absence of the retry_source_connection_id transport parameter from
                 //# the server after receiving a Retry packet,
@@ -102,7 +102,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                     after receiving a Retry packet from the server",
                 ));
             }
-            (None, Some(_transport_params_value)) => {
+            (None, Some(_)) => {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
                 //# *  presence of the retry_source_connection_id transport parameter
                 //# when no Retry packet was received, or
