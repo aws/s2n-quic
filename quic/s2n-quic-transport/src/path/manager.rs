@@ -237,7 +237,12 @@ impl<Config: endpoint::Config> Manager<Config> {
                 //# subsequent Initial packets include a different Source Connection ID,
                 //# they MUST be discarded.
 
-                // This error will cause the packet to be dropped
+                publisher.on_datagram_dropped(event::builder::DatagramDropped {
+                    len: datagram.payload_len as u16,
+                    reason: DatagramDropReason::InvalidSourceConnectionId,
+                });
+
+                // This error will cause the datagram to be dropped
                 return Err(transport::Error::PROTOCOL_VIOLATION
                     .with_reason("source connection ID changed from the first Initial packet"));
             }
@@ -881,6 +886,7 @@ macro_rules! path_event {
     }};
 }
 pub(crate) use path_event;
+use s2n_quic_core::event::builder::DatagramDropReason;
 
 #[cfg(test)]
 mod tests;
