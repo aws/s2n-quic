@@ -12,7 +12,7 @@ use crate::{
 use s2n_quic_core::{
     ack,
     connection::{self, PeerId},
-    event::{self, IntoEvent},
+    event::{self, builder::DatagramDropReason, IntoEvent},
     frame,
     frame::path_validation,
     inet::DatagramInfo,
@@ -216,7 +216,35 @@ impl<Config: endpoint::Config> Manager<Config> {
         max_mtu: MaxMtu,
         publisher: &mut Pub,
     ) -> Result<(Id, bool), transport::Error> {
+        let valid_initial_received = self.valid_initial_received();
+
         if let Some((id, path)) = self.path_mut(path_handle) {
+            let source_cid_changed = datagram.source_connection_id.map_or(false, |scid| {
+                scid != path.peer_connection_id && valid_initial_received
+            });
+
+            if source_cid_changed {
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+                //# Once a client has received a valid Initial packet from the server, it MUST
+                //# discard any subsequent packet it receives on that connection with a
+                //# different Source Connection ID.
+
+                //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+                //# Any further changes to the Destination Connection ID are only
+                //# permitted if the values are taken from NEW_CONNECTION_ID frames; if
+                //# subsequent Initial packets include a different Source Connection ID,
+                //# they MUST be discarded.
+
+                publisher.on_datagram_dropped(event::builder::DatagramDropped {
+                    len: datagram.payload_len as u16,
+                    reason: DatagramDropReason::InvalidSourceConnectionId,
+                });
+
+                // This error will cause the datagram to be dropped
+                return Err(transport::Error::PROTOCOL_VIOLATION
+                    .with_reason("source connection ID changed from the first Initial packet"));
+            }
+
             let unblocked = path.on_bytes_received(datagram.payload_len);
             return Ok((id, unblocked));
         }
@@ -462,6 +490,21 @@ impl<Config: endpoint::Config> Manager<Config> {
         self[path_id].set_challenge(challenge);
     }
 
+    /// Returns true if a valid initial packet has been received
+    pub fn valid_initial_received(&self) -> bool {
+        if Config::ENDPOINT_TYPE.is_server() {
+            // Since the path manager is owned by a connection, and a connection can only exist
+            // on the server if a valid initial has been received, we immediately return true
+            true
+        } else {
+            // A QUIC client uses a randomly generated value as the Initial Connection Id
+            // until it receives a packet from the Server. Upon receiving a Server packet,
+            // the Client switches to using the new Destination Connection Id. The
+            // PeerIdRegistry is expected to be empty until the first Server initial packet.
+            !self.peer_id_registry.is_empty()
+        }
+    }
+
     /// Writes any frames the path manager wishes to transmit to the given context
     #[inline]
     pub fn on_transmit<W: transmission::WriteContext>(&mut self, context: &mut W) {
@@ -545,12 +588,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         //# A client MUST change the Destination Connection ID it uses for
         //# sending packets in response to only the first received Initial or
         //# Retry packet.
-        //
-        // A QUIC client uses a randomly generated value as the Initial Connection Id
-        // until it receives a packet from the Server. Upon receiving a Server packet,
-        // the Client switches to using the new Destination Connection Id. The
-        // PeerIdRegistry is expected to be empty until the first Server packet.
-        if self.peer_id_registry.is_empty() {
+        if !self.valid_initial_received() {
             //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
             //# Until a packet is received from the server, the client MUST
             //# use the same Destination Connection ID value on all packets in this
