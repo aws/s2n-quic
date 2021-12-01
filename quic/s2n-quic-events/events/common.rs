@@ -531,7 +531,7 @@ enum KeySpace {
 }
 
 enum PacketDropReason<'a> {
-    /// A connection error occured and is no longer able to process packets.
+    /// A connection error occurred and is no longer able to process packets.
     ConnectionError { path: Path<'a> },
     /// The handshake needed to be complete before processing the packet.
     ///
@@ -542,13 +542,11 @@ enum PacketDropReason<'a> {
     /// during the handshake.
     VersionMismatch { version: u32, path: Path<'a> },
     /// A datagram contained more than one destination connection ID, which is
-    /// unallowed.
+    /// not allowed.
     ConnectionIdMismatch {
         packet_cid: &'a [u8],
         path: Path<'a>,
     },
-    /// Received a Retry packet with SCID field equal to DCID field.
-    RetryScidEqualsDcid { path: Path<'a>, cid: &'a [u8] },
     /// There was a failure when attempting to remove header protection.
     UnprotectFailed { space: KeySpace, path: Path<'a> },
     /// There was a failure when attempting to decrypt the packet.
@@ -563,6 +561,21 @@ enum PacketDropReason<'a> {
     DecodingFailed { path: Path<'a> },
     /// The client received a non-empty retry token.
     NonEmptyRetryToken { path: Path<'a> },
+    /// A Retry packet was discarded.
+    RetryDiscarded {
+        reason: RetryDiscardReason<'a>,
+        path: Path<'a>,
+    },
+}
+
+enum RetryDiscardReason<'a> {
+    /// Received a Retry packet with SCID field equal to DCID field.
+    ScidEqualsDcid { cid: &'a [u8] },
+    /// A client only processes at most one Retry packet.
+    RetryAlreadyProcessed,
+    /// The client discards Retry packets if a valid Initial packet
+    /// has been received and processed.
+    InitialAlreadyProcessed,
 }
 
 enum MigrationDenyReason {

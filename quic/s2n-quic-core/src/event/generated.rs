@@ -214,8 +214,6 @@ pub mod api {
             path: Path<'a>,
         },
         #[non_exhaustive]
-        RetryScidEqualsDcid { path: Path<'a>, cid: &'a [u8] },
-        #[non_exhaustive]
         UnprotectFailed { space: KeySpace, path: Path<'a> },
         #[non_exhaustive]
         DecryptionFailed {
@@ -226,6 +224,21 @@ pub mod api {
         DecodingFailed { path: Path<'a> },
         #[non_exhaustive]
         NonEmptyRetryToken { path: Path<'a> },
+        #[non_exhaustive]
+        RetryDiscarded {
+            reason: RetryDiscardReason<'a>,
+            path: Path<'a>,
+        },
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub enum RetryDiscardReason<'a> {
+        #[non_exhaustive]
+        ScidEqualsDcid { cid: &'a [u8] },
+        #[non_exhaustive]
+        RetryAlreadyProcessed {},
+        #[non_exhaustive]
+        InitialAlreadyProcessed {},
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1866,10 +1879,6 @@ pub mod builder {
             packet_cid: &'a [u8],
             path: Path<'a>,
         },
-        RetryScidEqualsDcid {
-            path: Path<'a>,
-            cid: &'a [u8],
-        },
         UnprotectFailed {
             space: KeySpace,
             path: Path<'a>,
@@ -1882,6 +1891,10 @@ pub mod builder {
             path: Path<'a>,
         },
         NonEmptyRetryToken {
+            path: Path<'a>,
+        },
+        RetryDiscarded {
+            reason: RetryDiscardReason<'a>,
             path: Path<'a>,
         },
     }
@@ -1904,10 +1917,6 @@ pub mod builder {
                     packet_cid: packet_cid.into_event(),
                     path: path.into_event(),
                 },
-                Self::RetryScidEqualsDcid { path, cid } => RetryScidEqualsDcid {
-                    path: path.into_event(),
-                    cid: cid.into_event(),
-                },
                 Self::UnprotectFailed { space, path } => UnprotectFailed {
                     space: space.into_event(),
                     path: path.into_event(),
@@ -1925,6 +1934,29 @@ pub mod builder {
                 Self::NonEmptyRetryToken { path } => NonEmptyRetryToken {
                     path: path.into_event(),
                 },
+                Self::RetryDiscarded { reason, path } => RetryDiscarded {
+                    reason: reason.into_event(),
+                    path: path.into_event(),
+                },
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub enum RetryDiscardReason<'a> {
+        ScidEqualsDcid { cid: &'a [u8] },
+        RetryAlreadyProcessed,
+        InitialAlreadyProcessed,
+    }
+    impl<'a> IntoEvent<api::RetryDiscardReason<'a>> for RetryDiscardReason<'a> {
+        #[inline]
+        fn into_event(self) -> api::RetryDiscardReason<'a> {
+            use api::RetryDiscardReason::*;
+            match self {
+                Self::ScidEqualsDcid { cid } => ScidEqualsDcid {
+                    cid: cid.into_event(),
+                },
+                Self::RetryAlreadyProcessed => RetryAlreadyProcessed {},
+                Self::InitialAlreadyProcessed => InitialAlreadyProcessed {},
             }
         }
     }
