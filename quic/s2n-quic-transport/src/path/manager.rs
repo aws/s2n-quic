@@ -62,7 +62,7 @@ pub struct Manager<Config: endpoint::Config> {
     /// appending another to the list. This is used to prevent an off-path attacker from
     /// creating new paths with garbage data and preventing the peer to migrate paths.
     ///
-    /// Note that it doesn't prevent an on-path attacker from observering/forwarding
+    /// Note that it doesn't prevent an on-path attacker from observing/forwarding
     /// authenticated packets from bogus addresses. Because of the current hard limit
     /// of `MAX_ALLOWED_PATHS`, this will prevent the peer from migrating, if it needs to.
     /// The `paths` data structure will need to be enhanced to include garbage collection

@@ -358,7 +358,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         while let Some((path_id, path_manager)) = pending_paths.next_path() {
             // It is more efficient to coalesce path validation and other
             // frames for the active path so we skip PathValidationOnly
-            // and handle transmission for the active path seperately.
+            // and handle transmission for the active path separately.
             if path_id == path_manager.active_path_id()
                 || path_manager[path_id].at_amplification_limit()
             {
@@ -1226,7 +1226,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         );
 
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
-
         publisher.on_packet_received(event::builder::PacketReceived {
             packet_header: event::builder::PacketHeader::Retry {
                 version: publisher.quic_version(),
@@ -1239,29 +1238,43 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.2
                     //# A client MUST accept and process at most one Retry packet for each
                     //# connection attempt.
-                    //
+                    let path = &mut self.path_manager[path_id];
+                    publisher.on_packet_dropped(event::builder::PacketDropped {
+                        reason: event::builder::PacketDropReason::RetryDiscarded {
+                            reason: event::builder::RetryDiscardReason::RetryAlreadyProcessed,
+                            path: path_event!(path, path_id),
+                        },
+                    });
+                    return Ok(());
+                }
+                None if self.path_manager.valid_initial_received() => {
                     //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.2
-                    //= type=TODO
                     //# After the client has received and processed an
                     //# Initial or Retry packet from the server, it MUST discard any
                     //# subsequent Retry packets that it receives.
-                    //
-                    // TODO: Check if a valid Initial packet has been received.
+                    let path = &mut self.path_manager[path_id];
+                    publisher.on_packet_dropped(event::builder::PacketDropped {
+                        reason: event::builder::PacketDropReason::RetryDiscarded {
+                            reason: event::builder::RetryDiscardReason::InitialAlreadyProcessed,
+                            path: path_event!(path, path_id),
+                        },
+                    });
                     return Ok(());
                 }
                 None => {
-                    let path = &mut self.path_manager[path_id];
-
                     //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.1
                     //# A client MUST
                     //# discard a Retry packet that contains a Source Connection ID field
                     //# that is identical to the Destination Connection ID field of its
                     //# Initial packet.
-                    if packet.source_connection_id() == packet.destination_connection_id() {
+                    let path = &mut self.path_manager[path_id];
+                    if packet.source_connection_id() == path.peer_connection_id.as_bytes() {
                         publisher.on_packet_dropped(event::builder::PacketDropped {
-                            reason: event::builder::PacketDropReason::RetryScidEqualsDcid {
+                            reason: event::builder::PacketDropReason::RetryDiscarded {
+                                reason: event::builder::RetryDiscardReason::ScidEqualsDcid {
+                                    cid: packet.source_connection_id(),
+                                },
                                 path: path_event!(path, path_id),
-                                cid: packet.source_connection_id(),
                             },
                         });
                         return Err(ProcessingError::RetryScidEqualsDcid);
@@ -1269,9 +1282,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
                     let retry_source_connection_id =
                         PeerId::try_from_bytes(packet.source_connection_id())
-                            // TODO: Are the CID bytes validated at this point or should this return
-                            // an error?
-                            .expect("CID bytes have been validated");
+                            .expect("SCID bytes have been validated");
 
                     //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.1
                     //# The client MUST use the value from the Source
