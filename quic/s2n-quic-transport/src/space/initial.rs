@@ -45,6 +45,10 @@ pub struct InitialSpace<Config: endpoint::Config> {
     pub crypto_stream: CryptoStream,
     pub tx_packet_numbers: TxPacketNumbers,
     pub received_hello_message: bool,
+    //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.3
+    //# Subsequent Initial packets from the client include the connection ID
+    //# and token values from the Retry packet.
+    retry_token: Vec<u8>,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager<Config>,
 }
@@ -74,14 +78,16 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             crypto_stream: CryptoStream::new(),
             tx_packet_numbers: TxPacketNumbers::new(PacketNumberSpace::Initial, now),
             received_hello_message: false,
+            retry_token: Vec::new(),
             processed_packet_numbers: SlidingWindow::default(),
             recovery_manager: recovery::Manager::new(PacketNumberSpace::Initial),
         }
     }
 
     /// Re-calculate TLS state when the first Retry packet is received.
-    pub fn on_retry_packet(&mut self, retry_source_connection_id: &PeerId) {
+    pub fn on_retry_packet(&mut self, retry_source_connection_id: &PeerId, retry_token: &[u8]) {
         debug_assert!(Config::ENDPOINT_TYPE.is_client());
+        self.retry_token = retry_token.to_vec();
 
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.2
         //# Changing the Destination Connection ID field also results in
@@ -134,7 +140,6 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         handshake_status: &HandshakeStatus,
         buffer: EncoderBuffer<'a>,
     ) -> Result<(transmission::Outcome, EncoderBuffer<'a>), PacketEncodingError<'a>> {
-        let token = &[][..]; // TODO
         let mut packet_number = self.tx_packet_numbers.next();
 
         if self.recovery_manager.requires_probe() {
@@ -173,7 +178,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             version: context.quic_version,
             destination_connection_id,
             source_connection_id: context.path_manager[context.path_id].local_connection_id,
-            token,
+            token: self.retry_token.as_slice(),
             packet_number,
             payload,
         };

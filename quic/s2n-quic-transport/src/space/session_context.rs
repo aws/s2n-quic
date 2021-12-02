@@ -33,8 +33,8 @@ use s2n_quic_core::{
 
 pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> {
     pub now: Timestamp,
-    pub initial_id: &'a InitialId,
-    pub retry_id: Option<&'a PeerId>,
+    pub initial_cid: &'a InitialId,
+    pub retry_cid: Option<&'a PeerId>,
     pub path: &'a Path<Config>,
     pub initial: &'a mut Option<Box<InitialSpace<Config>>>,
     pub handshake: &'a mut Option<Box<HandshakeSpace<Config>>>,
@@ -81,7 +81,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             self.path.peer_connection_id.as_bytes(),
         )?;
 
-        match (self.retry_id, peer_parameters.retry_source_connection_id) {
+        match (self.retry_cid, peer_parameters.retry_source_connection_id) {
             (Some(retry_packet_value), Some(transport_params_value)) => {
                 if retry_packet_value
                     .as_bytes()
@@ -123,7 +123,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             //# parameters match received connection ID values.
             if peer_value
                 .as_bytes()
-                .ct_eq(self.initial_id.as_bytes())
+                .ct_eq(self.initial_cid.as_bytes())
                 .not()
                 .into()
             {
