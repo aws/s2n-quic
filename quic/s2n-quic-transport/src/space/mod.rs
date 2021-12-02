@@ -47,22 +47,12 @@ pub(crate) use tx_packet_numbers::TxPacketNumbers;
 
 struct SessionInfo<Config: endpoint::Config> {
     session: <Config::TLSEndpoint as tls::Endpoint>::Session,
-    initial_id: InitialId,
-}
-
-#[allow(dead_code)]
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.3
-//= type=TODO
-//# Subsequent Initial packets from the client include the connection ID
-//# and token values from the Retry packet.
-pub struct RetryInfo {
-    retry_id: PeerId,
-    retry_token: Bytes,
+    initial_cid: InitialId,
 }
 
 pub struct PacketSpaceManager<Config: endpoint::Config> {
     session_info: Option<SessionInfo<Config>>,
-    retry_info: Option<RetryInfo>,
+    retry_cid: Option<Box<PeerId>>,
     initial: Option<Box<InitialSpace<Config>>>,
     handshake: Option<Box<HandshakeSpace<Config>>>,
     application: Option<Box<ApplicationSpace<Config>>>,
@@ -132,7 +122,7 @@ macro_rules! packet_space_api {
 
 impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     pub fn new<Pub: event::ConnectionPublisher>(
-        initial_id: InitialId,
+        initial_cid: InitialId,
         session: <Config::TLSEndpoint as tls::Endpoint>::Session,
         initial_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialKey,
         header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialHeaderKey,
@@ -147,9 +137,9 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         Self {
             session_info: Some(SessionInfo {
                 session,
-                initial_id,
+                initial_cid,
             }),
-            retry_info: None,
+            retry_cid: None,
             initial: Some(Box::new(InitialSpace::new(
                 initial_key,
                 header_key,
@@ -195,15 +185,10 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         if let Some(session_info) = self.session_info.as_mut() {
-            let retry_id = self
-                .retry_info
-                .as_ref()
-                .map(|retry_info| &retry_info.retry_id);
-
             let mut context: SessionContext<Config, Pub> = SessionContext {
                 now,
-                initial_id: &session_info.initial_id,
-                retry_id,
+                initial_cid: &session_info.initial_cid,
+                retry_cid: self.retry_cid.as_deref(),
                 initial: &mut self.initial,
                 handshake: &mut self.handshake,
                 application: &mut self.application,
@@ -217,9 +202,10 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
             session_info.session.poll(&mut context)?;
 
-            // The TLS session is no longer needed
+            // The TLS session and retry_cid is no longer needed
             if self.is_handshake_confirmed() {
                 self.session_info = None;
+                self.retry_cid = None;
             }
         }
 
@@ -406,16 +392,13 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         })
     }
 
-    pub fn on_retry_packet(&mut self, retry_source_connection_id: PeerId, retry_token: &[u8]) {
-        let retry_info = RetryInfo {
-            retry_token: Bytes::copy_from_slice(retry_token),
-            retry_id: retry_source_connection_id,
-        };
-        self.retry_info = Some(retry_info);
+    pub fn on_retry_packet(&mut self, retry_source_connection_id: PeerId) {
+        debug_assert!(Config::ENDPOINT_TYPE.is_client());
+        self.retry_cid = Some(Box::new(retry_source_connection_id));
     }
 
-    pub fn retry_info(&self) -> Option<&RetryInfo> {
-        self.retry_info.as_ref()
+    pub fn retry_cid(&self) -> Option<&PeerId> {
+        self.retry_cid.as_deref()
     }
 }
 

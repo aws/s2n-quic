@@ -1233,8 +1233,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         });
 
         if Self::Config::ENDPOINT_TYPE.is_client() {
-            match self.space_manager.retry_info() {
-                Some(_retry_token) => {
+            match self.space_manager.retry_cid() {
+                Some(_retry_cid) => {
                     //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.2
                     //# A client MUST accept and process at most one Retry packet for each
                     //# connection attempt.
@@ -1296,10 +1296,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     path.peer_connection_id = retry_source_connection_id;
 
                     self.space_manager
-                        .on_retry_packet(retry_source_connection_id, packet.retry_token);
+                        .on_retry_packet(retry_source_connection_id);
 
                     if let Some((space, _handshake_status)) = self.space_manager.initial_mut() {
-                        space.on_retry_packet(&retry_source_connection_id);
+                        space.on_retry_packet(&retry_source_connection_id, packet.retry_token);
                     }
                 }
             }
@@ -1358,6 +1358,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 let constraint = self.path_manager.transmission_constraint();
 
                 interests.transmission = self.can_transmit(constraint);
+
                 interests.new_connection_id =
                     // Only issue new Connection Ids to the peer when we know they won't be used
                     // for Initial or Handshake packets.
