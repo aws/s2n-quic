@@ -47,6 +47,7 @@ fn id(bytes: &[u8]) -> connection::LocalId {
 // Helper function to easily create a LocalIdRegistry and Mapper
 fn mapper(
     handshake_id: connection::LocalId,
+    handshake_id_expiration_time: Option<Timestamp>,
     token: stateless_reset::Token,
 ) -> (ConnectionIdMapper, LocalIdRegistry) {
     let mut random_generator = random::testing::Generator(123);
@@ -55,6 +56,7 @@ fn mapper(
     let registry = mapper.create_local_id_registry(
         InternalConnectionIdGenerator::new().generate_id(),
         &handshake_id,
+        handshake_id_expiration_time,
         token,
     );
     (mapper, registry)
@@ -68,11 +70,17 @@ fn minimum_lifetime() {
 
     let expiration = s2n_quic_platform::time::now() + MIN_LIFETIME;
 
-    let (_mapper, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
+    let (_mapper, mut reg1) = mapper(ext_id_1, Some(expiration), TEST_TOKEN_1);
     reg1.set_active_connection_id_limit(3);
     assert!(reg1
         .register_connection_id(&ext_id_2, Some(expiration), TEST_TOKEN_2)
         .is_ok());
+    assert_eq!(
+        Some(expiration - EXPIRATION_BUFFER),
+        reg1.get_connection_id_info(&ext_id_1)
+            .unwrap()
+            .retirement_time
+    );
     assert_eq!(
         Some(expiration - EXPIRATION_BUFFER),
         reg1.get_connection_id_info(&ext_id_2)
@@ -88,7 +96,7 @@ fn minimum_lifetime() {
 #[test]
 fn same_connection_id_must_not_be_issued_for_same_connection() {
     let ext_id = id(b"id01");
-    let (_, mut reg) = mapper(ext_id, TEST_TOKEN_1);
+    let (_, mut reg) = mapper(ext_id, None, TEST_TOKEN_1);
 
     assert_eq!(
         Err(LocalIdRegistrationError::ConnectionIdInUse),
@@ -105,7 +113,7 @@ fn sequence_number_must_increase_by_one() {
     let ext_id_1 = id(b"id01");
     let ext_id_2 = id(b"id02");
 
-    let (_, mut reg) = mapper(ext_id_1, TEST_TOKEN_1);
+    let (_, mut reg) = mapper(ext_id_1, None, TEST_TOKEN_1);
     reg.set_active_connection_id_limit(3);
     reg.register_connection_id(&ext_id_2, None, TEST_TOKEN_2)
         .unwrap();
@@ -136,10 +144,21 @@ fn connection_mapper_test() {
     let ext_id_3 = id(b"id03");
     let ext_id_4 = id(b"id04");
 
-    let mut reg1 = mapper.create_local_id_registry(id1, &ext_id_1, TEST_TOKEN_1);
-    let mut reg2 = mapper.create_local_id_registry(id2, &ext_id_3, TEST_TOKEN_3);
-
     let now = s2n_quic_platform::time::now();
+    let handshake_id_expiration_time = now + Duration::from_secs(60);
+
+    let mut reg1 = mapper.create_local_id_registry(
+        id1,
+        &ext_id_1,
+        Some(handshake_id_expiration_time),
+        TEST_TOKEN_1,
+    );
+    let mut reg2 = mapper.create_local_id_registry(
+        id2,
+        &ext_id_3,
+        Some(handshake_id_expiration_time),
+        TEST_TOKEN_3,
+    );
 
     reg1.set_active_connection_id_limit(3);
     reg2.set_active_connection_id_limit(3);
@@ -149,6 +168,12 @@ fn connection_mapper_test() {
         reg1.get_connection_id_info(&ext_id_1)
             .unwrap()
             .sequence_number
+    );
+    assert_eq!(
+        Some(handshake_id_expiration_time - EXPIRATION_BUFFER),
+        reg1.get_connection_id_info(&ext_id_1)
+            .unwrap()
+            .retirement_time
     );
     assert_eq!(Some(id1), mapper.lookup_internal_connection_id(&ext_id_1));
     assert_eq!(
@@ -187,7 +212,8 @@ fn connection_mapper_test() {
     assert_eq!(None, mapper.lookup_internal_connection_id(&ext_id_3));
     assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_4));
 
-    reg2.get_connection_id_info_mut(&ext_id_4).unwrap().status = PendingRetirementConfirmation(now);
+    reg2.get_connection_id_info_mut(&ext_id_4).unwrap().status =
+        PendingRetirementConfirmation(Some(now));
     reg2.unregister_expired_ids(now);
     assert_eq!(None, mapper.lookup_internal_connection_id(&ext_id_4));
 
@@ -215,7 +241,7 @@ fn on_retire_connection_id() {
     let ext_id_2 = id(b"id02");
 
     let now = s2n_quic_platform::time::now();
-    let (mapper, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
+    let (mapper, mut reg1) = mapper(ext_id_1, None, TEST_TOKEN_1);
 
     reg1.set_active_connection_id_limit(2);
 
@@ -297,22 +323,22 @@ fn on_retire_connection_id_pending_removal() {
 
     let now = s2n_quic_platform::time::now() + Duration::from_secs(60);
 
-    let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
+    let (_, mut reg1) = mapper(ext_id_1, None, TEST_TOKEN_1);
     reg1.set_active_connection_id_limit(2);
 
     assert!(reg1
         .register_connection_id(&ext_id_2, Some(now), TEST_TOKEN_2)
         .is_ok());
 
-    reg1.retire_handshake_connection_id(now);
+    reg1.retire_handshake_connection_id();
     reg1.on_timeout(now);
 
     assert_eq!(
-        PendingRetirementConfirmation(now + EXPIRATION_BUFFER),
+        PendingRetirementConfirmation(None),
         reg1.get_connection_id_info(&ext_id_1).unwrap().status
     );
     assert_eq!(
-        PendingRetirementConfirmation(now + EXPIRATION_BUFFER),
+        PendingRetirementConfirmation(Some(now + EXPIRATION_BUFFER)),
         reg1.get_connection_id_info(&ext_id_2).unwrap().status
     );
 
@@ -321,7 +347,7 @@ fn on_retire_connection_id_pending_removal() {
     assert!(reg1.on_retire_connection_id(1, &ext_id_1, rtt, now).is_ok());
 
     assert_eq!(
-        PendingRetirementConfirmation(now + EXPIRATION_BUFFER),
+        PendingRetirementConfirmation(None),
         reg1.get_connection_id_info(&ext_id_1).unwrap().status
     );
     // When the ON_RETIRE_CONNECTION_ID frame is received from the peer, the
@@ -356,7 +382,7 @@ fn connection_id_interest() {
     let ext_id_2 = id(b"id02");
     let ext_id_3 = id(b"id03");
 
-    let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
+    let (_, mut reg1) = mapper(ext_id_1, None, TEST_TOKEN_1);
 
     // Active connection ID limit starts at 1, so there is no interest initially
     assert_eq!(
@@ -405,7 +431,7 @@ fn endpoint_must_not_provide_more_ids_than_peer_limit() {
     let ext_id_2 = id(b"id02");
     let ext_id_3 = id(b"id03");
 
-    let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
+    let (_, mut reg1) = mapper(ext_id_1, None, TEST_TOKEN_1);
 
     reg1.set_active_connection_id_limit(2);
 
@@ -436,7 +462,7 @@ fn endpoint_may_exceed_limit_temporarily() {
 
     let now = s2n_quic_platform::time::now();
 
-    let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
+    let (_, mut reg1) = mapper(ext_id_1, None, TEST_TOKEN_1);
     reg1.set_active_connection_id_limit(2);
 
     assert_eq!(
@@ -447,7 +473,7 @@ fn endpoint_may_exceed_limit_temporarily() {
     assert!(reg1
         .register_connection_id(&ext_id_2, Some(now + EXPIRATION_BUFFER), TEST_TOKEN_2)
         .is_ok());
-    reg1.retire_handshake_connection_id(now + EXPIRATION_BUFFER);
+    reg1.retire_handshake_connection_id();
     reg1.on_timeout(now + EXPIRATION_BUFFER);
 
     // We can register another ID because the retire_prior_to field retires old IDs
@@ -469,7 +495,7 @@ fn endpoint_may_exceed_limit_temporarily() {
 #[test]
 fn endpoint_may_limit_connection_ids() {
     let ext_id_1 = id(b"id01");
-    let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
+    let (_, mut reg1) = mapper(ext_id_1, None, TEST_TOKEN_1);
     reg1.set_active_connection_id_limit(100);
 
     assert_eq!(
@@ -486,7 +512,7 @@ fn on_transmit() {
 
     let now = s2n_quic_platform::time::now() + Duration::from_secs(60);
 
-    let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
+    let (_, mut reg1) = mapper(ext_id_1, None, TEST_TOKEN_1);
 
     reg1.set_active_connection_id_limit(3);
 
@@ -534,7 +560,7 @@ fn on_transmit() {
     );
 
     // Retire everything
-    reg1.retire_handshake_connection_id(now);
+    reg1.retire_handshake_connection_id();
     reg1.on_timeout(now);
     assert!(reg1
         .register_connection_id(&ext_id_3, None, TEST_TOKEN_3)
@@ -581,7 +607,7 @@ fn on_transmit_constrained() {
     let ext_id_2 = id(b"id02");
     let ext_id_3 = id(b"id03");
 
-    let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
+    let (_, mut reg1) = mapper(ext_id_1, None, TEST_TOKEN_1);
 
     reg1.set_active_connection_id_limit(3);
 
@@ -652,7 +678,7 @@ fn on_packet_ack_and_loss() {
     let ext_id_1 = id(b"id01");
     let ext_id_2 = id(b"id02");
 
-    let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
+    let (_, mut reg1) = mapper(ext_id_1, None, TEST_TOKEN_1);
 
     reg1.set_active_connection_id_limit(3);
 
@@ -704,7 +730,7 @@ fn timers() {
     let ext_id_1 = id(b"id01");
     let ext_id_2 = id(b"id02");
 
-    let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
+    let (_, mut reg1) = mapper(ext_id_1, None, TEST_TOKEN_1);
     reg1.set_active_connection_id_limit(3);
 
     // No timer set for the handshake connection ID
@@ -723,7 +749,7 @@ fn timers() {
 
     reg1.get_connection_id_info_mut(&ext_id_1)
         .unwrap()
-        .retire(now);
+        .retire(Some(now));
     reg1.update_timers();
 
     // Expiration timer is armed based on removal time
@@ -735,7 +761,7 @@ fn timers() {
 
     reg1.get_connection_id_info_mut(&ext_id_2)
         .unwrap()
-        .retire(now);
+        .retire(Some(now));
     reg1.update_timers();
 
     // Expiration timer is armed based on removal time
@@ -755,28 +781,28 @@ fn on_timeout() {
     let ext_id_2 = id(b"id02");
     let ext_id_3 = id(b"id03");
 
-    let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
+    let now = s2n_quic_platform::time::now();
+    let handshake_expiration = now + Duration::from_secs(60);
+
+    let (_, mut reg1) = mapper(ext_id_1, Some(handshake_expiration), TEST_TOKEN_1);
     reg1.set_active_connection_id_limit(3);
 
-    let now = s2n_quic_platform::time::now();
+    // Timer set for the handshake connection ID
+    assert_eq!(1, reg1.armed_timer_count());
 
-    // No timer set for the handshake connection ID
-    assert_eq!(0, reg1.armed_timer_count());
-
-    reg1.retire_handshake_connection_id(now);
+    reg1.retire_handshake_connection_id();
 
     // Too early, no timer is ready
     reg1.on_timeout(now);
 
-    // Handshake connection ID has an expiration set based on now
     assert_eq!(
-        Some(now + EXPIRATION_BUFFER),
+        Some(handshake_expiration),
         reg1.expiration_timer.next_expiration()
     );
     assert!(reg1.get_connection_id_info(&ext_id_1).is_some());
 
     // Now the expiration timer is ready
-    reg1.on_timeout(now + EXPIRATION_BUFFER);
+    reg1.on_timeout(handshake_expiration);
     // ID 1 was removed since it expired
     assert!(reg1.get_connection_id_info(&ext_id_1).is_none());
     assert!(!reg1.expiration_timer.is_armed());
@@ -801,7 +827,7 @@ fn on_timeout() {
 
     // ID 2 is moved into pending retirement confirmation
     assert_eq!(
-        PendingRetirementConfirmation(expiration_2),
+        PendingRetirementConfirmation(Some(expiration_2)),
         reg1.get_connection_id_info(&ext_id_2).unwrap().status
     );
     // Expiration timer is set to the expiration time of ID 2
@@ -824,7 +850,9 @@ fn retire_handshake_connection_id() {
     let ext_id_2 = id(b"id02");
     let ext_id_3 = id(b"id03");
 
-    let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
+    let now = s2n_quic_platform::time::now();
+    let handshake_expiration = now + Duration::from_secs(60);
+    let (_, mut reg1) = mapper(ext_id_1, Some(handshake_expiration), TEST_TOKEN_1);
 
     reg1.set_active_connection_id_limit(3);
 
@@ -835,26 +863,47 @@ fn retire_handshake_connection_id() {
         .register_connection_id(&ext_id_3, None, TEST_TOKEN_3)
         .is_ok());
 
-    reg1.retire_handshake_connection_id(s2n_quic_platform::time::now());
+    reg1.retire_handshake_connection_id();
 
     assert_eq!(3, reg1.registered_ids.iter().count());
 
     for id_info in reg1.registered_ids.iter() {
         if id_info.sequence_number == 0 {
             assert!(id_info.is_retired());
+            assert_eq!(
+                Some(handshake_expiration - EXPIRATION_BUFFER),
+                id_info.retirement_time
+            );
         } else {
             assert!(!id_info.is_retired())
         }
     }
 
     // Calling retire_handshake_connection_id again does nothing
-    reg1.retire_handshake_connection_id(s2n_quic_platform::time::now());
+    reg1.retire_handshake_connection_id();
 
     assert_eq!(3, reg1.registered_ids.iter().count());
 
     for id_info in reg1.registered_ids.iter() {
         if id_info.sequence_number == 0 {
             assert!(id_info.is_retired());
+            assert_eq!(
+                Some(handshake_expiration - EXPIRATION_BUFFER),
+                id_info.retirement_time
+            );
+        } else {
+            assert!(!id_info.is_retired())
+        }
+    }
+
+    assert!(reg1
+        .on_retire_connection_id(0, &ext_id_2, Duration::from_millis(100), now)
+        .is_ok());
+
+    // ON_RETIRE_CONNECTION_ID received for the handshake CID should change the status to PendingRemoval
+    for id_info in reg1.registered_ids.iter() {
+        if id_info.sequence_number == 0 {
+            assert!(matches!(id_info.status, PendingRemoval(_)));
         } else {
             assert!(!id_info.is_retired())
         }

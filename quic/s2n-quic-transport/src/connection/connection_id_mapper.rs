@@ -7,7 +7,7 @@ use crate::connection::{local_id_registry::LocalIdRegistry, InternalConnectionId
 use alloc::rc::Rc;
 use core::{cell::RefCell, convert::TryFrom as _, hash::BuildHasher};
 use hashbrown::hash_map::{Entry, HashMap};
-use s2n_quic_core::{connection, endpoint, random, stateless_reset};
+use s2n_quic_core::{connection, endpoint, random, stateless_reset, time::Timestamp};
 use siphasher::sip::SipHasher13;
 
 // Since the input to the hash function (stateless reset token) come from the peer, we need to
@@ -300,12 +300,14 @@ impl ConnectionIdMapper {
         &mut self,
         internal_id: InternalConnectionId,
         initial_connection_id: &connection::LocalId,
+        initial_connection_id_expiration_time: Option<Timestamp>,
         local_stateless_reset_token: stateless_reset::Token,
     ) -> LocalIdRegistry {
         LocalIdRegistry::new(
             internal_id,
             self.state.clone(),
             initial_connection_id,
+            initial_connection_id_expiration_time,
             local_stateless_reset_token,
         )
     }

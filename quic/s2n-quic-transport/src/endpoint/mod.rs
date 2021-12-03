@@ -913,6 +913,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .connection_id_format
             .generate(&ConnectionInfo::new(&remote_address));
 
+        let local_connection_id_expiration_time = self
+            .config
+            .context()
+            .connection_id_format
+            .lifetime()
+            .map(|duration| timestamp + duration);
+
         let local_id_registry = {
             // TODO: the client currently generates a random stateless_reset_token but doesnt
             // transmit it. Refactor `create_local_id_registry` to instead accept None for
@@ -925,6 +932,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             self.connection_id_mapper.create_local_id_registry(
                 internal_connection_id,
                 &local_connection_id,
+                local_connection_id_expiration_time,
                 stateless_reset_token,
             )
         };

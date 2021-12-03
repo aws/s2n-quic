@@ -126,7 +126,7 @@ impl LocalIdInfo {
     // The time this connection ID should be removed
     fn removal_time(&self) -> Option<Timestamp> {
         match self.status {
-            PendingRetirementConfirmation(removal_time) => Some(removal_time),
+            PendingRetirementConfirmation(removal_time) => removal_time,
             PendingRemoval(removal_time) => Some(removal_time),
             _ => None,
         }
@@ -134,9 +134,9 @@ impl LocalIdInfo {
 
     // Changes the status of the connection ID to PendingRetirementConfirmation with a removal
     // time incorporating the EXPIRATION_BUFFER
-    fn retire(&mut self, timestamp: Timestamp) {
+    fn retire(&mut self, timestamp: Option<Timestamp>) {
         debug_assert!(!self.is_retired());
-        self.status = PendingRetirementConfirmation(timestamp + EXPIRATION_BUFFER)
+        self.status = PendingRetirementConfirmation(timestamp.map(|time| time + EXPIRATION_BUFFER))
     }
 }
 
@@ -159,10 +159,10 @@ pub enum LocalIdStatus {
     Active,
     /// Connection IDs are put in the `PendingRetirementConfirmation` status
     /// upon retirement, until confirmation of the retirement
-    /// is received from the peer. If the removal_time indicated in this status
+    /// is received from the peer. If the optional removal_time indicated in this status
     /// is exceeded, the connection ID will be removed without confirmation from
     /// the peer.
-    PendingRetirementConfirmation(Timestamp),
+    PendingRetirementConfirmation(Option<Timestamp>),
     /// Connection IDs are put in the `PendingRemoval` status
     /// when the peer has confirmed the retirement by sending a
     /// RETIRE_CONNECTION_ID_FRAME. This status exists to allow for a brief
@@ -223,6 +223,7 @@ impl LocalIdRegistry {
         internal_id: InternalConnectionId,
         state: Rc<RefCell<ConnectionIdMapperState>>,
         handshake_connection_id: &connection::LocalId,
+        handshake_connection_id_expiration_time: Option<Timestamp>,
         stateless_reset_token: stateless_reset::Token,
     ) -> Self {
         let mut registry = Self {
@@ -237,10 +238,11 @@ impl LocalIdRegistry {
             expiration_timer: Timer::default(),
         };
 
-        // The handshake connection ID will be retired after the handshake has completed
-        // so an explicit expiration timestamp is not needed.
-        let _ =
-            registry.register_connection_id(handshake_connection_id, None, stateless_reset_token);
+        let _ = registry.register_connection_id(
+            handshake_connection_id,
+            handshake_connection_id_expiration_time,
+            stateless_reset_token,
+        );
 
         let handshake_connection_id_info = registry
             .registered_ids
@@ -458,7 +460,7 @@ impl LocalIdRegistry {
                 .iter_mut()
                 .filter(|id_info| id_info.is_retire_ready(timestamp))
             {
-                id_info.retire(timestamp);
+                id_info.retire(Some(timestamp));
                 self.retire_prior_to = self.retire_prior_to.max(id_info.sequence_number + 1)
             }
 
@@ -515,8 +517,8 @@ impl LocalIdRegistry {
         }
     }
 
-    /// Retires the connection id used during the handshake
-    pub fn retire_handshake_connection_id(&mut self, timestamp: Timestamp) {
+    /// Requests the peer to retire the connection id used during the handshake
+    pub fn retire_handshake_connection_id(&mut self) {
         if let Some(handshake_id_info) = self
             .registered_ids
             .iter_mut()
@@ -524,7 +526,16 @@ impl LocalIdRegistry {
             //# The sequence number of the initial connection ID is 0.
             .find(|id_info| id_info.sequence_number == 0 && !id_info.is_retired())
         {
-            handshake_id_info.retire(timestamp);
+            // Request the peer to retire the handshake CID immediately by incrementing retire_prior_to,
+            // but schedule the removal of the handshake CID for its regularly scheduled retirement
+            // time, since some peers may not be capable of retiring the handshake CID. This allows the
+            // handshake CID to remain in use until the peer is ready to retire it or the handshake CID
+            // expires, whichever comes first. If the handshake CID does not have a retirement time,
+            // it will not be removed unless the peer sends a RETIRE_CONNECTION_ID frame.
+            handshake_id_info.retire(handshake_id_info.retirement_time);
+
+            // The retire_prior_to number is incremented to trigger the peer to send a
+            // RETIRE_CONNECTION_ID frame if possible.
             self.retire_prior_to = self
                 .retire_prior_to
                 .max(handshake_id_info.sequence_number + 1);
