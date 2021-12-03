@@ -116,6 +116,13 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let internal_connection_id = self.connection_id_generator.generate_id();
 
+        let initial_connection_id_expiration_time = self
+            .config
+            .context()
+            .connection_id_format
+            .lifetime()
+            .map(|duration| datagram.timestamp + duration);
+
         let stateless_reset_token = self
             .config
             .context()
@@ -125,6 +132,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         let local_id_registry = self.connection_id_mapper.create_local_id_registry(
             internal_connection_id,
             &initial_connection_id,
+            initial_connection_id_expiration_time,
             stateless_reset_token,
         );
 
