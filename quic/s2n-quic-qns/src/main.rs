@@ -27,10 +27,15 @@ async fn main() {
     #[cfg(feature = "dhat")]
     let _dhat = dhat::Dhat::start_heap_profiling();
 
+    let format = tracing_subscriber::fmt::format()
+        .with_level(false) // don't include levels in formatted output
+        .with_timer(tracing_subscriber::fmt::time::uptime())
+        .with_ansi(false)
+        .compact(); // use the `Comp
+
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .with_level(false)
-        .with_timer(tracing_subscriber::fmt::time::uptime())
+        .event_format(format)
         .init();
 
     match Arguments::from_args_safe() {

@@ -247,8 +247,7 @@ fn is_supported_testcase(testcase: Testcase) -> bool {
         ChaCha20 => false,
         // TODO add the ability to trigger a key update from the application
         KeyUpdate => false,
-        // TODO implement retry functionality on the client
-        Retry => false,
+        Retry => true,
         // TODO support storing tickets
         Resumption => false,
         // TODO implement 0rtt
