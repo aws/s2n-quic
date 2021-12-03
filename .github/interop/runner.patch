@@ -52,7 +52,7 @@ index 3df16da..d1057b0 100644
      "image": "martenseemann/quic-go-interop:latest",
      "url": "https://github.com/lucas-clemente/quic-go",
 diff --git a/interop.py b/interop.py
-index 4dea51d..78df158 100644
+index 4dea51d..d84bdac 100644
 --- a/interop.py
 +++ b/interop.py
 @@ -124,6 +124,7 @@ class InteropRunner:
@@ -97,7 +97,7 @@ index 4dea51d..78df158 100644
                      self.test_results[server][client][testcase] = status
                      if status == TestResult.FAILED:
                          nr_failed += 1
-+                        if isinstance(testcase, testcases.TestCaseTransfer):
++                        if testcase == testcases.TestCaseTransfer:
 +                            transfer_succeeded = False
  
                  # run the measurements
