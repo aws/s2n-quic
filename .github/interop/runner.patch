@@ -38,10 +38,10 @@ index 7541cae..ba1b4da 100644
        - VERSION=$VERSION
      depends_on:
 diff --git a/implementations.json b/implementations.json
-index 1feee36..3b120ca 100644
+index 3df16da..7ed4f6e 100644
 --- a/implementations.json
 +++ b/implementations.json
-@@ -1,4 +1,9 @@
+@@ -1,24 +1,19 @@
  {
 +  "s2n-quic": {
 +    "image": "awslabs/s2n-quic-qns:latest",
@@ -51,8 +51,28 @@ index 1feee36..3b120ca 100644
    "quic-go": {
      "image": "martenseemann/quic-go-interop:latest",
      "url": "https://github.com/lucas-clemente/quic-go",
+     "role": "both"
+   },
+-  "quicly": {
+-    "image": "h2oserver/quicly-interop-runner:latest",
+-    "url": "https://github.com/h2o/quicly",
+-    "role": "both"
+-  },
+   "ngtcp2": {
+     "image": "ghcr.io/ngtcp2/ngtcp2-interop:latest",
+     "url": "https://github.com/ngtcp2/ngtcp2",
+     "role": "both"
+   },
+-  "quant": {
+-    "image": "ntap/quant:interop",
+-    "url": "https://github.com/NTAP/quant",
+-    "role": "both"
+-  },
+   "mvfst": {
+     "image": "lnicco/mvfst-qns:latest",
+     "url": "https://github.com/facebookincubator/mvfst",
 diff --git a/interop.py b/interop.py
-index 4dea51d..4c0d784 100644
+index 4dea51d..d84bdac 100644
 --- a/interop.py
 +++ b/interop.py
 @@ -124,6 +124,7 @@ class InteropRunner:
@@ -79,7 +99,7 @@ index 4dea51d..4c0d784 100644
              "WWW=" + testcase.www_dir() + " "
              "DOWNLOADS=" + testcase.download_dir() + " "
              "SERVER_LOGS=" + server_log_dir.name + " "
-@@ -474,12 +477,6 @@ class InteropRunner:
+@@ -474,23 +477,26 @@ class InteropRunner:
                      client,
                      self._implementations[client]["image"],
                  )
@@ -90,8 +110,29 @@ index 4dea51d..4c0d784 100644
 -                    logging.info("Not compliant, skipping")
 -                    continue
  
++                transfer_succeeded = True
                  # run the test cases
                  for testcase in self._tests:
+                     status = self._run_testcase(server, client, testcase)
+                     self.test_results[server][client][testcase] = status
+                     if status == TestResult.FAILED:
+                         nr_failed += 1
++                        if testcase == testcases.TestCaseTransfer:
++                            transfer_succeeded = False
+ 
+                 # run the measurements
+                 for measurement in self._measurements:
+-                    res = self._run_measurement(server, client, measurement)
++                    if transfer_succeeded:
++                        res = self._run_measurement(server, client, measurement)
++                    else:
++                        logging.debug("Skipping measurements as Transfer testcase was unsuccessful")
++                        res = MeasurementResult()
++                        res.result = TestResult.UNSUPPORTED
++                        res.details = "Skipping measurements as Transfer testcase was unsuccessful"
+                     self.measurement_results[server][client][measurement] = res
+ 
+         self._print_results()
 diff --git a/pull.py b/pull.py
 index c2d6d1f..844bbd5 100644
 --- a/pull.py
@@ -106,7 +147,7 @@ index c2d6d1f..844bbd5 100644
  print("\nPulling the iperf endpoint...")
  os.system("docker pull martenseemann/quic-interop-iperf-endpoint")
 diff --git a/testcases.py b/testcases.py
-index 1d81d25..0f8e3c5 100644
+index 1d81d25..7260408 100644
 --- a/testcases.py
 +++ b/testcases.py
 @@ -90,6 +90,10 @@ class TestCase(abc.ABC):
@@ -194,6 +235,19 @@ index 1d81d25..0f8e3c5 100644
      @staticmethod
      def abbreviation():
          return "G"
+@@ -1528,9 +1508,9 @@ TESTCASES = [
+     TestCaseChaCha20,
+     TestCaseMultiplexing,
+     TestCaseRetry,
+-    TestCaseResumption,
+-    TestCaseZeroRTT,
+-    TestCaseHTTP3,
++    # TestCaseResumption,
++    # TestCaseZeroRTT,
++    # TestCaseHTTP3,
+     TestCaseBlackhole,
+     TestCaseKeyUpdate,
+     TestCaseECN,
 @@ -1540,11 +1520,9 @@ TESTCASES = [
      TestCaseHandshakeCorruption,
      TestCaseTransferCorruption,
