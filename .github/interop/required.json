@@ -1,18 +1,4 @@
 {
-  "http3": {
-    "aioquic": [],
-    "kwik": [],
-    "lsquic": [],
-    "msquic": [],
-    "mvfst": [],
-    "neqo": [],
-    "ngtcp2": [],
-    "picoquic": [],
-    "quic-go": [],
-    "quiche": [],
-    "quicly": [],
-    "xquic": []
-  },
   "ipv6": {
     "aioquic": ["client"],
     "kwik": [],
@@ -24,7 +10,6 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "quicly": [],
     "xquic": ["client"]
   },
   "handshake": {
@@ -38,7 +23,6 @@
     "picoquic": [],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "quicly": [],
     "xquic": []
   },
   "transfer": {
@@ -52,7 +36,6 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "quicly": [],
     "xquic": []
   },
   "longrtt": {
@@ -66,7 +49,6 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "quicly": [],
     "xquic": []
   },
   "chacha20": {
@@ -80,7 +62,6 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": [],
-    "quicly": [],
     "xquic": []
   },
   "multiplexing": {
@@ -94,7 +75,6 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "quicly": [],
     "xquic": ["client"]
   },
   "retry": {
@@ -108,35 +88,6 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "quicly": [],
-    "xquic": []
-  },
-  "resumption": {
-    "aioquic": [],
-    "kwik": [],
-    "lsquic": [],
-    "msquic": [],
-    "mvfst": [],
-    "neqo": [],
-    "ngtcp2": [],
-    "picoquic": [],
-    "quic-go": [],
-    "quiche": [],
-    "quicly": [],
-    "xquic": []
-  },
-  "zerortt": {
-    "aioquic": [],
-    "kwik": [],
-    "lsquic": [],
-    "msquic": [],
-    "mvfst": [],
-    "neqo": [],
-    "ngtcp2": [],
-    "picoquic": [],
-    "quic-go": [],
-    "quiche": [],
-    "quicly": [],
     "xquic": []
   },
   "blackhole": {
@@ -150,7 +101,6 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "quicly": [],
     "xquic": ["client"]
   },
   "keyupdate": {
@@ -164,7 +114,6 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": [],
-    "quicly": [],
     "xquic": []
   },
   "ecn": {
@@ -178,7 +127,6 @@
     "picoquic": ["client"],
     "quic-go": [],
     "quiche": [],
-    "quicly": [],
     "xquic": []
   },
   "amplificationlimit": {
@@ -192,7 +140,6 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": [],
-    "quicly": [],
     "xquic": []
   },
   "handshakeloss": {
@@ -206,7 +153,6 @@
     "picoquic": [],
     "quic-go": [],
     "quiche": [],
-    "quicly": [],
     "xquic": []
   },
   "transferloss": {
@@ -220,7 +166,6 @@
     "picoquic": [],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "quicly": [],
     "xquic": ["client"]
   },
   "handshakecorruption": {
@@ -234,7 +179,6 @@
     "picoquic": [],
     "quic-go": [],
     "quiche": [],
-    "quicly": [],
     "xquic": []
   },
   "transfercorruption": {
@@ -248,7 +192,6 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "quicly": [],
     "xquic": ["client"]
   },
   "rebind-addr": {
@@ -262,7 +205,6 @@
     "picoquic": [],
     "quic-go": [],
     "quiche": [],
-    "quicly": [],
     "xquic": []
   },
   "rebind-port": {
@@ -276,7 +218,6 @@
     "picoquic": [],
     "quic-go": [],
     "quiche": [],
-    "quicly": [],
     "xquic": []
   },
   "connectionmigration": {
@@ -290,7 +231,6 @@
     "picoquic": [],
     "quic-go": [],
     "quiche": [],
-    "quicly": [],
     "xquic": []
   }
 }
