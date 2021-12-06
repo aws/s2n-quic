@@ -576,6 +576,8 @@ enum RetryDiscardReason<'a> {
     /// The client discards Retry packets if a valid Initial packet
     /// has been received and processed.
     InitialAlreadyProcessed,
+    /// The Retry packet received contained an invalid retry integrity tag
+    InvalidIntegrityTag,
 }
 
 enum MigrationDenyReason {
