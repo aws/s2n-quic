@@ -3,7 +3,11 @@
 
 use crate::{
     connection,
-    crypto::{retry, retry::RetryKey},
+    crypto::{
+        retry,
+        retry::{IntegrityTag, RetryKey},
+        CryptoError,
+    },
     inet::SocketAddress,
     packet::{
         decoding::HeaderDecoder,
@@ -13,7 +17,8 @@ use crate::{
     },
     random, token,
 };
-use core::{mem::size_of, ops::Range};
+use core::{convert::TryInto, mem::size_of, ops::Range};
+use retry::INTEGRITY_TAG_LEN;
 use s2n_codec::{
     decoder_invariant, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderBuffer,
     EncoderValue,
@@ -57,7 +62,7 @@ pub struct Retry<'a> {
     pub destination_connection_id: &'a [u8],
     pub source_connection_id: &'a [u8],
     pub retry_token: &'a [u8],
-    pub retry_integrity_tag: &'a [u8],
+    pub retry_integrity_tag: &'a IntegrityTag,
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.8
@@ -161,6 +166,35 @@ impl<'a> Retry<'a> {
         Some(start..end)
     }
 
+    pub fn validate<Crypto, CreateBuf, Buf>(
+        &self,
+        odcid: &connection::InitialId,
+        create_buf: CreateBuf,
+    ) -> Result<(), CryptoError>
+    where
+        Crypto: RetryKey,
+        CreateBuf: FnOnce(usize) -> Buf,
+        Buf: AsMut<[u8]>,
+    {
+        let pseudo_packet = self.pseudo_packet(odcid.as_ref());
+        let len = pseudo_packet.encoding_size();
+        let mut buf = create_buf(len);
+        let buf = buf.as_mut();
+
+        let mut buffer = EncoderBuffer::new(buf);
+        pseudo_packet.encode(&mut buffer);
+
+        //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.8
+        //# Retry packets (see Section 17.2.5 of [QUIC-TRANSPORT]) carry a Retry
+        //# Integrity Tag that provides two properties: it allows the discarding
+        //# of packets that have accidentally been corrupted by the network, and
+        //# only an entity that observes an Initial packet can send a valid Retry
+        //# packet.
+        Crypto::validate(buf, *self.retry_integrity_tag)?;
+
+        Ok(())
+    }
+
     pub fn from_initial(
         initial_packet: &'a ProtectedInitial,
         local_connection_id: &'a [u8],
@@ -180,7 +214,10 @@ impl<'a> Retry<'a> {
             destination_connection_id: initial_packet.source_connection_id(),
             source_connection_id: local_connection_id,
             retry_token: &[][..],
-            retry_integrity_tag: &[][..],
+            retry_integrity_tag: {
+                static EMPTY_TAG: IntegrityTag = [0u8; INTEGRITY_TAG_LEN];
+                &EMPTY_TAG
+            },
         }
     }
 
@@ -219,6 +256,9 @@ impl<'a> Retry<'a> {
 
         let (retry_integrity_tag, buffer) = buffer.decode_slice(retry::INTEGRITY_TAG_LEN)?;
         let retry_integrity_tag: &[u8] = retry_integrity_tag.into_less_safe_slice();
+        let retry_integrity_tag: &IntegrityTag = retry_integrity_tag
+            .try_into()
+            .expect("tag length already checked");
 
         let packet = Retry {
             tag,
@@ -272,7 +312,7 @@ impl<'a> EncoderValue for Retry<'a> {
         self.source_connection_id
             .encode_with_len_prefix::<SourceConnectionIdLen, E>(encoder);
         self.retry_token.encode(encoder);
-        self.retry_integrity_tag.encode(encoder);
+        self.retry_integrity_tag.as_ref().encode(encoder);
     }
 }
 
@@ -332,7 +372,7 @@ mod tests {
         //# For this design to work,
         //# the token MUST be covered by integrity protection against
         //# modification or falsification by clients.
-        assert_eq!(packet.retry_integrity_tag, retry::example::EXPECTED_TAG);
+        assert_eq!(packet.retry_integrity_tag, &retry::example::EXPECTED_TAG);
         assert_eq!(packet.retry_token, retry::example::TOKEN);
         assert_eq!(packet.source_connection_id, retry::example::SCID);
         assert_eq!(packet.destination_connection_id, retry::example::DCID);

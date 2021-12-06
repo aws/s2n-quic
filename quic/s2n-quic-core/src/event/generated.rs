@@ -239,6 +239,8 @@ pub mod api {
         RetryAlreadyProcessed {},
         #[non_exhaustive]
         InitialAlreadyProcessed {},
+        #[non_exhaustive]
+        InvalidIntegrityTag {},
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1946,6 +1948,7 @@ pub mod builder {
         ScidEqualsDcid { cid: &'a [u8] },
         RetryAlreadyProcessed,
         InitialAlreadyProcessed,
+        InvalidIntegrityTag,
     }
     impl<'a> IntoEvent<api::RetryDiscardReason<'a>> for RetryDiscardReason<'a> {
         #[inline]
@@ -1957,6 +1960,7 @@ pub mod builder {
                 },
                 Self::RetryAlreadyProcessed => RetryAlreadyProcessed {},
                 Self::InitialAlreadyProcessed => InitialAlreadyProcessed {},
+                Self::InvalidIntegrityTag => InvalidIntegrityTag {},
             }
         }
     }
