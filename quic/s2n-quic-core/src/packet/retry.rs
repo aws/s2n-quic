@@ -166,21 +166,31 @@ impl<'a> Retry<'a> {
         Some(start..end)
     }
 
-    pub fn validate<C: RetryKey>(&self, odcid: &connection::InitialId) -> Result<(), CryptoError> {
+    pub fn validate<Crypto, CreateBuf, Buf>(
+        &self,
+        odcid: &connection::InitialId,
+        create_buf: CreateBuf,
+    ) -> Result<(), CryptoError>
+    where
+        Crypto: RetryKey,
+        CreateBuf: FnOnce(usize) -> Buf,
+        Buf: AsMut<[u8]>,
+    {
         let pseudo_packet = self.pseudo_packet(odcid.as_ref());
         let len = pseudo_packet.encoding_size();
-        let mut buf = alloc::vec![0u8; len];
+        let mut buf = create_buf(len);
+        let buf = buf.as_mut();
 
-        let mut buffer = EncoderBuffer::new(&mut buf);
+        let mut buffer = EncoderBuffer::new(buf);
         pseudo_packet.encode(&mut buffer);
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.8
+        //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.8
         //# Retry packets (see Section 17.2.5 of [QUIC-TRANSPORT]) carry a Retry
         //# Integrity Tag that provides two properties: it allows the discarding
         //# of packets that have accidentally been corrupted by the network, and
         //# only an entity that observes an Initial packet can send a valid Retry
         //# packet.
-        C::validate(&buf, *self.retry_integrity_tag)?;
+        Crypto::validate(buf, *self.retry_integrity_tag)?;
 
         Ok(())
     }

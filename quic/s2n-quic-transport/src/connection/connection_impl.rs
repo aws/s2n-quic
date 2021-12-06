@@ -1288,15 +1288,16 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let initial_cid = InitialId::try_from_bytes(path.peer_connection_id.as_ref())
             .expect("initial ID length already validated locally");
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.8
+        //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.8
         //# Retry packets (see Section 17.2.5 of [QUIC-TRANSPORT]) carry a Retry
         //# Integrity Tag that provides two properties: it allows the discarding
         //# of packets that have accidentally been corrupted by the network, and
         //# only an entity that observes an Initial packet can send a valid Retry
         //# packet.
         if let Err(error) = packet
-            .validate::<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::RetryKey>(
+            .validate::<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::RetryKey, _, _>(
                 &initial_cid,
+                |len| vec![0u8; len],
             )
         {
             publisher.on_packet_dropped(event::builder::PacketDropped {
