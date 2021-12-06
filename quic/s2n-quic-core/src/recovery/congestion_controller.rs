@@ -94,6 +94,9 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
     ///
     /// If the time is in the past or is `None`, the packet should be transmitted immediately.
     fn earliest_departure_time(&self) -> Option<Timestamp>;
+
+    /// Invoked when the Client processes a Retry packet.
+    fn on_retry_packet(&mut self);
 }
 
 #[cfg(any(test, feature = "testing"))]
@@ -174,6 +177,8 @@ pub mod testing {
             fn earliest_departure_time(&self) -> Option<Timestamp> {
                 None
             }
+
+            fn on_retry_packet(&mut self) {}
         }
     }
 
@@ -206,6 +211,7 @@ pub mod testing {
             pub congestion_window: u32,
             pub congestion_events: u32,
             pub requires_fast_retransmission: bool,
+            pub on_retry_packet: bool,
         }
 
         impl Default for CongestionController {
@@ -218,6 +224,7 @@ pub mod testing {
                     on_rtt_update: 0,
                     on_packet_ack: 0,
                     on_mtu_update: 0,
+                    on_retry_packet: false,
                     congestion_window: 1500 * 10,
                     congestion_events: 0,
                     requires_fast_retransmission: false,
@@ -293,6 +300,14 @@ pub mod testing {
 
             fn earliest_departure_time(&self) -> Option<Timestamp> {
                 None
+            }
+
+            fn on_retry_packet(&mut self) {
+                self.on_retry_packet = true;
+                // reset state when a retry packet if received
+                self.bytes_in_flight = 0;
+                self.lost_bytes = 0;
+                self.congestion_events = 0;
             }
         }
     }

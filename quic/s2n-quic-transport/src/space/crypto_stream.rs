@@ -33,7 +33,7 @@ impl OutgoingDataFlowController for CryptoFlowController {
 pub struct CryptoStream {
     pub tx: TxCryptoStream,
     pub rx: StreamReceiveBuffer,
-    pub is_finished: bool,
+    is_finished: bool,
 }
 
 const TX_MAX_BUFFER_CAPACITY: u32 = 4096;
@@ -120,6 +120,11 @@ impl CryptoStream {
     /// This method gets called when a packet loss is reported
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         self.tx.on_packet_loss(ack_set);
+    }
+
+    /// This method gets called when a Retry packet is processed.
+    pub fn on_retry_packet(&mut self) {
+        self.tx.reset(Default::default());
     }
 }
 

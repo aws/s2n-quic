@@ -147,6 +147,16 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
         }
     }
 
+    /// Reset to the original state
+    pub fn reset(&mut self, flow_controller: FlowController) {
+        self.buffer.release_all();
+        self.transmissions = transmissions::Transmissions::new(flow_controller);
+        self.transmission_offset = VarInt::from_u32(0);
+        self.pending = IntervalSet::new();
+        self.lost = IntervalSet::new();
+        self.state = State::Sending;
+    }
+
     /// Creates a new `DataSender` instance in its final
     /// [`DataSenderState::FinishAcknowledged`] state.
     pub fn new_finished(flow_controller: FlowController, max_buffer_capacity: u32) -> Self {

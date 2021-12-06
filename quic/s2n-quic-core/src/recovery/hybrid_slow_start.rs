@@ -49,6 +49,15 @@ impl HybridSlowStart {
         }
     }
 
+    /// Reset to the original state
+    pub fn reset(&mut self) {
+        self.sample_count = 0;
+        self.last_min_rtt = None;
+        self.cur_min_rtt = None;
+        self.threshold = f32::MAX;
+        self.rtt_round_end_time = None;
+    }
+
     /// Called each time the round trip time estimate is
     /// updated. The algorithm detects if the min RTT over
     /// a number of samples has increased since the last

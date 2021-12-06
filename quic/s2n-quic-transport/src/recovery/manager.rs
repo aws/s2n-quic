@@ -113,6 +113,20 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
     }
 
+    /// Invoked when the Client processes a Retry packet.
+    ///
+    /// Reset all state by resetting the congestion controller state and clearing
+    /// sent_packets.
+    pub fn on_retry_packet(&mut self, path: &mut Path<Config>) {
+        debug_assert!(
+            Config::ENDPOINT_TYPE.is_client(),
+            "only a Client should process a Retry packet"
+        );
+
+        self.sent_packets.clear();
+        path.congestion_controller.on_retry_packet();
+    }
+
     pub fn on_timeout<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         timestamp: Timestamp,
