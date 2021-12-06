@@ -35,7 +35,7 @@ const SLOW_START_N: Fraction = Fraction(2, 1); // 2/1 = 2.00
 const MAX_BURST_PACKETS: u16 = 10;
 
 /// A packet pacer that returns departure times that evenly distribute bursts of packets over time
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Pacer {
     // The capacity of the current departure time slot
     capacity: Counter<u32, Saturating>,
