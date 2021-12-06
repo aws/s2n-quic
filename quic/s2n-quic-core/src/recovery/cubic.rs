@@ -7,6 +7,7 @@ use crate::{
         congestion_controller::{self, CongestionController},
         cubic::{FastRetransmission::*, State::*},
         hybrid_slow_start::HybridSlowStart,
+        pacing::Pacer,
         RttEstimator,
     },
     time::Timestamp,
@@ -140,6 +141,7 @@ pub struct CubicCongestionController {
     //# slow start [RFC3742] or hybrid slow start [HR08] for fast and long-
     //# distance networks.
     slow_start: HybridSlowStart,
+    pacer: Pacer,
     max_datagram_size: u16,
     congestion_window: f32,
     state: State,
@@ -184,7 +186,12 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
-    fn on_packet_sent(&mut self, time_sent: Timestamp, bytes_sent: usize) {
+    fn on_packet_sent(
+        &mut self,
+        time_sent: Timestamp,
+        bytes_sent: usize,
+        rtt_estimator: &RttEstimator,
+    ) {
         self.bytes_in_flight
             .try_add(bytes_sent)
             .expect("bytes sent should not exceed u32::MAX");
@@ -198,6 +205,17 @@ impl CongestionController for CubicCongestionController {
         }
 
         self.time_of_last_sent_packet = Some(time_sent);
+
+        let slow_start = matches!(self.state, State::SlowStart);
+
+        self.pacer.on_packet_sent(
+            time_sent,
+            bytes_sent,
+            rtt_estimator,
+            self.congestion_window(),
+            self.max_datagram_size,
+            slow_start,
+        );
     }
 
     #[inline]
@@ -406,6 +424,11 @@ impl CongestionController for CubicCongestionController {
             self.state = Recovery(recovery_start_time, Idle);
         }
     }
+
+    #[inline]
+    fn earliest_departure_time(&self) -> Option<Timestamp> {
+        self.pacer.earliest_departure_time()
+    }
 }
 
 impl CubicCongestionController {
@@ -413,6 +436,7 @@ impl CubicCongestionController {
         Self {
             cubic: Cubic::new(max_datagram_size),
             slow_start: HybridSlowStart::new(max_datagram_size),
+            pacer: Pacer::default(),
             max_datagram_size,
             congestion_window: CubicCongestionController::initial_window(max_datagram_size) as f32,
             state: SlowStart,

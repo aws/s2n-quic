@@ -210,11 +210,12 @@ fn minimum_window<CC: CongestionController>(
     num_rounds: usize,
 ) -> Simulation {
     let time_zero = NoopClock.get_time();
+    let rtt_estimator = RttEstimator::new(Duration::from_millis(0));
 
-    congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize);
+    congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize, &rtt_estimator);
     // Experience persistent congestion to drop to the minimum window
     congestion_controller.on_packets_lost(MINIMUM_MTU as u32, true, time_zero);
-    congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize);
+    congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize, &rtt_estimator);
     // Lose a packet to exit slow start
     congestion_controller.on_packets_lost(MINIMUM_MTU as u32, false, time_zero);
 
@@ -280,7 +281,7 @@ fn simulate_constant_rtt<CC: CongestionController>(
             && congestion_controller.congestion_window() >= drops[drop_index]
         {
             // Drop a packet
-            congestion_controller.on_packet_sent(round_start, MINIMUM_MTU as usize);
+            congestion_controller.on_packet_sent(round_start, MINIMUM_MTU as usize, &rtt_estimator);
             congestion_controller.on_packets_lost(MINIMUM_MTU as u32, false, round_start);
             drop_index += 1;
         } else {
@@ -311,7 +312,7 @@ fn send_and_ack<CC: CongestionController>(
 
     while remaining > 0 {
         let bytes_sent = remaining.min(MINIMUM_MTU as usize);
-        congestion_controller.on_packet_sent(timestamp, bytes_sent);
+        congestion_controller.on_packet_sent(timestamp, bytes_sent, rtt_estimator);
         remaining -= bytes_sent;
     }
 

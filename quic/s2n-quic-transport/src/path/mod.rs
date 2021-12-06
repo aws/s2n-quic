@@ -1097,8 +1097,11 @@ mod tests {
         );
 
         // Fill up the congestion controller
-        path.congestion_controller
-            .on_packet_sent(now, path.congestion_controller.congestion_window() as usize);
+        path.congestion_controller.on_packet_sent(
+            now,
+            path.congestion_controller.congestion_window() as usize,
+            &path.rtt_estimator,
+        );
 
         assert_eq!(
             path.transmission_constraint(),

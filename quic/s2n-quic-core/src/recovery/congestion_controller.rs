@@ -52,7 +52,12 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
     fn requires_fast_retransmission(&self) -> bool;
 
     /// Invoked whenever a congestion controlled packet is sent
-    fn on_packet_sent(&mut self, time_sent: Timestamp, sent_bytes: usize);
+    fn on_packet_sent(
+        &mut self,
+        time_sent: Timestamp,
+        sent_bytes: usize,
+        rtt_estimator: &RttEstimator,
+    );
 
     /// Invoked each time the round trip time is updated, which is whenever the
     /// largest acknowledged packet in an ACK frame is newly acknowledged
@@ -84,6 +89,11 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
 
     /// Invoked for each packet discarded when a packet number space is discarded.
     fn on_packet_discarded(&mut self, bytes_sent: usize);
+
+    /// Returns the earliest time that a packet may be transmitted.
+    ///
+    /// If the time is in the past or is `None`, the packet should be transmitted immediately.
+    fn earliest_departure_time(&self) -> Option<Timestamp>;
 }
 
 #[cfg(any(test, feature = "testing"))]
@@ -128,7 +138,14 @@ pub mod testing {
                 false
             }
 
-            fn on_packet_sent(&mut self, _time_sent: Timestamp, _bytes_sent: usize) {}
+            fn on_packet_sent(
+                &mut self,
+                _time_sent: Timestamp,
+                _bytes_sent: usize,
+                _rtt_estimator: &RttEstimator,
+            ) {
+            }
+
             fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RttEstimator) {}
 
             fn on_packet_ack(
@@ -153,6 +170,10 @@ pub mod testing {
             fn on_mtu_update(&mut self, _max_data_size: u16) {}
 
             fn on_packet_discarded(&mut self, _bytes_sent: usize) {}
+
+            fn earliest_departure_time(&self) -> Option<Timestamp> {
+                None
+            }
         }
     }
 
@@ -221,7 +242,12 @@ pub mod testing {
                 self.requires_fast_retransmission
             }
 
-            fn on_packet_sent(&mut self, _time_sent: Timestamp, bytes_sent: usize) {
+            fn on_packet_sent(
+                &mut self,
+                _time_sent: Timestamp,
+                bytes_sent: usize,
+                _rtt_estimator: &RttEstimator,
+            ) {
                 self.bytes_in_flight += bytes_sent as u32;
                 self.requires_fast_retransmission = false;
             }
@@ -263,6 +289,10 @@ pub mod testing {
 
             fn on_packet_discarded(&mut self, bytes_sent: usize) {
                 self.bytes_in_flight = self.bytes_in_flight.saturating_sub(bytes_sent as u32);
+            }
+
+            fn earliest_departure_time(&self) -> Option<Timestamp> {
+                None
             }
         }
     }

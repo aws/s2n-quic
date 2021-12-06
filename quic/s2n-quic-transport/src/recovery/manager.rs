@@ -202,8 +202,11 @@ impl<Config: endpoint::Config> Manager<Config> {
             let is_handshake_confirmed = context.is_handshake_confirmed();
             let path = context.path_mut_by_id(context.path_id());
             self.update_pto_timer(path, time_sent, is_handshake_confirmed);
-            path.congestion_controller
-                .on_packet_sent(time_sent, congestion_controlled_bytes);
+            path.congestion_controller.on_packet_sent(
+                time_sent,
+                congestion_controlled_bytes,
+                &path.rtt_estimator,
+            );
         }
     }
 
