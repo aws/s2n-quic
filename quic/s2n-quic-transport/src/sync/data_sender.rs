@@ -46,7 +46,7 @@ impl State {
 
     fn can_transmit_fin(&self, constraint: transmission::Constraint, is_blocked: bool) -> bool {
         match self {
-            // lost frames are not blocked by flow control since we've already aquired those
+            // lost frames are not blocked by flow control since we've already acquired those
             // credits on the initial transmission
             Self::Finishing(FinState::Lost) => constraint.can_retransmit(),
             Self::Finishing(FinState::Pending) => !is_blocked && constraint.can_transmit(),
@@ -103,7 +103,7 @@ impl FinState {
 }
 
 /// Manages the transmission of all `Stream` and `Crypto` data frames towards
-/// the peer as long as the `Stream` has not been resetted or closed.
+/// the peer as long as the `Stream` has not been reset or closed.
 #[derive(Debug)]
 pub struct DataSender<FlowController, ChunkToFrameWriter> {
     /// The data that needs to get transmitted
@@ -147,12 +147,11 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
         }
     }
 
-    /// Reset to the original state
-    pub fn reset(&mut self, flow_controller: FlowController) {
-        self.buffer.release_all();
-        self.transmissions = transmissions::Transmissions::new(flow_controller);
+    /// Reset transmission_offset and lost state.
+    ///
+    /// This will result in all data in the buffer being re-transmitted.
+    pub fn reset_transmission_state(&mut self) {
         self.transmission_offset = VarInt::from_u32(0);
-        self.pending = IntervalSet::new();
         self.lost = IntervalSet::new();
         self.state = State::Sending;
     }

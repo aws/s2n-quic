@@ -124,7 +124,7 @@ impl CryptoStream {
 
     /// This method gets called when a Retry packet is processed.
     pub fn on_retry_packet(&mut self) {
-        self.tx.reset(Default::default());
+        self.tx.reset_transmission_state();
     }
 }
 

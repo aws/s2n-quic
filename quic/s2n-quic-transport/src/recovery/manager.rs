@@ -124,7 +124,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         );
 
         self.sent_packets.clear();
-        path.congestion_controller.on_retry_packet();
+        path.congestion_controller.reset();
     }
 
     pub fn on_timeout<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(

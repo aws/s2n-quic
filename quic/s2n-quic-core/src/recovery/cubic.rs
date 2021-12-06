@@ -434,7 +434,7 @@ impl CongestionController for CubicCongestionController {
     /// This method gets called when a Retry packet is processed.
     ///
     /// Reset the congestion controller state.
-    fn on_retry_packet(&mut self) {
+    fn reset(&mut self) {
         self.cubic.reset();
         self.slow_start.reset();
         self.congestion_window =
