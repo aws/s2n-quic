@@ -152,7 +152,10 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
                 let payload_len = msg_hdr.payload_len();
                 mmsghdr.msg_hdr = msg_hdr.0;
                 mmsghdr.set_payload_len(payload_len);
-                Message(mmsghdr)
+                Message {
+                    header: mmsghdr,
+                    earliest_departure_time: None,
+                }
             })
             .collect();
 
