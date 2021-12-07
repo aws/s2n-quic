@@ -429,21 +429,6 @@ impl CongestionController for CubicCongestionController {
     fn earliest_departure_time(&self) -> Option<Timestamp> {
         self.pacer.earliest_departure_time()
     }
-
-    #[inline]
-    /// This method gets called when a Retry packet is processed.
-    ///
-    /// Reset the congestion controller state.
-    fn reset(&mut self) {
-        self.cubic.reset();
-        self.slow_start.reset();
-        self.congestion_window =
-            CubicCongestionController::initial_window(self.max_datagram_size) as f32;
-        self.state = SlowStart;
-        self.bytes_in_flight = Counter::new(0);
-        self.time_of_last_sent_packet = None;
-        self.under_utilized = true;
-    }
 }
 
 impl CubicCongestionController {

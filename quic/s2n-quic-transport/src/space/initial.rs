@@ -115,7 +115,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         //# cryptographic handshake message it included in this packet.
         self.crypto_stream.on_retry_packet();
 
-        // Reset the recovery state, discarding any previous Initial packets that
+        // Reset the recovery state; discarding any previous Initial packets that
         // might have been sent/lost.
         self.recovery_manager.on_retry_packet(path);
     }
