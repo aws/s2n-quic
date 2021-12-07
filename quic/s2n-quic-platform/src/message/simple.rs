@@ -8,6 +8,7 @@ use s2n_quic_core::{
     inet::{datagram, ExplicitCongestionNotification, SocketAddress},
     io::{rx, tx},
     path,
+    time::Timestamp,
 };
 
 /// A simple message type that holds an address and payload
@@ -18,6 +19,7 @@ pub struct Message {
     address: SocketAddress,
     payload_ptr: *mut u8,
     payload_len: usize,
+    earliest_departure_time: Option<Timestamp>,
 }
 
 pub type Handle = path::RemoteAddress;
@@ -55,6 +57,10 @@ impl MessageTrait for Message {
 
     unsafe fn set_payload_len(&mut self, len: usize) {
         self.payload_len = len;
+    }
+
+    fn earliest_departure_time(&self) -> Option<Timestamp> {
+        self.earliest_departure_time
     }
 
     fn can_gso<M: tx::Message>(&self, _other: &mut M) -> bool {
@@ -122,6 +128,7 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
                 payload_ptr,
                 payload_len: mtu,
                 address: Default::default(),
+                earliest_departure_time: None,
             });
         }
 
@@ -196,6 +203,7 @@ impl tx::Entry for Message {
         let remote_address = message.path_handle().0;
 
         self.set_remote_address(&remote_address);
+        self.earliest_departure_time = message.earliest_departure_time();
 
         Ok(len)
     }

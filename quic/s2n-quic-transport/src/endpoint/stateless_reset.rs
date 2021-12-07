@@ -5,7 +5,7 @@ use crate::endpoint;
 use alloc::collections::VecDeque;
 use s2n_quic_core::{
     event, inet::ExplicitCongestionNotification, io::tx, packet, path, path::MINIMUM_MTU, random,
-    stateless_reset, time,
+    stateless_reset, time, time::Timestamp,
 };
 
 #[derive(Debug)]
@@ -153,5 +153,10 @@ impl<Path: path::Handle> tx::Message for &Transmission<Path> {
         let packet = self.as_ref();
         buffer[..packet.len()].copy_from_slice(packet);
         packet.len()
+    }
+
+    #[inline]
+    fn earliest_departure_time(&self) -> Option<Timestamp> {
+        None
     }
 }

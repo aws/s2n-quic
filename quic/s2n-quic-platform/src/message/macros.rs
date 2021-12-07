@@ -42,8 +42,23 @@ macro_rules! impl_message_delegate {
                 $crate::message::Message::set_payload_len(&mut self.$field, payload_len)
             }
 
+            fn earliest_departure_time(&self) -> Option<Timestamp> {
+                self.earliest_departure_time
+            }
+
             fn can_gso<M: tx::Message<Handle = Self::Handle>>(&self, other: &mut M) -> bool {
-                $crate::message::Message::can_gso(&self.$field, other)
+                let can_gso = match (
+                    self.earliest_departure_time,
+                    other.earliest_departure_time(),
+                ) {
+                    // Both messages should be sent immediately
+                    (None, None) => true,
+                    // Only one message should be paced
+                    (None, _) | (_, None) => false,
+                    // Can GSO if the other message can be sent the same time or earlier than this one
+                    (Some(edt), Some(other_edt)) => edt >= other_edt,
+                };
+                can_gso && $crate::message::Message::can_gso(&self.$field, other)
             }
 
             fn set_segment_size(&mut self, size: usize) {

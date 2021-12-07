@@ -13,6 +13,7 @@ use s2n_quic_core::{
     inet::ExplicitCongestionNotification,
     io::tx,
     packet::{encoding::PacketEncodingError, number::PacketNumberSpace},
+    recovery::CongestionController,
     time::Timestamp,
 };
 
@@ -386,6 +387,13 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
         }
 
         datagram_len
+    }
+
+    fn earliest_departure_time(&self) -> Option<Timestamp> {
+        self.context
+            .path()
+            .congestion_controller
+            .earliest_departure_time()
     }
 }
 

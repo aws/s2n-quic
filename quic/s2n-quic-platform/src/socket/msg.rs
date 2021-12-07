@@ -47,10 +47,10 @@ impl<B: Buffer> Queue<B> {
             // calling sendmsg.
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             let msg_control = {
-                let msg_control = entry.0.msg_control;
+                let msg_control = entry.header.msg_control;
 
-                if entry.0.msg_controllen == 0 {
-                    entry.0.msg_control = core::ptr::null_mut();
+                if entry.header.msg_controllen == 0 {
+                    entry.header.msg_control = core::ptr::null_mut();
                 }
 
                 msg_control
@@ -82,7 +82,7 @@ impl<B: Buffer> Queue<B> {
 
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             {
-                entry.0.msg_control = msg_control;
+                entry.header.msg_control = msg_control;
             }
 
             match result {

@@ -16,13 +16,17 @@ use s2n_quic_core::{
     },
     io::{rx, tx},
     path::{self, Handle as _, LocalAddress, RemoteAddress},
+    time::Timestamp,
 };
 
 #[cfg(any(test, feature = "generator"))]
 use bolero_generator::*;
 
-#[repr(transparent)]
-pub struct Message(pub(crate) msghdr);
+#[derive(Clone)]
+pub struct Message {
+    pub(crate) header: msghdr,
+    pub(crate) earliest_departure_time: Option<Timestamp>,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
@@ -131,7 +135,7 @@ impl path::Handle for Handle {
     }
 }
 
-impl_message_delegate!(Message, 0, msghdr);
+impl_message_delegate!(Message, header, msghdr);
 
 impl fmt::Debug for Message {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -139,7 +143,7 @@ impl fmt::Debug for Message {
         let mut s = f.debug_struct("msghdr");
 
         s.field("remote_address", &self.remote_address())
-            .field("anciliary_data", &cmsg::decode(&self.0));
+            .field("anciliary_data", &cmsg::decode(&self.header));
 
         if alt {
             s.field("payload", &self.payload());
@@ -170,7 +174,10 @@ impl Message {
         msghdr.msg_control = msg_control;
         msghdr.msg_controllen = msg_controllen as _;
 
-        Self(msghdr)
+        Self {
+            header: msghdr,
+            earliest_departure_time: None,
+        }
     }
 
     #[inline]
@@ -362,6 +369,11 @@ impl MessageTrait for msghdr {
             iovec.iov_base as *mut _
         }
     }
+
+    #[inline]
+    fn earliest_departure_time(&self) -> Option<Timestamp> {
+        None
+    }
 }
 
 pub struct Ring<Payloads> {
@@ -466,7 +478,7 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
         }
 
         for index in 0..capacity {
-            messages.push(Message(messages[index].0));
+            messages.push(messages[index].clone());
         }
 
         Self {
@@ -541,8 +553,9 @@ impl tx::Entry for Message {
         }
 
         let handle = *message.path_handle();
-        handle.update_msg_hdr(&mut self.0);
+        handle.update_msg_hdr(&mut self.header);
         self.set_ecn(message.ecn(), &handle.remote_address.0);
+        self.earliest_departure_time = message.earliest_departure_time();
 
         Ok(len)
     }
@@ -563,7 +576,7 @@ impl rx::Entry for Message {
 
     #[inline]
     fn read(&mut self) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
-        let header = Self::header(&self.0)?;
+        let header = Self::header(&self.header)?;
         let payload = self.payload_mut();
         Some((header, payload))
     }
@@ -589,7 +602,10 @@ mod tests {
         let mut iovec = unsafe { zeroed::<iovec>() };
         msghdr.msg_iov = &mut iovec;
 
-        let mut message = Message(msghdr);
+        let mut message: Message = Message {
+            header: msghdr,
+            earliest_departure_time: None,
+        };
 
         check!()
             .with_type::<SocketAddress>()
@@ -631,15 +647,18 @@ mod tests {
                 msghdr.msg_controllen = cmsg_buf.len() as _;
                 msghdr.msg_control = (&mut cmsg_buf[0]) as *mut u8 as _;
 
-                let mut message = Message(msghdr);
+                let mut message = Message {
+                    header: msghdr,
+                    earliest_departure_time: None,
+                };
 
-                handle.update_msg_hdr(&mut message.0);
+                handle.update_msg_hdr(&mut message.header);
 
                 if segment_size > 1 {
                     message.set_segment_size(segment_size);
                 }
 
-                let header = Message::header(&message.0).unwrap();
+                let header = Message::header(&message.header).unwrap();
 
                 assert_eq!(header.path.remote_address, handle.remote_address);
 

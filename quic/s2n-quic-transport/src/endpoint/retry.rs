@@ -12,7 +12,9 @@ use s2n_quic_core::{
     io::tx,
     packet,
     path::{self, MINIMUM_MTU},
-    random, time, token,
+    random, time,
+    time::Timestamp,
+    token,
 };
 
 #[derive(Debug)]
@@ -166,5 +168,10 @@ impl<Path: path::Handle> tx::Message for &Transmission<Path> {
         let packet = self.as_ref();
         buffer[..packet.len()].copy_from_slice(packet);
         packet.len()
+    }
+
+    #[inline]
+    fn earliest_departure_time(&self) -> Option<Timestamp> {
+        None
     }
 }

@@ -21,6 +21,7 @@ use s2n_quic_core::{
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
     path,
+    time::Timestamp,
 };
 
 /// An abstract message that can be sent and received on a network
@@ -53,6 +54,11 @@ pub trait Message {
     /// This method should only set the payload less than or
     /// equal to its initially allocated size.
     unsafe fn set_payload_len(&mut self, payload_len: usize);
+
+    /// Returns the earliest time that a message may be transmitted.
+    ///
+    /// If the time is in the past or is `None`, the message should be transmitted immediately.
+    fn earliest_departure_time(&self) -> Option<Timestamp>;
 
     /// Returns true if this message can be included in the same GSO payload as the `other` message
     fn can_gso<M: tx::Message<Handle = Self::Handle>>(&self, other: &mut M) -> bool;

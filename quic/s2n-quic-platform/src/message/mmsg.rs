@@ -11,14 +11,18 @@ use libc::mmsghdr;
 use s2n_quic_core::{
     inet::{datagram, ExplicitCongestionNotification, SocketAddress},
     io::{rx, tx},
+    time::Timestamp,
 };
 
 #[repr(transparent)]
-pub struct Message(pub(crate) mmsghdr);
+pub struct Message {
+    pub(crate) header: mmsghdr,
+    pub earliest_departure_time: Option<Timestamp>,
+}
 
 pub type Handle = msg::Handle;
 
-impl_message_delegate!(Message, 0, mmsghdr);
+impl_message_delegate!(Message, header, mmsghdr);
 
 impl fmt::Debug for Message {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -217,6 +221,7 @@ impl tx::Entry for Message {
         let handle = *message.path_handle();
         handle.update_msg_hdr(&mut self.0.msg_hdr);
         self.set_ecn(message.ecn(), &handle.remote_address.0);
+        self.earliest_departure_time = message.earliest_departure_time();
 
         Ok(len)
     }

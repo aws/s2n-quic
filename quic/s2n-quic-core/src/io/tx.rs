@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{inet::ExplicitCongestionNotification, path};
+use crate::{inet::ExplicitCongestionNotification, path, time::Timestamp};
 use core::time::Duration;
 
 /// A structure capable of queueing and transmitting messages
@@ -100,6 +100,11 @@ pub trait Message {
 
     /// Writes the payload of the message to an output buffer
     fn write_payload(&mut self, buffer: &mut [u8], gso_offset: usize) -> usize;
+
+    /// Returns the earliest time that a packet may be transmitted.
+    ///
+    /// If the time is in the past or is `None`, the packet should be transmitted immediately.
+    fn earliest_departure_time(&self) -> Option<Timestamp>;
 }
 
 impl<Handle: path::Handle, Payload: AsRef<[u8]>> Message for (Handle, Payload) {
@@ -134,6 +139,10 @@ impl<Handle: path::Handle, Payload: AsRef<[u8]>> Message for (Handle, Payload) {
         } else {
             0
         }
+    }
+
+    fn earliest_departure_time(&self) -> Option<Timestamp> {
+        None
     }
 }
 

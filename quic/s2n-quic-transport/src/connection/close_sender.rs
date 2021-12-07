@@ -181,6 +181,10 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> tx::Message
 
         len
     }
+
+    fn earliest_departure_time(&self) -> Option<Timestamp> {
+        None
+    }
 }
 
 #[derive(Debug)]
