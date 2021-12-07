@@ -91,7 +91,7 @@ impl fmt::Display for PacketNumber {
 impl PacketNumber {
     /// Creates a PacketNumber for a given VarInt and PacketNumberSpace
     #[inline]
-    pub const fn from_varint(value: VarInt, space: PacketNumberSpace) -> Self {
+    pub(crate) const fn from_varint(value: VarInt, space: PacketNumberSpace) -> Self {
         let tag = space.as_tag() as u64;
         let pn = (tag << PACKET_SPACE_SHIFT) | value.as_u64();
         let pn = unsafe {

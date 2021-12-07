@@ -115,7 +115,7 @@ impl<Config: endpoint::Config> Manager<Config> {
 
     /// Invoked when the Client processes a Retry packet.
     ///
-    /// Reset congestion controller state by discarding sent bytes and replace recovery
+    /// Reset congestion controller state by discarding sent bytes and replacing recovery
     /// manager with a new instance of itself.
     pub fn on_retry_packet(&mut self, path: &mut Path<Config>) {
         debug_assert!(

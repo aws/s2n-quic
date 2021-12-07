@@ -8,11 +8,7 @@ use crate::{
 };
 use bytes::Bytes;
 use core::convert::TryInto;
-use s2n_quic_core::{
-    ack,
-    packet::number::{PacketNumber, PacketNumberRange},
-    varint::VarInt,
-};
+use s2n_quic_core::{ack, packet::number::PacketNumber, varint::VarInt};
 
 mod buffer;
 mod traits;
@@ -153,18 +149,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
 
     /// Declares all inflight packets as lost.
     pub fn on_all_lost(&mut self) {
-        let all_lost_range = PacketNumberRange::new(
-            PacketNumber::from_varint(
-                VarInt::from_u8(0),
-                s2n_quic_core::packet::number::PacketNumberSpace::Initial,
-            ),
-            PacketNumber::from_varint(
-                VarInt::MAX,
-                s2n_quic_core::packet::number::PacketNumberSpace::Initial,
-            ),
-        );
-
-        self.on_packet_loss(&all_lost_range);
+        self.on_packet_loss(&self.transmissions.get_inflight_range());
     }
 
     /// Creates a new `DataSender` instance in its final
