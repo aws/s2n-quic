@@ -31,7 +31,7 @@ impl fmt::Debug for Message {
 
         s.field("remote_address", &self.remote_address()).field(
             "ancillary_data",
-            &crate::message::cmsg::decode(&self.0.msg_hdr),
+            &crate::message::cmsg::decode(&self.header.msg_hdr),
         );
 
         if alt {
@@ -150,7 +150,7 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
             .map(|msg_hdr| unsafe {
                 let mut mmsghdr = zeroed::<mmsghdr>();
                 let payload_len = msg_hdr.payload_len();
-                mmsghdr.msg_hdr = msg_hdr.0;
+                mmsghdr.msg_hdr = msg_hdr.header;
                 mmsghdr.set_payload_len(payload_len);
                 Message {
                     header: mmsghdr,
@@ -222,7 +222,7 @@ impl tx::Entry for Message {
         }
 
         let handle = *message.path_handle();
-        handle.update_msg_hdr(&mut self.0.msg_hdr);
+        handle.update_msg_hdr(&mut self.header.msg_hdr);
         self.set_ecn(message.ecn(), &handle.remote_address.0);
         self.earliest_departure_time = message.earliest_departure_time();
 
@@ -245,7 +245,7 @@ impl rx::Entry for Message {
 
     #[inline]
     fn read(&mut self) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
-        let header = msg::Message::header(&self.0.msg_hdr)?;
+        let header = msg::Message::header(&self.header.msg_hdr)?;
         let payload = self.payload_mut();
         Some((header, payload))
     }
