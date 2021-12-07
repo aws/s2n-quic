@@ -8,7 +8,11 @@ use crate::{
 };
 use bytes::Bytes;
 use core::convert::TryInto;
-use s2n_quic_core::{ack, packet::number::PacketNumber, varint::VarInt};
+use s2n_quic_core::{
+    ack,
+    packet::number::{PacketNumber, PacketNumberRange},
+    varint::VarInt,
+};
 
 mod buffer;
 mod traits;
@@ -147,13 +151,20 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
         }
     }
 
-    /// Reset transmission_offset and lost state.
-    ///
-    /// This will result in all data in the buffer being re-transmitted.
-    pub fn reset_transmission_state(&mut self) {
-        self.transmission_offset = VarInt::from_u32(0);
-        self.lost = IntervalSet::new();
-        self.state = State::Sending;
+    /// Declares all inflight packets as lost.
+    pub fn on_all_lost(&mut self) {
+        let all_lost_range = PacketNumberRange::new(
+            PacketNumber::from_varint(
+                VarInt::from_u8(0),
+                s2n_quic_core::packet::number::PacketNumberSpace::Initial,
+            ),
+            PacketNumber::from_varint(
+                VarInt::MAX,
+                s2n_quic_core::packet::number::PacketNumberSpace::Initial,
+            ),
+        );
+
+        self.on_packet_loss(&all_lost_range);
     }
 
     /// Creates a new `DataSender` instance in its final
