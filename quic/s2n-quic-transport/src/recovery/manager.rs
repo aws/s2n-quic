@@ -113,6 +113,26 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
     }
 
+    /// Invoked when the Client processes a Retry packet.
+    ///
+    /// Reset congestion controller state by discarding sent bytes and replacing recovery
+    /// manager with a new instance of itself.
+    pub fn on_retry_packet(&mut self, path: &mut Path<Config>) {
+        debug_assert!(
+            Config::ENDPOINT_TYPE.is_client(),
+            "only a Client should process a Retry packet"
+        );
+
+        let mut discarded_bytes = 0;
+        for (_, unacked_sent_info) in self.sent_packets.iter() {
+            discarded_bytes += unacked_sent_info.sent_bytes as usize;
+        }
+        path.congestion_controller
+            .on_packet_discarded(discarded_bytes);
+
+        *self = Self::new(self.space);
+    }
+
     pub fn on_timeout<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         timestamp: Timestamp,

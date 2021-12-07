@@ -46,7 +46,7 @@ impl State {
 
     fn can_transmit_fin(&self, constraint: transmission::Constraint, is_blocked: bool) -> bool {
         match self {
-            // lost frames are not blocked by flow control since we've already aquired those
+            // lost frames are not blocked by flow control since we've already acquired those
             // credits on the initial transmission
             Self::Finishing(FinState::Lost) => constraint.can_retransmit(),
             Self::Finishing(FinState::Pending) => !is_blocked && constraint.can_transmit(),
@@ -103,7 +103,7 @@ impl FinState {
 }
 
 /// Manages the transmission of all `Stream` and `Crypto` data frames towards
-/// the peer as long as the `Stream` has not been resetted or closed.
+/// the peer as long as the `Stream` has not been reset or closed.
 #[derive(Debug)]
 pub struct DataSender<FlowController, ChunkToFrameWriter> {
     /// The data that needs to get transmitted
@@ -145,6 +145,11 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
             max_buffer_capacity: VarInt::from_u32(max_buffer_capacity),
             state: State::Sending,
         }
+    }
+
+    /// Declares all inflight packets as lost.
+    pub fn on_all_lost(&mut self) {
+        self.on_packet_loss(&self.transmissions.get_inflight_range());
     }
 
     /// Creates a new `DataSender` instance in its final

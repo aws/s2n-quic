@@ -1327,7 +1327,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .on_retry_packet(retry_source_connection_id);
 
         if let Some((space, _handshake_status)) = self.space_manager.initial_mut() {
-            space.on_retry_packet(&retry_source_connection_id, packet.retry_token);
+            space.on_retry_packet(path, &retry_source_connection_id, packet.retry_token);
         }
 
         Ok(())

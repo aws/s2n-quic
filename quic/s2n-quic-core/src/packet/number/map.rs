@@ -225,6 +225,12 @@ impl<V> Map<V> {
         RemoveIter::new(self, range)
     }
 
+    /// Get the inclusive PacketNumberRange
+    #[inline]
+    pub fn get_range(&self) -> PacketNumberRange {
+        PacketNumberRange::new(self.start, self.end)
+    }
+
     /// Gets an iterator over the sent packet entries, sorted by PacketNumber
     #[inline]
     pub fn iter(&self) -> Iter<V> {

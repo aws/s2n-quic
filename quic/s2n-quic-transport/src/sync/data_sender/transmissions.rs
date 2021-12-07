@@ -225,6 +225,12 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
         self.clear();
         self.flow_controller.finish();
     }
+
+    /// Get the inflight inclusive PacketNumberRange
+    #[inline]
+    pub fn get_inflight_range(&self) -> PacketNumberRange {
+        self.in_flight.packets.get_range()
+    }
 }
 
 /// Describes a chunk of bytes which has to be transmitted to the peer

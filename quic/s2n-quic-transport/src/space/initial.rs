@@ -84,8 +84,16 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         }
     }
 
-    /// Re-calculate TLS state when the first Retry packet is received.
-    pub fn on_retry_packet(&mut self, retry_source_connection_id: &PeerId, retry_token: &[u8]) {
+    /// This method gets called when a Retry packet is processed.
+    ///
+    /// Reset the TLS stack and recover state when the first Retry packet is processed.
+    /// Also regenerate the Initial keys based on the new retry_source_connection_id.
+    pub fn on_retry_packet(
+        &mut self,
+        path: &mut path::Path<Config>,
+        retry_source_connection_id: &PeerId,
+        retry_token: &[u8],
+    ) {
         debug_assert!(Config::ENDPOINT_TYPE.is_client());
         self.retry_token = retry_token.to_vec();
 
@@ -101,11 +109,15 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         self.header_key = initial_header_key;
 
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.3
-        //= type=TODO
         //# Other than updating the Destination Connection ID and Token fields,
         //# the Initial packet sent by the client is subject to the same
         //# restrictions as the first Initial packet.  A client MUST use the same
         //# cryptographic handshake message it included in this packet.
+        self.crypto_stream.on_retry_packet();
+
+        // Reset the recovery state; discarding any previous Initial packets that
+        // might have been sent/lost.
+        self.recovery_manager.on_retry_packet(path);
     }
 
     /// Returns true if the packet number has already been processed
