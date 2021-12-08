@@ -6,7 +6,6 @@ mod segment;
 mod slice;
 
 pub use behavior::Behavior;
-use s2n_quic_core::path::LocalAddress;
 pub(crate) use segment::Segment;
 pub use slice::Slice;
 
@@ -16,6 +15,7 @@ pub type OccupiedWipe<'a, M> = Slice<'a, M, behavior::OccupiedWipe>;
 
 use crate::message;
 use core::fmt;
+use s2n_quic_core::path::LocalAddress;
 
 /// Structure for queueing network messages
 ///
