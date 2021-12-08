@@ -6,7 +6,7 @@ use crate::message;
 use core::ops::{Deref, DerefMut};
 use s2n_quic_core::{
     io::{rx, tx},
-    path,
+    path::{self, LocalAddress},
 };
 
 /// A view of the currently enqueued messages for a given segment
@@ -24,6 +24,8 @@ pub struct Slice<'a, Message: message::Message, Behavior> {
     pub(crate) max_gso: usize,
     /// The index to the previously pushed segment
     pub(crate) gso_segment: Option<GsoSegment>,
+    /// The base handle for all of the messages to inherit
+    pub(crate) local_address: &'a LocalAddress,
 }
 
 #[derive(Debug, Default)]
@@ -258,6 +260,11 @@ impl<
 {
     type Entry = Message;
     type Handle = H;
+
+    #[inline]
+    fn local_address(&self) -> LocalAddress {
+        *self.local_address
+    }
 
     #[inline]
     fn as_slice_mut(&mut self) -> &mut [Message] {

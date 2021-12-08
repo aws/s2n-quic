@@ -9,7 +9,7 @@ use crate::{
     },
 };
 use errno::errno;
-use s2n_quic_core::event;
+use s2n_quic_core::{event, path::LocalAddress};
 use std::{io, os::unix::io::AsRawFd};
 
 #[derive(Debug, Default)]
@@ -30,6 +30,10 @@ impl<B: Buffer> Queue<B> {
 
     pub fn occupied_len(&self) -> usize {
         self.0.occupied_len()
+    }
+
+    pub fn set_local_address(&mut self, local_address: LocalAddress) {
+        self.0.set_local_address(local_address)
     }
 
     pub fn tx<Socket: AsRawFd, Publisher: event::EndpointPublisher>(

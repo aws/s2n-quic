@@ -10,7 +10,7 @@ use crate::{
     },
 };
 use errno::errno;
-use s2n_quic_core::{event, inet::SocketAddress};
+use s2n_quic_core::{event, inet::SocketAddress, path::LocalAddress};
 
 pub use simple::Handle;
 
@@ -78,6 +78,10 @@ impl<B: Buffer> Queue<B> {
 
     pub fn occupied_len(&self) -> usize {
         self.0.occupied_len()
+    }
+
+    pub fn set_local_address(&mut self, local_address: LocalAddress) {
+        self.0.set_local_address(local_address)
     }
 
     pub fn tx<S: Socket, Publisher: event::EndpointPublisher>(

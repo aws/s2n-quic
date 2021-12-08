@@ -54,7 +54,10 @@ impl tx::Entry for Packet {
 impl rx::Entry for Packet {
     type Handle = path::Tuple;
 
-    fn read(&mut self) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
+    fn read(
+        &mut self,
+        _local_address: &path::LocalAddress,
+    ) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
         let path = path::Tuple {
             remote_address: self.source_address.into(),
             local_address: self.destination_address.into(),

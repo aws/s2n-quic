@@ -6,6 +6,7 @@ mod segment;
 mod slice;
 
 pub use behavior::Behavior;
+use s2n_quic_core::path::LocalAddress;
 pub(crate) use segment::Segment;
 pub use slice::Slice;
 
@@ -49,9 +50,14 @@ pub struct Queue<Ring: message::Ring> {
     occupied: Segment,
     /// Segment of the `free` messages
     free: Segment,
+    /// The local address that the queue is bound to
+    local_address: LocalAddress,
 }
 
-impl<Ring: message::Ring + Default> Default for Queue<Ring> {
+impl<Ring> Default for Queue<Ring>
+where
+    Ring: message::Ring + Default,
+{
     fn default() -> Self {
         Self::new(Ring::default())
     }
@@ -76,7 +82,12 @@ impl<Ring: message::Ring> Queue<Ring> {
             ring,
             occupied,
             free,
+            local_address: Default::default(),
         }
+    }
+
+    pub fn set_local_address(&mut self, local_address: LocalAddress) {
+        self.local_address = local_address;
     }
 
     /// Returns the maximum size of a payload for any message
@@ -118,6 +129,7 @@ impl<Ring: message::Ring> Queue<Ring> {
             behavior: behavior::Free { mtu },
             max_gso,
             gso_segment: None,
+            local_address: &self.local_address,
         }
     }
 
@@ -132,6 +144,7 @@ impl<Ring: message::Ring> Queue<Ring> {
             behavior: behavior::Occupied { mtu },
             max_gso,
             gso_segment: None,
+            local_address: &self.local_address,
         }
     }
 
@@ -148,6 +161,7 @@ impl<Ring: message::Ring> Queue<Ring> {
             behavior: behavior::OccupiedWipe { mtu },
             max_gso,
             gso_segment: None,
+            local_address: &self.local_address,
         }
     }
 }

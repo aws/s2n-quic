@@ -7,7 +7,7 @@ use core::pin::Pin;
 use s2n_quic_core::{
     inet::{datagram, ExplicitCongestionNotification, SocketAddress},
     io::{rx, tx},
-    path,
+    path::{self, Handle as _},
 };
 
 /// A simple message type that holds an address and payload
@@ -20,7 +20,7 @@ pub struct Message {
     payload_len: usize,
 }
 
-pub type Handle = path::RemoteAddress;
+pub type Handle = path::Tuple;
 
 impl MessageTrait for Message {
     type Handle = Handle;
@@ -46,7 +46,7 @@ impl MessageTrait for Message {
     }
 
     fn path_handle(&self) -> Option<Self::Handle> {
-        Some(Handle::from(self.address))
+        Some(Handle::from_remote_address(self.address.into()))
     }
 
     fn payload_len(&self) -> usize {
@@ -193,7 +193,7 @@ impl tx::Entry for Message {
             self.set_payload_len(len);
         }
 
-        let remote_address = message.path_handle().0;
+        let remote_address = message.path_handle().remote_address;
 
         self.set_remote_address(&remote_address);
 
@@ -215,11 +215,17 @@ impl rx::Entry for Message {
     type Handle = Handle;
 
     #[inline]
-    fn read(&mut self) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
-        let header = datagram::Header {
+    fn read(
+        &mut self,
+        local_address: &path::LocalAddress,
+    ) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
+        let mut header = datagram::Header {
             path: self.path_handle()?,
             ecn: self.ecn(),
         };
+
+        // set the correct local address
+        header.path.local_address = *local_address;
 
         let payload = self.payload_mut();
         Some((header, payload))
