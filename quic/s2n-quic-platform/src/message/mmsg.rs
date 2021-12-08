@@ -14,7 +14,6 @@ use s2n_quic_core::{
     time::Timestamp,
 };
 
-#[repr(transparent)]
 pub struct Message {
     pub(crate) header: mmsghdr,
     pub earliest_departure_time: Option<Timestamp>,
@@ -84,6 +83,11 @@ impl MessageTrait for mmsghdr {
         debug_assert!(len <= core::u32::MAX as usize);
         self.msg_len = len as _;
         self.msg_hdr.set_payload_len(len);
+    }
+
+    #[inline]
+    fn earliest_departure_time(&self) -> Option<Timestamp> {
+        None
     }
 
     #[inline]
