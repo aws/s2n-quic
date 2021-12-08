@@ -16,7 +16,7 @@ use crate::{
     },
     contexts::{ConnectionApiCallContext, ConnectionOnTransmitError},
     endpoint,
-    path::{self, path_event},
+    path::{self, path_event, Path},
     recovery::RttEstimator,
     space::{PacketSpace, PacketSpaceManager},
     stream, transmission,
@@ -47,6 +47,7 @@ use s2n_quic_core::{
         zero_rtt::ProtectedZeroRtt,
     },
     path::{Handle as _, MaxMtu},
+    recovery::CongestionController,
     stateless_reset::token::Generator as _,
     time::{timer, Timestamp},
     transport,
@@ -659,8 +660,16 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     count += 1;
                 }
 
+                let can_transmit = |path: &Path<Config>| {
+                    !path.at_amplification_limit()
+                        && path
+                            .congestion_controller
+                            .earliest_departure_time()
+                            .map_or(true, |edt| edt.has_elapsed(timestamp))
+                };
+
                 // Send all other data for the active path
-                while !self.path_manager.active_path().at_amplification_limit()
+                while can_transmit(self.path_manager.active_path())
                     && queue
                         .push(ConnectionTransmission {
                             context: transmission_context!(
@@ -680,6 +689,19 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
                 if outcome.ack_elicitation.is_ack_eliciting() {
                     self.on_ack_eliciting_packet_sent(timestamp);
+                }
+
+                if let Some(edt) = self
+                    .path_manager
+                    .active_path()
+                    .congestion_controller
+                    .earliest_departure_time()
+                {
+                    if !edt.has_elapsed(timestamp) {
+                        // We can't transmit more until a future time, so arm the pacing
+                        // timer to pause transmission until the earliest departure time.
+                        self.timers.pacing_timer.set(edt);
+                    }
                 }
 
                 // PathValidationOnly handles transmission on non-active paths. Transmission
@@ -730,6 +752,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             //# all connection state.
             self.state = ConnectionState::Finished;
         }
+
+        // Poll the pacing timer to cancel it if it is ready and unblock transmission interest
+        let _ = self.timers.pacing_timer.poll_expiration(timestamp);
 
         if self
             .timers
@@ -1547,6 +1572,11 @@ impl<Config: endpoint::Config> transmission::interest::Provider for ConnectionIm
         &self,
         query: &mut Q,
     ) -> transmission::interest::Result {
+        if self.timers.pacing_timer.is_armed() {
+            // If the pacing timer is armed, it is too early to transmit
+            return Ok(());
+        }
+
         self.path_manager.transmission_interest(query)?;
 
         self.space_manager.transmission_interest(query)?;

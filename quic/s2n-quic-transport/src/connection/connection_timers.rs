@@ -22,6 +22,8 @@ pub struct ConnectionTimers {
     pub local_idle_timer: Timer,
     /// The timer for removing an initial id mapping
     pub initial_id_expiration_timer: Timer,
+    /// The timer for pacing transmission of packets
+    pub pacing_timer: Timer,
 }
 
 impl ConnectionTimers {
@@ -29,6 +31,7 @@ impl ConnectionTimers {
         self.peer_idle_timer.cancel();
         self.local_idle_timer.cancel();
         self.initial_id_expiration_timer.cancel();
+        self.pacing_timer.cancel();
     }
 }
 
@@ -38,6 +41,7 @@ impl timer::Provider for ConnectionTimers {
         self.local_idle_timer.timers(query)?;
         self.peer_idle_timer.timers(query)?;
         self.initial_id_expiration_timer.timers(query)?;
+        self.pacing_timer.timers(query)?;
 
         Ok(())
     }
