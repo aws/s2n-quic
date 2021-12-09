@@ -53,12 +53,8 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
-        id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+      - name: 'Remove rust-toolchain'
+        run: rm rust-toolchain
 
       - uses: EmbarkStudios/cargo-deny-action@v1
         with:
