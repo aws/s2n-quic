@@ -16,7 +16,7 @@ use crate::{
     },
     contexts::{ConnectionApiCallContext, ConnectionOnTransmitError},
     endpoint,
-    path::{self, path_event, Path},
+    path::{self, path_event},
     recovery::RttEstimator,
     space::{PacketSpace, PacketSpaceManager},
     stream, transmission,
@@ -362,7 +362,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             // frames for the active path so we skip PathValidationOnly
             // and handle transmission for the active path separately.
             if path_id == path_manager.active_path_id()
-                || path_manager[path_id].at_amplification_limit()
+                || !path_manager[path_id].can_transmit(timestamp)
             {
                 continue;
             }
@@ -638,11 +638,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 // Send an MTU probe if necessary
                 // MTU probes are prioritized over other data so they are not blocked by the
                 // congestion controller, as they are critical to achieving maximum throughput.
-                if self
-                    .path_manager
-                    .active_path()
-                    .mtu_controller
-                    .can_transmit(self.path_manager.active_path().transmission_constraint())
+                if self.path_manager.active_path().can_transmit(timestamp)
+                    && self
+                        .path_manager
+                        .active_path()
+                        .mtu_controller
+                        .can_transmit(self.path_manager.active_path().transmission_constraint())
                     && queue
                         .push(ConnectionTransmission {
                             context: transmission_context!(
@@ -660,16 +661,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     count += 1;
                 }
 
-                let can_transmit = |path: &Path<Config>| {
-                    !path.at_amplification_limit()
-                        && path
-                            .congestion_controller
-                            .earliest_departure_time()
-                            .map_or(true, |edt| edt.has_elapsed(timestamp))
-                };
-
                 // Send all other data for the active path
-                while can_transmit(self.path_manager.active_path())
+                while self.path_manager.active_path().can_transmit(timestamp)
                     && queue
                         .push(ConnectionTransmission {
                             context: transmission_context!(

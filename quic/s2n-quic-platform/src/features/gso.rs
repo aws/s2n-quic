@@ -13,7 +13,7 @@ pub struct MaxSegments(NonZeroUsize);
 
 impl Default for MaxSegments {
     fn default() -> Self {
-        MaxSegments::DEFAULT
+        MaxSegments::MAX
     }
 }
 
@@ -53,24 +53,18 @@ impl From<MaxSegments> for usize {
 
 #[cfg(s2n_quic_platform_gso)]
 impl MaxSegments {
-    // https://github.com/torvalds/linux/blob/e9f1cbc0c4114880090c7a578117d3b9cf184ad4/tools/testing/selftests/net/udpgso.c#L37
-    // ```
-    // #define UDP_MAX_SEGMENTS	(1 << 6UL)
-    // ```
-    const MAX: Self = MaxSegments(unsafe { NonZeroUsize::new_unchecked(1 << 6) });
-
-    // TODO profile a good default
-    // We need to strike a good balance of how deep the message buffers go.
-    // If they're too deep then we'll waste a lot of space and be swapping pages
-    // frequently. 16 seems like a good place to start as that was about the number
-    // of packets being sent at a time on a 1GbE test.
-    const DEFAULT: MaxSegments = MaxSegments(unsafe { NonZeroUsize::new_unchecked(16) });
+    // The packet pacer enforces a burst limit of 10 packets, so there is no benefit to having
+    // GSO MaxSegments higher than 10.
+    //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.7
+    //# Senders SHOULD limit bursts to the initial congestion window
+    const MAX: Self = MaxSegments(unsafe {
+        NonZeroUsize::new_unchecked(s2n_quic_core::recovery::MAX_BURST_PACKETS as usize)
+    });
 }
 
 #[cfg(not(s2n_quic_platform_gso))]
 impl MaxSegments {
     const MAX: Self = MaxSegments(unsafe { NonZeroUsize::new_unchecked(1) });
-    const DEFAULT: MaxSegments = MaxSegments(unsafe { NonZeroUsize::new_unchecked(1) });
 }
 
 #[derive(Debug)]
