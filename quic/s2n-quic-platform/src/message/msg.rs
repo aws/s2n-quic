@@ -283,8 +283,14 @@ impl MessageTrait for msghdr {
     #[inline]
     fn can_gso<M: tx::Message<Handle = Self::Handle>>(&self, other: &mut M) -> bool {
         if let Some(header) = Message::header(self) {
+            let mut other_handle = *other.path_handle();
+
+            // when reading the header back from the msghdr, we don't know the port
+            // so set the other port to 0 as well.
+            other_handle.local_address.set_port(0);
+
             // check the path handles match
-            header.path.strict_eq(other.path_handle()) &&
+            header.path.strict_eq(&other_handle) &&
                 // check the ECN markings match
                 header.ecn == other.ecn()
         } else {
