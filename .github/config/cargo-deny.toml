@@ -3,6 +3,9 @@ vulnerability = "deny"
 unmaintained = "deny"
 notice = "deny"
 yanked = "deny"
+ignore = [
+    "RUSTSEC-2021-0127" # criterion (a test dependency) uses cbor for encoding
+]
 
 [bans]
 multiple-versions = "deny"
@@ -45,4 +48,12 @@ name = "webpki"
 expression = "ISC"
 license-files = [
     { path = "LICENSE", hash = 0x001c7e6c },
+]
+
+[[licenses.clarify]]
+name = "encoding_rs"
+version = "*"
+expression = "(Apache-2.0 OR MIT) AND BSD-3-Clause"
+license-files = [
+    { path = "COPYRIGHT", hash = 0x39f8ad31 }
 ]
