@@ -4,6 +4,9 @@
 //! `StreamContainer` is a container for all Streams. It manages the permanent
 //! map of all active Streams, as well as a variety of dynamic Stream lists.
 
+// hide warnings from the intrusive_collections crate
+#![allow(unknown_lints, clippy::non_send_fields_in_send_ty)]
+
 use crate::{
     stream,
     stream::{stream_impl::StreamTrait, stream_interests::StreamInterests},

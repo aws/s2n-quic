@@ -82,6 +82,7 @@ pub struct Endpoint<Cfg: Config> {
 /// Safety: The endpoint is marked as `!Send`, because the struct contains `Rc`s.
 /// However those `Rcs` are only referenced by other objects within the `Endpoint`
 /// and which also get moved.
+#[allow(unknown_lints, clippy::non_send_fields_in_send_ty)]
 unsafe impl<Cfg: Config> Send for Endpoint<Cfg> {}
 
 impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
@@ -478,8 +479,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         let source_connection_id = packet
             .source_connection_id()
-            .map(PeerId::try_from_bytes)
-            .flatten();
+            .and_then(PeerId::try_from_bytes);
 
         let datagram = &DatagramInfo {
             timestamp,

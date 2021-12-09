@@ -283,7 +283,7 @@ pub mod api {
     #[doc = " The source that caused a congestion event"]
     pub enum CongestionSource {
         #[non_exhaustive]
-        ECN {},
+        Ecn {},
         #[non_exhaustive]
         PacketLoss {},
     }
@@ -2021,7 +2021,7 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub enum CongestionSource {
-        ECN,
+        Ecn,
         PacketLoss,
     }
     impl IntoEvent<api::CongestionSource> for CongestionSource {
@@ -2029,7 +2029,7 @@ pub mod builder {
         fn into_event(self) -> api::CongestionSource {
             use api::CongestionSource::*;
             match self {
-                Self::ECN => ECN {},
+                Self::Ecn => Ecn {},
                 Self::PacketLoss => PacketLoss {},
             }
         }

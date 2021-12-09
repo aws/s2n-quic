@@ -4,6 +4,9 @@
 //! `ConnectionContainer` is a container for all Connections. It manages the permanent
 //! map of all active Connections, as well as a variety of dynamic Connection lists.
 
+// hide warnings from the intrusive_collections crate
+#![allow(unknown_lints, clippy::non_send_fields_in_send_ty)]
+
 use super::{ConnectionApi, ConnectionApiProvider};
 use crate::{
     connection::{self, Connection, ConnectionInterests, InternalConnectionId},
