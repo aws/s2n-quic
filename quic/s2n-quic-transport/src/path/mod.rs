@@ -228,6 +228,16 @@ impl<Config: endpoint::Config> Path<Config> {
         );
     }
 
+    /// Returns true if this path is able to transmit packets at the given timestamp
+    #[inline]
+    pub fn can_transmit(&self, timestamp: Timestamp) -> bool {
+        !self.at_amplification_limit()
+            && self
+                .congestion_controller
+                .earliest_departure_time()
+                .map_or(true, |edt| edt.has_elapsed(timestamp))
+    }
+
     /// Only PATH_CHALLENGE and PATH_RESPONSE frames should be transmitted here.
     #[inline]
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {

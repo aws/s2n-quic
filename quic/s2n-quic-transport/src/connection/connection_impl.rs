@@ -47,6 +47,7 @@ use s2n_quic_core::{
         zero_rtt::ProtectedZeroRtt,
     },
     path::{Handle as _, MaxMtu},
+    recovery::CongestionController,
     stateless_reset::token::Generator as _,
     time::{timer, Timestamp},
     transport,
@@ -361,7 +362,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             // frames for the active path so we skip PathValidationOnly
             // and handle transmission for the active path separately.
             if path_id == path_manager.active_path_id()
-                || path_manager[path_id].at_amplification_limit()
+                || !path_manager[path_id].can_transmit(timestamp)
             {
                 continue;
             }
@@ -637,11 +638,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 // Send an MTU probe if necessary
                 // MTU probes are prioritized over other data so they are not blocked by the
                 // congestion controller, as they are critical to achieving maximum throughput.
-                if self
-                    .path_manager
-                    .active_path()
-                    .mtu_controller
-                    .can_transmit(self.path_manager.active_path().transmission_constraint())
+                if self.path_manager.active_path().can_transmit(timestamp)
+                    && self
+                        .path_manager
+                        .active_path()
+                        .mtu_controller
+                        .can_transmit(self.path_manager.active_path().transmission_constraint())
                     && queue
                         .push(ConnectionTransmission {
                             context: transmission_context!(
@@ -660,7 +662,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 }
 
                 // Send all other data for the active path
-                while !self.path_manager.active_path().at_amplification_limit()
+                while self.path_manager.active_path().can_transmit(timestamp)
                     && queue
                         .push(ConnectionTransmission {
                             context: transmission_context!(
@@ -680,6 +682,19 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
                 if outcome.ack_elicitation.is_ack_eliciting() {
                     self.on_ack_eliciting_packet_sent(timestamp);
+                }
+
+                if let Some(edt) = self
+                    .path_manager
+                    .active_path()
+                    .congestion_controller
+                    .earliest_departure_time()
+                {
+                    if !edt.has_elapsed(timestamp) {
+                        // We can't transmit more until a future time, so arm the pacing
+                        // timer to pause transmission until the earliest departure time.
+                        self.timers.pacing_timer.set(edt);
+                    }
                 }
 
                 // PathValidationOnly handles transmission on non-active paths. Transmission
@@ -730,6 +745,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             //# all connection state.
             self.state = ConnectionState::Finished;
         }
+
+        // Poll the pacing timer to cancel it if it is ready and unblock transmission interest
+        let _ = self.timers.pacing_timer.poll_expiration(timestamp);
 
         if self
             .timers
@@ -1547,6 +1565,11 @@ impl<Config: endpoint::Config> transmission::interest::Provider for ConnectionIm
         &self,
         query: &mut Q,
     ) -> transmission::interest::Result {
+        if self.timers.pacing_timer.is_armed() {
+            // If the pacing timer is armed, it is too early to transmit
+            return Ok(());
+        }
+
         self.path_manager.transmission_interest(query)?;
 
         self.space_manager.transmission_interest(query)?;

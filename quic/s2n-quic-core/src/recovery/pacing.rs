@@ -3,7 +3,7 @@
 
 use crate::{
     counter::{Counter, Saturating},
-    recovery::RttEstimator,
+    recovery::{RttEstimator, MAX_BURST_PACKETS},
     time::{Duration, Timestamp},
 };
 use core::ops::Div;
@@ -28,11 +28,6 @@ const N: Fraction = Fraction(5, 4); // 5/4 = 1.25
 // in slow start, as done in Linux:
 // https://github.com/torvalds/linux/blob/fc02cb2b37fe2cbf1d3334b9f0f0eab9431766c4/net/ipv4/tcp_input.c#L905-L906
 const SLOW_START_N: Fraction = Fraction(2, 1); // 2/1 = 2.00
-
-// TODO: this should be aligned with GSO max segments
-//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.7
-//# Senders SHOULD limit bursts to the initial congestion window
-const MAX_BURST_PACKETS: u16 = 10;
 
 /// A packet pacer that returns departure times that evenly distribute bursts of packets over time
 #[derive(Clone, Debug, Default)]
