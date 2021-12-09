@@ -97,11 +97,12 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
     {
         use rx::Entry;
 
+        let local_address = queue.local_address();
         let entries = queue.as_slice_mut();
         let mut now: Option<Timestamp> = None;
 
         for entry in entries.iter_mut() {
-            if let Some((header, payload)) = entry.read() {
+            if let Some((header, payload)) = entry.read(&local_address) {
                 let timestamp = match now {
                     Some(now) => now,
                     _ => {

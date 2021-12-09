@@ -114,6 +114,14 @@ impl SocketAddress {
     }
 
     #[inline]
+    pub fn set_port(&mut self, port: u16) {
+        match self {
+            SocketAddress::IpV4(addr) => addr.set_port(port),
+            SocketAddress::IpV6(addr) => addr.set_port(port),
+        }
+    }
+
+    #[inline]
     pub const fn unicast_scope(&self) -> Option<UnicastScope> {
         match self {
             Self::IpV4(addr) => addr.unicast_scope(),

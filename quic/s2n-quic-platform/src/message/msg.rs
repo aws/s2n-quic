@@ -562,8 +562,18 @@ impl rx::Entry for Message {
     type Handle = Handle;
 
     #[inline]
-    fn read(&mut self) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
-        let header = Self::header(&self.0)?;
+    fn read(
+        &mut self,
+        local_address: &path::LocalAddress,
+    ) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
+        let mut header = Self::header(&self.0)?;
+
+        if cfg!(s2n_quic_platform_pktinfo) {
+            header.path.local_address.set_port(local_address.port());
+        } else {
+            header.path.local_address = *local_address;
+        }
+
         let payload = self.payload_mut();
         Some((header, payload))
     }

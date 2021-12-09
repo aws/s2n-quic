@@ -14,7 +14,7 @@ use pin_project::pin_project;
 use s2n_quic_core::{
     endpoint::{CloseError, Endpoint},
     event::{self, EndpointPublisher as _},
-    inet::SocketAddress,
+    inet::{self, SocketAddress},
     path::MaxMtu,
     time::{self, Clock as ClockTrait},
 };
@@ -272,7 +272,7 @@ impl Io {
             }
         }
 
-        let rx;
+        let mut rx;
         let tx;
 
         cfg_if! {
@@ -280,10 +280,16 @@ impl Io {
                 rx = socket::Queue::<buffer::Buffer>::new(buffer::Buffer::default(), max_segments.into());
                 tx = socket::Queue::<buffer::Buffer>::new(buffer::Buffer::default(), max_segments.into());
             } else {
-                rx = Default::default();
-                tx = Default::default();
+                rx = socket::Queue::default();
+                tx = socket::Queue::default();
             }
         }
+
+        // tell the queue the local address so it can fill it in on each message
+        rx.set_local_address({
+            let addr: inet::SocketAddress = rx_addr.into();
+            addr.into()
+        });
 
         let instance = Instance {
             clock,
@@ -803,10 +809,11 @@ mod tests {
         ) {
             let now = clock.get_time();
             self.now = Some(now);
+            let local_address = queue.local_address();
             let entries = queue.as_slice_mut();
             let len = entries.len();
             for entry in entries {
-                if let Some((_header, payload)) = entry.read() {
+                if let Some((_header, payload)) = entry.read(&local_address) {
                     assert_eq!(payload.len(), 4, "invalid payload {:?}", payload);
 
                     let id = (&payload[..]).try_into().unwrap();

@@ -101,6 +101,12 @@ macro_rules! impl_addr {
                 &self.0
             }
         }
+
+        impl core::ops::DerefMut for $name {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.0
+            }
+        }
     };
 }
 

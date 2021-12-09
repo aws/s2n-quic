@@ -149,8 +149,7 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
                             (v, _) => v.to_ne_bytes(),
                         };
 
-                    // TODO set the correct port
-                    //      https://github.com/awslabs/s2n-quic/issues/816
+                    // The port should be specified by a different layer that has that information
                     let port = 0;
                     let local_address =
                         s2n_quic_core::inet::SocketAddressV4::new(local_address, port);
@@ -161,8 +160,7 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
                 (libc::IPPROTO_IPV6, libc::IPV6_PKTINFO, _) => {
                     let pkt_info = decode_value::<libc::in6_pktinfo>(cmsg);
                     let local_address = pkt_info.ipi6_addr.s6_addr;
-                    // TODO set the correct port
-                    //      https://github.com/awslabs/s2n-quic/issues/816
+                    // The port should be specified by a different layer that has that information
                     let port = 0;
                     let local_address =
                         s2n_quic_core::inet::SocketAddressV6::new(local_address, port);

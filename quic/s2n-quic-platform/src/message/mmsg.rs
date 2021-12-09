@@ -11,6 +11,7 @@ use libc::mmsghdr;
 use s2n_quic_core::{
     inet::{datagram, ExplicitCongestionNotification, SocketAddress},
     io::{rx, tx},
+    path,
 };
 
 #[repr(transparent)]
@@ -236,8 +237,18 @@ impl rx::Entry for Message {
     type Handle = Handle;
 
     #[inline]
-    fn read(&mut self) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
-        let header = msg::Message::header(&self.0.msg_hdr)?;
+    fn read(
+        &mut self,
+        local_address: &path::LocalAddress,
+    ) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
+        let mut header = msg::Message::header(&self.0.msg_hdr)?;
+
+        if cfg!(s2n_quic_platform_pktinfo) {
+            header.path.local_address.set_port(local_address.port());
+        } else {
+            header.path.local_address = *local_address;
+        }
+
         let payload = self.payload_mut();
         Some((header, payload))
     }
