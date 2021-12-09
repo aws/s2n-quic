@@ -7,6 +7,7 @@ on:
     paths:
       - '**/Cargo.toml'
       - '**/Cargo.lock'
+      - '.github/config/cargo-deny.toml'
       - '.github/workflows/dependencies.yml'
 
   pull_request:
@@ -15,6 +16,7 @@ on:
     paths:
       - '**/Cargo.toml'
       - '**/Cargo.lock'
+      - '.github/config/cargo-deny.toml'
       - '.github/workflows/dependencies.yml'
 
   schedule:
