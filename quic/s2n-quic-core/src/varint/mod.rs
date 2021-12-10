@@ -112,7 +112,7 @@ mod tests {
         assert_debug_snapshot!("max_value", MAX_VARINT_VALUE);
 
         // These values are derived from the "usable bits" column in the table: V and V-1
-        for i in [0, 1, 5, 6, 13, 14, 29, 30, 61].iter().cloned() {
+        for i in [0, 1, 5, 6, 13, 14, 29, 30, 61] {
             assert_debug_snapshot!(format!("table_2_pow_{}_", i), read_table(2u64.pow(i)));
         }
     }

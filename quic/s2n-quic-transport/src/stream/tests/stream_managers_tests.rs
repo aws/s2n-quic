@@ -486,14 +486,8 @@ fn remote_streams_do_not_open_if_manager_is_closed() {
 
 #[test]
 fn opens_locally_initiated_streams() {
-    for local_ep_type in [endpoint::Type::Client, endpoint::Type::Server]
-        .iter()
-        .copied()
-    {
-        for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
-            .iter()
-            .copied()
-        {
+    for local_ep_type in [endpoint::Type::Client, endpoint::Type::Server] {
+        for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
             let mut manager = create_stream_manager(local_ep_type);
 
             for n in 0..8 {
@@ -659,10 +653,7 @@ fn max_data_replenishes_connection_flow_control_window() {
 fn max_streams_replenishes_stream_control_capacity() {
     let mut manager = create_stream_manager(endpoint::Type::Server);
 
-    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
-        .iter()
-        .copied()
-    {
+    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
         let current_max_streams =
             manager.with_stream_controller(|ctrl| ctrl.max_streams_latest_value(stream_type));
 
@@ -710,10 +701,7 @@ fn max_streams_replenishes_stream_control_capacity() {
 fn peer_closing_streams_transmits_max_streams() {
     let mut manager = create_stream_manager(endpoint::Type::Server);
 
-    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
-        .iter()
-        .copied()
-    {
+    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
         let current_max_streams =
             manager.with_stream_controller(|ctrl| ctrl.max_streams_latest_value(stream_type));
 
@@ -807,10 +795,7 @@ fn peer_closing_streams_transmits_max_streams() {
 fn send_streams_blocked_frame_when_blocked_by_peer() {
     let mut manager = create_stream_manager(endpoint::Type::Server);
 
-    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
-        .iter()
-        .copied()
-    {
+    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
         let (waker, _) = new_count_waker();
 
         let mut opened_streams = VarInt::from_u8(0);
@@ -942,10 +927,7 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
 
 #[test]
 fn streams_blocked_period() {
-    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
-        .iter()
-        .copied()
-    {
+    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
         let block_func = |manager: &mut AbstractStreamManager<MockStream>| {
             let (waker, _) = new_count_waker();
 
@@ -1213,10 +1195,7 @@ fn send_data_blocked_frame_when_blocked_by_connection_flow_limits() {
 fn stream_limit_error_on_peer_open_stream_too_large() {
     let mut manager = create_stream_manager(endpoint::Type::Server);
 
-    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
-        .iter()
-        .copied()
-    {
+    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
         let current_max_streams =
             manager.with_stream_controller(|ctrl| ctrl.max_streams_latest_value(stream_type));
 
@@ -1242,10 +1221,7 @@ fn stream_limit_error_on_peer_open_stream_too_large() {
 
 #[test]
 fn blocked_on_local_concurrent_stream_limit() {
-    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
-        .iter()
-        .copied()
-    {
+    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
         let mut manager = create_stream_manager(endpoint::Type::Server);
 
         // The peer allows a large amount of streams to be opened
@@ -1319,10 +1295,7 @@ fn asymmetric_stream_limits() {
         .unwrap();
 
     for (local_limit, peer_limit) in &[(100, 5), (5, 100)] {
-        for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
-            .iter()
-            .copied()
-        {
+        for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
             initial_local_limits.max_streams_bidi = VarInt::from_u8(*local_limit);
             initial_peer_limits.max_streams_bidi = VarInt::from_u8(*peer_limit);
             initial_local_limits.max_streams_uni = VarInt::from_u8(*local_limit);
@@ -1367,23 +1340,14 @@ fn asymmetric_stream_limits() {
 fn accept_returns_remotely_initiated_stream() {
     const STREAMS_TO_OPEN: u64 = 8;
 
-    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client]
-        .iter()
-        .copied()
-    {
-        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client]
-            .iter()
-            .copied()
-        {
+    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client] {
+        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client] {
             let is_remote_initialized = local_ep_type != initiator_type;
             if !is_remote_initialized {
                 continue;
             }
 
-            for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
-                .iter()
-                .copied()
-            {
+            for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
                 let mut manager = create_stream_manager(local_ep_type);
 
                 for n in 0..STREAMS_TO_OPEN {
@@ -1463,14 +1427,8 @@ fn accept_returns_remotely_initiated_stream() {
 fn accept_returns_opened_streams_of_any_type() {
     const STREAMS_TO_OPEN: u64 = 8;
 
-    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client]
-        .iter()
-        .copied()
-    {
-        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client]
-            .iter()
-            .copied()
-        {
+    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client] {
+        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client] {
             let is_remote_initialized = local_ep_type != initiator_type;
             if !is_remote_initialized {
                 continue;
@@ -1481,10 +1439,7 @@ fn accept_returns_opened_streams_of_any_type() {
 
             let mut streams = std::collections::HashSet::new();
 
-            for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
-                .iter()
-                .copied()
-            {
+            for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
                 // there are 2 different types of streams that can be created by this type of endpoint
                 for n in 0..(STREAMS_TO_OPEN / 2) {
                     let stream_id = StreamId::nth(initiator_type, stream_type, n).unwrap();
@@ -1524,23 +1479,14 @@ fn accept_returns_opened_streams_of_any_type() {
 
 #[test]
 fn accept_notifies_of_any_type() {
-    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client]
-        .iter()
-        .copied()
-    {
-        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client]
-            .iter()
-            .copied()
-        {
+    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client] {
+        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client] {
             let is_remote_initialized = local_ep_type != initiator_type;
             if !is_remote_initialized {
                 continue;
             }
 
-            for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
-                .iter()
-                .copied()
-            {
+            for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
                 let mut manager = create_stream_manager(local_ep_type);
                 let (accept_waker, accept_wake_counter) = new_count_waker();
 
@@ -1574,14 +1520,8 @@ fn accept_notifies_of_any_type() {
 
 #[test]
 fn accept_notifies_on_both_types() {
-    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client]
-        .iter()
-        .copied()
-    {
-        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client]
-            .iter()
-            .copied()
-        {
+    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client] {
+        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client] {
             let is_remote_initialized = local_ep_type != initiator_type;
             if !is_remote_initialized {
                 continue;
@@ -1593,10 +1533,7 @@ fn accept_notifies_on_both_types() {
                 .poll_accept(None, &Context::from_waker(&accept_waker))
                 .is_pending());
 
-            for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
-                .iter()
-                .copied()
-            {
+            for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
                 let stream_id = StreamId::initial(initiator_type, stream_type);
 
                 // Open the Stream via a data frame
@@ -1696,23 +1633,14 @@ fn closing_stream_manager_wakes_blocked_accepts() {
 
 #[test]
 fn closing_stream_manager_without_error_returns_none() {
-    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client]
-        .iter()
-        .copied()
-    {
-        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client]
-            .iter()
-            .copied()
-        {
+    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client] {
+        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client] {
             let is_remote_initialized = local_ep_type != initiator_type;
             if !is_remote_initialized {
                 continue;
             }
 
-            for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
-                .iter()
-                .copied()
-            {
+            for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
                 let mut manager = create_stream_manager(local_ep_type);
                 let (accept_waker, accept_wake_counter) = new_count_waker();
 

@@ -11,7 +11,7 @@ pub fn benchmarks(c: &mut Criterion) {
 
 fn round_trip(c: &mut Criterion) {
     let mut group = c.benchmark_group("varint");
-    for i in [0, 1, 5, 6, 13, 14, 29, 30, 61].iter() {
+    for i in [0, 1, 5, 6, 13, 14, 29, 30, 61] {
         let i = VarInt::new(2u64.pow(*i)).unwrap();
 
         group.bench_with_input(BenchmarkId::new("round_trip", i), &i, |b, input| {
