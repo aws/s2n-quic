@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    close::CloseAttempt,
     connection::{self, Connection},
     provider::*,
 };
@@ -105,6 +106,33 @@ impl Client {
     pub fn connect(&self, connect: Connect) -> ConnectionAttempt {
         let attempt = self.0.connect(connect);
         ConnectionAttempt(attempt)
+    }
+
+    /// Attempt to close the connection
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use std::error::Error;
+    /// use s2n_quic::Client;
+    /// use std::{net::SocketAddr, path::Path};
+    ///
+    /// # async fn connect() -> Result<(), Box<dyn Error>> {
+    /// let client = Client::builder()
+    ///     .with_tls(Path::new("./certs/cert.pem"))?
+    ///     .with_io("0.0.0.0:0")?
+    ///     .start()?;
+    ///
+    /// let addr: SocketAddr = "127.0.0.1:443".parse()?;
+    /// let connection = client.connect(addr.into()).await?;
+    ///
+    /// client.close().await?;
+    /// #
+    /// #    Ok(())
+    /// # }
+    /// ```
+    pub fn close(&self) -> CloseAttempt {
+        CloseAttempt(self.0.poll_close())
     }
 
     /// Returns the local address that this listener is bound to.

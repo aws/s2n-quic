@@ -634,6 +634,17 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         !self.connector_receiver.is_terminated()
     }
 
+    /// Returns true if there are no connections being tracked
+    pub fn is_empty(&self) -> bool {
+        self.connection_map.is_empty()
+    }
+
+    /// Stop accepting new connections
+    pub fn mark_closed(&mut self) {
+        self.accept_queue.close_channel();
+        self.connector_receiver.close();
+    }
+
     pub fn is_open(&self) -> bool {
         !self.connection_map.is_empty()
             || match <C::Config as endpoint::Config>::ENDPOINT_TYPE {

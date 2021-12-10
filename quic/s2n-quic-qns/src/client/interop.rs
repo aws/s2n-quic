@@ -100,6 +100,7 @@ impl Interop {
             }
         }
 
+        client.close().await?;
         return Ok(());
 
         async fn create_connection<R: IntoIterator<Item = String>>(

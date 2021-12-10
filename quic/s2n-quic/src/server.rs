@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{connection::Connection, provider::*};
+use crate::{close::CloseAttempt, connection::Connection, provider::*};
 use core::{
     fmt,
     task::{Context, Poll},
@@ -113,6 +113,34 @@ impl Server {
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }
+    }
+
+    /// Attempt to close the connection
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use std::error::Error;
+    /// # use s2n_quic::Server;
+    /// #
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn Error>> {
+    /// let mut server = Server::bind("127.0.0.1:443")?;
+    ///
+    /// match server.accept().await {
+    ///     Some(connection) => {
+    ///         println!("new connection: {:?}", connection.remote_addr());
+    ///     }
+    ///     None => println!("server closed"),
+    /// }
+    ///
+    /// server.close().await?;
+    /// #    Ok(())
+    /// # }
+    ///
+    /// ```
+    pub fn close(&self) -> CloseAttempt {
+        CloseAttempt(self.0.poll_close())
     }
 
     /// Returns the local address that this listener is bound to.
