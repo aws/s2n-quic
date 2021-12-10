@@ -74,7 +74,7 @@ impl Challenge {
     pub fn disabled() -> Self {
         Self {
             state: State::InitialPathDisabled,
-            abandon_duration: Duration::default(),
+            abandon_duration: Duration::ZERO,
             abandon_timer: Timer::default(),
             data: DISABLED_DATA,
         }
