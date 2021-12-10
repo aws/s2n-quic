@@ -9,7 +9,7 @@ publish = false
 
 [dependencies]
 glob = "0.3"
-heck = "0.3"
+heck = "0.4"
 proc-macro2 = "1"
 quote = "1"
 syn = "1"
