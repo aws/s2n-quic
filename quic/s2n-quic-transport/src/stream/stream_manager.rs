@@ -380,6 +380,7 @@ pub struct AbstractStreamManager<S> {
 
 // Sending the `AbstractStreamManager` between threads is safe, since we never expose the `Rc`s
 // outside of the container
+#[allow(unknown_lints, clippy::non_send_fields_in_send_ty)]
 unsafe impl<S> Send for AbstractStreamManager<S> {}
 
 impl<S: StreamTrait> AbstractStreamManager<S> {

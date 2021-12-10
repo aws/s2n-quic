@@ -420,6 +420,7 @@ impl<Payloads: crate::buffer::Buffer> Storage<Payloads> {
 
 /// Even though `Ring` contains raw pointers, it owns all of the data
 /// and can be sent across threads safely.
+#[allow(unknown_lints, clippy::non_send_fields_in_send_ty)]
 unsafe impl<Payloads: Send> Send for Ring<Payloads> {}
 
 impl<Payloads: crate::buffer::Buffer + Default> Default for Ring<Payloads> {

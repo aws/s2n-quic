@@ -234,9 +234,7 @@ impl Controller {
             }
         }
 
-        let congestion_experienced;
-
-        if let Some(incremental_ecn_counts) = ack_frame_ecn_counts
+        let congestion_experienced = if let Some(incremental_ecn_counts) = ack_frame_ecn_counts
             .unwrap_or_default()
             .checked_sub(baseline_ecn_counts)
         {
@@ -248,13 +246,12 @@ impl Controller {
                 return ValidationOutcome::Failed;
             }
 
-            congestion_experienced =
-                incremental_ecn_counts.ce_count > newly_acked_ecn_counts.ce_count;
+            incremental_ecn_counts.ce_count > newly_acked_ecn_counts.ce_count
         } else {
             // ECN counts decreased from the baseline
             self.fail(now, path, publisher);
             return ValidationOutcome::Failed;
-        }
+        };
 
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#A.4
         //# From the "unknown" state, successful validation of the ECN counts in an ACK frame

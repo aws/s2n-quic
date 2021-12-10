@@ -887,6 +887,7 @@ macro_rules! path_event {
         }
     }};
 }
+
 pub(crate) use path_event;
 
 #[cfg(test)]

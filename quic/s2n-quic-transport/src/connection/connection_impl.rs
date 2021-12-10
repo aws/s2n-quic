@@ -206,7 +206,8 @@ impl<Config: endpoint::Config> EventContext<Config> {
 }
 
 /// Safety: we use some `Rc<RefCell<T>>` inside of the connection but these values
-/// never leave the API boundary and will be all sent together
+/// never leave the API boundary and will be all sent across threads together
+#[allow(unknown_lints, clippy::non_send_fields_in_send_ty)]
 unsafe impl<Config: endpoint::Config> Send for ConnectionImpl<Config> {}
 
 #[cfg(debug_assertions)]

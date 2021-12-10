@@ -9,6 +9,9 @@ use std::ffi::CString;
 
 struct Owned(*mut s2n_config);
 
+/// Safety: s2n_config objects can be sent across threads
+unsafe impl Send for Owned {}
+
 impl Default for Owned {
     fn default() -> Self {
         Self::new()
@@ -37,6 +40,7 @@ impl Drop for Owned {
 pub struct Config(Arc<Owned>);
 
 /// Safety: s2n_config objects can be sent across threads
+#[allow(unknown_lints, clippy::non_send_fields_in_send_ty)]
 unsafe impl Send for Config {}
 
 impl Config {

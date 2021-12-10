@@ -623,7 +623,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             let path = context.path();
             publisher.on_congestion(event::builder::Congestion {
                 path: path_event!(path, path_id),
-                source: CongestionSource::ECN,
+                source: CongestionSource::Ecn,
             })
         }
 
