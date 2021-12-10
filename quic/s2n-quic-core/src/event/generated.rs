@@ -4106,6 +4106,9 @@ pub mod testing {
     }
     impl Drop for Subscriber {
         fn drop(&mut self) {
+            if std::thread::panicking() {
+                return;
+            }
             if let Some(location) = self.location.as_ref() {
                 location.snapshot(&self.output);
             }
@@ -4115,7 +4118,7 @@ pub mod testing {
         #[track_caller]
         pub fn snapshot() -> Self {
             Self {
-                location: Some(Location::default()),
+                location: Location::try_new(),
                 output: Default::default(),
                 ..Default::default()
             }
@@ -4529,7 +4532,7 @@ pub mod testing {
         #[track_caller]
         pub fn snapshot() -> Self {
             Self {
-                location: Some(Location::default()),
+                location: Location::try_new(),
                 output: Default::default(),
                 ..Default::default()
             }
@@ -4732,6 +4735,9 @@ pub mod testing {
     }
     impl Drop for Publisher {
         fn drop(&mut self) {
+            if std::thread::panicking() {
+                return;
+            }
             if let Some(location) = self.location.as_ref() {
                 location.snapshot(&self.output);
             }
@@ -4739,13 +4745,16 @@ pub mod testing {
     }
     #[derive(Clone, Debug)]
     struct Location(&'static core::panic::Location<'static>);
-    impl Default for Location {
-        #[track_caller]
-        fn default() -> Self {
-            Self(core::panic::Location::caller())
-        }
-    }
     impl Location {
+        #[track_caller]
+        fn try_new() -> Option<Self> {
+            let thread = std::thread::current();
+            if thread.name().map_or(false, |name| name != "main") {
+                Some(Self(core::panic::Location::caller()))
+            } else {
+                None
+            }
+        }
         fn snapshot(&self, output: &[String]) {
             use std::path::{Component, Path};
             let value = output.join("\n");
