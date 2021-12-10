@@ -38,8 +38,9 @@ rustup toolchain install nightly
 ### Initialization
 
 ```sh
-# Initialize the project's submodules
+# Initialize the project's submodules and tell cargo to rebuild it
 git submodule update --init
+touch tls/s2n-tls-sys/build.rs
 ```
 
 ### Running a fuzz target
