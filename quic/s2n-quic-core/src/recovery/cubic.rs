@@ -597,7 +597,7 @@ impl Cubic {
         Cubic {
             w_max: 0.0,
             w_last_max: 0.0,
-            k: Duration::default(),
+            k: Duration::ZERO,
             max_datagram_size,
         }
     }
@@ -607,7 +607,7 @@ impl Cubic {
     pub fn reset(&mut self) {
         self.w_max = 0.0;
         self.w_last_max = 0.0;
-        self.k = Duration::default();
+        self.k = Duration::ZERO;
     }
 
     //= https://tools.ietf.org/rfc/rfc8312#4.1

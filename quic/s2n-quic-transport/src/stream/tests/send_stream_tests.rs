@@ -2573,10 +2573,10 @@ fn stream_reports_stream_size_based_on_acquired_connection_window() {
 fn resetting_a_stream_takes_priority() {
     let error_code = ApplicationErrorCode::new(123).unwrap();
 
-    for sizes in [None, Some(&[10, 10, 10])].iter() {
-        for finish in [true, false].iter().cloned() {
-            for flush in [true, false].iter().cloned() {
-                for with_context in [true, false].iter().cloned() {
+    for sizes in [None, Some(&[10, 10, 10])] {
+        for finish in [true, false] {
+            for flush in [true, false] {
+                for with_context in [true, false] {
                     let mut test_env = setup_send_only_test_env();
 
                     let will_wake = with_context && flush;
@@ -2649,10 +2649,10 @@ fn resetting_a_stream_takes_priority() {
 #[test]
 fn can_send_multiple_chunks() {
     let max_send_buffer_size = 3000;
-    for sizes in [&[10, 10, 10][..], &[500, 500, 500], &[1000, 1000, 1000][..]].iter() {
-        for finish in [false, true].iter().cloned() {
-            for flush in [false, true].iter().cloned() {
-                for with_context in [false, true].iter().cloned() {
+    for sizes in [&[10, 10, 10][..], &[500, 500, 500], &[1000, 1000, 1000][..]] {
+        for finish in [false, true] {
+            for flush in [false, true] {
+                for with_context in [false, true] {
                     let test_env_config = TestEnvironmentConfig {
                         max_send_buffer_size,
                         stream_id: StreamId::initial(
@@ -2766,8 +2766,8 @@ fn can_send_multiple_chunks() {
 #[test]
 fn can_query_stream_readiness() {
     let max_send_buffer_size = 1500;
-    for size in [None, Some(1000usize), Some(2000)].iter().cloned() {
-        for with_context in [false, true].iter().cloned() {
+    for size in [None, Some(1000usize), Some(2000)] {
+        for with_context in [false, true] {
             let test_env_config = TestEnvironmentConfig {
                 max_send_buffer_size,
                 stream_id: StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional),

@@ -489,7 +489,7 @@ mod tests {
         // Test all combinations of values to create a header and verify the header returns the
         // expected values.
         for source in &[Source::NewTokenFrame, Source::RetryPacket] {
-            for key_id in [0, 1].iter().cloned() {
+            for key_id in [0, 1] {
                 let header = Header::new(*source, key_id);
                 // The version should always be the constant TOKEN_VERSION
                 assert_eq!(header.version(), TOKEN_VERSION);

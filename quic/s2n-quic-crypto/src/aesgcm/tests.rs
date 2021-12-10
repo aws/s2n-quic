@@ -190,10 +190,7 @@ macro_rules! impl_tests {
                     BLOCK_LEN * 5,
                     BLOCK_LEN * 6,
                     BLOCK_LEN * 7,
-                ]
-                .iter()
-                .copied()
-                {
+                ] {
                     eprintln!("payload len = {}", payload_len);
                     ensure_match(
                         impls,

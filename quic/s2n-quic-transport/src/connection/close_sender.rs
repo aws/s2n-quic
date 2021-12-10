@@ -153,7 +153,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> tx::Message
 
     #[inline]
     fn delay(&mut self) -> Duration {
-        Duration::default()
+        Duration::ZERO
     }
 
     #[inline]

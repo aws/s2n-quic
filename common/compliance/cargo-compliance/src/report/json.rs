@@ -440,12 +440,12 @@ struct RefStatus {
 
 impl RefStatus {
     fn for_each<F: FnMut(Self) -> Result<(), E>, E>(mut f: F) -> Result<(), E> {
-        for level in AnnotationLevel::LEVELS.iter().copied() {
-            for spec in [false, true].iter().copied() {
-                for citation in [false, true].iter().copied() {
-                    for test in [false, true].iter().copied() {
-                        for exception in [false, true].iter().copied() {
-                            for todo in [false, true].iter().copied() {
+        for level in AnnotationLevel::LEVELS {
+            for spec in [false, true] {
+                for citation in [false, true] {
+                    for test in [false, true] {
+                        for exception in [false, true] {
+                            for todo in [false, true] {
                                 let status = Self {
                                     spec,
                                     citation,

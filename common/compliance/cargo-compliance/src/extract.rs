@@ -236,7 +236,7 @@ fn find_open_line(line: &str) -> Option<usize> {
     let end = line.rfind('.')? + 1;
 
     match line[(end)..].chars().next() {
-        Some(' ') | Some('\t') => Some(end),
+        Some(' ' | '\t') => Some(end),
         None => Some(end),
         _ => find_close_line(&line[..(end - 1)]),
     }

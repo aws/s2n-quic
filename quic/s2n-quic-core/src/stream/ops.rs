@@ -506,8 +506,8 @@ mod tests {
 
     #[test]
     fn response_pending_test() {
-        for rx_pending in [false, true].iter().cloned() {
-            for tx_pending in [false, true].iter().cloned() {
+        for rx_pending in [false, true] {
+            for tx_pending in [false, true] {
                 let response = Response {
                     tx: Some(tx::Response {
                         will_wake: tx_pending,

@@ -219,7 +219,6 @@ impl<'a> Parser<'a> {
 
 macro_rules! ietf_test {
     ($name:ident, $file:expr) => {
-        #[ignore] // TODO: https://github.com/awslabs/s2n-quic/issues/649
         #[test]
         fn $name() {
             let res = parse(include_str!(concat!(
