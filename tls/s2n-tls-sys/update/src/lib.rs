@@ -72,7 +72,7 @@ impl bindgen::callbacks::ParseCallbacks for S2nCallbacks {
         variant_name: &str,
         _variant_value: bindgen::callbacks::EnumVariantValue,
     ) -> Option<String> {
-        use heck::CamelCase;
+        use heck::ToUpperCamelCase;
 
         if !variant_name.starts_with("S2N_") {
             return None;
@@ -90,7 +90,7 @@ impl bindgen::callbacks::ParseCallbacks for S2nCallbacks {
             // match everything else
             .trim_start_matches("S2N_");
 
-        Some(variant_name.to_camel_case())
+        Some(variant_name.to_upper_camel_case())
     }
 
     fn include_file(&self, filename: &str) {
