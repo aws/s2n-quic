@@ -17,7 +17,7 @@ openssl-sys = { version = "<= 0.9.68" } # Pin to this version until s2n-tls supp
 [build-dependencies]
 bindgen = { version = "0.59", default-features = false, features = ["runtime"] }
 cmake = "0.1"
-heck = "0.3"
+heck = "0.4"
 
 # we implicitly use openssl
 [package.metadata.cargo-udeps.ignore]
