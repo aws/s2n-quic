@@ -4058,6 +4058,7 @@ pub mod testing {
         pub platform_rx_error: u32,
         pub platform_feature_configured: u32,
     }
+    #[allow(clippy::derivable_impls)]
     impl Default for Subscriber {
         fn default() -> Self {
             Self {
@@ -4477,6 +4478,7 @@ pub mod testing {
         pub platform_rx_error: u32,
         pub platform_feature_configured: u32,
     }
+    #[allow(clippy::derivable_impls)]
     impl Default for Publisher {
         fn default() -> Self {
             Self {
@@ -4757,10 +4759,11 @@ pub mod testing {
                 .chain(Some("events"))
                 .collect::<Vec<_>>()
                 .join("__");
+            let current_dir = std::env::current_dir().unwrap();
             insta::_macro_support::assert_snapshot(
                 insta::_macro_support::AutoName.into(),
                 &value,
-                env!("CARGO_MANIFEST_DIR"),
+                current_dir.to_str().unwrap(),
                 &snapshot_name,
                 self.0.file(),
                 self.0.line(),
