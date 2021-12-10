@@ -822,7 +822,7 @@ fn do_not_add_new_path_if_client() {
         true,
     );
     let mut manager = manager_client(first_path);
-    let mut publisher = Publisher::default();
+    let mut publisher = Publisher::snapshot();
 
     // verify we have one path
     let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
@@ -880,7 +880,7 @@ fn switch_destination_connection_id_after_first_server_response() {
 
     // Trigger:
     let server_destination_cid = connection::PeerId::try_from_bytes(&[1, 1]).unwrap();
-    let mut publisher = Publisher::default();
+    let mut publisher = Publisher::snapshot();
     let processed_packet = manager.on_processed_packet(
         zero_path_id,
         Some(server_destination_cid),
@@ -1551,6 +1551,7 @@ fn temporary_until_authenticated() {
 #[test]
 fn last_known_validated_path_should_update_on_path_response() {
     // Setup:
+    let mut publisher = Publisher::snapshot();
     let zero_conn_id = connection::PeerId::try_from_bytes(&[0]).unwrap();
     let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
     let second_conn_id = connection::PeerId::try_from_bytes(&[2]).unwrap();
@@ -1595,7 +1596,7 @@ fn last_known_validated_path_should_update_on_path_response() {
         .update_active_path(
             first_path_id,
             &mut random::testing::Generator(123),
-            &mut Publisher::default(),
+            &mut publisher
         )
         .is_ok());
 
@@ -1631,7 +1632,7 @@ fn last_known_validated_path_should_update_on_path_response() {
         .update_active_path(
             second_path_id,
             &mut random::testing::Generator(123),
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .is_ok());
 
@@ -1675,7 +1676,7 @@ fn last_known_validated_path_should_update_on_path_response() {
         .on_timeout(
             now + challenge_expiration + Duration::from_millis(100),
             &mut random::testing::Generator(123),
-            &mut Publisher::default(),
+            &mut publisher,
         )
         .unwrap();
 

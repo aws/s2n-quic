@@ -218,6 +218,7 @@ mod tests {
 
     #[test]
     fn server_test() {
+        let mut publisher = Publisher::snapshot();
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut context = MockWriteContext::new(
             time::now(),
@@ -247,7 +248,7 @@ mod tests {
         //= type=test
         //# the TLS handshake is considered confirmed at the
         //# server when the handshake completes.
-        status.on_handshake_complete(endpoint::Type::Server, &mut Publisher::default());
+        status.on_handshake_complete(endpoint::Type::Server, &mut publisher);
         assert!(status.is_confirmed());
         assert!(status.is_complete());
 
@@ -265,7 +266,7 @@ mod tests {
             .expect("status should write HANDSHAKE_DONE frames")
             .packet_nr;
 
-        status.on_packet_ack(&packet_number, &mut Publisher::default());
+        status.on_packet_ack(&packet_number, &mut publisher);
         assert!(status.is_confirmed());
 
         assert!(
@@ -282,6 +283,7 @@ mod tests {
 
     #[test]
     fn client_test() {
+        let mut publisher = Publisher::snapshot();
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut context = MockWriteContext::new(
             time::now(),
@@ -308,11 +310,11 @@ mod tests {
         );
 
         // the handshake must be complete prior to being confirmed
-        status.on_handshake_done_received(&mut Publisher::default());
+        status.on_handshake_done_received(&mut publisher);
         assert!(!status.is_complete());
         assert!(!status.is_confirmed());
 
-        status.on_handshake_complete(endpoint::Type::Client, &mut Publisher::default());
+        status.on_handshake_complete(endpoint::Type::Client, &mut publisher);
         assert!(status.is_complete());
 
         assert!(
@@ -327,11 +329,11 @@ mod tests {
         );
 
         // confirm the client handshake
-        status.on_handshake_done_received(&mut Publisher::default());
+        status.on_handshake_done_received(&mut publisher);
         assert!(status.is_confirmed());
 
         // try calling it multiple times
-        status.on_handshake_done_received(&mut Publisher::default());
+        status.on_handshake_done_received(&mut publisher);
         assert!(status.is_confirmed());
     }
 }

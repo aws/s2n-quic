@@ -1570,7 +1570,7 @@ fn detect_lost_packets_persistent_cogestion_path_aware() {
     assert_eq!(bytes_in_flight, 9);
 
     let (max_persistent_congestion_period, _sent_packets_to_remove) =
-        manager.detect_lost_packets(now, &mut context, &mut Publisher::default());
+        manager.detect_lost_packets(now, &mut context, &mut publisher);
 
     // Expectation:
     assert_eq!(max_persistent_congestion_period, Duration::from_secs(2));
