@@ -4058,9 +4058,26 @@ pub mod testing {
         pub platform_rx_error: u32,
         pub platform_feature_configured: u32,
     }
-    #[allow(clippy::derivable_impls)]
-    impl Default for Subscriber {
-        fn default() -> Self {
+    impl Drop for Subscriber {
+        fn drop(&mut self) {
+            if std::thread::panicking() {
+                return;
+            }
+            if let Some(location) = self.location.as_ref() {
+                location.snapshot(&self.output);
+            }
+        }
+    }
+    impl Subscriber {
+        #[doc = r" Creates a subscriber with snapshot assertions enabled"]
+        #[track_caller]
+        pub fn snapshot() -> Self {
+            let mut sub = Self::no_snapshot();
+            sub.location = Location::try_new();
+            sub
+        }
+        #[doc = r" Creates a subscriber with snapshot assertions disabled"]
+        pub fn no_snapshot() -> Self {
             Self {
                 location: None,
                 output: Default::default(),
@@ -4104,26 +4121,6 @@ pub mod testing {
             }
         }
     }
-    impl Drop for Subscriber {
-        fn drop(&mut self) {
-            if std::thread::panicking() {
-                return;
-            }
-            if let Some(location) = self.location.as_ref() {
-                location.snapshot(&self.output);
-            }
-        }
-    }
-    impl Subscriber {
-        #[track_caller]
-        pub fn snapshot() -> Self {
-            Self {
-                location: Location::try_new(),
-                output: Default::default(),
-                ..Default::default()
-            }
-        }
-    }
     impl super::Subscriber for Subscriber {
         type ConnectionContext = ();
         fn create_connection_context(
@@ -4139,7 +4136,9 @@ pub mod testing {
             event: &api::AlpnInformation,
         ) {
             self.alpn_information += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_sni_information(
             &mut self,
@@ -4148,7 +4147,9 @@ pub mod testing {
             event: &api::SniInformation,
         ) {
             self.sni_information += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_packet_sent(
             &mut self,
@@ -4157,7 +4158,9 @@ pub mod testing {
             event: &api::PacketSent,
         ) {
             self.packet_sent += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_packet_received(
             &mut self,
@@ -4166,7 +4169,9 @@ pub mod testing {
             event: &api::PacketReceived,
         ) {
             self.packet_received += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_active_path_updated(
             &mut self,
@@ -4175,7 +4180,9 @@ pub mod testing {
             event: &api::ActivePathUpdated,
         ) {
             self.active_path_updated += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_path_created(
             &mut self,
@@ -4184,7 +4191,9 @@ pub mod testing {
             event: &api::PathCreated,
         ) {
             self.path_created += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_frame_sent(
             &mut self,
@@ -4193,7 +4202,9 @@ pub mod testing {
             event: &api::FrameSent,
         ) {
             self.frame_sent += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_frame_received(
             &mut self,
@@ -4202,7 +4213,9 @@ pub mod testing {
             event: &api::FrameReceived,
         ) {
             self.frame_received += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_packet_lost(
             &mut self,
@@ -4211,7 +4224,9 @@ pub mod testing {
             event: &api::PacketLost,
         ) {
             self.packet_lost += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_recovery_metrics(
             &mut self,
@@ -4220,7 +4235,9 @@ pub mod testing {
             event: &api::RecoveryMetrics,
         ) {
             self.recovery_metrics += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_congestion(
             &mut self,
@@ -4229,7 +4246,9 @@ pub mod testing {
             event: &api::Congestion,
         ) {
             self.congestion += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_packet_dropped(
             &mut self,
@@ -4238,7 +4257,9 @@ pub mod testing {
             event: &api::PacketDropped,
         ) {
             self.packet_dropped += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_key_update(
             &mut self,
@@ -4247,7 +4268,9 @@ pub mod testing {
             event: &api::KeyUpdate,
         ) {
             self.key_update += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_key_space_discarded(
             &mut self,
@@ -4256,7 +4279,9 @@ pub mod testing {
             event: &api::KeySpaceDiscarded,
         ) {
             self.key_space_discarded += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_connection_started(
             &mut self,
@@ -4265,7 +4290,9 @@ pub mod testing {
             event: &api::ConnectionStarted,
         ) {
             self.connection_started += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_connection_closed(
             &mut self,
@@ -4274,7 +4301,9 @@ pub mod testing {
             event: &api::ConnectionClosed,
         ) {
             self.connection_closed += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_duplicate_packet(
             &mut self,
@@ -4283,7 +4312,9 @@ pub mod testing {
             event: &api::DuplicatePacket,
         ) {
             self.duplicate_packet += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_datagram_sent(
             &mut self,
@@ -4292,7 +4323,9 @@ pub mod testing {
             event: &api::DatagramSent,
         ) {
             self.datagram_sent += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_datagram_received(
             &mut self,
@@ -4301,7 +4334,9 @@ pub mod testing {
             event: &api::DatagramReceived,
         ) {
             self.datagram_received += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_datagram_dropped(
             &mut self,
@@ -4310,7 +4345,9 @@ pub mod testing {
             event: &api::DatagramDropped,
         ) {
             self.datagram_dropped += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_connection_id_updated(
             &mut self,
@@ -4319,7 +4356,9 @@ pub mod testing {
             event: &api::ConnectionIdUpdated,
         ) {
             self.connection_id_updated += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_ecn_state_changed(
             &mut self,
@@ -4328,7 +4367,9 @@ pub mod testing {
             event: &api::EcnStateChanged,
         ) {
             self.ecn_state_changed += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_connection_migration_denied(
             &mut self,
@@ -4337,7 +4378,9 @@ pub mod testing {
             event: &api::ConnectionMigrationDenied,
         ) {
             self.connection_migration_denied += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_handshake_status_updated(
             &mut self,
@@ -4346,7 +4389,9 @@ pub mod testing {
             event: &api::HandshakeStatusUpdated,
         ) {
             self.handshake_status_updated += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_tls_client_hello(
             &mut self,
@@ -4355,7 +4400,9 @@ pub mod testing {
             event: &api::TlsClientHello,
         ) {
             self.tls_client_hello += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_tls_server_hello(
             &mut self,
@@ -4364,7 +4411,9 @@ pub mod testing {
             event: &api::TlsServerHello,
         ) {
             self.tls_server_hello += 1;
-            self.output.push(format!("{:?} {:?}", meta, event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
         }
         fn on_version_information(
             &mut self,
@@ -4481,9 +4530,16 @@ pub mod testing {
         pub platform_rx_error: u32,
         pub platform_feature_configured: u32,
     }
-    #[allow(clippy::derivable_impls)]
-    impl Default for Publisher {
-        fn default() -> Self {
+    impl Publisher {
+        #[doc = r" Creates a publisher with snapshot assertions enabled"]
+        #[track_caller]
+        pub fn snapshot() -> Self {
+            let mut sub = Self::no_snapshot();
+            sub.location = Location::try_new();
+            sub
+        }
+        #[doc = r" Creates a publisher with snapshot assertions disabled"]
+        pub fn no_snapshot() -> Self {
             Self {
                 location: None,
                 output: Default::default(),
@@ -4524,17 +4580,6 @@ pub mod testing {
                 platform_rx: 0,
                 platform_rx_error: 0,
                 platform_feature_configured: 0,
-            }
-        }
-    }
-    impl Publisher {
-        #[doc = r" Creates a publisher with snapshot assertions enabled"]
-        #[track_caller]
-        pub fn snapshot() -> Self {
-            Self {
-                location: Location::try_new(),
-                output: Default::default(),
-                ..Default::default()
             }
         }
     }
@@ -4602,132 +4647,184 @@ pub mod testing {
         fn on_alpn_information(&mut self, event: builder::AlpnInformation) {
             self.alpn_information += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_sni_information(&mut self, event: builder::SniInformation) {
             self.sni_information += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_packet_sent(&mut self, event: builder::PacketSent) {
             self.packet_sent += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_packet_received(&mut self, event: builder::PacketReceived) {
             self.packet_received += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_active_path_updated(&mut self, event: builder::ActivePathUpdated) {
             self.active_path_updated += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_path_created(&mut self, event: builder::PathCreated) {
             self.path_created += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_frame_sent(&mut self, event: builder::FrameSent) {
             self.frame_sent += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_frame_received(&mut self, event: builder::FrameReceived) {
             self.frame_received += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_packet_lost(&mut self, event: builder::PacketLost) {
             self.packet_lost += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_recovery_metrics(&mut self, event: builder::RecoveryMetrics) {
             self.recovery_metrics += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_congestion(&mut self, event: builder::Congestion) {
             self.congestion += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_packet_dropped(&mut self, event: builder::PacketDropped) {
             self.packet_dropped += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_key_update(&mut self, event: builder::KeyUpdate) {
             self.key_update += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_key_space_discarded(&mut self, event: builder::KeySpaceDiscarded) {
             self.key_space_discarded += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_connection_started(&mut self, event: builder::ConnectionStarted) {
             self.connection_started += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_connection_closed(&mut self, event: builder::ConnectionClosed) {
             self.connection_closed += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_duplicate_packet(&mut self, event: builder::DuplicatePacket) {
             self.duplicate_packet += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_datagram_sent(&mut self, event: builder::DatagramSent) {
             self.datagram_sent += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_datagram_received(&mut self, event: builder::DatagramReceived) {
             self.datagram_received += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_datagram_dropped(&mut self, event: builder::DatagramDropped) {
             self.datagram_dropped += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_connection_id_updated(&mut self, event: builder::ConnectionIdUpdated) {
             self.connection_id_updated += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_ecn_state_changed(&mut self, event: builder::EcnStateChanged) {
             self.ecn_state_changed += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_connection_migration_denied(&mut self, event: builder::ConnectionMigrationDenied) {
             self.connection_migration_denied += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_handshake_status_updated(&mut self, event: builder::HandshakeStatusUpdated) {
             self.handshake_status_updated += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_tls_client_hello(&mut self, event: builder::TlsClientHello) {
             self.tls_client_hello += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn on_tls_server_hello(&mut self, event: builder::TlsServerHello) {
             self.tls_server_hello += 1;
             let event = event.into_event();
-            self.output.push(format!("{:?}", event));
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
         }
         fn quic_version(&self) -> u32 {
             1

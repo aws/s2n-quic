@@ -378,17 +378,6 @@ impl ToTokens for Output {
                     #testing_fields
                 }
 
-                #[allow(clippy::derivable_impls)]
-                impl Default for Subscriber {
-                    fn default() -> Self {
-                        Self {
-                            location: None,
-                            output: Default::default(),
-                            #testing_fields_init
-                        }
-                    }
-                }
-
                 impl Drop for Subscriber {
                     fn drop(&mut self) {
                         // don't make any assertions if we're already failing the test
@@ -403,12 +392,20 @@ impl ToTokens for Output {
                 }
 
                 impl Subscriber {
+                    /// Creates a subscriber with snapshot assertions enabled
                     #[track_caller]
                     pub fn snapshot() -> Self {
+                        let mut sub = Self::no_snapshot();
+                        sub.location = Location::try_new();
+                        sub
+                    }
+
+                    /// Creates a subscriber with snapshot assertions disabled
+                    pub fn no_snapshot() -> Self {
                         Self {
-                            location: Location::try_new(),
+                            location: None,
                             output: Default::default(),
-                            ..Default::default()
+                            #testing_fields_init
                         }
                     }
                 }
@@ -428,25 +425,21 @@ impl ToTokens for Output {
                     #testing_fields
                 }
 
-                #[allow(clippy::derivable_impls)]
-                impl Default for Publisher {
-                    fn default() -> Self {
-                        Self {
-                            location: None,
-                            output: Default::default(),
-                            #testing_fields_init
-                        }
-                    }
-                }
-
                 impl Publisher {
                     /// Creates a publisher with snapshot assertions enabled
                     #[track_caller]
                     pub fn snapshot() -> Self {
+                        let mut sub = Self::no_snapshot();
+                        sub.location = Location::try_new();
+                        sub
+                    }
+
+                    /// Creates a publisher with snapshot assertions disabled
+                    pub fn no_snapshot() -> Self {
                         Self {
-                            location: Location::try_new(),
+                            location: None,
                             output: Default::default(),
-                            ..Default::default()
+                            #testing_fields_init
                         }
                     }
                 }
