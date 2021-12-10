@@ -31,7 +31,7 @@ async fn main() {
         .with_level(false) // don't include levels in formatted output
         .with_timer(tracing_subscriber::fmt::time::uptime())
         .with_ansi(false)
-        .compact(); // use the `Comp
+        .compact(); // Use a less verbose output format.
 
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
