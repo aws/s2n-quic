@@ -36,6 +36,12 @@ impl StreamId {
         StreamId(id)
     }
 
+    /// Converts the stream id into a [`VarInt`]
+    #[inline]
+    pub const fn as_varint(self) -> VarInt {
+        self.0
+    }
+
     /// Returns the initial Stream ID for a given stream type.
     ///
     /// E.g. the initial Stream ID for a server initiated unidirectional Stream
@@ -47,7 +53,7 @@ impl StreamId {
     /// # use s2n_quic_core::{endpoint, stream::{StreamId, StreamType}};
     /// let stream_id = StreamId::initial(endpoint::Type::Server, StreamType::Unidirectional);
     /// // Initial server initiated unidirectional Stream ID is 3
-    /// assert_eq!(3u64, stream_id.into());
+    /// assert_eq!(3u64, stream_id.as_varint().as_u64());
     /// ```
     #[inline]
     pub fn initial(initator: endpoint::Type, stream_type: StreamType) -> StreamId {
@@ -108,10 +114,10 @@ impl StreamId {
     /// # use s2n_quic_core::{endpoint, stream::{StreamId, StreamType}};
     /// let stream_id = StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional);
     /// // Initial client initiated unidirectional Stream ID is 2
-    /// assert_eq!(2u64, stream_id.into());
+    /// assert_eq!(2u64, stream_id.as_varint().as_u64());
     /// // Get the next client initiated Stream ID
     /// let next_stream_id = stream_id.next_of_type();
-    /// assert_eq!(6u64, next_stream_id.expect("Next Stream ID is valid").into());
+    /// assert_eq!(6u64, next_stream_id.expect("Next Stream ID is valid").as_varint().as_u64());
     /// ```
     #[inline]
     pub fn next_of_type(self) -> Option<StreamId> {

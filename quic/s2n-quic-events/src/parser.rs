@@ -135,6 +135,9 @@ impl Struct {
             output.testing_fields.extend(quote!(
                 pub #counter: u32,
             ));
+            output.testing_fields_init.extend(quote!(
+                #counter: 0,
+            ));
 
             match attrs.subject {
                 Subject::Endpoint => {
@@ -186,14 +189,17 @@ impl Struct {
                     ));
 
                     output.subscriber_testing.extend(quote!(
-                        fn #function(&mut self, _meta: &api::EndpointMeta, _event: &api::#ident) {
+                        fn #function(&mut self, meta: &api::EndpointMeta, event: &api::#ident) {
                             self.#counter += 1;
+                            self.output.push(format!("{:?} {:?}", meta, event));
                         }
                     ));
 
                     output.endpoint_publisher_testing.extend(quote!(
-                        fn #function(&mut self, _event: builder::#ident) {
+                        fn #function(&mut self, event: builder::#ident) {
                             self.#counter += 1;
+                            let event = event.into_event();
+                            self.output.push(format!("{:?}", event));
                         }
                     ));
                 }
@@ -241,14 +247,17 @@ impl Struct {
                     ));
 
                     output.subscriber_testing.extend(quote!(
-                        fn #function(&mut self, _context: &mut Self::ConnectionContext, _meta: &api::ConnectionMeta, _event: &api::#ident) {
+                        fn #function(&mut self, _context: &mut Self::ConnectionContext, meta: &api::ConnectionMeta, event: &api::#ident) {
                             self.#counter += 1;
+                            self.output.push(format!("{:?} {:?}", meta, event));
                         }
                     ));
 
                     output.connection_publisher_testing.extend(quote!(
-                        fn #function(&mut self, _event: builder::#ident) {
+                        fn #function(&mut self, event: builder::#ident) {
                             self.#counter += 1;
+                            let event = event.into_event();
+                            self.output.push(format!("{:?}", event));
                         }
                     ));
                 }

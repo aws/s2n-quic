@@ -4016,8 +4016,10 @@ mod traits {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
-    #[derive(Copy, Clone, Debug, Default)]
+    #[derive(Clone, Debug)]
     pub struct Subscriber {
+        location: Option<Location>,
+        output: Vec<String>,
         pub alpn_information: u32,
         pub sni_information: u32,
         pub packet_sent: u32,
@@ -4055,6 +4057,72 @@ pub mod testing {
         pub platform_rx: u32,
         pub platform_rx_error: u32,
         pub platform_feature_configured: u32,
+    }
+    #[allow(clippy::derivable_impls)]
+    impl Default for Subscriber {
+        fn default() -> Self {
+            Self {
+                location: None,
+                output: Default::default(),
+                alpn_information: 0,
+                sni_information: 0,
+                packet_sent: 0,
+                packet_received: 0,
+                active_path_updated: 0,
+                path_created: 0,
+                frame_sent: 0,
+                frame_received: 0,
+                packet_lost: 0,
+                recovery_metrics: 0,
+                congestion: 0,
+                packet_dropped: 0,
+                key_update: 0,
+                key_space_discarded: 0,
+                connection_started: 0,
+                connection_closed: 0,
+                duplicate_packet: 0,
+                datagram_sent: 0,
+                datagram_received: 0,
+                datagram_dropped: 0,
+                connection_id_updated: 0,
+                ecn_state_changed: 0,
+                connection_migration_denied: 0,
+                handshake_status_updated: 0,
+                tls_client_hello: 0,
+                tls_server_hello: 0,
+                version_information: 0,
+                endpoint_packet_sent: 0,
+                endpoint_packet_received: 0,
+                endpoint_datagram_sent: 0,
+                endpoint_datagram_received: 0,
+                endpoint_datagram_dropped: 0,
+                platform_tx: 0,
+                platform_tx_error: 0,
+                platform_rx: 0,
+                platform_rx_error: 0,
+                platform_feature_configured: 0,
+            }
+        }
+    }
+    impl Drop for Subscriber {
+        fn drop(&mut self) {
+            if std::thread::panicking() {
+                return;
+            }
+            if let Some(location) = self.location.as_ref() {
+                location.snapshot(&self.output);
+            }
+        }
+    }
+    impl Subscriber {
+        #[track_caller]
+        pub fn snapshot() -> Self {
+            Self {
+                location: Location::try_new(),
+                output: Default::default(),
+                ..Default::default()
+            }
+        }
     }
     impl super::Subscriber for Subscriber {
         type ConnectionContext = ();
@@ -4067,283 +4135,314 @@ pub mod testing {
         fn on_alpn_information(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::AlpnInformation,
+            meta: &api::ConnectionMeta,
+            event: &api::AlpnInformation,
         ) {
             self.alpn_information += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_sni_information(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::SniInformation,
+            meta: &api::ConnectionMeta,
+            event: &api::SniInformation,
         ) {
             self.sni_information += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_packet_sent(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::PacketSent,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketSent,
         ) {
             self.packet_sent += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_packet_received(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::PacketReceived,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketReceived,
         ) {
             self.packet_received += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_active_path_updated(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::ActivePathUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::ActivePathUpdated,
         ) {
             self.active_path_updated += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_path_created(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::PathCreated,
+            meta: &api::ConnectionMeta,
+            event: &api::PathCreated,
         ) {
             self.path_created += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_frame_sent(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::FrameSent,
+            meta: &api::ConnectionMeta,
+            event: &api::FrameSent,
         ) {
             self.frame_sent += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_frame_received(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::FrameReceived,
+            meta: &api::ConnectionMeta,
+            event: &api::FrameReceived,
         ) {
             self.frame_received += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_packet_lost(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::PacketLost,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketLost,
         ) {
             self.packet_lost += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_recovery_metrics(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::RecoveryMetrics,
+            meta: &api::ConnectionMeta,
+            event: &api::RecoveryMetrics,
         ) {
             self.recovery_metrics += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_congestion(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::Congestion,
+            meta: &api::ConnectionMeta,
+            event: &api::Congestion,
         ) {
             self.congestion += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_packet_dropped(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::PacketDropped,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketDropped,
         ) {
             self.packet_dropped += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_key_update(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::KeyUpdate,
+            meta: &api::ConnectionMeta,
+            event: &api::KeyUpdate,
         ) {
             self.key_update += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_key_space_discarded(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::KeySpaceDiscarded,
+            meta: &api::ConnectionMeta,
+            event: &api::KeySpaceDiscarded,
         ) {
             self.key_space_discarded += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_connection_started(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::ConnectionStarted,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionStarted,
         ) {
             self.connection_started += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_connection_closed(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::ConnectionClosed,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionClosed,
         ) {
             self.connection_closed += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_duplicate_packet(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::DuplicatePacket,
+            meta: &api::ConnectionMeta,
+            event: &api::DuplicatePacket,
         ) {
             self.duplicate_packet += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_datagram_sent(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::DatagramSent,
+            meta: &api::ConnectionMeta,
+            event: &api::DatagramSent,
         ) {
             self.datagram_sent += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_datagram_received(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::DatagramReceived,
+            meta: &api::ConnectionMeta,
+            event: &api::DatagramReceived,
         ) {
             self.datagram_received += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_datagram_dropped(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::DatagramDropped,
+            meta: &api::ConnectionMeta,
+            event: &api::DatagramDropped,
         ) {
             self.datagram_dropped += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_connection_id_updated(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::ConnectionIdUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionIdUpdated,
         ) {
             self.connection_id_updated += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_ecn_state_changed(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::EcnStateChanged,
+            meta: &api::ConnectionMeta,
+            event: &api::EcnStateChanged,
         ) {
             self.ecn_state_changed += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_connection_migration_denied(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::ConnectionMigrationDenied,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionMigrationDenied,
         ) {
             self.connection_migration_denied += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_handshake_status_updated(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::HandshakeStatusUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::HandshakeStatusUpdated,
         ) {
             self.handshake_status_updated += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_tls_client_hello(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::TlsClientHello,
+            meta: &api::ConnectionMeta,
+            event: &api::TlsClientHello,
         ) {
             self.tls_client_hello += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_tls_server_hello(
             &mut self,
             _context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::TlsServerHello,
+            meta: &api::ConnectionMeta,
+            event: &api::TlsServerHello,
         ) {
             self.tls_server_hello += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_version_information(
             &mut self,
-            _meta: &api::EndpointMeta,
-            _event: &api::VersionInformation,
+            meta: &api::EndpointMeta,
+            event: &api::VersionInformation,
         ) {
             self.version_information += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_endpoint_packet_sent(
             &mut self,
-            _meta: &api::EndpointMeta,
-            _event: &api::EndpointPacketSent,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointPacketSent,
         ) {
             self.endpoint_packet_sent += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_endpoint_packet_received(
             &mut self,
-            _meta: &api::EndpointMeta,
-            _event: &api::EndpointPacketReceived,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointPacketReceived,
         ) {
             self.endpoint_packet_received += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_endpoint_datagram_sent(
             &mut self,
-            _meta: &api::EndpointMeta,
-            _event: &api::EndpointDatagramSent,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointDatagramSent,
         ) {
             self.endpoint_datagram_sent += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_endpoint_datagram_received(
             &mut self,
-            _meta: &api::EndpointMeta,
-            _event: &api::EndpointDatagramReceived,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointDatagramReceived,
         ) {
             self.endpoint_datagram_received += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_endpoint_datagram_dropped(
             &mut self,
-            _meta: &api::EndpointMeta,
-            _event: &api::EndpointDatagramDropped,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointDatagramDropped,
         ) {
             self.endpoint_datagram_dropped += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
-        fn on_platform_tx(&mut self, _meta: &api::EndpointMeta, _event: &api::PlatformTx) {
+        fn on_platform_tx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTx) {
             self.platform_tx += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
-        fn on_platform_tx_error(
-            &mut self,
-            _meta: &api::EndpointMeta,
-            _event: &api::PlatformTxError,
-        ) {
+        fn on_platform_tx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTxError) {
             self.platform_tx_error += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
-        fn on_platform_rx(&mut self, _meta: &api::EndpointMeta, _event: &api::PlatformRx) {
+        fn on_platform_rx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRx) {
             self.platform_rx += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
-        fn on_platform_rx_error(
-            &mut self,
-            _meta: &api::EndpointMeta,
-            _event: &api::PlatformRxError,
-        ) {
+        fn on_platform_rx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRxError) {
             self.platform_rx_error += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
         fn on_platform_feature_configured(
             &mut self,
-            _meta: &api::EndpointMeta,
-            _event: &api::PlatformFeatureConfigured,
+            meta: &api::EndpointMeta,
+            event: &api::PlatformFeatureConfigured,
         ) {
             self.platform_feature_configured += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
         }
     }
-    #[derive(Copy, Clone, Debug, Default)]
+    #[derive(Clone, Debug)]
     pub struct Publisher {
+        location: Option<Location>,
+        output: Vec<String>,
         pub alpn_information: u32,
         pub sni_information: u32,
         pub packet_sent: u32,
@@ -4382,125 +4481,304 @@ pub mod testing {
         pub platform_rx_error: u32,
         pub platform_feature_configured: u32,
     }
+    #[allow(clippy::derivable_impls)]
+    impl Default for Publisher {
+        fn default() -> Self {
+            Self {
+                location: None,
+                output: Default::default(),
+                alpn_information: 0,
+                sni_information: 0,
+                packet_sent: 0,
+                packet_received: 0,
+                active_path_updated: 0,
+                path_created: 0,
+                frame_sent: 0,
+                frame_received: 0,
+                packet_lost: 0,
+                recovery_metrics: 0,
+                congestion: 0,
+                packet_dropped: 0,
+                key_update: 0,
+                key_space_discarded: 0,
+                connection_started: 0,
+                connection_closed: 0,
+                duplicate_packet: 0,
+                datagram_sent: 0,
+                datagram_received: 0,
+                datagram_dropped: 0,
+                connection_id_updated: 0,
+                ecn_state_changed: 0,
+                connection_migration_denied: 0,
+                handshake_status_updated: 0,
+                tls_client_hello: 0,
+                tls_server_hello: 0,
+                version_information: 0,
+                endpoint_packet_sent: 0,
+                endpoint_packet_received: 0,
+                endpoint_datagram_sent: 0,
+                endpoint_datagram_received: 0,
+                endpoint_datagram_dropped: 0,
+                platform_tx: 0,
+                platform_tx_error: 0,
+                platform_rx: 0,
+                platform_rx_error: 0,
+                platform_feature_configured: 0,
+            }
+        }
+    }
+    impl Publisher {
+        #[doc = r" Creates a publisher with snapshot assertions enabled"]
+        #[track_caller]
+        pub fn snapshot() -> Self {
+            Self {
+                location: Location::try_new(),
+                output: Default::default(),
+                ..Default::default()
+            }
+        }
+    }
     impl super::EndpointPublisher for Publisher {
-        fn on_version_information(&mut self, _event: builder::VersionInformation) {
+        fn on_version_information(&mut self, event: builder::VersionInformation) {
             self.version_information += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_endpoint_packet_sent(&mut self, _event: builder::EndpointPacketSent) {
+        fn on_endpoint_packet_sent(&mut self, event: builder::EndpointPacketSent) {
             self.endpoint_packet_sent += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_endpoint_packet_received(&mut self, _event: builder::EndpointPacketReceived) {
+        fn on_endpoint_packet_received(&mut self, event: builder::EndpointPacketReceived) {
             self.endpoint_packet_received += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_endpoint_datagram_sent(&mut self, _event: builder::EndpointDatagramSent) {
+        fn on_endpoint_datagram_sent(&mut self, event: builder::EndpointDatagramSent) {
             self.endpoint_datagram_sent += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_endpoint_datagram_received(&mut self, _event: builder::EndpointDatagramReceived) {
+        fn on_endpoint_datagram_received(&mut self, event: builder::EndpointDatagramReceived) {
             self.endpoint_datagram_received += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_endpoint_datagram_dropped(&mut self, _event: builder::EndpointDatagramDropped) {
+        fn on_endpoint_datagram_dropped(&mut self, event: builder::EndpointDatagramDropped) {
             self.endpoint_datagram_dropped += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_platform_tx(&mut self, _event: builder::PlatformTx) {
+        fn on_platform_tx(&mut self, event: builder::PlatformTx) {
             self.platform_tx += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_platform_tx_error(&mut self, _event: builder::PlatformTxError) {
+        fn on_platform_tx_error(&mut self, event: builder::PlatformTxError) {
             self.platform_tx_error += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_platform_rx(&mut self, _event: builder::PlatformRx) {
+        fn on_platform_rx(&mut self, event: builder::PlatformRx) {
             self.platform_rx += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_platform_rx_error(&mut self, _event: builder::PlatformRxError) {
+        fn on_platform_rx_error(&mut self, event: builder::PlatformRxError) {
             self.platform_rx_error += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_platform_feature_configured(&mut self, _event: builder::PlatformFeatureConfigured) {
+        fn on_platform_feature_configured(&mut self, event: builder::PlatformFeatureConfigured) {
             self.platform_feature_configured += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
         fn quic_version(&self) -> Option<u32> {
             Some(1)
         }
     }
     impl super::ConnectionPublisher for Publisher {
-        fn on_alpn_information(&mut self, _event: builder::AlpnInformation) {
+        fn on_alpn_information(&mut self, event: builder::AlpnInformation) {
             self.alpn_information += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_sni_information(&mut self, _event: builder::SniInformation) {
+        fn on_sni_information(&mut self, event: builder::SniInformation) {
             self.sni_information += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_packet_sent(&mut self, _event: builder::PacketSent) {
+        fn on_packet_sent(&mut self, event: builder::PacketSent) {
             self.packet_sent += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_packet_received(&mut self, _event: builder::PacketReceived) {
+        fn on_packet_received(&mut self, event: builder::PacketReceived) {
             self.packet_received += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_active_path_updated(&mut self, _event: builder::ActivePathUpdated) {
+        fn on_active_path_updated(&mut self, event: builder::ActivePathUpdated) {
             self.active_path_updated += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_path_created(&mut self, _event: builder::PathCreated) {
+        fn on_path_created(&mut self, event: builder::PathCreated) {
             self.path_created += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_frame_sent(&mut self, _event: builder::FrameSent) {
+        fn on_frame_sent(&mut self, event: builder::FrameSent) {
             self.frame_sent += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_frame_received(&mut self, _event: builder::FrameReceived) {
+        fn on_frame_received(&mut self, event: builder::FrameReceived) {
             self.frame_received += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_packet_lost(&mut self, _event: builder::PacketLost) {
+        fn on_packet_lost(&mut self, event: builder::PacketLost) {
             self.packet_lost += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_recovery_metrics(&mut self, _event: builder::RecoveryMetrics) {
+        fn on_recovery_metrics(&mut self, event: builder::RecoveryMetrics) {
             self.recovery_metrics += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_congestion(&mut self, _event: builder::Congestion) {
+        fn on_congestion(&mut self, event: builder::Congestion) {
             self.congestion += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_packet_dropped(&mut self, _event: builder::PacketDropped) {
+        fn on_packet_dropped(&mut self, event: builder::PacketDropped) {
             self.packet_dropped += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_key_update(&mut self, _event: builder::KeyUpdate) {
+        fn on_key_update(&mut self, event: builder::KeyUpdate) {
             self.key_update += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_key_space_discarded(&mut self, _event: builder::KeySpaceDiscarded) {
+        fn on_key_space_discarded(&mut self, event: builder::KeySpaceDiscarded) {
             self.key_space_discarded += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_connection_started(&mut self, _event: builder::ConnectionStarted) {
+        fn on_connection_started(&mut self, event: builder::ConnectionStarted) {
             self.connection_started += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_connection_closed(&mut self, _event: builder::ConnectionClosed) {
+        fn on_connection_closed(&mut self, event: builder::ConnectionClosed) {
             self.connection_closed += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_duplicate_packet(&mut self, _event: builder::DuplicatePacket) {
+        fn on_duplicate_packet(&mut self, event: builder::DuplicatePacket) {
             self.duplicate_packet += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_datagram_sent(&mut self, _event: builder::DatagramSent) {
+        fn on_datagram_sent(&mut self, event: builder::DatagramSent) {
             self.datagram_sent += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_datagram_received(&mut self, _event: builder::DatagramReceived) {
+        fn on_datagram_received(&mut self, event: builder::DatagramReceived) {
             self.datagram_received += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_datagram_dropped(&mut self, _event: builder::DatagramDropped) {
+        fn on_datagram_dropped(&mut self, event: builder::DatagramDropped) {
             self.datagram_dropped += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_connection_id_updated(&mut self, _event: builder::ConnectionIdUpdated) {
+        fn on_connection_id_updated(&mut self, event: builder::ConnectionIdUpdated) {
             self.connection_id_updated += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_ecn_state_changed(&mut self, _event: builder::EcnStateChanged) {
+        fn on_ecn_state_changed(&mut self, event: builder::EcnStateChanged) {
             self.ecn_state_changed += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_connection_migration_denied(&mut self, _event: builder::ConnectionMigrationDenied) {
+        fn on_connection_migration_denied(&mut self, event: builder::ConnectionMigrationDenied) {
             self.connection_migration_denied += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_handshake_status_updated(&mut self, _event: builder::HandshakeStatusUpdated) {
+        fn on_handshake_status_updated(&mut self, event: builder::HandshakeStatusUpdated) {
             self.handshake_status_updated += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_tls_client_hello(&mut self, _event: builder::TlsClientHello) {
+        fn on_tls_client_hello(&mut self, event: builder::TlsClientHello) {
             self.tls_client_hello += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
-        fn on_tls_server_hello(&mut self, _event: builder::TlsServerHello) {
+        fn on_tls_server_hello(&mut self, event: builder::TlsServerHello) {
             self.tls_server_hello += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
         }
         fn quic_version(&self) -> u32 {
             1
+        }
+    }
+    impl Drop for Publisher {
+        fn drop(&mut self) {
+            if std::thread::panicking() {
+                return;
+            }
+            if let Some(location) = self.location.as_ref() {
+                location.snapshot(&self.output);
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    struct Location(&'static core::panic::Location<'static>);
+    impl Location {
+        #[track_caller]
+        fn try_new() -> Option<Self> {
+            let thread = std::thread::current();
+            if thread.name().map_or(false, |name| name != "main") {
+                Some(Self(core::panic::Location::caller()))
+            } else {
+                None
+            }
+        }
+        fn snapshot(&self, output: &[String]) {
+            use std::path::{Component, Path};
+            let value = output.join("\n");
+            let test_path = Path::new(self.0.file().trim_end_matches(".rs"));
+            let snapshot_name = test_path
+                .components()
+                .filter_map(|comp| match comp {
+                    Component::Normal(comp) => comp.to_str(),
+                    _ => Some("_"),
+                })
+                .chain(Some("events"))
+                .collect::<Vec<_>>()
+                .join("__");
+            let current_dir = std::env::current_dir().unwrap();
+            insta::_macro_support::assert_snapshot(
+                insta::_macro_support::AutoName.into(),
+                &value,
+                current_dir.to_str().unwrap(),
+                &snapshot_name,
+                self.0.file(),
+                self.0.line(),
+                "",
+            )
+            .unwrap()
         }
     }
 }

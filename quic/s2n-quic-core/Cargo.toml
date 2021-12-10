@@ -9,7 +9,7 @@ license = "Apache-2.0"
 default = ["alloc", "std"]
 alloc = []
 std = ["alloc", "thiserror"]
-testing = ["std", "generator", "s2n-codec/testing", "checked-counters"]
+testing = ["std", "generator", "s2n-codec/testing", "checked-counters", "insta"]
 generator = ["bolero-generator"]
 checked-counters = []
 event-tracing = ["tracing"]
@@ -19,6 +19,7 @@ bolero-generator = { version = "0.6", default-features = false, optional = true 
 byteorder = { version = "1", default-features = false }
 bytes = { version = "1", default-features = false }
 hex-literal = "0.3"
+insta = { version = "1", optional = true }
 num-traits = { version = "0.2", default-features = false, features = ["libm"] }
 s2n-codec = { version = "0.1", path = "../../common/s2n-codec", default-features = false }
 subtle = { version = "2", default-features = false }

@@ -21,6 +21,7 @@ struct Output {
     pub builders: TokenStream,
     pub api: TokenStream,
     pub testing_fields: TokenStream,
+    pub testing_fields_init: TokenStream,
     pub subscriber_testing: TokenStream,
     pub endpoint_publisher_testing: TokenStream,
     pub connection_publisher_testing: TokenStream,
@@ -40,6 +41,7 @@ impl ToTokens for Output {
             builders,
             api,
             testing_fields,
+            testing_fields_init,
             subscriber_testing,
             endpoint_publisher_testing,
             connection_publisher_testing,
@@ -369,9 +371,46 @@ impl ToTokens for Output {
             pub mod testing {
                 use super::*;
 
-                #[derive(Copy, Clone, Debug, Default)]
+                #[derive(Clone, Debug)]
                 pub struct Subscriber {
+                    location: Option<Location>,
+                    output: Vec<String>,
                     #testing_fields
+                }
+
+                #[allow(clippy::derivable_impls)]
+                impl Default for Subscriber {
+                    fn default() -> Self {
+                        Self {
+                            location: None,
+                            output: Default::default(),
+                            #testing_fields_init
+                        }
+                    }
+                }
+
+                impl Drop for Subscriber {
+                    fn drop(&mut self) {
+                        // don't make any assertions if we're already failing the test
+                        if std::thread::panicking() {
+                            return;
+                        }
+
+                        if let Some(location) = self.location.as_ref() {
+                            location.snapshot(&self.output);
+                        }
+                    }
+                }
+
+                impl Subscriber {
+                    #[track_caller]
+                    pub fn snapshot() -> Self {
+                        Self {
+                            location: Location::try_new(),
+                            output: Default::default(),
+                            ..Default::default()
+                        }
+                    }
                 }
 
                 impl super::Subscriber for Subscriber {
@@ -382,9 +421,34 @@ impl ToTokens for Output {
                     #subscriber_testing
                 }
 
-                #[derive(Copy, Clone, Debug, Default)]
+                #[derive(Clone, Debug)]
                 pub struct Publisher {
+                    location: Option<Location>,
+                    output: Vec<String>,
                     #testing_fields
+                }
+
+                #[allow(clippy::derivable_impls)]
+                impl Default for Publisher {
+                    fn default() -> Self {
+                        Self {
+                            location: None,
+                            output: Default::default(),
+                            #testing_fields_init
+                        }
+                    }
+                }
+
+                impl Publisher {
+                    /// Creates a publisher with snapshot assertions enabled
+                    #[track_caller]
+                    pub fn snapshot() -> Self {
+                        Self {
+                            location: Location::try_new(),
+                            output: Default::default(),
+                            ..Default::default()
+                        }
+                    }
                 }
 
                 impl super::EndpointPublisher for Publisher {
@@ -400,6 +464,65 @@ impl ToTokens for Output {
 
                     fn quic_version(&self) -> u32 {
                         1
+                    }
+                }
+
+                impl Drop for Publisher {
+                    fn drop(&mut self) {
+                        // don't make any assertions if we're already failing the test
+                        if std::thread::panicking() {
+                            return;
+                        }
+
+                        if let Some(location) = self.location.as_ref() {
+                            location.snapshot(&self.output);
+                        }
+                    }
+                }
+
+                #[derive(Clone, Debug)]
+                struct Location(&'static core::panic::Location<'static>);
+
+                impl Location {
+                    #[track_caller]
+                    fn try_new() -> Option<Self> {
+                        let thread = std::thread::current();
+
+                        // only create a location if insta can figure out the test name from the
+                        // thread
+                        if thread.name().map_or(false, |name| name != "main") {
+                            Some(Self(core::panic::Location::caller()))
+                        } else {
+                            None
+                        }
+                    }
+
+                    fn snapshot(&self, output: &[String]) {
+                        use std::path::{Path, Component};
+                        let value = output.join("\n");
+                        let test_path = Path::new(self.0.file().trim_end_matches(".rs"));
+                        let snapshot_name = test_path
+                            .components()
+                            .filter_map(|comp| match comp {
+                                Component::Normal(comp) => comp.to_str(),
+                                _ => Some("_"),
+                            })
+                            .chain(Some("events"))
+                            .collect::<Vec<_>>()
+                            .join("__");
+
+                        let current_dir = std::env::current_dir().unwrap();
+
+                        insta::_macro_support::assert_snapshot(
+                            insta::_macro_support::AutoName.into(),
+                            &value,
+                            current_dir.to_str().unwrap(),
+                            &snapshot_name,
+                            self.0.file(),
+                            self.0.line(),
+                            "",
+                        )
+                        .unwrap()
                     }
                 }
             }

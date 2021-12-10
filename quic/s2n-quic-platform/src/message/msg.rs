@@ -223,14 +223,14 @@ impl MessageTrait for msghdr {
     #[inline]
     fn remote_address(&self) -> Option<SocketAddress> {
         debug_assert!(!self.msg_name.is_null());
-        match self.msg_namelen {
-            size if size == size_of::<sockaddr_in>() as _ => {
+        match self.msg_namelen as usize {
+            size if size == size_of::<sockaddr_in>() => {
                 let sockaddr: &sockaddr_in = unsafe { &*(self.msg_name as *const _) };
                 let port = sockaddr.sin_port.to_be();
                 let addr: IpV4Address = sockaddr.sin_addr.s_addr.to_ne_bytes().into();
                 Some(SocketAddressV4::new(addr, port).into())
             }
-            size if size == size_of::<sockaddr_in6>() as _ => {
+            size if size == size_of::<sockaddr_in6>() => {
                 let sockaddr: &sockaddr_in6 = unsafe { &*(self.msg_name as *const _) };
                 let port = sockaddr.sin6_port.to_be();
                 let addr: IpV6Address = sockaddr.sin6_addr.s6_addr.into();
