@@ -340,7 +340,7 @@ mod tests {
                 let mut path = helper_path_server();
                 let mut buffer = [0; MINIMUM_MTU as usize];
                 let mut transmission_count = 0usize;
-                let mut publisher = Publisher::default();
+                let mut publisher = Publisher::no_snapshot();
 
                 if *is_validated {
                     // simulate receiving a handshake packet to force path validation

@@ -859,7 +859,7 @@ fn fuzz_validate() {
                     now,
                     rtt,
                     Path::test(),
-                    &mut Publisher::default(),
+                    &mut Publisher::no_snapshot(),
                 );
 
                 if outcome == ValidationOutcome::Failed {

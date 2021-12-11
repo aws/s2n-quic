@@ -248,7 +248,7 @@ impl Model {
             .on_timeout(
                 self.timestamp,
                 &mut Generator::default(),
-                &mut Publisher::default(),
+                &mut Publisher::no_snapshot(),
             )
             .unwrap();
     }
@@ -272,7 +272,7 @@ impl Model {
         };
         let mut migration_validator = path::migration::default::Validator;
         let mut random_generator = Generator::default();
-        let mut publisher = Publisher::default();
+        let mut publisher = Publisher::no_snapshot();
 
         self.oracle.prev_state_amplification_limited = self
             .subject

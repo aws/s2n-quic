@@ -751,7 +751,7 @@ mod tests {
         addr: SocketAddress,
         messages: BTreeMap<u32, Option<Timestamp>>,
         now: Option<Timestamp>,
-        subscriber: event::testing::Subscriber,
+        subscriber: NoopSubscriber,
     }
 
     impl TestEndpoint {
@@ -766,9 +766,23 @@ mod tests {
         }
     }
 
+    #[derive(Debug, Default)]
+    struct NoopSubscriber;
+
+    impl event::Subscriber for NoopSubscriber {
+        type ConnectionContext = ();
+
+        fn create_connection_context(
+            &mut self,
+            _meta: &event::api::ConnectionMeta,
+            _info: &event::api::ConnectionInfo,
+        ) -> Self::ConnectionContext {
+        }
+    }
+
     impl Endpoint for TestEndpoint {
         type PathHandle = PathHandle;
-        type Subscriber = event::testing::Subscriber;
+        type Subscriber = NoopSubscriber;
 
         const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Server;
 

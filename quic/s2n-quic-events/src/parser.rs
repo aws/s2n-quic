@@ -249,7 +249,9 @@ impl Struct {
                     output.subscriber_testing.extend(quote!(
                         fn #function(&mut self, _context: &mut Self::ConnectionContext, meta: &api::ConnectionMeta, event: &api::#ident) {
                             self.#counter += 1;
-                            self.output.push(format!("{:?} {:?}", meta, event));
+                            if self.location.is_some() {
+                                self.output.push(format!("{:?} {:?}", meta, event));
+                            }
                         }
                     ));
 
@@ -257,7 +259,9 @@ impl Struct {
                         fn #function(&mut self, event: builder::#ident) {
                             self.#counter += 1;
                             let event = event.into_event();
-                            self.output.push(format!("{:?}", event));
+                            if self.location.is_some() {
+                                self.output.push(format!("{:?}", event));
+                            }
                         }
                     ));
                 }
