@@ -1462,6 +1462,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     fn application_close(&mut self, error: Option<application::Error>) {
+        if self.error.is_err() {
+            return;
+        }
+
         self.error = Err(match error {
             Some(error) => connection::Error::Application {
                 error,
@@ -1469,6 +1473,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             },
             None => transport::Error::APPLICATION_ERROR.into(),
         });
+
+        self.wakeup_handle.wakeup();
     }
 
     fn sni(&self) -> Option<Sni> {
