@@ -29,6 +29,12 @@ const N: Fraction = Fraction(5, 4); // 5/4 = 1.25
 // https://github.com/torvalds/linux/blob/fc02cb2b37fe2cbf1d3334b9f0f0eab9431766c4/net/ipv4/tcp_input.c#L905-L906
 const SLOW_START_N: Fraction = Fraction(2, 1); // 2/1 = 2.00
 
+// Jim Roskind demonstrated the second packet sent on a path has a higher probability of loss due to
+// network routers being busy setting up routing tables triggered by the first packet. To address this,
+// we introduce a small delay in the second packet on a path.
+// See https://www.ietf.org/proceedings/88/slides/slides-88-tsvarea-10.pdf
+const INITIAL_INTERVAL: Duration = Duration::from_millis(10);
+
 /// A packet pacer that returns departure times that evenly distribute bursts of packets over time
 #[derive(Clone, Debug, Default)]
 pub struct Pacer {
@@ -63,7 +69,7 @@ impl Pacer {
                 self.next_packet_departure_time =
                     Some((next_packet_departure_time + interval).max(now));
             } else {
-                self.next_packet_departure_time = Some(now);
+                self.next_packet_departure_time = Some(now + INITIAL_INTERVAL);
             }
             self.capacity = Counter::new((MAX_BURST_PACKETS * max_datagram_size) as u32);
         }

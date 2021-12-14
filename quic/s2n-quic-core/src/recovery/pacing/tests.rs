@@ -5,7 +5,7 @@ use crate::{
     packet::number::PacketNumberSpace,
     path::MINIMUM_MTU,
     recovery::{
-        pacing::{Pacer, N, SLOW_START_N},
+        pacing::{Pacer, INITIAL_INTERVAL, N, SLOW_START_N},
         RttEstimator,
     },
     time::{Clock, NoopClock, Timestamp},
@@ -23,7 +23,11 @@ fn earliest_departure_time() {
 
     pacer.on_packet_sent(now, MINIMUM_MTU as usize, &rtt, cwnd, MINIMUM_MTU, false);
 
-    assert_eq!(Some(now), pacer.earliest_departure_time());
+    // The initial interval is added for the second packet
+    assert_eq!(
+        Some(now + INITIAL_INTERVAL),
+        pacer.earliest_departure_time()
+    );
 }
 
 #[test]
@@ -36,7 +40,10 @@ fn on_packet_sent_large_bytes_sent() {
 
     pacer.on_packet_sent(now, usize::MAX, &rtt, cwnd, MINIMUM_MTU, false);
 
-    assert_eq!(Some(now), pacer.earliest_departure_time());
+    assert_eq!(
+        Some(now + INITIAL_INTERVAL),
+        pacer.earliest_departure_time()
+    );
 }
 
 #[test]
@@ -60,9 +67,23 @@ fn test_one_rtt(slow_start: bool) {
     // otherwise we should be sending 1.25X the cwnd.
     let bytes_to_send = (cwnd as f32 * (n.0 as f32 / n.1 as f32)) as u32;
 
-    // In one RTT we should be sending 1.25X the CWND
+    // Send one packet to move beyond the initial interval
+    pacer.on_packet_sent(
+        now,
+        MINIMUM_MTU as usize,
+        &rtt,
+        cwnd,
+        MINIMUM_MTU,
+        slow_start,
+    );
+    assert_eq!(
+        Some(now + INITIAL_INTERVAL),
+        pacer.earliest_departure_time()
+    );
+
     let mut sent_bytes = 0;
-    while sent_bytes <= bytes_to_send {
+    let now = now + INITIAL_INTERVAL;
+    while sent_bytes < bytes_to_send {
         // Confirm the current departure time is less than 1 rtt
         assert!(pacer
             .earliest_departure_time()
@@ -97,9 +118,12 @@ fn earliest_departure_time_before_now() {
             break;
         }
     }
-    assert_eq!(Some(now), pacer.earliest_departure_time());
+    assert_eq!(
+        Some(now + INITIAL_INTERVAL),
+        pacer.earliest_departure_time()
+    );
 
-    // The "now" timeslot has reached capacity, so calling `on_packet_sent` normally would move to the
+    // The first timeslot has reached capacity, so calling `on_packet_sent` normally would move to the
     // next interval. Since the timestamp we pass in is after the next interval, the earliest departure time
     // becomes the new "now".
     let now = now + Duration::from_secs(1);
@@ -114,6 +138,9 @@ fn interval_change() {
     let mut rtt = RttEstimator::new(Duration::default());
 
     let mut cwnd = MINIMUM_MTU as u32 * 100;
+
+    let interval = get_interval(now, &mut pacer, &rtt, cwnd, MINIMUM_MTU, false);
+    assert_eq!(INITIAL_INTERVAL, interval);
 
     let interval = get_interval(now, &mut pacer, &rtt, cwnd, MINIMUM_MTU, false);
 
