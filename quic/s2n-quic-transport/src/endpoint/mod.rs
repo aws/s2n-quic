@@ -17,9 +17,9 @@ use crate::{
 };
 use alloc::collections::VecDeque;
 use core::{
-        convert::TryInto,
-        task::{self, Poll},
-    };
+    convert::TryInto,
+    task::{self, Poll},
+};
 use s2n_codec::{DecoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{
     connection::{
@@ -998,17 +998,18 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         let mut transport_parameters = ClientTransportParameters {
             initial_source_connection_id: Some(local_connection_id.into()),
-            active_connection_id_limit: s2n_quic_core::varint::VarInt::from(
-                connection::peer_id_registry::ACTIVE_CONNECTION_ID_LIMIT,
-            )
-            .try_into()
-            .unwrap(),
             ..Default::default()
         };
         let limits = endpoint_context
             .connection_limits
             .on_connection(&LimitsInfo::new(&remote_address));
         transport_parameters.load_limits(&limits);
+
+        transport_parameters.active_connection_id_limit = s2n_quic_core::varint::VarInt::from(
+            connection::peer_id_registry::ACTIVE_CONNECTION_ID_LIMIT,
+        )
+        .try_into()
+        .unwrap();
 
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
         //# The Destination Connection ID field from the first Initial packet
