@@ -636,10 +636,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 let mut outcome = transmission::Outcome::new(PacketNumber::default());
                 let path_id = self.path_manager.active_path_id();
 
-                // Send an MTU probe if necessary
+                // Send an MTU probe if necessary and the handshake has completed
                 // MTU probes are prioritized over other data so they are not blocked by the
                 // congestion controller, as they are critical to achieving maximum throughput.
-                if self.path_manager.active_path().can_transmit(timestamp)
+                if self.state == ConnectionState::Active
+                    && self.path_manager.active_path().can_transmit(timestamp)
                     && self
                         .path_manager
                         .active_path()
