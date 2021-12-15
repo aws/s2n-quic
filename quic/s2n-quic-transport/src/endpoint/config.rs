@@ -8,7 +8,7 @@ use s2n_quic_core::{
     crypto::tls, endpoint, event, path, random, recovery::congestion_controller, stateless_reset,
 };
 
-/// Configuration paramters for a QUIC endpoint
+/// Configuration parameters for a QUIC endpoint
 pub trait Config: 'static + Send + Sized + core::fmt::Debug {
     /// The type of the TLS endpoint which is utilized
     type TLSEndpoint: tls::Endpoint;

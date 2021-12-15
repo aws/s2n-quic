@@ -17,6 +17,7 @@ use crate::{
 };
 use alloc::collections::VecDeque;
 use core::task::{self, Poll};
+use core::convert::TryInto;
 use s2n_codec::{DecoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{
     connection::{
@@ -995,6 +996,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         let mut transport_parameters = ClientTransportParameters {
             initial_source_connection_id: Some(local_connection_id.into()),
+            active_connection_id_limit: s2n_quic_core::varint::VarInt::from(
+                connection::peer_id_registry::ACTIVE_CONNECTION_ID_LIMIT,
+            )
+            .try_into()
+            .unwrap(),
             ..Default::default()
         };
         let limits = endpoint_context
