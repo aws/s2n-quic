@@ -16,8 +16,10 @@ use crate::{
     wakeup_queue::WakeupQueue,
 };
 use alloc::collections::VecDeque;
-use core::task::{self, Poll};
-use core::convert::TryInto;
+use core::{
+        convert::TryInto,
+        task::{self, Poll},
+    };
 use s2n_codec::{DecoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{
     connection::{
