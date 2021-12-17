@@ -139,8 +139,10 @@ fn interval_change() {
 
     let mut cwnd = MINIMUM_MTU as u32 * 100;
 
-    let interval = get_interval(now, &mut pacer, &rtt, cwnd, MINIMUM_MTU, false);
-    assert_eq!(INITIAL_INTERVAL, interval);
+    if INITIAL_INTERVAL > Duration::ZERO {
+        let interval = get_interval(now, &mut pacer, &rtt, cwnd, MINIMUM_MTU, false);
+        assert_eq!(INITIAL_INTERVAL, interval);
+    }
 
     let interval = get_interval(now, &mut pacer, &rtt, cwnd, MINIMUM_MTU, false);
 

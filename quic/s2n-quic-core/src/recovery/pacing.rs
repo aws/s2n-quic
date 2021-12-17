@@ -30,10 +30,11 @@ const N: Fraction = Fraction(5, 4); // 5/4 = 1.25
 const SLOW_START_N: Fraction = Fraction(2, 1); // 2/1 = 2.00
 
 // Jim Roskind demonstrated the second packet sent on a path has a higher probability of loss due to
-// network routers being busy setting up routing tables triggered by the first packet. To address this,
-// we introduce a small delay in the second packet on a path.
+// network routers being busy setting up routing tables triggered by the first packet. Setting this
+// value to a Duration greater than zero will introduce that delay into the second packet.
 // See https://www.ietf.org/proceedings/88/slides/slides-88-tsvarea-10.pdf
-const INITIAL_INTERVAL: Duration = Duration::from_millis(10);
+// TODO: Determine an appropriate value for this that balances improvements to 2nd packet loss and delay
+const INITIAL_INTERVAL: Duration = Duration::from_millis(0);
 
 /// A packet pacer that returns departure times that evenly distribute bursts of packets over time
 #[derive(Clone, Debug, Default)]
