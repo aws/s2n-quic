@@ -277,6 +277,8 @@ pub mod api {
         HandshakeDoneAcked {},
         #[non_exhaustive]
         HandshakeDoneLost {},
+        #[non_exhaustive]
+        OneRttAcked {},
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -2006,6 +2008,7 @@ pub mod builder {
         Confirmed,
         HandshakeDoneAcked,
         HandshakeDoneLost,
+        OneRttAcked,
     }
     impl IntoEvent<api::HandshakeStatus> for HandshakeStatus {
         #[inline]
@@ -2016,6 +2019,7 @@ pub mod builder {
                 Self::Confirmed => Confirmed {},
                 Self::HandshakeDoneAcked => HandshakeDoneAcked {},
                 Self::HandshakeDoneLost => HandshakeDoneLost {},
+                Self::OneRttAcked => OneRttAcked {},
             }
         }
     }

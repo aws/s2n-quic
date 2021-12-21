@@ -399,7 +399,7 @@ impl<Config: endpoint::Config> Manager<Config> {
 
             context.validate_packet_ack(datagram, &acked_packets)?;
             // notify components of packets acked
-            context.on_packet_ack(datagram, &acked_packets);
+            context.on_packet_ack(datagram, &acked_packets, publisher);
 
             let mut newly_acked_range: Option<(PacketNumber, PacketNumber)> = None;
 
@@ -1007,7 +1007,12 @@ pub trait Context<Config: endpoint::Config> {
         packet_number_range: &PacketNumberRange,
         publisher: &mut Pub,
     );
-    fn on_packet_ack(&mut self, datagram: &DatagramInfo, packet_number_range: &PacketNumberRange);
+    fn on_packet_ack<Pub: event::ConnectionPublisher>(
+        &mut self,
+        datagram: &DatagramInfo,
+        packet_number_range: &PacketNumberRange,
+        publisher: &mut Pub,
+    );
     fn on_packet_loss<Pub: event::ConnectionPublisher>(
         &mut self,
         packet_number_range: &PacketNumberRange,

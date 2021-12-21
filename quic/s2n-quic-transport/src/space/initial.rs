@@ -572,7 +572,12 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
         self.crypto_stream.on_packet_ack(packet_number_range);
     }
 
-    fn on_packet_ack(&mut self, datagram: &DatagramInfo, packet_number_range: &PacketNumberRange) {
+    fn on_packet_ack<Pub: event::ConnectionPublisher>(
+        &mut self,
+        datagram: &DatagramInfo,
+        packet_number_range: &PacketNumberRange,
+        _publisher: &mut Pub,
+    ) {
         self.ack_manager
             .on_packet_ack(datagram, packet_number_range);
     }

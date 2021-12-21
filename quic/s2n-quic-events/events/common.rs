@@ -610,12 +610,13 @@ enum HandshakeStatus {
     /// only a Server is allowed to send the HANDSHAKE_DONE
     /// frame.
     HandshakeDoneAcked,
-
     /// A HANDSHAKE_DONE frame was declared lost.
     ///
     /// The Server is responsible for re-transmitting the
     /// HANDSHAKE_DONE frame until it is acked by the peer.
     HandshakeDoneLost,
+    /// A 1-Rtt packet was acked.
+    OneRttAcked,
 }
 
 /// The source that caused a congestion event

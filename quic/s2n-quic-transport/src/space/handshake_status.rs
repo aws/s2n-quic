@@ -85,7 +85,7 @@ impl HandshakeStatus {
     }
 
     /// This method is called on the client when the HANDSHAKE_DONE
-    /// frame has been received
+    /// frame has been received.
     pub fn on_handshake_done_received<Pub: ConnectionPublisher>(&mut self, publisher: &mut Pub) {
         if let HandshakeStatus::ClientComplete = self {
             publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
@@ -97,6 +97,23 @@ impl HandshakeStatus {
             //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.2
             //# At the client, the handshake is
             //# considered confirmed when a HANDSHAKE_DONE frame is received.
+            *self = HandshakeStatus::Confirmed;
+        }
+    }
+
+    /// The delivery of a 1-Rtt packet was acknowledged by the peer.
+    #[inline]
+    pub fn on_1rtt_ack<Pub: ConnectionPublisher>(&mut self, publisher: &mut Pub) {
+        if let HandshakeStatus::ClientComplete = self {
+            publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
+                status: event::builder::HandshakeStatus::OneRttAcked,
+            });
+            publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
+                status: event::builder::HandshakeStatus::Confirmed,
+            });
+            //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.2
+            //# Additionally, a client MAY consider the handshake to be confirmed
+            //# when it receives an acknowledgment for a 1-RTT packet.
             *self = HandshakeStatus::Confirmed;
         }
     }
