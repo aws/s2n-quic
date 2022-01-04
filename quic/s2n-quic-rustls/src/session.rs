@@ -130,7 +130,7 @@ impl Session {
     /// Check and process TLS handshake complete.
     ///
     /// Upon TLS handshake complete, emit an event to notify the transport layer.
-    fn process_handshake_complete<C: tls::Context<Self>>(
+    fn try_complete_handshake<C: tls::Context<Self>>(
         &mut self,
         context: &mut C,
     ) -> Result<(), transport::Error> {
@@ -176,13 +176,13 @@ impl tls::Session for Session {
             if let Some(crypto_data) = crypto_data {
                 self.receive(&crypto_data)?;
             } else if has_tried_receive {
-                self.process_handshake_complete(context)?;
+                self.try_complete_handshake(context)?;
 
                 // If there's nothing to receive then we're done for now
                 return Ok(());
             }
 
-            self.process_handshake_complete(context)?;
+            self.try_complete_handshake(context)?;
             if self.emitted_handshake_complete {
                 return Ok(());
             }

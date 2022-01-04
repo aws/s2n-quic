@@ -267,6 +267,25 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             &mut publisher,
         )?;
 
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.1
+        //#
+        //#   Client                                                  Server
+        //#
+        //#   Initial[0]: CRYPTO[CH] ->
+        //#
+        //#                                    Initial[0]: CRYPTO[SH] ACK[0]
+        //#                          Handshake[0]: CRYPTO[EE, CERT, CV, FIN]
+        //#                                    <- 1-RTT[0]: STREAM[1, "..."]
+        //#
+        //#   Initial[1]: ACK[0]
+        //#   Handshake[0]: CRYPTO[FIN], ACK[0]
+        //#   1-RTT[0]: STREAM[0, "..."], ACK[0] ->
+        //#
+        //#                                             Handshake[1]: ACK[0]
+        //#            <- 1-RTT[1]: HANDSHAKE_DONE, STREAM[3, "..."], ACK[0]
+        //#
+        //#                     Figure 5: Example 1-RTT Handshake
+        //
         // The application is allowed to send and receive 1-RTT data once the
         // handshake is complete so update the connection state and prepare
         // to hand it over to the application.
