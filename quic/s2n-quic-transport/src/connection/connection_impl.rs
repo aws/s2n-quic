@@ -267,8 +267,11 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             &mut publisher,
         )?;
 
+        // The application is allowed to send and receive 1-RTT data once the
+        // handshake is complete so update the connection state and prepare
+        // to hand it over to the application.
         if matches!(self.state, ConnectionState::Handshaking)
-            && space_manager.is_handshake_confirmed()
+            && space_manager.is_handshake_complete()
         {
             // Move into the HandshakeCompleted state. This will signal the
             // necessary interest to hand over the connection to the application.
@@ -1145,14 +1148,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut publisher,
             )?;
 
-            // Make progress on the handshake if we're the client
-            if Config::ENDPOINT_TYPE.is_client() && self.is_handshaking() {
-                self.update_crypto_state(datagram.timestamp, subscriber)?;
-            }
-
             // notify the connection a packet was processed
             self.on_processed_packet(datagram.timestamp);
-
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
             publisher.on_packet_received(event::builder::PacketReceived {
                 packet_header: event::builder::PacketHeader::new(
