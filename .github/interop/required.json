@@ -10,7 +10,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "xquic": ["client"]
+    "xquic": []
   },
   "handshake": {
     "aioquic": ["client"],
@@ -75,7 +75,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "xquic": ["client"]
+    "xquic": []
   },
   "retry": {
     "aioquic": ["client"],
@@ -101,7 +101,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "xquic": ["client"]
+    "xquic": []
   },
   "keyupdate": {
     "aioquic": [],
@@ -166,7 +166,7 @@
     "picoquic": [],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "xquic": ["client"]
+    "xquic": []
   },
   "handshakecorruption": {
     "aioquic": [],
@@ -192,7 +192,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "xquic": ["client"]
+    "xquic": []
   },
   "rebind-addr": {
     "aioquic": [],
