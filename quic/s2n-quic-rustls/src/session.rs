@@ -126,6 +126,26 @@ impl Session {
         self.emitted_zero_rtt_keys = true;
         Some(keys)
     }
+
+    /// Check and process TLS handshake complete.
+    ///
+    /// Upon TLS handshake complete, emit an event to notify the transport layer.
+    fn try_complete_handshake<C: tls::Context<Self>>(
+        &mut self,
+        context: &mut C,
+    ) -> Result<(), transport::Error> {
+        if self.tx_phase == HandshakePhase::Application && !self.connection.is_handshaking() {
+            // the handshake is complete!
+            if !self.emitted_handshake_complete {
+                self.rx_phase.transition();
+                context.on_handshake_complete()?;
+            }
+
+            self.emitted_handshake_complete = true;
+        }
+
+        Ok(())
+    }
 }
 
 impl crypto::CryptoSuite for Session {
@@ -156,7 +176,14 @@ impl tls::Session for Session {
             if let Some(crypto_data) = crypto_data {
                 self.receive(&crypto_data)?;
             } else if has_tried_receive {
+                self.try_complete_handshake(context)?;
+
                 // If there's nothing to receive then we're done for now
+                return Ok(());
+            }
+
+            self.try_complete_handshake(context)?;
+            if self.emitted_handshake_complete {
                 return Ok(());
             }
 
@@ -164,19 +191,7 @@ impl tls::Session for Session {
             // to bail if nothing changed
             has_tried_receive = true;
 
-            // the handshake is complete!
-            if self.tx_phase == HandshakePhase::Application && !self.connection.is_handshaking() {
-                if !self.emitted_handshake_complete {
-                    self.rx_phase.transition();
-                    context.on_handshake_complete()?;
-                }
-
-                self.emitted_handshake_complete = true;
-                return Ok(());
-            }
-
             // try to pull out the early secrets, if any
-
             if let Some(keys) = self.zero_rtt_keys() {
                 let (key, header_key) = PacketKey::new(keys);
                 context.on_zero_rtt_keys(key, header_key, self.application_parameters()?)?;
