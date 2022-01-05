@@ -45,8 +45,6 @@ pub struct Pacer {
     next_packet_departure_time: Option<Timestamp>,
 }
 
-// TODO: Remove when used
-#[allow(dead_code)]
 impl Pacer {
     /// Called when each packet has been written
     #[inline]
