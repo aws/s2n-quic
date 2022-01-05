@@ -3,12 +3,10 @@
 
 use super::handle::Closer;
 use crate::{connection, endpoint::handle::CloseSender};
-use core::future::Future;
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+use alloc::sync::Arc;
+use core::{
+    future::Future,
+    sync::atomic::{AtomicBool, Ordering},
     task::Poll,
 };
 

@@ -115,7 +115,7 @@ impl Server {
         }
     }
 
-    /// Attempt to close the connection
+    /// Attempt to close the server endpoint
     ///
     /// # Examples
     ///

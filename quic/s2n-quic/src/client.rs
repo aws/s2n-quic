@@ -108,7 +108,7 @@ impl Client {
         ConnectionAttempt(attempt)
     }
 
-    /// Attempt to close the connection
+    /// Attempt to close the client endpoint
     ///
     /// # Examples
     ///

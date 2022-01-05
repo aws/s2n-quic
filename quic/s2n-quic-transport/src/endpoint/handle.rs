@@ -7,16 +7,14 @@ use crate::{
     connection::Connection,
     endpoint::{close, connect},
 };
+use alloc::sync::Arc;
 use core::{
     pin::Pin,
-    task::{Context, Poll},
+    sync::atomic::AtomicBool,
+    task::{Context, Poll, Waker},
 };
 use futures_channel::mpsc;
 use futures_core::Stream;
-use std::{
-    sync::{atomic::AtomicBool, Arc},
-    task::Waker,
-};
 
 /// Held by application. Used to accept new connections.
 pub(crate) type AcceptorReceiver = mpsc::UnboundedReceiver<Connection>;

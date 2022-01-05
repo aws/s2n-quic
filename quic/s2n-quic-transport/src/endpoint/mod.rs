@@ -15,10 +15,12 @@ use crate::{
     space::PacketSpaceManager,
     wakeup_queue::WakeupQueue,
 };
-use alloc::collections::VecDeque;
+use alloc::{collections::VecDeque, sync::Arc};
 use core::{
     convert::TryInto,
-    task::{self, Poll},
+    pin::Pin,
+    sync::atomic::{AtomicBool, Ordering},
+    task::{self, Poll, Waker},
 };
 use futures_channel::mpsc::Receiver;
 use s2n_codec::{DecoderBuffer, DecoderBufferMut};
@@ -40,14 +42,6 @@ use s2n_quic_core::{
     time::{Clock, Timestamp},
     token::{self, Format},
     transport::parameters::ClientTransportParameters,
-};
-use std::{
-    pin::Pin,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    task::Waker,
 };
 
 pub mod close;
@@ -199,7 +193,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         if !self.close_queue.is_empty() && self.connections.is_empty() {
             self.is_open.store(false, Ordering::SeqCst);
 
-            for waker in self.close_queue.iter() {
+            for waker in self.close_queue.drain(..) {
                 waker.wake_by_ref();
             }
         }
