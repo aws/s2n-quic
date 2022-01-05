@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{close::CloseAttempt, connection::Connection, provider::*};
+use crate::{
+    connection::{self, Connection},
+    provider::*,
+};
 use core::{
     fmt,
     task::{Context, Poll},
@@ -139,8 +142,8 @@ impl Server {
     /// # }
     ///
     /// ```
-    pub fn close(&self) -> CloseAttempt {
-        CloseAttempt(self.0.poll_close())
+    pub async fn close(&self) -> Result<(), connection::Error> {
+        futures::future::poll_fn(|cx| self.0.poll_close(cx)).await
     }
 
     /// Returns the local address that this listener is bound to.

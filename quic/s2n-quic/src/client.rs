@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    close::CloseAttempt,
     connection::{self, Connection},
     provider::*,
 };
@@ -131,8 +130,8 @@ impl Client {
     /// #    Ok(())
     /// # }
     /// ```
-    pub fn close(&self) -> CloseAttempt {
-        CloseAttempt(self.0.poll_close())
+    pub async fn close(&self) -> Result<(), connection::Error> {
+        futures::future::poll_fn(|cx| self.0.poll_close(cx)).await
     }
 
     /// Returns the local address that this listener is bound to.

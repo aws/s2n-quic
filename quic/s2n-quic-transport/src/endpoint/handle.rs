@@ -4,6 +4,7 @@
 //! Allows to accept connections
 
 use crate::{
+    connection,
     connection::Connection,
     endpoint::{close, connect},
 };
@@ -14,7 +15,7 @@ use core::{
     task::{Context, Poll, Waker},
 };
 use futures_channel::mpsc;
-use futures_core::Stream;
+use futures_core::{Future, Stream};
 
 /// Held by application. Used to accept new connections.
 pub(crate) type AcceptorReceiver = mpsc::UnboundedReceiver<Connection>;
@@ -112,8 +113,14 @@ impl Acceptor {
         }
     }
 
-    pub fn poll_close(&self) -> close::Attempt {
-        close::Attempt::new(self.closer.clone())
+    pub fn poll_close(&self, context: &mut Context) -> Poll<Result<(), connection::Error>> {
+        let mut close_attempt = close::Attempt::new(self.closer.clone());
+
+        match Pin::new(&mut close_attempt).poll(context) {
+            Poll::Ready(Ok(_)) => Poll::Ready(Ok(())),
+            Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
+            Poll::Pending => Poll::Pending,
+        }
     }
 }
 
@@ -129,7 +136,13 @@ impl Connector {
         connect::Attempt::new(&self.connector, connect)
     }
 
-    pub fn poll_close(&self) -> close::Attempt {
-        close::Attempt::new(self.closer.clone())
+    pub fn poll_close(&self, context: &mut Context) -> Poll<Result<(), connection::Error>> {
+        let mut close_attempt = close::Attempt::new(self.closer.clone());
+
+        match Pin::new(&mut close_attempt).poll(context) {
+            Poll::Ready(Ok(_)) => Poll::Ready(Ok(())),
+            Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
+            Poll::Pending => Poll::Pending,
+        }
     }
 }
