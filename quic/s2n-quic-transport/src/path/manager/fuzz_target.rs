@@ -198,7 +198,6 @@ impl Model {
                     .create_server_peer_id_registry(
                         InternalConnectionIdGenerator::new().generate_id(),
                         zero_path.peer_connection_id,
-                        None,
                     );
 
             // register 3 more ids which means a total of 4 paths. cid 0 is retired as part of

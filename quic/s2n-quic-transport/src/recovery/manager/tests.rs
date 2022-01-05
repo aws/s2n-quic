@@ -2902,7 +2902,6 @@ fn helper_generate_path_manager_with_first_addr(
         .create_server_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             connection::PeerId::TEST_ID,
-            None,
         );
     let path = Path::new(
         first_addr,

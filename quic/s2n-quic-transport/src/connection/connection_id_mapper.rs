@@ -321,11 +321,10 @@ impl ConnectionIdMapper {
         &mut self,
         internal_id: InternalConnectionId,
         initial_connection_id: connection::PeerId,
-        peer_stateless_reset_token: Option<stateless_reset::Token>,
     ) -> PeerIdRegistry {
         let mut registry = PeerIdRegistry::new(internal_id, self.state.clone());
 
-        registry.register_initial_connection_id(initial_connection_id, peer_stateless_reset_token);
+        registry.register_initial_connection_id(initial_connection_id);
         registry
     }
 
@@ -355,8 +354,9 @@ mod tests {
         let internal_id = InternalConnectionIdGenerator::new().generate_id();
         let peer_id = id(b"id01");
 
-        let _registry =
-            mapper.create_server_peer_id_registry(internal_id, peer_id, Some(TEST_TOKEN_1));
+        let mut registry = mapper.create_client_peer_id_registry(internal_id);
+        registry.register_initial_connection_id(peer_id);
+        registry.register_initial_stateless_reset_token(TEST_TOKEN_1);
 
         assert_eq!(
             Some(internal_id),
@@ -371,8 +371,9 @@ mod tests {
             mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_2)
         );
 
-        let _registry =
-            mapper.create_server_peer_id_registry(internal_id, peer_id, Some(TEST_TOKEN_3));
+        let mut registry = mapper.create_client_peer_id_registry(internal_id);
+        registry.register_initial_connection_id(peer_id);
+        registry.register_initial_stateless_reset_token(TEST_TOKEN_3);
 
         mapper
             .state

@@ -260,7 +260,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
         let space_manager = &mut self.space_manager;
         space_manager.poll_crypto(
-            self.path_manager.active_path(),
+            &mut self.path_manager,
             &mut self.local_id_registry,
             &mut self.limits,
             timestamp,

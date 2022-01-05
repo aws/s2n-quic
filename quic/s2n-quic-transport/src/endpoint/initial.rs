@@ -136,20 +136,9 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             stateless_reset_token,
         );
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
-        //# Servers
-        //# can also issue a stateless_reset_token transport parameter during the
-        //# handshake that applies to the connection ID that it selected during
-        //# the handshake.  These exchanges are protected by encryption, so only
-        //# client and server know their value.  Note that clients cannot use the
-        //# stateless_reset_token transport parameter because their transport
-        //# parameters do not have confidentiality protection.
-        let stateless_reset_token = None;
-        let peer_id_registry = self.connection_id_mapper.create_server_peer_id_registry(
-            internal_connection_id,
-            source_connection_id,
-            stateless_reset_token,
-        );
+        let peer_id_registry = self
+            .connection_id_mapper
+            .create_server_peer_id_registry(internal_connection_id, source_connection_id);
 
         let wakeup_handle = self
             .wakeup_queue
