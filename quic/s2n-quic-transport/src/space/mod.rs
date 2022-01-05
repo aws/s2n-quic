@@ -94,6 +94,7 @@ macro_rules! packet_space_api {
                 path: &mut Path<Config>,
                 path_id: path::Id,
                 publisher: &mut Pub,
+                is_active: bool,
             ) {
                 //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.2
                 //# When Initial or Handshake keys are discarded, the PTO and loss
@@ -102,7 +103,7 @@ macro_rules! packet_space_api {
                 //# a now discarded packet number space.
                 path.reset_pto_backoff();
                 if let Some(mut space) = self.$field.take() {
-                    space.on_discard(path, path_id, publisher);
+                    space.on_discard(path, path_id, publisher, is_active);
                 }
 
                 //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9.1
@@ -615,12 +616,13 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 .map_err(transport::Error::from)?;
 
             let path = &path_manager[path_id];
+            let is_active = path_manager.active_path_id() == path_id;
             publisher.on_frame_received(event::builder::FrameReceived {
                 packet_header: event::builder::PacketHeader::new(
                     packet_number,
                     publisher.quic_version(),
                 ),
-                path: path_event!(path, path_id),
+                path: path_event!(path, path_id, is_active),
                 frame: frame.into_event(),
             });
             match frame {

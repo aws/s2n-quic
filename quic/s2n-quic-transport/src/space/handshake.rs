@@ -82,6 +82,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         path_id: path::Id,
         path: &path::Path<Config>,
         publisher: &mut Pub,
+        is_active: bool,
     ) -> bool {
         let packet_check = self.processed_packet_numbers.check(packet_number);
         if let Err(error) = packet_check {
@@ -90,7 +91,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
                     packet_number,
                     publisher.quic_version(),
                 ),
-                path: path_event!(path, path_id),
+                path: path_event!(path, path_id, is_active),
                 error: error.into_event(),
             });
         }
@@ -264,12 +265,13 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         path: &mut Path<Config>,
         path_id: path::Id,
         publisher: &mut Pub,
+        is_active: bool,
     ) {
         publisher.on_key_space_discarded(event::builder::KeySpaceDiscarded {
             space: event::builder::KeySpace::Handshake,
         });
         self.recovery_manager
-            .on_packet_number_space_discarded(path, path_id, publisher);
+            .on_packet_number_space_discarded(path, path_id, publisher, is_active);
     }
 
     pub fn requires_probe(&self) -> bool {
@@ -316,6 +318,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         path_id: path::Id,
         path: &path::Path<Config>,
         publisher: &mut Pub,
+        is_active: bool,
     ) -> Result<CleartextHandshake<'a>, ProcessingError> {
         let packet_number_decoder = self.packet_number_decoder();
 
@@ -325,13 +328,13 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
                 publisher.on_packet_dropped(event::builder::PacketDropped {
                     reason: event::builder::PacketDropReason::UnprotectFailed {
                         space: event::builder::KeySpace::Handshake,
-                        path: path_event!(path, path_id),
+                        path: path_event!(path, path_id, is_active),
                     },
                 });
                 err
             })?;
 
-        if self.is_duplicate(packet.packet_number, path_id, path, publisher) {
+        if self.is_duplicate(packet.packet_number, path_id, path, publisher, is_active) {
             return Err(ProcessingError::DuplicatePacket);
         }
 
@@ -341,7 +344,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
             publisher.on_packet_dropped(event::builder::PacketDropped {
                 reason: event::builder::PacketDropReason::DecryptionFailed {
                     packet_header,
-                    path: path_event!(path, path_id),
+                    path: path_event!(path, path_id, is_active),
                 },
             });
             err
@@ -415,6 +418,10 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
 
     fn path_id(&self) -> path::Id {
         self.path_id
+    }
+
+    fn is_path_active(&self) -> bool {
+        self.path_manager.active_path_id() == self.path_id
     }
 
     fn validate_packet_ack(

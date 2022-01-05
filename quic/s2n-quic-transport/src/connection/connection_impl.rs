@@ -466,6 +466,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 remote_addr: parameters.path_handle.remote_address().into_event(),
                 remote_cid: parameters.peer_connection_id.into_event(),
                 id: path_manager.active_path_id().into_event(),
+                is_active: true,
             },
         });
 
@@ -586,11 +587,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             self.path_manager.active_path_mut(),
             active_path_id,
             &mut publisher,
+            true,
         );
         self.space_manager.discard_handshake(
             self.path_manager.active_path_mut(),
             active_path_id,
             &mut publisher,
+            true,
         );
         self.space_manager.discard_zero_rtt_crypto();
 
@@ -926,12 +929,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         if let Some((space, _status)) = self.space_manager.initial_mut() {
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
-
+            let is_active = self.path_manager.is_path_active(path_id);
             let packet = space.validate_and_decrypt_packet(
                 packet,
                 path_id,
                 &self.path_manager[path_id],
                 &mut publisher,
+                is_active,
             )?;
 
             publisher.on_packet_received(event::builder::PacketReceived {
@@ -1028,12 +1032,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         if let Some((space, handshake_status)) = self.space_manager.handshake_mut() {
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
-
+            let is_active = self.path_manager.is_path_active(path_id);
             let packet = space.validate_and_decrypt_packet(
                 packet,
                 path_id,
                 &self.path_manager[path_id],
                 &mut publisher,
+                is_active,
             )?;
 
             publisher.on_packet_received(event::builder::PacketReceived {
@@ -1059,10 +1064,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9.1
                 //# a server MUST discard Initial keys when it first
                 //# successfully processes a Handshake packet.
+                let is_active = self.path_manager.is_path_active(path_id);
                 self.space_manager.discard_initial(
                     self.path_manager.active_path_mut(),
                     path_id,
                     &mut publisher,
+                    is_active,
                 );
             }
 
@@ -1108,9 +1115,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
         if !self.space_manager.is_handshake_complete() {
             let path = &self.path_manager[path_id];
+            let is_active = self.path_manager.is_path_active(path_id);
             publisher.on_packet_dropped(event::builder::PacketDropped {
                 reason: event::builder::PacketDropReason::HandshakeNotComplete {
-                    path: path_event!(path, path_id),
+                    path: path_event!(path, path_id, is_active),
                 },
             });
 
@@ -1137,12 +1145,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         }
 
         if let Some((space, handshake_status)) = self.space_manager.application_mut() {
+            let is_active = self.path_manager.is_path_active(path_id);
             let packet = space.validate_and_decrypt_packet(
                 packet,
                 datagram,
                 path_id,
                 &self.path_manager[path_id],
                 &mut publisher,
+                is_active,
             )?;
 
             // Connection Ids are issued to the peer after the handshake is
@@ -1278,11 +1288,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# A client MUST accept and process at most one Retry packet for each
         //# connection attempt.
         if self.space_manager.retry_cid().is_some() {
-            let path = &mut self.path_manager[path_id];
+            let path = &self.path_manager[path_id];
+            let is_active = self.path_manager.is_path_active(path_id);
             publisher.on_packet_dropped(event::builder::PacketDropped {
                 reason: event::builder::PacketDropReason::RetryDiscarded {
                     reason: event::builder::RetryDiscardReason::RetryAlreadyProcessed,
-                    path: path_event!(path, path_id),
+                    path: path_event!(path, path_id, is_active),
                 },
             });
             return Ok(());
@@ -1293,11 +1304,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# Initial or Retry packet from the server, it MUST discard any
         //# subsequent Retry packets that it receives.
         if self.path_manager.valid_initial_received() {
-            let path = &mut self.path_manager[path_id];
+            let path = &self.path_manager[path_id];
+            let is_active = self.path_manager.is_path_active(path_id);
             publisher.on_packet_dropped(event::builder::PacketDropped {
                 reason: event::builder::PacketDropReason::RetryDiscarded {
                     reason: event::builder::RetryDiscardReason::InitialAlreadyProcessed,
-                    path: path_event!(path, path_id),
+                    path: path_event!(path, path_id, is_active),
                 },
             });
             return Ok(());
@@ -1308,6 +1320,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# discard a Retry packet that contains a Source Connection ID field
         //# that is identical to the Destination Connection ID field of its
         //# Initial packet.
+        let is_active = self.path_manager.is_path_active(path_id);
         let path = &mut self.path_manager[path_id];
         if packet.source_connection_id() == path.peer_connection_id.as_bytes() {
             publisher.on_packet_dropped(event::builder::PacketDropped {
@@ -1315,7 +1328,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     reason: event::builder::RetryDiscardReason::ScidEqualsDcid {
                         cid: packet.source_connection_id(),
                     },
-                    path: path_event!(path, path_id),
+                    path: path_event!(path, path_id, is_active),
                 },
             });
             return Err(ProcessingError::RetryScidEqualsDcid);
@@ -1339,7 +1352,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             publisher.on_packet_dropped(event::builder::PacketDropped {
                 reason: event::builder::PacketDropReason::RetryDiscarded {
                     reason: event::builder::RetryDiscardReason::InvalidIntegrityTag,
-                    path: path_event!(path, path_id),
+                    path: path_event!(path, path_id, is_active),
                 },
             });
             return Err(error.into());
@@ -1561,11 +1574,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 <Self::Config as endpoint::Config>::EventSubscriber,
             >,
             &path::Path<Self::Config>,
+            bool,
         ),
     {
+        let is_active = self.path_manager.is_path_active(path_id);
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
         let path = &self.path_manager[path_id];
-        f(&mut publisher, path);
+        f(&mut publisher, path, is_active);
     }
 }
 

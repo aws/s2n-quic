@@ -136,13 +136,13 @@ impl<Config: endpoint::Config> Manager<Config> {
         // Restart ECN validation to check that the path still supports ECN
         let path = self.active_path_mut();
         path.ecn_controller
-            .restart(path_event!(path, new_path_id), publisher);
+            .restart(path_event!(path, new_path_id, true), publisher);
 
         let prev_path = &self[prev_path_id];
         let new_path = &self[new_path_id];
         publisher.on_active_path_updated(event::builder::ActivePathUpdated {
-            previous: path_event!(prev_path, prev_path_id),
-            active: path_event!(new_path, new_path_id),
+            previous: path_event!(prev_path, prev_path_id, false),
+            active: path_event!(new_path, new_path_id, true),
         });
 
         Ok(())
@@ -164,6 +164,12 @@ impl<Config: endpoint::Config> Manager<Config> {
     #[inline]
     pub fn active_path_id(&self) -> Id {
         Id(self.active)
+    }
+
+    /// Returns whether or not the path is active
+    #[inline]
+    pub fn is_path_active(&self, path_id: Id) -> bool {
+        path_id == Id(self.active)
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3
@@ -313,6 +319,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 remote_addr: active_remote_addr.into_event(),
                 remote_cid: self.active_path().peer_connection_id.into_event(),
                 id: self.active_path_id().into_event(),
+                is_active: true,
             }
             .into_event(),
             packet: migration::PacketInfoBuilder {
@@ -441,8 +448,8 @@ impl<Config: endpoint::Config> Manager<Config> {
         let active_path = self.active_path();
         let active_path_id = self.active_path_id();
         publisher.on_path_created(event::builder::PathCreated {
-            active: path_event!(active_path, active_path_id),
-            new: path_event!(path, new_path_id),
+            active: path_event!(active_path, active_path_id, true),
+            new: path_event!(path, new_path_id, false),
         });
 
         // create a new path
@@ -701,8 +708,10 @@ impl<Config: endpoint::Config> Manager<Config> {
         random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), connection::Error> {
+        let active_path_id = self.active_path_id();
         for (id, path) in self.paths.iter_mut().enumerate() {
-            path.on_timeout(timestamp, Id(id as u8), random_generator, publisher);
+            let is_active = active_path_id == Id(id as u8);
+            path.on_timeout(timestamp, Id(id as u8), random_generator, publisher, is_active);
         }
 
         if self.active_path().failed_validation() {
@@ -877,13 +886,14 @@ impl event::IntoEvent<u64> for Id {
 }
 
 macro_rules! path_event {
-    ($path:ident, $path_id:ident) => {{
+    ($path:ident, $path_id:ident, $is_active:ident) => {{
         event::builder::Path {
             local_addr: $path.local_address().into_event(),
             local_cid: $path.local_connection_id.into_event(),
             remote_addr: $path.remote_address().into_event(),
             remote_cid: $path.peer_connection_id.into_event(),
             id: $path_id.into_event(),
+            is_active: $is_active,
         }
     }};
 }

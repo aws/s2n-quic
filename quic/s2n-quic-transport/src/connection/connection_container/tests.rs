@@ -289,6 +289,7 @@ impl connection::Trait for TestConnection {
                 <Self::Config as endpoint::Config>::EventSubscriber,
             >,
             &path::Path<Self::Config>,
+            bool,
         ),
     {
         todo!()

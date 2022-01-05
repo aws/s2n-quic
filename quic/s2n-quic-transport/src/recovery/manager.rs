@@ -76,7 +76,7 @@ const K_PACKET_THRESHOLD: u64 = 3;
 const ACKED_PACKETS_INITIAL_CAPACITY: usize = 32;
 
 macro_rules! recovery_event {
-    ($path_id:ident, $path:ident) => {
+    ($path_id:ident, $path:ident, $is_active:ident) => {
         event::builder::RecoveryMetrics {
             path: event::builder::Path {
                 local_addr: $path.local_address().into_event(),
@@ -84,6 +84,7 @@ macro_rules! recovery_event {
                 remote_addr: $path.remote_address().into_event(),
                 remote_cid: $path.peer_connection_id.into_event(),
                 id: $path_id as u64,
+                is_active: $is_active,
             },
             min_rtt: $path.rtt_estimator.min_rtt(),
             smoothed_rtt: $path.rtt_estimator.smoothed_rtt(),
@@ -164,8 +165,9 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
 
         let path_id = context.path_id().as_u8();
+        let is_active = context.is_path_active();
         let path = context.path_mut();
-        publisher.on_recovery_metrics(recovery_event!(path_id, path));
+        publisher.on_recovery_metrics(recovery_event!(path_id, path, is_active));
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9002.txt#A.5
@@ -207,9 +209,10 @@ impl<Config: endpoint::Config> Manager<Config> {
         );
 
         let path_id = context.path_id();
+        let is_active = context.is_path_active();
         let path = context.path_mut();
         path.ecn_controller
-            .on_packet_sent(ecn, path_event!(path, path_id), publisher);
+            .on_packet_sent(ecn, path_event!(path, path_id, is_active), publisher);
         self.sent_packet_ecn_counts.increment(ecn);
 
         if outcome.is_congestion_controlled {
@@ -367,8 +370,9 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
 
         let path_id = context.path_id().as_u8();
+        let is_active = context.is_path_active();
         let path = context.path_mut();
-        publisher.on_recovery_metrics(recovery_event!(path_id, path));
+        publisher.on_recovery_metrics(recovery_event!(path_id, path, is_active));
 
         Ok(())
     }
@@ -597,6 +601,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         publisher: &mut Pub,
     ) {
         let path_id = context.path_id();
+        let is_active = context.is_path_active();
         let path = context.path_mut();
 
         let outcome = path.ecn_controller.validate(
@@ -606,7 +611,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             ack_frame_ecn_counts,
             datagram.timestamp,
             path.rtt_estimator.smoothed_rtt(),
-            path_event!(path, path_id),
+            path_event!(path, path_id, is_active),
             publisher,
         );
 
@@ -621,8 +626,9 @@ impl<Config: endpoint::Config> Manager<Config> {
                 .congestion_controller
                 .on_congestion_event(datagram.timestamp);
             let path = context.path();
+            let is_active = context.is_path_active();
             publisher.on_congestion(event::builder::Congestion {
-                path: path_event!(path, path_id),
+                path: path_event!(path, path_id, is_active),
                 source: CongestionSource::Ecn,
             })
         }
@@ -646,11 +652,12 @@ impl<Config: endpoint::Config> Manager<Config> {
         path: &mut Path<Config>,
         path_id: path::Id,
         publisher: &mut Pub,
+        path_is_active: bool,
     ) {
         debug_assert_ne!(self.space, PacketNumberSpace::ApplicationData);
 
         let path_id_idx = path_id.as_u8();
-        publisher.on_recovery_metrics(recovery_event!(path_id_idx, path));
+        publisher.on_recovery_metrics(recovery_event!(path_id_idx, path, path_is_active));
 
         // Remove any unacknowledged packets from flight.
         let mut discarded_bytes = 0;
@@ -851,12 +858,14 @@ impl<Config: endpoint::Config> Manager<Config> {
         publisher: &mut Pub,
     ) {
         let current_path_id = context.path_id();
+        let is_current_path_active = context.is_path_active();
+        
         let mut is_congestion_event = false;
 
         // Remove the lost packets and account for the bytes on the proper congestion controller
         for (packet_number, sent_info) in sent_packets_to_remove {
             let path = context.path_mut_by_id(sent_info.path_id);
-
+            
             self.sent_packets.remove(packet_number);
 
             //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
@@ -869,7 +878,6 @@ impl<Config: endpoint::Config> Manager<Config> {
                 // Check that the packet was sent on this path
                 && sent_info.path_id == current_path_id;
 
-            let mut is_mtu_probe = false;
             if sent_info.sent_bytes as usize > path.mtu_controller.mtu() {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.4
                 //# Loss of a QUIC packet that is carried in a PMTU probe is therefore not a
@@ -894,15 +902,18 @@ impl<Config: endpoint::Config> Manager<Config> {
                 is_congestion_event = true;
             }
 
+            let current_path = context.path();
             publisher.on_packet_lost(event::builder::PacketLost {
                 packet_header: event::builder::PacketHeader::new(
                     packet_number,
                     publisher.quic_version(),
                 ),
-                path: path_event!(path, current_path_id),
+                path: path_event!(current_path, current_path_id, is_current_path_active),
                 bytes_lost: sent_info.sent_bytes,
                 is_mtu_probe,
             });
+
+            let path = context.path_mut_by_id(sent_info.path_id);
 
             // Notify the MTU controller of packet loss even if it wasn't a probe since it uses
             // that information for blackhole detection.
@@ -913,14 +924,12 @@ impl<Config: endpoint::Config> Manager<Config> {
                 &mut path.congestion_controller,
             );
 
-            let path_id = sent_info.path_id;
-
             // Notify the ECN controller of packet loss for blackhole detection.
             path.ecn_controller.on_packet_loss(
                 sent_info.time_sent,
                 sent_info.ecn,
                 now,
-                path_event!(path, path_id),
+                path_event!(current_path, current_path_id, is_current_path_active),
                 publisher,
             );
 
@@ -933,9 +942,9 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
 
         if is_congestion_event {
-            let path = context.path();
+            let current_path = context.path();
             publisher.on_congestion(event::builder::Congestion {
-                path: path_event!(path, current_path_id),
+                path: path_event!(current_path, current_path_id, is_current_path_active),
                 source: CongestionSource::PacketLoss,
             })
         }
@@ -995,6 +1004,8 @@ pub trait Context<Config: endpoint::Config> {
     fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<Config>;
 
     fn path_id(&self) -> path::Id;
+
+    fn is_path_active(&self) -> bool;
 
     fn validate_packet_ack(
         &mut self,

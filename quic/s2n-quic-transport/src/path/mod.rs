@@ -216,12 +216,13 @@ impl<Config: endpoint::Config> Path<Config> {
         path_id: Id,
         random_generator: &mut Rnd,
         publisher: &mut Pub,
+        is_active: bool,
     ) {
         self.challenge.on_timeout(timestamp);
         self.mtu_controller.on_timeout(timestamp);
         self.ecn_controller.on_timeout(
             timestamp,
-            path_event!(self, path_id),
+            path_event!(self, path_id, is_active),
             random_generator,
             self.rtt_estimator.smoothed_rtt(),
             publisher,
@@ -690,6 +691,7 @@ mod tests {
             path::Id::test_id(),
             &mut random::testing::Generator(123),
             &mut publisher,
+            true,
         );
 
         // Expectation:
@@ -754,6 +756,7 @@ mod tests {
             path::Id::test_id(),
             &mut random::testing::Generator(123),
             &mut publisher,
+            true
         );
 
         // Expectation:

@@ -204,11 +204,11 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                     datagram.timestamp,
                     path_id,
                     subscriber,
-                    |publisher, path| {
+                    |publisher, path, is_active_path| {
                         publisher.on_packet_dropped(event::builder::PacketDropped {
                             reason: event::builder::PacketDropReason::VersionMismatch {
                                 version,
-                                path: path_event!(path, path_id),
+                                path: path_event!(path, path_id, is_active_path),
                             },
                         })
                     },
@@ -284,15 +284,15 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                         datagram.timestamp,
                         path_id,
                         subscriber,
-                        |publisher, path| {
+                        |publisher, path, is_active_path| {
                             publisher.on_packet_dropped(event::builder::PacketDropped {
                                 reason: event::builder::PacketDropReason::ConnectionIdMismatch {
                                     packet_cid: packet.destination_connection_id(),
-                                    path: path_event!(path, path_id),
+                                    path: path_event!(path, path_id, is_active_path),
                                 },
                             })
                         },
-                    );
+                    ); 
                     break;
                 }
 
@@ -309,10 +309,10 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                             datagram.timestamp,
                             path_id,
                             subscriber,
-                            |publisher, path| {
+                            |publisher, path, is_active_path| {
                                 publisher.on_packet_dropped(event::builder::PacketDropped {
                                     reason: event::builder::PacketDropReason::ConnectionError {
-                                        path: path_event!(path, path_id),
+                                        path: path_event!(path, path_id, is_active_path),
                                     },
                                 })
                             },
@@ -337,10 +337,10 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                     datagram.timestamp,
                     path_id,
                     subscriber,
-                    |publisher, path| {
+                    |publisher, path, is_active_path| {
                         publisher.on_packet_dropped(event::builder::PacketDropped {
                             reason: event::builder::PacketDropReason::DecodingFailed {
-                                path: path_event!(path, path_id),
+                                path: path_event!(path, path_id, is_active_path),
                             },
                         })
                     },
@@ -402,6 +402,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 <Self::Config as endpoint::Config>::EventSubscriber,
             >,
             &path::Path<Self::Config>,
+            bool,
         );
 }
 
