@@ -639,8 +639,8 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         self.connection_map.is_empty()
     }
 
-    /// Stop accepting new connections
-    pub fn mark_closed(&mut self) {
+    /// Stop accepting new connection attempts
+    pub fn stop_accepting_connections(&mut self) {
         self.accept_queue.close_channel();
         self.connector_receiver.close();
     }

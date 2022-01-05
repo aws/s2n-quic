@@ -183,7 +183,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
             futures_core::Stream::poll_next(Pin::new(&mut self.close_receiver), cx)
         {
             // Preparing to close the endpoint so stop accepting new connections
-            self.connections.mark_closed();
+            self.connections.stop_accepting_connections();
 
             // TODO: Combine close_receiver and close_queue if its possible to peek into close_receiver
             self.close_queue.push_back(waker)
