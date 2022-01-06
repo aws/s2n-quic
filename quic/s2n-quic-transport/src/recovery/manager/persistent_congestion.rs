@@ -59,7 +59,7 @@ impl PersistentCongestionCalculator {
         let is_ack_eliciting = packet_info.ack_elicitation.is_ack_eliciting();
 
         if let (Some(start), Some(ref mut end)) = (self.start, self.end) {
-            // We are current tracking a persistent congestion period
+            // We are currently tracking a persistent congestion period
 
             //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
             //# A sender establishes persistent congestion after the receipt of an
