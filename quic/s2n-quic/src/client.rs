@@ -130,7 +130,7 @@ impl Client {
     /// #    Ok(())
     /// # }
     /// ```
-    pub async fn close(&self) -> Result<(), connection::Error> {
+    pub async fn close(&mut self) -> Result<(), connection::Error> {
         futures::future::poll_fn(|cx| self.0.poll_close(cx)).await
     }
 

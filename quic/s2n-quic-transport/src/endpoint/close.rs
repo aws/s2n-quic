@@ -1,7 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::handle::Closer;
 use crate::{connection, endpoint::handle::CloseSender};
 use alloc::sync::Arc;
 use core::{
@@ -11,6 +10,7 @@ use core::{
 };
 
 #[must_use = "futures do nothing unless you `.await` or poll them"]
+#[derive(Clone, Debug)]
 pub struct Attempt {
     request_sent: bool,
     close_sender: CloseSender,
@@ -19,11 +19,11 @@ pub struct Attempt {
 
 impl Attempt {
     /// Creates a Close attempt
-    pub fn new(closer: Closer) -> Self {
+    pub fn new(close_sender: CloseSender, is_open: Arc<AtomicBool>) -> Self {
         Self {
             request_sent: false,
-            close_sender: closer.close_sender,
-            is_open: closer.is_open,
+            close_sender,
+            is_open,
         }
     }
 }

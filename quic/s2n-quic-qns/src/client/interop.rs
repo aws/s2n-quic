@@ -56,7 +56,7 @@ pub struct Interop {
 
 impl Interop {
     pub async fn run(&self) -> Result<()> {
-        let client = self.client()?;
+        let mut client = self.client()?;
 
         let download_dir = Arc::new(self.download_dir.clone());
         if self.requests.len() > 1 && download_dir.is_none() {

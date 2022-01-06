@@ -41,8 +41,20 @@ pub(crate) struct Handle {
 
 #[derive(Clone, Debug)]
 pub struct Closer {
-    pub(crate) close_sender: CloseSender,
-    pub(crate) is_open: Arc<AtomicBool>,
+    pub(crate) close_attempt: close::Attempt,
+}
+
+impl Closer {
+    pub(crate) fn poll_close(
+        &mut self,
+        context: &mut Context,
+    ) -> Poll<Result<(), connection::Error>> {
+        match Pin::new(&mut self.close_attempt).poll(context) {
+            Poll::Ready(Ok(_)) => Poll::Ready(Ok(())),
+            Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
+            Poll::Pending => Poll::Pending,
+        }
+    }
 }
 
 impl Handle {
@@ -62,10 +74,8 @@ impl Handle {
         let (close_sender, closer_receiver) = mpsc::channel(max_opening_connections);
 
         let is_open = Arc::new(AtomicBool::new(true));
-        let closer = Closer {
-            close_sender,
-            is_open: is_open.clone(),
-        };
+        let close_attempt = close::Attempt::new(close_sender, is_open.clone());
+        let closer = Closer { close_attempt };
         let handle = Self {
             acceptor: Acceptor {
                 acceptor: acceptor_receiver,
@@ -113,14 +123,8 @@ impl Acceptor {
         }
     }
 
-    pub fn poll_close(&self, context: &mut Context) -> Poll<Result<(), connection::Error>> {
-        let mut close_attempt = close::Attempt::new(self.closer.clone());
-
-        match Pin::new(&mut close_attempt).poll(context) {
-            Poll::Ready(Ok(_)) => Poll::Ready(Ok(())),
-            Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
-            Poll::Pending => Poll::Pending,
-        }
+    pub fn poll_close(&mut self, context: &mut Context) -> Poll<Result<(), connection::Error>> {
+        self.closer.poll_close(context)
     }
 }
 
@@ -136,13 +140,7 @@ impl Connector {
         connect::Attempt::new(&self.connector, connect)
     }
 
-    pub fn poll_close(&self, context: &mut Context) -> Poll<Result<(), connection::Error>> {
-        let mut close_attempt = close::Attempt::new(self.closer.clone());
-
-        match Pin::new(&mut close_attempt).poll(context) {
-            Poll::Ready(Ok(_)) => Poll::Ready(Ok(())),
-            Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
-            Poll::Pending => Poll::Pending,
-        }
+    pub fn poll_close(&mut self, context: &mut Context) -> Poll<Result<(), connection::Error>> {
+        self.closer.poll_close(context)
     }
 }
