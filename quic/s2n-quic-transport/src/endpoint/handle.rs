@@ -75,15 +75,13 @@ impl Handle {
 
         let is_open = Arc::new(AtomicBool::new(true));
         let close_attempt = close::Attempt::new(close_sender, is_open.clone());
-        let closer = Closer { close_attempt };
         let handle = Self {
             acceptor: Acceptor {
                 acceptor: acceptor_receiver,
-                closer: closer.clone(),
             },
             connector: Connector {
                 connector: connector_sender,
-                closer,
+                closer: Closer { close_attempt },
             },
         };
         (
@@ -99,7 +97,6 @@ impl Handle {
 #[derive(Debug)]
 pub struct Acceptor {
     acceptor: AcceptorReceiver,
-    closer: Closer,
 }
 
 impl Acceptor {
@@ -121,10 +118,6 @@ impl Acceptor {
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }
-    }
-
-    pub fn poll_close(&mut self, context: &mut Context) -> Poll<Result<(), connection::Error>> {
-        self.closer.poll_close(context)
     }
 }
 

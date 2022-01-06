@@ -118,34 +118,6 @@ impl Server {
         }
     }
 
-    /// Attempt to close the server endpoint
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// # use std::error::Error;
-    /// # use s2n_quic::Server;
-    /// #
-    /// # #[tokio::main]
-    /// # async fn main() -> Result<(), Box<dyn Error>> {
-    /// let mut server = Server::bind("127.0.0.1:443")?;
-    ///
-    /// match server.accept().await {
-    ///     Some(connection) => {
-    ///         println!("new connection: {:?}", connection.remote_addr());
-    ///     }
-    ///     None => println!("server closed"),
-    /// }
-    ///
-    /// server.close().await?;
-    /// #    Ok(())
-    /// # }
-    ///
-    /// ```
-    pub async fn close(&mut self) -> Result<(), connection::Error> {
-        futures::future::poll_fn(|cx| self.0.poll_close(cx)).await
-    }
-
     /// Returns the local address that this listener is bound to.
     ///
     /// This can be useful, for example, when binding to port `0` to figure out which
