@@ -756,7 +756,7 @@ mod tests {
             path::Id::test_id(),
             &mut random::testing::Generator(123),
             &mut publisher,
-            true
+            true,
         );
 
         // Expectation:

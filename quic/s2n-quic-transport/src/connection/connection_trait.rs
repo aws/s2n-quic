@@ -292,7 +292,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                                 },
                             })
                         },
-                    ); 
+                    );
                     break;
                 }
 
