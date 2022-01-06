@@ -5,7 +5,9 @@ use crate::{
     contexts::WriteContext,
     endpoint,
     path::{self, ecn::ValidationOutcome, path_event, Path},
-    recovery::{manager::persistent_congestion::PersistentCongestionCalculator, SentPacketInfo, SentPackets},
+    recovery::{
+        manager::persistent_congestion::PersistentCongestionCalculator, SentPacketInfo, SentPackets,
+    },
     transmission,
 };
 use core::{cmp::max, marker::PhantomData, time::Duration};
@@ -753,7 +755,8 @@ impl<Config: endpoint::Config> Manager<Config> {
                     context.on_packet_loss(&range, publisher);
                 }
 
-                persistent_congestion_calculator.on_lost_packet(unacked_packet_number, unacked_sent_info);
+                persistent_congestion_calculator
+                    .on_lost_packet(unacked_packet_number, unacked_sent_info);
             } else {
                 //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.1.2
                 //# If packets sent prior to the largest acknowledged packet cannot yet
