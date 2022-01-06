@@ -639,12 +639,6 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         self.connection_map.is_empty()
     }
 
-    /// Stop accepting new connection attempts
-    pub fn stop_accepting_connections(&mut self) {
-        self.accept_queue.close_channel();
-        self.connector_receiver.close();
-    }
-
     pub fn is_open(&self) -> bool {
         !self.connection_map.is_empty()
             || match <C::Config as endpoint::Config>::ENDPOINT_TYPE {

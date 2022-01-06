@@ -1,10 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    connection::{self, Connection},
-    provider::*,
-};
+use crate::{connection::Connection, provider::*};
 use core::{
     fmt,
     task::{Context, Poll},

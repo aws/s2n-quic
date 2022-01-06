@@ -64,7 +64,7 @@ impl Perf {
         }
 
         try_join_all(requests).await?;
-        client.close().await?;
+        client.wait_finish().await?;
 
         return Ok(());
 

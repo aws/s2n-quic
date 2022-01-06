@@ -107,7 +107,14 @@ impl Client {
         ConnectionAttempt(attempt)
     }
 
-    /// Attempt to close the client endpoint
+    /// Wait for the client endpoint to finish handling all outstanding connections
+    ///
+    /// Notifies the endpoint of application interest in closing the endpoint. The
+    /// call waits for **all** outstanding connections to finish before returning.
+    ///
+    /// Note: The endpoint will continue to accept new connection attempts. If there
+    /// are other client handles that have spawned connections, then this call might
+    /// never return.
     ///
     /// # Examples
     ///
@@ -117,7 +124,7 @@ impl Client {
     /// use std::{net::SocketAddr, path::Path};
     ///
     /// # async fn connect() -> Result<(), Box<dyn Error>> {
-    /// let client = Client::builder()
+    /// let mut client = Client::builder()
     ///     .with_tls(Path::new("./certs/cert.pem"))?
     ///     .with_io("0.0.0.0:0")?
     ///     .start()?;
@@ -125,12 +132,12 @@ impl Client {
     /// let addr: SocketAddr = "127.0.0.1:443".parse()?;
     /// let connection = client.connect(addr.into()).await?;
     ///
-    /// client.close().await?;
+    /// client.wait_finish().await?;
     /// #
     /// #    Ok(())
     /// # }
     /// ```
-    pub async fn close(&mut self) -> Result<(), connection::Error> {
+    pub async fn wait_finish(&mut self) -> Result<(), connection::Error> {
         futures::future::poll_fn(|cx| self.0.poll_close(cx)).await
     }
 
