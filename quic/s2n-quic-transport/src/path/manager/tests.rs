@@ -1231,6 +1231,7 @@ fn connection_migration_new_path_abandon_timer() {
         path::Id::test_id(),
         &mut random::testing::Generator(123),
         &mut publisher,
+        true,
     );
 
     // Expectation 2:
@@ -1242,6 +1243,7 @@ fn connection_migration_new_path_abandon_timer() {
         path::Id::test_id(),
         &mut random::testing::Generator(123),
         &mut publisher,
+        true,
     );
     // Expectation 3:
     assert!(!manager[second_path_id].is_challenge_pending());

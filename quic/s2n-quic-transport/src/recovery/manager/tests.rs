@@ -2975,6 +2975,10 @@ impl<'a> recovery::Context<Config> for MockContext<'a> {
         self.path_id
     }
 
+    fn is_path_active(&self) -> bool {
+        self.path_manager.is_path_active(self.path_id)
+    }
+
     fn validate_packet_ack(
         &mut self,
         _datagram: &DatagramInfo,

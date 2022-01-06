@@ -544,7 +544,7 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
     }
 
     fn is_path_active(&self) -> bool {
-        self.path_manager.active_path_id() == self.path_id
+        self.path_manager.is_path_active(self.path_id)
     }
 
     fn validate_packet_ack(
