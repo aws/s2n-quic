@@ -865,7 +865,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         // Remove the lost packets and account for the bytes on the proper congestion controller
         for (packet_number, sent_info) in sent_packets_to_remove {
             let path = context.path_mut_by_id(sent_info.path_id);
-            
+
             self.sent_packets.remove(packet_number);
 
             //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
@@ -878,6 +878,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 // Check that the packet was sent on this path
                 && sent_info.path_id == current_path_id;
 
+            let mut is_mtu_probe = false;
             if sent_info.sent_bytes as usize > path.mtu_controller.mtu() {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.4
                 //# Loss of a QUIC packet that is carried in a PMTU probe is therefore not a
@@ -902,18 +903,15 @@ impl<Config: endpoint::Config> Manager<Config> {
                 is_congestion_event = true;
             }
 
-            let current_path = context.path();
             publisher.on_packet_lost(event::builder::PacketLost {
                 packet_header: event::builder::PacketHeader::new(
                     packet_number,
                     publisher.quic_version(),
                 ),
-                path: path_event!(current_path, current_path_id, is_current_path_active),
+                path: path_event!(path, current_path_id, is_current_path_active),
                 bytes_lost: sent_info.sent_bytes,
                 is_mtu_probe,
             });
-
-            let path = context.path_mut_by_id(sent_info.path_id);
 
             // Notify the MTU controller of packet loss even if it wasn't a probe since it uses
             // that information for blackhole detection.
@@ -929,7 +927,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 sent_info.time_sent,
                 sent_info.ecn,
                 now,
-                path_event!(current_path, current_path_id, is_current_path_active),
+                path_event!(path, current_path_id, is_current_path_active),
                 publisher,
             );
 
@@ -942,9 +940,9 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
 
         if is_congestion_event {
-            let current_path = context.path();
+            let path = context.path();
             publisher.on_congestion(event::builder::Congestion {
-                path: path_event!(current_path, current_path_id, is_current_path_active),
+                path: path_event!(path, current_path_id, is_current_path_active),
                 source: CongestionSource::PacketLoss,
             })
         }
