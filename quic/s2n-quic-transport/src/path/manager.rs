@@ -711,7 +711,13 @@ impl<Config: endpoint::Config> Manager<Config> {
         let active_path_id = self.active_path_id();
         for (id, path) in self.paths.iter_mut().enumerate() {
             let is_active = active_path_id == Id(id as u8);
-            path.on_timeout(timestamp, Id(id as u8), random_generator, publisher, is_active);
+            path.on_timeout(
+                timestamp,
+                Id(id as u8),
+                random_generator,
+                publisher,
+                is_active,
+            );
         }
 
         if self.active_path().failed_validation() {

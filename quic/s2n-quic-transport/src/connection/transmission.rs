@@ -258,7 +258,10 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                     //# Handshake packet
 
                     if Config::ENDPOINT_TYPE.is_client() {
-                        let is_active = self.context.path_manager.is_path_active(self.context.path_id);
+                        let is_active = self
+                            .context
+                            .path_manager
+                            .is_path_active(self.context.path_id);
                         let path = &mut self.context.path_manager[self.context.path_id];
                         space_manager.discard_initial(
                             path,
@@ -292,9 +295,17 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
             //# An endpoint MUST discard its handshake keys when the TLS handshake is
             //# confirmed (Section 4.1.2).
             if space_manager.is_handshake_confirmed() {
-                let is_active = self.context.path_manager.is_path_active(self.context.path_id);
+                let is_active = self
+                    .context
+                    .path_manager
+                    .is_path_active(self.context.path_id);
                 let path = &mut self.context.path_manager[self.context.path_id];
-                space_manager.discard_handshake(path, self.context.path_id, self.context.publisher, is_active);
+                space_manager.discard_handshake(
+                    path,
+                    self.context.path_id,
+                    self.context.publisher,
+                    is_active,
+                );
             }
 
             encoder

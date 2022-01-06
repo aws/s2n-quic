@@ -859,7 +859,7 @@ impl<Config: endpoint::Config> Manager<Config> {
     ) {
         let current_path_id = context.path_id();
         let is_current_path_active = context.is_path_active();
-        
+
         let mut is_congestion_event = false;
 
         // Remove the lost packets and account for the bytes on the proper congestion controller
