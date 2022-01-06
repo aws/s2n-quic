@@ -272,6 +272,7 @@ impl PeerIdRegistry {
             status: PeerIdStatus::InUsePendingNewConnectionId,
         });
     }
+
     /// Used to register the initial peer stateless reset token that applies to the connection ID
     /// the server selected during the handshake.
     ///
