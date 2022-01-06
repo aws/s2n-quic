@@ -684,12 +684,12 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         // TODO: Investigate a more efficient mechanism for managing sent_packets
         //       See https://github.com/awslabs/s2n-quic/issues/69
-        let (max_persistent_congestion_period, sent_packets_to_remove) =
+        let (persistent_congestion_duration, sent_packets_to_remove) =
             self.detect_lost_packets(now, context, publisher);
 
         self.remove_lost_packets(
             now,
-            max_persistent_congestion_period,
+            persistent_congestion_duration,
             sent_packets_to_remove,
             context,
             publisher,
@@ -784,7 +784,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
 
         (
-            persistent_congestion_calculator.persistent_congestion_period(),
+            persistent_congestion_calculator.persistent_congestion_duration(),
             sent_packets_to_remove,
         )
     }
@@ -792,7 +792,7 @@ impl<Config: endpoint::Config> Manager<Config> {
     fn remove_lost_packets<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         now: Timestamp,
-        max_persistent_congestion_period: Duration,
+        persistent_congestion_duration: Duration,
         sent_packets_to_remove: Vec<PacketDetails>,
         context: &mut Ctx,
         publisher: &mut Pub,
@@ -811,7 +811,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             //# number spaces or an implementation that cannot compare send times
             //# across packet number spaces MAY use state for just the packet number
             //# space that was acknowledged.
-            let persistent_congestion = max_persistent_congestion_period
+            let persistent_congestion = persistent_congestion_duration
                 > path.rtt_estimator.persistent_congestion_threshold()
                 // Check that the packet was sent on this path
                 && sent_info.path_id == current_path_id;

@@ -1471,7 +1471,7 @@ fn detect_and_remove_lost_packets() {
 // Expectation:
 // - ensure max_persistent_congestion_period is 2 corresponding to range 7-9
 // - ensure path_id is 1
-fn detect_lost_packets_persistent_cogestion_path_aware() {
+fn detect_lost_packets_persistent_congestion_path_aware() {
     // Setup:
     let space = PacketNumberSpace::ApplicationData;
     let mut publisher = Publisher::snapshot();
@@ -1593,7 +1593,7 @@ fn detect_lost_packets_persistent_cogestion_path_aware() {
 // - ensure path 1 first_rtt_sample is NOT cleared
 // - ensure path 2 is persistent_congestion
 // - ensure path 2 first_rtt_sample is cleared
-fn remove_lost_packets_persistent_cogestion_path_aware() {
+fn remove_lost_packets_persistent_congestion_path_aware() {
     // Setup:
     let space = PacketNumberSpace::ApplicationData;
     let mut publisher = Publisher::snapshot();
@@ -1833,7 +1833,7 @@ fn persistent_congestion() {
         space,
     );
 
-    let outcome = transmission::Outcome {
+    let mut outcome = transmission::Outcome {
         ack_elicitation: AckElicitation::Eliciting,
         is_congestion_controlled: true,
         bytes_sent: 1,
@@ -1871,6 +1871,9 @@ fn persistent_congestion() {
     );
 
     // t=2-6: Send packets #3 - #7 (app data)
+    // These packets are NonEliciting, which are allowed to be part of a Persistent Congestion Period
+    // as long as they are not the start or end of the period.
+    outcome.ack_elicitation = AckElicitation::NonEliciting;
     for t in 2..=6 {
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(t + 1)),
@@ -1881,6 +1884,7 @@ fn persistent_congestion() {
             &mut publisher,
         );
     }
+    outcome.ack_elicitation = AckElicitation::Eliciting;
 
     // t=8: Send packet #8 (PTO 1)
     manager.on_packet_sent(

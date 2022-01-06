@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{path, recovery::SentPacketInfo};
+use core::time::Duration;
 use s2n_quic_core::{packet::number::PacketNumber, time::Timestamp};
-use std::time::Duration;
 
 pub(crate) struct PersistentCongestionCalculator {
-    start: Option<Timestamp>,
-    end: Option<Timestamp>,
-    prev_lost_packet: Option<PacketNumber>,
-    persistent_congestion_period: Duration,
+    current_period: Option<PersistentCongestionPeriod>,
+    max_duration: Duration,
     first_rtt_sample: Option<Timestamp>,
     path_id: path::Id,
 }
@@ -18,13 +16,16 @@ impl PersistentCongestionCalculator {
     /// Create a new PersistentCongestionCalculator for the given `path_id`
     pub fn new(first_rtt_sample: Option<Timestamp>, path_id: path::Id) -> Self {
         Self {
-            start: None,
-            end: None,
-            prev_lost_packet: None,
-            persistent_congestion_period: Duration::ZERO,
+            current_period: None,
+            max_duration: Duration::ZERO,
             first_rtt_sample,
             path_id,
         }
+    }
+
+    /// Gets the longest persistent congestion period calculated
+    pub fn persistent_congestion_duration(&self) -> Duration {
+        self.max_duration
     }
 
     /// Called for each packet detected as lost
@@ -56,9 +57,7 @@ impl PersistentCongestionCalculator {
             return;
         }
 
-        let is_ack_eliciting = packet_info.ack_elicitation.is_ack_eliciting();
-
-        if let (Some(start), Some(ref mut end)) = (self.start, self.end) {
+        if let Some(current_period) = &mut self.current_period {
             // We are currently tracking a persistent congestion period
 
             //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
@@ -69,48 +68,72 @@ impl PersistentCongestionCalculator {
             //#     *  across all packet number spaces, none of the packets sent between
             //#        the send times of these two packets are acknowledged;
 
-            // Check if this lost packet is contiguous with the previous lost packet.
-            let is_contiguous = self
-                .prev_lost_packet
-                .map_or(false, |pn| packet_number.checked_distance(pn) == Some(1));
+            // Check if this lost packet is contiguous with the current period.
+            if current_period.is_contiguous(packet_number) {
+                // Extend the end of the current persistent congestion period
+                current_period.extend(packet_number, packet_info);
 
-            if is_contiguous {
-                if is_ack_eliciting {
-                    // Extend the end of the current persistent congestion period
-
-                    //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
-                    //# These two packets MUST be ack-eliciting, since a receiver is required
-                    //# to acknowledge only ack-eliciting packets within its maximum
-                    //# acknowledgment delay; see Section 13.2 of [QUIC-TRANSPORT].
-                    *end = packet_info.time_sent;
-                }
-
-                let persistent_congestion_period = *end - start;
-                self.persistent_congestion_period = self
-                    .persistent_congestion_period
-                    .max(persistent_congestion_period);
+                self.max_duration = self.max_duration.max(current_period.duration());
             } else {
                 // The current persistent congestion period has ended
-                self.start = None;
-                self.end = None;
+                self.current_period = None
             }
         }
 
-        if self.start.is_none() && is_ack_eliciting {
+        if self.current_period.is_none() && packet_info.ack_elicitation.is_ack_eliciting() {
             // Start tracking a new persistent congestion period
 
             //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
             //# These two packets MUST be ack-eliciting, since a receiver is required
             //# to acknowledge only ack-eliciting packets within its maximum
             //# acknowledgment delay; see Section 13.2 of [QUIC-TRANSPORT].
-            self.start = Some(packet_info.time_sent);
-            self.end = Some(packet_info.time_sent);
+            self.current_period = Some(PersistentCongestionPeriod::new(
+                packet_info.time_sent,
+                packet_number,
+            ));
         }
-        self.prev_lost_packet = Some(packet_number);
+    }
+}
+
+struct PersistentCongestionPeriod {
+    start: Timestamp,
+    end: Timestamp,
+    prev_packet: PacketNumber,
+}
+
+impl PersistentCongestionPeriod {
+    /// Creates a new `PersistentCongestionPeriod`
+    fn new(start: Timestamp, packet_number: PacketNumber) -> Self {
+        Self {
+            start,
+            end: start,
+            prev_packet: packet_number,
+        }
     }
 
-    /// Gets the longest persistent congestion period calculated
-    pub fn persistent_congestion_period(&self) -> Duration {
-        self.persistent_congestion_period
+    /// True if the given packet number is 1 more than the last packet in this period
+    fn is_contiguous(&self, packet_number: PacketNumber) -> bool {
+        packet_number.checked_distance(self.prev_packet) == Some(1)
+    }
+
+    /// Extends this persistent congestion period
+    fn extend(&mut self, packet_number: PacketNumber, packet_info: &SentPacketInfo) {
+        debug_assert!(self.is_contiguous(packet_number));
+        debug_assert!(packet_info.time_sent >= self.start);
+
+        if packet_info.ack_elicitation.is_ack_eliciting() {
+            //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
+            //# These two packets MUST be ack-eliciting, since a receiver is required
+            //# to acknowledge only ack-eliciting packets within its maximum
+            //# acknowledgment delay; see Section 13.2 of [QUIC-TRANSPORT].
+            self.end = packet_info.time_sent;
+        }
+
+        self.prev_packet = packet_number;
+    }
+
+    /// Gets the duration of this persistent congestion period
+    fn duration(&self) -> Duration {
+        self.end - self.start
     }
 }
