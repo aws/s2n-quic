@@ -62,6 +62,14 @@ cargo bolero test varint -p s2n-quic-core -s NONE -T 30sec
 cargo bolero test "path::manager::fuzz_target::cm_model_test" -p s2n-quic-transport -T 30sec --toolchain nightly-2021-09-12 -s NONE
 ```
 
+## Running basic tests
+
+This script includes unit tests, rustfmt, clippy, and snapshot tests. You'll need `cargo-insta` installed for the snapshot tests.
+
+```bash
+./scripts/local_test
+```
+
 ### Testing all the things
 
 You can verify most tests run in the CI locally:

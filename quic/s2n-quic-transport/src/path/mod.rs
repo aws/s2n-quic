@@ -79,7 +79,7 @@ pub struct Path<Config: endpoint::Config> {
     activated: bool,
 
     /// True if the path is currently active
-    is_active: bool,
+    pub is_active: bool,
 }
 
 impl<Config: endpoint::Config> Clone for Path<Config> {

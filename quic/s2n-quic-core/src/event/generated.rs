@@ -33,6 +33,7 @@ pub mod api {
         pub remote_addr: SocketAddress<'a>,
         pub remote_cid: ConnectionId<'a>,
         pub id: u64,
+        pub is_active: bool,
     }
     #[non_exhaustive]
     #[derive(Clone)]
@@ -1551,6 +1552,7 @@ pub mod builder {
         pub remote_addr: SocketAddress<'a>,
         pub remote_cid: ConnectionId<'a>,
         pub id: u64,
+        pub is_active: bool,
     }
     impl<'a> IntoEvent<api::Path<'a>> for Path<'a> {
         #[inline]
@@ -1561,6 +1563,7 @@ pub mod builder {
                 remote_addr,
                 remote_cid,
                 id,
+                is_active,
             } = self;
             api::Path {
                 local_addr: local_addr.into_event(),
@@ -1568,6 +1571,7 @@ pub mod builder {
                 remote_addr: remote_addr.into_event(),
                 remote_cid: remote_cid.into_event(),
                 id: id.into_event(),
+                is_active: is_active.into_event(),
             }
         }
     }

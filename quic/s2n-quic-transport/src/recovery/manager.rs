@@ -86,6 +86,7 @@ macro_rules! recovery_event {
                 remote_addr: $path.remote_address().into_event(),
                 remote_cid: $path.peer_connection_id.into_event(),
                 id: $path_id as u64,
+                is_active: $path.is_active,
             },
             min_rtt: $path.rtt_estimator.min_rtt(),
             smoothed_rtt: $path.rtt_estimator.smoothed_rtt(),

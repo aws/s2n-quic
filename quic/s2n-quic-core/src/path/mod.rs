@@ -255,6 +255,7 @@ pub mod testing {
                 },
                 remote_cid: connection::PeerId::TEST_ID.into_event(),
                 id: 0,
+                is_active: false,
             }
         }
     }

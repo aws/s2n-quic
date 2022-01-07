@@ -137,6 +137,17 @@ impl<Config: endpoint::Config> Manager<Config> {
         let path = self.active_path_mut();
         path.ecn_controller
             .restart(path_event!(path, new_path_id), publisher);
+<<<<<<< HEAD
+=======
+
+        let prev_path = &self[prev_path_id];
+        let new_path = &self[new_path_id];
+        publisher.on_active_path_updated(event::builder::ActivePathUpdated {
+            previous: path_event!(prev_path, prev_path_id),
+            active: path_event!(new_path, new_path_id),
+        });
+
+>>>>>>> 55cdcfb (Applying PR feedback)
         Ok(())
     }
 
@@ -334,6 +345,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 remote_addr: active_remote_addr.into_event(),
                 remote_cid: self.active_path().peer_connection_id.into_event(),
                 id: self.active_path_id().into_event(),
+                is_active: true,
             }
             .into_event(),
             packet: migration::PacketInfoBuilder {
@@ -734,8 +746,19 @@ impl<Config: endpoint::Config> Manager<Config> {
                     //# address when validation of a new peer address fails.
                     let prev_path_id = Id(self.active);
                     let new_path_id = Id(last_known_active_validated_path);
+<<<<<<< HEAD
                     self.activate_path(publisher, prev_path_id, new_path_id);
+=======
+                    self.sync_active_values(prev_path_id, new_path_id);
+>>>>>>> 6f88640 (Added active field to Path)
                     self.last_known_active_validated_path = None;
+
+                    let prev_path = &self[prev_path_id];
+                    let new_path = &self[new_path_id];
+                    publisher.on_active_path_updated(event::builder::ActivePathUpdated {
+                        previous: path_event!(prev_path, prev_path_id),
+                        active: path_event!(new_path, new_path_id),
+                    });
                 }
                 None => {
                     //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
@@ -906,6 +929,7 @@ macro_rules! path_event {
             remote_addr: $path.remote_address().into_event(),
             remote_cid: $path.peer_connection_id.into_event(),
             id: $path_id.into_event(),
+            is_active: $path.is_active,
         }
     }};
 }
