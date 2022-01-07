@@ -3,8 +3,7 @@
 
 use crate::{
     connection::{self, limits::Limits},
-    endpoint,
-    path::Path,
+    endpoint, path,
     space::{
         rx_packet_numbers::AckManager, ApplicationSpace, HandshakeSpace, HandshakeStatus,
         InitialSpace,
@@ -35,7 +34,7 @@ pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPu
     pub now: Timestamp,
     pub initial_cid: &'a InitialId,
     pub retry_cid: Option<&'a PeerId>,
-    pub path: &'a Path<Config>,
+    pub path_manager: &'a mut path::Manager<Config>,
     pub initial: &'a mut Option<Box<InitialSpace<Config>>>,
     pub handshake: &'a mut Option<Box<HandshakeSpace<Config>>>,
     pub application: &'a mut Option<Box<ApplicationSpace<Config>>>,
@@ -78,7 +77,10 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         //# TRANSPORT_PARAMETER_ERROR or PROTOCOL_VIOLATION:
         self.validate_initial_source_connection_id(
             &peer_parameters.initial_source_connection_id,
-            self.path.peer_connection_id.as_bytes(),
+            self.path_manager
+                .active_path()
+                .peer_connection_id
+                .as_bytes(),
         )?;
 
         match (self.retry_cid, peer_parameters.retry_source_connection_id) {
@@ -141,6 +143,19 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 .with_reason("missing original_destination_connection_id"));
         }
 
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
+        //# Servers can also issue a stateless_reset_token transport parameter during the
+        //# handshake that applies to the connection ID that it selected during
+        //# the handshake.  These exchanges are protected by encryption, so only
+        //# client and server know their value.  Note that clients cannot use the
+        //# stateless_reset_token transport parameter because their transport
+        //# parameters do not have confidentiality protection.
+        if let Some(stateless_reset_token) = peer_parameters.stateless_reset_token {
+            self.path_manager
+                .peer_id_registry
+                .register_initial_stateless_reset_token(stateless_reset_token);
+        }
+
         // Load the peer's transport parameters into the connection's limits
         self.limits.load_peer(&peer_parameters);
 
@@ -177,7 +192,10 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         //# TRANSPORT_PARAMETER_ERROR or PROTOCOL_VIOLATION:
         self.validate_initial_source_connection_id(
             &peer_parameters.initial_source_connection_id,
-            self.path.peer_connection_id.as_bytes(),
+            self.path_manager
+                .active_path()
+                .peer_connection_id
+                .as_bytes(),
         )?;
 
         // Load the peer's transport parameters into the connection's limits
@@ -375,7 +393,11 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.2
                 //# the TLS handshake is considered confirmed at the
                 //# server when the handshake completes.
-                application.on_handshake_confirmed(self.path, self.local_id_registry, self.now);
+                application.on_handshake_confirmed(
+                    self.path_manager.active_path(),
+                    self.local_id_registry,
+                    self.now,
+                );
             }
             Ok(())
         } else {

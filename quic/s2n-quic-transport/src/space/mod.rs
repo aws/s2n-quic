@@ -178,7 +178,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
     pub fn poll_crypto<Pub: event::ConnectionPublisher>(
         &mut self,
-        path: &Path<Config>,
+        path_manager: &mut path::Manager<Config>,
         local_id_registry: &mut connection::LocalIdRegistry,
         limits: &mut Limits,
         now: Timestamp,
@@ -193,7 +193,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 handshake: &mut self.handshake,
                 application: &mut self.application,
                 zero_rtt_crypto: &mut self.zero_rtt_crypto,
-                path,
+                path_manager,
                 handshake_status: &mut self.handshake_status,
                 local_id_registry,
                 limits,

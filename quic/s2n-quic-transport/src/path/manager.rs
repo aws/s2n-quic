@@ -44,7 +44,7 @@ pub struct Manager<Config: endpoint::Config> {
     paths: SmallVec<[Path<Config>; MAX_ALLOWED_PATHS]>,
 
     /// Registry of `connection::PeerId`s
-    peer_id_registry: PeerIdRegistry,
+    pub(crate) peer_id_registry: PeerIdRegistry,
 
     /// Index to the active path
     active: u8,
@@ -600,7 +600,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             if let Some(source_connection_id) = source_connection_id {
                 self[path_id].peer_connection_id = source_connection_id;
                 self.peer_id_registry
-                    .register_initial_connection_id(source_connection_id, None);
+                    .register_initial_connection_id(source_connection_id);
             }
         }
 

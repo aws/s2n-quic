@@ -237,11 +237,10 @@ fn retire_connection_id_when_retire_prior_to_increases() {
     let id_1 = id(b"id01");
     let mut random_generator = random::testing::Generator(123);
     let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
-    let mut reg = mapper.create_server_peer_id_registry(
-        InternalConnectionIdGenerator::new().generate_id(),
-        id_1,
-        Some(TEST_TOKEN_1),
-    );
+    let mut reg =
+        mapper.create_client_peer_id_registry(InternalConnectionIdGenerator::new().generate_id());
+    reg.register_initial_connection_id(id_1);
+    reg.register_initial_stateless_reset_token(TEST_TOKEN_1);
 
     let id_2 = id(b"id02");
     assert!(reg.on_new_connection_id(&id_2, 1, 1, &TEST_TOKEN_2).is_ok());
@@ -369,11 +368,8 @@ pub fn initial_id_is_active() {
     let id_1 = id(b"id01");
     let mut random_generator = random::testing::Generator(123);
     let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
-    let reg = mapper.create_server_peer_id_registry(
-        InternalConnectionIdGenerator::new().generate_id(),
-        id_1,
-        Some(TEST_TOKEN_1),
-    );
+    let reg = mapper
+        .create_server_peer_id_registry(InternalConnectionIdGenerator::new().generate_id(), id_1);
 
     assert!(reg.is_active(&id_1));
 }
@@ -383,11 +379,8 @@ pub fn retired_id_is_not_active() {
     let id_1 = id(b"id01");
     let mut random_generator = random::testing::Generator(123);
     let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
-    let mut reg = mapper.create_server_peer_id_registry(
-        InternalConnectionIdGenerator::new().generate_id(),
-        id_1,
-        Some(TEST_TOKEN_1),
-    );
+    let mut reg = mapper
+        .create_server_peer_id_registry(InternalConnectionIdGenerator::new().generate_id(), id_1);
 
     assert!(reg.is_active(&id_1));
     reg.registered_ids[0].status = PendingRetirement;
@@ -399,11 +392,8 @@ pub fn unknown_id_is_not_active() {
     let id_1 = id(b"id01");
     let mut random_generator = random::testing::Generator(123);
     let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
-    let reg = mapper.create_server_peer_id_registry(
-        InternalConnectionIdGenerator::new().generate_id(),
-        id_1,
-        Some(TEST_TOKEN_1),
-    );
+    let reg = mapper
+        .create_server_peer_id_registry(InternalConnectionIdGenerator::new().generate_id(), id_1);
 
     assert!(reg.is_active(&id_1));
     let id_unknown = id(b"unknown");
@@ -415,11 +405,8 @@ pub fn consume_new_id_should_return_id() {
     let id_1 = id(b"id01");
     let mut random_generator = random::testing::Generator(123);
     let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
-    let mut reg = mapper.create_server_peer_id_registry(
-        InternalConnectionIdGenerator::new().generate_id(),
-        id_1,
-        Some(TEST_TOKEN_1),
-    );
+    let mut reg = mapper
+        .create_server_peer_id_registry(InternalConnectionIdGenerator::new().generate_id(), id_1);
 
     let id_2 = id(b"id02");
     assert!(reg.on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_2).is_ok());
@@ -447,11 +434,8 @@ pub fn consume_new_id_should_error_if_no_ids_are_available() {
     let id_1 = id(b"id01");
     let mut random_generator = random::testing::Generator(123);
     let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
-    let mut reg = mapper.create_server_peer_id_registry(
-        InternalConnectionIdGenerator::new().generate_id(),
-        id_1,
-        Some(TEST_TOKEN_1),
-    );
+    let mut reg = mapper
+        .create_server_peer_id_registry(InternalConnectionIdGenerator::new().generate_id(), id_1);
 
     assert_eq!(None, reg.consume_new_id_inner());
 }

@@ -19,7 +19,6 @@ use s2n_quic_core::{
     path::{migration, RemoteAddress},
     random::{self, Generator},
     recovery::RttEstimator,
-    stateless_reset,
     stateless_reset::token::testing::*,
     time::{Clock, NoopClock},
 };
@@ -31,16 +30,12 @@ type ClientManager = super::Manager<Client>;
 type ClientPath = super::Path<Client>;
 
 // Helper function to easily create a PathManager as a Server
-fn manager_server(
-    first_path: ServerPath,
-    stateless_reset_token: Option<stateless_reset::Token>,
-) -> ServerManager {
+fn manager_server(first_path: ServerPath) -> ServerManager {
     let mut random_generator = random::testing::Generator(123);
     let peer_id_registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
         .create_server_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             first_path.peer_connection_id,
-            stateless_reset_token,
         );
     ServerManager::new(first_path, peer_id_registry)
 }
@@ -80,7 +75,7 @@ fn get_path_by_address_test() {
         true,
     );
 
-    let mut manager = manager_server(first_path.clone(), None);
+    let mut manager = manager_server(first_path.clone());
     manager.paths.push(second_path);
     assert_eq!(manager.paths.len(), 2);
 
@@ -130,7 +125,7 @@ fn test_invalid_path_fallback() {
     );
     second_path.set_challenge(challenge);
 
-    let mut manager = manager_server(first_path, None);
+    let mut manager = manager_server(first_path);
     manager.paths.push(second_path);
     assert_eq!(manager.last_known_active_validated_path, None);
     assert_eq!(manager.active, 0);
@@ -498,7 +493,7 @@ fn silently_return_when_there_is_no_valid_path() {
         true,
     );
     first_path.set_challenge(challenge);
-    let mut manager = manager_server(first_path, None);
+    let mut manager = manager_server(first_path);
     let first_path_id = Id(0);
 
     assert!(!manager[first_path_id].is_validated());
@@ -698,7 +693,7 @@ fn test_adding_new_path() {
         DEFAULT_MAX_MTU,
         true,
     );
-    let mut manager = manager_server(first_path, None);
+    let mut manager = manager_server(first_path);
 
     // verify we have one path
     assert!(manager.path(&new_addr).is_some());
@@ -760,7 +755,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
         DEFAULT_MAX_MTU,
         true,
     );
-    let mut manager = manager_server(first_path, None);
+    let mut manager = manager_server(first_path);
 
     // verify we have one path
     let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
@@ -914,7 +909,7 @@ fn limit_number_of_connection_migrations() {
         DEFAULT_MAX_MTU,
         true,
     );
-    let mut manager = manager_server(first_path, None);
+    let mut manager = manager_server(first_path);
     let mut total_paths = 1;
 
     for i in 1..std::u8::MAX {
@@ -973,7 +968,7 @@ fn connection_migration_challenge_behavior() {
         DEFAULT_MAX_MTU,
         true,
     );
-    let mut manager = manager_server(first_path, None);
+    let mut manager = manager_server(first_path);
 
     let new_addr: SocketAddr = "127.0.0.2:8001".parse().unwrap();
     let new_addr = SocketAddress::from(new_addr);
@@ -1067,7 +1062,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
         DEFAULT_MAX_MTU,
         true,
     );
-    let mut manager = manager_server(first_path, None);
+    let mut manager = manager_server(first_path);
 
     let new_addr: SocketAddr = "127.0.0.2:8001".parse().unwrap();
     let new_addr = SocketAddress::from(new_addr);
@@ -1146,7 +1141,7 @@ fn connection_migration_new_path_abandon_timer() {
         DEFAULT_MAX_MTU,
         true,
     );
-    let mut manager = manager_server(first_path, None);
+    let mut manager = manager_server(first_path);
 
     let new_addr: SocketAddr = "127.0.0.2:8001".parse().unwrap();
     let new_addr = SocketAddress::from(new_addr);
@@ -1267,7 +1262,7 @@ fn stop_using_a_retired_connection_id() {
         DEFAULT_MAX_MTU,
         true,
     );
-    let mut manager = manager_server(first_path, None);
+    let mut manager = manager_server(first_path);
 
     let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
     assert!(manager
@@ -1427,7 +1422,7 @@ fn temporary_until_authenticated() {
         DEFAULT_MAX_MTU,
         true,
     );
-    let mut manager = manager_server(first_path, None);
+    let mut manager = manager_server(first_path);
 
     let second_addr: SocketAddr = "127.0.0.2:8001".parse().unwrap();
     let second_addr = SocketAddress::from(second_addr);
@@ -1567,7 +1562,6 @@ fn last_known_validated_path_should_update_on_path_response() {
             .create_server_peer_id_registry(
                 InternalConnectionIdGenerator::new().generate_id(),
                 zero_path.peer_connection_id,
-                None,
             );
     assert!(peer_id_registry
         .on_new_connection_id(&first_conn_id, 1, 0, &TEST_TOKEN_1)
@@ -1732,7 +1726,6 @@ pub fn helper_manager_with_paths_base(
             .create_server_peer_id_registry(
                 InternalConnectionIdGenerator::new().generate_id(),
                 zero_path.peer_connection_id,
-                None,
             );
     assert!(peer_id_registry
         .on_new_connection_id(&first_conn_id, 1, 0, &TEST_TOKEN_1)

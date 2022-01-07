@@ -258,11 +258,7 @@ impl PeerIdRegistry {
     /// PeerIdRegistry, since the ClientHello includes a SourceConnectionId.
     /// A Client endpoint must however wait for the initial Server response
     /// to populate this value.
-    pub(crate) fn register_initial_connection_id(
-        &mut self,
-        peer_id: connection::PeerId,
-        stateless_reset_token: Option<stateless_reset::Token>,
-    ) {
+    pub(crate) fn register_initial_connection_id(&mut self, peer_id: connection::PeerId) {
         debug_assert!(self.is_empty());
 
         self.registered_ids.push(PeerIdInfo {
@@ -270,18 +266,34 @@ impl PeerIdRegistry {
             //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.1
             //# The sequence number of the initial connection ID is 0.
             sequence_number: 0,
-            stateless_reset_token,
+            stateless_reset_token: None,
             // Start the initial PeerId in ActivePendingNewConnectionId so the ID used
             // during the handshake is rotated as soon as the peer sends a new connection ID
             status: PeerIdStatus::InUsePendingNewConnectionId,
         });
+    }
 
-        if let Some(token) = stateless_reset_token {
-            self.state
-                .borrow_mut()
-                .stateless_reset_map
-                .insert(token, self.internal_id);
+    /// Used to register the initial peer stateless reset token that applies to the connection ID
+    /// the server selected during the handshake.
+    ///
+    /// This method is only used on the client to register a stateless token from a peer server,
+    /// as clients cannot transmit a stateless reset token in their transport parameters due to
+    /// lack of confidentiality protection.
+    pub(crate) fn register_initial_stateless_reset_token(
+        &mut self,
+        stateless_reset_token: stateless_reset::Token,
+    ) {
+        debug_assert!(!self.is_empty());
+
+        if let Some(peer_id_info) = self.registered_ids.get_mut(0) {
+            debug_assert_eq!(None, peer_id_info.stateless_reset_token);
+            peer_id_info.stateless_reset_token = Some(stateless_reset_token);
         }
+
+        self.state
+            .borrow_mut()
+            .stateless_reset_map
+            .insert(stateless_reset_token, self.internal_id);
     }
 
     /// Check if registered_ids is empty.
@@ -627,11 +639,12 @@ pub mod testing {
     ) -> PeerIdRegistry {
         let mut random_generator = random::testing::Generator(123);
 
-        ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
-            .create_server_peer_id_registry(
-                InternalConnectionIdGenerator::new().generate_id(),
-                initial_id,
-                stateless_reset_token,
-            )
+        let mut registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
+            .create_client_peer_id_registry(InternalConnectionIdGenerator::new().generate_id());
+        registry.register_initial_connection_id(initial_id);
+        if let Some(token) = stateless_reset_token {
+            registry.register_initial_stateless_reset_token(token);
+        }
+        registry
     }
 }
