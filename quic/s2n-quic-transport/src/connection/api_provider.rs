@@ -18,6 +18,7 @@ use s2n_quic_core::{
     inet::SocketAddress,
     stream::{ops, StreamId, StreamType},
 };
+use std::sync::atomic::AtomicUsize;
 
 /// A dynamically dispatched connection API
 pub(crate) type ConnectionApi = Arc<dyn ConnectionApiProvider>;
@@ -25,6 +26,8 @@ pub(crate) type ConnectionApi = Arc<dyn ConnectionApiProvider>;
 /// The trait for types which provide the public Connection and Stream API via
 /// dynamic dispatch
 pub(crate) trait ConnectionApiProvider: Sync + Send {
+    fn application_handle_count(&self) -> &AtomicUsize;
+
     fn poll_request(
         &self,
         stream_id: StreamId,

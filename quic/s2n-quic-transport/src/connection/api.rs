@@ -7,10 +7,10 @@ use crate::{
     connection::{self, ConnectionApi},
     stream::{ops, Stream, StreamError, StreamId},
 };
-use alloc::sync::Arc;
 use bytes::Bytes;
 use core::{
     fmt,
+    sync::atomic::Ordering,
     task::{Context, Poll},
 };
 use s2n_quic_core::{
@@ -22,7 +22,6 @@ use s2n_quic_core::{
 };
 
 /// A QUIC connection
-#[derive(Clone)]
 pub struct Connection {
     /// The inner connection API implementation
     ///
@@ -41,19 +40,43 @@ impl fmt::Debug for Connection {
 
 impl Drop for Connection {
     fn drop(&mut self) {
+        debug_assert!(
+            self.api.application_handle_count().load(Ordering::Acquire) > 0,
+            "application_handle_count underflowed"
+        );
+
         // If the connection wasn't closed before, close it now to make sure
         // all Streams terminate.
         //
-        // Only close the connection if we no longer have a connection inside the endpoint
-        // and application task. Otherwise, just drop the `api` which decrements the strong count.
-        if Arc::strong_count(&self.api) <= 2 {
-            self.api.close_connection(None);
+        // Only close the connection if this is the last application handle.
+        // Otherwise, just drop `api`, which decrements the strong count.
+        if self
+            .api
+            .application_handle_count()
+            .fetch_sub(1, Ordering::AcqRel)
+            == 1
+        {
+            self.api.close_connection(None)
+        }
+    }
+}
+
+impl Clone for Connection {
+    fn clone(&self) -> Self {
+        // increment the applicaiton handle count
+        self.api
+            .application_handle_count()
+            .fetch_add(1, Ordering::AcqRel);
+        Self {
+            api: self.api.clone(),
         }
     }
 }
 
 impl Connection {
     pub(crate) fn new(api: ConnectionApi) -> Self {
+        api.application_handle_count()
+            .fetch_add(1, Ordering::AcqRel);
         Self { api }
     }
 
