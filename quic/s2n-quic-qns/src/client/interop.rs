@@ -137,11 +137,15 @@ impl Interop {
             interop::write_request(tx_stream, &request).await?;
 
             if let Some(download_dir) = download_dir.as_ref() {
-                let mut abs_path = download_dir.to_path_buf();
-                abs_path.push(Path::new(request.trim_start_matches('/')));
-                let mut file = File::create(&abs_path).await?;
-                tokio::io::copy(&mut rx_stream, &mut file).await?;
-                file.flush().await?;
+                if download_dir == Path::new("/dev/null") {
+                    crate::perf::handle_receive_stream(rx_stream).await?;
+                } else {
+                    let mut abs_path = download_dir.to_path_buf();
+                    abs_path.push(Path::new(request.trim_start_matches('/')));
+                    let mut file = File::create(&abs_path).await?;
+                    tokio::io::copy(&mut rx_stream, &mut file).await?;
+                    file.flush().await?;
+                }
             } else {
                 let mut stdout = tokio::io::stdout();
                 tokio::io::copy(&mut rx_stream, &mut stdout).await?;
