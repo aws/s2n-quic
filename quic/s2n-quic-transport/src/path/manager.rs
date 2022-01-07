@@ -116,9 +116,6 @@ impl<Config: endpoint::Config> Manager<Config> {
         };
         self[new_path_id].peer_connection_id = peer_connection_id;
 
-        // Mark as activated
-        self[new_path_id].on_activated();
-
         if self.active_path().is_validated() {
             self.last_known_active_validated_path = Some(self.active);
         }
@@ -134,7 +131,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.set_challenge(self.active_path_id(), random_generator);
         }
 
-        self.sync_active_values(prev_path_id, new_path_id);
+        self.activate_path(prev_path_id, new_path_id);
 
         // Restart ECN validation to check that the path still supports ECN
         let path = self.active_path_mut();
@@ -169,7 +166,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         Id(self.active)
     }
 
-    pub fn sync_active_values(&mut self, prev_path_id: Id, new_path_id: Id) {
+    pub fn activate_path(&mut self, prev_path_id: Id, new_path_id: Id) {
         if cfg!(debug_assertions) {
             for (idx, path) in self.paths.iter().enumerate() {
                 assert_eq!(path.is_active, (self.active == idx as u8));
@@ -178,6 +175,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         self.active = new_path_id.as_u8();
         self[prev_path_id].is_active = false;
         self[new_path_id].is_active = true;
+        self[new_path_id].on_activated();
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3
@@ -728,7 +726,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     //# address when validation of a new peer address fails.
                     let prev_path_id = Id(self.active);
                     let new_path_id = Id(last_known_active_validated_path);
-                    self.sync_active_values(prev_path_id, new_path_id);
+                    self.activate_path(prev_path_id, new_path_id);
                     self.last_known_active_validated_path = None;
 
                     let prev_path = &self[prev_path_id];
