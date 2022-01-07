@@ -21,9 +21,10 @@ use s2n_quic::{
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 use structopt::StructOpt;
-use tokio::spawn;
+use tokio::{spawn, time::timeout};
 use tracing::debug;
 
 #[derive(Debug, StructOpt)]
@@ -120,16 +121,19 @@ impl Interop {
             );
             let mut file = File::open(&abs_path).await?;
             loop {
-                match file.next().await {
-                    Some(Ok(chunk)) => tx_stream.send(chunk).await?,
-                    Some(Err(err)) => {
+                match timeout(Duration::from_secs(1), file.next()).await {
+                    Ok(Some(Ok(chunk))) => tx_stream.send(chunk).await?,
+                    Ok(Some(Err(err))) => {
                         eprintln!("error opening {:?}", abs_path);
                         tx_stream.reset(1u32.try_into()?)?;
                         return Err(err.into());
                     }
-                    None => {
+                    Ok(None) => {
                         tx_stream.finish()?;
                         return Ok(());
+                    }
+                    Err(_) => {
+                        eprintln!("timeout opening {:?}", abs_path);
                     }
                 }
             }
