@@ -147,7 +147,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             previous: path_event!(prev_path, prev_path_id),
             active: path_event!(new_path, new_path_id),
         });
-        debug_assert!(self[self.active_path_id()].is_active);
+        self.ensure_active_values_are_synced();
 
         Ok(())
     }
@@ -733,7 +733,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                         previous: path_event!(prev_path, prev_path_id),
                         active: path_event!(new_path, new_path_id),
                     });
-                    debug_assert!(self[self.active_path_id()].is_active);
+                    self.ensure_active_values_are_synced();
                 }
                 None => {
                     //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
@@ -794,6 +794,17 @@ impl<Config: endpoint::Config> Manager<Config> {
             .map(|path| path.transmission_constraint())
             .min()
             .unwrap_or(transmission::Constraint::None)
+    }
+
+    // Checks the Path Manager's active path agrees with each path's is_active field
+    fn ensure_active_values_are_synced(&self) {
+        if cfg!(debug_assertions) {
+            for (idx, path) in self.paths.iter().enumerate() {
+                if path.is_active {
+                    assert_eq!(self.active, idx as u8);
+                }
+            }
+        }
     }
 }
 
