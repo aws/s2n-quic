@@ -77,6 +77,9 @@ pub struct Path<Config: endpoint::Config> {
     /// active path at some point in the connection. This parameter is used to
     /// determine if the path should become the last_known_active_validated_path.
     activated: bool,
+
+    /// True if the path is currently active
+    is_active: bool,
 }
 
 impl<Config: endpoint::Config> Clone for Path<Config> {
@@ -95,6 +98,7 @@ impl<Config: endpoint::Config> Clone for Path<Config> {
             challenge: self.challenge.clone(),
             response_data: self.response_data,
             activated: self.activated,
+            is_active: self.is_active,
         }
     }
 }
@@ -142,6 +146,7 @@ impl<Config: endpoint::Config> Path<Config> {
             challenge: Challenge::disabled(),
             response_data: None,
             activated,
+            is_active: false,
         }
     }
 

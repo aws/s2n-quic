@@ -72,13 +72,16 @@ pub struct Manager<Config: endpoint::Config> {
 
 impl<Config: endpoint::Config> Manager<Config> {
     pub fn new(initial_path: Path<Config>, peer_id_registry: PeerIdRegistry) -> Self {
-        Manager {
+        let mut manager = Manager {
             paths: SmallVec::from_elem(initial_path, 1),
             peer_id_registry,
             active: 0,
             last_known_active_validated_path: None,
             pending_packet_authentication: None,
-        }
+        };
+        // Activate the initial path
+        manager.paths[0].is_active = true;
+        manager
     }
 
     /// Update the active path
@@ -131,7 +134,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.set_challenge(self.active_path_id(), random_generator);
         }
 
-        self.active = new_path_id.as_u8();
+        self.sync_active_values(prev_path_id, new_path_id);
 
         // Restart ECN validation to check that the path still supports ECN
         let path = self.active_path_mut();
@@ -144,6 +147,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             previous: path_event!(prev_path, prev_path_id),
             active: path_event!(new_path, new_path_id),
         });
+        debug_assert!(self[self.active_path_id()].is_active);
 
         Ok(())
     }
@@ -164,6 +168,12 @@ impl<Config: endpoint::Config> Manager<Config> {
     #[inline]
     pub fn active_path_id(&self) -> Id {
         Id(self.active)
+    }
+
+    pub fn sync_active_values(&mut self, prev_path_id: Id, new_path_id: Id) {
+        self.active = new_path_id.as_u8();
+        self[prev_path_id].is_active = false;
+        self[new_path_id].is_active = true;
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3
@@ -712,8 +722,18 @@ impl<Config: endpoint::Config> Manager<Config> {
                     //# To protect the connection from failing due to such a spurious
                     //# migration, an endpoint MUST revert to using the last validated peer
                     //# address when validation of a new peer address fails.
-                    self.active = last_known_active_validated_path;
+                    let prev_path_id = Id(self.active);
+                    let new_path_id = Id(last_known_active_validated_path);
+                    self.sync_active_values(prev_path_id, new_path_id);
                     self.last_known_active_validated_path = None;
+
+                    let prev_path = &self[prev_path_id];
+                    let new_path = &self[new_path_id];
+                    publisher.on_active_path_updated(event::builder::ActivePathUpdated {
+                        previous: path_event!(prev_path, prev_path_id),
+                        active: path_event!(new_path, new_path_id),
+                    });
+                    debug_assert!(self[self.active_path_id()].is_active);
                 }
                 None => {
                     //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
