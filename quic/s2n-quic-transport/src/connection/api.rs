@@ -67,12 +67,13 @@ impl Drop for Connection {
             .api
             .application_handle_count()
             .fetch_sub(1, Ordering::Release)
-            == 1
+            != 1
         {
-            self.api.close_connection(None)
+            return;
         }
 
-        atomic::fence(Ordering::Acquire)
+        atomic::fence(Ordering::Acquire);
+        self.api.close_connection(None);
     }
 }
 

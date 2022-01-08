@@ -10,7 +10,10 @@ use crate::{
 };
 use alloc::sync::Arc;
 use bytes::Bytes;
-use core::task::{Context, Poll};
+use core::{
+    sync::atomic::AtomicUsize,
+    task::{Context, Poll},
+};
 use s2n_quic_core::{
     application,
     application::Sni,
@@ -18,7 +21,6 @@ use s2n_quic_core::{
     inet::SocketAddress,
     stream::{ops, StreamId, StreamType},
 };
-use std::sync::atomic::AtomicUsize;
 
 /// A dynamically dispatched connection API
 pub(crate) type ConnectionApi = Arc<dyn ConnectionApiProvider>;

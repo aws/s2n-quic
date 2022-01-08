@@ -24,6 +24,7 @@ use core::{
     marker::PhantomData,
     ops::Deref,
     pin::Pin,
+    sync::atomic::AtomicUsize,
     task::{Context, Poll},
 };
 use intrusive_collections::{
@@ -38,7 +39,6 @@ use s2n_quic_core::{
     time::Timestamp,
     transport,
 };
-use std::sync::atomic::AtomicUsize;
 
 // Intrusive list adapter for managing the list of `done` connections
 intrusive_adapter!(DoneConnectionsAdapter<C, L> = Arc<ConnectionNode<C, L>>: ConnectionNode<C, L> {
