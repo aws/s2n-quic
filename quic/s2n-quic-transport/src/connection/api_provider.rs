@@ -10,7 +10,10 @@ use crate::{
 };
 use alloc::sync::Arc;
 use bytes::Bytes;
-use core::task::{Context, Poll};
+use core::{
+    sync::atomic::AtomicUsize,
+    task::{Context, Poll},
+};
 use s2n_quic_core::{
     application,
     application::Sni,
@@ -25,6 +28,8 @@ pub(crate) type ConnectionApi = Arc<dyn ConnectionApiProvider>;
 /// The trait for types which provide the public Connection and Stream API via
 /// dynamic dispatch
 pub(crate) trait ConnectionApiProvider: Sync + Send {
+    fn application_handle_count(&self) -> &AtomicUsize;
+
     fn poll_request(
         &self,
         stream_id: StreamId,

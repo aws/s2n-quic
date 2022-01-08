@@ -24,6 +24,7 @@ use core::{
     marker::PhantomData,
     ops::Deref,
     pin::Pin,
+    sync::atomic::AtomicUsize,
     task::{Context, Poll},
 };
 use intrusive_collections::{
@@ -87,6 +88,8 @@ struct ConnectionNode<C: connection::Trait, L: connection::Lock<C>> {
     waiting_for_timeout_link: RBTreeLink,
     /// The cached time at which the connection will timeout next
     timeout: Cell<Option<Timestamp>>,
+    /// The count of outstanding application handles
+    application_handle_count: AtomicUsize,
     /// The inner connection type
     _connection: PhantomData<C>,
 }
@@ -106,6 +109,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionNode<C, L> {
             waiting_for_connection_id_link: LinkedListLink::new(),
             waiting_for_timeout_link: RBTreeLink::new(),
             timeout: Cell::new(None),
+            application_handle_count: AtomicUsize::new(0),
             _connection: PhantomData,
         }
     }
@@ -200,6 +204,10 @@ impl<'a, C: connection::Trait, L: connection::Lock<C>> KeyAdapter<'a>
 unsafe impl<C: connection::Trait, L: connection::Lock<C>> Sync for ConnectionNode<C, L> {}
 
 impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for ConnectionNode<C, L> {
+    fn application_handle_count(&self) -> &AtomicUsize {
+        &self.application_handle_count
+    }
+
     fn poll_request(
         &self,
         stream_id: stream::StreamId,
