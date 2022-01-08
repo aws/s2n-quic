@@ -2954,7 +2954,7 @@ fn stream_transmission_fairness_test() {
             .map(|_| try_open(&mut manager, StreamType::Bidirectional).unwrap())
             .collect();
 
-        // limit the number on frame transmissions per round
+        // limit the number of frame transmissions per round
         for stream_id in &streams {
             manager.with_asserted_stream(*stream_id, |stream| {
                 stream.on_transmit_try_write_frames = 100;
