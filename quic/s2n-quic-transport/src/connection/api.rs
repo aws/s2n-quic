@@ -10,7 +10,7 @@ use crate::{
 use bytes::Bytes;
 use core::{
     fmt,
-    sync::atomic::Ordering,
+    sync::atomic::{self, Ordering},
     task::{Context, Poll},
 };
 use s2n_quic_core::{
@@ -45,6 +45,19 @@ impl Drop for Connection {
             "application_handle_count underflowed"
         );
 
+        // Safety
+        //
+        // The use of Ordering and fence mirrors the `Arc` implementation in
+        // the standard library.
+        //
+        // This fence is needed to prevent reordering of use of the data and
+        // deletion of the data.  Because it is marked `Release`, the decreasing
+        // of the reference count synchronizes with this `Acquire` fence. This
+        // means that use of the data happens before decreasing the reference
+        // count, which happens before this fence, which happens before the
+        // deletion of the data.
+        // https://github.com/rust-lang/rust/blob/e012a191d768adeda1ee36a99ef8b92d51920154/library/alloc/src/sync.rs#L1637
+
         // If the connection wasn't closed before, close it now to make sure
         // all Streams terminate.
         //
@@ -53,20 +66,27 @@ impl Drop for Connection {
         if self
             .api
             .application_handle_count()
-            .fetch_sub(1, Ordering::AcqRel)
+            .fetch_sub(1, Ordering::Release)
             == 1
         {
             self.api.close_connection(None)
         }
+
+        atomic::fence(Ordering::Acquire)
     }
 }
 
 impl Clone for Connection {
     fn clone(&self) -> Self {
-        // increment the applicaiton handle count
+        // Safety
+        //
+        // Using a relaxed ordering is alright here, as knowledge of the
+        // original reference prevents other threads from erroneously deleting
+        // the object.
+        // https://github.com/rust-lang/rust/blob/e012a191d768adeda1ee36a99ef8b92d51920154/library/alloc/src/sync.rs#L1329
         self.api
             .application_handle_count()
-            .fetch_add(1, Ordering::AcqRel);
+            .fetch_add(1, Ordering::Relaxed);
         Self {
             api: self.api.clone(),
         }
@@ -75,8 +95,14 @@ impl Clone for Connection {
 
 impl Connection {
     pub(crate) fn new(api: ConnectionApi) -> Self {
+        // Safety
+        //
+        // Using a relaxed ordering is alright here, as knowledge of the
+        // original reference prevents other threads from erroneously deleting
+        // the object.
+        // https://github.com/rust-lang/rust/blob/e012a191d768adeda1ee36a99ef8b92d51920154/library/alloc/src/sync.rs#L1329
         api.application_handle_count()
-            .fetch_add(1, Ordering::AcqRel);
+            .fetch_add(1, Ordering::Relaxed);
         Self { api }
     }
 
