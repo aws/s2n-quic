@@ -70,6 +70,7 @@ struct MockStream {
     on_internal_reset_count: usize,
     on_transmit_try_write_frames: usize,
     on_transmit_count: usize,
+    on_transmit_limit: Option<usize>,
     on_data_count: usize,
     on_reset_count: usize,
     on_stream_data_blocked_count: usize,
@@ -145,6 +146,7 @@ impl StreamTrait for MockStream {
             on_max_stream_data_count: 0,
             on_transmit_count: 0,
             on_transmit_try_write_frames: 0,
+            on_transmit_limit: None,
             lost_data: false,
             set_finalize_on_internal_reset: false,
             next_packet_error: None,
@@ -266,7 +268,10 @@ impl StreamTrait for MockStream {
 
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
         self.on_transmit_count += 1;
-        while self.on_transmit_try_write_frames > 0 {
+        let count = self
+            .on_transmit_try_write_frames
+            .min(self.on_transmit_limit.unwrap_or(usize::MAX));
+        for _ in 0..count {
             // We write simple frames here, since the tests do not care about
             // the content but only the number of succeeded write calls.
             let _pn = context
@@ -2935,4 +2940,52 @@ fn forwards_reset() {
             None,
         )
     );
+}
+
+#[test]
+fn stream_transmission_fairness_test() {
+    for concurrent_streams in 2..=5 {
+        dbg!(concurrent_streams);
+
+        let mut manager = create_stream_manager(endpoint::Type::Server);
+
+        // Create some open Streams with interests
+        let mut streams: VecDeque<_> = (0..concurrent_streams)
+            .map(|_| try_open(&mut manager, StreamType::Bidirectional).unwrap())
+            .collect();
+
+        // limit the number of frame transmissions per round
+        for stream_id in &streams {
+            manager.with_asserted_stream(*stream_id, |stream| {
+                stream.on_transmit_try_write_frames = 100;
+                stream.on_transmit_limit = Some(1);
+            });
+        }
+
+        // make sure the order matches creation order
+        assert_eq!(streams, manager.streams_waiting_for_transmission());
+
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut write_context = MockWriteContext::new(
+            s2n_quic_platform::time::now(),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            transmission::Mode::Normal,
+            endpoint::Type::Server,
+        );
+
+        // Iterate over the list twice and transmit a single frame each time
+        //
+        // The stream at the front should be moved to the back
+        for transmission in 0..(concurrent_streams * 2) {
+            dbg!(transmission);
+            let _ = manager.on_transmit(&mut write_context);
+            write_context.frame_buffer.flush();
+            write_context.frame_buffer.set_error_write_after_n_frames(1);
+
+            assert_eq!(streams, manager.streams_waiting_for_transmission());
+
+            streams.rotate_left(1);
+        }
+    }
 }

@@ -164,7 +164,12 @@ impl<S: StreamTrait> InterestLists<S> {
     }
 
     /// Update all interest lists based on latest interest reported by a Node
-    fn update_interests(&mut self, node: &Rc<StreamNode<S>>, interests: StreamInterests) -> bool {
+    fn update_interests(
+        &mut self,
+        node: &Rc<StreamNode<S>>,
+        interests: StreamInterests,
+        result: StreamContainerIterationResult,
+    ) -> bool {
         // Note that all comparisons start by checking whether the stream is
         // already part of the given list. This is required in order for the
         // following operation to be safe. Inserting an element in a list while
@@ -176,7 +181,11 @@ impl<S: StreamTrait> InterestLists<S> {
             ($interest:expr, $link_name:ident, $list_name:ident) => {
                 if $interest != node.$link_name.is_linked() {
                     if $interest {
-                        self.$list_name.push_back(node.clone());
+                        if matches!(result, StreamContainerIterationResult::Continue) {
+                            self.$list_name.push_back(node.clone());
+                        } else {
+                            self.$list_name.push_front(node.clone());
+                        }
                     } else {
                         // Safety: We know that the node is only ever part of this list.
                         // While elements are in temporary lists, they always get unlinked
@@ -273,7 +282,11 @@ macro_rules! iterate_uninterruptible {
                 mut_stream.get_stream_interests()
             };
 
-            did_finalize |= $sel.interest_lists.update_interests(&stream, interests);
+            did_finalize |= $sel.interest_lists.update_interests(
+                &stream,
+                interests,
+                StreamContainerIterationResult::Continue,
+            );
         }
 
         if did_finalize {
@@ -298,7 +311,9 @@ macro_rules! iterate_interruptible {
 
             // Update the interests after the interaction
             let interests = mut_stream.get_stream_interests();
-            did_finalize |= $sel.interest_lists.update_interests(&stream, interests);
+            did_finalize |= $sel
+                .interest_lists
+                .update_interests(&stream, interests, result);
 
             match result {
                 StreamContainerIterationResult::BreakAndInsertAtBack => {
@@ -336,7 +351,11 @@ impl<S: StreamTrait> StreamContainer<S> {
 
         let new_stream = Rc::new(StreamNode::new(stream));
 
-        self.interest_lists.update_interests(&new_stream, interests);
+        self.interest_lists.update_interests(
+            &new_stream,
+            interests,
+            StreamContainerIterationResult::Continue,
+        );
         self.stream_map.insert(new_stream);
         self.nr_active_streams += 1;
     }
@@ -398,7 +417,11 @@ impl<S: StreamTrait> StreamContainer<S> {
 
         // Update the interest lists after the interactions and then remove
         // all finalized streams
-        if self.interest_lists.update_interests(&node_ptr, interests) {
+        if self.interest_lists.update_interests(
+            &node_ptr,
+            interests,
+            StreamContainerIterationResult::Continue,
+        ) {
             self.finalize_done_streams(controller);
         }
 
@@ -582,9 +605,11 @@ impl<S: StreamTrait> StreamContainer<S> {
             // Safety: The stream reference is obtained from the RBTree, which
             // stores it's nodes as `Rc`
             let stream_node_rc = unsafe { stream_node_rc_from_ref(stream) };
-            did_finalize |= self
-                .interest_lists
-                .update_interests(&stream_node_rc, interests);
+            did_finalize |= self.interest_lists.update_interests(
+                &stream_node_rc,
+                interests,
+                StreamContainerIterationResult::Continue,
+            );
         }
 
         if did_finalize {
@@ -627,7 +652,8 @@ impl<S: StreamTrait> transmission::interest::Provider for StreamContainer<S> {
 }
 
 /// Return values for iterations over a `Stream` list.
-/// The value intstructs the iterator whether iteration will be continued.
+/// The value instructs the iterator whether iteration will be continued.
+#[derive(Clone, Copy, Debug)]
 pub enum StreamContainerIterationResult {
     /// Continue iteration over the list
     Continue,

@@ -336,6 +336,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
         accept_queue: &mut AcceptorSender,
         node: &ConnectionNode<C, L>,
         interests: ConnectionInterests,
+        result: ConnectionContainerIterationResult,
     ) -> Result<(), L::Error> {
         let id = node.internal_connection_id;
 
@@ -378,7 +379,11 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
             ($interest:expr, $link_name:ident, $list_name:ident) => {
                 if $interest != node.$link_name.is_linked() {
                     if $interest {
-                        insert_interest!($list_name, push_back);
+                        if matches!(result, ConnectionContainerIterationResult::Continue) {
+                            insert_interest!($list_name, push_back);
+                        } else {
+                            insert_interest!($list_name, push_front);
+                        }
                     } else {
                         remove_interest!($list_name);
                     }
@@ -572,7 +577,7 @@ macro_rules! iterate_interruptible {
             // Update the interests after the interaction and outside of the per-connection Mutex
             if $sel
                 .interest_lists
-                .update_interests(&mut $sel.accept_queue, &connection, interests)
+                .update_interests(&mut $sel.accept_queue, &connection, interests, result)
                 .is_err()
             {
                 $sel.remove_poisoned_node(&connection);
@@ -692,7 +697,12 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
 
         if self
             .interest_lists
-            .update_interests(&mut self.accept_queue, &connection, interests)
+            .update_interests(
+                &mut self.accept_queue,
+                &connection,
+                interests,
+                ConnectionContainerIterationResult::Continue,
+            )
             .is_ok()
         {
             self.connection_map.insert(connection);
@@ -743,7 +753,12 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         // Then remove all finalized connections
         if self
             .interest_lists
-            .update_interests(&mut self.accept_queue, node, interests)
+            .update_interests(
+                &mut self.accept_queue,
+                node,
+                interests,
+                ConnectionContainerIterationResult::Continue,
+            )
             .is_err()
         {
             let id = node.internal_connection_id;
@@ -895,7 +910,12 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
             // Update the interests after the interaction and outside of the per-connection Mutex
             if self
                 .interest_lists
-                .update_interests(&mut self.accept_queue, &connection, interests)
+                .update_interests(
+                    &mut self.accept_queue,
+                    &connection,
+                    interests,
+                    ConnectionContainerIterationResult::Continue,
+                )
                 .is_err()
             {
                 self.remove_poisoned_node(&connection);
@@ -939,6 +959,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
 
 /// Return values for iterations over a `Connection` list.
 /// The value instructs the iterator whether iteration will be continued.
+#[derive(Clone, Copy, Debug)]
 pub enum ConnectionContainerIterationResult {
     /// Continue iteration over the list
     Continue,
