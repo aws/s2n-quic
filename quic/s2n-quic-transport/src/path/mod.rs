@@ -115,7 +115,6 @@ impl<Config: endpoint::Config> Path<Config> {
         congestion_controller: <Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController,
         peer_validated: bool,
         max_mtu: MaxMtu,
-        activated: bool,
     ) -> Path<Config> {
         let state = match Config::ENDPOINT_TYPE {
             Type::Server => {
@@ -145,7 +144,7 @@ impl<Config: endpoint::Config> Path<Config> {
             peer_validated,
             challenge: Challenge::disabled(),
             response_data: None,
-            activated,
+            activated: false,
             is_active: false,
         }
     }
@@ -590,7 +589,6 @@ pub mod testing {
             Default::default(),
             true,
             DEFAULT_MAX_MTU,
-            true,
         )
     }
 
@@ -603,7 +601,6 @@ pub mod testing {
             Default::default(),
             false,
             DEFAULT_MAX_MTU,
-            true,
         )
     }
 }
@@ -1103,7 +1100,6 @@ mod tests {
             Default::default(),
             false,
             DEFAULT_MAX_MTU,
-            true,
         );
         let now = NoopClock.get_time();
         path.on_validated();

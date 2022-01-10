@@ -79,7 +79,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             last_known_active_validated_path: None,
             pending_packet_authentication: None,
         };
-        // Activate the initial path
+        manager.paths[0].activated = true;
         manager.paths[0].is_active = true;
         manager
     }
@@ -454,7 +454,6 @@ impl<Config: endpoint::Config> Manager<Config> {
             cc,
             true,
             max_mtu,
-            false,
         );
 
         let unblocked = path.on_bytes_received(datagram.payload_len);
