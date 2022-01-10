@@ -5,7 +5,9 @@ use crate::{
     contexts::WriteContext,
     endpoint,
     path::{self, ecn::ValidationOutcome, path_event, Path},
-    recovery::{SentPacketInfo, SentPackets},
+    recovery::{
+        manager::persistent_congestion::PersistentCongestionCalculator, SentPacketInfo, SentPackets,
+    },
     transmission,
 };
 use core::{cmp::max, marker::PhantomData, time::Duration};
@@ -682,12 +684,12 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         // TODO: Investigate a more efficient mechanism for managing sent_packets
         //       See https://github.com/awslabs/s2n-quic/issues/69
-        let (max_persistent_congestion_period, sent_packets_to_remove) =
+        let (persistent_congestion_duration, sent_packets_to_remove) =
             self.detect_lost_packets(now, context, publisher);
 
         self.remove_lost_packets(
             now,
-            max_persistent_congestion_period,
+            persistent_congestion_duration,
             sent_packets_to_remove,
             context,
             publisher,
@@ -704,10 +706,11 @@ impl<Config: endpoint::Config> Manager<Config> {
             .largest_acked_packet
             .expect("This function is only called after an ack has been received");
 
-        let mut max_persistent_congestion_period = Duration::from_secs(0);
         let mut sent_packets_to_remove = Vec::new();
-        let mut persistent_congestion_period = Duration::from_secs(0);
-        let mut prev_packet: Option<(PacketNumber, path::Id, Timestamp)> = None;
+        let mut persistent_congestion_calculator = PersistentCongestionCalculator::new(
+            context.path().rtt_estimator.first_rtt_sample(),
+            context.path_id(),
+        );
 
         for (unacked_packet_number, unacked_sent_info) in self.sent_packets.iter() {
             if unacked_packet_number > largest_acked_packet {
@@ -752,47 +755,8 @@ impl<Config: endpoint::Config> Manager<Config> {
                     context.on_packet_loss(&range, publisher);
                 }
 
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
-                //= type=TODO
-                //= tracking-issue=973
-                //# These two packets MUST be ack-eliciting, since a receiver is required
-                //# to acknowledge only ack-eliciting packets within its maximum
-                //# acknowledgment delay; see Section 13.2 of [QUIC-TRANSPORT].
-
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
-                //# A sender establishes persistent congestion after the receipt of an
-                //# acknowledgment if two packets that are ack-eliciting are declared
-                //# lost, and:
-                //#
-                //#     *  across all packet number spaces, none of the packets sent between
-                //#        the send times of these two packets are acknowledged;
-                let is_contiguous = prev_packet.map_or(false, |(pn, prev_path_id, _)| {
-                    // Check if this lost packet is contiguous with the previous lost packet.
-                    let contiguous = unacked_packet_number.checked_distance(pn) == Some(1);
-                    contiguous
-                        // Check that this lost packet was sent on this path
-                        //
-                        // persistent congestion is only updated for the path on which we receive
-                        // the ack. Managing state for multiple paths requires extra allocations
-                        // but is only necessary when also attempting connection_migration; which
-                        // should not be very common.
-                        && unacked_path_id == context.path_id()
-                        // Check that previous packet was sent on this path
-                        && prev_path_id == context.path_id()
-                });
-                if is_contiguous {
-                    // Add the difference in time to the current period.
-                    persistent_congestion_period +=
-                        unacked_sent_info.time_sent - prev_packet.expect("checked above").2;
-                    max_persistent_congestion_period = max(
-                        max_persistent_congestion_period,
-                        persistent_congestion_period,
-                    );
-                } else {
-                    // There was a gap in packet number or this is the beginning of the period.
-                    // Reset the current period to zero.
-                    persistent_congestion_period = Duration::from_secs(0);
-                }
+                persistent_congestion_calculator
+                    .on_lost_packet(unacked_packet_number, unacked_sent_info);
             } else {
                 //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.1.2
                 //# If packets sent prior to the largest acknowledged packet cannot yet
@@ -817,35 +781,18 @@ impl<Config: endpoint::Config> Manager<Config> {
                 // packets will have a larger packet number and sent time, and are thus not lost.
                 break;
             }
-
-            //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
-            //# The persistent congestion period SHOULD NOT start until there is at
-            //# least one RTT sample.  Before the first RTT sample, a sender arms its
-            //# PTO timer based on the initial RTT (Section 6.2.2), which could be
-            //# substantially larger than the actual RTT.  Requiring a prior RTT
-            //# sample prevents a sender from establishing persistent congestion with
-            //# potentially too few probes.
-            if context
-                .path_mut_by_id(unacked_path_id)
-                .rtt_estimator
-                .first_rtt_sample()
-                .map_or(false, |ts| unacked_sent_info.time_sent > ts)
-            {
-                prev_packet = Some((
-                    unacked_packet_number,
-                    unacked_sent_info.path_id,
-                    unacked_sent_info.time_sent,
-                ));
-            }
         }
 
-        (max_persistent_congestion_period, sent_packets_to_remove)
+        (
+            persistent_congestion_calculator.persistent_congestion_duration(),
+            sent_packets_to_remove,
+        )
     }
 
     fn remove_lost_packets<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         now: Timestamp,
-        max_persistent_congestion_period: Duration,
+        persistent_congestion_duration: Duration,
         sent_packets_to_remove: Vec<PacketDetails>,
         context: &mut Ctx,
         publisher: &mut Pub,
@@ -864,7 +811,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             //# number spaces or an implementation that cannot compare send times
             //# across packet number spaces MAY use state for just the packet number
             //# space that was acknowledged.
-            let persistent_congestion = max_persistent_congestion_period
+            let persistent_congestion = persistent_congestion_duration
                 > path.rtt_estimator.persistent_congestion_threshold()
                 // Check that the packet was sent on this path
                 && sent_info.path_id == current_path_id;
@@ -1165,5 +1112,6 @@ impl transmission::interest::Provider for Pto {
     }
 }
 
+mod persistent_congestion;
 #[cfg(test)]
 mod tests;

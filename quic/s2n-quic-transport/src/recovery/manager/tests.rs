@@ -1471,7 +1471,7 @@ fn detect_and_remove_lost_packets() {
 // Expectation:
 // - ensure max_persistent_congestion_period is 2 corresponding to range 7-9
 // - ensure path_id is 1
-fn detect_lost_packets_persistent_cogestion_path_aware() {
+fn detect_lost_packets_persistent_congestion_path_aware() {
     // Setup:
     let space = PacketNumberSpace::ApplicationData;
     let mut publisher = Publisher::snapshot();
@@ -1593,7 +1593,7 @@ fn detect_lost_packets_persistent_cogestion_path_aware() {
 // - ensure path 1 first_rtt_sample is NOT cleared
 // - ensure path 2 is persistent_congestion
 // - ensure path 2 first_rtt_sample is cleared
-fn remove_lost_packets_persistent_cogestion_path_aware() {
+fn remove_lost_packets_persistent_congestion_path_aware() {
     // Setup:
     let space = PacketNumberSpace::ApplicationData;
     let mut publisher = Publisher::snapshot();
@@ -1833,7 +1833,7 @@ fn persistent_congestion() {
         space,
     );
 
-    let outcome = transmission::Outcome {
+    let mut outcome = transmission::Outcome {
         ack_elicitation: AckElicitation::Eliciting,
         is_congestion_controlled: true,
         bytes_sent: 1,
@@ -1871,6 +1871,9 @@ fn persistent_congestion() {
     );
 
     // t=2-6: Send packets #3 - #7 (app data)
+    // These packets are NonEliciting, which are allowed to be part of a Persistent Congestion Period
+    // as long as they are not the start or end of the period.
+    outcome.ack_elicitation = AckElicitation::NonEliciting;
     for t in 2..=6 {
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(t + 1)),
@@ -1881,6 +1884,7 @@ fn persistent_congestion() {
             &mut publisher,
         );
     }
+    outcome.ack_elicitation = AckElicitation::Eliciting;
 
     // t=8: Send packet #8 (PTO 1)
     manager.on_packet_sent(
@@ -2151,6 +2155,88 @@ fn persistent_congestion_period_does_not_start_until_rtt_sample() {
 
     // There is no persistent congestion, because the lost packets were all
     // sent prior to the first RTT sample
+    assert_eq!(context.path().congestion_controller.on_packets_lost, 2);
+    assert_eq!(
+        context.path().congestion_controller.persistent_congestion,
+        Some(false)
+    );
+}
+
+//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
+//= type=test
+//# These two packets MUST be ack-eliciting, since a receiver is required
+//# to acknowledge only ack-eliciting packets within its maximum
+//# acknowledgment delay; see Section 13.2 of [QUIC-TRANSPORT].
+#[test]
+fn persistent_congestion_not_ack_eliciting() {
+    let space = PacketNumberSpace::ApplicationData;
+    let mut manager = Manager::new(space);
+    let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+    let ecn = ExplicitCongestionNotification::default();
+    let mut context = MockContext::new(&mut path_manager);
+    let mut publisher = Publisher::snapshot();
+
+    let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    context.path_mut().rtt_estimator.update_rtt(
+        Duration::from_millis(10),
+        Duration::from_millis(700),
+        s2n_quic_platform::time::now(),
+        true,
+        space,
+    );
+
+    let mut outcome = transmission::Outcome {
+        ack_elicitation: AckElicitation::NonEliciting,
+        is_congestion_controlled: true,
+        bytes_sent: 1,
+        packet_number: space.new_packet_number(VarInt::from_u8(1)),
+    };
+
+    // t=0: Send packet #1 (app data)
+    manager.on_packet_sent(
+        space.new_packet_number(VarInt::from_u8(1)),
+        outcome,
+        time_zero,
+        ecn,
+        &mut context,
+        &mut publisher,
+    );
+
+    // The first packet was not ack-eliciting, but subsequent ones are
+    outcome.ack_elicitation = AckElicitation::Eliciting;
+
+    // t=10: Send packet #2 (app data)
+    manager.on_packet_sent(
+        space.new_packet_number(VarInt::from_u8(2)),
+        outcome,
+        time_zero + Duration::from_secs(10),
+        ecn,
+        &mut context,
+        &mut publisher,
+    );
+
+    // t=20: Send packet #3 (app data)
+    manager.on_packet_sent(
+        space.new_packet_number(VarInt::from_u8(3)),
+        outcome,
+        time_zero + Duration::from_secs(20),
+        ecn,
+        &mut context,
+        &mut publisher,
+    );
+
+    // t=20.1: Recv acknowledgement of #3
+    ack_packets(
+        3..=3,
+        time_zero + Duration::from_millis(20_100),
+        &mut context,
+        &mut manager,
+        None,
+        &mut publisher,
+    );
+
+    // There is no persistent congestion because the first packet in the potential
+    // persistent congestion period was not ack-eliciting.
     assert_eq!(context.path().congestion_controller.on_packets_lost, 2);
     assert_eq!(
         context.path().congestion_controller.persistent_congestion,
