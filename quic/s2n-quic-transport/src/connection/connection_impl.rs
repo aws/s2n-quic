@@ -717,6 +717,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     if !edt.has_elapsed(timestamp) {
                         // We can't transmit more until a future time, so arm the pacing
                         // timer to pause transmission until the earliest departure time.
+
+                        //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.7
+                        //# A sender SHOULD pace sending of all in-flight packets based on input
+                        //# from the congestion controller.
+
+                        //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.7
+                        //# Senders MUST either use pacing or limit such bursts.
                         self.timers.pacing_timer.set(edt);
                     }
                 }

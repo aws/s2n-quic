@@ -682,8 +682,6 @@ impl<Config: endpoint::Config> Manager<Config> {
         // older than the largest acked packet, but not old enough to be considered lost yet
         self.loss_timer.cancel();
 
-        // TODO: Investigate a more efficient mechanism for managing sent_packets
-        //       See https://github.com/awslabs/s2n-quic/issues/69
         let (persistent_congestion_duration, sent_packets_to_remove) =
             self.detect_lost_packets(now, context, publisher);
 
