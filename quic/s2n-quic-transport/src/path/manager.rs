@@ -131,20 +131,12 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.set_challenge(self.active_path_id(), random_generator);
         }
 
-        self.activate_path(prev_path_id, new_path_id);
+        self.activate_path(publisher, prev_path_id, new_path_id);
 
         // Restart ECN validation to check that the path still supports ECN
         let path = self.active_path_mut();
         path.ecn_controller
             .restart(path_event!(path, new_path_id), publisher);
-
-        let prev_path = &self[prev_path_id];
-        let new_path = &self[new_path_id];
-        publisher.on_active_path_updated(event::builder::ActivePathUpdated {
-            previous: path_event!(prev_path, prev_path_id),
-            active: path_event!(new_path, new_path_id),
-        });
-
         Ok(())
     }
 
@@ -166,22 +158,33 @@ impl<Config: endpoint::Config> Manager<Config> {
         Id(self.active)
     }
 
-    pub fn activate_path(&mut self, prev_path_id: Id, new_path_id: Id) {
+    pub fn check_active_path_is_synced(&self) {
         if cfg!(debug_assertions) {
             for (idx, path) in self.paths.iter().enumerate() {
                 assert_eq!(path.is_active, (self.active == idx as u8));
             }
         }
+    }
+
+    pub fn activate_path<Pub: event::ConnectionPublisher>(
+        &mut self,
+        publisher: &mut Pub,
+        prev_path_id: Id,
+        new_path_id: Id,
+    ) {
+        self.check_active_path_is_synced();
         self.active = new_path_id.as_u8();
         self[prev_path_id].is_active = false;
         self[new_path_id].is_active = true;
         self[new_path_id].on_activated();
+        self.check_active_path_is_synced();
 
-        if cfg!(debug_assertions) {
-            for (idx, path) in self.paths.iter().enumerate() {
-                assert_eq!(path.is_active, (self.active == idx as u8));
-            }
-        }
+        let prev_path = &self[prev_path_id];
+        let new_path = &self[new_path_id];
+        publisher.on_active_path_updated(event::builder::ActivePathUpdated {
+            previous: path_event!(prev_path, prev_path_id),
+            active: path_event!(new_path, new_path_id),
+        });
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3
@@ -732,15 +735,8 @@ impl<Config: endpoint::Config> Manager<Config> {
                     //# address when validation of a new peer address fails.
                     let prev_path_id = Id(self.active);
                     let new_path_id = Id(last_known_active_validated_path);
-                    self.activate_path(prev_path_id, new_path_id);
+                    self.activate_path(publisher, prev_path_id, new_path_id);
                     self.last_known_active_validated_path = None;
-
-                    let prev_path = &self[prev_path_id];
-                    let new_path = &self[new_path_id];
-                    publisher.on_active_path_updated(event::builder::ActivePathUpdated {
-                        previous: path_event!(prev_path, prev_path_id),
-                        active: path_event!(new_path, new_path_id),
-                    });
                 }
                 None => {
                     //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
