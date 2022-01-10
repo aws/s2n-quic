@@ -176,6 +176,12 @@ impl<Config: endpoint::Config> Manager<Config> {
         self[prev_path_id].is_active = false;
         self[new_path_id].is_active = true;
         self[new_path_id].on_activated();
+
+        if cfg!(debug_assertions) {
+            for (idx, path) in self.paths.iter().enumerate() {
+                assert_eq!(path.is_active, (self.active == idx as u8));
+            }
+        }
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3
