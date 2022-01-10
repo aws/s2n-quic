@@ -704,6 +704,8 @@ impl<Config: endpoint::Config> Manager<Config> {
             .largest_acked_packet
             .expect("This function is only called after an ack has been received");
 
+        // TODO: Investigate a more efficient mechanism for managing sent packets to remove
+        //       See: https://github.com/awslabs/s2n-quic/issues/1075
         let mut sent_packets_to_remove = Vec::new();
         let mut persistent_congestion_calculator = PersistentCongestionCalculator::new(
             context.path().rtt_estimator.first_rtt_sample(),
