@@ -737,13 +737,6 @@ impl<Config: endpoint::Config> Manager<Config> {
                     let new_path_id = Id(last_known_active_validated_path);
                     self.activate_path(publisher, prev_path_id, new_path_id);
                     self.last_known_active_validated_path = None;
-
-                    let prev_path = &self[prev_path_id];
-                    let new_path = &self[new_path_id];
-                    publisher.on_active_path_updated(event::builder::ActivePathUpdated {
-                        previous: path_event!(prev_path, prev_path_id),
-                        active: path_event!(new_path, new_path_id),
-                    });
                 }
                 None => {
                     //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
