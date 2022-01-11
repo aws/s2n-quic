@@ -907,7 +907,7 @@ macro_rules! path_event {
             remote_addr: $path.remote_address().into_event(),
             remote_cid: $path.peer_connection_id.into_event(),
             id: $path_id.into_event(),
-            is_active: $path.is_active,
+            is_active: $path.is_active(),
         }
     }};
 }

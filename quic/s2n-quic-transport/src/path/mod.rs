@@ -79,7 +79,7 @@ pub struct Path<Config: endpoint::Config> {
     activated: bool,
 
     /// True if the path is currently active
-    pub is_active: bool,
+    is_active: bool,
 }
 
 impl<Config: endpoint::Config> Clone for Path<Config> {
@@ -167,6 +167,11 @@ impl<Config: endpoint::Config> Path<Config> {
     #[inline]
     pub fn abandon_challenge(&mut self) {
         self.challenge.abandon();
+    }
+
+    #[inline]
+    pub fn is_active(&self) -> bool {
+        self.is_active
     }
 
     /// Called when bytes have been transmitted on this path
