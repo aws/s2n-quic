@@ -188,10 +188,16 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
 
         // Wait for all connections to close gracefully prior to closing the endpoint
         if !self.close_queue.is_empty() && self.connections.is_empty() {
-            self.is_open.store(false, Ordering::SeqCst);
+            if self.connections.is_open() {
+                // if no connections are being tracked then stop accepting new connections
+                // and prepare to close the endpoint
+                self.connections.stop_accepting_connections();
+            } else {
+                self.is_open.store(false, Ordering::SeqCst);
 
-            for waker in self.close_queue.drain(..) {
-                waker.wake_by_ref();
+                for waker in self.close_queue.drain(..) {
+                    waker.wake_by_ref();
+                }
             }
         }
 

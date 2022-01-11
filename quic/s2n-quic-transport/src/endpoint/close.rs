@@ -47,7 +47,6 @@ impl Future for Attempt {
                         match self.close_sender.try_send(cx.waker().clone()) {
                             Ok(_) => {
                                 self.request_sent = true;
-                                return Poll::Pending;
                             }
                             Err(err) if err.is_full() => {
                                 // yield and wake up the task since the opener mis-reported its ready state
@@ -58,6 +57,8 @@ impl Future for Attempt {
                                 return Poll::Ready(Ok(()));
                             }
                         }
+
+                        return Poll::Pending;
                     }
                     Poll::Ready(Err(_)) => {
                         // the endpoint is closed so return

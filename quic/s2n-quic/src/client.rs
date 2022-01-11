@@ -113,8 +113,8 @@ impl Client {
     /// call waits for **all** outstanding connections to finish before returning.
     ///
     /// Note: The endpoint will continue to accept new connection attempts. If there
-    /// are other client handles that have spawned connections, then this call might
-    /// never return.
+    /// are other client handles with active connections, then this call will never
+    /// return.
     ///
     /// # Examples
     ///
