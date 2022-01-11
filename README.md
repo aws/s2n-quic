@@ -76,4 +76,3 @@ You can verify most tests run in the CI locally:
 
  * Simulate interop tests locally by following the instructions [here](scripts/interop/README.md).
  * Run a compliance report: `./scripts/compliance`
- * Run rustfmt, clippy, and all of the tests: `./scripts/local_test`
