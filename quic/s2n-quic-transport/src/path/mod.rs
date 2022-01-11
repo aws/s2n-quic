@@ -169,6 +169,11 @@ impl<Config: endpoint::Config> Path<Config> {
         self.challenge.abandon();
     }
 
+    #[inline]
+    pub fn is_active(&self) -> bool {
+        self.is_active
+    }
+
     /// Called when bytes have been transmitted on this path
     #[inline]
     pub fn on_bytes_transmitted(&mut self, bytes: usize) {

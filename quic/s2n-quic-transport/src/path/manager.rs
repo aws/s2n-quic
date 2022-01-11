@@ -334,6 +334,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 remote_addr: active_remote_addr.into_event(),
                 remote_cid: self.active_path().peer_connection_id.into_event(),
                 id: self.active_path_id().into_event(),
+                is_active: true,
             }
             .into_event(),
             packet: migration::PacketInfoBuilder {
@@ -906,6 +907,7 @@ macro_rules! path_event {
             remote_addr: $path.remote_address().into_event(),
             remote_cid: $path.peer_connection_id.into_event(),
             id: $path_id.into_event(),
+            is_active: $path.is_active(),
         }
     }};
 }
