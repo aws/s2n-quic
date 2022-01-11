@@ -13,6 +13,7 @@ use s2n_codec::{
 pub mod ack_elicitation;
 pub mod congestion_controlled;
 pub mod path_validation;
+pub mod connection_progress;
 
 //= https://www.rfc-editor.org/rfc/rfc9000.txt#19
 //# As described in Section 12.4, packets contain one or more frames.

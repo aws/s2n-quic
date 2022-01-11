@@ -17,6 +17,7 @@ pub struct Outcome {
     pub ack_elicitation: AckElicitation,
     pub is_congestion_controlled: bool,
     pub bytes_sent: usize,
+    pub bytes_progressed: usize,
     pub packet_number: number::PacketNumber,
 }
 
@@ -26,6 +27,7 @@ impl Outcome {
             ack_elicitation: AckElicitation::NonEliciting,
             is_congestion_controlled: false,
             bytes_sent: 0,
+            bytes_progressed: 0,
             packet_number,
         }
     }

@@ -13,6 +13,7 @@ use s2n_quic_core::{
     frame::{
         ack_elicitation::{AckElicitable, AckElicitation},
         congestion_controlled::CongestionControlled,
+        connection_progress::ConnectionProgress,
         FrameMut,
     },
     packet::number::{PacketNumber, PacketNumberSpace},
@@ -263,7 +264,11 @@ impl<'a> WriteContext for MockWriteContext<'a> {
 
     fn write_frame<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
     where
-        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
+        Frame: EncoderValue
+            + AckElicitable
+            + CongestionControlled
+            + PathValidationProbing
+            + ConnectionProgress,
         for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
     {
         match self.transmission_constraint() {
@@ -281,7 +286,11 @@ impl<'a> WriteContext for MockWriteContext<'a> {
 
     fn write_fitted_frame<Frame>(&mut self, frame: &Frame) -> PacketNumber
     where
-        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
+        Frame: EncoderValue
+            + AckElicitable
+            + CongestionControlled
+            + PathValidationProbing
+            + ConnectionProgress,
         for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
     {
         self.write_frame(frame)
@@ -290,7 +299,7 @@ impl<'a> WriteContext for MockWriteContext<'a> {
 
     fn write_frame_forced<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
     where
-        Frame: EncoderValue + AckElicitable + CongestionControlled,
+        Frame: EncoderValue + AckElicitable + CongestionControlled + ConnectionProgress,
         for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
     {
         self.frame_buffer.write_frame(frame)
