@@ -21,7 +21,7 @@ use std::{
     sync::Arc,
 };
 use structopt::StructOpt;
-use tokio::{fs::File, io::AsyncWriteExt, net::lookup_host, spawn};
+use tokio::{fs::File, io::AsyncWriteExt, net::lookup_host, spawn, task};
 use url::{Host, Url};
 
 #[derive(Debug, StructOpt)]
@@ -74,11 +74,16 @@ impl Interop {
         // The client is expected to establish multiple connections, sequential or in parallel,
         // and use each connection to download a single file.
         if let Some(Testcase::Multiconnect) = self.testcase {
+            let mut connection_requests = vec![];
             for request in &self.requests {
                 let connect = endpoints.get(&request.host().unwrap()).unwrap().clone();
                 let requests = core::iter::once(request.path().to_string());
-                create_connection(client.clone(), connect, requests, download_dir.clone()).await?;
+                let mut connection =
+                    create_connection(client.clone(), connect, requests, download_dir.clone())
+                        .await?;
+                connection_requests.append(&mut connection);
             }
+            try_join_all(connection_requests).await?;
         } else {
             // establish a connection per endpoint rather than per request
             for (host, connect) in endpoints.iter() {
@@ -96,7 +101,10 @@ impl Interop {
                     })
                     .collect::<Vec<_>>();
 
-                create_connection(client.clone(), connect, requests, download_dir.clone()).await?;
+                let connection =
+                    create_connection(client.clone(), connect, requests, download_dir.clone())
+                        .await?;
+                try_join_all(connection).await?;
             }
         }
 
@@ -108,7 +116,7 @@ impl Interop {
             connect: Connect,
             requests: R,
             download_dir: Arc<Option<PathBuf>>,
-        ) -> Result<()> {
+        ) -> Result<Vec<task::JoinHandle<Result<()>>>> {
             eprintln!("connecting to {:#}", connect);
             let connection = client.connect(connect).await?;
 
@@ -121,9 +129,7 @@ impl Interop {
                 )));
             }
 
-            try_join_all(streams).await?;
-
-            Ok(())
+            Ok(streams)
         }
 
         async fn create_stream(
