@@ -72,13 +72,16 @@ pub struct Manager<Config: endpoint::Config> {
 
 impl<Config: endpoint::Config> Manager<Config> {
     pub fn new(initial_path: Path<Config>, peer_id_registry: PeerIdRegistry) -> Self {
-        Manager {
+        let mut manager = Manager {
             paths: SmallVec::from_elem(initial_path, 1),
             peer_id_registry,
             active: 0,
             last_known_active_validated_path: None,
             pending_packet_authentication: None,
-        }
+        };
+        manager.paths[0].activated = true;
+        manager.paths[0].is_active = true;
+        manager
     }
 
     /// Update the active path
@@ -113,9 +116,6 @@ impl<Config: endpoint::Config> Manager<Config> {
         };
         self[new_path_id].peer_connection_id = peer_connection_id;
 
-        // Mark as activated
-        self[new_path_id].on_activated();
-
         if self.active_path().is_validated() {
             self.last_known_active_validated_path = Some(self.active);
         }
@@ -131,20 +131,12 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.set_challenge(self.active_path_id(), random_generator);
         }
 
-        self.active = new_path_id.as_u8();
+        self.activate_path(publisher, prev_path_id, new_path_id);
 
         // Restart ECN validation to check that the path still supports ECN
         let path = self.active_path_mut();
         path.ecn_controller
             .restart(path_event!(path, new_path_id), publisher);
-
-        let prev_path = &self[prev_path_id];
-        let new_path = &self[new_path_id];
-        publisher.on_active_path_updated(event::builder::ActivePathUpdated {
-            previous: path_event!(prev_path, prev_path_id),
-            active: path_event!(new_path, new_path_id),
-        });
-
         Ok(())
     }
 
@@ -164,6 +156,35 @@ impl<Config: endpoint::Config> Manager<Config> {
     #[inline]
     pub fn active_path_id(&self) -> Id {
         Id(self.active)
+    }
+
+    pub fn check_active_path_is_synced(&self) {
+        if cfg!(debug_assertions) {
+            for (idx, path) in self.paths.iter().enumerate() {
+                assert_eq!(path.is_active, (self.active == idx as u8));
+            }
+        }
+    }
+
+    pub fn activate_path<Pub: event::ConnectionPublisher>(
+        &mut self,
+        publisher: &mut Pub,
+        prev_path_id: Id,
+        new_path_id: Id,
+    ) {
+        self.check_active_path_is_synced();
+        self.active = new_path_id.as_u8();
+        self[prev_path_id].is_active = false;
+        self[new_path_id].is_active = true;
+        self[new_path_id].on_activated();
+        self.check_active_path_is_synced();
+
+        let prev_path = &self[prev_path_id];
+        let new_path = &self[new_path_id];
+        publisher.on_active_path_updated(event::builder::ActivePathUpdated {
+            previous: path_event!(prev_path, prev_path_id),
+            active: path_event!(new_path, new_path_id),
+        });
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3
@@ -433,7 +454,6 @@ impl<Config: endpoint::Config> Manager<Config> {
             cc,
             true,
             max_mtu,
-            false,
         );
 
         let unblocked = path.on_bytes_received(datagram.payload_len);
@@ -712,7 +732,9 @@ impl<Config: endpoint::Config> Manager<Config> {
                     //# To protect the connection from failing due to such a spurious
                     //# migration, an endpoint MUST revert to using the last validated peer
                     //# address when validation of a new peer address fails.
-                    self.active = last_known_active_validated_path;
+                    let prev_path_id = Id(self.active);
+                    let new_path_id = Id(last_known_active_validated_path);
+                    self.activate_path(publisher, prev_path_id, new_path_id);
                     self.last_known_active_validated_path = None;
                 }
                 None => {
