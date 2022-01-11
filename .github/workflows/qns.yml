@@ -562,6 +562,13 @@ jobs:
         with:
           submodules: true
 
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
       - uses: camshaft/gha-perf@v0.1
 
       - name: Install inferno
