@@ -1,0 +1,432 @@
+#!/usr/bin/env python3
+#
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"). You may not
+# use this file except in compliance with the License. A copy of the License is
+# located at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# or in the "license" file accompanying this file. This file is distributed on
+# an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied. See the License for the specific language governing permissions
+# and limitations under the License.
+
+
+
+import argparse
+import asyncio
+import dataclasses
+import logging
+import math
+import os
+import pathlib
+import platform
+import re
+import subprocess
+import sys
+import traceback
+import uuid
+
+
+DESCRIPTION = "Run all RMC proofs in parallel and check for regressions"
+EPILOG = """\
+"""
+OUT_DIR = pathlib.Path("proof-output").resolve()
+
+
+def get_args():
+    pars = argparse.ArgumentParser(
+        description=DESCRIPTION, epilog=EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    for arg in [{
+            "flags": ["-p", "--proofs"],
+            "metavar": "/path/to/file:proof_name",
+            "nargs": "+",
+            "help": "which proofs to run (default: all of them)",
+    }, {
+            "flags": ["-d", "--directory"],
+            "metavar": "/path/to/directory/with/proofs",
+            "help": "the directory to codegen"
+    }, {
+            "flags": ["-j", "--parallel-jobs"],
+            "metavar": "N",
+            "type": int,
+            "help": "how many proofs to run in parallel (default: "
+                    "based on your core count)"
+    }, {
+            "flags": ["--no-standalone"],
+            "action": "store_true",
+            "help": "only add proof jobs, do not run them"
+    }, {
+            "flags": ["-v", "--verbose"],
+            "action": "store_true",
+            "help": "enable debug output"
+    }]:
+        flags = arg.pop("flags")
+        pars.add_argument(*flags, **arg)
+    return pars.parse_args()
+
+
+
+class LitaniJob:
+    """A single invocation of `litani add-job`
+
+    To run `litani add-job --ci-stage build --inputs bar --profile-memory`,
+    construct LitaniJob(ci_stage="build", inputs="bar", "profile-memory").
+    Then call litani_add, preferably from a thread pool for performance.
+    """
+
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+        self.cmd = None
+
+
+    def __str__(self):
+        return self.cmd
+
+
+    async def litani_add(self, litani):
+        cmd = [str(litani), "add-job"]
+        for switch in self.args:
+            switch = re.sub("_", "-", str(switch))
+            cmd.append(f"--{switch}")
+        for option, value in self.kwargs.items():
+            option = re.sub("_", "-", str(option))
+            cmd.append(f"--{option}")
+            if isinstance(value, list):
+                cmd.extend([str(v) for v in value])
+            else:
+                cmd.append(str(value))
+
+        self.cmd = " ".join(cmd)
+        logging.debug("Running '%s'", self.cmd)
+
+        proc = await asyncio.create_subprocess_exec(*cmd)
+        await proc.wait()
+        return not bool(proc.returncode)
+
+
+
+# Job emitters =======================================================
+# Each of these classes is callable. When called, they yield one or more
+# LitaniJob objects. They are intended to organize similar sets of jobs.
+
+
+@dataclasses.dataclass
+class Symtab2GbJobs:
+    symtab2gb_directory: str
+    out_files: list = dataclasses.field(default_factory=list)
+
+
+    def __call__(self):
+        for fyle in self.symtab2gb_directory.iterdir():
+            if fyle.suffix != ".json":
+                continue
+            out_file = fyle.with_suffix(".gb")
+            self.out_files.append(out_file)
+            yield LitaniJob(
+                command=f"symtab2gb {fyle} --out {out_file}",
+                pipeline="initial_build",
+                ci_stage="build",
+                inputs=fyle,
+                outputs=out_file,
+                description=f"symtab2gb: {fyle.name}",
+            )
+
+
+
+@dataclasses.dataclass
+class CBMCJobs:
+    proof_names: list
+    cbmc_directory: str
+    out_files: list
+
+
+    def get_proofs(self):
+        for root, _, fyles in os.walk(self.cbmc_directory):
+            dyr = pathlib.Path(root)
+            for fyle in fyles:
+                path = dyr / fyle
+                if path.suffix == ".rs":
+                    proof_file = ProofFile(path)
+                    yield from proof_file()
+
+
+    def __call__(self):
+        tmp_gb_file = TempfileMinter("gb")
+
+        for proof in self.get_proofs():
+            pipeline_name = f"{proof.path}:{proof.name}"
+
+            linked_binary = tmp_gb_file.next()
+            yield LitaniJob(
+                description=
+                   f"{pipeline_name}: linking proof to project object files",
+                command=
+                   f"goto-cc --function {proof.name} "
+                   f"{' '.join([str(f) for f in self.out_files])} "
+                   f"-o {linked_binary} ",
+                inputs=self.out_files,
+                outputs=linked_binary,
+                pipeline=pipeline_name,
+                ci_stage="build",
+            )
+
+            instrumented_binary = tmp_gb_file.next()
+            yield LitaniJob(
+                description=f"{pipeline_name}: dropping unused functions",
+                command=
+                   f"goto-instrument --reachability-slice --drop-unused-functions "
+                   f"{linked_binary} {instrumented_binary}",
+                pipeline=pipeline_name,
+                ci_stage="build",
+                inputs=linked_binary,
+                outputs=instrumented_binary,
+            )
+
+            phony_output = str(uuid.uuid4())
+
+            yield LitaniJob(
+                description=f"{pipeline_name}: checking safety properties",
+                command=
+                   f"cbmc {instrumented_binary} "
+                   "--object-bits 11 --unwind 5 --unwinding-assertions",
+                pipeline=pipeline_name,
+                ci_stage="test",
+                ignore_returns="10",
+                inputs=instrumented_binary,
+                phony_outputs=phony_output,
+            )
+
+
+
+@dataclasses.dataclass
+class TempfileMinter:
+    extension: str
+    path: pathlib.Path = None
+
+
+    def next(self):
+        self.path = OUT_DIR / "tmp" / f"{uuid.uuid4()}.{self.extension}"
+        return self.path
+
+
+
+@dataclasses.dataclass
+class Proof:
+    path: pathlib.Path
+    name: str
+
+
+
+@dataclasses.dataclass
+class ProofFile:
+    """A single file containing possibly multiple proofs"""
+
+    path: pathlib.Path
+    proof_pat: re.Pattern = re.compile(r"\s*\#\[cfg\(rmc\)\]")
+    mangle_pat: re.Pattern = re.compile(r"\s*\#\[no\_mangle\]")
+    name_pat: re.Pattern = re.compile(r"\s*fn\s+(?P<name>\w+)\(")
+
+
+    def __call__(self):
+        in_proof = False
+        in_mangle = False
+        logging.debug("Checking if file %s contains RMC proofs", str(self.path))
+        with open(self.path) as handle:
+            line_num = 0
+            for line in handle:
+                m = self.name_pat.match(line)
+                if in_proof and in_mangle and m:
+                    logging.debug(
+                        "Found proof %s in line #%s",
+                        str(m["name"]),
+                        str(line_num)
+                    )
+                    yield Proof(self.path, m["name"])
+                    in_proof = False
+                    in_mangle = False
+                elif self.mangle_pat.match(line):
+                    logging.debug(
+                        "Matched #[no_mangle] pattern in line #%s",
+                        str(line_num)
+                    )
+                    in_mangle = True
+                elif self.proof_pat.match(line):
+                    logging.debug(
+                        "Matched #[cfg(rmc)] pattern in line #%s",
+                        str(line_num)
+                    )
+                    in_proof = True
+                line_num += 1
+
+
+
+def task_pool_size():
+    """Only used for adding Litani jobs in parallel to reduce configuration
+    time. Not for actually running the jobs, which is controlled by -j."""
+
+    ret = os.cpu_count()
+    if ret is None or ret < 4:
+        return 1
+    return ret - 2
+
+
+def run_cmd(cmd, *args, **kwargs):
+    cmd = [str(c) for c in cmd]
+    logging.debug("Running '%s'", " ".join(cmd))
+    try:
+        #pylint: disable=subprocess-run-check
+        proc = subprocess.run(cmd, *args, **kwargs)
+    except subprocess.CalledProcessError as e:
+        logging.warning("Failed: '%s'", " ".join(cmd))
+        raise e
+    except subprocess.TimeoutExpired as e:
+        logging.warning("Timed out: '%s'", " ".join(cmd))
+        raise e
+    else:
+        if proc.returncode:
+            logging.warning("Failed: '%s'", " ".join(cmd))
+        return proc
+
+
+def print_counter(counter, final=False):
+    print(
+        "\rConfiguring proofs: "
+        "{complete:{width}} / {total:{width}}".format(
+            **counter), file=sys.stderr)
+    if final:
+        print("", file=sys.stderr)
+
+
+async def add_proofs_to_litani(queue, counter, litani):
+    try:
+        while True:
+            job = await(queue.get())
+
+            try:
+                success = await job.litani_add(litani)
+            except RuntimeError:
+                traceback.print_exc(file=sys.stdout)
+                success = False
+
+            counter["pass" if success else "fail"].append(job)
+            counter["complete"] += 1
+            queue.task_done()
+            print_counter(counter)
+
+    except asyncio.CancelledError:
+        pass
+
+
+def set_up_logging(verbose):
+    if verbose:
+        level = logging.DEBUG
+    else:
+        level = logging.WARNING
+    logging.basicConfig(
+        format="run-rmc: %(message)s", level=level)
+
+
+def get_litani_path():
+    ret = pathlib.Path("litani/litani")
+    if not ret.exists():
+        logging.error(
+            "Could not find litani at '%s'. Are your submodules up-to-date?",
+            ret)
+        sys.exit(1)
+    return ret
+
+
+def get_deps_dir(cargo_target_dir):
+    DARWIN_DEPS_DIR = "build/cargo_target/x86_64-apple-darwin/debug/deps"
+    GNU_DEPS_DIR = "build/cargo_target/x86_64-unknown-linux-gnu/debug/deps"
+    deps_dir = DARWIN_DEPS_DIR if platform.system() == "Darwin" else GNU_DEPS_DIR
+    return pathlib.Path(f"{cargo_target_dir}{deps_dir}")
+
+
+def get_litani_jobs(proof_list, symtab2gb_directory, cbmc_directory):
+    emit_symtab_jobs = Symtab2GbJobs(symtab2gb_directory)
+    yield from emit_symtab_jobs()
+
+    emit_cbmc_jobs = CBMCJobs(proof_list, cbmc_directory, emit_symtab_jobs.out_files)
+    yield from emit_cbmc_jobs()
+
+
+async def main():
+    args = get_args()
+    set_up_logging(args.verbose)
+
+    directory = args.directory if args.directory else ""
+    cwd = pathlib.Path(directory)
+    env = {
+        "RUST_BACKTRACE": "1",
+        "RUSTFLAGS": "-Z trim-diagnostic-paths=no -Z codegen-backend=gotoc --cfg=rmc",
+        "RUSTC": "rmc-rustc",
+        **os.environ
+    }
+    cmd = ["cargo", "build", "--target", "x86_64-unknown-linux-gnu", "--target-dir", "build/cargo_target"]
+    subprocess.run(cmd, env=env, cwd=str(cwd), check=True)
+
+    litani = get_litani_path()
+
+    if not args.no_standalone:
+        cmd = [
+            str(litani), "init",
+            "--project-name", "RMC verification",
+            "--output-prefix", str(OUT_DIR),
+            "--output-symlink", str(OUT_DIR / "latest"),
+        ]
+        logging.debug("Running '%s'", " ".join(cmd))
+        proc = run_cmd(cmd)
+        if proc.returncode:
+            sys.exit(1)
+
+    proof_queue = asyncio.Queue()
+    symtab2gb_directory = get_deps_dir(directory)
+    cbmc_directory = directory
+    for job in get_litani_jobs(args.proofs, symtab2gb_directory, cbmc_directory):
+        proof_queue.put_nowait(job)
+
+    counter = {
+        "pass": [],
+        "fail": [],
+        "complete": 0,
+        "total": proof_queue.qsize(),
+        "width": int(math.log10(proof_queue.qsize())) + 1
+    }
+    tasks = []
+
+    print_counter(counter)
+    for _ in range(task_pool_size()):
+        task = asyncio.create_task(
+            add_proofs_to_litani(proof_queue, counter, litani))
+        tasks.append(task)
+
+    await proof_queue.join()
+    print_counter(counter, final=True)
+
+    for task in tasks:
+        task.cancel()
+
+    if counter["fail"]:
+        logging.error(
+            "Failed to configure the following jobs:\n%s",
+            "\n".join([str(job) for job in counter["fail"]]))
+        sys.exit(1)
+
+    if not args.no_standalone:
+        cmd = [litani, "run-build"]
+        cmd.extend(["-j", args.parallel_jobs] if args.parallel_jobs else [])
+        proc = run_cmd(cmd)
+        cmd = [str(c) for c in cmd]
+        logging.debug("Running '%s'", " ".join(cmd))
+        if proc.returncode:
+            sys.exit(1)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
