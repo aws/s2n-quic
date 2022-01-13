@@ -48,6 +48,7 @@ impl CloseSender {
     pub fn transmission<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>(
         &'a mut self,
         path: &'a mut Path<Config>,
+        timestamp: Timestamp,
         publisher: &'a mut Pub,
     ) -> Transmission<'a, Config, Pub> {
         debug_assert!(
@@ -65,6 +66,7 @@ impl CloseSender {
                 packet,
                 transmission,
                 path,
+                timestamp,
                 publisher,
             }
         } else {
@@ -123,6 +125,7 @@ pub struct Transmission<'a, Config: endpoint::Config, Pub: event::ConnectionPubl
     packet: &'a Bytes,
     transmission: &'a mut TransmissionState,
     path: &'a mut Path<Config>,
+    timestamp: Timestamp,
     publisher: &'a mut Pub,
 }
 
@@ -138,7 +141,9 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> tx::Message
 
     #[inline]
     fn ecn(&mut self) -> ExplicitCongestionNotification {
-        ExplicitCongestionNotification::default()
+        self.path
+            .ecn_controller
+            .ecn(transmission::Mode::Normal, self.timestamp)
     }
 
     #[inline]
@@ -355,8 +360,9 @@ mod tests {
 
                 // transmit an initial packet
                 assert!(sender.can_transmit(path.transmission_constraint()));
+                let now = s2n_quic_platform::time::now();
                 sender
-                    .transmission(&mut path, &mut publisher)
+                    .transmission(&mut path, now, &mut publisher)
                     .write_payload(&mut buffer, 0);
 
                 for (gap, packet_size) in events {
@@ -378,7 +384,7 @@ mod tests {
                         let interest = sender.get_transmission_interest();
                         if interest.can_transmit(path.transmission_constraint()) {
                             sender
-                                .transmission(&mut path, &mut publisher)
+                                .transmission(&mut path, now, &mut publisher)
                                 .write_payload(&mut buffer, 0);
                             transmission_count += 1;
                         }
