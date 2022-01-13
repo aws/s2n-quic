@@ -741,7 +741,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 let path = self.path_manager.active_path_mut();
 
                 if queue
-                    .push(self.close_sender.transmission(path, &mut publisher))
+                    .push(
+                        self.close_sender
+                            .transmission(path, timestamp, &mut publisher),
+                    )
                     .is_ok()
                 {
                     count += 1;
