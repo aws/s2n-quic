@@ -277,10 +277,13 @@ jobs:
       - uses: actions-rs/toolchain@v1.0.7
         id: toolchain
         with:
-          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
+          toolchain: stable
           override: true
 
       - uses: camshaft/rust-cache@v1
+
+      - name: Clean up cache
+        run: rm -f target/release/cargo-compliance
 
       - name: Cache cargo-compliance
         uses: actions/cache@v2.1.7

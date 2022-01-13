@@ -77,6 +77,9 @@ pub struct Path<Config: endpoint::Config> {
     /// active path at some point in the connection. This parameter is used to
     /// determine if the path should become the last_known_active_validated_path.
     activated: bool,
+
+    /// True if the path is currently active
+    is_active: bool,
 }
 
 impl<Config: endpoint::Config> Clone for Path<Config> {
@@ -95,6 +98,7 @@ impl<Config: endpoint::Config> Clone for Path<Config> {
             challenge: self.challenge.clone(),
             response_data: self.response_data,
             activated: self.activated,
+            is_active: self.is_active,
         }
     }
 }
@@ -111,7 +115,6 @@ impl<Config: endpoint::Config> Path<Config> {
         congestion_controller: <Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController,
         peer_validated: bool,
         max_mtu: MaxMtu,
-        activated: bool,
     ) -> Path<Config> {
         let state = match Config::ENDPOINT_TYPE {
             Type::Server => {
@@ -141,7 +144,8 @@ impl<Config: endpoint::Config> Path<Config> {
             peer_validated,
             challenge: Challenge::disabled(),
             response_data: None,
-            activated,
+            activated: false,
+            is_active: false,
         }
     }
 
@@ -163,6 +167,11 @@ impl<Config: endpoint::Config> Path<Config> {
     #[inline]
     pub fn abandon_challenge(&mut self) {
         self.challenge.abandon();
+    }
+
+    #[inline]
+    pub fn is_active(&self) -> bool {
+        self.is_active
     }
 
     /// Called when bytes have been transmitted on this path
@@ -585,7 +594,6 @@ pub mod testing {
             Default::default(),
             true,
             DEFAULT_MAX_MTU,
-            true,
         )
     }
 
@@ -598,7 +606,6 @@ pub mod testing {
             Default::default(),
             false,
             DEFAULT_MAX_MTU,
-            true,
         )
     }
 }
@@ -1098,7 +1105,6 @@ mod tests {
             Default::default(),
             false,
             DEFAULT_MAX_MTU,
-            true,
         );
         let now = NoopClock.get_time();
         path.on_validated();

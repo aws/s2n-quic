@@ -27,6 +27,7 @@ struct Path<'a> {
     remote_addr: SocketAddress<'a>,
     remote_cid: ConnectionId<'a>,
     id: u64,
+    is_active: bool,
 }
 
 #[derive(Clone)]

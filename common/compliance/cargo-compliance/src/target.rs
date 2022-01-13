@@ -79,9 +79,11 @@ impl TargetPath {
                 if !path.exists() {
                     std::fs::create_dir_all(path.parent().unwrap())?;
 
+                    let canonical_url = Self::canonical_url(url.as_str());
+
                     reqwest::blocking::Client::builder()
                         .build()?
-                        .get(url.as_str())
+                        .get(canonical_url)
                         .header("user-agent", "https://crates.io/crates/cargo-compliance")
                         .header("accept", "text/plain")
                         .send()?
@@ -114,12 +116,28 @@ impl TargetPath {
             Self::Path(path) => path.clone(),
         }
     }
+
+    fn canonical_url(url: &str) -> String {
+        // rewrite some of the IETF links for convenience
+        if let Some(rfc) = url.strip_prefix("https://tools.ietf.org/rfc/") {
+            let rfc = rfc.trim_end_matches(".txt").trim_end_matches(".html");
+            return format!("https://www.rfc-editor.org/rfc/{}.txt", rfc);
+        }
+
+        if url.starts_with("https://www.rfc-editor.org/rfc/") {
+            let rfc = url.trim_end_matches(".txt").trim_end_matches(".html");
+            return format!("{}.txt", rfc);
+        }
+
+        url.to_owned()
+    }
 }
 
 impl FromStr for TargetPath {
     type Err = Error;
 
     fn from_str(path: &str) -> Result<Self, Self::Err> {
+        // URL style path
         if path.contains("://") {
             let url = Url::parse(path)?;
             return Ok(Self::Url(url));

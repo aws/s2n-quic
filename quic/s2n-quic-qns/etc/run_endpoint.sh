@@ -58,9 +58,9 @@ if [ "$ROLE" == "client" ]; then
     /wait-for-it.sh sim:57832 -s -t 30
     $QNS_BIN $QNS_MODE client \
         $CLIENT_PARAMS \
-        $REQUESTS 2>&1 | tee $LOG
+        $REQUESTS > $LOG
 elif [ "$ROLE" == "server" ]; then
     $QNS_BIN $QNS_MODE server \
-        $SERVER_PARAMS 2>&1 | tee $LOG
+        $SERVER_PARAMS > $LOG
 fi
 

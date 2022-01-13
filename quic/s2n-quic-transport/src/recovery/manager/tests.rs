@@ -56,7 +56,6 @@ fn one_second_pto_when_no_previous_rtt_available() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
-        true,
     );
 
     manager
@@ -450,7 +449,6 @@ fn on_ack_frame() {
         MockCongestionController::default(),
         false,
         DEFAULT_MAX_MTU,
-        true,
     );
     context.path_mut().pto_backoff = 2;
     let ack_receive_time = ack_receive_time + Duration::from_millis(500);
@@ -2334,7 +2332,6 @@ fn update_pto_timer() {
         MockCongestionController::default(),
         false,
         DEFAULT_MAX_MTU,
-        true,
     );
     // simulate receiving a handshake packet to force path validation
     context.path_mut().on_handshake_packet();
@@ -2419,7 +2416,6 @@ fn pto_armed_if_handshake_not_confirmed() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
-        true,
     );
 
     // simulate receiving a handshake packet to force path validation
@@ -2448,7 +2444,6 @@ fn pto_must_be_at_least_k_granularity() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
-        true,
     );
 
     // Update RTT with the smallest possible sample
@@ -3029,7 +3024,6 @@ fn helper_generate_path_manager_with_first_addr(
         MockCongestionController::default(),
         true,
         DEFAULT_MAX_MTU,
-        true,
     );
 
     path::Manager::new(path, registry)

@@ -453,7 +453,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             parameters.congestion_controller,
             peer_validated,
             parameters.max_mtu,
-            true,
         );
 
         let path_manager = path::Manager::new(initial_path, parameters.peer_id_registry);
@@ -468,6 +467,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 remote_addr: parameters.path_handle.remote_address().into_event(),
                 remote_cid: parameters.peer_connection_id.into_event(),
                 id: path_manager.active_path_id().into_event(),
+                is_active: true,
             },
         });
 
