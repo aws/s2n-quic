@@ -122,7 +122,16 @@ impl Interop {
             let mut file = File::open(&abs_path).await?;
             loop {
                 match timeout(Duration::from_secs(1), file.next()).await {
-                    Ok(Some(Ok(chunk))) => tx_stream.send(chunk).await?,
+                    Ok(Some(Ok(chunk))) => {
+                        let len = chunk.len();
+                        debug!(
+                            "{:?} bytes ready to send on Stream({:?})",
+                            len,
+                            tx_stream.id()
+                        );
+                        tx_stream.send(chunk).await?;
+                        debug!("{:?} bytes sent on Stream({:?})", len, tx_stream.id());
+                    }
                     Ok(Some(Err(err))) => {
                         eprintln!("error opening {:?}", abs_path);
                         tx_stream.reset(1u32.try_into()?)?;
