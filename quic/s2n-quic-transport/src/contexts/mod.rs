@@ -9,12 +9,7 @@ use s2n_codec::encoder::EncoderValue;
 use s2n_quic_core::{
     endpoint,
     event::{self, IntoEvent},
-    frame::{
-        ack_elicitation::{AckElicitable, AckElicitation},
-        congestion_controlled::CongestionControlled,
-        connection_progress::ConnectionProgress,
-        path_validation::Probing as PathValidationProbing,
-    },
+    frame::{ack_elicitation::AckElicitation, FrameTrait},
     packet::number::PacketNumber,
     time::Timestamp,
 };
@@ -39,11 +34,7 @@ pub trait WriteContext {
     /// that will be used to send the frame will be returned.
     fn write_frame<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
     where
-        Frame: EncoderValue
-            + AckElicitable
-            + CongestionControlled
-            + PathValidationProbing
-            + ConnectionProgress,
+        Frame: EncoderValue + FrameTrait,
         for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>;
 
     /// Writes a pre-fitted frame.
@@ -52,11 +43,7 @@ pub trait WriteContext {
     /// The context should panic if otherwise.
     fn write_fitted_frame<Frame>(&mut self, frame: &Frame) -> PacketNumber
     where
-        Frame: EncoderValue
-            + AckElicitable
-            + CongestionControlled
-            + PathValidationProbing
-            + ConnectionProgress,
+        Frame: EncoderValue + FrameTrait,
         for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>;
 
     /// Attempt to write a frame, bypassing congestion controller constraint checks.
@@ -64,7 +51,7 @@ pub trait WriteContext {
     /// the frame will be returned.
     fn write_frame_forced<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
     where
-        Frame: EncoderValue + AckElicitable + CongestionControlled + ConnectionProgress,
+        Frame: EncoderValue + FrameTrait,
         for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>;
 
     /// Returns the ack elicitation of the current packet

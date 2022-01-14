@@ -6,12 +6,7 @@ use core::marker::PhantomData;
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
     event::{self, ConnectionPublisher as _, IntoEvent},
-    frame::{
-        ack_elicitation::{AckElicitable, AckElicitation},
-        congestion_controlled::CongestionControlled,
-        connection_progress::ConnectionProgress,
-        path_validation::Probing as PathValidationProbing,
-    },
+    frame::{ack_elicitation::AckElicitation, FrameTrait},
     packet::number::PacketNumber,
     time::Timestamp,
 };
@@ -35,12 +30,7 @@ pub struct Context<'a, 'b, 'sub, Config: endpoint::Config> {
 
 impl<'a, 'b, 'sub, Config: endpoint::Config> Context<'a, 'b, 'sub, Config> {
     #[inline]
-    fn check_frame_constraint<
-        Frame: AckElicitable + CongestionControlled + PathValidationProbing,
-    >(
-        &self,
-        frame: &Frame,
-    ) {
+    fn check_frame_constraint<Frame: FrameTrait>(&self, frame: &Frame) {
         // only apply checks with debug_assertions enabled
         if !cfg!(debug_assertions) {
             return;
@@ -94,11 +84,7 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
     #[inline]
     fn write_frame<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
     where
-        Frame: EncoderValue
-            + AckElicitable
-            + CongestionControlled
-            + PathValidationProbing
-            + ConnectionProgress,
+        Frame: EncoderValue + FrameTrait,
         for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
     {
         self.check_frame_constraint(frame);
@@ -108,11 +94,7 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
     #[inline]
     fn write_fitted_frame<Frame>(&mut self, frame: &Frame) -> PacketNumber
     where
-        Frame: EncoderValue
-            + AckElicitable
-            + CongestionControlled
-            + PathValidationProbing
-            + ConnectionProgress,
+        Frame: EncoderValue + FrameTrait,
         for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
     {
         self.check_frame_constraint(frame);
@@ -136,7 +118,7 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
 
     fn write_frame_forced<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
     where
-        Frame: EncoderValue + AckElicitable + CongestionControlled + ConnectionProgress,
+        Frame: EncoderValue + FrameTrait,
         for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
     {
         if frame.encoding_size() > self.buffer.remaining_capacity() {
@@ -226,11 +208,7 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
     #[inline]
     fn write_frame<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
     where
-        Frame: EncoderValue
-            + AckElicitable
-            + CongestionControlled
-            + PathValidationProbing
-            + ConnectionProgress,
+        Frame: EncoderValue + FrameTrait,
         for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
     {
         self.context.write_frame(frame)
@@ -239,11 +217,7 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
     #[inline]
     fn write_fitted_frame<Frame>(&mut self, frame: &Frame) -> PacketNumber
     where
-        Frame: EncoderValue
-            + AckElicitable
-            + CongestionControlled
-            + PathValidationProbing
-            + ConnectionProgress,
+        Frame: EncoderValue + FrameTrait,
         for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
     {
         self.context.write_fitted_frame(frame)
@@ -251,7 +225,7 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
 
     fn write_frame_forced<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
     where
-        Frame: EncoderValue + AckElicitable + CongestionControlled + ConnectionProgress,
+        Frame: EncoderValue + FrameTrait,
         for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
     {
         self.context.write_frame_forced(frame)

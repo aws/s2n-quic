@@ -424,8 +424,8 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         }
     }
 
-    /// The total number of bytes received on streams
-    pub fn total_acquired(&self) -> VarInt {
+    /// The number of bytes of forward progress the peer has made on incoming streams
+    pub fn incoming_bytes_progressed(&self) -> VarInt {
         self.inner
             .incoming_connection_flow_controller
             .acquired_window()

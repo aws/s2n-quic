@@ -3,7 +3,13 @@
 
 #![forbid(unsafe_code)]
 
-use crate::event;
+use crate::{
+    event,
+    frame::{
+        ack_elicitation::AckElicitable, congestion_controlled::CongestionControlled,
+        forward_progress::ForwardProgress,
+    },
+};
 use core::fmt;
 use s2n_codec::{
     DecoderBuffer, DecoderBufferMut, DecoderBufferMutResult, DecoderError,
@@ -12,8 +18,8 @@ use s2n_codec::{
 
 pub mod ack_elicitation;
 pub mod congestion_controlled;
+pub mod forward_progress;
 pub mod path_validation;
-pub mod connection_progress;
 
 //= https://www.rfc-editor.org/rfc/rfc9000.txt#19
 //# As described in Section 12.4, packets contain one or more frames.
@@ -24,6 +30,17 @@ pub(crate) type Tag = u8;
 
 pub type FrameRef<'a> = Frame<'a, ack::AckRangesDecoder<'a>, DecoderBuffer<'a>>;
 pub type FrameMut<'a> = Frame<'a, ack::AckRangesDecoder<'a>, DecoderBufferMut<'a>>;
+
+pub trait FrameTrait:
+    AckElicitable + CongestionControlled + path_validation::Probing + ForwardProgress
+{
+}
+
+/// Implement FrameTrait for all types that implement the required subtraits
+impl<T: AckElicitable + CongestionControlled + path_validation::Probing + ForwardProgress>
+    FrameTrait for T
+{
+}
 
 macro_rules! frames {
     ($ack:ident, $data:ident | $($tag_macro:ident => $module:ident, $handler:ident, $ty:ident $([$($generics:tt)+])?;)*) => {

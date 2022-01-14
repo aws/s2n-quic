@@ -7,6 +7,7 @@ use crate::{
     connection::{
         self,
         close_sender::CloseSender,
+        connection_timers::MIN_TRANSFER_RATE_INTERVAL,
         id::{ConnectionInfo, Interest},
         limits::Limits,
         local_id_registry::LocalIdRegistrationError,
@@ -26,6 +27,7 @@ use crate::{
 use bytes::Bytes;
 use core::{
     fmt,
+    ops::Deref,
     task::{Context, Poll},
     time::Duration,
 };
@@ -489,6 +491,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         if Config::ENDPOINT_TYPE.is_client() {
             connection.update_crypto_state(parameters.timestamp, parameters.event_subscriber)?;
         }
+
+        if connection.limits.min_transfer_bytes_per_second() > 0 {
+            connection
+                .timers
+                .min_transfer_rate_timer
+                .set(parameters.timestamp + MIN_TRANSFER_RATE_INTERVAL);
+        }
+
         Ok(connection)
     }
 
@@ -816,6 +826,36 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .is_ready()
         {
             return Err(connection::Error::IdleTimerExpired);
+        }
+
+        if self
+            .timers
+            .min_transfer_rate_timer
+            .poll_expiration(timestamp)
+            .is_ready()
+        {
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#21.6
+            //# QUIC deployments SHOULD provide mitigations for the Slowloris
+            //# attacks, such as increasing the maximum number of clients the server
+            //# will allow, limiting the number of connections a single IP address is
+            //# allowed to make, imposing restrictions on the minimum transfer speed
+            //# a connection is allowed to have, and restricting the length of time
+            //# an endpoint is allowed to stay connected.
+
+            // If the min transfer rate interval is 1 second, we don't need to convert the rate
+            debug_assert_eq!(MIN_TRANSFER_RATE_INTERVAL, Duration::from_secs(1));
+
+            if self.bytes_progressed < self.limits.min_transfer_bytes_per_second() as u64 {
+                return Err(connection::Error::MinTransferRateViolation {
+                    bytes_per_second: *self.bytes_progressed.deref() as u32,
+                    min_bytes_per_second: self.limits.min_transfer_bytes_per_second(),
+                });
+            }
+
+            self.bytes_progressed = Counter::default();
+            self.timers
+                .min_transfer_rate_timer
+                .set(timestamp + MIN_TRANSFER_RATE_INTERVAL);
         }
 
         // TODO: enable this check once all of the component timers are fixed
@@ -1180,7 +1220,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut publisher,
             );
 
-            let total_acquired = space.stream_manager.total_acquired();
+            let bytes_progressed = space.stream_manager.incoming_bytes_progressed();
 
             space.handle_cleartext_payload(
                 packet.packet_number,
@@ -1195,7 +1235,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             )?;
 
             self.bytes_progressed +=
-                (space.stream_manager.total_acquired() - total_acquired).as_u64();
+                (space.stream_manager.incoming_bytes_progressed() - bytes_progressed).as_u64();
 
             // notify the connection a packet was processed
             self.on_processed_packet(datagram.timestamp);

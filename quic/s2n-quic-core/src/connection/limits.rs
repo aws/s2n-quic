@@ -177,6 +177,10 @@ impl Limits {
     pub fn max_idle_timeout(&self) -> Option<Duration> {
         self.max_idle_timeout.as_duration()
     }
+
+    pub fn min_transfer_bytes_per_second(&self) -> u32 {
+        self.min_transfer_bytes_per_second
+    }
 }
 
 /// Creates limits for a given connection
