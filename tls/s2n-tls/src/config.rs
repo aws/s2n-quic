@@ -65,11 +65,6 @@ impl Builder {
         Default::default()
     }
 
-    pub fn set_alert_behavior(&mut self, value: s2n_alert_behavior) -> Result<&mut Self, Error> {
-        call!(s2n_config_set_alert_behavior(self.as_mut_ptr(), value))?;
-        Ok(self)
-    }
-
     pub fn set_max_cert_chain_depth(&mut self, depth: u16) -> Result<&mut Self, Error> {
         call!(s2n_config_set_max_cert_chain_depth(
             self.as_mut_ptr(),
