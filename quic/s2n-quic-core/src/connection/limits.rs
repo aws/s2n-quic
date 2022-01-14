@@ -129,7 +129,7 @@ impl Limits {
     setter!(with_max_ack_ranges, ack_ranges_limit, u8);
     setter!(with_max_send_buffer_size, max_send_buffer_size, u32);
     setter!(
-        with_min_receive_bytes_per_second,
+        with_min_transfer_bytes_per_second,
         min_transfer_bytes_per_second,
         u32
     );
