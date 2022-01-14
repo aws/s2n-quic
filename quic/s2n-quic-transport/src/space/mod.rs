@@ -15,7 +15,7 @@ use s2n_quic_core::{
     ack,
     connection::{limits::Limits, InitialId, PeerId},
     crypto::{tls, tls::Session, CryptoSuite},
-    event::{self, ConnectionPublisher as _, IntoEvent},
+    event::{self, IntoEvent},
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
         HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionId, NewToken,
@@ -351,14 +351,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
                         match result {
                             Ok((outcome, buffer)) => {
-                                context
-                                    .publisher
-                                    .on_packet_sent(event::builder::PacketSent {
-                                        packet_header: event::builder::PacketHeader::new(
-                                            outcome.packet_number,
-                                            context.publisher.quic_version(),
-                                        ),
-                                    });
+                                *context.outcome += outcome;
                                 buffer
                             }
                             Err(err) => err.take_buffer(),

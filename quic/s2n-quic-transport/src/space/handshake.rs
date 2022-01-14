@@ -16,7 +16,7 @@ use core::{fmt, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{tls, CryptoSuite},
-    event::{self, IntoEvent},
+    event::{self, ConnectionPublisher as _, IntoEvent},
     frame::{ack::AckRanges, crypto::CryptoRef, Ack, ConnectionClose},
     inet::DatagramInfo,
     packet::{
@@ -120,7 +120,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         }
 
         let packet_number_encoder = self.packet_number_encoder();
-        let mut outcome = transmission::Outcome::new(packet_number);
+        let mut outcome = transmission::Outcome::default();
 
         let destination_connection_id = context.path().peer_connection_id;
         let payload = transmission::Transmission {
@@ -170,6 +170,15 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
             context.publisher,
         );
 
+        context
+            .publisher
+            .on_packet_sent(event::builder::PacketSent {
+                packet_header: event::builder::PacketHeader::new(
+                    packet_number,
+                    context.publisher.quic_version(),
+                ),
+            });
+
         Ok((outcome, buffer))
     }
 
@@ -182,7 +191,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         let packet_number = self.tx_packet_numbers.next();
 
         let packet_number_encoder = self.packet_number_encoder();
-        let mut outcome = transmission::Outcome::new(packet_number);
+        let mut outcome = transmission::Outcome::default();
 
         let destination_connection_id = context.path().peer_connection_id;
         let payload = transmission::Transmission {
@@ -216,6 +225,15 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
             context.min_packet_len,
             buffer,
         )?;
+
+        context
+            .publisher
+            .on_packet_sent(event::builder::PacketSent {
+                packet_header: event::builder::PacketHeader::new(
+                    packet_number,
+                    context.publisher.quic_version(),
+                ),
+            });
 
         Ok((outcome, buffer))
     }

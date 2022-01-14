@@ -40,7 +40,7 @@ use s2n_quic_core::{
     packet::{
         handshake::ProtectedHandshake,
         initial::{CleartextInitial, ProtectedInitial},
-        number::{PacketNumber, PacketNumberSpace},
+        number::PacketNumberSpace,
         retry::ProtectedRetry,
         short::ProtectedShort,
         version_negotiation::ProtectedVersionNegotiation,
@@ -540,7 +540,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         if let Some((early_connection_close, connection_close)) =
             s2n_quic_core::connection::error::as_frame(error, close_formatter, &close_context)
         {
-            let mut outcome = transmission::Outcome::new(PacketNumber::default());
+            let mut outcome = transmission::Outcome::default();
             let mut context = transmission_context!(
                 self,
                 &mut outcome,
@@ -655,7 +655,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         match self.state {
             ConnectionState::Handshaking | ConnectionState::Active => {
-                let mut outcome = transmission::Outcome::new(PacketNumber::default());
+                let mut outcome = transmission::Outcome::default();
                 let path_id = self.path_manager.active_path_id();
 
                 // Send an MTU probe if necessary and the handshake has completed
