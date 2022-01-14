@@ -21,6 +21,67 @@ struct EndpointMeta {
 
 struct ConnectionInfo {}
 
+// https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.3
+struct TransportParameters<'a> {
+    original_destination_connection_id: Option<ConnectionId<'a>>,
+    initial_source_connection_id: Option<ConnectionId<'a>>,
+    retry_source_connection_id: Option<ConnectionId<'a>>,
+    stateless_reset_token: Option<&'a [u8]>,
+    preferred_address: Option<PreferredAddress<'a>>,
+    migration_support: bool,
+    max_idle_timeout: u64,
+    ack_delay_exponent: u8,
+    max_ack_delay: u64,
+    max_udp_payload_size: u64,
+    active_connection_id_limit: u64,
+    initial_max_stream_data_bidi_local: u64,
+    initial_max_stream_data_bidi_remote: u64,
+    initial_max_stream_data_uni: u64,
+    initial_max_streams_bidi: u64,
+    initial_max_streams_uni: u64,
+}
+
+struct PreferredAddress<'a> {
+    ipv4_address: Option<SocketAddress<'a>>,
+    ipv6_address: Option<SocketAddress<'a>>,
+    connection_id: ConnectionId<'a>,
+    stateless_reset_token: &'a [u8],
+}
+
+impl<'a> IntoEvent<builder::PreferredAddress<'a>>
+    for &'a crate::transport::parameters::PreferredAddress
+{
+    #[inline]
+    fn into_event(self) -> builder::PreferredAddress<'a> {
+        builder::PreferredAddress {
+            ipv4_address: self.ipv4_address.as_ref().map(|addr| addr.into_event()),
+            ipv6_address: self.ipv6_address.as_ref().map(|addr| addr.into_event()),
+            connection_id: self.connection_id.into_event(),
+            stateless_reset_token: self.stateless_reset_token.as_ref(),
+        }
+    }
+}
+
+impl<'a> IntoEvent<builder::SocketAddress<'a>> for &'a crate::inet::ipv4::SocketAddressV4 {
+    #[inline]
+    fn into_event(self) -> builder::SocketAddress<'a> {
+        builder::SocketAddress::IpV4 {
+            ip: &self.ip.octets,
+            port: self.port.into(),
+        }
+    }
+}
+
+impl<'a> IntoEvent<builder::SocketAddress<'a>> for &'a crate::inet::ipv6::SocketAddressV6 {
+    #[inline]
+    fn into_event(self) -> builder::SocketAddress<'a> {
+        builder::SocketAddress::IpV6 {
+            ip: &self.ip.octets,
+            port: self.port.into(),
+        }
+    }
+}
+
 struct Path<'a> {
     local_addr: SocketAddress<'a>,
     local_cid: ConnectionId<'a>,
@@ -123,14 +184,8 @@ impl<'a> IntoEvent<builder::SocketAddress<'a>> for &'a crate::inet::SocketAddres
     #[inline]
     fn into_event(self) -> builder::SocketAddress<'a> {
         match self {
-            crate::inet::SocketAddress::IpV4(addr) => builder::SocketAddress::IpV4 {
-                ip: &addr.ip.octets,
-                port: addr.port.into(),
-            },
-            crate::inet::SocketAddress::IpV6(addr) => builder::SocketAddress::IpV6 {
-                ip: &addr.ip.octets,
-                port: addr.port.into(),
-            },
+            crate::inet::SocketAddress::IpV4(addr) => addr.into_event(),
+            crate::inet::SocketAddress::IpV6(addr) => addr.into_event(),
         }
     }
 }

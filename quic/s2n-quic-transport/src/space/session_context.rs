@@ -19,6 +19,7 @@ use s2n_quic_core::{
     crypto::{tls, CryptoSuite},
     ct::ConstantTimeEq,
     event,
+    event::IntoEvent,
     packet::number::PacketNumberSpace,
     time::Timestamp,
     transport::{
@@ -71,6 +72,11 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             transport::Error::TRANSPORT_PARAMETER_ERROR
                 .with_reason("Invalid bytes in transport parameters")
         })?;
+        self.publisher.on_transport_parameters_received(
+            event::builder::TransportParametersReceived {
+                transport_parameters: peer_parameters.into_event(),
+            },
+        );
 
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
         //# An endpoint MUST treat the following as a connection error of type
@@ -186,6 +192,12 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             transport::Error::TRANSPORT_PARAMETER_ERROR
                 .with_reason("Invalid bytes in transport parameters")
         })?;
+
+        self.publisher.on_transport_parameters_received(
+            event::builder::TransportParametersReceived {
+                transport_parameters: peer_parameters.into_event(),
+            },
+        );
 
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
         //# An endpoint MUST treat the following as a connection error of type

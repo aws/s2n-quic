@@ -27,6 +27,34 @@ pub mod api {
     pub struct ConnectionInfo {}
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub struct TransportParameters<'a> {
+        pub original_destination_connection_id: Option<ConnectionId<'a>>,
+        pub initial_source_connection_id: Option<ConnectionId<'a>>,
+        pub retry_source_connection_id: Option<ConnectionId<'a>>,
+        pub stateless_reset_token: Option<&'a [u8]>,
+        pub preferred_address: Option<PreferredAddress<'a>>,
+        pub migration_support: bool,
+        pub max_idle_timeout: u64,
+        pub ack_delay_exponent: u8,
+        pub max_ack_delay: u64,
+        pub max_udp_payload_size: u64,
+        pub active_connection_id_limit: u64,
+        pub initial_max_stream_data_bidi_local: u64,
+        pub initial_max_stream_data_bidi_remote: u64,
+        pub initial_max_stream_data_uni: u64,
+        pub initial_max_streams_bidi: u64,
+        pub initial_max_streams_uni: u64,
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct PreferredAddress<'a> {
+        pub ipv4_address: Option<SocketAddress<'a>>,
+        pub ipv6_address: Option<SocketAddress<'a>>,
+        pub connection_id: ConnectionId<'a>,
+        pub stateless_reset_token: &'a [u8],
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     pub struct Path<'a> {
         pub local_addr: SocketAddress<'a>,
         pub local_cid: ConnectionId<'a>,
@@ -462,6 +490,15 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " Transport parameters received by connection"]
+    pub struct TransportParametersReceived<'a> {
+        pub transport_parameters: TransportParameters<'a>,
+    }
+    impl<'a> Event for TransportParametersReceived<'a> {
+        const NAME: &'static str = "transport:transport_parameters_received";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Datagram sent by a connection"]
     pub struct DatagramSent {
         pub len: u16,
@@ -677,6 +714,37 @@ pub mod api {
         #[non_exhaustive]
         MaxMtu { mtu: u16 },
     }
+    impl<'a> IntoEvent<builder::PreferredAddress<'a>>
+        for &'a crate::transport::parameters::PreferredAddress
+    {
+        #[inline]
+        fn into_event(self) -> builder::PreferredAddress<'a> {
+            builder::PreferredAddress {
+                ipv4_address: self.ipv4_address.as_ref().map(|addr| addr.into_event()),
+                ipv6_address: self.ipv6_address.as_ref().map(|addr| addr.into_event()),
+                connection_id: self.connection_id.into_event(),
+                stateless_reset_token: self.stateless_reset_token.as_ref(),
+            }
+        }
+    }
+    impl<'a> IntoEvent<builder::SocketAddress<'a>> for &'a crate::inet::ipv4::SocketAddressV4 {
+        #[inline]
+        fn into_event(self) -> builder::SocketAddress<'a> {
+            builder::SocketAddress::IpV4 {
+                ip: &self.ip.octets,
+                port: self.port.into(),
+            }
+        }
+    }
+    impl<'a> IntoEvent<builder::SocketAddress<'a>> for &'a crate::inet::ipv6::SocketAddressV6 {
+        #[inline]
+        fn into_event(self) -> builder::SocketAddress<'a> {
+            builder::SocketAddress::IpV6 {
+                ip: &self.ip.octets,
+                port: self.port.into(),
+            }
+        }
+    }
     impl<'a> core::fmt::Debug for ConnectionId<'a> {
         fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
             write!(f, "0x")?;
@@ -752,14 +820,8 @@ pub mod api {
         #[inline]
         fn into_event(self) -> builder::SocketAddress<'a> {
             match self {
-                crate::inet::SocketAddress::IpV4(addr) => builder::SocketAddress::IpV4 {
-                    ip: &addr.ip.octets,
-                    port: addr.port.into(),
-                },
-                crate::inet::SocketAddress::IpV6(addr) => builder::SocketAddress::IpV6 {
-                    ip: &addr.ip.octets,
-                    port: addr.port.into(),
-                },
+                crate::inet::SocketAddress::IpV4(addr) => addr.into_event(),
+                crate::inet::SocketAddress::IpV6(addr) => addr.into_event(),
             }
         }
     }
@@ -1250,6 +1312,19 @@ pub mod api {
                 tracing :: event ! (target : "duplicate_packet" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , error = tracing :: field :: debug (error));
             }
             #[inline]
+            fn on_transport_parameters_received(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::TransportParametersReceived,
+            ) {
+                let id = context.id();
+                let api::TransportParametersReceived {
+                    transport_parameters,
+                } = event;
+                tracing :: event ! (target : "transport_parameters_received" , parent : id , tracing :: Level :: DEBUG , transport_parameters = tracing :: field :: debug (transport_parameters));
+            }
+            #[inline]
             fn on_datagram_sent(
                 &mut self,
                 context: &mut Self::ConnectionContext,
@@ -1543,6 +1618,91 @@ pub mod builder {
         fn into_event(self) -> api::ConnectionInfo {
             let ConnectionInfo {} = self;
             api::ConnectionInfo {}
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct TransportParameters<'a> {
+        pub original_destination_connection_id: Option<ConnectionId<'a>>,
+        pub initial_source_connection_id: Option<ConnectionId<'a>>,
+        pub retry_source_connection_id: Option<ConnectionId<'a>>,
+        pub stateless_reset_token: Option<&'a [u8]>,
+        pub preferred_address: Option<PreferredAddress<'a>>,
+        pub migration_support: bool,
+        pub max_idle_timeout: u64,
+        pub ack_delay_exponent: u8,
+        pub max_ack_delay: u64,
+        pub max_udp_payload_size: u64,
+        pub active_connection_id_limit: u64,
+        pub initial_max_stream_data_bidi_local: u64,
+        pub initial_max_stream_data_bidi_remote: u64,
+        pub initial_max_stream_data_uni: u64,
+        pub initial_max_streams_bidi: u64,
+        pub initial_max_streams_uni: u64,
+    }
+    impl<'a> IntoEvent<api::TransportParameters<'a>> for TransportParameters<'a> {
+        #[inline]
+        fn into_event(self) -> api::TransportParameters<'a> {
+            let TransportParameters {
+                original_destination_connection_id,
+                initial_source_connection_id,
+                retry_source_connection_id,
+                stateless_reset_token,
+                preferred_address,
+                migration_support,
+                max_idle_timeout,
+                ack_delay_exponent,
+                max_ack_delay,
+                max_udp_payload_size,
+                active_connection_id_limit,
+                initial_max_stream_data_bidi_local,
+                initial_max_stream_data_bidi_remote,
+                initial_max_stream_data_uni,
+                initial_max_streams_bidi,
+                initial_max_streams_uni,
+            } = self;
+            api::TransportParameters {
+                original_destination_connection_id: original_destination_connection_id.into_event(),
+                initial_source_connection_id: initial_source_connection_id.into_event(),
+                retry_source_connection_id: retry_source_connection_id.into_event(),
+                stateless_reset_token: stateless_reset_token.into_event(),
+                preferred_address: preferred_address.into_event(),
+                migration_support: migration_support.into_event(),
+                max_idle_timeout: max_idle_timeout.into_event(),
+                ack_delay_exponent: ack_delay_exponent.into_event(),
+                max_ack_delay: max_ack_delay.into_event(),
+                max_udp_payload_size: max_udp_payload_size.into_event(),
+                active_connection_id_limit: active_connection_id_limit.into_event(),
+                initial_max_stream_data_bidi_local: initial_max_stream_data_bidi_local.into_event(),
+                initial_max_stream_data_bidi_remote: initial_max_stream_data_bidi_remote
+                    .into_event(),
+                initial_max_stream_data_uni: initial_max_stream_data_uni.into_event(),
+                initial_max_streams_bidi: initial_max_streams_bidi.into_event(),
+                initial_max_streams_uni: initial_max_streams_uni.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct PreferredAddress<'a> {
+        pub ipv4_address: Option<SocketAddress<'a>>,
+        pub ipv6_address: Option<SocketAddress<'a>>,
+        pub connection_id: ConnectionId<'a>,
+        pub stateless_reset_token: &'a [u8],
+    }
+    impl<'a> IntoEvent<api::PreferredAddress<'a>> for PreferredAddress<'a> {
+        #[inline]
+        fn into_event(self) -> api::PreferredAddress<'a> {
+            let PreferredAddress {
+                ipv4_address,
+                ipv6_address,
+                connection_id,
+                stateless_reset_token,
+            } = self;
+            api::PreferredAddress {
+                ipv4_address: ipv4_address.into_event(),
+                ipv6_address: ipv6_address.into_event(),
+                connection_id: connection_id.into_event(),
+                stateless_reset_token: stateless_reset_token.into_event(),
+            }
         }
     }
     #[derive(Clone, Debug)]
@@ -2327,6 +2487,21 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct TransportParametersReceived<'a> {
+        pub transport_parameters: TransportParameters<'a>,
+    }
+    impl<'a> IntoEvent<api::TransportParametersReceived<'a>> for TransportParametersReceived<'a> {
+        #[inline]
+        fn into_event(self) -> api::TransportParametersReceived<'a> {
+            let TransportParametersReceived {
+                transport_parameters,
+            } = self;
+            api::TransportParametersReceived {
+                transport_parameters: transport_parameters.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct DatagramSent {
         pub len: u16,
         #[doc = " The GSO offset at which this datagram was written"]
@@ -2951,6 +3126,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `TransportParametersReceived` event is triggered"]
+        #[inline]
+        fn on_transport_parameters_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &TransportParametersReceived,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `DatagramSent` event is triggered"]
         #[inline]
         fn on_datagram_sent(
@@ -3364,6 +3551,16 @@ mod traits {
             (self.1).on_duplicate_packet(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_transport_parameters_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &TransportParametersReceived,
+        ) {
+            (self.0).on_transport_parameters_received(&mut context.0, meta, event);
+            (self.1).on_transport_parameters_received(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_datagram_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -3725,6 +3922,8 @@ mod traits {
         fn on_connection_closed(&mut self, event: builder::ConnectionClosed);
         #[doc = "Publishes a `DuplicatePacket` event to the publisher's subscriber"]
         fn on_duplicate_packet(&mut self, event: builder::DuplicatePacket);
+        #[doc = "Publishes a `TransportParametersReceived` event to the publisher's subscriber"]
+        fn on_transport_parameters_received(&mut self, event: builder::TransportParametersReceived);
         #[doc = "Publishes a `DatagramSent` event to the publisher's subscriber"]
         fn on_datagram_sent(&mut self, event: builder::DatagramSent);
         #[doc = "Publishes a `DatagramReceived` event to the publisher's subscriber"]
@@ -3931,6 +4130,18 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_transport_parameters_received(
+            &mut self,
+            event: builder::TransportParametersReceived,
+        ) {
+            let event = event.into_event();
+            self.subscriber
+                .on_transport_parameters_received(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn on_datagram_sent(&mut self, event: builder::DatagramSent) {
             let event = event.into_event();
             self.subscriber
@@ -4041,6 +4252,7 @@ pub mod testing {
         pub connection_started: u32,
         pub connection_closed: u32,
         pub duplicate_packet: u32,
+        pub transport_parameters_received: u32,
         pub datagram_sent: u32,
         pub datagram_received: u32,
         pub datagram_dropped: u32,
@@ -4102,6 +4314,7 @@ pub mod testing {
                 connection_started: 0,
                 connection_closed: 0,
                 duplicate_packet: 0,
+                transport_parameters_received: 0,
                 datagram_sent: 0,
                 datagram_received: 0,
                 datagram_dropped: 0,
@@ -4320,6 +4533,17 @@ pub mod testing {
                 self.output.push(format!("{:?} {:?}", meta, event));
             }
         }
+        fn on_transport_parameters_received(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::TransportParametersReceived,
+        ) {
+            self.transport_parameters_received += 1;
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
+        }
         fn on_datagram_sent(
             &mut self,
             _context: &mut Self::ConnectionContext,
@@ -4513,6 +4737,7 @@ pub mod testing {
         pub connection_started: u32,
         pub connection_closed: u32,
         pub duplicate_packet: u32,
+        pub transport_parameters_received: u32,
         pub datagram_sent: u32,
         pub datagram_received: u32,
         pub datagram_dropped: u32,
@@ -4564,6 +4789,7 @@ pub mod testing {
                 connection_started: 0,
                 connection_closed: 0,
                 duplicate_packet: 0,
+                transport_parameters_received: 0,
                 datagram_sent: 0,
                 datagram_received: 0,
                 datagram_dropped: 0,
@@ -4762,6 +4988,16 @@ pub mod testing {
         }
         fn on_duplicate_packet(&mut self, event: builder::DuplicatePacket) {
             self.duplicate_packet += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
+        }
+        fn on_transport_parameters_received(
+            &mut self,
+            event: builder::TransportParametersReceived,
+        ) {
+            self.transport_parameters_received += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 self.output.push(format!("{:?}", event));
