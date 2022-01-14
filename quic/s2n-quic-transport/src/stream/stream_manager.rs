@@ -424,6 +424,13 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         }
     }
 
+    /// The total number of bytes received on streams
+    pub fn total_acquired(&self) -> VarInt {
+        self.inner
+            .incoming_connection_flow_controller
+            .acquired_window()
+    }
+
     /// Accepts the next incoming stream of a given type
     pub fn poll_accept(
         &mut self,

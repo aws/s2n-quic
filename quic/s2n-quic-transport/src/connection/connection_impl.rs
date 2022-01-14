@@ -997,6 +997,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             // token is received in the first Initial Packet. If that value is set, it should be
             // verified in all subsequent packets.
 
+            let total_received_len = space.crypto_stream.rx.total_received_len();
+
             space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -1008,6 +1010,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 random_generator,
                 &mut publisher,
             )?;
+
+            self.bytes_progressed +=
+                space.crypto_stream.rx.total_received_len() - total_received_len;
 
             // try to move the crypto state machine forward
             self.update_crypto_state(datagram.timestamp, subscriber)?;
@@ -1058,6 +1063,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 ),
             });
 
+            let total_received_len = space.crypto_stream.rx.total_received_len();
+
             space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -1069,6 +1076,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 random_generator,
                 &mut publisher,
             )?;
+
+            self.bytes_progressed +=
+                space.crypto_stream.rx.total_received_len() - total_received_len;
 
             if Self::Config::ENDPOINT_TYPE.is_server() {
                 //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9.1
@@ -1170,6 +1180,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut publisher,
             );
 
+            let total_acquired = space.stream_manager.total_acquired();
+
             space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -1181,6 +1193,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 random_generator,
                 &mut publisher,
             )?;
+
+            self.bytes_progressed +=
+                (space.stream_manager.total_acquired() - total_acquired).as_u64();
 
             // notify the connection a packet was processed
             self.on_processed_packet(datagram.timestamp);
