@@ -184,15 +184,6 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 encoder,
             ) {
                 Ok((outcome, encoder)) => {
-                    self.context
-                        .publisher
-                        .on_packet_sent(event::builder::PacketSent {
-                            packet_header: event::builder::PacketHeader::new(
-                                outcome.packet_number,
-                                self.context.publisher.quic_version(),
-                            ),
-                        });
-
                     if Config::ENDPOINT_TYPE.is_server()
                         && !outcome.ack_elicitation().is_ack_eliciting()
                     {
@@ -205,6 +196,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                         // The Initial packet was not ack eliciting so there is no need to pad
                         pn_space_to_pad = None;
                     }
+                    *self.context.outcome += outcome;
                     encoder
                 }
                 Err(PacketEncodingError::PacketNumberTruncationError(encoder)) => {
@@ -244,15 +236,6 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 encoder,
             ) {
                 Ok((outcome, encoder)) => {
-                    self.context
-                        .publisher
-                        .on_packet_sent(event::builder::PacketSent {
-                            packet_header: event::builder::PacketHeader::new(
-                                outcome.packet_number,
-                                self.context.publisher.quic_version(),
-                            ),
-                        });
-
                     //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9.1
                     //# a client MUST discard Initial keys when it first sends a
                     //# Handshake packet
@@ -266,6 +249,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                         );
                     }
 
+                    *self.context.outcome += outcome;
                     encoder
                 }
                 Err(PacketEncodingError::PacketNumberTruncationError(encoder)) => {
@@ -342,14 +326,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 encoder,
             ) {
                 Ok((outcome, encoder)) => {
-                    self.context
-                        .publisher
-                        .on_packet_sent(event::builder::PacketSent {
-                            packet_header: event::builder::PacketHeader::new(
-                                outcome.packet_number,
-                                self.context.publisher.quic_version(),
-                            ),
-                        });
+                    *self.context.outcome += outcome;
                     encoder
                 }
                 Err(PacketEncodingError::PacketNumberTruncationError(encoder)) => {

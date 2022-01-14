@@ -108,7 +108,6 @@ fn on_packet_sent() {
             ack_elicitation,
             is_congestion_controlled: i % 3 == 0,
             bytes_sent: (2 * i) as usize,
-            packet_number: space.new_packet_number(VarInt::from_u8(1)),
             bytes_progressed: 0,
         };
 
@@ -235,7 +234,6 @@ fn on_packet_sent_across_multiple_paths() {
         ack_elicitation,
         is_congestion_controlled: true,
         bytes_sent: packet_bytes,
-        packet_number: space.new_packet_number(VarInt::from_u8(1)),
         bytes_progressed: 0,
     };
 
@@ -276,7 +274,6 @@ fn on_packet_sent_across_multiple_paths() {
         ack_elicitation,
         is_congestion_controlled: true,
         bytes_sent: packet_bytes,
-        packet_number: space.new_packet_number(VarInt::from_u8(2)),
         bytes_progressed: 0,
     };
 
@@ -340,7 +337,6 @@ fn on_ack_frame() {
                 ack_elicitation: AckElicitation::Eliciting,
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
-                packet_number: space.new_packet_number(VarInt::from_u8(1)),
                 bytes_progressed: 0,
             },
             time_sent,
@@ -479,7 +475,6 @@ fn on_ack_frame() {
             ack_elicitation: AckElicitation::NonEliciting,
             is_congestion_controlled: true,
             bytes_sent: packet_bytes,
-            packet_number: space.new_packet_number(VarInt::from_u8(1)),
             bytes_progressed: 0,
         },
         time_sent,
@@ -549,7 +544,6 @@ fn process_new_acked_packets_update_pto_timer() {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: packet_bytes,
-            packet_number: space.new_packet_number(VarInt::from_u8(1)),
             bytes_progressed: 0,
         },
         time_sent,
@@ -565,7 +559,6 @@ fn process_new_acked_packets_update_pto_timer() {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: packet_bytes,
-            packet_number: space.new_packet_number(VarInt::from_u8(1)),
             bytes_progressed: 0,
         },
         time_sent,
@@ -664,7 +657,6 @@ fn process_new_acked_packets_congestion_controller() {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: packet_bytes,
-            packet_number: space.new_packet_number(VarInt::from_u8(1)),
             bytes_progressed: 0,
         },
         time_sent,
@@ -680,7 +672,6 @@ fn process_new_acked_packets_congestion_controller() {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: packet_bytes,
-            packet_number: space.new_packet_number(VarInt::from_u8(1)),
             bytes_progressed: 0,
         },
         time_sent,
@@ -790,7 +781,6 @@ fn process_new_acked_packets_pto_timer() {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: packet_bytes,
-            packet_number: space.new_packet_number(VarInt::from_u8(1)),
             bytes_progressed: 0,
         },
         time_sent,
@@ -806,7 +796,6 @@ fn process_new_acked_packets_pto_timer() {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: packet_bytes,
-            packet_number: space.new_packet_number(VarInt::from_u8(1)),
             bytes_progressed: 0,
         },
         time_sent,
@@ -842,7 +831,6 @@ fn process_new_acked_packets_pto_timer() {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: packet_bytes,
-            packet_number: space.new_packet_number(VarInt::from_u8(1)),
             bytes_progressed: 0,
         },
         time_sent,
@@ -905,7 +893,6 @@ fn process_new_acked_packets_process_ecn() {
                 ack_elicitation: AckElicitation::Eliciting,
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
-                packet_number: space.new_packet_number(VarInt::from_u8(i)),
                 bytes_progressed: 0,
             },
             time_sent,
@@ -1006,7 +993,6 @@ fn process_new_acked_packets_failed_ecn_validation_does_not_cause_congestion_eve
                 ack_elicitation: AckElicitation::Eliciting,
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
-                packet_number: space.new_packet_number(VarInt::from_u8(i)),
                 bytes_progressed: 0,
             },
             time_sent,
@@ -1063,7 +1049,6 @@ fn no_rtt_update_when_not_acknowledging_the_largest_acknowledged_packet() {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: packet_bytes,
-            packet_number: space.new_packet_number(VarInt::from_u8(1)),
             bytes_progressed: 0,
         },
         time_sent,
@@ -1077,7 +1062,6 @@ fn no_rtt_update_when_not_acknowledging_the_largest_acknowledged_packet() {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: packet_bytes,
-            packet_number: space.new_packet_number(VarInt::from_u8(1)),
             bytes_progressed: 0,
         },
         time_sent,
@@ -1154,7 +1138,6 @@ fn no_rtt_update_when_receiving_packet_on_different_path() {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: packet_bytes,
-            packet_number: space.new_packet_number(VarInt::from_u8(1)),
             bytes_progressed: 0,
         },
         time_sent,
@@ -1168,7 +1151,6 @@ fn no_rtt_update_when_receiving_packet_on_different_path() {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: packet_bytes,
-            packet_number: space.new_packet_number(VarInt::from_u8(1)),
             bytes_progressed: 0,
         },
         time_sent,
@@ -1270,7 +1252,6 @@ fn rtt_update_when_receiving_ack_from_multiple_paths() {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: packet_bytes,
-            packet_number: space.new_packet_number(VarInt::from_u8(1)),
             bytes_progressed: 0,
         },
         sent_time,
@@ -1287,7 +1268,6 @@ fn rtt_update_when_receiving_ack_from_multiple_paths() {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: packet_bytes,
-            packet_number: space.new_packet_number(VarInt::from_u8(1)),
             bytes_progressed: 0,
         },
         sent_time,
@@ -1354,7 +1334,6 @@ fn detect_and_remove_lost_packets() {
         ack_elicitation: AckElicitation::Eliciting,
         is_congestion_controlled: true,
         bytes_sent: 1,
-        packet_number: space.new_packet_number(VarInt::from_u8(1)),
         bytes_progressed: 0,
     };
 
@@ -1529,7 +1508,6 @@ fn detect_lost_packets_persistent_congestion_path_aware() {
         ack_elicitation: AckElicitation::Eliciting,
         is_congestion_controlled: true,
         bytes_sent: 1,
-        packet_number: space.new_packet_number(VarInt::from_u8(1)),
         bytes_progressed: 0,
     };
 
@@ -1748,7 +1726,6 @@ fn detect_and_remove_lost_packets_nothing_lost() {
         ack_elicitation: AckElicitation::Eliciting,
         is_congestion_controlled: true,
         bytes_sent: 1,
-        packet_number: space.new_packet_number(VarInt::from_u8(1)),
         bytes_progressed: 0,
     };
 
@@ -1799,7 +1776,6 @@ fn detect_and_remove_lost_packets_mtu_probe() {
         ack_elicitation: AckElicitation::Eliciting,
         is_congestion_controlled: true,
         bytes_sent: MINIMUM_MTU as usize + 1,
-        packet_number: space.new_packet_number(VarInt::from_u8(1)),
         bytes_progressed: 0,
     };
 
@@ -1859,7 +1835,6 @@ fn persistent_congestion() {
         ack_elicitation: AckElicitation::Eliciting,
         is_congestion_controlled: true,
         bytes_sent: 1,
-        packet_number: space.new_packet_number(VarInt::from_u8(1)),
         bytes_progressed: 0,
     };
 
@@ -2010,7 +1985,6 @@ fn persistent_congestion_multiple_periods() {
         ack_elicitation: AckElicitation::Eliciting,
         is_congestion_controlled: true,
         bytes_sent: 1,
-        packet_number: space.new_packet_number(VarInt::from_u8(1)),
         bytes_progressed: 0,
     };
 
@@ -2133,7 +2107,6 @@ fn persistent_congestion_period_does_not_start_until_rtt_sample() {
         ack_elicitation: AckElicitation::Eliciting,
         is_congestion_controlled: true,
         bytes_sent: 1,
-        packet_number: space.new_packet_number(VarInt::from_u8(1)),
         bytes_progressed: 0,
     };
 
@@ -2214,7 +2187,6 @@ fn persistent_congestion_not_ack_eliciting() {
         ack_elicitation: AckElicitation::NonEliciting,
         is_congestion_controlled: true,
         bytes_sent: 1,
-        packet_number: space.new_packet_number(VarInt::from_u8(1)),
         bytes_progressed: 0,
     };
 
@@ -2359,7 +2331,6 @@ fn update_pto_timer() {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: 1,
-            packet_number: space.new_packet_number(VarInt::from_u8(1)),
             bytes_progressed: 0,
         },
         now,
@@ -2496,7 +2467,6 @@ fn on_timeout() {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: 1,
-            packet_number: space.new_packet_number(VarInt::from_u8(1)),
             bytes_progressed: 0,
         },
         now - Duration::from_secs(5),
@@ -2798,7 +2768,6 @@ fn probe_packets_count_towards_bytes_in_flight() {
         ack_elicitation: AckElicitation::Eliciting,
         is_congestion_controlled: true,
         bytes_sent: 100,
-        packet_number: space.new_packet_number(VarInt::from_u8(1)),
         bytes_progressed: 0,
     };
     manager.on_packet_sent(
@@ -2889,7 +2858,6 @@ fn packet_declared_lost_less_than_1_ms_from_loss_threshold() {
         ack_elicitation: AckElicitation::Eliciting,
         is_congestion_controlled: true,
         bytes_sent: 100,
-        packet_number: space.new_packet_number(VarInt::from_u8(1)),
         bytes_progressed: 0,
     };
     manager.on_packet_sent(
