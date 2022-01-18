@@ -1,30 +1,19 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::packet::number::PacketNumberSpace;
 use s2n_codec::EncoderValue;
 
 /// Trait to retrieve the number of bytes that the frame progresses the connection by
-/// within the given packet number space
 pub trait ForwardProgress {
     #[inline]
-    fn bytes_progressed(&self, _space: PacketNumberSpace) -> usize {
+    fn bytes_progressed(&self) -> usize {
         0
     }
 }
 
 impl<AckRanges> ForwardProgress for crate::frame::Ack<AckRanges> {}
 impl ForwardProgress for crate::frame::ConnectionClose<'_> {}
-impl<Data: EncoderValue> ForwardProgress for crate::frame::Crypto<Data> {
-    #[inline]
-    fn bytes_progressed(&self, space: PacketNumberSpace) -> usize {
-        match space {
-            PacketNumberSpace::Initial | PacketNumberSpace::Handshake => self.encoding_size(),
-            // Crypto frames in the ApplicationData space do not indicate forward progress
-            PacketNumberSpace::ApplicationData => 0,
-        }
-    }
-}
+impl<Data> ForwardProgress for crate::frame::Crypto<Data> {}
 impl ForwardProgress for crate::frame::DataBlocked {}
 impl ForwardProgress for crate::frame::HandshakeDone {}
 impl ForwardProgress for crate::frame::MaxData {}
@@ -43,7 +32,7 @@ impl ForwardProgress for crate::frame::StreamsBlocked {}
 impl ForwardProgress for crate::frame::StreamDataBlocked {}
 impl<Data: EncoderValue> ForwardProgress for crate::frame::Stream<Data> {
     #[inline]
-    fn bytes_progressed(&self, _space: PacketNumberSpace) -> usize {
+    fn bytes_progressed(&self) -> usize {
         self.encoding_size()
     }
 }

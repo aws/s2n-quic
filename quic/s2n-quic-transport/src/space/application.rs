@@ -617,7 +617,6 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         _frame: CryptoRef,
         _datagram: &DatagramInfo,
         _path: &mut Path<Config>,
-        _packet: &mut ProcessedPacket,
         _publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.5

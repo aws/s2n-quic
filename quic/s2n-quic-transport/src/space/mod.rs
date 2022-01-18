@@ -476,7 +476,6 @@ pub trait PacketSpace<Config: endpoint::Config> {
         frame: CryptoRef,
         datagram: &DatagramInfo,
         path: &mut Path<Config>,
-        packet: &mut ProcessedPacket,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error>;
 
@@ -654,7 +653,6 @@ pub trait PacketSpace<Config: endpoint::Config> {
                         frame.into(),
                         datagram,
                         &mut path_manager[path_id],
-                        &mut processed_packet,
                         publisher,
                     )
                     .map_err(on_error)?;
