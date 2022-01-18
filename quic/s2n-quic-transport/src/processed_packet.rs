@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use s2n_quic_core::{
-    frame::{
-        ack_elicitation::{AckElicitable, AckElicitation},
-        path_validation,
-    },
+    frame::{ack_elicitation::AckElicitation, path_validation, FrameTrait},
     inet::DatagramInfo,
     packet::number::PacketNumber,
 };
@@ -19,6 +16,7 @@ pub struct ProcessedPacket<'a> {
     pub(crate) path_challenge_on_active_path: bool,
     pub(crate) frames: usize,
     pub(crate) path_validation_probing: path_validation::Probe,
+    pub(crate) bytes_progressed: usize,
 }
 
 impl<'a> ProcessedPacket<'a> {
@@ -31,11 +29,12 @@ impl<'a> ProcessedPacket<'a> {
             path_challenge_on_active_path: false,
             frames: 0,
             path_validation_probing: path_validation::Probe::default(),
+            bytes_progressed: 0,
         }
     }
 
     /// Records information about a processed frame
-    pub fn on_processed_frame<F: AckElicitable + path_validation::Probing>(&mut self, frame: &F) {
+    pub fn on_processed_frame<F: FrameTrait>(&mut self, frame: &F) {
         self.ack_elicitation |= frame.ack_elicitation();
         self.frames += 1;
         self.path_validation_probing |= frame.path_validation();

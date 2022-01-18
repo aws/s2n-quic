@@ -622,9 +622,13 @@ impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
         frame: CryptoRef,
         _datagram: &DatagramInfo,
         _path: &mut Path<Config>,
+        packet: &mut ProcessedPacket,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
+        let total_received_len = self.crypto_stream.rx.total_received_len();
         self.crypto_stream.on_crypto_frame(frame)?;
+        packet.bytes_progressed +=
+            (self.crypto_stream.rx.total_received_len() - total_received_len) as usize;
 
         // try to parse out the hello message if we haven't yet
         if !self.received_hello_message {

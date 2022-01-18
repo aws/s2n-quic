@@ -18,6 +18,7 @@ use crate::{
     contexts::{ConnectionApiCallContext, ConnectionOnTransmitError},
     endpoint,
     path::{self, path_event},
+    processed_packet::ProcessedPacket,
     recovery::RttEstimator,
     space::{PacketSpace, PacketSpaceManager},
     stream, transmission,
@@ -338,14 +339,18 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         Some(duration)
     }
 
-    fn on_processed_packet(&mut self, timestamp: Timestamp) {
+    fn on_processed_packet(&mut self, packet: &ProcessedPacket) {
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
         //# An endpoint restarts its idle timer when a packet from its peer is
         //# received and processed successfully.
         if let Some(duration) = self.get_idle_timer_duration() {
-            self.timers.peer_idle_timer.set(timestamp + duration);
+            self.timers
+                .peer_idle_timer
+                .set(packet.datagram.timestamp + duration);
             self.timers.reset_peer_idle_timer_on_send = true;
         }
+
+        self.bytes_progressed += packet.bytes_progressed as u64;
     }
 
     fn on_ack_eliciting_packet_sent(&mut self, timestamp: Timestamp) {
@@ -1037,9 +1042,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             // token is received in the first Initial Packet. If that value is set, it should be
             // verified in all subsequent packets.
 
-            let total_received_len = space.crypto_stream.rx.total_received_len();
-
-            space.handle_cleartext_payload(
+            let processed_packet = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
                 datagram,
@@ -1051,14 +1054,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut publisher,
             )?;
 
-            self.bytes_progressed +=
-                space.crypto_stream.rx.total_received_len() - total_received_len;
-
             // try to move the crypto state machine forward
             self.update_crypto_state(datagram.timestamp, subscriber)?;
 
             // notify the connection a packet was processed
-            self.on_processed_packet(datagram.timestamp);
+            self.on_processed_packet(&processed_packet);
         }
 
         Ok(())
@@ -1103,9 +1103,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 ),
             });
 
-            let total_received_len = space.crypto_stream.rx.total_received_len();
-
-            space.handle_cleartext_payload(
+            let processed_packet = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
                 datagram,
@@ -1116,9 +1114,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 random_generator,
                 &mut publisher,
             )?;
-
-            self.bytes_progressed +=
-                space.crypto_stream.rx.total_received_len() - total_received_len;
 
             if Self::Config::ENDPOINT_TYPE.is_server() {
                 //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9.1
@@ -1141,7 +1136,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             self.update_crypto_state(datagram.timestamp, subscriber)?;
 
             // notify the connection a packet was processed
-            self.on_processed_packet(datagram.timestamp);
+            self.on_processed_packet(&processed_packet);
         }
 
         Ok(())
@@ -1220,9 +1215,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut publisher,
             );
 
-            let bytes_progressed = space.stream_manager.incoming_bytes_progressed();
-
-            space.handle_cleartext_payload(
+            let processed_packet = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
                 datagram,
@@ -1234,11 +1227,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut publisher,
             )?;
 
-            self.bytes_progressed +=
-                (space.stream_manager.incoming_bytes_progressed() - bytes_progressed).as_u64();
-
             // notify the connection a packet was processed
-            self.on_processed_packet(datagram.timestamp);
+            self.on_processed_packet(&processed_packet);
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
             publisher.on_packet_received(event::builder::PacketReceived {
                 packet_header: event::builder::PacketHeader::new(

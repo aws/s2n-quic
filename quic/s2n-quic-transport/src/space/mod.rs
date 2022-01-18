@@ -476,6 +476,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         frame: CryptoRef,
         datagram: &DatagramInfo,
         path: &mut Path<Config>,
+        packet: &mut ProcessedPacket,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error>;
 
@@ -557,7 +558,16 @@ pub trait PacketSpace<Config: endpoint::Config> {
             .with_frame_type(frame.tag().into()))
     }
 
-    default_frame_handler!(handle_stream_frame, StreamRef);
+    fn handle_stream_frame(
+        &mut self,
+        frame: StreamRef,
+        _packet: &mut ProcessedPacket,
+    ) -> Result<(), transport::Error> {
+        Err(transport::Error::PROTOCOL_VIOLATION
+            .with_reason(Self::INVALID_FRAME_ERROR)
+            .with_frame_type(frame.tag().into()))
+    }
+
     default_frame_handler!(handle_data_blocked_frame, DataBlocked);
     default_frame_handler!(handle_max_data_frame, MaxData);
     default_frame_handler!(handle_max_stream_data_frame, MaxStreamData);
@@ -579,14 +589,14 @@ pub trait PacketSpace<Config: endpoint::Config> {
         &mut self,
         packet_number: PacketNumber,
         mut payload: DecoderBufferMut<'a>,
-        datagram: &DatagramInfo,
+        datagram: &'a DatagramInfo,
         path_id: path::Id,
         path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
         random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
-    ) -> Result<(), connection::Error> {
+    ) -> Result<ProcessedPacket<'a>, connection::Error> {
         use s2n_quic_core::{
             frame::{Frame, FrameMut},
             varint::VarInt,
@@ -644,6 +654,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                         frame.into(),
                         datagram,
                         &mut path_manager[path_id],
+                        &mut processed_packet,
                         publisher,
                     )
                     .map_err(on_error)?;
@@ -671,7 +682,8 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 }
                 Frame::Stream(frame) => {
                     let on_error = on_frame_processed!(frame);
-                    self.handle_stream_frame(frame.into()).map_err(on_error)?;
+                    self.handle_stream_frame(frame.into(), &mut processed_packet)
+                        .map_err(on_error)?;
                 }
                 Frame::DataBlocked(frame) => {
                     let on_error = on_frame_processed!(frame);
@@ -792,6 +804,6 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
         self.on_processed_packet(processed_packet)?;
 
-        Ok(())
+        Ok(processed_packet)
     }
 }
