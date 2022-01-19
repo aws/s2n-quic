@@ -148,7 +148,7 @@ pub mod aes128 {
     impl Key {
         #[inline(always)]
         // This implementation is written to closely follow the original code
-        #[allow(clippy::needless_late_init)]
+        #[allow(unknown_lints, clippy::needless_late_init)]
         pub fn new(key: [u8; KEY_LEN]) -> Self {
             let mut enc = [KeyRound(__m128i::zeroed()); ROUNDS];
             let mut dec = [KeyRound(__m128i::zeroed()); ROUNDS];
@@ -253,7 +253,7 @@ pub mod aes256 {
     impl Key {
         #[inline(always)]
         // This implementation is written to closely follow the original code
-        #[allow(clippy::needless_late_init)]
+        #[allow(unknown_lints, clippy::needless_late_init)]
         pub fn new(key: [u8; KEY_LEN]) -> Self {
             let mut enc = [KeyRound(__m128i::zeroed()); ROUNDS];
             let mut dec = [KeyRound(__m128i::zeroed()); ROUNDS];
