@@ -777,7 +777,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
 
     // Expectation:
     assert!(on_datagram_result.is_err());
-    assert!(!manager.path(&new_addr).is_some());
+    assert!(manager.path(&new_addr).is_none());
     assert_eq!(manager.paths.len(), 1);
 }
 
@@ -837,7 +837,7 @@ fn do_not_add_new_path_if_client() {
 
     // Expectation:
     assert!(on_datagram_result.is_err());
-    assert!(!manager.path(&new_addr).is_some());
+    assert!(manager.path(&new_addr).is_none());
     assert_eq!(manager.paths.len(), 1);
 }
 

@@ -41,6 +41,7 @@ impl<T> Number<T> {
         }))
     }
 
+    #[must_use]
     pub fn filter<F, C>(self, f: F) -> Self
     where
         T: ConditionallySelectable + Default,

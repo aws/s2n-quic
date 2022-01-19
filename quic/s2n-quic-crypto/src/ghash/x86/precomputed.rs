@@ -147,6 +147,8 @@ impl State {
     }
 
     #[inline(always)]
+    // This implementation is written to closely follow the original code
+    #[allow(unknown_lints, clippy::needless_late_init)]
     fn update<P: Powers>(&self, powers: &P, b: &__m128i) -> Self {
         unsafe {
             debug_assert!(Avx2::is_supported());

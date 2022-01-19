@@ -9,6 +9,7 @@ use crate::crypto::{HeaderKey, Key};
 /// are used with Short packets. Any key misuses are
 /// caught by the type system.
 pub trait OneRttKey: Key {
+    #[must_use]
     fn derive_next_key(&self) -> Self;
 }
 

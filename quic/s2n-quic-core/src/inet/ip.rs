@@ -27,6 +27,7 @@ pub enum IpAddress {
 impl IpAddress {
     /// Converts the IP address into IPv4 if it is mapped, otherwise the address is unchanged
     #[inline]
+    #[must_use]
     pub fn unmap(self) -> Self {
         match self {
             Self::Ipv4(_) => self,
@@ -139,6 +140,7 @@ impl SocketAddress {
 
     /// Converts the IP address into IPv4 if it is mapped, otherwise the address is unchanged
     #[inline]
+    #[must_use]
     pub fn unmap(self) -> Self {
         match self {
             Self::IpV4(_) => self,

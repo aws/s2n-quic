@@ -53,6 +53,7 @@ impl Connect {
     }
 
     /// Specifies the hostname to use for the connection
+    #[must_use]
     pub fn with_hostname<Hostname: Into<Sni>>(self, hostname: Hostname) -> Self {
         Self {
             hostname: Some(hostname.into()),

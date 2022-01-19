@@ -272,16 +272,13 @@ impl Io {
             }
         }
 
-        let mut rx;
-        let tx;
-
         cfg_if! {
             if #[cfg(any(s2n_quic_platform_socket_msg, s2n_quic_platform_socket_mmsg))] {
-                rx = socket::Queue::<buffer::Buffer>::new(buffer::Buffer::default(), max_segments.into());
-                tx = socket::Queue::<buffer::Buffer>::new(buffer::Buffer::default(), max_segments.into());
+                let mut rx = socket::Queue::<buffer::Buffer>::new(buffer::Buffer::default(), max_segments.into());
+                let tx = socket::Queue::<buffer::Buffer>::new(buffer::Buffer::default(), max_segments.into());
             } else {
-                rx = socket::Queue::default();
-                tx = socket::Queue::default();
+                let mut rx = socket::Queue::default();
+                let tx = socket::Queue::default();
             }
         }
 
@@ -380,6 +377,7 @@ pub struct Builder {
 }
 
 impl Builder {
+    #[must_use]
     pub fn with_handle(mut self, handle: Handle) -> Self {
         self.handle = Some(handle);
         self

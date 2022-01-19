@@ -19,6 +19,7 @@ impl CryptoError {
     }
 
     /// Sets the reason for `CryptoError`
+    #[must_use]
     pub const fn with_reason(mut self, reason: &'static str) -> Self {
         self.reason = reason;
         self

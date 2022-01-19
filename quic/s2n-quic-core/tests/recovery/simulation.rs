@@ -153,7 +153,7 @@ impl Simulation {
     }
 
     fn filename(&self) -> String {
-        self.name().replace(".", "_").split_whitespace().collect()
+        self.name().replace('.', "_").split_whitespace().collect()
     }
 }
 

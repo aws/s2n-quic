@@ -34,12 +34,14 @@ impl Error {
     }
 
     /// Updates the `Error` with the specified `frame_type`
+    #[must_use]
     pub const fn with_frame_type(mut self, frame_type: VarInt) -> Self {
         self.frame_type = frame_type;
         self
     }
 
     /// Updates the `Error` with the specified `reason`
+    #[must_use]
     pub const fn with_reason(mut self, reason: &'static str) -> Self {
         self.reason = reason;
         self

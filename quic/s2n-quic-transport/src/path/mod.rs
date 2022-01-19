@@ -658,7 +658,7 @@ mod tests {
         //= type=test
         //# An endpoint MUST NOT send more than one PATH_RESPONSE frame in
         //# response to one PATH_CHALLENGE frame; see Section 13.3.
-        assert!(!path.response_data.is_some());
+        assert!(path.response_data.is_none());
 
         assert_eq!(context.frame_buffer.len(), 1);
         let written_data = match context.frame_buffer.pop_front().unwrap().as_frame() {
@@ -791,7 +791,7 @@ mod tests {
         let mut path = testing::helper_path_server();
 
         // Expectation:
-        assert!(!path.response_data.is_some());
+        assert!(path.response_data.is_none());
 
         // Trigger:
         let expected_data: [u8; 8] = [0; 8];

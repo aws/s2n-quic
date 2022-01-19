@@ -47,6 +47,7 @@ impl KeyPhase {
         }
     }
 
+    #[must_use]
     pub fn next_phase(self) -> Self {
         PHASES[(((self as u8) + 1) % 2) as usize]
     }

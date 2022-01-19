@@ -250,6 +250,7 @@ macro_rules! impl_buffer {
                 "```";
 
                 #[inline]
+                #[must_use]
                 pub fn peek(&'a self) -> crate::DecoderBuffer<'a> {
                     crate::DecoderBuffer::new(self.bytes)
                 }
