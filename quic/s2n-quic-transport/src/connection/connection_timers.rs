@@ -29,8 +29,10 @@ pub struct ConnectionTimers {
     pub initial_id_expiration_timer: Timer,
     /// The timer for pacing transmission of packets
     pub pacing_timer: Timer,
-    /// Timer for evaluating if the transfer rate is below the min transfer rate
+    /// The timer for evaluating if the transfer rate is below the min transfer rate
     pub min_transfer_rate_timer: Timer,
+    /// The timer for closing the connection if the handshake is still in progress
+    pub max_handshake_duration_timer: Timer,
 }
 
 impl ConnectionTimers {
@@ -40,6 +42,7 @@ impl ConnectionTimers {
         self.initial_id_expiration_timer.cancel();
         self.pacing_timer.cancel();
         self.min_transfer_rate_timer.cancel();
+        self.max_handshake_duration_timer.cancel();
     }
 }
 
@@ -51,6 +54,7 @@ impl timer::Provider for ConnectionTimers {
         self.initial_id_expiration_timer.timers(query)?;
         self.pacing_timer.timers(query)?;
         self.min_transfer_rate_timer.timers(query)?;
+        self.max_handshake_duration_timer.timers(query)?;
 
         Ok(())
     }
