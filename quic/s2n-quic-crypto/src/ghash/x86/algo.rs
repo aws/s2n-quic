@@ -13,6 +13,8 @@ const POLYNOMIAL: __m128i = unsafe { core::mem::transmute([0x1u64, 0xc2000000000
 
 // From https://github.com/awslabs/aws-lc/blob/aed75eb04d322d101941e1377f274484f5e4f5b8/crypto/fipsmodule/modes/asm/ghash-x86_64.pl#L717
 #[inline(always)]
+// This implementation is written to closely follow the original code
+#[allow(clippy::needless_late_init)]
 pub unsafe fn init(mut h: __m128i) -> __m128i {
     let mut t1;
     let t2;
@@ -45,6 +47,8 @@ pub unsafe fn init(mut h: __m128i) -> __m128i {
 
 // From https://github.com/awslabs/aws-lc/blob/5833176448d48aff0c2dc4c1ab745649c769a7a6/crypto/cipher_extra/asm/aes128gcmsiv-x86_64.pl#L93
 #[inline(always)]
+// This implementation is written to closely follow the original code
+#[allow(clippy::needless_late_init)]
 pub unsafe fn gfmul(a: __m128i, b: __m128i) -> __m128i {
     // #########################
     // # a = T
@@ -91,6 +95,8 @@ pub unsafe fn gfmul(a: __m128i, b: __m128i) -> __m128i {
 /// Reduction phase of gfmul
 // From https://github.com/awslabs/aws-lc/blob/5833176448d48aff0c2dc4c1ab745649c769a7a6/crypto/cipher_extra/asm/aes128gcmsiv-x86_64.pl#L93
 #[inline(always)]
+// This implementation is written to closely follow the original code
+#[allow(clippy::needless_late_init)]
 pub unsafe fn reduce(mut tmp1: __m128i, tmp4: __m128i) -> __m128i {
     // my $T = "%xmm0";
     let t;
