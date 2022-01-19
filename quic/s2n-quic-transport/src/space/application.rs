@@ -655,8 +655,19 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         Ok(())
     }
 
-    fn handle_stream_frame(&mut self, frame: StreamRef) -> Result<(), transport::Error> {
-        self.stream_manager.on_data(&frame)
+    fn handle_stream_frame(
+        &mut self,
+        frame: StreamRef,
+        packet: &mut ProcessedPacket,
+    ) -> Result<(), transport::Error> {
+        let bytes_progressed = self.stream_manager.incoming_bytes_progressed();
+
+        self.stream_manager.on_data(&frame)?;
+
+        packet.bytes_progressed +=
+            (self.stream_manager.incoming_bytes_progressed() - bytes_progressed).as_u64() as usize;
+
+        Ok(())
     }
 
     fn handle_data_blocked_frame(&mut self, frame: DataBlocked) -> Result<(), transport::Error> {

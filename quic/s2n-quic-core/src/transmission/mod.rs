@@ -15,6 +15,7 @@ pub struct Outcome {
     pub ack_elicitation: AckElicitation,
     pub is_congestion_controlled: bool,
     pub bytes_sent: usize,
+    pub bytes_progressed: usize,
 }
 
 impl AckElicitable for Outcome {
@@ -28,5 +29,6 @@ impl AddAssign for Outcome {
         self.ack_elicitation |= rhs.ack_elicitation;
         self.is_congestion_controlled |= rhs.is_congestion_controlled;
         self.bytes_sent += rhs.bytes_sent;
+        self.bytes_progressed += rhs.bytes_progressed;
     }
 }

@@ -7,6 +7,7 @@ use crate::{
     connection::{
         self,
         close_sender::CloseSender,
+        connection_timers::MIN_TRANSFER_RATE_INTERVAL,
         id::{ConnectionInfo, Interest},
         limits::Limits,
         local_id_registry::LocalIdRegistrationError,
@@ -17,6 +18,7 @@ use crate::{
     contexts::{ConnectionApiCallContext, ConnectionOnTransmitError},
     endpoint,
     path::{self, path_event},
+    processed_packet::ProcessedPacket,
     recovery::RttEstimator,
     space::{PacketSpace, PacketSpaceManager},
     stream, transmission,
@@ -26,6 +28,7 @@ use crate::{
 use bytes::Bytes;
 use core::{
     fmt,
+    ops::Deref,
     task::{Context, Poll},
     time::Duration,
 };
@@ -33,6 +36,7 @@ use s2n_quic_core::{
     application,
     application::Sni,
     connection::{id::Generator as _, InitialId, PeerId},
+    counter::Counter,
     crypto::{tls, CryptoSuite},
     event::{self, ConnectionPublisher as _, IntoEvent as _},
     inet::{DatagramInfo, SocketAddress},
@@ -163,6 +167,7 @@ pub struct ConnectionImpl<Config: endpoint::Config> {
     /// Holds the handle for waking up the endpoint from a application call
     wakeup_handle: WakeupHandle<InternalConnectionId>,
     event_context: EventContext<Config>,
+    bytes_progressed: Counter<u64>,
 }
 
 struct EventContext<Config: endpoint::Config> {
@@ -298,6 +303,13 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             // Move the connection into the active state.
             self.state = ConnectionState::Active;
 
+            // Start the timer for evaluating the min transfer rate if one has been configured
+            if self.limits.min_transfer_bytes_per_second() > 0 {
+                self.timers
+                    .min_transfer_rate_timer
+                    .set(timestamp + MIN_TRANSFER_RATE_INTERVAL);
+            }
+
             // We don't expect any further initial packets on this connection, so start
             // a timer to remove the mapping from the initial ID to the internal connection ID
             // to give time for any delayed initial packets to arrive.
@@ -334,14 +346,18 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         Some(duration)
     }
 
-    fn on_processed_packet(&mut self, timestamp: Timestamp) {
+    fn on_processed_packet(&mut self, packet: &ProcessedPacket) {
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
         //# An endpoint restarts its idle timer when a packet from its peer is
         //# received and processed successfully.
         if let Some(duration) = self.get_idle_timer_duration() {
-            self.timers.peer_idle_timer.set(timestamp + duration);
+            self.timers
+                .peer_idle_timer
+                .set(packet.datagram.timestamp + duration);
             self.timers.reset_peer_idle_timer_on_send = true;
         }
+
+        self.bytes_progressed += packet.bytes_progressed as u64;
     }
 
     fn on_ack_eliciting_packet_sent(&mut self, timestamp: Timestamp) {
@@ -481,11 +497,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             space_manager: parameters.space_manager,
             wakeup_handle: parameters.wakeup_handle,
             event_context,
+            bytes_progressed: Counter::default(),
         };
 
         if Config::ENDPOINT_TYPE.is_client() {
             connection.update_crypto_state(parameters.timestamp, parameters.event_subscriber)?;
         }
+
         Ok(connection)
     }
 
@@ -736,6 +754,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     &mut outcome,
                     subscriber,
                 );
+
+                self.bytes_progressed += outcome.bytes_progressed as u64;
             }
             ConnectionState::Closing => {
                 let mut publisher = self.event_context.publisher(timestamp, subscriber);
@@ -811,6 +831,36 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .is_ready()
         {
             return Err(connection::Error::IdleTimerExpired);
+        }
+
+        if self
+            .timers
+            .min_transfer_rate_timer
+            .poll_expiration(timestamp)
+            .is_ready()
+        {
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#21.6
+            //# QUIC deployments SHOULD provide mitigations for the Slowloris
+            //# attacks, such as increasing the maximum number of clients the server
+            //# will allow, limiting the number of connections a single IP address is
+            //# allowed to make, imposing restrictions on the minimum transfer speed
+            //# a connection is allowed to have, and restricting the length of time
+            //# an endpoint is allowed to stay connected.
+
+            // If the min transfer rate interval is 1 second, we don't need to convert the rate
+            debug_assert_eq!(MIN_TRANSFER_RATE_INTERVAL, Duration::from_secs(1));
+
+            if self.bytes_progressed < self.limits.min_transfer_bytes_per_second() as u64 {
+                return Err(connection::Error::MinTransferRateViolation {
+                    bytes_per_second: *self.bytes_progressed.deref() as u32,
+                    min_bytes_per_second: self.limits.min_transfer_bytes_per_second(),
+                });
+            }
+
+            self.bytes_progressed = Counter::default();
+            self.timers
+                .min_transfer_rate_timer
+                .set(timestamp + MIN_TRANSFER_RATE_INTERVAL);
         }
 
         // TODO: enable this check once all of the component timers are fixed
@@ -992,7 +1042,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             // token is received in the first Initial Packet. If that value is set, it should be
             // verified in all subsequent packets.
 
-            space.handle_cleartext_payload(
+            let processed_packet = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
                 datagram,
@@ -1008,7 +1058,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             self.update_crypto_state(datagram.timestamp, subscriber)?;
 
             // notify the connection a packet was processed
-            self.on_processed_packet(datagram.timestamp);
+            self.on_processed_packet(&processed_packet);
         }
 
         Ok(())
@@ -1053,7 +1103,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 ),
             });
 
-            space.handle_cleartext_payload(
+            let processed_packet = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
                 datagram,
@@ -1086,7 +1136,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             self.update_crypto_state(datagram.timestamp, subscriber)?;
 
             // notify the connection a packet was processed
-            self.on_processed_packet(datagram.timestamp);
+            self.on_processed_packet(&processed_packet);
         }
 
         Ok(())
@@ -1165,7 +1215,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut publisher,
             );
 
-            space.handle_cleartext_payload(
+            let processed_packet = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
                 datagram,
@@ -1178,7 +1228,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             )?;
 
             // notify the connection a packet was processed
-            self.on_processed_packet(datagram.timestamp);
+            self.on_processed_packet(&processed_packet);
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
             publisher.on_packet_received(event::builder::PacketReceived {
                 packet_header: event::builder::PacketHeader::new(

@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::contexts::{PathValidationProbing, WriteContext};
+use crate::contexts::WriteContext;
 use alloc::collections::VecDeque;
 use s2n_codec::{
     encoder::{EncoderBuffer, EncoderValue},
@@ -12,8 +12,7 @@ use s2n_quic_core::{
     event::{self, IntoEvent},
     frame::{
         ack_elicitation::{AckElicitable, AckElicitation},
-        congestion_controlled::CongestionControlled,
-        FrameMut,
+        FrameMut, FrameTrait,
     },
     packet::number::{PacketNumber, PacketNumberSpace},
     time::Timestamp,
@@ -263,7 +262,7 @@ impl<'a> WriteContext for MockWriteContext<'a> {
 
     fn write_frame<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
     where
-        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
+        Frame: EncoderValue + FrameTrait,
         for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
     {
         match self.transmission_constraint() {
@@ -281,7 +280,7 @@ impl<'a> WriteContext for MockWriteContext<'a> {
 
     fn write_fitted_frame<Frame>(&mut self, frame: &Frame) -> PacketNumber
     where
-        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
+        Frame: EncoderValue + FrameTrait,
         for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
     {
         self.write_frame(frame)
@@ -290,7 +289,7 @@ impl<'a> WriteContext for MockWriteContext<'a> {
 
     fn write_frame_forced<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
     where
-        Frame: EncoderValue + AckElicitable + CongestionControlled,
+        Frame: EncoderValue + FrameTrait,
         for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
     {
         self.frame_buffer.write_frame(frame)

@@ -424,6 +424,13 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         }
     }
 
+    /// The number of bytes of forward progress the peer has made on incoming streams
+    pub fn incoming_bytes_progressed(&self) -> VarInt {
+        self.inner
+            .incoming_connection_flow_controller
+            .acquired_window()
+    }
+
     /// Accepts the next incoming stream of a given type
     pub fn poll_accept(
         &mut self,
