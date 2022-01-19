@@ -639,12 +639,6 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         local_id_registry: &mut connection::LocalIdRegistry,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.2
-        //= type=TODO
-        //= tracking-issue=297
-        //# a client MAY consider the handshake to be confirmed when it receives
-        //# an acknowledgement for a 1-RTT packet.
-
         let path = &mut path_manager[path_id];
         path.on_peer_validated();
         let (recovery_manager, mut context) =
