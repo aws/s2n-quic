@@ -1,0 +1,16 @@
+target = "https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.2"
+
+[[exception]]
+quote = '''
+Additionally, a client MAY consider the handshake to be confirmed
+when it receives an acknowledgment for a 1-RTT packet.
+'''
+reason = '''
+The optional requirement would not yield much benefits and require expensive
+checks per packet received in the 1-RTT space.
+
+The benefits would result in a quicker transition to the Handshake-confirmed
+state for a Client endpoint in the event of packet loss. However, the delay
+in transitioning to the Handshake-confirmed state doesn't prevent the Client
+from making progress (sending application data); so the advantage is small.
+'''

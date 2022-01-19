@@ -36,6 +36,8 @@ pub type Flag = flag::Flag<HandshakeDoneWriter>;
 /// - the Server is required to send a HANDSHAKE_DONE frame once the handshake completes.
 /// - the Client must wait for a HANDSHAKE_DONE (or an acked 1-rtt packet) to 'Confirm'
 /// the handshake.
+///
+/// Note: s2n-quic does not implement the optional 1-rtt acked requirement.
 #[derive(Debug)]
 pub enum HandshakeStatus {
     /// Awaiting handshake completion
@@ -43,8 +45,7 @@ pub enum HandshakeStatus {
 
     /// Client handshake Complete
     ///
-    /// Transient state while client awaits HANDSHAKE_DONE or
-    /// 1-rtt packet ack
+    /// Transient state while client awaits HANDSHAKE_DONE
     ClientComplete,
 
     /// Server handshake Complete
