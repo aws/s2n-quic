@@ -303,6 +303,13 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             // Move the connection into the active state.
             self.state = ConnectionState::Active;
 
+            // Start the timer for evaluating the min transfer rate if one has been configured
+            if self.limits.min_transfer_bytes_per_second() > 0 {
+                self.timers
+                    .min_transfer_rate_timer
+                    .set(timestamp + MIN_TRANSFER_RATE_INTERVAL);
+            }
+
             // We don't expect any further initial packets on this connection, so start
             // a timer to remove the mapping from the initial ID to the internal connection ID
             // to give time for any delayed initial packets to arrive.
@@ -495,13 +502,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         if Config::ENDPOINT_TYPE.is_client() {
             connection.update_crypto_state(parameters.timestamp, parameters.event_subscriber)?;
-        }
-
-        if connection.limits.min_transfer_bytes_per_second() > 0 {
-            connection
-                .timers
-                .min_transfer_rate_timer
-                .set(parameters.timestamp + MIN_TRANSFER_RATE_INTERVAL);
         }
 
         Ok(connection)
