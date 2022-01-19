@@ -126,6 +126,7 @@ macro_rules! negotiated_crypto {
             /// Update the ciphersuite as defined in
             /// <https://www.rfc-editor.org/rfc/rfc9001.txt#6>
             #[inline]
+            #[must_use]
             pub fn update(&self) -> Self {
                 Self(self.0.update())
             }

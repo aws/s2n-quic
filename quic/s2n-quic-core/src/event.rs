@@ -137,6 +137,7 @@ pub mod query {
 
     impl ControlFlow {
         #[inline]
+        #[must_use]
         pub fn and_then(self, f: impl FnOnce() -> Self) -> Self {
             match self {
                 Self::Continue => f(),

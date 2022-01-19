@@ -214,6 +214,7 @@ impl VarInt {
     }
 
     #[inline]
+    #[must_use]
     pub fn saturating_add(self, value: Self) -> Self {
         Self::new(self.0.saturating_add(value.0)).unwrap_or(Self::MAX)
     }
@@ -224,6 +225,7 @@ impl VarInt {
     }
 
     #[inline]
+    #[must_use]
     pub fn saturating_sub(self, value: Self) -> Self {
         Self(self.0.saturating_sub(value.0))
     }
@@ -234,6 +236,7 @@ impl VarInt {
     }
 
     #[inline]
+    #[must_use]
     pub fn saturating_mul(self, value: Self) -> Self {
         Self::new(self.0.saturating_mul(value.0)).unwrap_or(Self::MAX)
     }

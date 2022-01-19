@@ -333,7 +333,7 @@ mod tests {
                     "diff: {}",
                     actual_value
                         .checked_sub(rfc_value)
-                        .unwrap_or_else(|| rfc_value - actual_value)
+                        .unwrap_or(rfc_value - actual_value)
                 );
             });
     }

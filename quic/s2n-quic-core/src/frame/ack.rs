@@ -477,6 +477,7 @@ impl EcnCounts {
     }
 
     /// Return `EcnCounts` containing the maximum of each individual ECN count
+    #[must_use]
     pub fn max(self, other: Self) -> Self {
         EcnCounts {
             ect_0_count: self.ect_0_count.max(other.ect_0_count),

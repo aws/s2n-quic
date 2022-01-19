@@ -913,15 +913,13 @@ mod test {
         controller.on_transmit(&mut write_context);
         assert_eq!(0, write_context.remaining_capacity());
         assert_eq!(
-            Frame::Ping { 0: frame::Ping },
+            Frame::Ping(frame::Ping),
             write_context.frame_buffer.pop_front().unwrap().as_frame()
         );
         assert_eq!(
-            Frame::Padding {
-                0: frame::Padding {
-                    length: controller.probed_size as usize - 1
-                }
-            },
+            Frame::Padding(frame::Padding {
+                length: controller.probed_size as usize - 1
+            }),
             write_context.frame_buffer.pop_front().unwrap().as_frame()
         );
         assert_eq!(State::Searching(packet_number, now), controller.state);

@@ -38,6 +38,7 @@ impl Type {
     /// Returns the [`Type`] of the peer.
     /// - If called on `Client` this will return `Server`
     /// - If called on `Server` this will return `Client`
+    #[must_use]
     pub fn peer_type(self) -> Self {
         match self {
             Self::Client => Self::Server,
@@ -78,6 +79,7 @@ impl Location {
     /// Returns the [`Location`] of the peer.
     /// - If called on `Local` this will return `Remote`
     /// - If called on `Remote` this will return `Local`
+    #[must_use]
     pub fn peer_type(self) -> Self {
         match self {
             Self::Local => Self::Remote,

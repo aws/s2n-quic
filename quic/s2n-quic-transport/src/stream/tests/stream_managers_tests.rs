@@ -750,12 +750,10 @@ fn peer_closing_streams_transmits_max_streams() {
         let packet_number = write_context.packet_number();
         assert!(manager.on_transmit(&mut write_context).is_ok());
 
-        let expected_frame = Frame::MaxStreams {
-            0: MaxStreams {
-                stream_type,
-                maximum_streams: current_max_streams + streams_to_close,
-            },
-        };
+        let expected_frame = Frame::MaxStreams(MaxStreams {
+            stream_type,
+            maximum_streams: current_max_streams + streams_to_close,
+        });
 
         assert_eq!(
             expected_frame,
@@ -829,12 +827,10 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
         let packet_number = write_context.packet_number();
         assert!(manager.on_transmit(&mut write_context).is_ok());
 
-        let expected_frame = Frame::StreamsBlocked {
-            0: StreamsBlocked {
-                stream_type,
-                stream_limit: opened_streams,
-            },
-        };
+        let expected_frame = Frame::StreamsBlocked(StreamsBlocked {
+            stream_type,
+            stream_limit: opened_streams,
+        });
 
         assert_eq!(
             expected_frame,
@@ -916,12 +912,10 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
 
         assert!(manager.on_transmit(&mut write_context).is_ok());
 
-        let expected_frame = Frame::StreamsBlocked {
-            0: StreamsBlocked {
-                stream_type,
-                stream_limit: VarInt::from_u32(200),
-            },
-        };
+        let expected_frame = Frame::StreamsBlocked(StreamsBlocked {
+            stream_type,
+            stream_limit: VarInt::from_u32(200),
+        });
 
         assert_eq!(
             expected_frame,
@@ -1096,11 +1090,9 @@ fn send_data_blocked_frame_when_blocked_by_connection_flow_limits() {
     let packet_number = write_context.packet_number();
     assert!(manager.on_transmit(&mut write_context).is_ok());
 
-    let expected_frame = Frame::DataBlocked {
-        0: DataBlocked {
-            data_limit: current_window,
-        },
-    };
+    let expected_frame = Frame::DataBlocked(DataBlocked {
+        data_limit: current_window,
+    });
 
     assert_eq!(
         expected_frame,
@@ -1173,11 +1165,9 @@ fn send_data_blocked_frame_when_blocked_by_connection_flow_limits() {
 
     assert!(manager.on_transmit(&mut write_context).is_ok());
 
-    let expected_frame = Frame::DataBlocked {
-        0: DataBlocked {
-            data_limit: current_window + 1,
-        },
-    };
+    let expected_frame = Frame::DataBlocked(DataBlocked {
+        data_limit: current_window + 1,
+    });
 
     assert_eq!(
         expected_frame,

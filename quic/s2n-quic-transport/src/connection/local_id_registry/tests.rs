@@ -540,14 +540,12 @@ fn on_transmit() {
     );
     reg1.on_transmit(&mut write_context);
 
-    let expected_frame = Frame::NewConnectionId {
-        0: NewConnectionId {
-            sequence_number: VarInt::from_u32(1),
-            retire_prior_to: VarInt::from_u32(0),
-            connection_id: ext_id_2.as_bytes(),
-            stateless_reset_token: TEST_TOKEN_2.as_ref().try_into().unwrap(),
-        },
-    };
+    let expected_frame = Frame::NewConnectionId(NewConnectionId {
+        sequence_number: VarInt::from_u32(1),
+        retire_prior_to: VarInt::from_u32(0),
+        connection_id: ext_id_2.as_bytes(),
+        stateless_reset_token: TEST_TOKEN_2.as_ref().try_into().unwrap(),
+    });
 
     assert_eq!(
         expected_frame,
@@ -581,14 +579,12 @@ fn on_transmit() {
 
     reg1.on_transmit(&mut write_context);
 
-    let expected_frame = Frame::NewConnectionId {
-        0: NewConnectionId {
-            sequence_number: VarInt::from_u32(2),
-            retire_prior_to: VarInt::from_u32(2),
-            connection_id: ext_id_3.as_bytes(),
-            stateless_reset_token: TEST_TOKEN_3.as_ref().try_into().unwrap(),
-        },
-    };
+    let expected_frame = Frame::NewConnectionId(NewConnectionId {
+        sequence_number: VarInt::from_u32(2),
+        retire_prior_to: VarInt::from_u32(2),
+        connection_id: ext_id_3.as_bytes(),
+        stateless_reset_token: TEST_TOKEN_3.as_ref().try_into().unwrap(),
+    });
 
     assert_eq!(
         expected_frame,
@@ -653,14 +649,12 @@ fn on_transmit_constrained() {
     // Only the ID pending reissue should be written
     assert_eq!(1, write_context.frame_buffer.len());
 
-    let expected_frame = Frame::NewConnectionId {
-        0: NewConnectionId {
-            sequence_number: VarInt::from_u32(1),
-            retire_prior_to: VarInt::from_u32(0),
-            connection_id: ext_id_2.as_bytes(),
-            stateless_reset_token: TEST_TOKEN_2.as_ref().try_into().unwrap(),
-        },
-    };
+    let expected_frame = Frame::NewConnectionId(NewConnectionId {
+        sequence_number: VarInt::from_u32(1),
+        retire_prior_to: VarInt::from_u32(0),
+        connection_id: ext_id_2.as_bytes(),
+        stateless_reset_token: TEST_TOKEN_2.as_ref().try_into().unwrap(),
+    });
 
     assert_eq!(
         expected_frame,

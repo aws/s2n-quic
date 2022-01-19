@@ -262,11 +262,9 @@ fn retire_connection_id_when_retire_prior_to_increases() {
     let packet_number = write_context.packet_number();
     reg.on_transmit(&mut write_context);
 
-    let expected_frame = Frame::RetireConnectionId {
-        0: RetireConnectionId {
-            sequence_number: VarInt::from_u32(0),
-        },
-    };
+    let expected_frame = Frame::RetireConnectionId(RetireConnectionId {
+        sequence_number: VarInt::from_u32(0),
+    });
 
     assert_eq!(
         expected_frame,
@@ -442,8 +440,6 @@ pub fn consume_new_id_should_error_if_no_ids_are_available() {
 
 #[test]
 fn error_conversion() {
-    let mut transport_error: transport::Error;
-
     //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
     //= type=test
     //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
@@ -452,7 +448,8 @@ fn error_conversion() {
     //# sequence number is used for different connection IDs, the endpoint
     //# MAY treat that receipt as a connection error of type
     //# PROTOCOL_VIOLATION.
-    transport_error = PeerIdRegistrationError::InvalidNewConnectionId.into();
+    let mut transport_error: transport::Error =
+        PeerIdRegistrationError::InvalidNewConnectionId.into();
     assert_eq!(
         transport::Error::PROTOCOL_VIOLATION.code,
         transport_error.code

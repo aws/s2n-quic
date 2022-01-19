@@ -115,18 +115,10 @@ pub mod testing {
         stateless_reset::token::{Token, LEN},
     };
 
-    pub const TEST_TOKEN_1: Token = Token {
-        0: 11111111123456578987654321u128.to_be_bytes(),
-    };
-    pub const TEST_TOKEN_2: Token = Token {
-        0: 222222222123456578987654321u128.to_be_bytes(),
-    };
-    pub const TEST_TOKEN_3: Token = Token {
-        0: 333333333123456578987654321u128.to_be_bytes(),
-    };
-    pub const TEST_TOKEN_4: Token = Token {
-        0: 444444444123456578987654321u128.to_be_bytes(),
-    };
+    pub const TEST_TOKEN_1: Token = Token(11111111123456578987654321u128.to_be_bytes());
+    pub const TEST_TOKEN_2: Token = Token(222222222123456578987654321u128.to_be_bytes());
+    pub const TEST_TOKEN_3: Token = Token(333333333123456578987654321u128.to_be_bytes());
+    pub const TEST_TOKEN_4: Token = Token(444444444123456578987654321u128.to_be_bytes());
 
     const KEY: u8 = 123;
 
