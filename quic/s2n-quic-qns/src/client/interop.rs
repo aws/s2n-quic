@@ -155,6 +155,12 @@ impl Interop {
                                 );
                                 Ok(0)
                             } else {
+                                eprintln!(
+                                    "Stream({}) error for request {:?}: {:?}",
+                                    rx_stream.id(),
+                                    request,
+                                    error
+                                );
                                 Err(error)
                             }
                         })?;
