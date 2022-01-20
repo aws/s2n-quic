@@ -462,10 +462,12 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         let mut chunks = crypto_stream.iter().peekable();
         let buffer = s2n_codec::DecoderBuffer::new(chunks.peek().unwrap_or(&&[][..]));
 
-        let (header, _) = buffer.decode::<tls::HandshakeHeader>().map_err(|_| {
-            transport::Error::PROTOCOL_VIOLATION
-                .with_reason("initial crypto is missing hello header")
-        })?;
+        let header = if let Ok((header, _)) = buffer.decode::<tls::HandshakeHeader>() {
+            header
+        } else {
+            // we don't have enough data to parse the header so wait until later
+            return Ok(None);
+        };
 
         if header.msg_type() != Some(msg_type) {
             return Err(transport::Error::PROTOCOL_VIOLATION
