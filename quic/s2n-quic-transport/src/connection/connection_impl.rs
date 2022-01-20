@@ -303,6 +303,9 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             // Move the connection into the active state.
             self.state = ConnectionState::Active;
 
+            // Cancel the max handshake duration timer as the handshake has completed in time
+            self.timers.max_handshake_duration_timer.cancel();
+
             // Start the timer for evaluating the min transfer rate if one has been configured
             if self.limits.min_transfer_bytes_per_second() > 0 {
                 self.timers
@@ -503,6 +506,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         if Config::ENDPOINT_TYPE.is_client() {
             connection.update_crypto_state(parameters.timestamp, parameters.event_subscriber)?;
         }
+
+        connection
+            .timers
+            .max_handshake_duration_timer
+            .set(parameters.timestamp + connection.limits.max_handshake_duration());
 
         Ok(connection)
     }
@@ -823,6 +831,18 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             timestamp,
             &mut publisher,
         );
+
+        if self
+            .timers
+            .max_handshake_duration_timer
+            .poll_expiration(timestamp)
+            .is_ready()
+        {
+            debug_assert_eq!(ConnectionState::Handshaking, self.state);
+            return Err(connection::Error::MaxHandshakeDurationExceeded {
+                max_handshake_duration: self.limits.max_handshake_duration(),
+            });
+        }
 
         if self
             .timers

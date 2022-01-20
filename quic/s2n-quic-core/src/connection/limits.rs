@@ -16,6 +16,8 @@ use core::{convert::TryInto, time::Duration};
 
 pub use crate::transport::parameters::ValidationError;
 
+const MAX_HANDSHAKE_DURATION_DEFAULT: Duration = Duration::from_secs(10);
+
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct ConnectionInfo<'a> {
@@ -49,6 +51,7 @@ pub struct Limits {
     pub(crate) ack_ranges_limit: u8,
     pub(crate) max_send_buffer_size: u32,
     pub(crate) min_transfer_bytes_per_second: u32,
+    pub(crate) max_handshake_duration: Duration,
 }
 
 impl Default for Limits {
@@ -84,6 +87,7 @@ impl Limits {
             ack_ranges_limit: ack::Settings::RECOMMENDED.ack_ranges_limit,
             max_send_buffer_size: stream::Limits::RECOMMENDED.max_send_buffer_size,
             min_transfer_bytes_per_second: 0,
+            max_handshake_duration: MAX_HANDSHAKE_DURATION_DEFAULT,
         }
     }
 
@@ -133,6 +137,11 @@ impl Limits {
         min_transfer_bytes_per_second,
         u32
     );
+    setter!(
+        with_max_handshake_duration,
+        max_handshake_duration,
+        Duration
+    );
 
     pub fn load_peer<A, B, C, D>(&mut self, peer_parameters: &TransportParameters<A, B, C, D>) {
         self.max_idle_timeout
@@ -180,6 +189,10 @@ impl Limits {
 
     pub fn min_transfer_bytes_per_second(&self) -> u32 {
         self.min_transfer_bytes_per_second
+    }
+
+    pub fn max_handshake_duration(&self) -> Duration {
+        self.max_handshake_duration
     }
 }
 

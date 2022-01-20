@@ -4,7 +4,7 @@
 use crate::{
     application, connection, crypto::CryptoError, endpoint, frame::ConnectionClose, transport,
 };
-use core::fmt;
+use core::{fmt, time::Duration};
 
 /// Errors that a connection can encounter.
 #[derive(PartialEq, Debug, Copy, Clone)]
@@ -52,6 +52,9 @@ pub enum Error {
         min_bytes_per_second: u32,
     },
 
+    /// The handshake has taken longer to complete than the configured max handshake duration
+    MaxHandshakeDurationExceeded { max_handshake_duration: Duration },
+
     /// The connection was closed due to an unspecified reason
     Unspecified,
 }
@@ -96,6 +99,11 @@ impl fmt::Display for Error {
                 f,
                 "The connection was closed because the transfer rate of {} B/s was below the minimum \
                 transfer rate of {} B/s", bytes_per_second, min_bytes_per_second
+            ),
+            Self::MaxHandshakeDurationExceeded { max_handshake_duration } => write!(
+              f,
+                "The connection was closed because the handshake took longer than the max handshake \
+                duration of {:?}", max_handshake_duration
             ),
             Self::Unspecified => {
                 write!(f, "The connection was closed due to an unspecified reason")
@@ -176,6 +184,7 @@ pub fn as_frame<'a, F: connection::close::Formatter>(
             Some((early, one_rtt))
         }
         Error::MinTransferRateViolation { .. } => None,
+        Error::MaxHandshakeDurationExceeded { .. } => None,
         Error::Unspecified => {
             let error =
                 transport::Error::INTERNAL_ERROR.with_reason("an unspecified error occurred");
@@ -256,6 +265,7 @@ impl From<Error> for std::io::ErrorKind {
             Error::NoValidPath => ErrorKind::Other,
             Error::StreamIdExhausted => ErrorKind::Other,
             Error::MinTransferRateViolation { .. } => ErrorKind::Other,
+            Error::MaxHandshakeDurationExceeded { .. } => ErrorKind::Other,
             Error::Unspecified => ErrorKind::Other,
         }
     }
