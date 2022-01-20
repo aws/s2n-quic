@@ -17,6 +17,7 @@ use s2n_quic::{
 };
 use std::{
     collections::{hash_map::Entry, HashMap},
+    io::ErrorKind,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -143,7 +144,21 @@ impl Interop {
                     let mut abs_path = download_dir.to_path_buf();
                     abs_path.push(Path::new(request.trim_start_matches('/')));
                     let mut file = File::create(&abs_path).await?;
-                    tokio::io::copy(&mut rx_stream, &mut file).await?;
+                    tokio::io::copy(&mut rx_stream, &mut file)
+                        .await
+                        .or_else(|error| {
+                            if error.kind() == ErrorKind::NotFound {
+                                eprintln!(
+                                    "Stream({}) not found for request {:?}, ignoring",
+                                    rx_stream.id(),
+                                    request
+                                );
+                                Ok(0)
+                            } else {
+                                Err(error)
+                            }
+                        })?;
+
                     file.flush().await?;
                 }
             } else {
