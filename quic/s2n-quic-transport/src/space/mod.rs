@@ -14,7 +14,7 @@ use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     ack,
     connection::{limits::Limits, InitialId, PeerId},
-    crypto::{tls, tls::Session, CryptoSuite},
+    crypto::{tls, tls::Session, CryptoSuite, Key},
     event::{self, IntoEvent},
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
@@ -133,6 +133,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
         publisher.on_key_update(event::builder::KeyUpdate {
             key_type: event::builder::KeyType::Initial,
+            ciphersuite: initial_key.ciphersuite(),
         });
         Self {
             session_info: Some(SessionInfo {

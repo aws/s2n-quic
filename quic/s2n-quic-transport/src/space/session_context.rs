@@ -16,7 +16,7 @@ use s2n_codec::{DecoderBuffer, DecoderValue};
 use s2n_quic_core::{
     ack,
     connection::{InitialId, PeerId},
-    crypto::{tls, CryptoSuite},
+    crypto::{tls, CryptoSuite, Key},
     ct::ConstantTimeEq,
     event,
     event::IntoEvent,
@@ -285,15 +285,16 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
         let ack_manager = AckManager::new(PacketNumberSpace::Handshake, ack::Settings::EARLY);
 
+        let ciphersuite = key.ciphersuite();
         *self.handshake = Some(Box::new(HandshakeSpace::new(
             key,
             header_key,
             self.now,
             ack_manager,
         )));
-
         self.publisher.on_key_update(event::builder::KeyUpdate {
             key_type: event::builder::KeyType::Handshake,
+            ciphersuite,
         });
         Ok(())
     }
@@ -309,11 +310,14 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 .with_reason("zero rtt keys initialized more than once"));
         }
 
+        let ciphersuite = key.ciphersuite();
+
         // TODO: also store the header_key https://github.com/awslabs/s2n-quic/issues/319
         *self.zero_rtt_crypto = Some(Box::new(key));
 
         self.publisher.on_key_update(event::builder::KeyUpdate {
             key_type: event::builder::KeyType::ZeroRtt,
+            ciphersuite,
         });
         Ok(())
     }
@@ -371,6 +375,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 .on_sni_information(event::builder::SniInformation { chosen_sni });
         };
 
+        let ciphersuite = key.ciphersuite();
         *self.application = Some(Box::new(ApplicationSpace::new(
             key,
             header_key,
@@ -382,6 +387,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         )));
         self.publisher.on_key_update(event::builder::KeyUpdate {
             key_type: event::builder::KeyType::OneRtt { generation: 0 },
+            ciphersuite,
         });
 
         Ok(())

@@ -1,14 +1,23 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use rustls::{cipher_suite as ciphers, quic, SupportedCipherSuite};
-use s2n_quic_core::crypto::{self, CryptoError, HeaderProtectionMask};
+use rustls::{cipher_suite as ciphers, quic, CipherSuite, SupportedCipherSuite};
+use s2n_quic_core::{
+    crypto::{self, CryptoError, HeaderProtectionMask, Key},
+    event,
+};
 
-pub struct PacketKey(quic::PacketKey);
+pub struct PacketKey(quic::PacketKey, event::builder::Ciphersuite);
 
 impl PacketKey {
-    pub(crate) fn new(keys: quic::DirectionalKeys) -> (Self, HeaderProtectionKey) {
-        (Self(keys.packet), HeaderProtectionKey(keys.header))
+    pub(crate) fn new(
+        keys: quic::DirectionalKeys,
+        ciphersuite: event::builder::Ciphersuite,
+    ) -> (Self, HeaderProtectionKey) {
+        (
+            Self(keys.packet, ciphersuite),
+            HeaderProtectionKey(keys.header),
+        )
     }
 }
 
@@ -52,6 +61,10 @@ impl crypto::Key for PacketKey {
     fn aead_integrity_limit(&self) -> u64 {
         self.0.integrity_limit()
     }
+
+    fn ciphersuite(&self) -> s2n_quic_core::event::builder::Ciphersuite {
+        self.1.clone()
+    }
 }
 
 impl crypto::ZeroRttKey for PacketKey {}
@@ -62,11 +75,24 @@ pub struct PacketKeys {
 }
 
 impl PacketKeys {
-    pub(crate) fn new(keys: quic::Keys) -> (Self, HeaderProtectionKeys) {
+    pub(crate) fn new(keys: quic::Keys, ciphersuite: CipherSuite) -> (Self, HeaderProtectionKeys) {
         let quic::Keys { local, remote } = keys;
 
-        let (sealer_packet, sealer_header) = PacketKey::new(local);
-        let (opener_packet, opener_header) = PacketKey::new(remote);
+        let ciphersuite = match ciphersuite {
+            CipherSuite::TLS13_AES_128_GCM_SHA256 => {
+                event::builder::Ciphersuite::TLS_AES_128_GCM_SHA256
+            }
+            CipherSuite::TLS13_AES_256_GCM_SHA384 => {
+                event::builder::Ciphersuite::TLS_AES_256_GCM_SHA384
+            }
+            CipherSuite::TLS13_CHACHA20_POLY1305_SHA256 => {
+                event::builder::Ciphersuite::TLS_CHACHA20_POLY1305_SHA256
+            }
+            _ => event::builder::Ciphersuite::Unknown,
+        };
+
+        let (sealer_packet, sealer_header) = PacketKey::new(local, ciphersuite.clone());
+        let (opener_packet, opener_header) = PacketKey::new(remote, ciphersuite);
 
         let key = Self {
             sealer: sealer_packet,
@@ -111,6 +137,10 @@ impl crypto::Key for PacketKeys {
 
     fn aead_integrity_limit(&self) -> u64 {
         self.sealer.aead_integrity_limit()
+    }
+
+    fn ciphersuite(&self) -> s2n_quic_core::event::builder::Ciphersuite {
+        self.sealer.ciphersuite()
     }
 }
 
@@ -201,8 +231,12 @@ pub struct OneRttKey {
 }
 
 impl OneRttKey {
-    pub(crate) fn new(keys: quic::Keys, secrets: quic::Secrets) -> (Self, HeaderProtectionKeys) {
-        let (key, header_key) = PacketKeys::new(keys);
+    pub(crate) fn new(
+        keys: quic::Keys,
+        secrets: quic::Secrets,
+        ciphersuite: CipherSuite,
+    ) -> (Self, HeaderProtectionKeys) {
+        let (key, header_key) = PacketKeys::new(keys, ciphersuite);
         let key = Self { key, secrets };
         (key, header_key)
     }
@@ -238,16 +272,21 @@ impl crypto::Key for OneRttKey {
     fn aead_integrity_limit(&self) -> u64 {
         self.key.aead_integrity_limit()
     }
+
+    fn ciphersuite(&self) -> s2n_quic_core::event::builder::Ciphersuite {
+        self.key.ciphersuite()
+    }
 }
 
 impl crypto::OneRttKey for OneRttKey {
     fn derive_next_key(&self) -> Self {
+        let ciphersuite = self.ciphersuite();
         let mut secrets = self.secrets.clone();
         let quic::PacketKeySet { local, remote } = secrets.next_packet_keys();
         Self {
             key: PacketKeys {
-                sealer: PacketKey(local),
-                opener: PacketKey(remote),
+                sealer: PacketKey(local, ciphersuite.clone()),
+                opener: PacketKey(remote, ciphersuite),
             },
             secrets,
         }

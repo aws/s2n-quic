@@ -85,6 +85,11 @@ impl Key for KeyPair {
     fn aead_integrity_limit(&self) -> u64 {
         self.opener.aead_integrity_limit()
     }
+
+    #[inline]
+    fn ciphersuite(&self) -> s2n_quic_core::event::builder::Ciphersuite {
+        self.opener.ciphersuite()
+    }
 }
 
 macro_rules! negotiated_crypto {
@@ -166,6 +171,11 @@ macro_rules! negotiated_crypto {
             #[inline]
             fn aead_integrity_limit(&self) -> u64 {
                 self.0.aead_integrity_limit()
+            }
+
+            #[inline]
+            fn ciphersuite(&self) -> s2n_quic_core::event::builder::Ciphersuite {
+                self.0.ciphersuite()
             }
         }
     };

@@ -193,6 +193,11 @@ macro_rules! impl_ciphersuite {
             fn aead_integrity_limit(&self) -> u64 {
                 $integrity_limit
             }
+
+            #[inline]
+            fn ciphersuite(&self) -> s2n_quic_core::event::builder::Ciphersuite {
+                s2n_quic_core::event::builder::Ciphersuite::$name
+            }
         }
 
         impl fmt::Debug for $name {

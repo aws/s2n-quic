@@ -193,7 +193,10 @@ impl tls::Session for Session {
 
             // try to pull out the early secrets, if any
             if let Some(keys) = self.zero_rtt_keys() {
-                let (key, header_key) = PacketKey::new(keys);
+                let (key, header_key) = PacketKey::new(
+                    keys,
+                    s2n_quic_core::event::builder::Ciphersuite::TLS_AES_128_GCM_SHA256,
+                );
                 context.on_zero_rtt_keys(key, header_key, self.application_parameters()?)?;
             }
 
@@ -229,9 +232,14 @@ impl tls::Session for Session {
                 }
 
                 if let Some(key_change) = key_change {
+                    let ciphersuite = self
+                        .connection
+                        .negotiated_cipher_suite()
+                        .expect("ciphersuite should be negotiated")
+                        .suite();
                     match key_change {
                         quic::KeyChange::Handshake { keys } => {
-                            let (key, header_key) = PacketKeys::new(keys);
+                            let (key, header_key) = PacketKeys::new(keys, ciphersuite);
 
                             context.on_handshake_keys(key, header_key)?;
 
@@ -240,7 +248,7 @@ impl tls::Session for Session {
                             self.rx_phase.transition();
                         }
                         quic::KeyChange::OneRtt { keys, next } => {
-                            let (key, header_key) = OneRttKey::new(keys, next);
+                            let (key, header_key) = OneRttKey::new(keys, next, ciphersuite);
                             let application_parameters = self.application_parameters()?;
 
                             context.on_one_rtt_keys(key, header_key, application_parameters)?;

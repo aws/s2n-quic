@@ -74,6 +74,7 @@ impl NegotiatedCiphersuite {
 }
 
 impl crypto::Key for NegotiatedCiphersuite {
+    #[inline]
     fn decrypt(
         &self,
         packet_number: u64,
@@ -87,6 +88,7 @@ impl crypto::Key for NegotiatedCiphersuite {
         ))
     }
 
+    #[inline]
     fn encrypt(
         &self,
         packet_number: u64,
@@ -100,16 +102,24 @@ impl crypto::Key for NegotiatedCiphersuite {
         ))
     }
 
+    #[inline]
     fn tag_len(&self) -> usize {
         dispatch!(self, |cipher| cipher.tag_len())
     }
 
+    #[inline]
     fn aead_confidentiality_limit(&self) -> u64 {
         dispatch!(self, |cipher| cipher.aead_confidentiality_limit())
     }
 
+    #[inline]
     fn aead_integrity_limit(&self) -> u64 {
         dispatch!(self, |cipher| cipher.aead_integrity_limit())
+    }
+
+    #[inline]
+    fn ciphersuite(&self) -> s2n_quic_core::event::builder::Ciphersuite {
+        dispatch!(self, |cipher| cipher.ciphersuite())
     }
 }
 

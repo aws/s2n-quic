@@ -80,6 +80,7 @@ impl InitialKey for RingInitialKey {
 }
 
 impl Key for RingInitialKey {
+    #[inline]
     fn decrypt(
         &self,
         packet_number: u64,
@@ -89,6 +90,7 @@ impl Key for RingInitialKey {
         self.opener.decrypt(packet_number, header, payload)
     }
 
+    #[inline]
     fn encrypt(
         &self,
         packet_number: u64,
@@ -98,16 +100,24 @@ impl Key for RingInitialKey {
         self.sealer.encrypt(packet_number, header, payload)
     }
 
+    #[inline]
     fn tag_len(&self) -> usize {
         self.sealer.tag_len()
     }
 
+    #[inline]
     fn aead_confidentiality_limit(&self) -> u64 {
         self.sealer.aead_confidentiality_limit()
     }
 
+    #[inline]
     fn aead_integrity_limit(&self) -> u64 {
         self.opener.aead_integrity_limit()
+    }
+
+    #[inline]
+    fn ciphersuite(&self) -> s2n_quic_core::event::builder::Ciphersuite {
+        self.opener.ciphersuite()
     }
 }
 

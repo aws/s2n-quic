@@ -137,6 +137,10 @@ impl Key for FuzzCrypto {
     fn aead_integrity_limit(&self) -> u64 {
         0
     }
+
+    fn ciphersuite(&self) -> s2n_quic_core::event::builder::Ciphersuite {
+        s2n_quic_core::event::builder::Ciphersuite::Unknown
+    }
 }
 
 /// `FuzzCrypto` uses the first 5 bytes of the payload as the protection mask

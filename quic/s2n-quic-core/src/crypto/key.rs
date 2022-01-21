@@ -29,6 +29,8 @@ pub trait Key: Send {
 
     /// Maximum number of decryption failures allowed for a ciphersuite
     fn aead_integrity_limit(&self) -> u64;
+
+    fn ciphersuite(&self) -> crate::event::builder::Ciphersuite;
 }
 
 #[cfg(any(test, feature = "testing"))]
@@ -103,6 +105,10 @@ pub mod testing {
 
         fn aead_integrity_limit(&self) -> u64 {
             self.integrity_limit
+        }
+
+        fn ciphersuite(&self) -> crate::event::builder::Ciphersuite {
+            crate::event::builder::Ciphersuite::Unknown
         }
     }
 
