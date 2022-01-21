@@ -120,7 +120,10 @@ impl Interop {
                 )));
             }
 
-            try_join_all(streams).await?;
+            try_join_all(streams).await.map_err(|error| {
+                eprintln!("Encountered error {:?}", error);
+                error
+            })?;
 
             Ok(())
         }
@@ -152,6 +155,7 @@ impl Interop {
                 stdout.flush().await?;
             };
 
+            eprintln!("Completed request {}", request);
             Ok(())
         }
     }

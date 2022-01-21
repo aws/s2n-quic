@@ -529,6 +529,21 @@ impl<'state, 'chunks> Request<'state, 'chunks> {
     rx_request_apis!();
 
     pub fn poll(&mut self, context: Option<&Context>) -> Result<ops::Response, StreamError> {
+        if !self.state.is_rx_open && !self.state.is_tx_open {
+            // Neither tx or rx are still open, so return early to avoid sending a request
+            // for a stream that has been removed from the stream container already
+            return Ok(ops::Response {
+                tx: Some(ops::tx::Response {
+                    status: ops::Status::Finished,
+                    ..Default::default()
+                }),
+                rx: Some(ops::rx::Response {
+                    status: ops::Status::Finished,
+                    ..Default::default()
+                }),
+            });
+        }
+
         let response = self.state.poll_request(&mut self.request, context)?;
 
         if let Some(rx) = response.rx() {
@@ -563,6 +578,15 @@ impl<'state, 'chunks> TxRequest<'state, 'chunks> {
     tx_request_apis!();
 
     pub fn poll(&mut self, context: Option<&Context>) -> Result<ops::tx::Response, StreamError> {
+        if !self.state.is_tx_open {
+            // return early to avoid sending a request for a stream that has been
+            // removed from the stream container already
+            return Ok(ops::tx::Response {
+                status: ops::Status::Finished,
+                ..Default::default()
+            });
+        }
+
         let response = self
             .state
             .poll_request(&mut self.request, context)?
@@ -595,6 +619,15 @@ impl<'state, 'chunks> RxRequest<'state, 'chunks> {
     rx_request_apis!();
 
     pub fn poll(&mut self, context: Option<&Context>) -> Result<ops::rx::Response, StreamError> {
+        if !self.state.is_rx_open {
+            // return early to avoid sending a request for a stream that has been
+            // removed from the stream container already
+            return Ok(ops::rx::Response {
+                status: ops::Status::Finished,
+                ..Default::default()
+            });
+        }
+
         let response = self
             .state
             .poll_request(&mut self.request, context)?
