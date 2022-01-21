@@ -28,7 +28,7 @@
 //!     .await?;
 //! ```
 
-use crate::application;
+use crate::{application, stream};
 use core::task::Poll;
 
 /// A request made on a stream
@@ -366,7 +366,7 @@ pub enum Status {
     Resetting,
 
     /// The stream was reset either by the peer or locally
-    Reset,
+    Reset(stream::StreamError),
 }
 
 macro_rules! impl_status {
@@ -393,7 +393,7 @@ macro_rules! impl_status {
 
         /// Returns `true` if the status is `Reset`
         pub fn is_reset(&self) -> bool {
-            matches!(self.status(), Status::Reset)
+            matches!(self.status(), Status::Reset(_))
         }
 
         /// Returns `true` if the status is `Finishing` or `Resetting`

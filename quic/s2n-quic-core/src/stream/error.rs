@@ -5,7 +5,7 @@ use crate::{application, connection, frame::ConnectionClose, transport};
 use core::fmt;
 
 /// Errors that a stream can encounter.
-#[derive(PartialEq, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 #[non_exhaustive]
 pub enum StreamError {

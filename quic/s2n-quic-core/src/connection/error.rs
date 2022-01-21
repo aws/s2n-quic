@@ -7,7 +7,7 @@ use crate::{
 use core::{fmt, time::Duration};
 
 /// Errors that a connection can encounter.
-#[derive(PartialEq, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
 #[non_exhaustive]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum Error {

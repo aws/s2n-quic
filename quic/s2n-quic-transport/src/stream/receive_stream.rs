@@ -695,7 +695,7 @@ impl ReceiveStream {
 
             // Mark the stream as reset. Note that the request doesn't have a flush so there's
             // currently no way to wait for the reset to be acknowledged.
-            response.status = ops::Status::Reset;
+            response.status = ops::Status::Reset(StreamError::StreamReset(error_code));
 
             return Ok(response);
         }

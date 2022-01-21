@@ -20,8 +20,8 @@ pub use s2n_quic_core::{
 struct State {
     connection: Connection,
     stream_id: StreamId,
-    is_rx_open: bool,
-    is_tx_open: bool,
+    rx: ops::Status,
+    tx: ops::Status,
 }
 
 impl State {
@@ -29,8 +29,8 @@ impl State {
         Self {
             connection,
             stream_id,
-            is_rx_open: true,
-            is_tx_open: true,
+            rx: ops::Status::Open,
+            tx: ops::Status::Open,
         }
     }
 
@@ -53,8 +53,8 @@ impl State {
 
 impl Drop for State {
     fn drop(&mut self) {
-        let is_rx_open = self.is_rx_open;
-        let is_tx_open = self.is_tx_open;
+        let is_rx_open = self.rx.is_open();
+        let is_tx_open = self.tx.is_open();
 
         if is_rx_open || is_tx_open {
             let mut request = self.request();
@@ -363,8 +363,8 @@ impl Stream {
         let mut tx_state = rx_state.clone();
 
         // close the opposite sides
-        rx_state.is_tx_open = false;
-        tx_state.is_rx_open = false;
+        rx_state.tx = ops::Status::Finished;
+        tx_state.rx = ops::Status::Finished;
 
         (ReceiveStream(rx_state), SendStream(tx_state))
     }
@@ -529,8 +529,8 @@ impl<'state, 'chunks> Request<'state, 'chunks> {
     rx_request_apis!();
 
     pub fn poll(&mut self, context: Option<&Context>) -> Result<ops::Response, StreamError> {
-        if !self.state.is_rx_open && !self.state.is_tx_open {
-            // Neither tx or rx are still open, so return early to avoid sending a request
+        if self.state.rx.is_finished() && self.state.tx.is_finished() {
+            // Tx and Rx are both finished, so return early to avoid sending a request
             // for a stream that has been removed from the stream container already
             return Ok(ops::Response {
                 tx: Some(ops::tx::Response {
@@ -547,11 +547,11 @@ impl<'state, 'chunks> Request<'state, 'chunks> {
         let response = self.state.poll_request(&mut self.request, context)?;
 
         if let Some(rx) = response.rx() {
-            self.state.is_rx_open = rx.is_open();
+            self.state.rx = rx.status;
         }
 
         if let Some(tx) = response.tx() {
-            self.state.is_tx_open = tx.is_open();
+            self.state.tx = tx.status;
         }
 
         Ok(response)
@@ -578,7 +578,7 @@ impl<'state, 'chunks> TxRequest<'state, 'chunks> {
     tx_request_apis!();
 
     pub fn poll(&mut self, context: Option<&Context>) -> Result<ops::tx::Response, StreamError> {
-        if !self.state.is_tx_open {
+        if self.state.tx.is_finished() {
             // return early to avoid sending a request for a stream that has been
             // removed from the stream container already
             return Ok(ops::tx::Response {
@@ -593,7 +593,7 @@ impl<'state, 'chunks> TxRequest<'state, 'chunks> {
             .tx
             .expect("invalid response");
 
-        self.state.is_tx_open = response.is_open();
+        self.state.tx = response.status;
 
         Ok(response)
     }
@@ -619,7 +619,7 @@ impl<'state, 'chunks> RxRequest<'state, 'chunks> {
     rx_request_apis!();
 
     pub fn poll(&mut self, context: Option<&Context>) -> Result<ops::rx::Response, StreamError> {
-        if !self.state.is_rx_open {
+        if self.state.rx.is_finished() {
             // return early to avoid sending a request for a stream that has been
             // removed from the stream container already
             return Ok(ops::rx::Response {
@@ -634,7 +634,7 @@ impl<'state, 'chunks> RxRequest<'state, 'chunks> {
             .rx
             .expect("invalid response");
 
-        self.state.is_rx_open = response.is_open();
+        self.state.rx = response.status;
 
         Ok(response)
     }
