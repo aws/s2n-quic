@@ -723,8 +723,17 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     retry_token_dcid,
                 ) {
                     // TODO send a minimal connection close frame
-                    // TODO emit event
-                    dbg!(err);
+                    let mut publisher = event::EndpointPublisherSubscriber::new(
+                        event::builder::EndpointMeta {
+                            endpoint_type: Cfg::ENDPOINT_TYPE,
+                            timestamp,
+                        },
+                        None,
+                        self.config.context().event_subscriber,
+                    );
+                    publisher.on_endpoint_connection_attempt_failed(
+                        event::builder::EndpointConnectionAttemptFailed { error: err },
+                    );
                 }
             }
             (_, packet) => {
