@@ -142,6 +142,12 @@ struct DuplicatePacket<'a> {
     error: DuplicatePacketError,
 }
 
+#[event("transport:transport_parameters_received")]
+/// Transport parameters received by connection
+struct TransportParametersReceived<'a> {
+    transport_parameters: TransportParameters<'a>,
+}
+
 #[event("transport:datagram_sent")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.10
 /// Datagram sent by a connection

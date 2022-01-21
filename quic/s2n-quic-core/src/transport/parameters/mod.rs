@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    ack, connection, endpoint,
+    ack, connection, endpoint, event,
+    event::IntoEvent,
     inet::{SocketAddressV4, SocketAddressV6, Unspecified},
     stateless_reset,
     stream::{StreamId, StreamType},
@@ -1161,6 +1162,78 @@ pub type ServerTransportParameters = TransportParameters<
     Option<RetrySourceConnectionId>,
 >;
 
+impl<'a> IntoEvent<event::builder::TransportParameters<'a>> for &'a ServerTransportParameters {
+    fn into_event(self) -> event::builder::TransportParameters<'a> {
+        event::builder::TransportParameters {
+            original_destination_connection_id: self
+                .original_destination_connection_id
+                .as_ref()
+                .map(|cid| cid.into_event()),
+            initial_source_connection_id: self
+                .initial_source_connection_id
+                .as_ref()
+                .map(|cid| cid.into_event()),
+            retry_source_connection_id: self
+                .retry_source_connection_id
+                .as_ref()
+                .map(|cid| cid.into_event()),
+            stateless_reset_token: self
+                .stateless_reset_token
+                .as_ref()
+                .map(|token| token.as_ref()),
+            preferred_address: self
+                .preferred_address
+                .as_ref()
+                .map(|addr| addr.into_event()),
+            migration_support: self.migration_support.into_event(),
+            max_idle_timeout: Duration::from(self.max_idle_timeout),
+            max_udp_payload_size: self.max_udp_payload_size.into_event(),
+            ack_delay_exponent: self.ack_delay_exponent.into_event(),
+            max_ack_delay: Duration::from(self.max_ack_delay),
+            active_connection_id_limit: self.active_connection_id_limit.into_event(),
+            initial_max_stream_data_bidi_local: self
+                .initial_max_stream_data_bidi_local
+                .into_event(),
+            initial_max_stream_data_bidi_remote: self
+                .initial_max_stream_data_bidi_remote
+                .into_event(),
+            initial_max_stream_data_uni: self.initial_max_stream_data_uni.into_event(),
+            initial_max_streams_bidi: self.initial_max_streams_bidi.into_event(),
+            initial_max_streams_uni: self.initial_max_streams_uni.into_event(),
+        }
+    }
+}
+
+impl<'a> IntoEvent<event::builder::TransportParameters<'a>> for &'a ClientTransportParameters {
+    fn into_event(self) -> event::builder::TransportParameters<'a> {
+        event::builder::TransportParameters {
+            original_destination_connection_id: None,
+            initial_source_connection_id: self
+                .initial_source_connection_id
+                .as_ref()
+                .map(|cid| cid.into_event()),
+            retry_source_connection_id: None,
+            stateless_reset_token: None,
+            preferred_address: None,
+            migration_support: self.migration_support.into_event(),
+            max_idle_timeout: Duration::from(self.max_idle_timeout),
+            max_udp_payload_size: self.max_udp_payload_size.into_event(),
+            ack_delay_exponent: self.ack_delay_exponent.into_event(),
+            max_ack_delay: Duration::from(self.max_ack_delay),
+            active_connection_id_limit: self.active_connection_id_limit.into_event(),
+            initial_max_stream_data_bidi_local: self
+                .initial_max_stream_data_bidi_local
+                .into_event(),
+            initial_max_stream_data_bidi_remote: self
+                .initial_max_stream_data_bidi_remote
+                .into_event(),
+            initial_max_stream_data_uni: self.initial_max_stream_data_uni.into_event(),
+            initial_max_streams_bidi: self.initial_max_streams_bidi.into_event(),
+            initial_max_streams_uni: self.initial_max_streams_uni.into_event(),
+        }
+    }
+}
+
 macro_rules! impl_transport_parameters {
     (
         pub struct TransportParameters <
@@ -1422,7 +1495,7 @@ mod snapshot_tests {
         let _ = encoded_output;
     }
 
-    fn client_transport_paramters() -> ClientTransportParameters {
+    fn client_transport_parameters() -> ClientTransportParameters {
         // pick a value that isn't the default for any of the params
         let integer_value = VarInt::from_u8(42);
 
@@ -1449,7 +1522,7 @@ mod snapshot_tests {
 
     #[test]
     fn client_snapshot_test() {
-        let value = client_transport_paramters();
+        let value = client_transport_parameters();
         let encoded_output = assert_codec_round_trip_value!(ClientTransportParameters, value);
 
         #[cfg(not(miri))] // snapshot tests don't work on miri
@@ -1466,7 +1539,7 @@ mod snapshot_tests {
     fn ignore_unknown_parameter() {
         use s2n_codec::EncoderBuffer;
 
-        let value = client_transport_paramters();
+        let value = client_transport_parameters();
 
         // Reserved parameters have tags of the form 31 * N + 27
         // We inject one at the end
