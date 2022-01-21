@@ -34,9 +34,9 @@ pub mod api {
         pub stateless_reset_token: Option<&'a [u8]>,
         pub preferred_address: Option<PreferredAddress<'a>>,
         pub migration_support: bool,
-        pub max_idle_timeout: u64,
+        pub max_idle_timeout: Duration,
         pub ack_delay_exponent: u8,
-        pub max_ack_delay: u64,
+        pub max_ack_delay: Duration,
         pub max_udp_payload_size: u64,
         pub active_connection_id_limit: u64,
         pub initial_max_stream_data_bidi_local: u64,
@@ -742,6 +742,15 @@ pub mod api {
             builder::SocketAddress::IpV6 {
                 ip: &self.ip.octets,
                 port: self.port.into(),
+            }
+        }
+    }
+    impl IntoEvent<bool> for &crate::transport::parameters::MigrationSupport {
+        #[inline]
+        fn into_event(self) -> bool {
+            match self {
+                crate::transport::parameters::MigrationSupport::Enabled => true,
+                crate::transport::parameters::MigrationSupport::Disabled => false,
             }
         }
     }
@@ -1628,9 +1637,9 @@ pub mod builder {
         pub stateless_reset_token: Option<&'a [u8]>,
         pub preferred_address: Option<PreferredAddress<'a>>,
         pub migration_support: bool,
-        pub max_idle_timeout: u64,
+        pub max_idle_timeout: Duration,
         pub ack_delay_exponent: u8,
-        pub max_ack_delay: u64,
+        pub max_ack_delay: Duration,
         pub max_udp_payload_size: u64,
         pub active_connection_id_limit: u64,
         pub initial_max_stream_data_bidi_local: u64,

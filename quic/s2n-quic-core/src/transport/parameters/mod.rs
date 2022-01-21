@@ -1185,14 +1185,11 @@ impl<'a> IntoEvent<event::builder::TransportParameters<'a>> for &'a ServerTransp
                 .preferred_address
                 .as_ref()
                 .map(|addr| addr.into_event()),
-            migration_support: match self.migration_support {
-                MigrationSupport::Enabled => true,
-                MigrationSupport::Disabled => false,
-            },
-            max_idle_timeout: self.max_idle_timeout.into_event(),
+            migration_support: self.migration_support.into_event(),
+            max_idle_timeout: Duration::from(self.max_idle_timeout),
             max_udp_payload_size: self.max_udp_payload_size.into_event(),
             ack_delay_exponent: self.ack_delay_exponent.into_event(),
-            max_ack_delay: self.max_ack_delay.into_event(),
+            max_ack_delay: Duration::from(self.max_ack_delay),
             active_connection_id_limit: self.active_connection_id_limit.into_event(),
             initial_max_stream_data_bidi_local: self
                 .initial_max_stream_data_bidi_local
@@ -1218,14 +1215,11 @@ impl<'a> IntoEvent<event::builder::TransportParameters<'a>> for &'a ClientTransp
             retry_source_connection_id: None,
             stateless_reset_token: None,
             preferred_address: None,
-            migration_support: match self.migration_support {
-                MigrationSupport::Enabled => true,
-                MigrationSupport::Disabled => false,
-            },
-            max_idle_timeout: self.max_idle_timeout.into_event(),
+            migration_support: self.migration_support.into_event(),
+            max_idle_timeout: Duration::from(self.max_idle_timeout),
             max_udp_payload_size: self.max_udp_payload_size.into_event(),
             ack_delay_exponent: self.ack_delay_exponent.into_event(),
-            max_ack_delay: self.max_ack_delay.into_event(),
+            max_ack_delay: Duration::from(self.max_ack_delay),
             active_connection_id_limit: self.active_connection_id_limit.into_event(),
             initial_max_stream_data_bidi_local: self
                 .initial_max_stream_data_bidi_local

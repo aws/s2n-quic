@@ -29,9 +29,9 @@ struct TransportParameters<'a> {
     stateless_reset_token: Option<&'a [u8]>,
     preferred_address: Option<PreferredAddress<'a>>,
     migration_support: bool,
-    max_idle_timeout: u64,
+    max_idle_timeout: Duration,
     ack_delay_exponent: u8,
-    max_ack_delay: u64,
+    max_ack_delay: Duration,
     max_udp_payload_size: u64,
     active_connection_id_limit: u64,
     initial_max_stream_data_bidi_local: u64,
@@ -78,6 +78,16 @@ impl<'a> IntoEvent<builder::SocketAddress<'a>> for &'a crate::inet::ipv6::Socket
         builder::SocketAddress::IpV6 {
             ip: &self.ip.octets,
             port: self.port.into(),
+        }
+    }
+}
+
+impl IntoEvent<bool> for &crate::transport::parameters::MigrationSupport {
+    #[inline]
+    fn into_event(self) -> bool {
+        match self {
+            crate::transport::parameters::MigrationSupport::Enabled => true,
+            crate::transport::parameters::MigrationSupport::Disabled => false,
         }
     }
 }
