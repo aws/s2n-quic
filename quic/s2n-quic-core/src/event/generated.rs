@@ -652,6 +652,14 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub struct EndpointConnectionAttemptFailed {
+        pub error: crate::connection::Error,
+    }
+    impl Event for EndpointConnectionAttemptFailed {
+        const NAME: &'static str = "transport:connection_attempt_failed";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Emitted when the platform sends at least one packet"]
     pub struct PlatformTx {
         #[doc = " The number of packets sent"]
@@ -1518,6 +1526,19 @@ pub mod api {
                 };
                 let api::EndpointDatagramDropped { len, reason } = event;
                 tracing :: event ! (target : "endpoint_datagram_dropped" , parent : parent , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , reason = tracing :: field :: debug (reason));
+            }
+            #[inline]
+            fn on_endpoint_connection_attempt_failed(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::EndpointConnectionAttemptFailed,
+            ) {
+                let parent = match meta.endpoint_type {
+                    api::EndpointType::Client {} => self.client.id(),
+                    api::EndpointType::Server {} => self.server.id(),
+                };
+                let api::EndpointConnectionAttemptFailed { error } = event;
+                tracing :: event ! (target : "endpoint_connection_attempt_failed" , parent : parent , tracing :: Level :: DEBUG , error = tracing :: field :: debug (error));
             }
             #[inline]
             fn on_platform_tx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTx) {
@@ -2748,6 +2769,19 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct EndpointConnectionAttemptFailed {
+        pub error: crate::connection::Error,
+    }
+    impl IntoEvent<api::EndpointConnectionAttemptFailed> for EndpointConnectionAttemptFailed {
+        #[inline]
+        fn into_event(self) -> api::EndpointConnectionAttemptFailed {
+            let EndpointConnectionAttemptFailed { error } = self;
+            api::EndpointConnectionAttemptFailed {
+                error: error.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct PlatformTx {
         #[doc = " The number of packets sent"]
         pub count: usize,
@@ -3303,6 +3337,16 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `EndpointConnectionAttemptFailed` event is triggered"]
+        #[inline]
+        fn on_endpoint_connection_attempt_failed(
+            &mut self,
+            meta: &EndpointMeta,
+            event: &EndpointConnectionAttemptFailed,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `PlatformTx` event is triggered"]
         #[inline]
         fn on_platform_tx(&mut self, meta: &EndpointMeta, event: &PlatformTx) {
@@ -3702,6 +3746,15 @@ mod traits {
             (self.1).on_endpoint_datagram_dropped(meta, event);
         }
         #[inline]
+        fn on_endpoint_connection_attempt_failed(
+            &mut self,
+            meta: &EndpointMeta,
+            event: &EndpointConnectionAttemptFailed,
+        ) {
+            (self.0).on_endpoint_connection_attempt_failed(meta, event);
+            (self.1).on_endpoint_connection_attempt_failed(meta, event);
+        }
+        #[inline]
         fn on_platform_tx(&mut self, meta: &EndpointMeta, event: &PlatformTx) {
             (self.0).on_platform_tx(meta, event);
             (self.1).on_platform_tx(meta, event);
@@ -3779,6 +3832,11 @@ mod traits {
         fn on_endpoint_datagram_received(&mut self, event: builder::EndpointDatagramReceived);
         #[doc = "Publishes a `EndpointDatagramDropped` event to the publisher's subscriber"]
         fn on_endpoint_datagram_dropped(&mut self, event: builder::EndpointDatagramDropped);
+        #[doc = "Publishes a `EndpointConnectionAttemptFailed` event to the publisher's subscriber"]
+        fn on_endpoint_connection_attempt_failed(
+            &mut self,
+            event: builder::EndpointConnectionAttemptFailed,
+        );
         #[doc = "Publishes a `PlatformTx` event to the publisher's subscriber"]
         fn on_platform_tx(&mut self, event: builder::PlatformTx);
         #[doc = "Publishes a `PlatformTxError` event to the publisher's subscriber"]
@@ -3858,6 +3916,16 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_endpoint_datagram_dropped(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_endpoint_connection_attempt_failed(
+            &mut self,
+            event: builder::EndpointConnectionAttemptFailed,
+        ) {
+            let event = event.into_event();
+            self.subscriber
+                .on_endpoint_connection_attempt_failed(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -4277,6 +4345,7 @@ pub mod testing {
         pub endpoint_datagram_sent: u32,
         pub endpoint_datagram_received: u32,
         pub endpoint_datagram_dropped: u32,
+        pub endpoint_connection_attempt_failed: u32,
         pub platform_tx: u32,
         pub platform_tx_error: u32,
         pub platform_rx: u32,
@@ -4339,6 +4408,7 @@ pub mod testing {
                 endpoint_datagram_sent: 0,
                 endpoint_datagram_received: 0,
                 endpoint_datagram_dropped: 0,
+                endpoint_connection_attempt_failed: 0,
                 platform_tx: 0,
                 platform_tx_error: 0,
                 platform_rx: 0,
@@ -4700,6 +4770,14 @@ pub mod testing {
             self.endpoint_datagram_dropped += 1;
             self.output.push(format!("{:?} {:?}", meta, event));
         }
+        fn on_endpoint_connection_attempt_failed(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointConnectionAttemptFailed,
+        ) {
+            self.endpoint_connection_attempt_failed += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
+        }
         fn on_platform_tx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTx) {
             self.platform_tx += 1;
             self.output.push(format!("{:?} {:?}", meta, event));
@@ -4762,6 +4840,7 @@ pub mod testing {
         pub endpoint_datagram_sent: u32,
         pub endpoint_datagram_received: u32,
         pub endpoint_datagram_dropped: u32,
+        pub endpoint_connection_attempt_failed: u32,
         pub platform_tx: u32,
         pub platform_tx_error: u32,
         pub platform_rx: u32,
@@ -4814,6 +4893,7 @@ pub mod testing {
                 endpoint_datagram_sent: 0,
                 endpoint_datagram_received: 0,
                 endpoint_datagram_dropped: 0,
+                endpoint_connection_attempt_failed: 0,
                 platform_tx: 0,
                 platform_tx_error: 0,
                 platform_rx: 0,
@@ -4850,6 +4930,14 @@ pub mod testing {
         }
         fn on_endpoint_datagram_dropped(&mut self, event: builder::EndpointDatagramDropped) {
             self.endpoint_datagram_dropped += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
+        }
+        fn on_endpoint_connection_attempt_failed(
+            &mut self,
+            event: builder::EndpointConnectionAttemptFailed,
+        ) {
+            self.endpoint_connection_attempt_failed += 1;
             let event = event.into_event();
             self.output.push(format!("{:?}", event));
         }

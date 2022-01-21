@@ -60,3 +60,9 @@ struct EndpointDatagramDropped {
     len: u16,
     reason: DatagramDropReason,
 }
+
+#[event("transport:connection_attempt_failed")]
+#[subject(endpoint)]
+struct EndpointConnectionAttemptFailed {
+    error: crate::connection::Error,
+}
