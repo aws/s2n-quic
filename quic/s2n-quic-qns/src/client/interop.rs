@@ -120,10 +120,12 @@ impl Interop {
                 )));
             }
 
-            try_join_all(streams).await.map_err(|error| {
-                eprintln!("Encountered error {:?}", error);
-                error
-            })?;
+            for result in try_join_all(streams).await? {
+                // `try_join_all` should be returning an Err if any stream fails, but it
+                // seems to just include the Err in the Vec of results. This will force
+                // any Error to bubble up so it can be printed in the output.
+                result?;
+            }
 
             Ok(())
         }
