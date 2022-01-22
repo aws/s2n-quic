@@ -13,7 +13,7 @@ use s2n_tls::{
     config::Config,
     connection::{Connection, Mode},
     error::Error,
-    raw::{s2n_blinding, s2n_error_type},
+    raw::{s2n_blinding},
 };
 
 #[derive(Debug)]
@@ -45,16 +45,6 @@ impl Session {
             handshake_complete: false,
             send_buffer: BytesMut::new(),
         })
-    }
-
-    fn translate_error(&self, error: Error) -> transport::Error {
-        if error.kind() == s2n_error_type::Alert {
-            if let Some(code) = self.connection.alert() {
-                return CryptoError::new(code).into();
-            }
-        }
-
-        transport::Error::INTERNAL_ERROR
     }
 }
 
@@ -103,7 +93,12 @@ impl tls::Session for Session {
                 }
                 Ok(())
             }
-            Poll::Ready(Err(err)) => Err(self.translate_error(err)),
+            Poll::Ready(Err(e)) => Err(
+                e.alert()
+                 .map(CryptoError::new)
+                 .unwrap_or(CryptoError::HANDSHAKE_FAILURE)
+                 .into()
+            ),
             Poll::Pending => Ok(()),
         }
     }
