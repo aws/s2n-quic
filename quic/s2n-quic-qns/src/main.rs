@@ -41,7 +41,7 @@ async fn main() {
     match Arguments::from_args_safe() {
         Ok(args) => {
             if let Err(error) = args.run().await {
-                eprintln!("{}", error);
+                eprintln!("Error: {:?}", error);
             }
         }
         Err(error) => {

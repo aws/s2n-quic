@@ -120,21 +120,44 @@ impl Interop {
                 )));
             }
 
-            try_join_all(streams).await?;
+            for result in try_join_all(streams).await? {
+                // `try_join_all` should be returning an Err if any stream fails, but it
+                // seems to just include the Err in the Vec of results. This will force
+                // any Error to bubble up so it can be printed in the output.
+                result?;
+            }
 
             Ok(())
         }
 
         async fn create_stream(
-            mut connection: Handle,
+            connection: Handle,
             request: String,
             download_dir: Arc<Option<PathBuf>>,
         ) -> Result<()> {
             eprintln!("GET {}", request);
+
+            match create_stream_inner(connection, &request, download_dir).await {
+                Ok(()) => {
+                    eprintln!("Request {} completed successfully", request);
+                    Ok(())
+                }
+                Err(error) => {
+                    eprintln!("Request {} failed: {:?}", request, error);
+                    Err(error)
+                }
+            }
+        }
+
+        async fn create_stream_inner(
+            mut connection: Handle,
+            request: &str,
+            download_dir: Arc<Option<PathBuf>>,
+        ) -> Result<()> {
             let stream = connection.open_bidirectional_stream().await?;
             let (mut rx_stream, tx_stream) = stream.split();
 
-            interop::write_request(tx_stream, &request).await?;
+            interop::write_request(tx_stream, request).await?;
 
             if let Some(download_dir) = download_dir.as_ref() {
                 if download_dir == Path::new("/dev/null") {

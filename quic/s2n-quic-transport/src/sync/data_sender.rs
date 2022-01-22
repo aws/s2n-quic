@@ -16,6 +16,7 @@ mod transmissions;
 pub mod writer;
 
 pub use buffer::View;
+use s2n_quic_core::stream::StreamError;
 pub use traits::*;
 
 /// Enumerates states of the [`DataSender`]
@@ -32,7 +33,7 @@ pub enum State {
     /// The Stream is thereby finalized.
     Finished,
     /// Sending data was cancelled due to a Stream RESET.
-    Cancelled,
+    Cancelled(StreamError),
 }
 
 impl State {
@@ -176,12 +177,12 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
     ///
     /// Calling the method removes all pending outgoing data as well as
     /// all tracking information from the buffer.
-    pub fn stop_sending(&mut self) {
+    pub fn stop_sending(&mut self, error: StreamError) {
         if self.state == State::Finished {
             return;
         }
 
-        self.state = State::Cancelled;
+        self.state = State::Cancelled(error);
         self.buffer.clear();
         self.pending.clear();
         self.lost.clear();

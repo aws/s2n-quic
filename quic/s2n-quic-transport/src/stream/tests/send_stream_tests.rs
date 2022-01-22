@@ -14,7 +14,7 @@ use s2n_quic_core::{
     connection, endpoint,
     frame::{Frame, MaxData, MaxStreamData, StopSending},
     packet::number::PacketNumber,
-    stream::{ops, StreamType},
+    stream::{ops, StreamError::StreamReset, StreamType},
     transmission,
     varint::{VarInt, MAX_VARINT_VALUE},
 };
@@ -2629,7 +2629,7 @@ fn resetting_a_stream_takes_priority() {
                         test_env.run_request(&mut request, with_context),
                         Ok(ops::Response {
                             tx: Some(ops::tx::Response {
-                                status: ops::Status::Reset,
+                                status: ops::Status::Reset(StreamReset(error_code)),
                                 ..Default::default()
                             }),
                             rx: None,

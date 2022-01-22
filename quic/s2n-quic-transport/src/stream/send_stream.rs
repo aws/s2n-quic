@@ -26,7 +26,7 @@ use s2n_quic_core::{
     ack, application,
     frame::{MaxStreamData, ResetStream, StopSending, StreamDataBlocked},
     packet::number::PacketNumber,
-    stream::{ops, StreamId},
+    stream::{ops, StreamError::StreamReset, StreamId},
     time::{timer, Timestamp},
     transport,
     varint::VarInt,
@@ -771,7 +771,7 @@ impl SendStream {
 
             // Mark the stream as completely reset once it's been acknowledged
             if matches!(self.state, SendStreamState::ResetAcknowledged(_)) {
-                response.status = ops::Status::Reset;
+                response.status = ops::Status::Reset(StreamReset(error_code));
             }
 
             return Ok(response);
@@ -873,9 +873,9 @@ impl SendStream {
             data_sender::State::Finished => {
                 response.status = ops::Status::Finished;
             }
-            data_sender::State::Cancelled => {
+            data_sender::State::Cancelled(error) => {
                 // TODO determine if the peer has acknowledged the reset
-                response.status = ops::Status::Reset;
+                response.status = ops::Status::Reset(error);
             }
         }
 
@@ -944,7 +944,7 @@ impl SendStream {
 
         // Clear the send buffer. Since we initiated a RESET, there is no need
         // to send or resend the remaining data.
-        self.data_sender.stop_sending();
+        self.data_sender.stop_sending(error);
 
         // For an internal reset (which provides no error_code) we do not need
         // to transmit the reset frame
