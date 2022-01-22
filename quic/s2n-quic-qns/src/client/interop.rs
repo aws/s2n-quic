@@ -131,15 +131,33 @@ impl Interop {
         }
 
         async fn create_stream(
-            mut connection: Handle,
+            connection: Handle,
             request: String,
             download_dir: Arc<Option<PathBuf>>,
         ) -> Result<()> {
             eprintln!("GET {}", request);
+
+            match create_stream_inner(connection, &request, download_dir).await {
+                Ok(()) => {
+                    eprintln!("Request {} completed successfully", request);
+                    Ok(())
+                }
+                Err(error) => {
+                    eprintln!("Request {} failed: {:?}", request, error);
+                    Err(error)
+                }
+            }
+        }
+
+        async fn create_stream_inner(
+            mut connection: Handle,
+            request: &str,
+            download_dir: Arc<Option<PathBuf>>,
+        ) -> Result<()> {
             let stream = connection.open_bidirectional_stream().await?;
             let (mut rx_stream, tx_stream) = stream.split();
 
-            interop::write_request(tx_stream, &request).await?;
+            interop::write_request(tx_stream, request).await?;
 
             if let Some(download_dir) = download_dir.as_ref() {
                 if download_dir == Path::new("/dev/null") {
@@ -157,7 +175,6 @@ impl Interop {
                 stdout.flush().await?;
             };
 
-            eprintln!("Completed request {}", request);
             Ok(())
         }
     }
