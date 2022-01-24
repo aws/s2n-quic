@@ -107,6 +107,40 @@ impl Client {
         ConnectionAttempt(attempt)
     }
 
+    /// Wait for the client endpoint to finish handling all outstanding connections
+    ///
+    /// Notifies the endpoint of application interest in closing the endpoint. The
+    /// call waits for **all** outstanding connections to finish before returning.
+    ///
+    /// Note: The endpoint will continue to accept new connection attempts. If there
+    /// are other client handles with active connections, then this call will never
+    /// return.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use std::error::Error;
+    /// use s2n_quic::Client;
+    /// use std::{net::SocketAddr, path::Path};
+    ///
+    /// # async fn connect() -> Result<(), Box<dyn Error>> {
+    /// let mut client = Client::builder()
+    ///     .with_tls(Path::new("./certs/cert.pem"))?
+    ///     .with_io("0.0.0.0:0")?
+    ///     .start()?;
+    ///
+    /// let addr: SocketAddr = "127.0.0.1:443".parse()?;
+    /// let connection = client.connect(addr.into()).await?;
+    ///
+    /// client.wait_idle().await?;
+    /// #
+    /// #    Ok(())
+    /// # }
+    /// ```
+    pub async fn wait_idle(&mut self) -> Result<(), connection::Error> {
+        futures::future::poll_fn(|cx| self.0.poll_close(cx)).await
+    }
+
     /// Returns the local address that this listener is bound to.
     ///
     /// This can be useful, for example, when binding to port `0` to figure out which

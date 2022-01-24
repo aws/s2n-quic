@@ -365,7 +365,7 @@ fn container_test() {
     check!().with_type::<Vec<Operation>>().for_each(|ops| {
         let mut id_gen = InternalConnectionIdGenerator::new();
         let mut connections = vec![];
-        let (handle, acceptor, connector) = endpoint::handle::Handle::new(100);
+        let (handle, acceptor, connector, _close_handle) = endpoint::handle::Handle::new(100);
         let (waker, _wake_count) = futures_test::task::new_count_waker();
         let mut now = unsafe { Timestamp::from_duration(Duration::from_secs(0)) };
 

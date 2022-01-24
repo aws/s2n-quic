@@ -11,6 +11,7 @@ use crate::{
         InternalConnectionId, InternalConnectionIdGenerator, ProcessingError, Trait as _,
     },
     endpoint,
+    endpoint::close::CloseHandle,
     recovery::congestion_controller::{self, Endpoint as _},
     space::PacketSpaceManager,
     wakeup_queue::WakeupQueue,
@@ -41,6 +42,7 @@ use s2n_quic_core::{
     transport::parameters::ClientTransportParameters,
 };
 
+pub mod close;
 mod config;
 pub mod connect;
 pub mod handle;
@@ -70,6 +72,8 @@ pub struct Endpoint<Cfg: Config> {
     /// Allows to wakeup the endpoint task which might be blocked on waiting for packets
     /// from application tasks (which e.g. enqueued new data to send).
     wakeup_queue: WakeupQueue<InternalConnectionId>,
+    /// Used to receive close attempts and track close state.
+    close_handle: CloseHandle,
     /// This queue contains wakeups we retrieved from the [`Self::wakeup_queue`] earlier.
     /// This is not a local variable in order to reuse the allocated queue capacity in between
     /// [`Endpoint`] interactions.
@@ -168,17 +172,29 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         cx: &mut task::Context<'_>,
         clock: &C,
     ) -> Poll<Result<usize, s2n_quic_core::endpoint::CloseError>> {
+        if self.close_handle.has_interest(cx) // poll for close interest
+            && self.connections.is_empty() // wait for all connections to close gracefully
+            && self.connections.is_open()
+        {
+            // transition to close state
+            self.close_handle.close();
+
+            // stop accepting new connections and prepare to close the endpoint
+            self.connections.close();
+        }
+
+        // Drop the endpoint if there is no more progress to be made.
         if !self.connections.is_open() {
             return Poll::Ready(Err(s2n_quic_core::endpoint::CloseError));
         }
 
         self.wakeup_queue
             .poll_pending_wakeups(&mut self.dequeued_wakeups, cx);
+
+        let mut now: Option<Timestamp> = None;
         let mut wakeup_count = self.dequeued_wakeups.len();
         let close_packet_buffer = &mut self.close_packet_buffer;
         let endpoint_context = self.config.context();
-
-        let mut now: Option<Timestamp> = None;
 
         for internal_id in self.dequeued_wakeups.drain(..) {
             self.connections.with_connection(internal_id, |conn| {
@@ -213,13 +229,14 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
 
                         let time = clock.get_time();
                         if let Err(err) = self.create_client_connection(request, time) {
-                            // TODO report that the connection was not successfuly created
+                            // TODO report that the connection was not successfully created
                             // TODO emit event
                             dbg!(err);
                         }
                     }
                     Poll::Ready(None) => {
-                        // TODO the client handle has been dropped - do anything?
+                        // the client handle has been dropped so break from loop
+                        break;
                     }
                 }
             }
@@ -272,7 +289,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
     fn new(mut config: Cfg) -> (Self, handle::Handle) {
         // TODO make this limit configurable
         let max_opening_connections = 1000;
-        let (handle, acceptor_sender, connector_receiver) =
+        let (handle, acceptor_sender, connector_receiver, close_handle) =
             handle::Handle::new(max_opening_connections);
 
         let connection_id_mapper =
@@ -284,6 +301,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             connection_id_generator: InternalConnectionIdGenerator::new(),
             connection_id_mapper,
             wakeup_queue: WakeupQueue::new(),
+            close_handle,
             dequeued_wakeups: VecDeque::new(),
             version_negotiator: version::Negotiator::default(),
             retry_dispatch: retry::Dispatch::default(),
