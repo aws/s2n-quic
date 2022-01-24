@@ -4,7 +4,7 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(not(test), no_std)]
 
-mod ciphersuite;
+mod cipher_suite;
 #[macro_use]
 mod negotiated;
 #[macro_use]

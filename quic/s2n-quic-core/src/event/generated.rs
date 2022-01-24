@@ -318,6 +318,19 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[allow(non_camel_case_types)]
+    pub enum CipherSuite {
+        #[non_exhaustive]
+        TLS_AES_128_GCM_SHA256 {},
+        #[non_exhaustive]
+        TLS_AES_256_GCM_SHA384 {},
+        #[non_exhaustive]
+        TLS_CHACHA20_POLY1305_SHA256 {},
+        #[non_exhaustive]
+        Unknown {},
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Application level protocol"]
     pub struct AlpnInformation<'a> {
         pub chosen_alpn: &'a [u8],
@@ -447,6 +460,7 @@ pub mod api {
     #[doc = " Crypto key updated"]
     pub struct KeyUpdate {
         pub key_type: KeyType,
+        pub cipher_suite: CipherSuite,
     }
     impl Event for KeyUpdate {
         const NAME: &'static str = "security:key_update";
@@ -1073,6 +1087,16 @@ pub mod api {
             }
         }
     }
+    impl CipherSuite {
+        pub fn as_str(&self) -> &'static str {
+            match self {
+                Self::TLS_AES_128_GCM_SHA256 {} => "TLS_AES_128_GCM_SHA256",
+                Self::TLS_AES_256_GCM_SHA384 {} => "TLS_AES_256_GCM_SHA384",
+                Self::TLS_CHACHA20_POLY1305_SHA256 {} => "TLS_CHACHA20_POLY1305_SHA256",
+                Self::Unknown {} => "UNKNOWN",
+            }
+        }
+    }
     #[cfg(feature = "std")]
     impl From<PlatformTxError> for std::io::Error {
         fn from(error: PlatformTxError) -> Self {
@@ -1277,8 +1301,11 @@ pub mod api {
                 event: &api::KeyUpdate,
             ) {
                 let id = context.id();
-                let api::KeyUpdate { key_type } = event;
-                tracing :: event ! (target : "key_update" , parent : id , tracing :: Level :: DEBUG , key_type = tracing :: field :: debug (key_type));
+                let api::KeyUpdate {
+                    key_type,
+                    cipher_suite,
+                } = event;
+                tracing :: event ! (target : "key_update" , parent : id , tracing :: Level :: DEBUG , key_type = tracing :: field :: debug (key_type) , cipher_suite = tracing :: field :: debug (cipher_suite));
             }
             #[inline]
             fn on_key_space_discarded(
@@ -1969,6 +1996,9 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " A context from which the event is being emitted"]
+    #[doc = ""]
+    #[doc = " An event can occur in the context of an Endpoint or Connection"]
     pub enum Subject {
         Endpoint,
         Connection { id: u64 },
@@ -1986,6 +2016,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Used to disambiguate events that can occur for the local or the remote endpoint."]
     pub enum Location {
         Local,
         Remote,
@@ -2176,6 +2207,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " The current state of the ECN controller for the path"]
     pub enum EcnState {
         Testing,
         Unknown,
@@ -2195,6 +2227,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Events tracking the progress of handshake status"]
     pub enum HandshakeStatus {
         Complete,
         Confirmed,
@@ -2214,6 +2247,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " The source that caused a congestion event"]
     pub enum CongestionSource {
         Ecn,
         PacketLoss,
@@ -2229,6 +2263,27 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[allow(non_camel_case_types)]
+    pub enum CipherSuite {
+        TLS_AES_128_GCM_SHA256,
+        TLS_AES_256_GCM_SHA384,
+        TLS_CHACHA20_POLY1305_SHA256,
+        Unknown,
+    }
+    impl IntoEvent<api::CipherSuite> for CipherSuite {
+        #[inline]
+        fn into_event(self) -> api::CipherSuite {
+            use api::CipherSuite::*;
+            match self {
+                Self::TLS_AES_128_GCM_SHA256 => TLS_AES_128_GCM_SHA256 {},
+                Self::TLS_AES_256_GCM_SHA384 => TLS_AES_256_GCM_SHA384 {},
+                Self::TLS_CHACHA20_POLY1305_SHA256 => TLS_CHACHA20_POLY1305_SHA256 {},
+                Self::Unknown => Unknown {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Application level protocol"]
     pub struct AlpnInformation<'a> {
         pub chosen_alpn: &'a [u8],
     }
@@ -2242,6 +2297,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Server Name Indication"]
     pub struct SniInformation<'a> {
         pub chosen_sni: &'a str,
     }
@@ -2255,6 +2311,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Packet was sent by a connection"]
     pub struct PacketSent {
         pub packet_header: PacketHeader,
     }
@@ -2268,6 +2325,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Packet was received by a connection"]
     pub struct PacketReceived {
         pub packet_header: PacketHeader,
     }
@@ -2281,6 +2339,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Active path was updated"]
     pub struct ActivePathUpdated<'a> {
         pub previous: Path<'a>,
         pub active: Path<'a>,
@@ -2296,6 +2355,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " A new path was created"]
     pub struct PathCreated<'a> {
         pub active: Path<'a>,
         pub new: Path<'a>,
@@ -2311,6 +2371,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Frame was sent"]
     pub struct FrameSent {
         pub packet_header: PacketHeader,
         pub path_id: u64,
@@ -2332,6 +2393,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Frame was received"]
     pub struct FrameReceived<'a> {
         pub packet_header: PacketHeader,
         pub path: Path<'a>,
@@ -2353,6 +2415,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Packet was lost"]
     pub struct PacketLost<'a> {
         pub packet_header: PacketHeader,
         pub path: Path<'a>,
@@ -2377,6 +2440,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Recovery metrics updated"]
     pub struct RecoveryMetrics<'a> {
         pub path: Path<'a>,
         pub min_rtt: Duration,
@@ -2416,6 +2480,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Congestion (ECN or packet loss) has occurred"]
     pub struct Congestion<'a> {
         pub path: Path<'a>,
         pub source: CongestionSource,
@@ -2431,6 +2496,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Packet was dropped with the given reason"]
     pub struct PacketDropped<'a> {
         pub reason: PacketDropReason<'a>,
     }
@@ -2444,15 +2510,21 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Crypto key updated"]
     pub struct KeyUpdate {
         pub key_type: KeyType,
+        pub cipher_suite: CipherSuite,
     }
     impl IntoEvent<api::KeyUpdate> for KeyUpdate {
         #[inline]
         fn into_event(self) -> api::KeyUpdate {
-            let KeyUpdate { key_type } = self;
+            let KeyUpdate {
+                key_type,
+                cipher_suite,
+            } = self;
             api::KeyUpdate {
                 key_type: key_type.into_event(),
+                cipher_suite: cipher_suite.into_event(),
             }
         }
     }
@@ -2470,6 +2542,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Connection started"]
     pub struct ConnectionStarted<'a> {
         pub path: Path<'a>,
     }
@@ -2483,6 +2556,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Connection closed"]
     pub struct ConnectionClosed {
         pub error: crate::connection::Error,
     }
@@ -2496,6 +2570,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Duplicate packet received"]
     pub struct DuplicatePacket<'a> {
         pub packet_header: PacketHeader,
         pub path: Path<'a>,
@@ -2517,6 +2592,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Transport parameters received by connection"]
     pub struct TransportParametersReceived<'a> {
         pub transport_parameters: TransportParameters<'a>,
     }
@@ -2532,6 +2608,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Datagram sent by a connection"]
     pub struct DatagramSent {
         pub len: u16,
         #[doc = " The GSO offset at which this datagram was written"]
@@ -2553,6 +2630,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Datagram received by a connection"]
     pub struct DatagramReceived {
         pub len: u16,
     }
@@ -2566,6 +2644,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Datagram dropped by a connection"]
     pub struct DatagramDropped {
         pub len: u16,
         pub reason: DatagramDropReason,
@@ -2581,6 +2660,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " ConnectionId updated"]
     pub struct ConnectionIdUpdated<'a> {
         pub path_id: u64,
         #[doc = " The endpoint that updated its connection id"]
@@ -2673,6 +2753,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " QUIC version"]
     pub struct VersionInformation<'a> {
         pub server_versions: &'a [u32],
         pub client_versions: &'a [u32],
@@ -2694,6 +2775,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Packet was sent by the endpoint"]
     pub struct EndpointPacketSent {
         pub packet_header: PacketHeader,
     }
@@ -2707,6 +2789,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Packet was received by the endpoint"]
     pub struct EndpointPacketReceived {
         pub packet_header: PacketHeader,
     }
@@ -2720,6 +2803,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Datagram sent by the endpoint"]
     pub struct EndpointDatagramSent {
         pub len: u16,
         #[doc = " The GSO offset at which this datagram was written"]
@@ -2741,6 +2825,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Datagram received by the endpoint"]
     pub struct EndpointDatagramReceived {
         pub len: u16,
     }
@@ -2754,6 +2839,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Datagram dropped by the endpoint"]
     pub struct EndpointDatagramDropped {
         pub len: u16,
         pub reason: DatagramDropReason,
@@ -2782,6 +2868,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Emitted when the platform sends at least one packet"]
     pub struct PlatformTx {
         #[doc = " The number of packets sent"]
         pub count: usize,
@@ -2796,6 +2883,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Emitted when the platform returns an error while sending datagrams"]
     pub struct PlatformTxError {
         #[doc = " The error code returned by the platform"]
         pub errno: i32,
@@ -2810,6 +2898,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Emitted when the platform receives at least one packet"]
     pub struct PlatformRx {
         #[doc = " The number of packets received"]
         pub count: usize,
@@ -2824,6 +2913,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Emitted when the platform returns an error while receiving datagrams"]
     pub struct PlatformRxError {
         #[doc = " The error code returned by the platform"]
         pub errno: i32,
@@ -2838,6 +2928,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Emitted when a platform feature is configured"]
     pub struct PlatformFeatureConfigured {
         pub configuration: PlatformFeatureConfiguration,
     }

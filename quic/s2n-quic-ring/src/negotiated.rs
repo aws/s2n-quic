@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    ciphersuite::NegotiatedCiphersuite as Ciphersuite, header_key::HeaderKeyPair, Algorithm,
+    cipher_suite::NegotiatedCipherSuite as CipherSuite, header_key::HeaderKeyPair, Algorithm,
     SecretPair,
 };
 use s2n_quic_core::{
@@ -12,8 +12,8 @@ use s2n_quic_core::{
 
 #[derive(Debug)]
 pub struct KeyPair {
-    sealer: Ciphersuite,
-    opener: Ciphersuite,
+    sealer: CipherSuite,
+    opener: CipherSuite,
 }
 
 impl KeyPair {
@@ -27,8 +27,8 @@ impl KeyPair {
             endpoint::Type::Server => (secrets.server, secrets.client),
         };
 
-        let (sealer, header_sealer) = Ciphersuite::new(algorithm, sealer_secret)?;
-        let (opener, header_opener) = Ciphersuite::new(algorithm, opener_secret)?;
+        let (sealer, header_sealer) = CipherSuite::new(algorithm, sealer_secret)?;
+        let (opener, header_opener) = CipherSuite::new(algorithm, opener_secret)?;
 
         let key = Self { sealer, opener };
         let header_key = HeaderKeyPair {
@@ -39,7 +39,7 @@ impl KeyPair {
         Some((key, header_key))
     }
 
-    /// Update the ciphersuite as defined in
+    /// Update the cipher_suite as defined in
     /// <https://www.rfc-editor.org/rfc/rfc9001.txt#6>
     #[inline]
     pub fn update(&self) -> Self {
@@ -85,6 +85,11 @@ impl Key for KeyPair {
     fn aead_integrity_limit(&self) -> u64 {
         self.opener.aead_integrity_limit()
     }
+
+    #[inline]
+    fn cipher_suite(&self) -> s2n_quic_core::crypto::tls::CipherSuite {
+        self.opener.cipher_suite()
+    }
 }
 
 macro_rules! negotiated_crypto {
@@ -93,7 +98,7 @@ macro_rules! negotiated_crypto {
         pub struct $name(crate::negotiated::KeyPair);
 
         impl $name {
-            /// Create a server ciphersuite with a given negotiated algorithm and secret
+            /// Create a server cipher suite with a given negotiated algorithm and secret
             pub fn new_server(
                 algorithm: &$crate::Algorithm,
                 secrets: $crate::SecretPair,
@@ -101,7 +106,7 @@ macro_rules! negotiated_crypto {
                 Self::new(s2n_quic_core::endpoint::Type::Server, algorithm, secrets)
             }
 
-            /// Create a client ciphersuite with a given negotiated algorithm and secret
+            /// Create a client cipher suite with a given negotiated algorithm and secret
             pub fn new_client(
                 algorithm: &$crate::Algorithm,
                 secrets: $crate::SecretPair,
@@ -109,7 +114,7 @@ macro_rules! negotiated_crypto {
                 Self::new(s2n_quic_core::endpoint::Type::Client, algorithm, secrets)
             }
 
-            /// Create a ciphersuite for an endpoint type with a given negotiated algorithm and secret
+            /// Create a cipher_suite for an endpoint type with a given negotiated algorithm and secret
             pub fn new(
                 endpoint: s2n_quic_core::endpoint::Type,
                 algorithm: &$crate::Algorithm,
@@ -123,7 +128,7 @@ macro_rules! negotiated_crypto {
                 Some((key, header_key))
             }
 
-            /// Update the ciphersuite as defined in
+            /// Update the cipher suite as defined in
             /// <https://www.rfc-editor.org/rfc/rfc9001.txt#6>
             #[inline]
             #[must_use]
@@ -166,6 +171,11 @@ macro_rules! negotiated_crypto {
             #[inline]
             fn aead_integrity_limit(&self) -> u64 {
                 self.0.aead_integrity_limit()
+            }
+
+            #[inline]
+            fn cipher_suite(&self) -> s2n_quic_core::crypto::tls::CipherSuite {
+                self.0.cipher_suite()
             }
         }
     };

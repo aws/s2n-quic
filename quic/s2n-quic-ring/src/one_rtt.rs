@@ -18,7 +18,7 @@ impl OneRttHeaderKey for RingOneRttHeaderKey {}
 
 #[cfg(test)]
 mod tests {
-    use crate::ciphersuite::TLS_CHACHA20_POLY1305_SHA256;
+    use crate::cipher_suite::TLS_CHACHA20_POLY1305_SHA256;
     use hex_literal::hex;
     use ring::hkdf;
     use s2n_quic_core::crypto::Key;

@@ -285,6 +285,10 @@ impl<K: OneRttKey> KeySet<K> {
     fn decryption_error_count(&self) -> u64 {
         self.packet_decryption_failures
     }
+
+    pub fn cipher_suite(&self) -> crate::crypto::tls::CipherSuite {
+        self.crypto[0].key().cipher_suite()
+    }
 }
 
 impl<K> timer::Provider for KeySet<K> {

@@ -5,7 +5,7 @@
 
 pub use rustls::{self, Certificate, PrivateKey};
 
-mod ciphersuite;
+mod cipher_suite;
 mod error;
 mod session;
 
