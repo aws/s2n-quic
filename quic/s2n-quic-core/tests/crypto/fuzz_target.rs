@@ -138,8 +138,8 @@ impl Key for FuzzCrypto {
         0
     }
 
-    fn ciphersuite(&self) -> s2n_quic_core::event::builder::Ciphersuite {
-        s2n_quic_core::event::builder::Ciphersuite::Unknown
+    fn cipher_suite(&self) -> s2n_quic_core::crypto::tls::CipherSuite {
+        s2n_quic_core::crypto::tls::CipherSuite::Unknown
     }
 }
 

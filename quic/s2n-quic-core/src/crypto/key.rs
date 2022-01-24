@@ -27,10 +27,10 @@ pub trait Key: Send {
     /// Maximum number of packets a key can encrypt
     fn aead_confidentiality_limit(&self) -> u64;
 
-    /// Maximum number of decryption failures allowed for a ciphersuite
+    /// Maximum number of decryption failures allowed for a cipher_suite
     fn aead_integrity_limit(&self) -> u64;
 
-    fn ciphersuite(&self) -> crate::event::builder::Ciphersuite;
+    fn cipher_suite(&self) -> crate::crypto::tls::CipherSuite;
 }
 
 #[cfg(any(test, feature = "testing"))]
@@ -107,8 +107,8 @@ pub mod testing {
             self.integrity_limit
         }
 
-        fn ciphersuite(&self) -> crate::event::builder::Ciphersuite {
-            crate::event::builder::Ciphersuite::Unknown
+        fn cipher_suite(&self) -> crate::crypto::tls::CipherSuite {
+            crate::crypto::tls::CipherSuite::Unknown
         }
     }
 

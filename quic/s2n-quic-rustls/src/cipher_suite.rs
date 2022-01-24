@@ -2,20 +2,23 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use rustls::{cipher_suite as ciphers, quic, CipherSuite, SupportedCipherSuite};
-use s2n_quic_core::{
-    crypto::{self, CryptoError, HeaderProtectionMask, Key},
-    event,
-};
+use s2n_quic_core::crypto::{self, tls, CryptoError, HeaderProtectionMask, Key};
 
-pub struct PacketKey(quic::PacketKey, event::builder::Ciphersuite);
+pub struct PacketKey {
+    key: quic::PacketKey,
+    cipher_suite: tls::CipherSuite,
+}
 
 impl PacketKey {
     pub(crate) fn new(
         keys: quic::DirectionalKeys,
-        ciphersuite: event::builder::Ciphersuite,
+        cipher_suite: tls::CipherSuite,
     ) -> (Self, HeaderProtectionKey) {
         (
-            Self(keys.packet, ciphersuite),
+            Self {
+                key: keys.packet,
+                cipher_suite,
+            },
             HeaderProtectionKey(keys.header),
         )
     }
@@ -28,7 +31,7 @@ impl crypto::Key for PacketKey {
         header: &[u8],
         payload: &mut [u8],
     ) -> Result<(), CryptoError> {
-        match self.0.decrypt_in_place(packet_number, header, payload) {
+        match self.key.decrypt_in_place(packet_number, header, payload) {
             Ok(_tag) => Ok(()),
             Err(_) => Err(CryptoError::DECRYPT_ERROR),
         }
@@ -41,7 +44,7 @@ impl crypto::Key for PacketKey {
         payload: &mut [u8],
     ) -> Result<(), CryptoError> {
         let (payload, tag_storage) = payload.split_at_mut(payload.len() - self.tag_len());
-        match self.0.encrypt_in_place(packet_number, header, payload) {
+        match self.key.encrypt_in_place(packet_number, header, payload) {
             Ok(tag) => {
                 tag_storage.copy_from_slice(tag.as_ref());
                 Ok(())
@@ -51,19 +54,19 @@ impl crypto::Key for PacketKey {
     }
 
     fn tag_len(&self) -> usize {
-        self.0.tag_len()
+        self.key.tag_len()
     }
 
     fn aead_confidentiality_limit(&self) -> u64 {
-        self.0.confidentiality_limit()
+        self.key.confidentiality_limit()
     }
 
     fn aead_integrity_limit(&self) -> u64 {
-        self.0.integrity_limit()
+        self.key.integrity_limit()
     }
 
-    fn ciphersuite(&self) -> s2n_quic_core::event::builder::Ciphersuite {
-        self.1.clone()
+    fn cipher_suite(&self) -> tls::CipherSuite {
+        self.cipher_suite
     }
 }
 
@@ -75,24 +78,20 @@ pub struct PacketKeys {
 }
 
 impl PacketKeys {
-    pub(crate) fn new(keys: quic::Keys, ciphersuite: CipherSuite) -> (Self, HeaderProtectionKeys) {
+    pub(crate) fn new(keys: quic::Keys, cipher_suite: CipherSuite) -> (Self, HeaderProtectionKeys) {
         let quic::Keys { local, remote } = keys;
 
-        let ciphersuite = match ciphersuite {
-            CipherSuite::TLS13_AES_128_GCM_SHA256 => {
-                event::builder::Ciphersuite::TLS_AES_128_GCM_SHA256
-            }
-            CipherSuite::TLS13_AES_256_GCM_SHA384 => {
-                event::builder::Ciphersuite::TLS_AES_256_GCM_SHA384
-            }
+        let cipher_suite = match cipher_suite {
+            CipherSuite::TLS13_AES_128_GCM_SHA256 => tls::CipherSuite::TLS_AES_128_GCM_SHA256,
+            CipherSuite::TLS13_AES_256_GCM_SHA384 => tls::CipherSuite::TLS_AES_256_GCM_SHA384,
             CipherSuite::TLS13_CHACHA20_POLY1305_SHA256 => {
-                event::builder::Ciphersuite::TLS_CHACHA20_POLY1305_SHA256
+                tls::CipherSuite::TLS_CHACHA20_POLY1305_SHA256
             }
-            _ => event::builder::Ciphersuite::Unknown,
+            _ => tls::CipherSuite::Unknown,
         };
 
-        let (sealer_packet, sealer_header) = PacketKey::new(local, ciphersuite.clone());
-        let (opener_packet, opener_header) = PacketKey::new(remote, ciphersuite);
+        let (sealer_packet, sealer_header) = PacketKey::new(local, cipher_suite.clone());
+        let (opener_packet, opener_header) = PacketKey::new(remote, cipher_suite);
 
         let key = Self {
             sealer: sealer_packet,
@@ -139,8 +138,8 @@ impl crypto::Key for PacketKeys {
         self.sealer.aead_integrity_limit()
     }
 
-    fn ciphersuite(&self) -> s2n_quic_core::event::builder::Ciphersuite {
-        self.sealer.ciphersuite()
+    fn cipher_suite(&self) -> tls::CipherSuite {
+        self.sealer.cipher_suite()
     }
 }
 
@@ -234,9 +233,9 @@ impl OneRttKey {
     pub(crate) fn new(
         keys: quic::Keys,
         secrets: quic::Secrets,
-        ciphersuite: CipherSuite,
+        cipher_suite: CipherSuite,
     ) -> (Self, HeaderProtectionKeys) {
-        let (key, header_key) = PacketKeys::new(keys, ciphersuite);
+        let (key, header_key) = PacketKeys::new(keys, cipher_suite);
         let key = Self { key, secrets };
         (key, header_key)
     }
@@ -273,20 +272,26 @@ impl crypto::Key for OneRttKey {
         self.key.aead_integrity_limit()
     }
 
-    fn ciphersuite(&self) -> s2n_quic_core::event::builder::Ciphersuite {
-        self.key.ciphersuite()
+    fn cipher_suite(&self) -> tls::CipherSuite {
+        self.key.cipher_suite()
     }
 }
 
 impl crypto::OneRttKey for OneRttKey {
     fn derive_next_key(&self) -> Self {
-        let ciphersuite = self.ciphersuite();
+        let cipher_suite = self.cipher_suite();
         let mut secrets = self.secrets.clone();
         let quic::PacketKeySet { local, remote } = secrets.next_packet_keys();
         Self {
             key: PacketKeys {
-                sealer: PacketKey(local, ciphersuite.clone()),
-                opener: PacketKey(remote, ciphersuite),
+                sealer: PacketKey {
+                    key: local,
+                    cipher_suite,
+                },
+                opener: PacketKey {
+                    key: remote,
+                    cipher_suite,
+                },
             },
             secrets,
         }
@@ -297,7 +302,7 @@ impl crypto::OneRttKey for OneRttKey {
 //# A cipher suite MUST NOT be
 //# negotiated unless a header protection scheme is defined for the
 //# cipher suite.
-// All of the ciphersuites from the current exported list have HP schemes for QUIC
+// All of the cipher_suites from the current exported list have HP schemes for QUIC
 pub static DEFAULT_CIPHERSUITES: &[SupportedCipherSuite] = &[
     ciphers::TLS13_AES_128_GCM_SHA256,
     ciphers::TLS13_AES_256_GCM_SHA384,
@@ -305,6 +310,6 @@ pub static DEFAULT_CIPHERSUITES: &[SupportedCipherSuite] = &[
 ];
 
 #[test]
-fn test_default_ciphersuites() {
-    insta::assert_debug_snapshot!("default_ciphersuites", DEFAULT_CIPHERSUITES);
+fn test_default_cipher_suites() {
+    insta::assert_debug_snapshot!("default_cipher_suites", DEFAULT_CIPHERSUITES);
 }

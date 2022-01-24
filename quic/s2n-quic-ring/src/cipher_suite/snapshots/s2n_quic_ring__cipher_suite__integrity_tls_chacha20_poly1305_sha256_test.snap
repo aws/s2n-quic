@@ -1,0 +1,7 @@
+---
+source: quic/s2n-quic-ring/src/cipher_suite/mod.rs
+assertion_line: 281
+expression: "u64::pow(2, 36)"
+
+---
+68719476736

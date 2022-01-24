@@ -319,7 +319,7 @@ pub mod api {
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     #[allow(non_camel_case_types)]
-    pub enum Ciphersuite {
+    pub enum CipherSuite {
         #[non_exhaustive]
         TLS_AES_128_GCM_SHA256 {},
         #[non_exhaustive]
@@ -460,7 +460,7 @@ pub mod api {
     #[doc = " Crypto key updated"]
     pub struct KeyUpdate {
         pub key_type: KeyType,
-        pub ciphersuite: Ciphersuite,
+        pub cipher_suite: CipherSuite,
     }
     impl Event for KeyUpdate {
         const NAME: &'static str = "security:key_update";
@@ -1087,13 +1087,13 @@ pub mod api {
             }
         }
     }
-    impl Ciphersuite {
+    impl CipherSuite {
         pub fn as_str(&self) -> &'static str {
             match self {
-                Ciphersuite::TLS_AES_128_GCM_SHA256 {} => "TLS_AES_128_GCM_SHA256",
-                Ciphersuite::TLS_AES_256_GCM_SHA384 {} => "TLS_AES_256_GCM_SHA384",
-                Ciphersuite::TLS_CHACHA20_POLY1305_SHA256 {} => "TLS_CHACHA20_POLY1305_SHA256",
-                Ciphersuite::Unknown {} => "UNKNOWN",
+                Self::TLS_AES_128_GCM_SHA256 {} => "TLS_AES_128_GCM_SHA256",
+                Self::TLS_AES_256_GCM_SHA384 {} => "TLS_AES_256_GCM_SHA384",
+                Self::TLS_CHACHA20_POLY1305_SHA256 {} => "TLS_CHACHA20_POLY1305_SHA256",
+                Self::Unknown {} => "UNKNOWN",
             }
         }
     }
@@ -1303,9 +1303,9 @@ pub mod api {
                 let id = context.id();
                 let api::KeyUpdate {
                     key_type,
-                    ciphersuite,
+                    cipher_suite,
                 } = event;
-                tracing :: event ! (target : "key_update" , parent : id , tracing :: Level :: DEBUG , key_type = tracing :: field :: debug (key_type) , ciphersuite = tracing :: field :: debug (ciphersuite));
+                tracing :: event ! (target : "key_update" , parent : id , tracing :: Level :: DEBUG , key_type = tracing :: field :: debug (key_type) , cipher_suite = tracing :: field :: debug (cipher_suite));
             }
             #[inline]
             fn on_key_space_discarded(
@@ -2264,16 +2264,16 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     #[allow(non_camel_case_types)]
-    pub enum Ciphersuite {
+    pub enum CipherSuite {
         TLS_AES_128_GCM_SHA256,
         TLS_AES_256_GCM_SHA384,
         TLS_CHACHA20_POLY1305_SHA256,
         Unknown,
     }
-    impl IntoEvent<api::Ciphersuite> for Ciphersuite {
+    impl IntoEvent<api::CipherSuite> for CipherSuite {
         #[inline]
-        fn into_event(self) -> api::Ciphersuite {
-            use api::Ciphersuite::*;
+        fn into_event(self) -> api::CipherSuite {
+            use api::CipherSuite::*;
             match self {
                 Self::TLS_AES_128_GCM_SHA256 => TLS_AES_128_GCM_SHA256 {},
                 Self::TLS_AES_256_GCM_SHA384 => TLS_AES_256_GCM_SHA384 {},
@@ -2513,18 +2513,18 @@ pub mod builder {
     #[doc = " Crypto key updated"]
     pub struct KeyUpdate {
         pub key_type: KeyType,
-        pub ciphersuite: Ciphersuite,
+        pub cipher_suite: CipherSuite,
     }
     impl IntoEvent<api::KeyUpdate> for KeyUpdate {
         #[inline]
         fn into_event(self) -> api::KeyUpdate {
             let KeyUpdate {
                 key_type,
-                ciphersuite,
+                cipher_suite,
             } = self;
             api::KeyUpdate {
                 key_type: key_type.into_event(),
-                ciphersuite: ciphersuite.into_event(),
+                cipher_suite: cipher_suite.into_event(),
             }
         }
     }

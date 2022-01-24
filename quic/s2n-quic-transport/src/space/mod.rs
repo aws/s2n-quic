@@ -133,7 +133,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
         publisher.on_key_update(event::builder::KeyUpdate {
             key_type: event::builder::KeyType::Initial,
-            ciphersuite: initial_key.ciphersuite(),
+            cipher_suite: initial_key.cipher_suite().into_event(),
         });
         Self {
             session_info: Some(SessionInfo {

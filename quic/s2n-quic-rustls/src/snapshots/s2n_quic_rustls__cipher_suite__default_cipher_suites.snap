@@ -1,6 +1,7 @@
 ---
-source: quic/s2n-quic-rustls/src/ciphersuite.rs
-expression: default_ciphersuites()
+source: quic/s2n-quic-rustls/src/cipher_suite.rs
+assertion_line: 321
+expression: DEFAULT_CIPHERSUITES
 
 ---
 [

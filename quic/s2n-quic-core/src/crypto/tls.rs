@@ -106,6 +106,36 @@ pub trait Session: CryptoSuite + Sized + Send + Debug {
     fn poll<C: Context<Self>>(&mut self, context: &mut C) -> Result<(), transport::Error>;
 }
 
+#[derive(Copy, Clone, Debug)]
+#[allow(non_camel_case_types)]
+pub enum CipherSuite {
+    TLS_AES_128_GCM_SHA256,
+    TLS_AES_256_GCM_SHA384,
+    TLS_CHACHA20_POLY1305_SHA256,
+    Unknown,
+}
+
+impl crate::event::IntoEvent<crate::event::builder::CipherSuite> for CipherSuite {
+    #[inline]
+    fn into_event(self) -> crate::event::builder::CipherSuite {
+        use crate::event::builder::CipherSuite::*;
+        match self {
+            Self::TLS_AES_128_GCM_SHA256 => TLS_AES_128_GCM_SHA256 {},
+            Self::TLS_AES_256_GCM_SHA384 => TLS_AES_256_GCM_SHA384 {},
+            Self::TLS_CHACHA20_POLY1305_SHA256 => TLS_CHACHA20_POLY1305_SHA256 {},
+            Self::Unknown => Unknown {},
+        }
+    }
+}
+
+impl crate::event::IntoEvent<crate::event::api::CipherSuite> for CipherSuite {
+    #[inline]
+    fn into_event(self) -> crate::event::api::CipherSuite {
+        let builder: crate::event::builder::CipherSuite = self.into_event();
+        builder.into_event()
+    }
+}
+
 macro_rules! handshake_type {
     ($($variant:ident($value:literal)),* $(,)?) => {
         #[derive(Debug, PartialEq, Eq, AsBytes, Unaligned)]

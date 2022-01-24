@@ -285,7 +285,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
         let ack_manager = AckManager::new(PacketNumberSpace::Handshake, ack::Settings::EARLY);
 
-        let ciphersuite = key.ciphersuite();
+        let cipher_suite = key.cipher_suite().into_event();
         *self.handshake = Some(Box::new(HandshakeSpace::new(
             key,
             header_key,
@@ -294,7 +294,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         )));
         self.publisher.on_key_update(event::builder::KeyUpdate {
             key_type: event::builder::KeyType::Handshake,
-            ciphersuite,
+            cipher_suite,
         });
         Ok(())
     }
@@ -310,14 +310,14 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 .with_reason("zero rtt keys initialized more than once"));
         }
 
-        let ciphersuite = key.ciphersuite();
+        let cipher_suite = key.cipher_suite().into_event();
 
         // TODO: also store the header_key https://github.com/awslabs/s2n-quic/issues/319
         *self.zero_rtt_crypto = Some(Box::new(key));
 
         self.publisher.on_key_update(event::builder::KeyUpdate {
             key_type: event::builder::KeyType::ZeroRtt,
-            ciphersuite,
+            cipher_suite,
         });
         Ok(())
     }
@@ -375,7 +375,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 .on_sni_information(event::builder::SniInformation { chosen_sni });
         };
 
-        let ciphersuite = key.ciphersuite();
+        let cipher_suite = key.cipher_suite().into_event();
         *self.application = Some(Box::new(ApplicationSpace::new(
             key,
             header_key,
@@ -387,7 +387,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         )));
         self.publisher.on_key_update(event::builder::KeyUpdate {
             key_type: event::builder::KeyType::OneRtt { generation: 0 },
-            ciphersuite,
+            cipher_suite,
         });
 
         Ok(())

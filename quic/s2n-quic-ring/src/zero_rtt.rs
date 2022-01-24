@@ -1,18 +1,18 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{ciphersuite::TLS_AES_128_GCM_SHA256 as Ciphersuite, header_key::HeaderKey};
+use crate::{cipher_suite::TLS_AES_128_GCM_SHA256 as CipherSuite, header_key::HeaderKey};
 use s2n_quic_core::crypto::{
     self, CryptoError, HeaderProtectionMask, Key, ZeroRttHeaderKey, ZeroRttKey,
 };
 
 #[derive(Debug)]
-pub struct RingZeroRttKey(Ciphersuite);
+pub struct RingZeroRttKey(CipherSuite);
 
 impl RingZeroRttKey {
-    /// Create a ZeroRTT ciphersuite with a given secret
+    /// Create a ZeroRTT cipher suite with a given secret
     pub fn new(secret: crate::Prk) -> (Self, RingZeroRttHeaderKey) {
-        let (key, header_key) = Ciphersuite::new(secret);
+        let (key, header_key) = CipherSuite::new(secret);
         let key = Self(key);
         let header_key = RingZeroRttHeaderKey(header_key);
         (key, header_key)
@@ -53,8 +53,8 @@ impl Key for RingZeroRttKey {
     }
 
     #[inline]
-    fn ciphersuite(&self) -> s2n_quic_core::event::builder::Ciphersuite {
-        self.0.ciphersuite()
+    fn cipher_suite(&self) -> s2n_quic_core::crypto::tls::CipherSuite {
+        self.0.cipher_suite()
     }
 }
 

@@ -693,20 +693,20 @@ enum CongestionSource {
 }
 
 #[allow(non_camel_case_types)] // we prefer to match the standard identifier
-enum Ciphersuite {
+enum CipherSuite {
     TLS_AES_128_GCM_SHA256,
     TLS_AES_256_GCM_SHA384,
     TLS_CHACHA20_POLY1305_SHA256,
     Unknown,
 }
 
-impl Ciphersuite {
+impl CipherSuite {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Ciphersuite::TLS_AES_128_GCM_SHA256 {} => "TLS_AES_128_GCM_SHA256",
-            Ciphersuite::TLS_AES_256_GCM_SHA384 {} => "TLS_AES_256_GCM_SHA384",
-            Ciphersuite::TLS_CHACHA20_POLY1305_SHA256 {} => "TLS_CHACHA20_POLY1305_SHA256",
-            Ciphersuite::Unknown {} => "UNKNOWN",
+            Self::TLS_AES_128_GCM_SHA256 {} => "TLS_AES_128_GCM_SHA256",
+            Self::TLS_AES_256_GCM_SHA384 {} => "TLS_AES_256_GCM_SHA384",
+            Self::TLS_CHACHA20_POLY1305_SHA256 {} => "TLS_CHACHA20_POLY1305_SHA256",
+            Self::Unknown {} => "UNKNOWN",
         }
     }
 }

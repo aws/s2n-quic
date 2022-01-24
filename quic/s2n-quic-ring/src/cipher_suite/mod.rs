@@ -10,7 +10,7 @@ use zeroize::Zeroizing;
 
 mod negotiated;
 
-pub use negotiated::NegotiatedCiphersuite;
+pub use negotiated::NegotiatedCipherSuite;
 
 struct IvLen;
 
@@ -21,7 +21,7 @@ impl hkdf::KeyType for IvLen {
     }
 }
 
-macro_rules! impl_ciphersuite {
+macro_rules! impl_cipher_suite {
     (
         $name:ident,
         $digest:path,
@@ -48,7 +48,7 @@ macro_rules! impl_ciphersuite {
             const IV_LEN: usize = aead::NONCE_LEN;
             const KEY_LEN: usize = $cipher_key_len;
 
-            /// Create a ciphersuite with a given secret
+            /// Create a cipher_suite with a given secret
             pub fn new(secret: hkdf::Prk) -> (Self, HeaderKey) {
                 let iv = Self::new_iv(&secret);
                 let key = Self::new_key(&secret);
@@ -59,7 +59,7 @@ macro_rules! impl_ciphersuite {
                 (key, header_key)
             }
 
-            /// Update the ciphersuite as defined in
+            /// Update the cipher_suite as defined in
             /// https://www.rfc-editor.org/rfc/rfc9001.txt#6
             #[inline]
             pub fn update(&self) -> Self {
@@ -195,8 +195,8 @@ macro_rules! impl_ciphersuite {
             }
 
             #[inline]
-            fn ciphersuite(&self) -> s2n_quic_core::event::builder::Ciphersuite {
-                s2n_quic_core::event::builder::Ciphersuite::$name
+            fn cipher_suite(&self) -> s2n_quic_core::crypto::tls::CipherSuite {
+                s2n_quic_core::crypto::tls::CipherSuite::$name
             }
         }
 
@@ -259,7 +259,7 @@ macro_rules! impl_ciphersuite {
 //= https://www.rfc-editor.org/rfc/rfc9001.txt#6.6
 //# For AEAD_AES_128_GCM and AEAD_AES_256_GCM, the confidentiality limit
 //# is 2^23 encrypted packets; see Appendix B.1.
-impl_ciphersuite!(
+impl_cipher_suite!(
     TLS_AES_256_GCM_SHA384,
     hkdf::HKDF_SHA384,
     aead::AES_256_GCM,
@@ -278,7 +278,7 @@ impl_ciphersuite!(
 //# For
 //# AEAD_CHACHA20_POLY1305, the confidentiality limit is greater than the
 //# number of possible packets (2^62) and so can be disregarded.
-impl_ciphersuite!(
+impl_cipher_suite!(
     TLS_CHACHA20_POLY1305_SHA256,
     hkdf::HKDF_SHA256,
     aead::CHACHA20_POLY1305,
@@ -294,7 +294,7 @@ impl_ciphersuite!(
 );
 
 // See above annotation regarding AEAD_AES_128 and AEAD_AES_256
-impl_ciphersuite!(
+impl_cipher_suite!(
     TLS_AES_128_GCM_SHA256,
     hkdf::HKDF_SHA256,
     aead::AES_128_GCM,

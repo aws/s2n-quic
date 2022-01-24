@@ -113,7 +113,7 @@ struct PacketDropped<'a> {
 /// Crypto key updated
 struct KeyUpdate {
     key_type: KeyType,
-    ciphersuite: Ciphersuite,
+    cipher_suite: CipherSuite,
 }
 
 #[event("security:key_space_discarded")]

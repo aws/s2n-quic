@@ -1,5 +1,0 @@
----
-source: quic/s2n-quic-ring/src/ciphersuite/mod.rs
-expression: "u64::pow(2, 62)"
----
-4611686018427387904

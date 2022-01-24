@@ -286,8 +286,8 @@ impl<K: OneRttKey> KeySet<K> {
         self.packet_decryption_failures
     }
 
-    pub fn ciphersuite(&self) -> crate::event::builder::Ciphersuite {
-        self.crypto[0].key().ciphersuite()
+    pub fn cipher_suite(&self) -> crate::crypto::tls::CipherSuite {
+        self.crypto[0].key().cipher_suite()
     }
 }
 

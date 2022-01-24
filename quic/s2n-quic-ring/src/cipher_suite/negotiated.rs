@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    ciphersuite::{TLS_AES_128_GCM_SHA256, TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256},
+    cipher_suite::{TLS_AES_128_GCM_SHA256, TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256},
     header_key::HeaderKey,
 };
 use core::fmt;
@@ -11,69 +11,69 @@ use s2n_quic_core::crypto::{self, CryptoError};
 
 // ignore casing warnings in order to preserve the IANA name
 #[allow(non_camel_case_types, clippy::all)]
-pub enum NegotiatedCiphersuite {
+pub enum NegotiatedCipherSuite {
     TLS_AES_256_GCM_SHA384(TLS_AES_256_GCM_SHA384),
     TLS_CHACHA20_POLY1305_SHA256(TLS_CHACHA20_POLY1305_SHA256),
     TLS_AES_128_GCM_SHA256(TLS_AES_128_GCM_SHA256),
 }
 
-/// Dispatch an operation to the negotiated ciphersuite
+/// Dispatch an operation to the negotiated cipher_suite
 macro_rules! dispatch {
-    ($self:ident, | $ciphersuite:ident | $expr:expr) => {
+    ($self:ident, | $cipher_suite:ident | $expr:expr) => {
         match $self {
-            Self::TLS_AES_256_GCM_SHA384($ciphersuite) => $expr,
-            Self::TLS_CHACHA20_POLY1305_SHA256($ciphersuite) => $expr,
-            Self::TLS_AES_128_GCM_SHA256($ciphersuite) => $expr,
+            Self::TLS_AES_256_GCM_SHA384($cipher_suite) => $expr,
+            Self::TLS_CHACHA20_POLY1305_SHA256($cipher_suite) => $expr,
+            Self::TLS_AES_128_GCM_SHA256($cipher_suite) => $expr,
         }
     };
 }
 
-impl From<TLS_AES_256_GCM_SHA384> for NegotiatedCiphersuite {
-    fn from(ciphersuite: TLS_AES_256_GCM_SHA384) -> Self {
-        Self::TLS_AES_256_GCM_SHA384(ciphersuite)
+impl From<TLS_AES_256_GCM_SHA384> for NegotiatedCipherSuite {
+    fn from(cipher_suite: TLS_AES_256_GCM_SHA384) -> Self {
+        Self::TLS_AES_256_GCM_SHA384(cipher_suite)
     }
 }
 
-impl From<TLS_CHACHA20_POLY1305_SHA256> for NegotiatedCiphersuite {
-    fn from(ciphersuite: TLS_CHACHA20_POLY1305_SHA256) -> Self {
-        Self::TLS_CHACHA20_POLY1305_SHA256(ciphersuite)
+impl From<TLS_CHACHA20_POLY1305_SHA256> for NegotiatedCipherSuite {
+    fn from(cipher_suite: TLS_CHACHA20_POLY1305_SHA256) -> Self {
+        Self::TLS_CHACHA20_POLY1305_SHA256(cipher_suite)
     }
 }
 
-impl From<TLS_AES_128_GCM_SHA256> for NegotiatedCiphersuite {
-    fn from(ciphersuite: TLS_AES_128_GCM_SHA256) -> Self {
-        Self::TLS_AES_128_GCM_SHA256(ciphersuite)
+impl From<TLS_AES_128_GCM_SHA256> for NegotiatedCipherSuite {
+    fn from(cipher_suite: TLS_AES_128_GCM_SHA256) -> Self {
+        Self::TLS_AES_128_GCM_SHA256(cipher_suite)
     }
 }
 
-impl NegotiatedCiphersuite {
-    /// Create a ciphersuite with a given negotiated algorithm and secret
+impl NegotiatedCipherSuite {
+    /// Create a cipher_suite with a given negotiated algorithm and secret
     pub fn new(algorithm: &aead::Algorithm, secret: hkdf::Prk) -> Option<(Self, HeaderKey)> {
         Some(match algorithm {
             _ if algorithm == &aead::AES_256_GCM => {
-                let (ciphersuite, header_key) = TLS_AES_256_GCM_SHA384::new(secret);
-                (ciphersuite.into(), header_key)
+                let (cipher_suite, header_key) = TLS_AES_256_GCM_SHA384::new(secret);
+                (cipher_suite.into(), header_key)
             }
             _ if algorithm == &aead::CHACHA20_POLY1305 => {
-                let (ciphersuite, header_key) = TLS_CHACHA20_POLY1305_SHA256::new(secret);
-                (ciphersuite.into(), header_key)
+                let (cipher_suite, header_key) = TLS_CHACHA20_POLY1305_SHA256::new(secret);
+                (cipher_suite.into(), header_key)
             }
             _ if algorithm == &aead::AES_128_GCM => {
-                let (ciphersuite, header_key) = TLS_AES_128_GCM_SHA256::new(secret);
-                (ciphersuite.into(), header_key)
+                let (cipher_suite, header_key) = TLS_AES_128_GCM_SHA256::new(secret);
+                (cipher_suite.into(), header_key)
             }
             _ => return None,
         })
     }
 
-    /// Update the ciphersuite as defined in
+    /// Update the cipher_suite as defined in
     /// https://www.rfc-editor.org/rfc/rfc9001.txt#6
     pub fn update(&self) -> Self {
         dispatch!(self, |cipher| cipher.update().into())
     }
 }
 
-impl crypto::Key for NegotiatedCiphersuite {
+impl crypto::Key for NegotiatedCipherSuite {
     #[inline]
     fn decrypt(
         &self,
@@ -118,12 +118,12 @@ impl crypto::Key for NegotiatedCiphersuite {
     }
 
     #[inline]
-    fn ciphersuite(&self) -> s2n_quic_core::event::builder::Ciphersuite {
-        dispatch!(self, |cipher| cipher.ciphersuite())
+    fn cipher_suite(&self) -> s2n_quic_core::crypto::tls::CipherSuite {
+        dispatch!(self, |cipher| cipher.cipher_suite())
     }
 }
 
-impl fmt::Debug for NegotiatedCiphersuite {
+impl fmt::Debug for NegotiatedCipherSuite {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         dispatch!(self, |cipher| cipher.fmt(f))
     }
