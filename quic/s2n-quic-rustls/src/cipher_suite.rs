@@ -90,7 +90,7 @@ impl PacketKeys {
             _ => tls::CipherSuite::Unknown,
         };
 
-        let (sealer_packet, sealer_header) = PacketKey::new(local, cipher_suite.clone());
+        let (sealer_packet, sealer_header) = PacketKey::new(local, cipher_suite);
         let (opener_packet, opener_header) = PacketKey::new(remote, cipher_suite);
 
         let key = Self {
