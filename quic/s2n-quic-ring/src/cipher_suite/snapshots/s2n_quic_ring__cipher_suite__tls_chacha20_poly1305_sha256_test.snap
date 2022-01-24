@@ -1,5 +1,7 @@
 ---
-source: quic/s2n-quic-ring/src/ciphersuite/mod.rs
+source: quic/s2n-quic-ring/src/cipher_suite/mod.rs
+assertion_line: 281
 expression: "core::mem::size_of::<TLS_CHACHA20_POLY1305_SHA256>()"
+
 ---
 720

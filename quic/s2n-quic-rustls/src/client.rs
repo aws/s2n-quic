@@ -143,7 +143,7 @@ impl Builder {
         }
 
         let mut config = ClientConfig::builder()
-            .with_cipher_suites(crate::ciphersuite::DEFAULT_CIPHERSUITES)
+            .with_cipher_suites(crate::cipher_suite::DEFAULT_CIPHERSUITES)
             .with_safe_default_kx_groups()
             .with_protocol_versions(crate::PROTOCOL_VERSIONS)?
             .with_root_certificates(self.cert_store)

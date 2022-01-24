@@ -70,6 +70,7 @@ impl Struct {
             fields,
         } = self;
 
+        let derive_attrs = &attrs.derive_attrs;
         let extra_attrs = &attrs.extra;
 
         let destructure_fields: Vec<_> = fields.iter().map(Field::destructure).collect();
@@ -79,6 +80,7 @@ impl Struct {
 
         output.builders.extend(quote!(
             #[derive(Clone, Debug)]
+            #extra_attrs
             pub struct #ident #generics {
                 #(#builder_fields)*
             }
@@ -106,6 +108,7 @@ impl Struct {
         }
 
         output.api.extend(quote!(
+            #derive_attrs
             #extra_attrs
             pub struct #ident #generics {
                 #(#api_fields)*
@@ -303,6 +306,7 @@ impl Enum {
             "enum events are not currently supported"
         );
 
+        let derive_attrs = &attrs.derive_attrs;
         let extra_attrs = &attrs.extra;
 
         let builder_fields = variants.iter().map(Variant::builder);
@@ -311,6 +315,7 @@ impl Enum {
 
         output.builders.extend(quote!(
             #[derive(Clone, Debug)]
+            #extra_attrs
             pub enum #ident #generics {
                 #(#builder_fields)*
             }
@@ -335,6 +340,7 @@ impl Enum {
         }
 
         output.api.extend(quote!(
+            #derive_attrs
             #extra_attrs
             pub enum #ident #generics {
                 #(#api_fields)*
@@ -349,6 +355,7 @@ struct ContainerAttrs {
     subject: Subject,
     exhaustive: bool,
     derive: bool,
+    derive_attrs: TokenStream,
     extra: TokenStream,
 }
 
@@ -362,6 +369,7 @@ impl ContainerAttrs {
             // default to #[non_exhaustive]
             exhaustive: false,
             derive: true,
+            derive_attrs: quote!(),
             extra: quote!(),
         };
 
@@ -374,7 +382,7 @@ impl ContainerAttrs {
                 v.exhaustive = true;
             } else if attr.path.is_ident("derive") {
                 v.derive = false;
-                attr.to_tokens(&mut v.extra);
+                attr.to_tokens(&mut v.derive_attrs);
             } else {
                 attr.to_tokens(&mut v.extra)
             }

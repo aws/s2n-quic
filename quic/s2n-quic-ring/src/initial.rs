@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{ciphersuite::TLS_AES_128_GCM_SHA256 as Ciphersuite, header_key::HeaderKeyPair};
+use crate::{cipher_suite::TLS_AES_128_GCM_SHA256 as CipherSuite, header_key::HeaderKeyPair};
 use ring::hkdf;
 use s2n_quic_core::{
     crypto::{
@@ -17,8 +17,8 @@ impl InitialHeaderKey for RingInitialHeaderKey {}
 
 #[derive(Debug)]
 pub struct RingInitialKey {
-    sealer: Ciphersuite,
-    opener: Ciphersuite,
+    sealer: CipherSuite,
+    opener: CipherSuite,
 }
 
 lazy_static::lazy_static! {
@@ -43,12 +43,12 @@ impl RingInitialKey {
 
         let (sealer, opener) = match endpoint {
             endpoint::Type::Client => (
-                Ciphersuite::new(client_secret),
-                Ciphersuite::new(server_secret),
+                CipherSuite::new(client_secret),
+                CipherSuite::new(server_secret),
             ),
             endpoint::Type::Server => (
-                Ciphersuite::new(server_secret),
-                Ciphersuite::new(client_secret),
+                CipherSuite::new(server_secret),
+                CipherSuite::new(client_secret),
             ),
         };
 
@@ -80,6 +80,7 @@ impl InitialKey for RingInitialKey {
 }
 
 impl Key for RingInitialKey {
+    #[inline]
     fn decrypt(
         &self,
         packet_number: u64,
@@ -89,6 +90,7 @@ impl Key for RingInitialKey {
         self.opener.decrypt(packet_number, header, payload)
     }
 
+    #[inline]
     fn encrypt(
         &self,
         packet_number: u64,
@@ -98,16 +100,24 @@ impl Key for RingInitialKey {
         self.sealer.encrypt(packet_number, header, payload)
     }
 
+    #[inline]
     fn tag_len(&self) -> usize {
         self.sealer.tag_len()
     }
 
+    #[inline]
     fn aead_confidentiality_limit(&self) -> u64 {
         self.sealer.aead_confidentiality_limit()
     }
 
+    #[inline]
     fn aead_integrity_limit(&self) -> u64 {
         self.opener.aead_integrity_limit()
+    }
+
+    #[inline]
+    fn cipher_suite(&self) -> s2n_quic_core::crypto::tls::CipherSuite {
+        self.opener.cipher_suite()
     }
 }
 

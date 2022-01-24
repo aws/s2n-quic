@@ -461,6 +461,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             Ok((_, Some(generation))) => {
                 publisher.on_key_update(event::builder::KeyUpdate {
                     key_type: event::builder::KeyType::OneRtt { generation },
+                    cipher_suite: self.key_set.cipher_suite().into_event(),
                 });
             }
             Ok(_) => {}

@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::ciphersuite::{
+use crate::cipher_suite::{
     HeaderProtectionKey, HeaderProtectionKeys, OneRttKey, PacketKey, PacketKeys,
 };
 use core::fmt;
@@ -193,7 +193,10 @@ impl tls::Session for Session {
 
             // try to pull out the early secrets, if any
             if let Some(keys) = self.zero_rtt_keys() {
-                let (key, header_key) = PacketKey::new(keys);
+                let (key, header_key) = PacketKey::new(
+                    keys,
+                    s2n_quic_core::crypto::tls::CipherSuite::TLS_AES_128_GCM_SHA256,
+                );
                 context.on_zero_rtt_keys(key, header_key, self.application_parameters()?)?;
             }
 
@@ -229,9 +232,14 @@ impl tls::Session for Session {
                 }
 
                 if let Some(key_change) = key_change {
+                    let cipher_suite = self
+                        .connection
+                        .negotiated_cipher_suite()
+                        .expect("cipher_suite should be negotiated")
+                        .suite();
                     match key_change {
                         quic::KeyChange::Handshake { keys } => {
-                            let (key, header_key) = PacketKeys::new(keys);
+                            let (key, header_key) = PacketKeys::new(keys, cipher_suite);
 
                             context.on_handshake_keys(key, header_key)?;
 
@@ -240,7 +248,7 @@ impl tls::Session for Session {
                             self.rx_phase.transition();
                         }
                         quic::KeyChange::OneRtt { keys, next } => {
-                            let (key, header_key) = OneRttKey::new(keys, next);
+                            let (key, header_key) = OneRttKey::new(keys, next, cipher_suite);
                             let application_parameters = self.application_parameters()?;
 
                             context.on_one_rtt_keys(key, header_key, application_parameters)?;
