@@ -111,10 +111,11 @@ impl Formatter for Production {
         }
 
         //= https://www.rfc-editor.org/rfc/rfc9001.html#section-4.8
-        //# QUIC permits the use of a generic code in place of a specific error code;
-        //# see Section 11 of [QUIC-TRANSPORT]. For TLS alerts, this includes replacing
-        //# any alert with a generic alert, such as handshake_failure (0x0128 in QUIC).
-        //# Endpoints MAY use a generic error code to avoid possibly exposing confidential information.
+        //# QUIC permits the use of a generic code in place of a specific error
+        //# code; see Section 11 of [QUIC-TRANSPORT].  For TLS alerts, this
+        //# includes replacing any alert with a generic alert, such as
+        //# handshake_failure (0x0128 in QUIC).  Endpoints MAY use a generic
+        //# error code to avoid possibly exposing confidential information.
         if error.try_into_crypto_error().is_some() {
             return transport::Error::from(crypto::CryptoError::HANDSHAKE_FAILURE).into();
         }
