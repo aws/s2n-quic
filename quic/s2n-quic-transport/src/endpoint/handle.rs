@@ -12,7 +12,6 @@ use core::{
     pin::Pin,
     task::{Context, Poll, Waker},
 };
-use futures::stream::{Peekable, StreamExt};
 use futures_channel::mpsc;
 use futures_core::Stream;
 
@@ -27,7 +26,7 @@ pub(crate) type ConnectorReceiver = mpsc::Receiver<connect::Request>;
 pub(crate) type ConnectorSender = mpsc::Sender<connect::Request>;
 
 /// Held by library. Used to receive close attempts from the application.
-pub(crate) type CloseReceiver = Peekable<mpsc::Receiver<Waker>>;
+pub(crate) type CloseReceiver = mpsc::Receiver<Waker>;
 /// Held by the application. Used to submit connection close attempts to the library.
 pub(crate) type CloseSender = mpsc::Sender<Waker>;
 
@@ -63,7 +62,7 @@ impl Handle {
             handle,
             acceptor_sender,
             connector_receiver,
-            CloseHandle::new(close_receiver.peekable(), endpoint_state),
+            CloseHandle::new(close_receiver, endpoint_state),
         )
     }
 }

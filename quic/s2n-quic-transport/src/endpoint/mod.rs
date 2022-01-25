@@ -172,7 +172,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         cx: &mut task::Context<'_>,
         clock: &C,
     ) -> Poll<Result<usize, s2n_quic_core::endpoint::CloseError>> {
-        if self.close_handle.has_interest(cx) // poll for close interest
+        if self.close_handle.poll_interest().is_ready() // poll for close interest
             && self.connections.is_empty() // wait for all connections to close gracefully
             && self.connections.is_open()
         {

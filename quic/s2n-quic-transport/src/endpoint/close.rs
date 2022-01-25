@@ -5,14 +5,15 @@ use super::handle::CloseReceiver;
 use crate::{connection, endpoint::handle::CloseSender};
 use alloc::sync::Arc;
 use core::{
-    pin::Pin,
     sync::atomic::{AtomicBool, Ordering},
-    task::{self, Context, Poll},
+    task::{Context, Poll, Waker},
 };
 
 /// Held by library. Used to receive close attempts and track close state.
 #[derive(Debug)]
 pub(crate) struct CloseHandle {
+    /// Used to determine if the application has interest in closing the endpoint
+    first_waker: Option<Waker>,
     /// A channel which is used to receive connection close attempts
     close_receiver: CloseReceiver,
     /// Track the endpoint open state
@@ -22,16 +23,25 @@ pub(crate) struct CloseHandle {
 impl CloseHandle {
     pub fn new(close_receiver: CloseReceiver, endpoint_state: EndpointState) -> Self {
         Self {
+            first_waker: None,
             close_receiver,
             endpoint_state,
         }
     }
 
-    /// Returns `true` if there is interest in closing the endpoint.
-    ///
-    /// Polls for new interest and adds it to the close_queue.
-    pub fn has_interest(&mut self, cx: &mut task::Context<'_>) -> bool {
-        Pin::new(&mut self.close_receiver).poll_peek(cx).is_ready()
+    /// Returns `Poll::Ready` if there is interest in closing the endpoint.
+    pub fn poll_interest(&mut self) -> Poll<()> {
+        if self.first_waker.is_some() {
+            Poll::Ready(())
+        } else {
+            match self.close_receiver.try_next() {
+                Ok(Some(waker)) => {
+                    self.first_waker = Some(waker);
+                    Poll::Ready(())
+                }
+                _ => Poll::Pending,
+            }
+        }
     }
 
     /// Marks that the endpoint has finished processing and accepting connections and is
@@ -39,7 +49,10 @@ impl CloseHandle {
     pub fn close(&mut self) {
         self.endpoint_state.close();
 
-        while let Ok(Some(waker)) = self.close_receiver.get_mut().try_next() {
+        if let Some(waker) = self.first_waker.take() {
+            waker.wake();
+        }
+        while let Ok(Some(waker)) = self.close_receiver.try_next() {
             waker.wake_by_ref();
         }
     }
