@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{application, transport};
+use crate::{application, crypto, transport};
 pub use crate::{frame::ConnectionClose, inet::SocketAddress};
 
 /// Provides a hook for applications to rewrite CONNECTION_CLOSE frames
@@ -95,6 +95,7 @@ impl Formatter for Development {
 /// * Reasons and frame_types are hidden
 /// * INTERNAL_ERROR is transformed into PROTOCOL_VIOLATION
 /// * Application codes are hidden in early (initial, handshake) packets
+/// * Crypto (TLS) alerts are transformed into HANDSHAKE_FAILURE
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Production;
 
@@ -107,6 +108,16 @@ impl Formatter for Production {
         // rewrite internal errors as PROTOCOL_VIOLATION
         if error.code == transport::Error::INTERNAL_ERROR.code {
             return transport::Error::PROTOCOL_VIOLATION.into();
+        }
+
+        //= https://www.rfc-editor.org/rfc/rfc9001.html#section-4.8
+        //# QUIC permits the use of a generic code in place of a specific error
+        //# code; see Section 11 of [QUIC-TRANSPORT].  For TLS alerts, this
+        //# includes replacing any alert with a generic alert, such as
+        //# handshake_failure (0x0128 in QUIC).  Endpoints MAY use a generic
+        //# error code to avoid possibly exposing confidential information.
+        if error.try_into_crypto_error().is_some() {
+            return transport::Error::from(crypto::CryptoError::HANDSHAKE_FAILURE).into();
         }
 
         // only preserve the error code
