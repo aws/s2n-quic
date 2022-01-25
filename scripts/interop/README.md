@@ -28,11 +28,10 @@
 ```
 git clone git@github.com:marten-seemann/quic-interop-runner.git
 cd quic-interop-runner
-gco cd62367f7cf98d16854551fdd8ef6a48ad89d53d
+git checkout 37c7eb05402c43ad1d7daa0e1c903db80f6478b9 # check run script in this dir
 
-cp <s2n-quic_proj_dir>.runner.patch .
+cp <s2n-quic_proj_dir>/.github/interop/runner.patch .
 git apply --3way runner.patch # apply the current patch
-git add . # add the current changes
 ```
 
 Make changes to the quic-interop-runner repo and run the following command to sync the changes
