@@ -18,37 +18,6 @@ pub use crate::transport::parameters::ValidationError;
 
 const MAX_HANDSHAKE_DURATION_DEFAULT: Duration = Duration::from_secs(10);
 
-/// Outcome describes how the library should proceed if a configured connection limit is exceeded.
-/// RFC 9000 specifies the outcome for exceeding most connection limits (typically closing the connection),
-/// but for some limits (such as min_transfer_bytes_per_second), the default outcome may be overridden by
-/// the implementor. The implementor will
-/// use information from the ConnectionAttempt object to determine how the library should handle
-/// the connection attempt
-#[non_exhaustive]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Outcome {
-    /// Allow the connection to continue
-    Allow,
-
-    /// Cleanly close the connection
-    Close,
-}
-
-/// Information about the state of endpoint and the connection at the point a connection limit has
-/// been exceeded. This can be used to make decisions about the Outcome of exceeding a connection limit.
-#[non_exhaustive]
-#[derive(Debug)]
-pub struct Context<'a> {
-    /// Number of handshakes the have begun but not completed
-    pub inflight_handshakes: usize,
-
-    /// The current number of open connections
-    pub connections_count: usize,
-
-    /// The address of the remote peer
-    pub remote_address: SocketAddress<'a>,
-}
-
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct ConnectionInfo<'a> {
@@ -81,8 +50,6 @@ pub struct Limits {
     pub(crate) ack_elicitation_interval: u8,
     pub(crate) ack_ranges_limit: u8,
     pub(crate) max_send_buffer_size: u32,
-    pub(crate) min_transfer_bytes_per_second: u32,
-    min_transfer_bytes_per_second_violation_behavior: fn(&Context) -> Outcome,
     pub(crate) max_handshake_duration: Duration,
 }
 
@@ -118,10 +85,6 @@ impl Limits {
             ack_elicitation_interval: ack::Settings::RECOMMENDED.ack_elicitation_interval,
             ack_ranges_limit: ack::Settings::RECOMMENDED.ack_ranges_limit,
             max_send_buffer_size: stream::Limits::RECOMMENDED.max_send_buffer_size,
-            min_transfer_bytes_per_second: 0,
-            min_transfer_bytes_per_second_violation_behavior: |_context| -> Outcome {
-                Outcome::Close
-            },
             max_handshake_duration: MAX_HANDSHAKE_DURATION_DEFAULT,
         }
     }
@@ -167,26 +130,11 @@ impl Limits {
     setter!(with_ack_elicitation_interval, ack_elicitation_interval, u8);
     setter!(with_max_ack_ranges, ack_ranges_limit, u8);
     setter!(with_max_send_buffer_size, max_send_buffer_size, u32);
-    // setter!(
-    //     with_min_transfer_bytes_per_second,
-    //     min_transfer_bytes_per_second,
-    //     u32
-    // );
     setter!(
         with_max_handshake_duration,
         max_handshake_duration,
         Duration
     );
-
-    pub fn with_min_transfer_bytes_per_second(
-        mut self,
-        value: u32,
-        on_violation: fn(&Context) -> Outcome,
-    ) -> Result<Self, ValidationError> {
-        self.min_transfer_bytes_per_second = value.try_into()?;
-        self.min_transfer_bytes_per_second_violation_behavior = on_violation;
-        Ok(self)
-    }
 
     pub fn load_peer<A, B, C, D>(&mut self, peer_parameters: &TransportParameters<A, B, C, D>) {
         self.max_idle_timeout
@@ -232,10 +180,6 @@ impl Limits {
         self.max_idle_timeout.as_duration()
     }
 
-    pub fn min_transfer_bytes_per_second(&self) -> u32 {
-        self.min_transfer_bytes_per_second
-    }
-
     pub fn max_handshake_duration(&self) -> Duration {
         self.max_handshake_duration
     }
@@ -244,21 +188,11 @@ impl Limits {
 /// Creates limits for a given connection
 pub trait Limiter: 'static + Send {
     fn on_connection(&mut self, info: &ConnectionInfo) -> Limits;
-
-    fn on_min_transfer_rate_violation(&mut self, context: &Context) -> Outcome;
-}
-
-pub trait LimitViolationBehavior {
-    fn on_min_transfer_rate_violation(&mut self, context: Context);
 }
 
 /// Implement Limiter for a Limits struct
 impl Limiter for Limits {
     fn on_connection(&mut self, _into: &ConnectionInfo) -> Limits {
         *self
-    }
-
-    fn on_min_transfer_rate_violation(&mut self, context: &Context) -> Outcome {
-        (self.min_transfer_bytes_per_second_violation_behavior)(context)
     }
 }

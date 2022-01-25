@@ -104,6 +104,8 @@ impl connection::Trait for TestConnection {
         _connection_id_mapper: &mut connection::ConnectionIdMapper,
         _timestamp: Timestamp,
         _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
+        _endpoint_limits: &mut <Self::Config as endpoint::Config>::EndpointLimits,
+        _endpoint_limits_context: &endpoint::limits::Context,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), connection::Error> {
         Ok(())
@@ -262,7 +264,7 @@ impl connection::Trait for TestConnection {
     }
 
     fn remote_address(&self) -> Result<SocketAddress, connection::Error> {
-        todo!()
+        Ok(SocketAddress::default())
     }
 
     fn error(&self) -> Option<connection::Error> {
@@ -442,7 +444,7 @@ fn container_test() {
                 }
                 Operation::Timeout(ms) => {
                     now += Duration::from_millis(*ms as _);
-                    container.iterate_timeout_list(now, |conn| {
+                    container.iterate_timeout_list(now, |conn, _context| {
                         assert!(
                             conn.interests.timeout.take().unwrap() <= now,
                             "connections should only be present when timeout interest is expressed"

@@ -93,6 +93,8 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
+        endpoint_limits: &mut <Self::Config as endpoint::Config>::EndpointLimits,
+        endpoint_limits_context: &endpoint::limits::Context,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), connection::Error>;
 

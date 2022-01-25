@@ -49,7 +49,7 @@ pub enum Error {
     /// The transfer rate of the connection has decreased below the configured min transfer rate
     MinTransferRateViolation {
         bytes_per_second: u32,
-        min_bytes_per_second: u32,
+        min_bytes_per_second: usize,
     },
 
     /// The handshake has taken longer to complete than the configured max handshake duration

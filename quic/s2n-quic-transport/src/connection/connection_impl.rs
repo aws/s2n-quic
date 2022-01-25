@@ -38,6 +38,7 @@ use s2n_quic_core::{
     connection::{id::Generator as _, InitialId, PeerId},
     counter::Counter,
     crypto::{tls, CryptoSuite},
+    endpoint::{limits::LimitViolationOutcome, Limiter},
     event::{self, ConnectionPublisher as _, IntoEvent as _},
     inet::{DatagramInfo, SocketAddress},
     io::tx,
@@ -306,12 +307,10 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             // Cancel the max handshake duration timer as the handshake has completed in time
             self.timers.max_handshake_duration_timer.cancel();
 
-            // Start the timer for evaluating the min transfer rate if one has been configured
-            if self.limits.min_transfer_bytes_per_second() > 0 {
-                self.timers
-                    .min_transfer_rate_timer
-                    .set(timestamp + MIN_TRANSFER_RATE_INTERVAL);
-            }
+            // Start the timer for evaluating the min transfer rate
+            self.timers
+                .min_transfer_rate_timer
+                .set(timestamp + MIN_TRANSFER_RATE_INTERVAL);
 
             // We don't expect any further initial packets on this connection, so start
             // a timer to remove the mapping from the initial ID to the internal connection ID
@@ -799,6 +798,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
         random_generator: &mut Config::RandomGenerator,
+        endpoint_limits: &mut Config::EndpointLimits,
+        endpoint_limits_context: &endpoint::limits::Context,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), connection::Error> {
         if self.close_sender.on_timeout(timestamp).is_ready() {
@@ -870,17 +871,30 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             // If the min transfer rate interval is 1 second, we don't need to convert the rate
             debug_assert_eq!(MIN_TRANSFER_RATE_INTERVAL, Duration::from_secs(1));
 
-            if self.bytes_progressed < self.limits.min_transfer_bytes_per_second() as u64 {
-                return Err(connection::Error::MinTransferRateViolation {
-                    bytes_per_second: *self.bytes_progressed.deref() as u32,
-                    min_bytes_per_second: self.limits.min_transfer_bytes_per_second(),
-                });
+            if self.bytes_progressed < endpoint_limits.min_transfer_bytes_per_second() as u64 {
+                match endpoint_limits.on_min_transfer_rate_violation(endpoint_limits_context) {
+                    // TODO: record MinTransferRateViolation event
+                    LimitViolationOutcome::Ignore => {
+                        // continue
+                    }
+                    LimitViolationOutcome::Close => {
+                        return Err(connection::Error::MinTransferRateViolation {
+                            bytes_per_second: *self.bytes_progressed.deref() as u32,
+                            min_bytes_per_second: endpoint_limits.min_transfer_bytes_per_second(),
+                        });
+                    }
+                    _ => {
+                        unreachable!()
+                    }
+                }
             }
 
             self.bytes_progressed = Counter::default();
-            self.timers
-                .min_transfer_rate_timer
-                .set(timestamp + MIN_TRANSFER_RATE_INTERVAL);
+            if endpoint_limits.min_transfer_bytes_per_second() > 0 {
+                self.timers
+                    .min_transfer_rate_timer
+                    .set(timestamp + MIN_TRANSFER_RATE_INTERVAL);
+            }
         }
 
         // TODO: enable this check once all of the component timers are fixed

@@ -27,7 +27,7 @@ use s2n_quic_core::{
         InitialId, LocalId, PeerId,
     },
     crypto::{tls, tls::Endpoint as _, CryptoSuite, InitialKey},
-    endpoint::{limits::Outcome, Limiter as _},
+    endpoint::{limits::ConnectionAttemptOutcome, Limiter as _},
     event::{self, EndpointPublisher as _, IntoEvent, Subscriber as _},
     inet::{datagram, DatagramInfo},
     io::{rx, tx},
@@ -309,8 +309,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         let remote_address = header.path.remote_address();
 
-        let attempt = s2n_quic_core::endpoint::limits::ConnectionAttempt::new(
+        let attempt = s2n_quic_core::endpoint::limits::Context::new(
             self.connections.handshake_connections(),
+            self.connections.count(),
             &remote_address,
         );
 
@@ -326,8 +327,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
         );
 
         match outcome {
-            Outcome::Allow => Some(()),
-            Outcome::Retry { delay: _ } => {
+            ConnectionAttemptOutcome::Allow => Some(()),
+            ConnectionAttemptOutcome::Retry { delay: _ } => {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.2
                 //# A server can also use a Retry packet to defer the state and
                 //# processing costs of connection establishment.  Requiring the server
@@ -355,7 +356,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
                 None
             }
-            Outcome::Close { delay: _ } => {
+            ConnectionAttemptOutcome::Close { delay: _ } => {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.2
                 //= type=TODO
                 //= tracking-issue=270
@@ -370,7 +371,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
                 None
             }
-            Outcome::Drop => {
+            ConnectionAttemptOutcome::Drop => {
                 publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
                     len: payload_len as u16,
                     reason: event::builder::DatagramDropReason::RejectedConnectionAttempt,
@@ -382,7 +383,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     len: payload_len as u16,
                     reason: event::builder::DatagramDropReason::RejectedConnectionAttempt,
                 });
-                // Outcome is non_exhaustive so drop on things we don't understand
+                // ConnectionAttemptOutcome is non_exhaustive so drop on things we don't understand
                 None
             }
         }
@@ -870,22 +871,25 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let close_packet_buffer = &mut self.close_packet_buffer;
         let endpoint_context = self.config.context();
 
-        self.connections.iterate_timeout_list(timestamp, |conn| {
-            if let Err(error) = conn.on_timeout(
-                connection_id_mapper,
-                timestamp,
-                endpoint_context.random_generator,
-                endpoint_context.event_subscriber,
-            ) {
-                conn.close(
-                    error,
-                    endpoint_context.connection_close_formatter,
-                    close_packet_buffer,
+        self.connections
+            .iterate_timeout_list(timestamp, |conn, context| {
+                if let Err(error) = conn.on_timeout(
+                    connection_id_mapper,
                     timestamp,
+                    endpoint_context.random_generator,
+                    endpoint_context.endpoint_limits,
+                    context,
                     endpoint_context.event_subscriber,
-                );
-            }
-        });
+                ) {
+                    conn.close(
+                        error,
+                        endpoint_context.connection_close_formatter,
+                        close_packet_buffer,
+                        timestamp,
+                        endpoint_context.event_subscriber,
+                    );
+                }
+            });
 
         // allow connections to generate a new connection id
         self.connections
@@ -1084,7 +1088,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
-    use s2n_quic_core::{endpoint, event::testing::Subscriber, path, random, stateless_reset};
+    use s2n_quic_core::{
+        endpoint,
+        endpoint::limits::{Context, LimitViolationOutcome},
+        event::testing::Subscriber,
+        path, random, stateless_reset,
+    };
 
     #[derive(Debug)]
     pub struct Server;
@@ -1148,9 +1157,17 @@ pub mod testing {
     impl endpoint::Limiter for Limits {
         fn on_connection_attempt(
             &mut self,
-            _attempt: &endpoint::limits::ConnectionAttempt,
-        ) -> endpoint::limits::Outcome {
-            endpoint::limits::Outcome::Allow
+            _attempt: &endpoint::limits::Context,
+        ) -> endpoint::limits::ConnectionAttemptOutcome {
+            endpoint::limits::ConnectionAttemptOutcome::Allow
+        }
+
+        fn on_min_transfer_rate_violation(&mut self, _info: &Context) -> LimitViolationOutcome {
+            endpoint::limits::LimitViolationOutcome::Ignore
+        }
+
+        fn min_transfer_bytes_per_second(&self) -> usize {
+            0
         }
     }
 }

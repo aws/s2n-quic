@@ -556,6 +556,8 @@ pub struct ConnectionContainer<C: connection::Trait, L: connection::Lock<C>> {
     ///
     /// This is only used by clients
     connector_receiver: ConnectorReceiver,
+    /// The number of connections in the connection map
+    connection_count: usize,
 }
 
 macro_rules! iterate_interruptible {
@@ -615,6 +617,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
             interest_lists: InterestLists::new(),
             accept_queue,
             connector_receiver,
+            connection_count: 0,
         }
     }
 
@@ -714,12 +717,18 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
             .is_ok()
         {
             self.connection_map.insert(connection);
+            self.connection_count += 1;
             self.ensure_counter_consistency();
         }
     }
 
     pub fn handshake_connections(&self) -> usize {
         self.interest_lists.handshake_connections
+    }
+
+    /// Returns the total count of connections
+    pub fn count(&self) -> usize {
+        self.connection_count
     }
 
     /// Looks up the `Connection` with the given ID and executes the provided function
@@ -821,6 +830,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         if cfg!(debug_assertions) {
             let expected = self.count_handshaking_connections();
             assert_eq!(expected, self.interest_lists.handshake_connections);
+            assert_eq!(self.count(), self.connection_map.iter().count());
         }
     }
 
@@ -856,7 +866,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
     /// and executes the given function on each `Connection`
     pub fn iterate_timeout_list<F>(&mut self, now: Timestamp, mut func: F)
     where
-        F: FnMut(&mut C),
+        F: FnMut(&mut C, &endpoint::limits::Context),
     {
         loop {
             let mut cursor = self.interest_lists.waiting_for_timeout.front_mut();
@@ -890,7 +900,14 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
             connection.timeout.set(None);
 
             let mut interests = match connection.inner.write(|conn| {
-                func(conn);
+                let remote_address = conn.remote_address().expect("Remote address should be available");
+                let endpoint_limits_context = endpoint::limits::Context::new(
+                    self.handshake_connections(),
+                    self.count(),
+                    &remote_address,
+                );
+
+                func(conn, &endpoint_limits_context);
                 conn.interests()
             }) {
                 Ok(result) => result,
@@ -941,6 +958,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
 
         if let Some(connection) = remove_result {
             self.interest_lists.remove_node(&connection);
+            self.connection_count -= 1;
         }
     }
 
@@ -962,6 +980,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         debug_assert!(remove_result.is_some());
 
         self.interest_lists.remove_node(connection);
+        self.connection_count -= 1;
     }
 }
 
