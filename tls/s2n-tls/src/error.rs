@@ -112,7 +112,7 @@ impl Error {
                     Ok(_) => Some(alert),
                     Err(_) => None,
                 }
-            },
+            }
         }
     }
 }

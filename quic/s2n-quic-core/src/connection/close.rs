@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{application, transport, crypto};
+use crate::{application, crypto, transport};
 pub use crate::{frame::ConnectionClose, inet::SocketAddress};
 
 /// Provides a hook for applications to rewrite CONNECTION_CLOSE frames

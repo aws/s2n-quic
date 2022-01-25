@@ -13,7 +13,7 @@ use s2n_tls::{
     config::Config,
     connection::{Connection, Mode},
     error::Error,
-    raw::{s2n_blinding},
+    raw::s2n_blinding,
 };
 
 #[derive(Debug)]
@@ -93,12 +93,11 @@ impl tls::Session for Session {
                 }
                 Ok(())
             }
-            Poll::Ready(Err(e)) => Err(
-                e.alert()
-                 .map(CryptoError::new)
-                 .unwrap_or(CryptoError::HANDSHAKE_FAILURE)
-                 .into()
-            ),
+            Poll::Ready(Err(e)) => Err(e
+                .alert()
+                .map(CryptoError::new)
+                .unwrap_or(CryptoError::HANDSHAKE_FAILURE)
+                .into()),
             Poll::Pending => Ok(()),
         }
     }
