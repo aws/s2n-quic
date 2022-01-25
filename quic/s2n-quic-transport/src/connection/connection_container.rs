@@ -900,7 +900,9 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
             connection.timeout.set(None);
 
             let mut interests = match connection.inner.write(|conn| {
-                let remote_address = conn.remote_address().expect("Remote address should be available");
+                let remote_address = conn
+                    .remote_address()
+                    .expect("Remote address should be available");
                 let endpoint_limits_context = endpoint::limits::Context::new(
                     self.handshake_connections(),
                     self.count(),
