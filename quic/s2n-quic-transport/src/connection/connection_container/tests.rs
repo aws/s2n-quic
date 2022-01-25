@@ -302,7 +302,7 @@ struct TestLock {
 }
 
 impl TestLock {
-    fn poision(&self) {
+    fn poison(&self) {
         if let Ok(mut lock) = self.connection.lock() {
             lock.1 = true;
         }
@@ -488,7 +488,7 @@ fn container_test() {
                     let id = connections[index];
 
                     let node = container.connection_map.find(&id).get().unwrap();
-                    node.inner.poision();
+                    node.inner.poison();
 
                     let mut was_called = false;
                     container.with_connection(id, |_conn| {

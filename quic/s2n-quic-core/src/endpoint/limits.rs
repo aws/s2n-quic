@@ -39,8 +39,8 @@ pub enum LimitViolationOutcome {
     Close,
 }
 
-/// This context holds information about the state of endpoint along with information about the connection.
-/// This can be used to make decisions about the Outcome of an attempted connection or end point limit
+/// This context holds information about the state of the endpoint along with information about the connection.
+/// This can be used to make decisions about the Outcome of an attempted connection or endpoint limit
 /// being exceeded.
 #[non_exhaustive]
 #[derive(Debug)]
@@ -71,9 +71,9 @@ impl<'a> Context<'a> {
     }
 }
 
-/// This trait is used to determine the outcome of connection attempts on an endpoint. The
-/// implementor returns an Outcome based on the ConnectionAttempt, or other information that the
-/// implementor may have.
+/// This trait is used to determine the outcome of connection attempts and limit violations on an endpoint.
+/// The implementor returns an ConnectionAttemptOutcome/LimitViolationOutcome based on the Context,
+/// or other information that the implementor may have.
 ///
 /// ```rust
 /// # mod s2n_quic { pub mod provider { pub mod endpoint_limits { pub use s2n_quic_core::endpoint::limits::*; } } }
@@ -109,9 +109,13 @@ impl<'a> Context<'a> {
 /// }
 /// ```
 pub trait Limiter: 'static + Send {
+    /// Called when a peer client is attempting to connect to the server
     fn on_connection_attempt(&mut self, info: &Context) -> ConnectionAttemptOutcome;
 
+    /// Called when the transfer rate observed for a connection drops below the value supplied by
+    /// `min_transfer_bytes_per_second()`
     fn on_min_transfer_rate_violation(&mut self, context: &Context) -> LimitViolationOutcome;
 
+    /// Returns the minimum transfer rate in bytes/second a connection must maintain
     fn min_transfer_bytes_per_second(&self) -> usize;
 }
