@@ -642,6 +642,41 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         !self.connector_receiver.is_terminated()
     }
 
+    /// Returns `true` if there are no connections being tracked
+    pub fn is_empty(&self) -> bool {
+        self.connection_map.is_empty()
+    }
+
+    /// Stop accepting new connection attempts and close pending connection requests
+    ///
+    /// Drains any requests in the connector_receiver queue and notifies the application
+    /// of the rejected connection request.
+    pub fn close(&mut self) {
+        debug_assert!(
+            self.is_empty(),
+            "close should only be called once all accepted connections have finished"
+        );
+
+        self.accept_queue.close_channel();
+        self.connector_receiver.close();
+
+        // drain the connector_receiver queue
+        while let Ok(Some(request)) = self.connector_receiver.try_next() {
+            if request
+                .sender
+                .send(Err(connection::Error::EndpointClosing))
+                .is_err()
+            {
+                // the application is no longer waiting so skip
+            }
+        }
+    }
+
+    /// Returns `true` if its possible to make progress on connections.
+    ///
+    /// Connections is considered closed if the connection_map is empty (no connections
+    /// are being tracked) and new connection requests can not be received (the channel
+    /// is closed).
     pub fn is_open(&self) -> bool {
         !self.connection_map.is_empty()
             || match <C::Config as endpoint::Config>::ENDPOINT_TYPE {

@@ -52,6 +52,9 @@ pub enum Error {
     /// The connection should be closed immediately without notifying the peer
     ImmediateClose { reason: &'static str },
 
+    /// The connection attempt was rejected because the endpoint is closing
+    EndpointClosing,
+
     /// The connection was closed due to an unspecified reason
     Unspecified,
 }
@@ -101,6 +104,9 @@ impl fmt::Display for Error {
                 f,
                 "The connection was closed due to: {}", reason
             ),
+            Self::EndpointClosing => {
+                write!(f, "The connection attempt was rejected because the endpoint is closing")
+            }
             Self::Unspecified => {
                 write!(f, "The connection was closed due to an unspecified reason")
             }
@@ -181,6 +187,7 @@ pub fn as_frame<'a, F: connection::close::Formatter>(
         }
         Error::MaxHandshakeDurationExceeded { .. } => None,
         Error::ImmediateClose { .. } => None,
+        Error::EndpointClosing => None,
         Error::Unspecified => {
             let error =
                 transport::Error::INTERNAL_ERROR.with_reason("an unspecified error occurred");
@@ -262,6 +269,7 @@ impl From<Error> for std::io::ErrorKind {
             Error::StreamIdExhausted => ErrorKind::Other,
             Error::MaxHandshakeDurationExceeded { .. } => ErrorKind::Other,
             Error::ImmediateClose { .. } => ErrorKind::Other,
+            Error::EndpointClosing { .. } => ErrorKind::Other,
             Error::Unspecified => ErrorKind::Other,
         }
     }
