@@ -312,7 +312,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         let attempt = s2n_quic_core::endpoint::limits::ConnectionAttempt::new(
             self.connections.handshake_connections(),
-            self.connections.count(),
+            self.connections.len(),
             &remote_address,
         );
 
@@ -1000,7 +1000,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         };
         let supervisor_context = SupervisorContext::new(
             self.connections.handshake_connections(),
-            self.connections.count(),
+            self.connections.len(),
             &remote_address,
             true,
             0,

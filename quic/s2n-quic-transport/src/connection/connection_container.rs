@@ -327,6 +327,8 @@ struct InterestLists<C: connection::Trait, L: connection::Lock<C>> {
     waiting_for_open: BTreeMap<InternalConnectionId, ConnectionSender>,
     /// Inflight handshake count
     handshake_connections: usize,
+    /// Total connection count
+    connection_count: usize,
 }
 
 impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
@@ -338,6 +340,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
             waiting_for_timeout: RBTree::new(WaitingForTimeoutAdapter::new()),
             waiting_for_open: BTreeMap::new(),
             handshake_connections: 0,
+            connection_count: 0,
         }
     }
 
@@ -532,6 +535,8 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
         remove_connection_from_list!(waiting_for_transmission, waiting_for_transmission_link);
         remove_connection_from_list!(waiting_for_connection_id, waiting_for_connection_id_link);
         remove_connection_from_list!(waiting_for_timeout, waiting_for_timeout_link);
+
+        self.connection_count -= 1;
     }
 }
 
@@ -559,8 +564,6 @@ pub struct ConnectionContainer<C: connection::Trait, L: connection::Lock<C>> {
     ///
     /// This is only used by clients
     connector_receiver: ConnectorReceiver,
-    /// The number of connections in the connection map
-    connection_count: usize,
 }
 
 macro_rules! iterate_interruptible {
@@ -620,7 +623,6 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
             interest_lists: InterestLists::new(),
             accept_queue,
             connector_receiver,
-            connection_count: 0,
         }
     }
 
@@ -706,9 +708,6 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         let connection = L::new(connection);
         let connection = Arc::new(ConnectionNode::new(connection, internal_connection_id));
 
-        // Increment the inflight handshakes counter because we have accepted a new connection
-        self.interest_lists.handshake_connections += 1;
-
         if self
             .interest_lists
             .update_interests(
@@ -720,7 +719,9 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
             .is_ok()
         {
             self.connection_map.insert(connection);
-            self.connection_count += 1;
+            // Increment the inflight handshakes and total connection counter because we have accepted a new connection
+            self.interest_lists.handshake_connections += 1;
+            self.interest_lists.connection_count += 1;
             self.ensure_counter_consistency();
         }
     }
@@ -729,9 +730,9 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         self.interest_lists.handshake_connections
     }
 
-    /// Returns the total count of connections
-    pub fn count(&self) -> usize {
-        self.connection_count
+    /// Returns the total number of connections
+    pub fn len(&self) -> usize {
+        self.interest_lists.connection_count
     }
 
     /// Looks up the `Connection` with the given ID and executes the provided function
@@ -833,7 +834,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         if cfg!(debug_assertions) {
             let expected = self.count_handshaking_connections();
             assert_eq!(expected, self.interest_lists.handshake_connections);
-            assert_eq!(self.count(), self.connection_map.iter().count());
+            assert_eq!(self.len(), self.connection_map.iter().count());
         }
     }
 
@@ -908,7 +909,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
                     .expect("Remote address should be available");
                 let context = SupervisorContext::new(
                     self.handshake_connections(),
-                    self.count(),
+                    self.len(),
                     &remote_address,
                     conn.is_handshaking(),
                     conn.transferred_bytes(),
@@ -965,7 +966,6 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
 
         if let Some(connection) = remove_result {
             self.interest_lists.remove_node(&connection);
-            self.connection_count -= 1;
         }
     }
 
@@ -987,7 +987,6 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         debug_assert!(remove_result.is_some());
 
         self.interest_lists.remove_node(connection);
-        self.connection_count -= 1;
     }
 }
 

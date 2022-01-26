@@ -27,7 +27,6 @@ use crate::{
 use bytes::Bytes;
 use core::{
     fmt,
-    ops::Deref as _,
     task::{Context, Poll},
     time::Duration,
 };
@@ -1667,7 +1666,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     fn transferred_bytes(&self) -> u64 {
-        *self.bytes_progressed.deref()
+        *self.bytes_progressed
     }
 
     fn duration(&self, now: Timestamp) -> Duration {
