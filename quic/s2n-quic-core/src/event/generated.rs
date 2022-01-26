@@ -3128,7 +3128,7 @@ mod traits {
         #[doc = r""]
         #[doc = r" If multiple `event::Subscriber`s are composed together, the minimum `supervisor_timeout`"]
         #[doc = r" across all `event::Subscriber`s will be used, and thus `on_supervisor_timeout` may be called"]
-        #[doc = r" earlier than the `supervisor_timeout` for a given single `event::Subscriber` implementation."]
+        #[doc = r" earlier than the `supervisor_timeout` for a given `event::Subscriber` implementation."]
         #[allow(unused_variables)]
         fn on_supervisor_timeout(
             &mut self,
