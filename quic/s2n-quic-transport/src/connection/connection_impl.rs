@@ -37,10 +37,7 @@ use s2n_quic_core::{
     counter::Counter,
     crypto::{tls, CryptoSuite},
     endpoint::Location,
-    event::{
-        self, ConnectionPublisher as _, IntoEvent as _, Subscriber, SupervisorContext,
-        SupervisorOutcome,
-    },
+    event::{self, supervisor, ConnectionPublisher as _, IntoEvent as _, Subscriber},
     inet::{DatagramInfo, SocketAddress},
     io::tx,
     packet::{
@@ -169,8 +166,7 @@ pub struct ConnectionImpl<Config: endpoint::Config> {
     /// Holds the handle for waking up the endpoint from a application call
     wakeup_handle: WakeupHandle<InternalConnectionId>,
     event_context: EventContext<Config>,
-    bytes_progressed: Counter<u64>,
-    start_timestamp: Timestamp,
+    bytes_progressed: Counter<u64>, // TODO: move to events
 }
 
 struct EventContext<Config: endpoint::Config> {
@@ -439,7 +435,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         &mut self,
         timestamp: Timestamp,
         subscriber: &mut Config::EventSubscriber,
-        supervisor_context: &SupervisorContext,
+        supervisor_context: &supervisor::Context,
     ) -> Result<(), connection::Error> {
         let meta = event::builder::ConnectionMeta {
             endpoint_type: Config::ENDPOINT_TYPE,
@@ -464,14 +460,14 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             &meta,
             supervisor_context,
         ) {
-            SupervisorOutcome::Continue => {}
-            SupervisorOutcome::Close { error_code } => {
+            supervisor::Outcome::Continue => {}
+            supervisor::Outcome::Close { error_code } => {
                 return Err(connection::error::Error::Application {
                     error: error_code,
                     initiator: Location::Local,
                 })
             }
-            SupervisorOutcome::ImmediateClose { reason } => {
+            supervisor::Outcome::ImmediateClose { reason } => {
                 return Err(connection::Error::ImmediateClose { reason })
             }
             _ => {
@@ -552,7 +548,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             wakeup_handle: parameters.wakeup_handle,
             event_context,
             bytes_progressed: Counter::default(),
-            start_timestamp: parameters.timestamp,
         };
 
         if Config::ENDPOINT_TYPE.is_client() {
@@ -867,7 +862,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         &mut self,
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
-        supervisor_context: &SupervisorContext,
+        supervisor_context: &supervisor::Context,
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), connection::Error> {
@@ -1663,14 +1658,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
     fn error(&self) -> Option<connection::Error> {
         self.error.err()
-    }
-
-    fn transferred_bytes(&self) -> u64 {
-        *self.bytes_progressed
-    }
-
-    fn duration(&self, now: Timestamp) -> Duration {
-        now - self.start_timestamp
     }
 
     #[inline]

@@ -15,15 +15,12 @@ use crate::{
     stream,
 };
 use bytes::Bytes;
-use core::{
-    task::{Context, Poll},
-    time::Duration,
-};
+use core::task::{Context, Poll};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     application,
     application::Sni,
-    event::{self, ConnectionPublisher, IntoEvent, SupervisorContext},
+    event::{self, supervisor, ConnectionPublisher, IntoEvent},
     inet::{DatagramInfo, SocketAddress},
     io::tx,
     packet::{
@@ -95,7 +92,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         &mut self,
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
-        supervisor_context: &SupervisorContext,
+        supervisor_context: &supervisor::Context,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), connection::Error>;
@@ -389,10 +386,6 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     fn remote_address(&self) -> Result<SocketAddress, connection::Error>;
 
     fn error(&self) -> Option<connection::Error>;
-
-    fn transferred_bytes(&self) -> u64;
-
-    fn duration(&self, now: Timestamp) -> Duration;
 
     fn query_event_context(&self, query: &mut dyn event::query::Query);
 

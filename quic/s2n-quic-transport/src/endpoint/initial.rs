@@ -12,11 +12,11 @@ use crate::{
     recovery::congestion_controller::{self, Endpoint as _},
     space::PacketSpaceManager,
 };
-use core::{convert::TryInto, time::Duration};
+use core::convert::TryInto;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     crypto::{tls, tls::Endpoint as TLSEndpoint, CryptoSuite, InitialKey},
-    event::{self, IntoEvent, Subscriber as _, SupervisorContext},
+    event::{self, supervisor, IntoEvent, Subscriber as _},
     inet::{datagram, DatagramInfo},
     packet::initial::ProtectedInitial,
     path::Handle as _,
@@ -219,13 +219,11 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             timestamp: datagram.timestamp,
         };
 
-        let supervisor_context = SupervisorContext::new(
+        let supervisor_context = supervisor::Context::new(
             self.connections.handshake_connections(),
             self.connections.len(),
             &remote_address,
             true,
-            0,
-            Duration::ZERO,
         );
 
         let mut event_context = endpoint_context.event_subscriber.create_connection_context(

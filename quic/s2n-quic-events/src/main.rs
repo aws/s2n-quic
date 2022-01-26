@@ -109,14 +109,11 @@ impl ToTokens for Output {
                 #builders
             }
 
-            pub use supervisor::Context as SupervisorContext;
-            pub use supervisor::Outcome as SupervisorOutcome;
-            mod supervisor {
+            pub mod supervisor {
                 use crate::{
                     application,
                     event::{builder::SocketAddress, IntoEvent},
                 };
-                use core::time::Duration;
 
                 #[non_exhaustive]
                 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -151,14 +148,6 @@ impl ToTokens for Output {
 
                     /// True if the connection is in the handshake state, false otherwise
                     pub is_handshaking: bool,
-
-                    /// Number of bytes transmitted or received on Streams. In the received
-                    /// direction this only counts bytes that indicate forward progress; thus
-                    /// duplicate bytes that have already been received are not counted.
-                    pub transferred_bytes: u64,
-
-                    /// The amount of time since the connection started
-                    pub duration: Duration,
                 }
 
                 impl<'a> Context<'a> {
@@ -167,15 +156,12 @@ impl ToTokens for Output {
                         connection_count: usize,
                         remote_address: &'a crate::inet::SocketAddress,
                         is_handshaking: bool,
-                        transferred_bytes: u64,
-                        duration: Duration) -> Self {
+                    ) -> Self {
                         Self {
                             inflight_handshakes,
                             connection_count,
                             remote_address: remote_address.into_event(),
                             is_handshaking,
-                            transferred_bytes,
-                            duration,
                         }
                     }
                 }
@@ -274,14 +260,14 @@ impl ToTokens for Output {
 
                     /// The period at which `on_supervisor_timeout` is called
                     #[allow(unused_variables)]
-                    fn supervisor_timeout(&mut self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &SupervisorContext) -> Option<Duration> {
+                    fn supervisor_timeout(&mut self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> Option<Duration> {
                         None
                     }
 
-                    /// Called for each `supervisor_timeout` to determine any action to take on the connection based on the `SupervisorOutcome`
+                    /// Called for each `supervisor_timeout` to determine any action to take on the connection based on the `supervisor::Outcome`
                     #[allow(unused_variables)]
-                    fn on_supervisor_timeout(&mut self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &SupervisorContext) -> SupervisorOutcome {
-                        SupervisorOutcome::default()
+                    fn on_supervisor_timeout(&mut self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> supervisor::Outcome {
+                        supervisor::Outcome::default()
                     }
 
                     #subscriber
@@ -327,7 +313,7 @@ impl ToTokens for Output {
                     }
 
                     #[inline]
-                    fn supervisor_timeout(&mut self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &SupervisorContext) -> Option<Duration> {
+                    fn supervisor_timeout(&mut self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> Option<Duration> {
                         let timeout_a = self.0.supervisor_timeout(&mut conn_context.0, meta, context);
                         let timeout_b = self.1.supervisor_timeout(&mut conn_context.1, meta, context);
                         match (timeout_a, timeout_b) {
@@ -338,13 +324,13 @@ impl ToTokens for Output {
                     }
 
                     #[inline]
-                    fn on_supervisor_timeout(&mut self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &SupervisorContext) -> SupervisorOutcome {
+                    fn on_supervisor_timeout(&mut self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> supervisor::Outcome {
                         let outcome_a = self.0.on_supervisor_timeout(&mut conn_context.0, meta, context);
                         let outcome_b = self.1.on_supervisor_timeout(&mut conn_context.1, meta, context);
                         match (outcome_a, outcome_b) {
-                            (SupervisorOutcome::ImmediateClose { reason }, _) | (_, SupervisorOutcome::ImmediateClose { reason }) => SupervisorOutcome::ImmediateClose { reason },
-                            (SupervisorOutcome::Close { error_code }, _) | (_, SupervisorOutcome::Close { error_code }) => SupervisorOutcome::Close { error_code },
-                            _ => SupervisorOutcome::Continue,
+                            (supervisor::Outcome::ImmediateClose { reason }, _) | (_, supervisor::Outcome::ImmediateClose { reason }) => supervisor::Outcome::ImmediateClose { reason },
+                            (supervisor::Outcome::Close { error_code }, _) | (_, supervisor::Outcome::Close { error_code }) => supervisor::Outcome::Close { error_code },
+                            _ => supervisor::Outcome::Continue,
                         }
                     }
 

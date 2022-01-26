@@ -2974,13 +2974,11 @@ pub mod builder {
         }
     }
 }
-pub use supervisor::{Context as SupervisorContext, Outcome as SupervisorOutcome};
-mod supervisor {
+pub mod supervisor {
     use crate::{
         application,
         event::{builder::SocketAddress, IntoEvent},
     };
-    use core::time::Duration;
     #[non_exhaustive]
     #[derive(Clone, Debug, Eq, PartialEq)]
     pub enum Outcome {
@@ -3007,12 +3005,6 @@ mod supervisor {
         pub remote_address: SocketAddress<'a>,
         #[doc = r" True if the connection is in the handshake state, false otherwise"]
         pub is_handshaking: bool,
-        #[doc = r" Number of bytes transmitted or received on Streams. In the received"]
-        #[doc = r" direction this only counts bytes that indicate forward progress; thus"]
-        #[doc = r" duplicate bytes that have already been received are not counted."]
-        pub transferred_bytes: u64,
-        #[doc = r" The amount of time since the connection started"]
-        pub duration: Duration,
     }
     impl<'a> Context<'a> {
         pub fn new(
@@ -3020,16 +3012,12 @@ mod supervisor {
             connection_count: usize,
             remote_address: &'a crate::inet::SocketAddress,
             is_handshaking: bool,
-            transferred_bytes: u64,
-            duration: Duration,
         ) -> Self {
             Self {
                 inflight_handshakes,
                 connection_count,
                 remote_address: remote_address.into_event(),
                 is_handshaking,
-                transferred_bytes,
-                duration,
             }
         }
     }
@@ -3122,19 +3110,19 @@ mod traits {
             &mut self,
             conn_context: &mut Self::ConnectionContext,
             meta: &ConnectionMeta,
-            context: &SupervisorContext,
+            context: &supervisor::Context,
         ) -> Option<Duration> {
             None
         }
-        #[doc = r" Called for each `supervisor_timeout` to determine any action to take on the connection based on the `SupervisorOutcome`"]
+        #[doc = r" Called for each `supervisor_timeout` to determine any action to take on the connection based on the `supervisor::Outcome`"]
         #[allow(unused_variables)]
         fn on_supervisor_timeout(
             &mut self,
             conn_context: &mut Self::ConnectionContext,
             meta: &ConnectionMeta,
-            context: &SupervisorContext,
-        ) -> SupervisorOutcome {
-            SupervisorOutcome::default()
+            context: &supervisor::Context,
+        ) -> supervisor::Outcome {
+            supervisor::Outcome::default()
         }
         #[doc = "Called when the `AlpnInformation` event is triggered"]
         #[inline]
@@ -3609,7 +3597,7 @@ mod traits {
             &mut self,
             conn_context: &mut Self::ConnectionContext,
             meta: &ConnectionMeta,
-            context: &SupervisorContext,
+            context: &supervisor::Context,
         ) -> Option<Duration> {
             let timeout_a = self
                 .0
@@ -3628,8 +3616,8 @@ mod traits {
             &mut self,
             conn_context: &mut Self::ConnectionContext,
             meta: &ConnectionMeta,
-            context: &SupervisorContext,
-        ) -> SupervisorOutcome {
+            context: &supervisor::Context,
+        ) -> supervisor::Outcome {
             let outcome_a = self
                 .0
                 .on_supervisor_timeout(&mut conn_context.0, meta, context);
@@ -3637,15 +3625,15 @@ mod traits {
                 .1
                 .on_supervisor_timeout(&mut conn_context.1, meta, context);
             match (outcome_a, outcome_b) {
-                (SupervisorOutcome::ImmediateClose { reason }, _)
-                | (_, SupervisorOutcome::ImmediateClose { reason }) => {
-                    SupervisorOutcome::ImmediateClose { reason }
+                (supervisor::Outcome::ImmediateClose { reason }, _)
+                | (_, supervisor::Outcome::ImmediateClose { reason }) => {
+                    supervisor::Outcome::ImmediateClose { reason }
                 }
-                (SupervisorOutcome::Close { error_code }, _)
-                | (_, SupervisorOutcome::Close { error_code }) => {
-                    SupervisorOutcome::Close { error_code }
+                (supervisor::Outcome::Close { error_code }, _)
+                | (_, supervisor::Outcome::Close { error_code }) => {
+                    supervisor::Outcome::Close { error_code }
                 }
-                _ => SupervisorOutcome::Continue,
+                _ => supervisor::Outcome::Continue,
             }
         }
         #[inline]

@@ -35,7 +35,7 @@ use s2n_quic_core::{
     application::Sni,
     event::{
         query::{Query, QueryMut},
-        SupervisorContext,
+        supervisor,
     },
     inet::SocketAddress,
     recovery::K_GRANULARITY,
@@ -870,7 +870,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
     /// and executes the given function on each `Connection`
     pub fn iterate_timeout_list<F>(&mut self, now: Timestamp, mut func: F)
     where
-        F: FnMut(&mut C, &SupervisorContext),
+        F: FnMut(&mut C, &supervisor::Context),
     {
         loop {
             let mut cursor = self.interest_lists.waiting_for_timeout.front_mut();
@@ -907,13 +907,11 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
                 let remote_address = conn
                     .remote_address()
                     .expect("Remote address should be available");
-                let context = SupervisorContext::new(
+                let context = supervisor::Context::new(
                     self.handshake_connections(),
                     self.len(),
                     &remote_address,
                     conn.is_handshaking(),
-                    conn.transferred_bytes(),
-                    conn.duration(now),
                 );
                 func(conn, &context);
                 conn.interests()

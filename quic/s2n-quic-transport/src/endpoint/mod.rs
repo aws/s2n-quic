@@ -19,7 +19,6 @@ use alloc::collections::VecDeque;
 use core::{
     convert::TryInto,
     task::{self, Poll},
-    time::Duration,
 };
 use s2n_codec::{DecoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{
@@ -29,7 +28,7 @@ use s2n_quic_core::{
     },
     crypto::{tls, tls::Endpoint as _, CryptoSuite, InitialKey},
     endpoint::{limits::Outcome, Limiter as _},
-    event::{self, EndpointPublisher as _, IntoEvent, Subscriber as _, SupervisorContext},
+    event::{self, supervisor, EndpointPublisher as _, IntoEvent, Subscriber as _},
     inet::{datagram, DatagramInfo},
     io::{rx, tx},
     packet::{initial::ProtectedInitial, ProtectedPacket},
@@ -998,13 +997,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
             id: internal_connection_id.into(),
             timestamp,
         };
-        let supervisor_context = SupervisorContext::new(
+        let supervisor_context = supervisor::Context::new(
             self.connections.handshake_connections(),
             self.connections.len(),
             &remote_address,
             true,
-            0,
-            Duration::ZERO,
         );
         let mut event_context = endpoint_context.event_subscriber.create_connection_context(
             &meta.clone().into_event(),
