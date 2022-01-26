@@ -27,6 +27,7 @@ use crate::{
 use bytes::Bytes;
 use core::{
     fmt,
+    ops::Deref as _,
     task::{Context, Poll},
     time::Duration,
 };
@@ -1661,6 +1662,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
     fn error(&self) -> Option<connection::Error> {
         self.error.err()
+    }
+
+    fn transferred_bytes(&self) -> u64 {
+        *self.bytes_progressed.deref()
     }
 
     #[inline]

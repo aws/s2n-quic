@@ -224,6 +224,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             self.connections.count(),
             &remote_address,
             true,
+            0,
         );
 
         let mut event_context = endpoint_context.event_subscriber.create_connection_context(

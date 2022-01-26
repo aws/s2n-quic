@@ -150,6 +150,11 @@ impl ToTokens for Output {
 
                     /// True if the connection is in the handshake state, false otherwise
                     pub is_handshaking: bool,
+
+                    /// Number of bytes transmitted or received on Streams. In the received
+                    /// direction this only counts bytes that indicate forward progress; thus
+                    /// duplicate bytes that have already been received are not counted.
+                    pub transferred_bytes: u64,
                 }
 
                 impl<'a> Context<'a> {
@@ -157,12 +162,14 @@ impl ToTokens for Output {
                         inflight_handshakes: usize,
                         connection_count: usize,
                         remote_address: &'a crate::inet::SocketAddress,
-                        is_handshaking: bool) -> Self {
+                        is_handshaking: bool,
+                        transferred_bytes: u64) -> Self {
                         Self {
                             inflight_handshakes,
                             connection_count,
                             remote_address: remote_address.into_event(),
                             is_handshaking,
+                            transferred_bytes,
                         }
                     }
                 }

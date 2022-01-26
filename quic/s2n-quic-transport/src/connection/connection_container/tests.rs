@@ -270,6 +270,10 @@ impl connection::Trait for TestConnection {
         None
     }
 
+    fn transferred_bytes(&self) -> u64 {
+        0
+    }
+
     fn query_event_context(&self, _query: &mut dyn event::query::Query) {
         todo!()
     }

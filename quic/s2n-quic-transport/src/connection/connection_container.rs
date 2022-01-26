@@ -911,6 +911,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
                     self.count(),
                     &remote_address,
                     conn.is_handshaking(),
+                    conn.transferred_bytes(),
                 );
                 func(conn, &context);
                 conn.interests()

@@ -3004,7 +3004,12 @@ mod supervisor {
         pub connection_count: usize,
         #[doc = r" The address of the peer"]
         pub remote_address: SocketAddress<'a>,
+        #[doc = r" True if the connection is in the handshake state, false otherwise"]
         pub is_handshaking: bool,
+        #[doc = r" Number of bytes transmitted or received on Streams. In the received"]
+        #[doc = r" direction this only counts bytes that indicate forward progress; thus"]
+        #[doc = r" duplicate bytes that have already been received are not counted."]
+        pub transferred_bytes: u64,
     }
     impl<'a> Context<'a> {
         pub fn new(
@@ -3012,12 +3017,14 @@ mod supervisor {
             connection_count: usize,
             remote_address: &'a crate::inet::SocketAddress,
             is_handshaking: bool,
+            transferred_bytes: u64,
         ) -> Self {
             Self {
                 inflight_handshakes,
                 connection_count,
                 remote_address: remote_address.into_event(),
                 is_handshaking,
+                transferred_bytes,
             }
         }
     }
