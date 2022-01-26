@@ -28,7 +28,7 @@ use s2n_quic_core::{
     path::MaxMtu,
     time::Timestamp,
 };
-use std::sync::Mutex;
+use std::{sync::Mutex, time::Duration};
 
 struct TestConnection {
     is_handshaking: bool,
@@ -272,6 +272,10 @@ impl connection::Trait for TestConnection {
 
     fn transferred_bytes(&self) -> u64 {
         0
+    }
+
+    fn duration(&self, _now: Timestamp) -> Duration {
+        Duration::default()
     }
 
     fn query_event_context(&self, _query: &mut dyn event::query::Query) {

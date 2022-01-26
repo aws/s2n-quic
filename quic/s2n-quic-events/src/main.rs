@@ -116,6 +116,7 @@ impl ToTokens for Output {
                     application,
                     event::{builder::SocketAddress, IntoEvent},
                 };
+                use core::time::Duration;
 
                 #[non_exhaustive]
                 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -155,6 +156,9 @@ impl ToTokens for Output {
                     /// direction this only counts bytes that indicate forward progress; thus
                     /// duplicate bytes that have already been received are not counted.
                     pub transferred_bytes: u64,
+
+                    /// The amount of time since the connection started
+                    pub duration: Duration,
                 }
 
                 impl<'a> Context<'a> {
@@ -163,13 +167,15 @@ impl ToTokens for Output {
                         connection_count: usize,
                         remote_address: &'a crate::inet::SocketAddress,
                         is_handshaking: bool,
-                        transferred_bytes: u64) -> Self {
+                        transferred_bytes: u64,
+                        duration: Duration) -> Self {
                         Self {
                             inflight_handshakes,
                             connection_count,
                             remote_address: remote_address.into_event(),
                             is_handshaking,
                             transferred_bytes,
+                            duration,
                         }
                     }
                 }

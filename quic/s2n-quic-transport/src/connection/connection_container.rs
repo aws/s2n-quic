@@ -912,6 +912,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
                     &remote_address,
                     conn.is_handshaking(),
                     conn.transferred_bytes(),
+                    conn.duration(now),
                 );
                 func(conn, &context);
                 conn.interests()

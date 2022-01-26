@@ -2980,6 +2980,7 @@ mod supervisor {
         application,
         event::{builder::SocketAddress, IntoEvent},
     };
+    use core::time::Duration;
     #[non_exhaustive]
     #[derive(Clone, Debug, Eq, PartialEq)]
     pub enum Outcome {
@@ -3010,6 +3011,8 @@ mod supervisor {
         #[doc = r" direction this only counts bytes that indicate forward progress; thus"]
         #[doc = r" duplicate bytes that have already been received are not counted."]
         pub transferred_bytes: u64,
+        #[doc = r" The amount of time since the connection started"]
+        pub duration: Duration,
     }
     impl<'a> Context<'a> {
         pub fn new(
@@ -3018,6 +3021,7 @@ mod supervisor {
             remote_address: &'a crate::inet::SocketAddress,
             is_handshaking: bool,
             transferred_bytes: u64,
+            duration: Duration,
         ) -> Self {
             Self {
                 inflight_handshakes,
@@ -3025,6 +3029,7 @@ mod supervisor {
                 remote_address: remote_address.into_event(),
                 is_handshaking,
                 transferred_bytes,
+                duration,
             }
         }
     }

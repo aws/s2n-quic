@@ -171,6 +171,7 @@ pub struct ConnectionImpl<Config: endpoint::Config> {
     wakeup_handle: WakeupHandle<InternalConnectionId>,
     event_context: EventContext<Config>,
     bytes_progressed: Counter<u64>,
+    start_timestamp: Timestamp,
 }
 
 struct EventContext<Config: endpoint::Config> {
@@ -552,6 +553,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             wakeup_handle: parameters.wakeup_handle,
             event_context,
             bytes_progressed: Counter::default(),
+            start_timestamp: parameters.timestamp,
         };
 
         if Config::ENDPOINT_TYPE.is_client() {
@@ -1666,6 +1668,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
     fn transferred_bytes(&self) -> u64 {
         *self.bytes_progressed.deref()
+    }
+
+    fn duration(&self, now: Timestamp) -> Duration {
+        now - self.start_timestamp
     }
 
     #[inline]

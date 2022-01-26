@@ -19,6 +19,7 @@ use alloc::collections::VecDeque;
 use core::{
     convert::TryInto,
     task::{self, Poll},
+    time::Duration,
 };
 use s2n_codec::{DecoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{
@@ -1003,6 +1004,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             &remote_address,
             true,
             0,
+            Duration::ZERO,
         );
         let mut event_context = endpoint_context.event_subscriber.create_connection_context(
             &meta.clone().into_event(),

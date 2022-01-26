@@ -15,7 +15,10 @@ use crate::{
     stream,
 };
 use bytes::Bytes;
-use core::task::{Context, Poll};
+use core::{
+    task::{Context, Poll},
+    time::Duration,
+};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     application,
@@ -388,6 +391,8 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     fn error(&self) -> Option<connection::Error>;
 
     fn transferred_bytes(&self) -> u64;
+
+    fn duration(&self, now: Timestamp) -> Duration;
 
     fn query_event_context(&self, query: &mut dyn event::query::Query);
 
