@@ -7,12 +7,12 @@ use crate::{
     time::Duration,
 };
 
-/// ConnectionAttemptOutcome describes how the library should proceed on a connection attempt. The
-/// implementor will use information from the Context object to determine how the library should handle
+/// Outcome describes how the library should proceed on a connection attempt. The implementor will
+/// use information from the ConnectionAttempt object to determine how the library should handle
 /// the connection attempt
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ConnectionAttemptOutcome {
+pub enum Outcome {
     /// Allow the connection to continue
     Allow,
 
@@ -26,37 +26,24 @@ pub enum ConnectionAttemptOutcome {
     Close { delay: Duration },
 }
 
-/// LimitViolationOutcome describes how the library should proceed when an endpoint limit has been
-/// violated. The implementor will use information from the Context object to determine how the library
-/// should handle the connection that exceeded the limit.
-#[non_exhaustive]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum LimitViolationOutcome {
-    /// Ignore the violation and allow the connection to remain open
-    Ignore,
-
-    /// Close the connection immediately
-    Close,
-}
-
-/// This context holds information about the state of the endpoint along with information about the connection.
-/// This can be used to make decisions about the Outcome of an attempted connection or endpoint limit
-/// being exceeded.
+/// A ConnectionAttempt holds information about the state of endpoint receiving a connect, along
+/// with information about the connection. This can be used to make decisions about the Outcome of
+/// an attempted connection
 #[non_exhaustive]
 #[derive(Debug)]
-pub struct Context<'a> {
+pub struct ConnectionAttempt<'a> {
     /// Number of handshakes the have begun but not completed
     pub inflight_handshakes: usize,
 
     /// Number of open connections
     pub connection_count: usize,
 
-    /// The address of the peer. In the case of `on_connection_attempt`,
-    /// this address has not yet been verified.
+    /// The unverified address of the connecting peer
+    /// This address comes from the datagram
     pub remote_address: SocketAddress<'a>,
 }
 
-impl<'a> Context<'a> {
+impl<'a> ConnectionAttempt<'a> {
     #[doc(hidden)]
     pub fn new(
         inflight_handshakes: usize,
@@ -71,51 +58,29 @@ impl<'a> Context<'a> {
     }
 }
 
-/// This trait is used to determine the outcome of connection attempts and limit violations on an endpoint.
-/// The implementor returns an ConnectionAttemptOutcome/LimitViolationOutcome based on the Context,
-/// or other information that the implementor may have.
-///
-/// ```rust
-/// # mod s2n_quic { pub mod provider { pub mod endpoint_limits { pub use s2n_quic_core::endpoint::limits::*; } } }
-/// use s2n_quic::provider::endpoint_limits::{Limiter, Context, ConnectionAttemptOutcome, LimitViolationOutcome};
-///
-/// struct MyEndpointLimits {
-///    handshake_limit: usize,
-///    connection_limit: usize,
-///    min_transfer_bytes_per_second: usize,
-///    delay: core::time::Duration,
-/// }
-///
-/// impl Limiter for MyEndpointLimits {
-///    fn on_connection_attempt(&mut self, info: &Context) -> ConnectionAttemptOutcome {
-///        if info.inflight_handshakes > self.handshake_limit {
-///            ConnectionAttemptOutcome::Retry { delay: self.delay }
-///        } else {
-///            ConnectionAttemptOutcome::Allow
-///        }
-///    }
-///
-///    fn on_min_transfer_rate_violation(&mut self, context: &Context) -> LimitViolationOutcome {
-///         if context.connection_count > self.connection_limit {
-///            LimitViolationOutcome::Close
-///         } else {
-///            LimitViolationOutcome::Ignore
-///         }
-///    }
-///
-///    fn min_transfer_bytes_per_second(&self) -> usize {
-///         self.min_transfer_bytes_per_second
-///    }
-/// }
-/// ```
 pub trait Limiter: 'static + Send {
-    /// Called when a peer client is attempting to connect to the server
-    fn on_connection_attempt(&mut self, info: &Context) -> ConnectionAttemptOutcome;
-
-    /// Called when the transfer rate observed for a connection drops below the value supplied by
-    /// `min_transfer_bytes_per_second()`
-    fn on_min_transfer_rate_violation(&mut self, context: &Context) -> LimitViolationOutcome;
-
-    /// Returns the minimum transfer rate in bytes/second a connection must maintain
-    fn min_transfer_bytes_per_second(&self) -> usize;
+    /// This trait is used to determine the outcome of connection attempts on an endpoint. The
+    /// implementor returns an Outcome based on the ConnectionAttempt, or other information that the
+    /// implementor may have.
+    ///
+    /// ```rust
+    /// # mod s2n_quic { pub mod provider { pub mod endpoint_limits { pub use s2n_quic_core::endpoint::limits::*; } } }
+    /// use s2n_quic::provider::endpoint_limits::{Limiter, ConnectionAttempt, Outcome};
+    ///
+    /// struct MyEndpointLimits {
+    ///    handshake_limit: usize,
+    ///    delay: core::time::Duration,
+    /// }
+    ///
+    /// impl Limiter for MyEndpointLimits {
+    ///    fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome {
+    ///        if info.inflight_handshakes > self.handshake_limit {
+    ///            Outcome::Retry { delay: self.delay }
+    ///        } else {
+    ///            Outcome::Allow
+    ///        }
+    ///    }
+    /// }
+    /// ```
+    fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome;
 }

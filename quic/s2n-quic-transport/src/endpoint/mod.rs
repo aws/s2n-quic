@@ -27,8 +27,8 @@ use s2n_quic_core::{
         InitialId, LocalId, PeerId,
     },
     crypto::{tls, tls::Endpoint as _, CryptoSuite, InitialKey},
-    endpoint::{limits::ConnectionAttemptOutcome, Limiter as _},
-    event::{self, EndpointPublisher as _, IntoEvent, Subscriber as _},
+    endpoint::{limits::Outcome, Limiter as _},
+    event::{self, EndpointPublisher as _, IntoEvent, Subscriber as _, SupervisorContext},
     inet::{datagram, DatagramInfo},
     io::{rx, tx},
     packet::{initial::ProtectedInitial, ProtectedPacket},
@@ -309,7 +309,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         let remote_address = header.path.remote_address();
 
-        let attempt = s2n_quic_core::endpoint::limits::Context::new(
+        let attempt = s2n_quic_core::endpoint::limits::ConnectionAttempt::new(
             self.connections.handshake_connections(),
             self.connections.count(),
             &remote_address,
@@ -327,8 +327,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
         );
 
         match outcome {
-            ConnectionAttemptOutcome::Allow => Some(()),
-            ConnectionAttemptOutcome::Retry { delay: _ } => {
+            Outcome::Allow => Some(()),
+            Outcome::Retry { delay: _ } => {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.2
                 //# A server can also use a Retry packet to defer the state and
                 //# processing costs of connection establishment.  Requiring the server
@@ -356,7 +356,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
                 None
             }
-            ConnectionAttemptOutcome::Close { delay: _ } => {
+            Outcome::Close { delay: _ } => {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.2
                 //= type=TODO
                 //= tracking-issue=270
@@ -371,7 +371,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
                 None
             }
-            ConnectionAttemptOutcome::Drop => {
+            Outcome::Drop => {
                 publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
                     len: payload_len as u16,
                     reason: event::builder::DatagramDropReason::RejectedConnectionAttempt,
@@ -383,7 +383,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     len: payload_len as u16,
                     reason: event::builder::DatagramDropReason::RejectedConnectionAttempt,
                 });
-                // ConnectionAttemptOutcome is non_exhaustive so drop on things we don't understand
+                // Outcome is non_exhaustive so drop on things we don't understand
                 None
             }
         }
@@ -872,13 +872,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let endpoint_context = self.config.context();
 
         self.connections
-            .iterate_timeout_list(timestamp, |conn, context| {
+            .iterate_timeout_list(timestamp, |conn, supervisor_context| {
                 if let Err(error) = conn.on_timeout(
                     connection_id_mapper,
                     timestamp,
+                    supervisor_context,
                     endpoint_context.random_generator,
-                    endpoint_context.endpoint_limits,
-                    context,
                     endpoint_context.event_subscriber,
                 ) {
                     conn.close(
@@ -998,6 +997,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
             id: internal_connection_id.into(),
             timestamp,
         };
+        let supervisor_context = SupervisorContext::new(
+            self.connections.handshake_connections(),
+            self.connections.count(),
+            &remote_address,
+        );
         let mut event_context = endpoint_context.event_subscriber.create_connection_context(
             &meta.clone().into_event(),
             &event::builder::ConnectionInfo {}.into_event(),
@@ -1076,6 +1080,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             limits,
             max_mtu: self.max_mtu,
             event_context,
+            supervisor_context: &supervisor_context,
             event_subscriber: endpoint_context.event_subscriber,
         };
         let connection = <Cfg as crate::endpoint::Config>::Connection::new(connection_parameters)?;
@@ -1088,12 +1093,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
-    use s2n_quic_core::{
-        endpoint,
-        endpoint::limits::{Context, LimitViolationOutcome},
-        event::testing::Subscriber,
-        path, random, stateless_reset,
-    };
+    use s2n_quic_core::{endpoint, event::testing::Subscriber, path, random, stateless_reset};
 
     #[derive(Debug)]
     pub struct Server;
@@ -1157,17 +1157,9 @@ pub mod testing {
     impl endpoint::Limiter for Limits {
         fn on_connection_attempt(
             &mut self,
-            _attempt: &endpoint::limits::Context,
-        ) -> endpoint::limits::ConnectionAttemptOutcome {
-            endpoint::limits::ConnectionAttemptOutcome::Allow
-        }
-
-        fn on_min_transfer_rate_violation(&mut self, _info: &Context) -> LimitViolationOutcome {
-            endpoint::limits::LimitViolationOutcome::Ignore
-        }
-
-        fn min_transfer_bytes_per_second(&self) -> usize {
-            0
+            _attempt: &endpoint::limits::ConnectionAttempt,
+        ) -> endpoint::limits::Outcome {
+            endpoint::limits::Outcome::Allow
         }
     }
 }

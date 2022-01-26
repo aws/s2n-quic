@@ -16,7 +16,7 @@ use core::convert::TryInto;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     crypto::{tls, tls::Endpoint as TLSEndpoint, CryptoSuite, InitialKey},
-    event::{self, IntoEvent, Subscriber as _},
+    event::{self, IntoEvent, Subscriber as _, SupervisorContext},
     inet::{datagram, DatagramInfo},
     packet::initial::ProtectedInitial,
     path::Handle as _,
@@ -219,6 +219,12 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             timestamp: datagram.timestamp,
         };
 
+        let supervisor_context = SupervisorContext::new(
+            self.connections.handshake_connections(),
+            self.connections.count(),
+            &remote_address,
+        );
+
         let mut event_context = endpoint_context.event_subscriber.create_connection_context(
             &meta.clone().into_event(),
             &event::builder::ConnectionInfo {}.into_event(),
@@ -258,6 +264,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             limits,
             max_mtu: self.max_mtu,
             event_context,
+            supervisor_context: &supervisor_context,
             event_subscriber: endpoint_context.event_subscriber,
         };
 

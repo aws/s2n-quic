@@ -33,7 +33,10 @@ use intrusive_collections::{
 use s2n_quic_core::{
     application,
     application::Sni,
-    event::query::{Query, QueryMut},
+    event::{
+        query::{Query, QueryMut},
+        SupervisorContext,
+    },
     inet::SocketAddress,
     recovery::K_GRANULARITY,
     time::Timestamp,
@@ -866,7 +869,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
     /// and executes the given function on each `Connection`
     pub fn iterate_timeout_list<F>(&mut self, now: Timestamp, mut func: F)
     where
-        F: FnMut(&mut C, &endpoint::limits::Context),
+        F: FnMut(&mut C, &SupervisorContext),
     {
         loop {
             let mut cursor = self.interest_lists.waiting_for_timeout.front_mut();
@@ -903,12 +906,11 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
                 let remote_address = conn
                     .remote_address()
                     .expect("Remote address should be available");
-                let context = endpoint::limits::Context::new(
+                let context = SupervisorContext::new(
                     self.handshake_connections(),
                     self.count(),
                     &remote_address,
                 );
-
                 func(conn, &context);
                 conn.interests()
             }) {

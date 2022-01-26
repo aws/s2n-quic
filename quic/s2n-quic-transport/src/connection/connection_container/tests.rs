@@ -103,9 +103,8 @@ impl connection::Trait for TestConnection {
         &mut self,
         _connection_id_mapper: &mut connection::ConnectionIdMapper,
         _timestamp: Timestamp,
+        _supervisor_context: &SupervisorContext,
         _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
-        _endpoint_limits: &mut <Self::Config as endpoint::Config>::EndpointLimits,
-        _endpoint_limits_context: &endpoint::limits::Context,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), connection::Error> {
         Ok(())

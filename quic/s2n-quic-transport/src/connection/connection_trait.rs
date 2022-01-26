@@ -20,7 +20,7 @@ use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     application,
     application::Sni,
-    event::{self, ConnectionPublisher, IntoEvent},
+    event::{self, ConnectionPublisher, IntoEvent, SupervisorContext},
     inet::{DatagramInfo, SocketAddress},
     io::tx,
     packet::{
@@ -92,9 +92,8 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         &mut self,
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
+        supervisor_context: &SupervisorContext,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
-        endpoint_limits: &mut <Self::Config as endpoint::Config>::EndpointLimits,
-        endpoint_limits_context: &endpoint::limits::Context,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), connection::Error>;
 

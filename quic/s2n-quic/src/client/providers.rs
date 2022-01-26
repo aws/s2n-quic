@@ -3,12 +3,7 @@
 
 use super::*;
 use core::marker::PhantomData;
-use s2n_quic_core::{
-    connection::id::Generator,
-    crypto,
-    endpoint::limits::{ConnectionAttemptOutcome, LimitViolationOutcome},
-    path,
-};
+use s2n_quic_core::{connection::id::Generator, crypto, path};
 use s2n_quic_transport::{
     connection,
     endpoint::{self, handle::Connector},
@@ -131,20 +126,9 @@ struct EndpointLimits;
 impl endpoint::limits::Limiter for EndpointLimits {
     fn on_connection_attempt(
         &mut self,
-        _info: &endpoint::limits::Context,
-    ) -> ConnectionAttemptOutcome {
+        _info: &endpoint::limits::ConnectionAttempt,
+    ) -> endpoint::limits::Outcome {
         unreachable!("endpoint limits should not be used with clients")
-    }
-
-    fn on_min_transfer_rate_violation(
-        &mut self,
-        _context: &s2n_quic_core::endpoint::limits::Context,
-    ) -> LimitViolationOutcome {
-        unreachable!("endpoint limits should not be used with clients")
-    }
-
-    fn min_transfer_bytes_per_second(&self) -> usize {
-        0
     }
 }
 
