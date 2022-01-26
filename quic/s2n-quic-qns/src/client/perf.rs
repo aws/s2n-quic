@@ -45,7 +45,7 @@ pub struct Perf {
 
 impl Perf {
     pub async fn run(&self) -> Result<()> {
-        let client = self.client()?;
+        let mut client = self.client()?;
 
         let mut requests = vec![];
 
@@ -64,6 +64,7 @@ impl Perf {
         }
 
         try_join_all(requests).await?;
+        client.wait_idle().await?;
 
         return Ok(());
 

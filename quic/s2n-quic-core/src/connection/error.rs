@@ -55,6 +55,9 @@ pub enum Error {
     /// The handshake has taken longer to complete than the configured max handshake duration
     MaxHandshakeDurationExceeded { max_handshake_duration: Duration },
 
+    /// The connection attempt was rejected because the endpoint is closing
+    EndpointClosing,
+
     /// The connection was closed due to an unspecified reason
     Unspecified,
 }
@@ -105,6 +108,9 @@ impl fmt::Display for Error {
                 "The connection was closed because the handshake took longer than the max handshake \
                 duration of {:?}", max_handshake_duration
             ),
+            Self::EndpointClosing => {
+                write!(f, "The connection attempt was rejected because the endpoint is closing")
+            }
             Self::Unspecified => {
                 write!(f, "The connection was closed due to an unspecified reason")
             }
@@ -185,6 +191,7 @@ pub fn as_frame<'a, F: connection::close::Formatter>(
         }
         Error::MinTransferRateViolation { .. } => None,
         Error::MaxHandshakeDurationExceeded { .. } => None,
+        Error::EndpointClosing => None,
         Error::Unspecified => {
             let error =
                 transport::Error::INTERNAL_ERROR.with_reason("an unspecified error occurred");
@@ -266,6 +273,7 @@ impl From<Error> for std::io::ErrorKind {
             Error::StreamIdExhausted => ErrorKind::Other,
             Error::MinTransferRateViolation { .. } => ErrorKind::Other,
             Error::MaxHandshakeDurationExceeded { .. } => ErrorKind::Other,
+            Error::EndpointClosing { .. } => ErrorKind::Other,
             Error::Unspecified => ErrorKind::Other,
         }
     }
