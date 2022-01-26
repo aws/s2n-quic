@@ -259,12 +259,26 @@ impl ToTokens for Output {
                     fn create_connection_context(&mut self, meta: &ConnectionMeta, info: &ConnectionInfo) -> Self::ConnectionContext;
 
                     /// The period at which `on_supervisor_timeout` is called
+                    ///
+                    /// If multiple `event::Subscriber`s are composed together, the minimum `supervisor_timeout`
+                    /// across all `event::Subscriber`s will be used.
+                    ///
+                    /// If the `supervisor_timeout()` is `None` across all `event::Subscriber`s, connection supervision
+                    /// will cease for the remaining lifetime of the connection and `on_supervisor_timeout` will no longer
+                    /// be called.
+                    ///
+                    /// It is recommended to avoid setting this value less than ~100ms, as short durations
+                    /// may lead to higher CPU utilization.
                     #[allow(unused_variables)]
                     fn supervisor_timeout(&mut self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> Option<Duration> {
                         None
                     }
 
                     /// Called for each `supervisor_timeout` to determine any action to take on the connection based on the `supervisor::Outcome`
+                    ///
+                    /// If multiple `event::Subscriber`s are composed together, the minimum `supervisor_timeout`
+                    /// across all `event::Subscriber`s will be used, and thus `on_supervisor_timeout` may be called
+                    /// earlier than the `supervisor_timeout` for a given `event::Subscriber` implementation.
                     #[allow(unused_variables)]
                     fn on_supervisor_timeout(&mut self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> supervisor::Outcome {
                         supervisor::Outcome::default()
