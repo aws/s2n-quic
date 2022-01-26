@@ -3004,17 +3004,20 @@ mod supervisor {
         pub connection_count: usize,
         #[doc = r" The address of the peer"]
         pub remote_address: SocketAddress<'a>,
+        pub is_handshaking: bool,
     }
     impl<'a> Context<'a> {
         pub fn new(
             inflight_handshakes: usize,
             connection_count: usize,
             remote_address: &'a crate::inet::SocketAddress,
+            is_handshaking: bool,
         ) -> Self {
             Self {
                 inflight_handshakes,
                 connection_count,
                 remote_address: remote_address.into_event(),
+                is_handshaking,
             }
         }
     }

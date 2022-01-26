@@ -910,6 +910,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
                     self.handshake_connections(),
                     self.count(),
                     &remote_address,
+                    conn.is_handshaking(),
                 );
                 func(conn, &context);
                 conn.interests()
