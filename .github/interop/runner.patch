@@ -146,6 +146,17 @@ index c2d6d1f..844bbd5 100644
  
  print("\nPulling the iperf endpoint...")
  os.system("docker pull martenseemann/quic-interop-iperf-endpoint")
+diff --git a/requirements.txt b/requirements.txt
+index fff6217..a22ef1f 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,4 +1,4 @@
+ pycrypto
+ termcolor
+ prettytable
+-pyshark
+\ No newline at end of file
++pyshark==0.4.3
 diff --git a/testcases.py b/testcases.py
 index 1d81d25..7260408 100644
 --- a/testcases.py
