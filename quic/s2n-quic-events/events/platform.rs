@@ -68,9 +68,9 @@ enum PlatformFeatureConfiguration {
     MaxMtu { mtu: u16 },
 }
 
-#[event("platform:event_loop_information")]
+#[event("platform:event_loop_wakeup")]
 #[subject(endpoint)]
-struct PlatformEventLoopInformation {
+struct PlatformEventLoopWakeup {
     timeout_expired: bool,
     rx_ready: bool,
     tx_ready: bool,
