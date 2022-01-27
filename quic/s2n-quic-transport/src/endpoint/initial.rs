@@ -280,6 +280,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             endpoint_context.event_subscriber,
         )?;
 
+        println!("------- endpoint mod, handle_initial_packet");
         connection
             .handle_cleartext_initial_packet(
                 datagram,

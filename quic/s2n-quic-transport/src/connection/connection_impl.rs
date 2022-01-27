@@ -1066,6 +1066,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 ),
             });
 
+            println!("------- conn impl handle_initial_packet");
             self.handle_cleartext_initial_packet(
                 datagram,
                 path_id,
