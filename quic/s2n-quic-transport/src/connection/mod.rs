@@ -7,7 +7,7 @@ use crate::{
     endpoint, path::MaxMtu, recovery::congestion_controller, space::PacketSpaceManager,
     wakeup_queue::WakeupHandle,
 };
-use s2n_quic_core::{connection, event, time::Timestamp};
+use s2n_quic_core::{connection, event, event::supervisor, time::Timestamp};
 
 mod api;
 mod api_provider;
@@ -75,6 +75,8 @@ pub struct Parameters<'a, Cfg: endpoint::Config> {
     pub max_mtu: MaxMtu,
     /// The context that should be passed to all related connection events
     pub event_context: <Cfg::EventSubscriber as event::Subscriber>::ConnectionContext,
+    /// The context passed to the connection supervisor
+    pub supervisor_context: &'a supervisor::Context<'a>,
     /// The event subscriber for the endpoint
     pub event_subscriber: &'a mut Cfg::EventSubscriber,
 }

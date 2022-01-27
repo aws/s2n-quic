@@ -33,7 +33,10 @@ use intrusive_collections::{
 use s2n_quic_core::{
     application,
     application::Sni,
-    event::query::{Query, QueryMut},
+    event::{
+        query::{Query, QueryMut},
+        supervisor,
+    },
     inet::SocketAddress,
     recovery::K_GRANULARITY,
     time::Timestamp,
@@ -324,6 +327,8 @@ struct InterestLists<C: connection::Trait, L: connection::Lock<C>> {
     waiting_for_open: BTreeMap<InternalConnectionId, ConnectionSender>,
     /// Inflight handshake count
     handshake_connections: usize,
+    /// Total connection count
+    connection_count: usize,
 }
 
 impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
@@ -335,6 +340,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
             waiting_for_timeout: RBTree::new(WaitingForTimeoutAdapter::new()),
             waiting_for_open: BTreeMap::new(),
             handshake_connections: 0,
+            connection_count: 0,
         }
     }
 
@@ -529,6 +535,8 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
         remove_connection_from_list!(waiting_for_transmission, waiting_for_transmission_link);
         remove_connection_from_list!(waiting_for_connection_id, waiting_for_connection_id_link);
         remove_connection_from_list!(waiting_for_timeout, waiting_for_timeout_link);
+
+        self.connection_count -= 1;
     }
 }
 
@@ -735,9 +743,6 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         let connection = L::new(connection);
         let connection = Arc::new(ConnectionNode::new(connection, internal_connection_id));
 
-        // Increment the inflight handshakes counter because we have accepted a new connection
-        self.interest_lists.handshake_connections += 1;
-
         if self
             .interest_lists
             .update_interests(
@@ -749,12 +754,20 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
             .is_ok()
         {
             self.connection_map.insert(connection);
+            // Increment the inflight handshakes and total connection counter because we have accepted a new connection
+            self.interest_lists.handshake_connections += 1;
+            self.interest_lists.connection_count += 1;
             self.ensure_counter_consistency();
         }
     }
 
     pub fn handshake_connections(&self) -> usize {
         self.interest_lists.handshake_connections
+    }
+
+    /// Returns the total number of connections
+    pub fn len(&self) -> usize {
+        self.interest_lists.connection_count
     }
 
     /// Looks up the `Connection` with the given ID and executes the provided function
@@ -856,6 +869,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         if cfg!(debug_assertions) {
             let expected = self.count_handshaking_connections();
             assert_eq!(expected, self.interest_lists.handshake_connections);
+            assert_eq!(self.len(), self.connection_map.iter().count());
         }
     }
 
@@ -891,7 +905,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
     /// and executes the given function on each `Connection`
     pub fn iterate_timeout_list<F>(&mut self, now: Timestamp, mut func: F)
     where
-        F: FnMut(&mut C),
+        F: FnMut(&mut C, &supervisor::Context),
     {
         loop {
             let mut cursor = self.interest_lists.waiting_for_timeout.front_mut();
@@ -925,7 +939,16 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
             connection.timeout.set(None);
 
             let mut interests = match connection.inner.write(|conn| {
-                func(conn);
+                let remote_address = conn
+                    .remote_address()
+                    .expect("Remote address should be available");
+                let context = supervisor::Context::new(
+                    self.handshake_connections(),
+                    self.len(),
+                    &remote_address,
+                    conn.is_handshaking(),
+                );
+                func(conn, &context);
                 conn.interests()
             }) {
                 Ok(result) => result,

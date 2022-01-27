@@ -3,12 +3,7 @@
 
 //! Manages all timers inside a Connection
 
-use core::time::Duration;
 use s2n_quic_core::time::{timer, Timer};
-
-/// The interval at which the transfer rate of the connection is compared to
-/// the configured min transfer rate
-pub const MIN_TRANSFER_RATE_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Stores connection-level timer state
 #[derive(Debug, Default)]
@@ -29,10 +24,10 @@ pub struct ConnectionTimers {
     pub initial_id_expiration_timer: Timer,
     /// The timer for pacing transmission of packets
     pub pacing_timer: Timer,
-    /// The timer for evaluating if the transfer rate is below the min transfer rate
-    pub min_transfer_rate_timer: Timer,
     /// The timer for closing the connection if the handshake is still in progress
     pub max_handshake_duration_timer: Timer,
+    /// The timer for calling the connection supervisor
+    pub supervisor_timer: Timer,
 }
 
 impl ConnectionTimers {
@@ -41,8 +36,8 @@ impl ConnectionTimers {
         self.local_idle_timer.cancel();
         self.initial_id_expiration_timer.cancel();
         self.pacing_timer.cancel();
-        self.min_transfer_rate_timer.cancel();
         self.max_handshake_duration_timer.cancel();
+        self.supervisor_timer.cancel();
     }
 }
 
@@ -53,8 +48,8 @@ impl timer::Provider for ConnectionTimers {
         self.peer_idle_timer.timers(query)?;
         self.initial_id_expiration_timer.timers(query)?;
         self.pacing_timer.timers(query)?;
-        self.min_transfer_rate_timer.timers(query)?;
         self.max_handshake_duration_timer.timers(query)?;
+        self.supervisor_timer.timers(query)?;
 
         Ok(())
     }

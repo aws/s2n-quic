@@ -7,7 +7,6 @@ use crate::{
     connection::{
         self,
         close_sender::CloseSender,
-        connection_timers::MIN_TRANSFER_RATE_INTERVAL,
         id::{ConnectionInfo, Interest},
         limits::Limits,
         local_id_registry::LocalIdRegistrationError,
@@ -28,7 +27,6 @@ use crate::{
 use bytes::Bytes;
 use core::{
     fmt,
-    ops::Deref,
     task::{Context, Poll},
     time::Duration,
 };
@@ -38,7 +36,8 @@ use s2n_quic_core::{
     connection::{id::Generator as _, InitialId, PeerId},
     counter::Counter,
     crypto::{tls, CryptoSuite},
-    event::{self, ConnectionPublisher as _, IntoEvent as _},
+    endpoint::Location,
+    event::{self, supervisor, ConnectionPublisher as _, IntoEvent as _, Subscriber},
     inet::{DatagramInfo, SocketAddress},
     io::tx,
     packet::{
@@ -167,7 +166,7 @@ pub struct ConnectionImpl<Config: endpoint::Config> {
     /// Holds the handle for waking up the endpoint from a application call
     wakeup_handle: WakeupHandle<InternalConnectionId>,
     event_context: EventContext<Config>,
-    bytes_progressed: Counter<u64>,
+    bytes_progressed: Counter<u64>, // TODO: move to events
 }
 
 struct EventContext<Config: endpoint::Config> {
@@ -306,13 +305,6 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             // Cancel the max handshake duration timer as the handshake has completed in time
             self.timers.max_handshake_duration_timer.cancel();
 
-            // Start the timer for evaluating the min transfer rate if one has been configured
-            if self.limits.min_transfer_bytes_per_second() > 0 {
-                self.timers
-                    .min_transfer_rate_timer
-                    .set(timestamp + MIN_TRANSFER_RATE_INTERVAL);
-            }
-
             // We don't expect any further initial packets on this connection, so start
             // a timer to remove the mapping from the initial ID to the internal connection ID
             // to give time for any delayed initial packets to arrive.
@@ -438,6 +430,61 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
 
         count
     }
+
+    fn on_supervisor_timeout(
+        &mut self,
+        timestamp: Timestamp,
+        subscriber: &mut Config::EventSubscriber,
+        supervisor_context: &supervisor::Context,
+    ) -> Result<(), connection::Error> {
+        let meta = event::builder::ConnectionMeta {
+            endpoint_type: Config::ENDPOINT_TYPE,
+            id: self.event_context.internal_connection_id.into(),
+            timestamp,
+        }
+        .into_event();
+
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#21.6
+        //# QUIC deployments SHOULD provide mitigations for the Slowloris
+        //# attacks, such as increasing the maximum number of clients the server
+        //# will allow, limiting the number of connections a single IP address is
+        //# allowed to make, imposing restrictions on the minimum transfer speed
+        //# a connection is allowed to have, and restricting the length of time
+        //# an endpoint is allowed to stay connected.
+
+        // Applications may implement the `on_supervisor_timeout` trait function to
+        // close the connection based on data in the supervisor context and in the
+        // connection and endpoint events.
+        match subscriber.on_supervisor_timeout(
+            &mut self.event_context.context,
+            &meta,
+            supervisor_context,
+        ) {
+            supervisor::Outcome::Continue => {}
+            supervisor::Outcome::Close { error_code } => {
+                return Err(connection::error::Error::Application {
+                    error: error_code,
+                    initiator: Location::Local,
+                })
+            }
+            supervisor::Outcome::ImmediateClose { reason } => {
+                return Err(connection::Error::ImmediateClose { reason })
+            }
+            _ => {
+                unreachable!()
+            }
+        }
+
+        if let Some(duration) = subscriber.supervisor_timeout(
+            &mut self.event_context.context,
+            &meta,
+            supervisor_context,
+        ) {
+            self.timers.supervisor_timer.set(timestamp + duration);
+        }
+
+        Ok(())
+    }
 }
 
 impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
@@ -505,6 +552,23 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         if Config::ENDPOINT_TYPE.is_client() {
             connection.update_crypto_state(parameters.timestamp, parameters.event_subscriber)?;
+        }
+
+        let meta = event::builder::ConnectionMeta {
+            endpoint_type: Config::ENDPOINT_TYPE,
+            id: connection.internal_connection_id().into(),
+            timestamp: parameters.timestamp,
+        };
+
+        if let Some(duration) = parameters.event_subscriber.supervisor_timeout(
+            &mut connection.event_context.context,
+            &meta.into_event(),
+            parameters.supervisor_context,
+        ) {
+            connection
+                .timers
+                .supervisor_timer
+                .set(parameters.timestamp + duration);
         }
 
         connection
@@ -798,6 +862,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         &mut self,
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
+        supervisor_context: &supervisor::Context,
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), connection::Error> {
@@ -855,32 +920,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         if self
             .timers
-            .min_transfer_rate_timer
+            .supervisor_timer
             .poll_expiration(timestamp)
             .is_ready()
         {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#21.6
-            //# QUIC deployments SHOULD provide mitigations for the Slowloris
-            //# attacks, such as increasing the maximum number of clients the server
-            //# will allow, limiting the number of connections a single IP address is
-            //# allowed to make, imposing restrictions on the minimum transfer speed
-            //# a connection is allowed to have, and restricting the length of time
-            //# an endpoint is allowed to stay connected.
-
-            // If the min transfer rate interval is 1 second, we don't need to convert the rate
-            debug_assert_eq!(MIN_TRANSFER_RATE_INTERVAL, Duration::from_secs(1));
-
-            if self.bytes_progressed < self.limits.min_transfer_bytes_per_second() as u64 {
-                return Err(connection::Error::MinTransferRateViolation {
-                    bytes_per_second: *self.bytes_progressed.deref() as u32,
-                    min_bytes_per_second: self.limits.min_transfer_bytes_per_second(),
-                });
-            }
-
-            self.bytes_progressed = Counter::default();
-            self.timers
-                .min_transfer_rate_timer
-                .set(timestamp + MIN_TRANSFER_RATE_INTERVAL);
+            self.on_supervisor_timeout(timestamp, subscriber, supervisor_context)?;
         }
 
         // TODO: enable this check once all of the component timers are fixed

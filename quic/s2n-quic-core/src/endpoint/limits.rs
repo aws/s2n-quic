@@ -35,6 +35,9 @@ pub struct ConnectionAttempt<'a> {
     /// Number of handshakes the have begun but not completed
     pub inflight_handshakes: usize,
 
+    /// Number of open connections
+    pub connection_count: usize,
+
     /// The unverified address of the connecting peer
     /// This address comes from the datagram
     pub remote_address: SocketAddress<'a>,
@@ -42,9 +45,14 @@ pub struct ConnectionAttempt<'a> {
 
 impl<'a> ConnectionAttempt<'a> {
     #[doc(hidden)]
-    pub fn new(inflight_handshakes: usize, remote_address: &'a inet::SocketAddress) -> Self {
+    pub fn new(
+        inflight_handshakes: usize,
+        connection_count: usize,
+        remote_address: &'a inet::SocketAddress,
+    ) -> Self {
         Self {
             inflight_handshakes,
+            connection_count,
             remote_address: remote_address.into_event(),
         }
     }

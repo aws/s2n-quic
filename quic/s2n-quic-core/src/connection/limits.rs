@@ -50,7 +50,6 @@ pub struct Limits {
     pub(crate) ack_elicitation_interval: u8,
     pub(crate) ack_ranges_limit: u8,
     pub(crate) max_send_buffer_size: u32,
-    pub(crate) min_transfer_bytes_per_second: u32,
     pub(crate) max_handshake_duration: Duration,
 }
 
@@ -86,7 +85,6 @@ impl Limits {
             ack_elicitation_interval: ack::Settings::RECOMMENDED.ack_elicitation_interval,
             ack_ranges_limit: ack::Settings::RECOMMENDED.ack_ranges_limit,
             max_send_buffer_size: stream::Limits::RECOMMENDED.max_send_buffer_size,
-            min_transfer_bytes_per_second: 0,
             max_handshake_duration: MAX_HANDSHAKE_DURATION_DEFAULT,
         }
     }
@@ -132,11 +130,6 @@ impl Limits {
     setter!(with_ack_elicitation_interval, ack_elicitation_interval, u8);
     setter!(with_max_ack_ranges, ack_ranges_limit, u8);
     setter!(with_max_send_buffer_size, max_send_buffer_size, u32);
-    setter!(
-        with_min_transfer_bytes_per_second,
-        min_transfer_bytes_per_second,
-        u32
-    );
     setter!(
         with_max_handshake_duration,
         max_handshake_duration,
@@ -185,10 +178,6 @@ impl Limits {
 
     pub fn max_idle_timeout(&self) -> Option<Duration> {
         self.max_idle_timeout.as_duration()
-    }
-
-    pub fn min_transfer_bytes_per_second(&self) -> u32 {
-        self.min_transfer_bytes_per_second
     }
 
     pub fn max_handshake_duration(&self) -> Duration {

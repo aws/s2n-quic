@@ -29,7 +29,7 @@ use s2n_quic_core::{
     },
     crypto::{tls, tls::Endpoint as _, CryptoSuite, InitialKey},
     endpoint::{limits::Outcome, Limiter as _},
-    event::{self, EndpointPublisher as _, IntoEvent, Subscriber as _},
+    event::{self, supervisor, EndpointPublisher as _, IntoEvent, Subscriber as _},
     inet::{datagram, DatagramInfo},
     io::{rx, tx},
     packet::{initial::ProtectedInitial, ProtectedPacket},
@@ -329,6 +329,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         let attempt = s2n_quic_core::endpoint::limits::ConnectionAttempt::new(
             self.connections.handshake_connections(),
+            self.connections.len(),
             &remote_address,
         );
 
@@ -888,22 +889,24 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let close_packet_buffer = &mut self.close_packet_buffer;
         let endpoint_context = self.config.context();
 
-        self.connections.iterate_timeout_list(timestamp, |conn| {
-            if let Err(error) = conn.on_timeout(
-                connection_id_mapper,
-                timestamp,
-                endpoint_context.random_generator,
-                endpoint_context.event_subscriber,
-            ) {
-                conn.close(
-                    error,
-                    endpoint_context.connection_close_formatter,
-                    close_packet_buffer,
+        self.connections
+            .iterate_timeout_list(timestamp, |conn, supervisor_context| {
+                if let Err(error) = conn.on_timeout(
+                    connection_id_mapper,
                     timestamp,
+                    supervisor_context,
+                    endpoint_context.random_generator,
                     endpoint_context.event_subscriber,
-                );
-            }
-        });
+                ) {
+                    conn.close(
+                        error,
+                        endpoint_context.connection_close_formatter,
+                        close_packet_buffer,
+                        timestamp,
+                        endpoint_context.event_subscriber,
+                    );
+                }
+            });
 
         // allow connections to generate a new connection id
         self.connections
@@ -1012,6 +1015,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
             id: internal_connection_id.into(),
             timestamp,
         };
+        let supervisor_context = supervisor::Context::new(
+            self.connections.handshake_connections(),
+            self.connections.len(),
+            &remote_address,
+            true,
+        );
         let mut event_context = endpoint_context.event_subscriber.create_connection_context(
             &meta.clone().into_event(),
             &event::builder::ConnectionInfo {}.into_event(),
@@ -1090,6 +1099,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             limits,
             max_mtu: self.max_mtu,
             event_context,
+            supervisor_context: &supervisor_context,
             event_subscriber: endpoint_context.event_subscriber,
         };
         let connection = <Cfg as crate::endpoint::Config>::Connection::new(connection_parameters)?;

@@ -103,6 +103,7 @@ impl connection::Trait for TestConnection {
         &mut self,
         _connection_id_mapper: &mut connection::ConnectionIdMapper,
         _timestamp: Timestamp,
+        _supervisor_context: &supervisor::Context,
         _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), connection::Error> {
@@ -262,7 +263,7 @@ impl connection::Trait for TestConnection {
     }
 
     fn remote_address(&self) -> Result<SocketAddress, connection::Error> {
-        todo!()
+        Ok(SocketAddress::default())
     }
 
     fn error(&self) -> Option<connection::Error> {
@@ -300,7 +301,7 @@ struct TestLock {
 }
 
 impl TestLock {
-    fn poision(&self) {
+    fn poison(&self) {
         if let Ok(mut lock) = self.connection.lock() {
             lock.1 = true;
         }
@@ -442,7 +443,7 @@ fn container_test() {
                 }
                 Operation::Timeout(ms) => {
                     now += Duration::from_millis(*ms as _);
-                    container.iterate_timeout_list(now, |conn| {
+                    container.iterate_timeout_list(now, |conn, _context| {
                         assert!(
                             conn.interests.timeout.take().unwrap() <= now,
                             "connections should only be present when timeout interest is expressed"
@@ -486,7 +487,7 @@ fn container_test() {
                     let id = connections[index];
 
                     let node = container.connection_map.find(&id).get().unwrap();
-                    node.inner.poision();
+                    node.inner.poison();
 
                     let mut was_called = false;
                     container.with_connection(id, |_conn| {

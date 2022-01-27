@@ -46,14 +46,11 @@ pub enum Error {
     /// All Stream IDs for Streams on the given connection had been exhausted
     StreamIdExhausted,
 
-    /// The transfer rate of the connection has decreased below the configured min transfer rate
-    MinTransferRateViolation {
-        bytes_per_second: u32,
-        min_bytes_per_second: u32,
-    },
-
     /// The handshake has taken longer to complete than the configured max handshake duration
     MaxHandshakeDurationExceeded { max_handshake_duration: Duration },
+
+    /// The connection should be closed immediately without notifying the peer
+    ImmediateClose { reason: &'static str },
 
     /// The connection attempt was rejected because the endpoint is closing
     EndpointClosing,
@@ -98,15 +95,14 @@ impl fmt::Display for Error {
                 f,
                 "All Stream IDs for Streams on the given connection had been exhausted"
             ),
-            Self::MinTransferRateViolation { bytes_per_second, min_bytes_per_second } => write!(
-                f,
-                "The connection was closed because the transfer rate of {} B/s was below the minimum \
-                transfer rate of {} B/s", bytes_per_second, min_bytes_per_second
-            ),
             Self::MaxHandshakeDurationExceeded { max_handshake_duration } => write!(
               f,
                 "The connection was closed because the handshake took longer than the max handshake \
                 duration of {:?}", max_handshake_duration
+            ),
+            Self::ImmediateClose { reason } => write!(
+                f,
+                "The connection was closed due to: {}", reason
             ),
             Self::EndpointClosing => {
                 write!(f, "The connection attempt was rejected because the endpoint is closing")
@@ -189,8 +185,8 @@ pub fn as_frame<'a, F: connection::close::Formatter>(
 
             Some((early, one_rtt))
         }
-        Error::MinTransferRateViolation { .. } => None,
         Error::MaxHandshakeDurationExceeded { .. } => None,
+        Error::ImmediateClose { .. } => None,
         Error::EndpointClosing => None,
         Error::Unspecified => {
             let error =
@@ -271,8 +267,8 @@ impl From<Error> for std::io::ErrorKind {
             Error::IdleTimerExpired => ErrorKind::TimedOut,
             Error::NoValidPath => ErrorKind::Other,
             Error::StreamIdExhausted => ErrorKind::Other,
-            Error::MinTransferRateViolation { .. } => ErrorKind::Other,
             Error::MaxHandshakeDurationExceeded { .. } => ErrorKind::Other,
+            Error::ImmediateClose { .. } => ErrorKind::Other,
             Error::EndpointClosing { .. } => ErrorKind::Other,
             Error::Unspecified => ErrorKind::Other,
         }
