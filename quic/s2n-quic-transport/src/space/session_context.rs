@@ -180,6 +180,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
         let (peer_parameters, remaining) =
             ClientTransportParameters::decode(decoder).map_err(|_| {
+                println!("-------- error due to invalid transport parameter bytes");
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4
                 //# An endpoint SHOULD treat receipt of
                 //# duplicate transport parameters as a connection error of type
@@ -189,6 +190,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             })?;
 
         remaining.ensure_empty().map(|_| {
+            println!("-------- error due to invalid remaining bytes");
             transport::Error::TRANSPORT_PARAMETER_ERROR
                 .with_reason("Invalid bytes in transport parameters")
         })?;
@@ -199,6 +201,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             },
         );
 
+        println!("--------calling validate_initial_source_connection_id");
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
         //# An endpoint MUST treat the following as a connection error of type
         //# TRANSPORT_PARAMETER_ERROR or PROTOCOL_VIOLATION:
@@ -244,11 +247,14 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             //# Connection ID fields of Initial packets that it sent (and received,
             //# for servers).  Endpoints MUST validate that received transport
             //# parameters match received connection ID values.
+            println!("--------calling initial_source_connection_id present");
             if peer_value.as_bytes().ct_eq(expected_value).not().into() {
+                println!("--------calling initial_source_connection_id invalid");
                 return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
                     .with_reason("initial_source_connection_id mismatch"));
             }
         } else {
+            println!("--------calling initial_source_connection_id missing");
             //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
             //# An endpoint MUST treat the absence of the
             //# initial_source_connection_id transport parameter from either endpoint
@@ -341,6 +347,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             *self.zero_rtt_crypto = None;
         }
 
+        println!("--------calling on_client_params");
         // Parse transport parameters
         let param_decoder = DecoderBuffer::new(application_parameters.transport_parameters);
         let (peer_flow_control_limits, active_connection_id_limit) = match Config::ENDPOINT_TYPE {

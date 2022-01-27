@@ -251,10 +251,13 @@ impl tls::Session for Session {
                             self.rx_phase.transition();
                         }
                         quic::KeyChange::OneRtt { keys, next } => {
+                            println!("--------one_rtt key_change");
                             let (key, header_key) = OneRttKey::new(keys, next, cipher_suite);
                             let application_parameters = self.application_parameters()?;
+                            println!("--------one_rtt key_change");
 
                             context.on_one_rtt_keys(key, header_key, application_parameters)?;
+                            println!("--------one_rtt key_change callback succeeded");
 
                             // Transition the tx_phase to Application
                             // Note: the rx_phase is transitioned when the handshake is complete
