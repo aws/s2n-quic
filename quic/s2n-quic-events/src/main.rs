@@ -599,8 +599,12 @@ impl ToTokens for Output {
                     fn snapshot(&self, output: &[String]) {
                         use std::path::{Path, Component};
                         let value = output.join("\n");
+
+                        let thread = std::thread::current();
+                        let function_name = thread.name().unwrap();
+
                         let test_path = Path::new(self.0.file().trim_end_matches(".rs"));
-                        let snapshot_name = test_path
+                        let module_path = test_path
                             .components()
                             .filter_map(|comp| match comp {
                                 Component::Normal(comp) => comp.to_str(),
@@ -608,7 +612,7 @@ impl ToTokens for Output {
                             })
                             .chain(Some("events"))
                             .collect::<Vec<_>>()
-                            .join("__");
+                            .join("::");
 
                         let current_dir = std::env::current_dir().unwrap();
 
@@ -616,7 +620,8 @@ impl ToTokens for Output {
                             insta::_macro_support::AutoName.into(),
                             &value,
                             current_dir.to_str().unwrap(),
-                            &snapshot_name,
+                            function_name,
+                            &module_path,
                             self.0.file(),
                             self.0.line(),
                             "",
