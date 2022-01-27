@@ -648,6 +648,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             return;
         }
 
+        // no connection found associated with the connection_id. possibly a new connection attempt
         match (Cfg::ENDPOINT_TYPE, packet) {
             (s2n_quic_core::endpoint::Type::Server, ProtectedPacket::Initial(packet)) => {
                 let source_connection_id =
@@ -753,6 +754,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     publisher.on_endpoint_connection_attempt_failed(
                         event::builder::EndpointConnectionAttemptFailed { error: err },
                     );
+                    println!("---------- why no error??, {}", err);
                 }
             }
             (_, packet) => {

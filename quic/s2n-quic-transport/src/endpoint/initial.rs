@@ -280,7 +280,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             endpoint_context.event_subscriber,
         )?;
 
-        println!("------- endpoint mod, handle_initial_packet");
+        println!("------- endpoint initial, handle_initial_packet");
         connection
             .handle_cleartext_initial_packet(
                 datagram,
@@ -292,8 +292,14 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .map_err(|err| {
                 use connection::ProcessingError;
                 match err {
-                    ProcessingError::CryptoError(err) => err.into(),
-                    ProcessingError::ConnectionError(err) => err,
+                    ProcessingError::CryptoError(err) => {
+                        println!("------CryptoError, {}", err);
+                        err.into()
+                    }
+                    ProcessingError::ConnectionError(err) => {
+                        println!("------ConnectionError, {}", err);
+                        err
+                    }
                     // this is the first packet this connection has received
                     // so getting this error would be incorrect
                     ProcessingError::DuplicatePacket => {
