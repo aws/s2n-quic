@@ -137,5 +137,14 @@ jobs:
           # wait for the server to boot
           sleep 3
           ./h3spec localhost 4433 \
-            --match "MUST send TRANSPORT_PARAMETER_ERROR if initial_source_connection_id is missing [Transport 7.3]"
+            --match "MUST send TRANSPORT_PARAMETER_ERROR if initial_source_connection_id is missing [Transport 7.3]" \
+            # --match "MUST send TRANSPORT_PARAMETER_ERROR if original_destination_connection_id is received [Transport 18.2]" \
+            # --match "MUST send TRANSPORT_PARAMETER_ERROR if preferred_address, is received [Transport 18.2]" \
+            # --match "MUST send TRANSPORT_PARAMETER_ERROR if retry_source_connection_id is received [Transport 18.2]" \
+            # --match "MUST send TRANSPORT_PARAMETER_ERROR if stateless_reset_token is received [Transport 18.2]" \
+            # --match "MUST send TRANSPORT_PARAMETER_ERROR if max_udp_payload_size < 1200 [Transport 7.4 and 18.2]" \
+            # --match "MUST send TRANSPORT_PARAMETER_ERROR if ack_delay_exponen > 20 [Transport 7.4 and 18.2]" \
+            # --match "MUST send TRANSPORT_PARAMETER_ERROR if max_ack_delay >= 2^14 [Transport 7.4 and 18.2]" \
+            # --match "MUST send no_application_protocol TLS alert if no application protocols are supported [TLS 8.1]" \
+
 
