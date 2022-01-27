@@ -1,14 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::Result;
+use crate::{tls, tls::TlsProviders, Result};
 use futures::future::try_join_all;
 use s2n_quic::{
     client,
-    provider::{
-        event, io,
-        tls::default::certificate::{Certificate, IntoCertificate},
-    },
+    provider::{event, io},
     Client, Connection,
 };
 use std::path::PathBuf;
@@ -41,6 +38,9 @@ pub struct Perf {
 
     #[structopt(short, long, default_value = "::")]
     local_ip: std::net::IpAddr,
+
+    #[structopt(long, default_value = "s2n-tls")]
+    tls: TlsProviders,
 }
 
 impl Perf {
@@ -93,14 +93,6 @@ impl Perf {
     }
 
     fn client(&self) -> Result<Client> {
-        let ca = self.ca()?;
-
-        let tls = s2n_quic::provider::tls::default::Client::builder()
-            .with_certificate(ca)?
-            .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
-            .with_key_logging()?
-            .build()?;
-
         // TODO support specifying a local addr
         let mut io_builder =
             io::Default::builder().with_receive_address((self.local_ip, 0u16).into())?;
@@ -113,19 +105,23 @@ impl Perf {
 
         let client = Client::builder()
             .with_io(io)?
-            .with_tls(tls)?
-            .with_event(event::disabled::Provider)?
-            .start()
-            .unwrap();
+            .with_event(event::disabled::Provider)?;
+        let client = if matches!(self.tls, TlsProviders::S2N) {
+            let tls = s2n_quic::provider::tls::s2n_tls::Client::builder()
+                .with_certificate(tls::s2n_ca(self.ca.as_ref())?)?
+                .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+                .with_key_logging()?
+                .build()?;
+            client.with_tls(tls)?.start().unwrap()
+        } else {
+            let tls = s2n_quic::provider::tls::rustls::Client::builder()
+                .with_certificate(tls::rustls_ca(self.ca.as_ref())?)?
+                .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+                .with_key_logging()?
+                .build()?;
+            client.with_tls(tls)?.start().unwrap()
+        };
 
         Ok(client)
-    }
-
-    fn ca(&self) -> Result<Certificate> {
-        Ok(if let Some(pathbuf) = self.ca.as_ref() {
-            pathbuf.into_certificate()?
-        } else {
-            s2n_quic_core::crypto::tls::testing::certificates::CERT_PEM.into_certificate()?
-        })
     }
 }

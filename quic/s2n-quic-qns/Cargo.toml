@@ -13,7 +13,7 @@ default = []
 bytes = { version = "1", default-features = false }
 dhat = { version = "0.2", optional = true }
 futures = "0.3"
-s2n-quic = { path = "../s2n-quic", features = ["tracing-provider", "connection-migration"] }
+s2n-quic = { path = "../s2n-quic", features = ["tracing-provider", "connection-migration", "rustls", "s2n-tls"] }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
 structopt = "0.3"
 tokio = { version = "1", features = ["full"] }
