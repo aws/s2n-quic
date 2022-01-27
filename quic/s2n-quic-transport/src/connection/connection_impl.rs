@@ -551,6 +551,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         };
 
         if Config::ENDPOINT_TYPE.is_client() {
+            println!("------new update_crypto_state");
             connection.update_crypto_state(parameters.timestamp, parameters.event_subscriber)?;
         }
 
@@ -1119,6 +1120,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             )?;
 
             // try to move the crypto state machine forward
+            println!("------handle_cleartext_initial_packet update_crypto_state");
             self.update_crypto_state(datagram.timestamp, subscriber)?;
 
             // notify the connection a packet was processed
@@ -1197,6 +1199,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             self.path_manager[path_id].on_handshake_packet();
 
             // try to move the crypto state machine forward
+            println!("------handle_handshake_packet update_crypto_state");
             self.update_crypto_state(datagram.timestamp, subscriber)?;
 
             // notify the connection a packet was processed
