@@ -60,13 +60,16 @@ impl Session {
                 // > https://docs.rs/rustls/0.19.0/rustls/quic/trait.QuicExt.html#tymethod.get_alert
                 // > Emit the TLS description code of a fatal alert, if one has arisen.
 
-                self.connection
+                let e: transport::Error = self
+                    .connection
                     .alert()
                     .map(|alert| CryptoError {
                         code: alert.get_u8(),
                         reason,
                     })
-                    .unwrap_or(CryptoError::INTERNAL_ERROR)
+                    .unwrap_or(CryptoError::HANDSHAKE_FAILURE)
+                    .into();
+                e
             })?;
         Ok(())
     }
