@@ -816,6 +816,21 @@ pub mod api {
             Ok(())
         }
     }
+    impl<'a> core::fmt::Display for SocketAddress<'a> {
+        fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+            match self {
+                Self::IpV4 { ip, port } => {
+                    let addr = crate::inet::SocketAddressV4::new(**ip, *port);
+                    addr.fmt(f)?;
+                }
+                Self::IpV6 { ip, port } => {
+                    let addr = crate::inet::SocketAddressV6::new(**ip, *port);
+                    addr.fmt(f)?;
+                }
+            }
+            Ok(())
+        }
+    }
     impl<'a> SocketAddress<'a> {
         #[inline]
         pub fn ip(&self) -> &'a [u8] {
