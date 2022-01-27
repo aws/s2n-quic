@@ -620,7 +620,7 @@ impl ToTokens for Output {
                             insta::_macro_support::AutoName.into(),
                             &value,
                             current_dir.to_str().unwrap(),
-                            &function_name,
+                            function_name,
                             &module_path,
                             self.0.file(),
                             self.0.line(),
