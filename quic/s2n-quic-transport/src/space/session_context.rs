@@ -178,7 +178,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
     ) -> Result<(InitialFlowControlLimits, ActiveConnectionIdLimit), transport::Error> {
         debug_assert!(Config::ENDPOINT_TYPE.is_server());
 
-        let (peer_parameters, remaining) =
+        let (peer_parameters, _remaining) =
             ClientTransportParameters::decode(decoder).map_err(|_| {
                 println!("-------- error due to invalid transport parameter bytes");
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4
@@ -189,11 +189,11 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                     .with_reason("Invalid transport parameters")
             })?;
 
-        remaining.ensure_empty().map(|_| {
-            println!("-------- error due to invalid remaining bytes");
-            transport::Error::TRANSPORT_PARAMETER_ERROR
-                .with_reason("Invalid bytes in transport parameters")
-        })?;
+        // remaining.ensure_empty().map(|_| {
+        //     println!("-------- error due to invalid remaining bytes");
+        //     transport::Error::TRANSPORT_PARAMETER_ERROR
+        //         .with_reason("Invalid bytes in transport parameters")
+        // })?;
 
         self.publisher.on_transport_parameters_received(
             event::builder::TransportParametersReceived {
