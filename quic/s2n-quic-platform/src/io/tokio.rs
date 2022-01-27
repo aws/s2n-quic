@@ -541,6 +541,12 @@ impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
                     subscriber,
                 );
 
+                publisher.on_platform_event_loop_wakeup(event::builder::PlatformEventLoopWakeup {
+                    timeout_expired: timeout_result,
+                    rx_ready: rx_result.is_some(),
+                    tx_ready: tx_result.is_some(),
+                });
+
                 if let Some(guard) = tx_result {
                     if let Ok(result) = guard?.try_io(|socket| tx.tx(socket, &mut publisher)) {
                         result?;

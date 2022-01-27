@@ -723,6 +723,16 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub struct PlatformEventLoopWakeup {
+        pub timeout_expired: bool,
+        pub rx_ready: bool,
+        pub tx_ready: bool,
+    }
+    impl Event for PlatformEventLoopWakeup {
+        const NAME: &'static str = "platform:event_loop_wakeup";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     pub enum PlatformFeatureConfiguration {
         #[non_exhaustive]
         Gso {
@@ -1623,6 +1633,23 @@ pub mod api {
                 };
                 let api::PlatformFeatureConfigured { configuration } = event;
                 tracing :: event ! (target : "platform_feature_configured" , parent : parent , tracing :: Level :: DEBUG , configuration = tracing :: field :: debug (configuration));
+            }
+            #[inline]
+            fn on_platform_event_loop_wakeup(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::PlatformEventLoopWakeup,
+            ) {
+                let parent = match meta.endpoint_type {
+                    api::EndpointType::Client {} => self.client.id(),
+                    api::EndpointType::Server {} => self.server.id(),
+                };
+                let api::PlatformEventLoopWakeup {
+                    timeout_expired,
+                    rx_ready,
+                    tx_ready,
+                } = event;
+                tracing :: event ! (target : "platform_event_loop_wakeup" , parent : parent , tracing :: Level :: DEBUG , timeout_expired = tracing :: field :: debug (timeout_expired) , rx_ready = tracing :: field :: debug (rx_ready) , tx_ready = tracing :: field :: debug (tx_ready));
             }
         }
     }
@@ -2942,6 +2969,27 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct PlatformEventLoopWakeup {
+        pub timeout_expired: bool,
+        pub rx_ready: bool,
+        pub tx_ready: bool,
+    }
+    impl IntoEvent<api::PlatformEventLoopWakeup> for PlatformEventLoopWakeup {
+        #[inline]
+        fn into_event(self) -> api::PlatformEventLoopWakeup {
+            let PlatformEventLoopWakeup {
+                timeout_expired,
+                rx_ready,
+                tx_ready,
+            } = self;
+            api::PlatformEventLoopWakeup {
+                timeout_expired: timeout_expired.into_event(),
+                rx_ready: rx_ready.into_event(),
+                tx_ready: tx_ready.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub enum PlatformFeatureConfiguration {
         Gso {
             #[doc = " The maximum number of segments that can be sent in a single GSO packet"]
@@ -3554,6 +3602,16 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `PlatformEventLoopWakeup` event is triggered"]
+        #[inline]
+        fn on_platform_event_loop_wakeup(
+            &mut self,
+            meta: &EndpointMeta,
+            event: &PlatformEventLoopWakeup,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = r" Called for each event that relates to the endpoint and all connections"]
         #[inline]
         fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
@@ -4001,6 +4059,15 @@ mod traits {
             (self.1).on_platform_feature_configured(meta, event);
         }
         #[inline]
+        fn on_platform_event_loop_wakeup(
+            &mut self,
+            meta: &EndpointMeta,
+            event: &PlatformEventLoopWakeup,
+        ) {
+            (self.0).on_platform_event_loop_wakeup(meta, event);
+            (self.1).on_platform_event_loop_wakeup(meta, event);
+        }
+        #[inline]
         fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
             self.0.on_event(meta, event);
             self.1.on_event(meta, event);
@@ -4064,6 +4131,8 @@ mod traits {
         fn on_platform_rx_error(&mut self, event: builder::PlatformRxError);
         #[doc = "Publishes a `PlatformFeatureConfigured` event to the publisher's subscriber"]
         fn on_platform_feature_configured(&mut self, event: builder::PlatformFeatureConfigured);
+        #[doc = "Publishes a `PlatformEventLoopWakeup` event to the publisher's subscriber"]
+        fn on_platform_event_loop_wakeup(&mut self, event: builder::PlatformEventLoopWakeup);
         #[doc = r" Returns the QUIC version, if any"]
         fn quic_version(&self) -> Option<u32>;
     }
@@ -4174,6 +4243,13 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_platform_feature_configured(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_platform_event_loop_wakeup(&mut self, event: builder::PlatformEventLoopWakeup) {
+            let event = event.into_event();
+            self.subscriber
+                .on_platform_event_loop_wakeup(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -4568,6 +4644,7 @@ pub mod testing {
         pub platform_rx: u32,
         pub platform_rx_error: u32,
         pub platform_feature_configured: u32,
+        pub platform_event_loop_wakeup: u32,
     }
     impl Drop for Subscriber {
         fn drop(&mut self) {
@@ -4631,6 +4708,7 @@ pub mod testing {
                 platform_rx: 0,
                 platform_rx_error: 0,
                 platform_feature_configured: 0,
+                platform_event_loop_wakeup: 0,
             }
         }
     }
@@ -5019,6 +5097,14 @@ pub mod testing {
             self.platform_feature_configured += 1;
             self.output.push(format!("{:?} {:?}", meta, event));
         }
+        fn on_platform_event_loop_wakeup(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::PlatformEventLoopWakeup,
+        ) {
+            self.platform_event_loop_wakeup += 1;
+            self.output.push(format!("{:?} {:?}", meta, event));
+        }
     }
     #[derive(Clone, Debug)]
     pub struct Publisher {
@@ -5063,6 +5149,7 @@ pub mod testing {
         pub platform_rx: u32,
         pub platform_rx_error: u32,
         pub platform_feature_configured: u32,
+        pub platform_event_loop_wakeup: u32,
     }
     impl Publisher {
         #[doc = r" Creates a publisher with snapshot assertions enabled"]
@@ -5116,6 +5203,7 @@ pub mod testing {
                 platform_rx: 0,
                 platform_rx_error: 0,
                 platform_feature_configured: 0,
+                platform_event_loop_wakeup: 0,
             }
         }
     }
@@ -5180,6 +5268,11 @@ pub mod testing {
         }
         fn on_platform_feature_configured(&mut self, event: builder::PlatformFeatureConfigured) {
             self.platform_feature_configured += 1;
+            let event = event.into_event();
+            self.output.push(format!("{:?}", event));
+        }
+        fn on_platform_event_loop_wakeup(&mut self, event: builder::PlatformEventLoopWakeup) {
+            self.platform_event_loop_wakeup += 1;
             let event = event.into_event();
             self.output.push(format!("{:?}", event));
         }

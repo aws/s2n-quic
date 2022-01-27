@@ -67,3 +67,11 @@ enum PlatformFeatureConfiguration {
     /// Emitted when the maximum transmission unit is configured
     MaxMtu { mtu: u16 },
 }
+
+#[event("platform:event_loop_wakeup")]
+#[subject(endpoint)]
+struct PlatformEventLoopWakeup {
+    timeout_expired: bool,
+    rx_ready: bool,
+    tx_ready: bool,
+}
