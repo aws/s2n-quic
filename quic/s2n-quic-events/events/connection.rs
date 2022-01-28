@@ -215,3 +215,13 @@ struct TlsClientHello<'a> {
 struct TlsServerHello<'a> {
     payload: &'a [&'a [u8]],
 }
+
+#[event("transport:rx_stream_progress")]
+struct RxStreamProgress {
+    bytes: usize,
+}
+
+#[event("transport:tx_stream_progress")]
+struct TxStreamProgress {
+    bytes: usize,
+}

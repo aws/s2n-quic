@@ -129,6 +129,12 @@ impl OutgoingConnectionFlowController {
         self.inner.borrow().available_window
     }
 
+    /// Returns the amount of flow control window that has been acquired
+    pub fn acquired_window(&self) -> VarInt {
+        let inner = self.inner.borrow();
+        inner.total_available_window - inner.available_window
+    }
+
     /// Acquires a part of the window from the `ConnectionFlowController` in
     /// order to be able to use it for sending data. `desired` is the window
     /// size that is intended to be borrowed. The returned window size might

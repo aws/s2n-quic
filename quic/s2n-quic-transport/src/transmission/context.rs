@@ -103,7 +103,6 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
         self.buffer.encode(frame);
         self.outcome.ack_elicitation |= frame.ack_elicitation();
         self.outcome.is_congestion_controlled |= frame.is_congestion_controlled();
-        self.outcome.bytes_progressed += frame.bytes_progressed();
 
         self.publisher.on_frame_sent(event::builder::FrameSent {
             packet_header: event::builder::PacketHeader::new(
@@ -128,7 +127,6 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
         self.buffer.encode(frame);
         self.outcome.ack_elicitation |= frame.ack_elicitation();
         self.outcome.is_congestion_controlled |= frame.is_congestion_controlled();
-        self.outcome.bytes_progressed += frame.bytes_progressed();
 
         self.publisher.on_frame_sent(event::builder::FrameSent {
             packet_header: event::builder::PacketHeader::new(

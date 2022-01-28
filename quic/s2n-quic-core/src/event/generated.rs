@@ -602,6 +602,22 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub struct RxStreamProgress {
+        pub bytes: usize,
+    }
+    impl Event for RxStreamProgress {
+        const NAME: &'static str = "transport:rx_stream_progress";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct TxStreamProgress {
+        pub bytes: usize,
+    }
+    impl Event for TxStreamProgress {
+        const NAME: &'static str = "transport:tx_stream_progress";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " QUIC version"]
     pub struct VersionInformation<'a> {
         pub server_versions: &'a [u32],
@@ -1496,6 +1512,28 @@ pub mod api {
                 let id = context.id();
                 let api::TlsServerHello { payload } = event;
                 tracing :: event ! (target : "tls_server_hello" , parent : id , tracing :: Level :: DEBUG , payload = tracing :: field :: debug (payload));
+            }
+            #[inline]
+            fn on_rx_stream_progress(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::RxStreamProgress,
+            ) {
+                let id = context.id();
+                let api::RxStreamProgress { bytes } = event;
+                tracing :: event ! (target : "rx_stream_progress" , parent : id , tracing :: Level :: DEBUG , bytes = tracing :: field :: debug (bytes));
+            }
+            #[inline]
+            fn on_tx_stream_progress(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::TxStreamProgress,
+            ) {
+                let id = context.id();
+                let api::TxStreamProgress { bytes } = event;
+                tracing :: event ! (target : "tx_stream_progress" , parent : id , tracing :: Level :: DEBUG , bytes = tracing :: field :: debug (bytes));
             }
             #[inline]
             fn on_version_information(
@@ -2795,6 +2833,32 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct RxStreamProgress {
+        pub bytes: usize,
+    }
+    impl IntoEvent<api::RxStreamProgress> for RxStreamProgress {
+        #[inline]
+        fn into_event(self) -> api::RxStreamProgress {
+            let RxStreamProgress { bytes } = self;
+            api::RxStreamProgress {
+                bytes: bytes.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct TxStreamProgress {
+        pub bytes: usize,
+    }
+    impl IntoEvent<api::TxStreamProgress> for TxStreamProgress {
+        #[inline]
+        fn into_event(self) -> api::TxStreamProgress {
+            let TxStreamProgress { bytes } = self;
+            api::TxStreamProgress {
+                bytes: bytes.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " QUIC version"]
     pub struct VersionInformation<'a> {
         pub server_versions: &'a [u32],
@@ -3525,6 +3589,30 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `RxStreamProgress` event is triggered"]
+        #[inline]
+        fn on_rx_stream_progress(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &RxStreamProgress,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `TxStreamProgress` event is triggered"]
+        #[inline]
+        fn on_tx_stream_progress(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &TxStreamProgress,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `VersionInformation` event is triggered"]
         #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
@@ -3994,6 +4082,26 @@ mod traits {
             (self.1).on_tls_server_hello(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_rx_stream_progress(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &RxStreamProgress,
+        ) {
+            (self.0).on_rx_stream_progress(&mut context.0, meta, event);
+            (self.1).on_rx_stream_progress(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_tx_stream_progress(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &TxStreamProgress,
+        ) {
+            (self.0).on_tx_stream_progress(&mut context.0, meta, event);
+            (self.1).on_tx_stream_progress(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
             (self.0).on_version_information(meta, event);
             (self.1).on_version_information(meta, event);
@@ -4327,6 +4435,10 @@ mod traits {
         fn on_tls_client_hello(&mut self, event: builder::TlsClientHello);
         #[doc = "Publishes a `TlsServerHello` event to the publisher's subscriber"]
         fn on_tls_server_hello(&mut self, event: builder::TlsServerHello);
+        #[doc = "Publishes a `RxStreamProgress` event to the publisher's subscriber"]
+        fn on_rx_stream_progress(&mut self, event: builder::RxStreamProgress);
+        #[doc = "Publishes a `TxStreamProgress` event to the publisher's subscriber"]
+        fn on_tx_stream_progress(&mut self, event: builder::TxStreamProgress);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
         fn quic_version(&self) -> u32;
     }
@@ -4608,6 +4720,24 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_rx_stream_progress(&mut self, event: builder::RxStreamProgress) {
+            let event = event.into_event();
+            self.subscriber
+                .on_rx_stream_progress(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_tx_stream_progress(&mut self, event: builder::TxStreamProgress) {
+            let event = event.into_event();
+            self.subscriber
+                .on_tx_stream_progress(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn quic_version(&self) -> u32 {
             self.quic_version
         }
@@ -4647,6 +4777,8 @@ pub mod testing {
         pub handshake_status_updated: u32,
         pub tls_client_hello: u32,
         pub tls_server_hello: u32,
+        pub rx_stream_progress: u32,
+        pub tx_stream_progress: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -4711,6 +4843,8 @@ pub mod testing {
                 handshake_status_updated: 0,
                 tls_client_hello: 0,
                 tls_server_hello: 0,
+                rx_stream_progress: 0,
+                tx_stream_progress: 0,
                 version_information: 0,
                 endpoint_packet_sent: 0,
                 endpoint_packet_received: 0,
@@ -5032,6 +5166,28 @@ pub mod testing {
                 self.output.push(format!("{:?} {:?}", meta, event));
             }
         }
+        fn on_rx_stream_progress(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::RxStreamProgress,
+        ) {
+            self.rx_stream_progress += 1;
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
+        }
+        fn on_tx_stream_progress(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::TxStreamProgress,
+        ) {
+            self.tx_stream_progress += 1;
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
+        }
         fn on_version_information(
             &mut self,
             meta: &api::EndpointMeta,
@@ -5152,6 +5308,8 @@ pub mod testing {
         pub handshake_status_updated: u32,
         pub tls_client_hello: u32,
         pub tls_server_hello: u32,
+        pub rx_stream_progress: u32,
+        pub tx_stream_progress: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -5206,6 +5364,8 @@ pub mod testing {
                 handshake_status_updated: 0,
                 tls_client_hello: 0,
                 tls_server_hello: 0,
+                rx_stream_progress: 0,
+                tx_stream_progress: 0,
                 version_information: 0,
                 endpoint_packet_sent: 0,
                 endpoint_packet_received: 0,
@@ -5483,6 +5643,20 @@ pub mod testing {
         }
         fn on_tls_server_hello(&mut self, event: builder::TlsServerHello) {
             self.tls_server_hello += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
+        }
+        fn on_rx_stream_progress(&mut self, event: builder::RxStreamProgress) {
+            self.rx_stream_progress += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
+        }
+        fn on_tx_stream_progress(&mut self, event: builder::TxStreamProgress) {
+            self.tx_stream_progress += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 self.output.push(format!("{:?}", event));

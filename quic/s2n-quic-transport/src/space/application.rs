@@ -165,6 +165,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         let timestamp = context.timestamp;
         let transmission_mode = context.transmission_mode;
         let min_packet_len = context.min_packet_len;
+        let bytes_progressed = self.stream_manager.outgoing_bytes_progressed();
 
         let payload = transmission::Transmission {
             config: <PhantomData<Config>>::default(),
@@ -209,6 +210,9 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                         buffer,
                     )
                 })?;
+
+        outcome.bytes_progressed +=
+            (self.stream_manager.outgoing_bytes_progressed() - bytes_progressed).as_u64() as usize;
 
         let (recovery_manager, mut recovery_context) = self.recovery(
             handshake_status,
