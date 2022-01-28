@@ -641,13 +641,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         datagram.timestamp,
                         endpoint_context.event_subscriber,
                     );
-                    conn.close(
-                        err,
-                        endpoint_context.connection_close_formatter,
-                        close_packet_buffer,
-                        datagram.timestamp,
-                        endpoint_context.event_subscriber,
-                    );
                     return Err(());
                 }
 
