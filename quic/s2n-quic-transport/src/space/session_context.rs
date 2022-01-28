@@ -189,11 +189,11 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                     .with_reason("Invalid transport parameters")
             })?;
 
-        remaining.ensure_empty().map(|_| {
-            println!("-------- error due to invalid remaining bytes");
-            transport::Error::TRANSPORT_PARAMETER_ERROR
-                .with_reason("Invalid bytes in transport parameters")
-        })?;
+        // remaining.ensure_empty().map(|_| {
+        //     println!("-------- error due to invalid remaining bytes");
+        //     transport::Error::TRANSPORT_PARAMETER_ERROR
+        //         .with_reason("Invalid bytes in transport parameters")
+        // })?;
 
         self.publisher.on_transport_parameters_received(
             event::builder::TransportParametersReceived {
