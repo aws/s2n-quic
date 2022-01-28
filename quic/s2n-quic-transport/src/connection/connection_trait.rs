@@ -225,6 +225,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         // any special logic required to meet this requirement as each packet is handled
         // independently.
 
+        println!("------handle_packet");
         match packet {
             ProtectedPacket::Short(packet) => {
                 self.handle_short_packet(datagram, path_id, packet, random_generator, subscriber)
@@ -297,6 +298,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                     break;
                 }
 
+                println!("------handle_packet from handle_remaining_packets");
                 let result =
                     self.handle_packet(datagram, path_id, packet, random_generator, subscriber);
 

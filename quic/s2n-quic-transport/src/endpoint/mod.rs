@@ -557,6 +557,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 //# An endpoint
                 //# that is closing is not required to process any received frame.
 
+                println!("------handle_packet from endpoint mod");
                 if let Err(err) = conn.handle_packet(
                     datagram,
                     path_id,

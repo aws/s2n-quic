@@ -332,15 +332,26 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 err
             })?;
 
-        connection.handle_remaining_packets(
-            &header.path,
-            datagram,
-            path_id,
-            endpoint_context.connection_id_format,
-            remaining,
-            endpoint_context.random_generator,
-            endpoint_context.event_subscriber,
-        )?;
+        connection
+            .handle_remaining_packets(
+                &header.path,
+                datagram,
+                path_id,
+                endpoint_context.connection_id_format,
+                remaining,
+                endpoint_context.random_generator,
+                endpoint_context.event_subscriber,
+            )
+            .map_err(|err| {
+                connection.close(
+                    err,
+                    endpoint_context.connection_close_formatter,
+                    close_packet_buffer,
+                    datagram.timestamp,
+                    endpoint_context.event_subscriber,
+                );
+                err
+            })?;
 
         //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.3
         //= type=TODO
