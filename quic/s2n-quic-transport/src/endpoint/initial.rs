@@ -294,11 +294,56 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 use connection::ProcessingError;
                 let err = match err {
                     ProcessingError::CryptoError(err) => {
-                        println!("------CryptoError, {}", err);
+                        println!("------handle_cleartext_initial_packet CryptoError, {}", err);
                         err.into()
                     }
                     ProcessingError::ConnectionError(err) => {
-                        println!("------ConnectionError, {}", err);
+                        match err {
+                            s2n_quic_core::connection::Error::Closed { initiator: _ } => {
+                                println!("------{}", err)
+                            }
+                            s2n_quic_core::connection::Error::Transport {
+                                error,
+                                initiator: _,
+                            } => {
+                                println!("------transport {}", error);
+                            }
+                            s2n_quic_core::connection::Error::Application {
+                                error,
+                                initiator: _,
+                            } => {
+                                println!("------{:?}", error);
+                            }
+                            s2n_quic_core::connection::Error::StatelessReset => {
+                                println!("------{}", err)
+                            }
+                            s2n_quic_core::connection::Error::IdleTimerExpired => {
+                                println!("------{}", err)
+                            }
+                            s2n_quic_core::connection::Error::NoValidPath => {
+                                println!("------{}", err)
+                            }
+                            s2n_quic_core::connection::Error::StreamIdExhausted => {
+                                println!("------{}", err)
+                            }
+                            s2n_quic_core::connection::Error::MaxHandshakeDurationExceeded {
+                                max_handshake_duration: _,
+                            } => println!("------{}", err),
+                            s2n_quic_core::connection::Error::ImmediateClose { reason: _ } => {
+                                println!("------{}", err)
+                            }
+                            s2n_quic_core::connection::Error::EndpointClosing => {
+                                println!("------{}", err)
+                            }
+                            s2n_quic_core::connection::Error::Unspecified => {
+                                println!("------{}", err)
+                            }
+                            _ => {}
+                        };
+                        println!(
+                            "------handle_cleartext_initial_packet  ConnectionError, {}",
+                            err
+                        );
                         err
                     }
                     // this is the first packet this connection has received
@@ -330,6 +375,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                     datagram.timestamp,
                     endpoint_context.event_subscriber,
                 );
+
                 err
             })?;
 
