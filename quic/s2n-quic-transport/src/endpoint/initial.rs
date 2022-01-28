@@ -306,13 +306,13 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                                 error,
                                 initiator: _,
                             } => {
-                                println!("------transport {}", error);
+                                println!("------transport {:?}", error);
                             }
                             s2n_quic_core::connection::Error::Application {
                                 error,
                                 initiator: _,
                             } => {
-                                println!("------{:?}", error);
+                                println!("------{:#?}", error);
                             }
                             s2n_quic_core::connection::Error::StatelessReset => {
                                 println!("------{}", err)
