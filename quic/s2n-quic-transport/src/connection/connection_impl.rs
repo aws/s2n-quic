@@ -34,10 +34,13 @@ use s2n_quic_core::{
     application,
     application::Sni,
     connection::{id::Generator as _, InitialId, PeerId},
-    counter::Counter,
     crypto::{tls, CryptoSuite},
     endpoint::Location,
-    event::{self, supervisor, ConnectionPublisher as _, IntoEvent as _, Subscriber},
+    event::{
+        self,
+        builder::{RxStreamProgress, TxStreamProgress},
+        supervisor, ConnectionPublisher as _, IntoEvent as _, Subscriber,
+    },
     inet::{DatagramInfo, SocketAddress},
     io::tx,
     packet::{
@@ -166,7 +169,6 @@ pub struct ConnectionImpl<Config: endpoint::Config> {
     /// Holds the handle for waking up the endpoint from a application call
     wakeup_handle: WakeupHandle<InternalConnectionId>,
     event_context: EventContext<Config>,
-    bytes_progressed: Counter<u64>, // TODO: move to events
 }
 
 struct EventContext<Config: endpoint::Config> {
@@ -341,7 +343,11 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         Some(duration)
     }
 
-    fn on_processed_packet(&mut self, packet: &ProcessedPacket) {
+    fn on_processed_packet(
+        &mut self,
+        packet: &ProcessedPacket,
+        subscriber: &mut Config::EventSubscriber,
+    ) {
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
         //# An endpoint restarts its idle timer when a packet from its peer is
         //# received and processed successfully.
@@ -352,7 +358,15 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             self.timers.reset_peer_idle_timer_on_send = true;
         }
 
-        self.bytes_progressed += packet.bytes_progressed as u64;
+        let mut publisher = self
+            .event_context
+            .publisher(packet.datagram.timestamp, subscriber);
+
+        if packet.bytes_progressed > 0 {
+            publisher.on_rx_stream_progress(RxStreamProgress {
+                bytes: packet.bytes_progressed,
+            })
+        }
     }
 
     fn on_ack_eliciting_packet_sent(&mut self, timestamp: Timestamp) {
@@ -547,7 +561,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             space_manager: parameters.space_manager,
             wakeup_handle: parameters.wakeup_handle,
             event_context,
-            bytes_progressed: Counter::default(),
         };
 
         if Config::ENDPOINT_TYPE.is_client() {
@@ -827,7 +840,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     subscriber,
                 );
 
-                self.bytes_progressed += outcome.bytes_progressed as u64;
+                let mut publisher = self.event_context.publisher(timestamp, subscriber);
+                if outcome.bytes_progressed > 0 {
+                    publisher.on_tx_stream_progress(TxStreamProgress {
+                        bytes: outcome.bytes_progressed,
+                    })
+                }
             }
             ConnectionState::Closing => {
                 let mut publisher = self.event_context.publisher(timestamp, subscriber);
@@ -1122,7 +1140,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             self.update_crypto_state(datagram.timestamp, subscriber)?;
 
             // notify the connection a packet was processed
-            self.on_processed_packet(&processed_packet);
+            self.on_processed_packet(&processed_packet, subscriber);
         }
 
         Ok(())
@@ -1200,7 +1218,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             self.update_crypto_state(datagram.timestamp, subscriber)?;
 
             // notify the connection a packet was processed
-            self.on_processed_packet(&processed_packet);
+            self.on_processed_packet(&processed_packet, subscriber);
         }
 
         Ok(())
@@ -1269,6 +1287,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut publisher,
             )?;
 
+            publisher.on_packet_received(event::builder::PacketReceived {
+                packet_header: event::builder::PacketHeader::new(
+                    packet.packet_number,
+                    publisher.quic_version(),
+                ),
+            });
+
             // Connection Ids are issued to the peer after the handshake is
             // confirmed and the handshake space is discarded. Therefore only
             // short packets need to be processed for local_connection_id changes.
@@ -1292,14 +1317,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             )?;
 
             // notify the connection a packet was processed
-            self.on_processed_packet(&processed_packet);
-            let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
-            publisher.on_packet_received(event::builder::PacketReceived {
-                packet_header: event::builder::PacketHeader::new(
-                    packet.packet_number,
-                    publisher.quic_version(),
-                ),
-            });
+            self.on_processed_packet(&processed_packet, subscriber);
         }
 
         Ok(())
