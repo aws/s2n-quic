@@ -588,6 +588,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             //# Initial packet.
                         }
                         ProcessingError::ConnectionError(err) => {
+                            println!("------and call close when calling handle_packet: {}", err);
                             conn.close(
                                 err,
                                 endpoint_context.connection_close_formatter,
@@ -629,6 +630,17 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     endpoint_context.random_generator,
                     endpoint_context.event_subscriber,
                 ) {
+                    println!(
+                        "------and call close when calling handle_remaining_packets: {}",
+                        err
+                    );
+                    conn.close(
+                        err,
+                        endpoint_context.connection_close_formatter,
+                        close_packet_buffer,
+                        datagram.timestamp,
+                        endpoint_context.event_subscriber,
+                    );
                     conn.close(
                         err,
                         endpoint_context.connection_close_formatter,
