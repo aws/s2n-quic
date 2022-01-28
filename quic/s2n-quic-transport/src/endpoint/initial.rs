@@ -281,6 +281,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         )?;
 
         println!("------- endpoint initial, handle_initial_packet");
+        let close_packet_buffer = &mut self.close_packet_buffer;
         connection
             .handle_cleartext_initial_packet(
                 datagram,
@@ -291,7 +292,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             )
             .map_err(|err| {
                 use connection::ProcessingError;
-                match err {
+                let err = match err {
                     ProcessingError::CryptoError(err) => {
                         println!("------CryptoError, {}", err);
                         err.into()
@@ -319,7 +320,16 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                         );
                         transport::Error::INTERNAL_ERROR.into()
                     }
-                }
+                };
+
+                connection.close(
+                    err,
+                    endpoint_context.connection_close_formatter,
+                    close_packet_buffer,
+                    datagram.timestamp,
+                    endpoint_context.event_subscriber,
+                );
+                err
             })?;
 
         connection.handle_remaining_packets(
