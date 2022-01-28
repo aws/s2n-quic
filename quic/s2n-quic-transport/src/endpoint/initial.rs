@@ -322,6 +322,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                     }
                 };
 
+                println!("------we are also calling close for handle_intial, {}", err);
                 connection.close(
                     err,
                     endpoint_context.connection_close_formatter,

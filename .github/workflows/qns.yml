@@ -133,7 +133,7 @@ jobs:
         #      https://github.com/awslabs/s2n-quic/issues/858
         #      https://github.com/awslabs/s2n-quic/issues/859
         run: |
-          ./s2n-quic-qns-debug interop server --port 4433 &
+          RUST_LOG="debug" ./s2n-quic-qns-debug interop server --port 4433 &
           # wait for the server to boot
           sleep 3
           ./h3spec localhost 4433 \
