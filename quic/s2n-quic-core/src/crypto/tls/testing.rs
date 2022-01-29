@@ -169,7 +169,7 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
                 );
                 assert!(
                     self.client.1.application.crypto.is_some(),
-                    "server should have application keys after reading the ServerFinished"
+                    "client should have application keys after reading the ServerHello"
                 );
                 assert!(
                     self.client.1.handshake_complete,
