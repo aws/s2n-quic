@@ -124,16 +124,72 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
 
     /// Continues progress of the handshake
     pub fn poll(&mut self) -> Result<(), transport::Error> {
-        assert!(
-            self.iterations < 10,
-            "handshake has iterated too many times: {:#?}",
-            self,
-        );
         self.client.0.poll(&mut self.client.1)?;
         self.server.0.poll(&mut self.server.1)?;
         self.client.1.transfer(&mut self.server.1);
         self.iterations += 1;
+
+        eprintln!("1/2 RTT");
+
+        self.check_progress();
+
         Ok(())
+    }
+
+    fn check_progress(&self) {
+        match self.iterations {
+            0 => unreachable!("check_progress is called after a single iteration"),
+            1 => {
+                assert!(
+                    !self.server.1.initial.rx.is_empty(),
+                    "client should send ClientHello"
+                );
+            }
+            2 => {
+                assert!(
+                    self.server.1.handshake.crypto.is_some(),
+                    "server should have handshake keys after reading the ClientHello"
+                );
+
+                // TODO remove this when s2n-tls fixes its key schedule
+                if !core::any::type_name::<S>().starts_with("s2n_quic_tls") {
+                    assert!(
+                        self.server.1.application.crypto.is_some(),
+                        "server should have application keys after reading the ClientHello"
+                    );
+                }
+
+                assert!(!self.server.1.handshake_complete);
+                assert!(!self.client.1.handshake_complete);
+            }
+            3 => {
+                assert!(
+                    self.client.1.handshake.crypto.is_some(),
+                    "client should have handshake keys after reading the ServerHello"
+                );
+                assert!(
+                    self.client.1.application.crypto.is_some(),
+                    "client should have application keys after reading the ServerHello"
+                );
+                assert!(
+                    self.client.1.handshake_complete,
+                    "client should complete the handshake"
+                );
+            }
+            4 => {
+                // TODO remove this when s2n-tls fixes its key schedule
+                assert!(
+                    self.server.1.application.crypto.is_some(),
+                    "server should have application keys after reading the ClientHello"
+                );
+
+                assert!(
+                    self.server.1.handshake_complete,
+                    "server should finish after reading the ClientFinished"
+                );
+            }
+            _ => panic!("handshake made too many iterations"),
+        }
     }
 
     /// Finished the test
