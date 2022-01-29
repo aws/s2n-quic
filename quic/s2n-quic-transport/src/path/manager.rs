@@ -562,7 +562,11 @@ impl<Config: endpoint::Config> Manager<Config> {
     //# A PATH_RESPONSE frame received on any network path validates the path
     //# on which the PATH_CHALLENGE was sent.
     #[inline]
-    pub fn on_path_response(&mut self, response: &frame::PathResponse) {
+    pub fn on_path_response<Pub: event::ConnectionPublisher>(
+        &mut self,
+        response: &frame::PathResponse,
+        publisher: &mut Pub,
+    ) {
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2
         //# A PATH_RESPONSE frame MUST be sent on the network path where the
         //# PATH_CHALLENGE frame was received.
@@ -583,6 +587,11 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         for (id, path) in self.paths.iter_mut().enumerate() {
             if path.on_path_response(response.data) {
+                let id = id as u64;
+                publisher.on_path_challenge_validated(event::builder::PathChallengeValidated {
+                    path: path_event!(path, id),
+                    challenge_data: path.challenge.get_challenge_data().into_event(),
+                });
                 // A path was validated so check if it becomes the new
                 // last_known_active_validated_path
                 if path.is_activated() {

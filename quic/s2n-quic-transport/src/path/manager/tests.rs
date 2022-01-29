@@ -344,7 +344,7 @@ fn validate_path_before_challenge_expiration() {
     let frame = s2n_quic_core::frame::PathResponse {
         data: &helper.second_expected_data,
     };
-    helper.manager.on_path_response(&frame);
+    helper.manager.on_path_response(&frame, &mut publisher);
 
     // Expectation 2:
     assert!(helper.manager[helper.second_path_id].is_validated());
@@ -411,7 +411,7 @@ fn dont_validate_path_if_path_challenge_is_abandoned() {
     let frame = s2n_quic_core::frame::PathResponse {
         data: &helper.second_expected_data,
     };
-    helper.manager.on_path_response(&frame);
+    helper.manager.on_path_response(&frame, &mut publisher);
 
     // Expectation 2:
     assert!(!helper.manager[helper.second_path_id].is_validated());
@@ -1633,7 +1633,7 @@ fn last_known_validated_path_should_update_on_path_response() {
     let frame = s2n_quic_core::frame::PathResponse {
         data: &first_expected_data,
     };
-    manager.on_path_response(&frame);
+    manager.on_path_response(&frame, &mut publisher);
     // Expectation 1:
     assert_eq!(manager.active_path_id(), second_path_id);
     // second

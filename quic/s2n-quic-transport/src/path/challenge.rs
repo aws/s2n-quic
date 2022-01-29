@@ -4,7 +4,7 @@
 use crate::{contexts::WriteContext, transmission};
 use s2n_quic_core::{
     ct::ConstantTimeEq,
-    frame,
+    event, frame,
     time::{timer, Duration, Timer, Timestamp},
 };
 
@@ -104,9 +104,18 @@ impl Challenge {
         }
     }
 
-    pub fn on_timeout(&mut self, timestamp: Timestamp) {
+    pub fn on_timeout<Pub: event::ConnectionPublisher>(
+        &mut self,
+        timestamp: Timestamp,
+        publisher: &mut Pub,
+        path: event::builder::Path,
+    ) {
         if self.abandon_timer.poll_expiration(timestamp).is_ready() {
             self.abandon();
+            publisher.on_path_challenge_abandoned(event::builder::PathChallengeAbandoned {
+                path,
+                challenge_data: self.get_challenge_data(),
+            });
         }
     }
 
@@ -135,6 +144,10 @@ impl Challenge {
         } else {
             false
         }
+    }
+
+    pub fn get_challenge_data(&self) -> &[u8] {
+        &self.data
     }
 }
 
@@ -330,14 +343,22 @@ mod tests {
         );
         helper.challenge.on_transmit(&mut context);
 
-        helper
-            .challenge
-            .on_timeout(expiration_time - Duration::from_millis(10));
+        let mut publisher = event::testing::Publisher::no_snapshot();
+        let path = event::builder::Path::test();
+
+        helper.challenge.on_timeout(
+            expiration_time - Duration::from_millis(10),
+            &mut publisher,
+            path,
+        );
         assert!(helper.challenge.is_pending());
 
-        helper
-            .challenge
-            .on_timeout(expiration_time + Duration::from_millis(10));
+        let path = event::builder::Path::test();
+        helper.challenge.on_timeout(
+            expiration_time + Duration::from_millis(10),
+            &mut publisher,
+            path,
+        );
         assert!(!helper.challenge.is_pending());
     }
 
@@ -356,18 +377,27 @@ mod tests {
         );
         helper.challenge.on_transmit(&mut context);
 
+        let mut publisher = event::testing::Publisher::no_snapshot();
+        let path = event::builder::Path::test();
+
         // Trigger:
-        helper
-            .challenge
-            .on_timeout(expiration_time + Duration::from_millis(10));
+        helper.challenge.on_timeout(
+            expiration_time + Duration::from_millis(10),
+            &mut publisher,
+            path,
+        );
 
         // Expectation:
         assert!(!helper.challenge.is_pending());
 
+        let path = event::builder::Path::test();
+
         // Trigger:
-        helper
-            .challenge
-            .on_timeout(expiration_time - Duration::from_millis(10));
+        helper.challenge.on_timeout(
+            expiration_time - Duration::from_millis(10),
+            &mut publisher,
+            path,
+        );
 
         // Expectation:
         assert!(!helper.challenge.is_pending());
@@ -390,8 +420,11 @@ mod tests {
 
         assert_eq!(challenge.state, State::InitialPathDisabled);
 
+        let mut publisher = event::testing::Publisher::no_snapshot();
+        let path = event::builder::Path::test();
+
         let large_expiration_time = now + Duration::from_secs(1_000_000);
-        challenge.on_timeout(large_expiration_time);
+        challenge.on_timeout(large_expiration_time, &mut publisher, path);
         assert_eq!(challenge.state, State::InitialPathDisabled);
     }
 
@@ -410,11 +443,16 @@ mod tests {
         );
         helper.challenge.on_transmit(&mut context);
 
+        let mut publisher = event::testing::Publisher::no_snapshot();
+        let path = event::builder::Path::test();
+
         assert!(helper.challenge.is_pending());
 
-        helper
-            .challenge
-            .on_timeout(expiration_time + Duration::from_millis(10));
+        helper.challenge.on_timeout(
+            expiration_time + Duration::from_millis(10),
+            &mut publisher,
+            path,
+        );
         assert!(!helper.challenge.is_pending());
     }
 

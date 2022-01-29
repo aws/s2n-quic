@@ -811,12 +811,13 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         Ok(())
     }
 
-    fn handle_path_response_frame(
+    fn handle_path_response_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: PathResponse,
         path_manager: &mut path::Manager<Config>,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        path_manager.on_path_response(&frame);
+        path_manager.on_path_response(&frame, publisher);
         Ok(())
     }
 

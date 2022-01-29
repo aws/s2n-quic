@@ -226,7 +226,8 @@ impl<Config: endpoint::Config> Path<Config> {
         random_generator: &mut Rnd,
         publisher: &mut Pub,
     ) {
-        self.challenge.on_timeout(timestamp);
+        self.challenge
+            .on_timeout(timestamp, publisher, path_event!(self, path_id));
         self.mtu_controller.on_timeout(timestamp);
         self.ecn_controller.on_timeout(
             timestamp,
