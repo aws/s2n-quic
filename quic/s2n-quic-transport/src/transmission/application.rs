@@ -160,6 +160,7 @@ impl<'a, S: Stream, Config: endpoint::Config> transmission::interest::Provider
         self.path_manager
             .active_path()
             .transmission_interest(query)?;
+        self.ping.transmission_interest(query)?;
         Ok(())
     }
 }

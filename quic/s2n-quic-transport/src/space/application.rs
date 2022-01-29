@@ -7,7 +7,10 @@ use crate::{
     path::{path_event, Path},
     processed_packet::ProcessedPacket,
     recovery,
-    space::{rx_packet_numbers::AckManager, HandshakeStatus, PacketSpace, TxPacketNumbers},
+    space::{
+        keep_alive::KeepAlive, rx_packet_numbers::AckManager, HandshakeStatus, PacketSpace,
+        TxPacketNumbers,
+    },
     stream::AbstractStreamManager,
     sync::flag,
     transmission,
@@ -67,6 +70,7 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     pub alpn: Bytes,
     pub sni: Option<Sni>,
     ping: flag::Ping,
+    keep_alive: KeepAlive,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager<Config>,
 }
@@ -87,12 +91,14 @@ impl<Config: endpoint::Config> fmt::Debug for ApplicationSpace<Config> {
 }
 
 impl<Config: endpoint::Config> ApplicationSpace<Config> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttKey,
         header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttHeaderKey,
         now: Timestamp,
         stream_manager: AbstractStreamManager<Config::Stream>,
         ack_manager: AckManager,
+        keep_alive: KeepAlive,
         sni: Option<Sni>,
         alpn: Bytes,
     ) -> Self {
@@ -108,6 +114,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             sni,
             alpn,
             ping: flag::Ping::default(),
+            keep_alive,
             processed_packet_numbers: SlidingWindow::default(),
             recovery_manager: recovery::Manager::new(PacketNumberSpace::ApplicationData),
         }
@@ -228,6 +235,11 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             &mut recovery_context,
             context.publisher,
         );
+
+        // reset the keep alive timer after sending an ack-eliciting packet
+        if outcome.ack_elicitation.is_ack_eliciting() {
+            self.keep_alive.reset(timestamp);
+        }
 
         context
             .publisher
@@ -375,6 +387,15 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         recovery_manager.on_timeout(timestamp, &mut context, publisher);
 
         self.stream_manager.on_timeout(timestamp);
+
+        if self.keep_alive.on_timeout(timestamp).is_ready() {
+            publisher.on_keep_alive_timer_expired(event::builder::KeepAliveTimerExpired {
+                timeout: self.keep_alive.period(),
+            });
+
+            // send a ping after timing out
+            self.ping();
+        }
     }
 
     /// Returns `true` if the recovery manager for this packet space requires a probe
@@ -385,6 +406,10 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
     pub fn ping(&mut self) {
         self.ping.send()
+    }
+
+    pub fn keep_alive(&mut self, enabled: bool) {
+        self.keep_alive.update(enabled);
     }
 
     /// Returns the Packet Number to be used when encoding outgoing packets
@@ -490,6 +515,11 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             return Err(ProcessingError::DuplicatePacket);
         }
 
+        if decrypted.is_ok() {
+            // reset the keep alive timer after receiving a packet
+            self.keep_alive.reset(datagram.timestamp);
+        }
+
         decrypted.map(|x| x.0)
     }
 }
@@ -501,6 +531,7 @@ impl<Config: endpoint::Config> timer::Provider for ApplicationSpace<Config> {
         self.recovery_manager.timers(query)?;
         self.key_set.timers(query)?;
         self.stream_manager.timers(query)?;
+        self.keep_alive.timers(query)?;
 
         Ok(())
     }

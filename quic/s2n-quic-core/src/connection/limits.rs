@@ -51,6 +51,7 @@ pub struct Limits {
     pub(crate) ack_ranges_limit: u8,
     pub(crate) max_send_buffer_size: u32,
     pub(crate) max_handshake_duration: Duration,
+    pub(crate) keep_alive_period: Duration,
 }
 
 impl Default for Limits {
@@ -86,6 +87,7 @@ impl Limits {
             ack_ranges_limit: ack::Settings::RECOMMENDED.ack_ranges_limit,
             max_send_buffer_size: stream::Limits::RECOMMENDED.max_send_buffer_size,
             max_handshake_duration: MAX_HANDSHAKE_DURATION_DEFAULT,
+            keep_alive_period: Duration::from_secs(20),
         }
     }
 
@@ -135,12 +137,17 @@ impl Limits {
         max_handshake_duration,
         Duration
     );
+    setter!(with_keep_alive_period, keep_alive_period, Duration);
 
+    // internal APIs
+
+    #[doc(hidden)]
     pub fn load_peer<A, B, C, D>(&mut self, peer_parameters: &TransportParameters<A, B, C, D>) {
         self.max_idle_timeout
             .load_peer(&peer_parameters.max_idle_timeout);
     }
 
+    #[doc(hidden)]
     pub const fn ack_settings(&self) -> ack::Settings {
         ack::Settings {
             ack_delay_exponent: self.ack_delay_exponent.as_u8(),
@@ -150,6 +157,7 @@ impl Limits {
         }
     }
 
+    #[doc(hidden)]
     pub const fn initial_flow_control_limits(&self) -> InitialFlowControlLimits {
         InitialFlowControlLimits {
             stream_limits: self.initial_stream_limits(),
@@ -159,6 +167,7 @@ impl Limits {
         }
     }
 
+    #[doc(hidden)]
     pub const fn initial_stream_limits(&self) -> InitialStreamLimits {
         InitialStreamLimits {
             max_data_bidi_local: self.bidirectional_local_data_window.as_varint(),
@@ -167,6 +176,7 @@ impl Limits {
         }
     }
 
+    #[doc(hidden)]
     pub const fn stream_limits(&self) -> stream::Limits {
         stream::Limits {
             max_send_buffer_size: self.max_send_buffer_size,
@@ -176,12 +186,19 @@ impl Limits {
         }
     }
 
+    #[doc(hidden)]
     pub fn max_idle_timeout(&self) -> Option<Duration> {
         self.max_idle_timeout.as_duration()
     }
 
+    #[doc(hidden)]
     pub fn max_handshake_duration(&self) -> Duration {
         self.max_handshake_duration
+    }
+
+    #[doc(hidden)]
+    pub fn keep_alive_period(&self) -> Duration {
+        self.keep_alive_period
     }
 }
 

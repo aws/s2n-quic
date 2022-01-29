@@ -637,6 +637,14 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub struct KeepAliveTimerExpired {
+        pub timeout: core::time::Duration,
+    }
+    impl Event for KeepAliveTimerExpired {
+        const NAME: &'static str = "connectivity::keep_alive_timer_expired";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " QUIC version"]
     pub struct VersionInformation<'a> {
         pub server_versions: &'a [u32],
@@ -1568,6 +1576,17 @@ pub mod api {
                 let id = context.id();
                 let api::TxStreamProgress { bytes } = event;
                 tracing :: event ! (target : "tx_stream_progress" , parent : id , tracing :: Level :: DEBUG , bytes = tracing :: field :: debug (bytes));
+            }
+            #[inline]
+            fn on_keep_alive_timer_expired(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::KeepAliveTimerExpired,
+            ) {
+                let id = context.id();
+                let api::KeepAliveTimerExpired { timeout } = event;
+                tracing :: event ! (target : "keep_alive_timer_expired" , parent : id , tracing :: Level :: DEBUG , timeout = tracing :: field :: debug (timeout));
             }
             #[inline]
             fn on_version_information(
@@ -2930,6 +2949,19 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct KeepAliveTimerExpired {
+        pub timeout: core::time::Duration,
+    }
+    impl IntoEvent<api::KeepAliveTimerExpired> for KeepAliveTimerExpired {
+        #[inline]
+        fn into_event(self) -> api::KeepAliveTimerExpired {
+            let KeepAliveTimerExpired { timeout } = self;
+            api::KeepAliveTimerExpired {
+                timeout: timeout.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " QUIC version"]
     pub struct VersionInformation<'a> {
         pub server_versions: &'a [u32],
@@ -3696,6 +3728,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `KeepAliveTimerExpired` event is triggered"]
+        #[inline]
+        fn on_keep_alive_timer_expired(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &KeepAliveTimerExpired,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `VersionInformation` event is triggered"]
         #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
@@ -4195,6 +4239,16 @@ mod traits {
             (self.1).on_tx_stream_progress(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_keep_alive_timer_expired(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &KeepAliveTimerExpired,
+        ) {
+            (self.0).on_keep_alive_timer_expired(&mut context.0, meta, event);
+            (self.1).on_keep_alive_timer_expired(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
             (self.0).on_version_information(meta, event);
             (self.1).on_version_information(meta, event);
@@ -4534,6 +4588,8 @@ mod traits {
         fn on_rx_stream_progress(&mut self, event: builder::RxStreamProgress);
         #[doc = "Publishes a `TxStreamProgress` event to the publisher's subscriber"]
         fn on_tx_stream_progress(&mut self, event: builder::TxStreamProgress);
+        #[doc = "Publishes a `KeepAliveTimerExpired` event to the publisher's subscriber"]
+        fn on_keep_alive_timer_expired(&mut self, event: builder::KeepAliveTimerExpired);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
         fn quic_version(&self) -> u32;
     }
@@ -4842,6 +4898,15 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_keep_alive_timer_expired(&mut self, event: builder::KeepAliveTimerExpired) {
+            let event = event.into_event();
+            self.subscriber
+                .on_keep_alive_timer_expired(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn quic_version(&self) -> u32 {
             self.quic_version
         }
@@ -4884,6 +4949,7 @@ pub mod testing {
         pub tls_server_hello: u32,
         pub rx_stream_progress: u32,
         pub tx_stream_progress: u32,
+        pub keep_alive_timer_expired: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -4951,6 +5017,7 @@ pub mod testing {
                 tls_server_hello: 0,
                 rx_stream_progress: 0,
                 tx_stream_progress: 0,
+                keep_alive_timer_expired: 0,
                 version_information: 0,
                 endpoint_packet_sent: 0,
                 endpoint_packet_received: 0,
@@ -5305,6 +5372,17 @@ pub mod testing {
                 self.output.push(format!("{:?} {:?}", meta, event));
             }
         }
+        fn on_keep_alive_timer_expired(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::KeepAliveTimerExpired,
+        ) {
+            self.keep_alive_timer_expired += 1;
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
+        }
         fn on_version_information(
             &mut self,
             meta: &api::EndpointMeta,
@@ -5428,6 +5506,7 @@ pub mod testing {
         pub tls_server_hello: u32,
         pub rx_stream_progress: u32,
         pub tx_stream_progress: u32,
+        pub keep_alive_timer_expired: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -5485,6 +5564,7 @@ pub mod testing {
                 tls_server_hello: 0,
                 rx_stream_progress: 0,
                 tx_stream_progress: 0,
+                keep_alive_timer_expired: 0,
                 version_information: 0,
                 endpoint_packet_sent: 0,
                 endpoint_packet_received: 0,
@@ -5783,6 +5863,13 @@ pub mod testing {
         }
         fn on_tx_stream_progress(&mut self, event: builder::TxStreamProgress) {
             self.tx_stream_progress += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
+        }
+        fn on_keep_alive_timer_expired(&mut self, event: builder::KeepAliveTimerExpired) {
+            self.keep_alive_timer_expired += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 self.output.push(format!("{:?}", event));

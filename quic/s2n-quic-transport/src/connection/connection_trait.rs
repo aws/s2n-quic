@@ -381,6 +381,8 @@ pub trait ConnectionTrait: 'static + Send + Sized {
 
     fn ping(&mut self) -> Result<(), connection::Error>;
 
+    fn keep_alive(&mut self, enabled: bool) -> Result<(), connection::Error>;
+
     fn local_address(&self) -> Result<SocketAddress, connection::Error>;
 
     fn remote_address(&self) -> Result<SocketAddress, connection::Error>;

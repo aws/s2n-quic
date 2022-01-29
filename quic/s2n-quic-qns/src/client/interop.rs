@@ -7,6 +7,7 @@ use crate::{
     tls::TlsProviders,
     Result,
 };
+use core::time::Duration;
 use futures::future::try_join_all;
 use s2n_quic::{
     client::Connect,
@@ -42,6 +43,9 @@ pub struct Interop {
 
     #[structopt(long)]
     disable_gso: bool,
+
+    #[structopt(long, parse(try_from_str = parse_duration))]
+    keep_alive: Option<Duration>,
 
     #[structopt(short, long, default_value = "::")]
     local_ip: std::net::IpAddr,
@@ -79,7 +83,14 @@ impl Interop {
             for request in &self.requests {
                 let connect = endpoints.get(&request.host().unwrap()).unwrap().clone();
                 let requests = core::iter::once(request.path().to_string());
-                create_connection(client.clone(), connect, requests, download_dir.clone()).await?;
+                create_connection(
+                    client.clone(),
+                    connect,
+                    requests,
+                    download_dir.clone(),
+                    self.keep_alive,
+                )
+                .await?;
             }
         } else {
             // establish a connection per endpoint rather than per request
@@ -98,7 +109,14 @@ impl Interop {
                     })
                     .collect::<Vec<_>>();
 
-                create_connection(client.clone(), connect, requests, download_dir.clone()).await?;
+                create_connection(
+                    client.clone(),
+                    connect,
+                    requests,
+                    download_dir.clone(),
+                    self.keep_alive,
+                )
+                .await?;
             }
         }
 
@@ -111,9 +129,14 @@ impl Interop {
             connect: Connect,
             requests: R,
             download_dir: Arc<Option<PathBuf>>,
+            keep_alive: Option<Duration>,
         ) -> Result<()> {
             eprintln!("connecting to {:#}", connect);
-            let connection = client.connect(connect).await?;
+            let mut connection = client.connect(connect).await?;
+
+            if keep_alive.is_some() {
+                connection.keep_alive(true)?;
+            }
 
             let mut streams = vec![];
             for request in requests {
@@ -129,6 +152,11 @@ impl Interop {
                 // seems to just include the Err in the Vec of results. This will force
                 // any Error to bubble up so it can be printed in the output.
                 result?;
+            }
+
+            if let Some(keep_alive) = keep_alive {
+                tokio::time::sleep(keep_alive).await;
+                connection.keep_alive(false)?;
             }
 
             Ok(())
@@ -292,4 +320,9 @@ fn is_supported_testcase(testcase: Testcase) -> bool {
         // TODO support the ability to actively migrate on the client
         ConnectionMigration => false,
     }
+}
+
+fn parse_duration(duration: &str) -> Result<Duration> {
+    let seconds = duration.parse()?;
+    Ok(Duration::from_secs(seconds))
 }

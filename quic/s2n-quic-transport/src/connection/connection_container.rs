@@ -286,6 +286,10 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
         self.api_write_call(|conn| conn.ping())
     }
 
+    fn keep_alive(&self, enabled: bool) -> Result<(), connection::Error> {
+        self.api_write_call(|conn| conn.keep_alive(enabled))
+    }
+
     fn local_address(&self) -> Result<SocketAddress, connection::Error> {
         self.api_read_call(|conn| conn.local_address())
     }

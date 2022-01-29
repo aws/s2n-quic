@@ -5,8 +5,8 @@ use crate::{
     connection::{self, limits::Limits},
     endpoint, path,
     space::{
-        rx_packet_numbers::AckManager, ApplicationSpace, HandshakeSpace, HandshakeStatus,
-        InitialSpace,
+        keep_alive::KeepAlive, rx_packet_numbers::AckManager, ApplicationSpace, HandshakeSpace,
+        HandshakeStatus, InitialSpace,
     },
     stream::AbstractStreamManager,
 };
@@ -356,6 +356,11 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             self.limits.ack_settings(),
         );
 
+        let keep_alive = KeepAlive::new(
+            self.limits.max_idle_timeout(),
+            self.limits.keep_alive_period(),
+        );
+
         // TODO use interning for these values
         // issue: https://github.com/awslabs/s2n-quic/issues/248
         let sni = application_parameters.sni;
@@ -375,6 +380,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             self.now,
             stream_manager,
             ack_manager,
+            keep_alive,
             sni,
             alpn,
         )));

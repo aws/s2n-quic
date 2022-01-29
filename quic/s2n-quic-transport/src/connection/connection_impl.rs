@@ -1666,6 +1666,22 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         Ok(())
     }
 
+    fn keep_alive(&mut self, enabled: bool) -> Result<(), connection::Error> {
+        self.error?;
+
+        if let Some((space, _)) = self.space_manager.application_mut() {
+            space.keep_alive(enabled);
+
+            self.wakeup_handle.wakeup();
+        } else {
+            // applications can't ping until the application space is available
+            // TODO: maybe return a better error message?
+            return Err(connection::Error::Unspecified);
+        }
+
+        Ok(())
+    }
+
     fn local_address(&self) -> Result<SocketAddress, connection::Error> {
         Ok(*self.path_manager.active_path().handle.local_address())
     }
