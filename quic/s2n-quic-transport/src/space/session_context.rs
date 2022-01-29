@@ -68,10 +68,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                     .with_reason("Invalid transport parameters")
             })?;
 
-        remaining.ensure_empty().map(|_| {
-            transport::Error::TRANSPORT_PARAMETER_ERROR
-                .with_reason("Invalid bytes in transport parameters")
-        })?;
+        assert_eq!(remaining.len(), 0);
         self.publisher.on_transport_parameters_received(
             event::builder::TransportParametersReceived {
                 transport_parameters: peer_parameters.into_event(),
@@ -188,11 +185,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                     .with_reason("Invalid transport parameters")
             })?;
 
-        remaining.ensure_empty().map(|_| {
-            transport::Error::TRANSPORT_PARAMETER_ERROR
-                .with_reason("Invalid bytes in transport parameters")
-        })?;
-
+        assert_eq!(remaining.len(), 0);
         self.publisher.on_transport_parameters_received(
             event::builder::TransportParametersReceived {
                 transport_parameters: peer_parameters.into_event(),
