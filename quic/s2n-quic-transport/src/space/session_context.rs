@@ -68,7 +68,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                     .with_reason("Invalid transport parameters")
             })?;
 
-        assert_eq!(remaining.len(), 0);
+        debug_assert_eq!(remaining.len(), 0);
         self.publisher.on_transport_parameters_received(
             event::builder::TransportParametersReceived {
                 transport_parameters: peer_parameters.into_event(),
@@ -185,7 +185,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                     .with_reason("Invalid transport parameters")
             })?;
 
-        assert_eq!(remaining.len(), 0);
+        debug_assert_eq!(remaining.len(), 0);
         self.publisher.on_transport_parameters_received(
             event::builder::TransportParametersReceived {
                 transport_parameters: peer_parameters.into_event(),
