@@ -181,32 +181,35 @@ impl Interop {
                 EventSubscriber(1),
                 s2n_quic::provider::event::tracing::Subscriber::default(),
             ))?;
-        let server = if matches!(self.tls, TlsProviders::S2N) {
-            // The server builder defaults to a chain because this allows certs to just work, whether
-            // the PEM contains a single cert or a chain
-            let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
-                .with_certificate(
-                    tls::s2n_ca(self.certificate.as_ref())?,
-                    tls::s2n_private_key(self.private_key.as_ref())?,
-                )?
-                .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
-                .with_key_logging()?
-                .build()?;
+        let server = match self.tls {
+            TlsProviders::S2N => {
+                // The server builder defaults to a chain because this allows certs to just work, whether
+                // the PEM contains a single cert or a chain
+                let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
+                    .with_certificate(
+                        tls::s2n::s2n_ca(self.certificate.as_ref())?,
+                        tls::s2n::s2n_private_key(self.private_key.as_ref())?,
+                    )?
+                    .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+                    .with_key_logging()?
+                    .build()?;
 
-            server.with_tls(tls)?.start().unwrap()
-        } else {
-            // The server builder defaults to a chain because this allows certs to just work, whether
-            // the PEM contains a single cert or a chain
-            let tls = s2n_quic::provider::tls::rustls::Server::builder()
-                .with_certificate(
-                    tls::rustls_ca(self.certificate.as_ref())?,
-                    tls::rustls_private_key(self.private_key.as_ref())?,
-                )?
-                .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
-                .with_key_logging()?
-                .build()?;
+                server.with_tls(tls)?.start().unwrap()
+            }
+            TlsProviders::Rustls => {
+                // The server builder defaults to a chain because this allows certs to just work, whether
+                // the PEM contains a single cert or a chain
+                let tls = s2n_quic::provider::tls::rustls::Server::builder()
+                    .with_certificate(
+                        tls::rustls::rustls_ca(self.certificate.as_ref())?,
+                        tls::rustls::rustls_private_key(self.private_key.as_ref())?,
+                    )?
+                    .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+                    .with_key_logging()?
+                    .build()?;
 
-            server.with_tls(tls)?.start().unwrap()
+                server.with_tls(tls)?.start().unwrap()
+            }
         };
 
         eprintln!("Server listening on port {}", self.port);

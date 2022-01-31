@@ -196,24 +196,27 @@ impl Interop {
         let client = Client::builder()
             .with_io(io)?
             .with_event(event::tracing::Provider::default())?;
-        let client = if matches!(self.tls, TlsProviders::S2N) {
-            let tls = s2n_quic::provider::tls::default::Client::builder()
-                .with_certificate(tls::s2n_ca(self.ca.as_ref())?)?
-                // the "amplificationlimit" tests generates a very large chain so bump the limit
-                .with_max_cert_chain_depth(10)?
-                .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
-                .with_key_logging()?
-                .build()?;
-            client.with_tls(tls)?.start().unwrap()
-        } else {
-            let tls = s2n_quic::provider::tls::rustls::Client::builder()
-                .with_certificate(tls::rustls_ca(self.ca.as_ref())?)?
-                // the "amplificationlimit" tests generates a very large chain so bump the limit
-                .with_max_cert_chain_depth(10)?
-                .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
-                .with_key_logging()?
-                .build()?;
-            client.with_tls(tls)?.start().unwrap()
+        let client = match self.tls {
+            TlsProviders::S2N => {
+                let tls = s2n_quic::provider::tls::default::Client::builder()
+                    .with_certificate(tls::s2n::s2n_ca(self.ca.as_ref())?)?
+                    // the "amplificationlimit" tests generates a very large chain so bump the limit
+                    .with_max_cert_chain_depth(10)?
+                    .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+                    .with_key_logging()?
+                    .build()?;
+                client.with_tls(tls)?.start().unwrap()
+            }
+            TlsProviders::Rustls => {
+                let tls = s2n_quic::provider::tls::rustls::Client::builder()
+                    .with_certificate(tls::rustls::rustls_ca(self.ca.as_ref())?)?
+                    // the "amplificationlimit" tests generates a very large chain so bump the limit
+                    .with_max_cert_chain_depth(10)?
+                    .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+                    .with_key_logging()?
+                    .build()?;
+                client.with_tls(tls)?.start().unwrap()
+            }
         };
 
         Ok(client)

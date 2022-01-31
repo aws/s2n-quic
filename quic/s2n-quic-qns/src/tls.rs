@@ -36,38 +36,46 @@ impl FromStr for TlsProviders {
     }
 }
 
-pub fn s2n_ca(ca: Option<&PathBuf>) -> Result<S2nCertificate> {
-    use s2n_quic::provider::tls::s2n_tls::certificate::IntoCertificate;
-    Ok(if let Some(pathbuf) = ca.as_ref() {
-        pathbuf.into_certificate()?
-    } else {
-        s2n_quic_core::crypto::tls::testing::certificates::CERT_PEM.into_certificate()?
-    })
+pub mod s2n {
+    use super::*;
+
+    pub fn s2n_ca(ca: Option<&PathBuf>) -> Result<S2nCertificate> {
+        use s2n_quic::provider::tls::s2n_tls::certificate::IntoCertificate;
+        Ok(if let Some(pathbuf) = ca.as_ref() {
+            pathbuf.into_certificate()?
+        } else {
+            s2n_quic_core::crypto::tls::testing::certificates::CERT_PEM.into_certificate()?
+        })
+    }
+
+    pub fn s2n_private_key(private_key: Option<&PathBuf>) -> Result<S2nPrivateKey> {
+        use s2n_quic::provider::tls::s2n_tls::certificate::IntoPrivateKey;
+        Ok(if let Some(pathbuf) = private_key.as_ref() {
+            pathbuf.into_private_key()?
+        } else {
+            s2n_quic_core::crypto::tls::testing::certificates::KEY_PEM.into_private_key()?
+        })
+    }
 }
 
-pub fn rustls_ca(ca: Option<&PathBuf>) -> Result<RustlsCertificate> {
-    use s2n_quic::provider::tls::rustls::certificate::IntoCertificate;
-    Ok(if let Some(pathbuf) = ca.as_ref() {
-        pathbuf.into_certificate()?
-    } else {
-        s2n_quic_core::crypto::tls::testing::certificates::CERT_PEM.into_certificate()?
-    })
-}
+pub mod rustls {
+    use super::*;
 
-pub fn s2n_private_key(private_key: Option<&PathBuf>) -> Result<S2nPrivateKey> {
-    use s2n_quic::provider::tls::s2n_tls::certificate::IntoPrivateKey;
-    Ok(if let Some(pathbuf) = private_key.as_ref() {
-        pathbuf.into_private_key()?
-    } else {
-        s2n_quic_core::crypto::tls::testing::certificates::KEY_PEM.into_private_key()?
-    })
-}
+    pub fn rustls_ca(ca: Option<&PathBuf>) -> Result<RustlsCertificate> {
+        use s2n_quic::provider::tls::rustls::certificate::IntoCertificate;
+        Ok(if let Some(pathbuf) = ca.as_ref() {
+            pathbuf.into_certificate()?
+        } else {
+            s2n_quic_core::crypto::tls::testing::certificates::CERT_PEM.into_certificate()?
+        })
+    }
 
-pub fn rustls_private_key(private_key: Option<&PathBuf>) -> Result<RustlsPrivateKey> {
-    use s2n_quic::provider::tls::rustls::certificate::IntoPrivateKey;
-    Ok(if let Some(pathbuf) = private_key.as_ref() {
-        pathbuf.into_private_key()?
-    } else {
-        s2n_quic_core::crypto::tls::testing::certificates::KEY_PEM.into_private_key()?
-    })
+    pub fn rustls_private_key(private_key: Option<&PathBuf>) -> Result<RustlsPrivateKey> {
+        use s2n_quic::provider::tls::rustls::certificate::IntoPrivateKey;
+        Ok(if let Some(pathbuf) = private_key.as_ref() {
+            pathbuf.into_private_key()?
+        } else {
+            s2n_quic_core::crypto::tls::testing::certificates::KEY_PEM.into_private_key()?
+        })
+    }
 }
