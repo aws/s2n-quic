@@ -10,6 +10,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
+    "s2n-quic": ["client", "server"],
     "xquic": []
   },
   "handshake": {
@@ -23,6 +24,7 @@
     "picoquic": [],
     "quic-go": ["client"],
     "quiche": ["client"],
+    "s2n-quic": ["client", "server"],
     "xquic": []
   },
   "transfer": {
@@ -36,6 +38,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
+    "s2n-quic": ["client", "server"],
     "xquic": []
   },
   "longrtt": {
@@ -49,6 +52,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
+    "s2n-quic": ["client", "server"],
     "xquic": []
   },
   "chacha20": {
@@ -62,6 +66,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": [],
+    "s2n-quic": ["client", "server"],
     "xquic": []
   },
   "multiplexing": {
@@ -75,6 +80,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
+    "s2n-quic": ["client", "server"],
     "xquic": []
   },
   "retry": {
@@ -88,6 +94,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
+    "s2n-quic": ["client", "server"],
     "xquic": []
   },
   "blackhole": {
@@ -101,6 +108,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
+    "s2n-quic": ["client", "server"],
     "xquic": []
   },
   "keyupdate": {
@@ -114,6 +122,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": [],
+    "s2n-quic": ["client", "server"],
     "xquic": []
   },
   "ecn": {
@@ -127,6 +136,7 @@
     "picoquic": ["client"],
     "quic-go": [],
     "quiche": [],
+    "s2n-quic": ["client", "server"],
     "xquic": []
   },
   "amplificationlimit": {
@@ -140,6 +150,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": [],
+    "s2n-quic": ["client", "server"],
     "xquic": []
   },
   "handshakeloss": {
@@ -153,6 +164,7 @@
     "picoquic": [],
     "quic-go": [],
     "quiche": [],
+    "s2n-quic": [],
     "xquic": []
   },
   "transferloss": {
@@ -166,6 +178,7 @@
     "picoquic": [],
     "quic-go": ["client"],
     "quiche": ["client"],
+    "s2n-quic": ["client", "server"],
     "xquic": []
   },
   "handshakecorruption": {
@@ -179,6 +192,7 @@
     "picoquic": [],
     "quic-go": [],
     "quiche": [],
+    "s2n-quic": [],
     "xquic": []
   },
   "transfercorruption": {
@@ -192,6 +206,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
+    "s2n-quic": ["client", "server"],
     "xquic": []
   },
   "rebind-addr": {
@@ -205,6 +220,7 @@
     "picoquic": [],
     "quic-go": [],
     "quiche": [],
+    "s2n-quic": [],
     "xquic": []
   },
   "rebind-port": {
@@ -218,6 +234,7 @@
     "picoquic": [],
     "quic-go": [],
     "quiche": [],
+    "s2n-quic": [],
     "xquic": []
   },
   "connectionmigration": {
@@ -231,6 +248,7 @@
     "picoquic": [],
     "quic-go": [],
     "quiche": [],
+    "s2n-quic": [],
     "xquic": []
   }
 }
