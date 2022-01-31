@@ -5,6 +5,7 @@ members = [
     "quic/s2n-*",
     "tls/s2n-*",
 ]
+resolver = "2"
 
 [profile.release]
 lto = true

@@ -175,13 +175,14 @@ impl Perf {
             .with_io(io)?
             .with_event(event::disabled::Provider)?;
         let server = match self.tls {
+            #[cfg(unix)]
             TlsProviders::S2N => {
                 // The server builder defaults to a chain because this allows certs to just work, whether
                 // the PEM contains a single cert or a chain
                 let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
                     .with_certificate(
-                        tls::s2n::s2n_ca(self.certificate.as_ref())?,
-                        tls::s2n::s2n_private_key(self.private_key.as_ref())?,
+                        tls::s2n::ca(self.certificate.as_ref())?,
+                        tls::s2n::private_key(self.private_key.as_ref())?,
                     )?
                     .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
                     .with_key_logging()?
@@ -194,8 +195,8 @@ impl Perf {
                 // the PEM contains a single cert or a chain
                 let tls = s2n_quic::provider::tls::rustls::Server::builder()
                     .with_certificate(
-                        tls::rustls::rustls_ca(self.certificate.as_ref())?,
-                        tls::rustls::rustls_private_key(self.private_key.as_ref())?,
+                        tls::rustls::ca(self.certificate.as_ref())?,
+                        tls::rustls::private_key(self.private_key.as_ref())?,
                     )?
                     .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
                     .with_key_logging()?

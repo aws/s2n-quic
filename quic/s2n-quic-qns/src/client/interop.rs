@@ -197,9 +197,10 @@ impl Interop {
             .with_io(io)?
             .with_event(event::tracing::Provider::default())?;
         let client = match self.tls {
+            #[cfg(unix)]
             TlsProviders::S2N => {
-                let tls = s2n_quic::provider::tls::default::Client::builder()
-                    .with_certificate(tls::s2n::s2n_ca(self.ca.as_ref())?)?
+                let tls = s2n_quic::provider::tls::s2n_tls::Client::builder()
+                    .with_certificate(tls::s2n::ca(self.ca.as_ref())?)?
                     // the "amplificationlimit" tests generates a very large chain so bump the limit
                     .with_max_cert_chain_depth(10)?
                     .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
@@ -209,7 +210,7 @@ impl Interop {
             }
             TlsProviders::Rustls => {
                 let tls = s2n_quic::provider::tls::rustls::Client::builder()
-                    .with_certificate(tls::rustls::rustls_ca(self.ca.as_ref())?)?
+                    .with_certificate(tls::rustls::ca(self.ca.as_ref())?)?
                     // the "amplificationlimit" tests generates a very large chain so bump the limit
                     .with_max_cert_chain_depth(10)?
                     .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
