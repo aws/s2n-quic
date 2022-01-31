@@ -250,20 +250,20 @@ impl<Config: endpoint::Config> Manager<Config> {
             return;
         }
 
+        let ack_eliciting_packets_in_flight = self.sent_packets.iter().any(|(_, sent_info)| {
+            sent_info.congestion_controlled && sent_info.ack_elicitation.is_ack_eliciting()
+        });
+
         //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.2.1
         //# it is the client's responsibility to send packets to unblock the server
         //# until it is certain that the server has finished its address validation
-        if self.sent_packets.is_empty() && path.is_peer_validated() {
+        if !ack_eliciting_packets_in_flight && path.is_peer_validated() {
             // There is nothing to detect lost, so no timer is set.
             // However, the client needs to arm the timer if the
             // server might be blocked by the anti-amplification limit.
             self.pto.cancel();
             return;
         }
-
-        let ack_eliciting_packets_in_flight = self.sent_packets.iter().any(|(_, sent_info)| {
-            sent_info.congestion_controlled && sent_info.ack_elicitation.is_ack_eliciting()
-        });
 
         let pto_base_timestamp = if ack_eliciting_packets_in_flight {
             self.time_of_last_ack_eliciting_packet

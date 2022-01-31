@@ -132,24 +132,29 @@ fn on_packet_sent() {
         if outcome.is_congestion_controlled {
             assert_eq!(actual_sent_packet.sent_bytes as usize, outcome.bytes_sent);
 
-            let expected_pto;
             if outcome.ack_elicitation.is_ack_eliciting() {
                 //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
                 //= type=test
                 //# A sender SHOULD restart its PTO timer every time an ack-eliciting
                 //# packet is sent
-                expected_pto = time_sent + expected_pto_duration;
+                assert!(manager.pto.timer.is_armed());
+                assert_eq!(
+                    Some(time_sent + expected_pto_duration),
+                    manager.pto.timer.next_expiration()
+                );
             } else if let Some(time_of_last_ack_eliciting_packet) =
                 manager.time_of_last_ack_eliciting_packet
             {
-                expected_pto = time_of_last_ack_eliciting_packet + expected_pto_duration;
+                assert!(manager.pto.timer.is_armed());
+                assert_eq!(
+                    Some(time_of_last_ack_eliciting_packet + expected_pto_duration),
+                    manager.pto.timer.next_expiration()
+                );
             } else {
                 // No ack eliciting packets have been sent yet
-                expected_pto = time_sent + expected_pto_duration;
+                assert!(!manager.pto.timer.is_armed());
+                assert_eq!(None, manager.pto.timer.next_expiration());
             }
-
-            assert!(manager.pto.timer.is_armed());
-            assert_eq!(Some(expected_pto), manager.pto.timer.next_expiration());
 
             expected_bytes_in_flight += outcome.bytes_sent;
         } else {
