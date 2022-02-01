@@ -16,6 +16,25 @@ pub enum TlsProviders {
     Rustls,
 }
 
+impl Default for TlsProviders {
+    fn default() -> Self {
+        #[cfg(unix)]
+        return Self::S2N;
+        #[cfg(not(unix))]
+        return Self::Rustls;
+    }
+}
+
+impl ToString for TlsProviders {
+    fn to_string(&self) -> String {
+        match self {
+            #[cfg(unix)]
+            TlsProviders::S2N => String::from("s2n-tls"),
+            TlsProviders::Rustls => String::from("rustls"),
+        }
+    }
+}
+
 impl FromStr for TlsProviders {
     type Err = crate::Error;
 

@@ -52,7 +52,7 @@ pub struct Interop {
     #[structopt(min_values = 1, required = true)]
     requests: Vec<Url>,
 
-    #[structopt(long, default_value = "s2n-tls")]
+    #[structopt(long, default_value)]
     tls: TlsProviders,
 }
 

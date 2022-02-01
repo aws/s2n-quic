@@ -37,7 +37,7 @@ pub struct Perf {
     #[structopt(long)]
     disable_gso: bool,
 
-    #[structopt(long, default_value = "s2n-tls")]
+    #[structopt(long, default_value)]
     tls: TlsProviders,
 }
 

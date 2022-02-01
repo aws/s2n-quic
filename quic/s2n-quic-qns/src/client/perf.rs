@@ -39,7 +39,7 @@ pub struct Perf {
     #[structopt(short, long, default_value = "::")]
     local_ip: std::net::IpAddr,
 
-    #[structopt(long, default_value = "s2n-tls")]
+    #[structopt(long, default_value)]
     tls: TlsProviders,
 }
 

@@ -54,7 +54,7 @@ pub struct Interop {
     #[structopt(long, env = "TESTCASE", possible_values = &Testcase::supported(is_supported_testcase))]
     testcase: Option<Testcase>,
 
-    #[structopt(long, default_value = "s2n-tls")]
+    #[structopt(long, default_value)]
     tls: TlsProviders,
 }
 
