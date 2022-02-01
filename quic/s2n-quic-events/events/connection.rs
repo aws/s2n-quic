@@ -209,7 +209,7 @@ struct HandshakeStatusUpdated {
 #[event("connectivity:path_challenge_updated")]
 /// Path challenge updated
 struct PathChallengeUpdated<'a> {
-    path_challenge: PathChallenge<'a>,
+    path_challenge_status: PathChallengeStatus<'a>,
 }
 
 #[event("tls:client_hello")]
