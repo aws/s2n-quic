@@ -588,9 +588,11 @@ impl<Config: endpoint::Config> Manager<Config> {
         for (id, path) in self.paths.iter_mut().enumerate() {
             if path.on_path_response(response.data) {
                 let id = id as u64;
-                publisher.on_path_challenge_validated(event::builder::PathChallengeValidated {
-                    path: path_event!(path, id),
-                    challenge_data: path.challenge.challenge_data().into_event(),
+                publisher.on_path_challenge_updated(event::builder::PathChallengeUpdated {
+                    path_challenge: event::builder::PathChallenge::Validated {
+                        path: path_event!(path, id),
+                        challenge_data: path.challenge.challenge_data().into_event(),
+                    },
                 });
                 // A path was validated so check if it becomes the new
                 // last_known_active_validated_path

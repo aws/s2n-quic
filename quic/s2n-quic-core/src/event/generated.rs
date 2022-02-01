@@ -331,6 +331,20 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub enum PathChallenge<'a> {
+        #[non_exhaustive]
+        Validated {
+            path: Path<'a>,
+            challenge_data: &'a [u8],
+        },
+        #[non_exhaustive]
+        Abandoned {
+            path: Path<'a>,
+            challenge_data: &'a [u8],
+        },
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Application level protocol"]
     pub struct AlpnInformation<'a> {
         pub chosen_alpn: &'a [u8],
@@ -586,23 +600,12 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    #[doc = " Path challenge abandoned"]
-    pub struct PathChallengeAbandoned<'a> {
-        pub path: Path<'a>,
-        pub challenge_data: &'a [u8],
+    #[doc = " Path challenge updated"]
+    pub struct PathChallengeUpdated<'a> {
+        pub path_challenge: PathChallenge<'a>,
     }
-    impl<'a> Event for PathChallengeAbandoned<'a> {
-        const NAME: &'static str = "connectivity:path_challenge_abandoned";
-    }
-    #[derive(Clone, Debug)]
-    #[non_exhaustive]
-    #[doc = " Path challenge validated"]
-    pub struct PathChallengeValidated<'a> {
-        pub path: Path<'a>,
-        pub challenge_data: &'a [u8],
-    }
-    impl<'a> Event for PathChallengeValidated<'a> {
-        const NAME: &'static str = "connectivity:path_challenge_validated";
+    impl<'a> Event for PathChallengeUpdated<'a> {
+        const NAME: &'static str = "connectivity:path_challenge_updated";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1496,32 +1499,15 @@ pub mod api {
                 tracing :: event ! (target : "handshake_status_updated" , parent : id , tracing :: Level :: DEBUG , status = tracing :: field :: debug (status));
             }
             #[inline]
-            fn on_path_challenge_abandoned(
+            fn on_path_challenge_updated(
                 &mut self,
                 context: &mut Self::ConnectionContext,
                 _meta: &api::ConnectionMeta,
-                event: &api::PathChallengeAbandoned,
+                event: &api::PathChallengeUpdated,
             ) {
                 let id = context.id();
-                let api::PathChallengeAbandoned {
-                    path,
-                    challenge_data,
-                } = event;
-                tracing :: event ! (target : "path_challenge_abandoned" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , challenge_data = tracing :: field :: debug (challenge_data));
-            }
-            #[inline]
-            fn on_path_challenge_validated(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::PathChallengeValidated,
-            ) {
-                let id = context.id();
-                let api::PathChallengeValidated {
-                    path,
-                    challenge_data,
-                } = event;
-                tracing :: event ! (target : "path_challenge_validated" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , challenge_data = tracing :: field :: debug (challenge_data));
+                let api::PathChallengeUpdated { path_challenge } = event;
+                tracing :: event ! (target : "path_challenge_updated" , parent : id , tracing :: Level :: DEBUG , path_challenge = tracing :: field :: debug (path_challenge));
             }
             #[inline]
             fn on_tls_client_hello(
@@ -2373,6 +2359,39 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub enum PathChallenge<'a> {
+        Validated {
+            path: Path<'a>,
+            challenge_data: &'a [u8],
+        },
+        Abandoned {
+            path: Path<'a>,
+            challenge_data: &'a [u8],
+        },
+    }
+    impl<'a> IntoEvent<api::PathChallenge<'a>> for PathChallenge<'a> {
+        #[inline]
+        fn into_event(self) -> api::PathChallenge<'a> {
+            use api::PathChallenge::*;
+            match self {
+                Self::Validated {
+                    path,
+                    challenge_data,
+                } => Validated {
+                    path: path.into_event(),
+                    challenge_data: challenge_data.into_event(),
+                },
+                Self::Abandoned {
+                    path,
+                    challenge_data,
+                } => Abandoned {
+                    path: path.into_event(),
+                    challenge_data: challenge_data.into_event(),
+                },
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Application level protocol"]
     pub struct AlpnInformation<'a> {
         pub chosen_alpn: &'a [u8],
@@ -2817,40 +2836,16 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Path challenge abandoned"]
-    pub struct PathChallengeAbandoned<'a> {
-        pub path: Path<'a>,
-        pub challenge_data: &'a [u8],
+    #[doc = " Path challenge updated"]
+    pub struct PathChallengeUpdated<'a> {
+        pub path_challenge: PathChallenge<'a>,
     }
-    impl<'a> IntoEvent<api::PathChallengeAbandoned<'a>> for PathChallengeAbandoned<'a> {
+    impl<'a> IntoEvent<api::PathChallengeUpdated<'a>> for PathChallengeUpdated<'a> {
         #[inline]
-        fn into_event(self) -> api::PathChallengeAbandoned<'a> {
-            let PathChallengeAbandoned {
-                path,
-                challenge_data,
-            } = self;
-            api::PathChallengeAbandoned {
-                path: path.into_event(),
-                challenge_data: challenge_data.into_event(),
-            }
-        }
-    }
-    #[derive(Clone, Debug)]
-    #[doc = " Path challenge validated"]
-    pub struct PathChallengeValidated<'a> {
-        pub path: Path<'a>,
-        pub challenge_data: &'a [u8],
-    }
-    impl<'a> IntoEvent<api::PathChallengeValidated<'a>> for PathChallengeValidated<'a> {
-        #[inline]
-        fn into_event(self) -> api::PathChallengeValidated<'a> {
-            let PathChallengeValidated {
-                path,
-                challenge_data,
-            } = self;
-            api::PathChallengeValidated {
-                path: path.into_event(),
-                challenge_data: challenge_data.into_event(),
+        fn into_event(self) -> api::PathChallengeUpdated<'a> {
+            let PathChallengeUpdated { path_challenge } = self;
+            api::PathChallengeUpdated {
+                path_challenge: path_challenge.into_event(),
             }
         }
     }
@@ -3587,25 +3582,13 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
-        #[doc = "Called when the `PathChallengeAbandoned` event is triggered"]
+        #[doc = "Called when the `PathChallengeUpdated` event is triggered"]
         #[inline]
-        fn on_path_challenge_abandoned(
+        fn on_path_challenge_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
             meta: &ConnectionMeta,
-            event: &PathChallengeAbandoned,
-        ) {
-            let _ = context;
-            let _ = meta;
-            let _ = event;
-        }
-        #[doc = "Called when the `PathChallengeValidated` event is triggered"]
-        #[inline]
-        fn on_path_challenge_validated(
-            &mut self,
-            context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &PathChallengeValidated,
+            event: &PathChallengeUpdated,
         ) {
             let _ = context;
             let _ = meta;
@@ -4084,24 +4067,14 @@ mod traits {
             (self.1).on_handshake_status_updated(&mut context.1, meta, event);
         }
         #[inline]
-        fn on_path_challenge_abandoned(
+        fn on_path_challenge_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
             meta: &ConnectionMeta,
-            event: &PathChallengeAbandoned,
+            event: &PathChallengeUpdated,
         ) {
-            (self.0).on_path_challenge_abandoned(&mut context.0, meta, event);
-            (self.1).on_path_challenge_abandoned(&mut context.1, meta, event);
-        }
-        #[inline]
-        fn on_path_challenge_validated(
-            &mut self,
-            context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &PathChallengeValidated,
-        ) {
-            (self.0).on_path_challenge_validated(&mut context.0, meta, event);
-            (self.1).on_path_challenge_validated(&mut context.1, meta, event);
+            (self.0).on_path_challenge_updated(&mut context.0, meta, event);
+            (self.1).on_path_challenge_updated(&mut context.1, meta, event);
         }
         #[inline]
         fn on_tls_client_hello(
@@ -4453,10 +4426,8 @@ mod traits {
         fn on_connection_migration_denied(&mut self, event: builder::ConnectionMigrationDenied);
         #[doc = "Publishes a `HandshakeStatusUpdated` event to the publisher's subscriber"]
         fn on_handshake_status_updated(&mut self, event: builder::HandshakeStatusUpdated);
-        #[doc = "Publishes a `PathChallengeAbandoned` event to the publisher's subscriber"]
-        fn on_path_challenge_abandoned(&mut self, event: builder::PathChallengeAbandoned);
-        #[doc = "Publishes a `PathChallengeValidated` event to the publisher's subscriber"]
-        fn on_path_challenge_validated(&mut self, event: builder::PathChallengeValidated);
+        #[doc = "Publishes a `PathChallengeUpdated` event to the publisher's subscriber"]
+        fn on_path_challenge_updated(&mut self, event: builder::PathChallengeUpdated);
         #[doc = "Publishes a `TlsClientHello` event to the publisher's subscriber"]
         fn on_tls_client_hello(&mut self, event: builder::TlsClientHello);
         #[doc = "Publishes a `TlsServerHello` event to the publisher's subscriber"]
@@ -4724,19 +4695,10 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
-        fn on_path_challenge_abandoned(&mut self, event: builder::PathChallengeAbandoned) {
+        fn on_path_challenge_updated(&mut self, event: builder::PathChallengeUpdated) {
             let event = event.into_event();
             self.subscriber
-                .on_path_challenge_abandoned(self.context, &self.meta, &event);
-            self.subscriber
-                .on_connection_event(self.context, &self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_path_challenge_validated(&mut self, event: builder::PathChallengeValidated) {
-            let event = event.into_event();
-            self.subscriber
-                .on_path_challenge_validated(self.context, &self.meta, &event);
+                .on_path_challenge_updated(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -4797,8 +4759,7 @@ pub mod testing {
         pub ecn_state_changed: u32,
         pub connection_migration_denied: u32,
         pub handshake_status_updated: u32,
-        pub path_challenge_abandoned: u32,
-        pub path_challenge_validated: u32,
+        pub path_challenge_updated: u32,
         pub tls_client_hello: u32,
         pub tls_server_hello: u32,
         pub version_information: u32,
@@ -4863,8 +4824,7 @@ pub mod testing {
                 ecn_state_changed: 0,
                 connection_migration_denied: 0,
                 handshake_status_updated: 0,
-                path_challenge_abandoned: 0,
-                path_challenge_validated: 0,
+                path_challenge_updated: 0,
                 tls_client_hello: 0,
                 tls_server_hello: 0,
                 version_information: 0,
@@ -5166,24 +5126,13 @@ pub mod testing {
                 self.output.push(format!("{:?} {:?}", meta, event));
             }
         }
-        fn on_path_challenge_abandoned(
+        fn on_path_challenge_updated(
             &mut self,
             _context: &mut Self::ConnectionContext,
             meta: &api::ConnectionMeta,
-            event: &api::PathChallengeAbandoned,
+            event: &api::PathChallengeUpdated,
         ) {
-            self.path_challenge_abandoned += 1;
-            if self.location.is_some() {
-                self.output.push(format!("{:?} {:?}", meta, event));
-            }
-        }
-        fn on_path_challenge_validated(
-            &mut self,
-            _context: &mut Self::ConnectionContext,
-            meta: &api::ConnectionMeta,
-            event: &api::PathChallengeValidated,
-        ) {
-            self.path_challenge_validated += 1;
+            self.path_challenge_updated += 1;
             if self.location.is_some() {
                 self.output.push(format!("{:?} {:?}", meta, event));
             }
@@ -5328,8 +5277,7 @@ pub mod testing {
         pub ecn_state_changed: u32,
         pub connection_migration_denied: u32,
         pub handshake_status_updated: u32,
-        pub path_challenge_abandoned: u32,
-        pub path_challenge_validated: u32,
+        pub path_challenge_updated: u32,
         pub tls_client_hello: u32,
         pub tls_server_hello: u32,
         pub version_information: u32,
@@ -5384,8 +5332,7 @@ pub mod testing {
                 ecn_state_changed: 0,
                 connection_migration_denied: 0,
                 handshake_status_updated: 0,
-                path_challenge_abandoned: 0,
-                path_challenge_validated: 0,
+                path_challenge_updated: 0,
                 tls_client_hello: 0,
                 tls_server_hello: 0,
                 version_information: 0,
@@ -5656,15 +5603,8 @@ pub mod testing {
                 self.output.push(format!("{:?}", event));
             }
         }
-        fn on_path_challenge_abandoned(&mut self, event: builder::PathChallengeAbandoned) {
-            self.path_challenge_abandoned += 1;
-            let event = event.into_event();
-            if self.location.is_some() {
-                self.output.push(format!("{:?}", event));
-            }
-        }
-        fn on_path_challenge_validated(&mut self, event: builder::PathChallengeValidated) {
-            self.path_challenge_validated += 1;
+        fn on_path_challenge_updated(&mut self, event: builder::PathChallengeUpdated) {
+            self.path_challenge_updated += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 self.output.push(format!("{:?}", event));

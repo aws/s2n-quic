@@ -206,18 +206,10 @@ struct HandshakeStatusUpdated {
     status: HandshakeStatus,
 }
 
-#[event("connectivity:path_challenge_abandoned")]
-/// Path challenge abandoned
-struct PathChallengeAbandoned<'a> {
-    path: Path<'a>,
-    challenge_data: &'a [u8],
-}
-
-#[event("connectivity:path_challenge_validated")]
-/// Path challenge validated
-struct PathChallengeValidated<'a> {
-    path: Path<'a>,
-    challenge_data: &'a [u8],
+#[event("connectivity:path_challenge_updated")]
+/// Path challenge updated
+struct PathChallengeUpdated<'a> {
+    path_challenge: PathChallenge<'a>,
 }
 
 #[event("tls:client_hello")]

@@ -726,3 +726,14 @@ impl CipherSuite {
         }
     }
 }
+
+enum PathChallenge<'a> {
+    Validated {
+        path: Path<'a>,
+        challenge_data: &'a [u8],
+    },
+    Abandoned {
+        path: Path<'a>,
+        challenge_data: &'a [u8],
+    },
+}
