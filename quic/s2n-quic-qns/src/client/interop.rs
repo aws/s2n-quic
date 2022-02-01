@@ -3,16 +3,15 @@
 
 use crate::{
     interop::{self, Testcase},
+    tls,
+    tls::TlsProviders,
     Result,
 };
 use futures::future::try_join_all;
 use s2n_quic::{
     client::Connect,
     connection::Handle,
-    provider::{
-        event, io,
-        tls::default::certificate::{Certificate, IntoCertificate},
-    },
+    provider::{event, io},
     Client,
 };
 use std::{
@@ -52,6 +51,9 @@ pub struct Interop {
 
     #[structopt(min_values = 1, required = true)]
     requests: Vec<Url>,
+
+    #[structopt(long, default_value)]
+    tls: TlsProviders,
 }
 
 impl Interop {
@@ -182,16 +184,6 @@ impl Interop {
     }
 
     fn client(&self) -> Result<Client> {
-        let ca = self.ca()?;
-
-        let tls = s2n_quic::provider::tls::default::Client::builder()
-            .with_certificate(ca)?
-            // the "amplificationlimit" tests generates a very large chain so bump the limit
-            .with_max_cert_chain_depth(10)?
-            .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
-            .with_key_logging()?
-            .build()?;
-
         let mut io_builder =
             io::Default::builder().with_receive_address((self.local_ip, 0u16).into())?;
 
@@ -203,20 +195,32 @@ impl Interop {
 
         let client = Client::builder()
             .with_io(io)?
-            .with_tls(tls)?
-            .with_event(event::tracing::Provider::default())?
-            .start()
-            .unwrap();
+            .with_event(event::tracing::Provider::default())?;
+        let client = match self.tls {
+            #[cfg(unix)]
+            TlsProviders::S2N => {
+                let tls = s2n_quic::provider::tls::s2n_tls::Client::builder()
+                    .with_certificate(tls::s2n::ca(self.ca.as_ref())?)?
+                    // the "amplificationlimit" tests generates a very large chain so bump the limit
+                    .with_max_cert_chain_depth(10)?
+                    .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+                    .with_key_logging()?
+                    .build()?;
+                client.with_tls(tls)?.start().unwrap()
+            }
+            TlsProviders::Rustls => {
+                let tls = s2n_quic::provider::tls::rustls::Client::builder()
+                    .with_certificate(tls::rustls::ca(self.ca.as_ref())?)?
+                    // the "amplificationlimit" tests generates a very large chain so bump the limit
+                    .with_max_cert_chain_depth(10)?
+                    .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+                    .with_key_logging()?
+                    .build()?;
+                client.with_tls(tls)?.start().unwrap()
+            }
+        };
 
         Ok(client)
-    }
-
-    fn ca(&self) -> Result<Certificate> {
-        Ok(if let Some(pathbuf) = self.ca.as_ref() {
-            pathbuf.into_certificate()?
-        } else {
-            s2n_quic_core::crypto::tls::testing::certificates::CERT_PEM.into_certificate()?
-        })
     }
 
     async fn endpoints(&self) -> Result<HashMap<Host<&str>, Connect>> {

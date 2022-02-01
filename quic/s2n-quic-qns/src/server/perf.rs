@@ -1,13 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{perf, Result};
+use crate::{perf, tls, tls::TlsProviders, Result};
 use futures::future::try_join_all;
 use s2n_quic::{
-    provider::{
-        event, io,
-        tls::default::certificate::{Certificate, IntoCertificate, IntoPrivateKey, PrivateKey},
-    },
+    provider::{event, io},
     stream::{BidirectionalStream, ReceiveStream, SendStream},
     Connection, Server,
 };
@@ -39,6 +36,9 @@ pub struct Perf {
 
     #[structopt(long)]
     disable_gso: bool,
+
+    #[structopt(long, default_value)]
+    tls: TlsProviders,
 }
 
 impl Perf {
@@ -162,15 +162,6 @@ impl Perf {
     }
 
     fn server(&self) -> Result<Server> {
-        let private_key = self.private_key()?;
-        let certificate = self.certificate()?;
-
-        let tls = s2n_quic::provider::tls::default::Server::builder()
-            .with_certificate(certificate, private_key)?
-            .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
-            .with_key_logging()?
-            .build()?;
-
         let mut io_builder =
             io::Default::builder().with_receive_address((self.ip, self.port).into())?;
 
@@ -182,29 +173,41 @@ impl Perf {
 
         let server = Server::builder()
             .with_io(io)?
-            .with_tls(tls)?
-            .with_event(event::disabled::Provider)?
-            .start()
-            .unwrap();
+            .with_event(event::disabled::Provider)?;
+        let server = match self.tls {
+            #[cfg(unix)]
+            TlsProviders::S2N => {
+                // The server builder defaults to a chain because this allows certs to just work, whether
+                // the PEM contains a single cert or a chain
+                let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
+                    .with_certificate(
+                        tls::s2n::ca(self.certificate.as_ref())?,
+                        tls::s2n::private_key(self.private_key.as_ref())?,
+                    )?
+                    .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+                    .with_key_logging()?
+                    .build()?;
+
+                server.with_tls(tls)?.start().unwrap()
+            }
+            TlsProviders::Rustls => {
+                // The server builder defaults to a chain because this allows certs to just work, whether
+                // the PEM contains a single cert or a chain
+                let tls = s2n_quic::provider::tls::rustls::Server::builder()
+                    .with_certificate(
+                        tls::rustls::ca(self.certificate.as_ref())?,
+                        tls::rustls::private_key(self.private_key.as_ref())?,
+                    )?
+                    .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+                    .with_key_logging()?
+                    .build()?;
+
+                server.with_tls(tls)?.start().unwrap()
+            }
+        };
 
         eprintln!("Server listening on port {}", self.port);
 
         Ok(server)
-    }
-
-    fn certificate(&self) -> Result<Certificate> {
-        Ok(if let Some(pathbuf) = self.certificate.as_ref() {
-            pathbuf.into_certificate()?
-        } else {
-            s2n_quic_core::crypto::tls::testing::certificates::CERT_PEM.into_certificate()?
-        })
-    }
-
-    fn private_key(&self) -> Result<PrivateKey> {
-        Ok(if let Some(pathbuf) = self.private_key.as_ref() {
-            pathbuf.into_private_key()?
-        } else {
-            s2n_quic_core::crypto::tls::testing::certificates::KEY_PEM.into_private_key()?
-        })
     }
 }
