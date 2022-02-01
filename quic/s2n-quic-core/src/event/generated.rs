@@ -68,12 +68,6 @@ pub mod api {
     pub struct ConnectionId<'a> {
         pub bytes: &'a [u8],
     }
-    #[derive(Clone, Debug)]
-    #[non_exhaustive]
-    pub struct PathChallenge<'a> {
-        pub path: Path<'a>,
-        pub challenge_data: &'a [u8],
-    }
     #[non_exhaustive]
     #[derive(Clone)]
     pub enum SocketAddress<'a> {
@@ -337,11 +331,11 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    pub enum PathChallengeStatus<'a> {
+    pub enum PathChallengeStatus {
         #[non_exhaustive]
-        Validated { path_challenge: PathChallenge<'a> },
+        Validated {},
         #[non_exhaustive]
-        Abandoned { path_challenge: PathChallenge<'a> },
+        Abandoned {},
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -602,7 +596,9 @@ pub mod api {
     #[non_exhaustive]
     #[doc = " Path challenge updated"]
     pub struct PathChallengeUpdated<'a> {
-        pub path_challenge_status: PathChallengeStatus<'a>,
+        pub path_challenge_status: PathChallengeStatus,
+        pub path: Path<'a>,
+        pub challenge_data: &'a [u8],
     }
     impl<'a> Event for PathChallengeUpdated<'a> {
         const NAME: &'static str = "connectivity:path_challenge_updated";
@@ -1508,8 +1504,10 @@ pub mod api {
                 let id = context.id();
                 let api::PathChallengeUpdated {
                     path_challenge_status,
+                    path,
+                    challenge_data,
                 } = event;
-                tracing :: event ! (target : "path_challenge_updated" , parent : id , tracing :: Level :: DEBUG , path_challenge_status = tracing :: field :: debug (path_challenge_status));
+                tracing :: event ! (target : "path_challenge_updated" , parent : id , tracing :: Level :: DEBUG , path_challenge_status = tracing :: field :: debug (path_challenge_status) , path = tracing :: field :: debug (path) , challenge_data = tracing :: field :: debug (challenge_data));
             }
             #[inline]
             fn on_tls_client_hello(
@@ -1880,24 +1878,6 @@ pub mod builder {
             let ConnectionId { bytes } = self;
             api::ConnectionId {
                 bytes: bytes.into_event(),
-            }
-        }
-    }
-    #[derive(Clone, Debug)]
-    pub struct PathChallenge<'a> {
-        pub path: Path<'a>,
-        pub challenge_data: &'a [u8],
-    }
-    impl<'a> IntoEvent<api::PathChallenge<'a>> for PathChallenge<'a> {
-        #[inline]
-        fn into_event(self) -> api::PathChallenge<'a> {
-            let PathChallenge {
-                path,
-                challenge_data,
-            } = self;
-            api::PathChallenge {
-                path: path.into_event(),
-                challenge_data: challenge_data.into_event(),
             }
         }
     }
@@ -2379,21 +2359,17 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    pub enum PathChallengeStatus<'a> {
-        Validated { path_challenge: PathChallenge<'a> },
-        Abandoned { path_challenge: PathChallenge<'a> },
+    pub enum PathChallengeStatus {
+        Validated,
+        Abandoned,
     }
-    impl<'a> IntoEvent<api::PathChallengeStatus<'a>> for PathChallengeStatus<'a> {
+    impl IntoEvent<api::PathChallengeStatus> for PathChallengeStatus {
         #[inline]
-        fn into_event(self) -> api::PathChallengeStatus<'a> {
+        fn into_event(self) -> api::PathChallengeStatus {
             use api::PathChallengeStatus::*;
             match self {
-                Self::Validated { path_challenge } => Validated {
-                    path_challenge: path_challenge.into_event(),
-                },
-                Self::Abandoned { path_challenge } => Abandoned {
-                    path_challenge: path_challenge.into_event(),
-                },
+                Self::Validated => Validated {},
+                Self::Abandoned => Abandoned {},
             }
         }
     }
@@ -2844,16 +2820,22 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Path challenge updated"]
     pub struct PathChallengeUpdated<'a> {
-        pub path_challenge_status: PathChallengeStatus<'a>,
+        pub path_challenge_status: PathChallengeStatus,
+        pub path: Path<'a>,
+        pub challenge_data: &'a [u8],
     }
     impl<'a> IntoEvent<api::PathChallengeUpdated<'a>> for PathChallengeUpdated<'a> {
         #[inline]
         fn into_event(self) -> api::PathChallengeUpdated<'a> {
             let PathChallengeUpdated {
                 path_challenge_status,
+                path,
+                challenge_data,
             } = self;
             api::PathChallengeUpdated {
                 path_challenge_status: path_challenge_status.into_event(),
+                path: path.into_event(),
+                challenge_data: challenge_data.into_event(),
             }
         }
     }

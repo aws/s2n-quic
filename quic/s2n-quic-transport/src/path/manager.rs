@@ -589,12 +589,9 @@ impl<Config: endpoint::Config> Manager<Config> {
             if path.on_path_response(response.data) {
                 let id = id as u64;
                 publisher.on_path_challenge_updated(event::builder::PathChallengeUpdated {
-                    path_challenge_status: event::builder::PathChallengeStatus::Validated {
-                        path_challenge: event::builder::PathChallenge {
-                            path: path_event!(path, id),
-                            challenge_data: path.challenge.challenge_data().into_event(),
-                        },
-                    },
+                    path_challenge_status: event::builder::PathChallengeStatus::Validated,
+                    path: path_event!(path, id),
+                    challenge_data: path.challenge.challenge_data().into_event(),
                 });
                 // A path was validated so check if it becomes the new
                 // last_known_active_validated_path

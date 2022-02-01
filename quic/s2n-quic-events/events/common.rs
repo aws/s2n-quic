@@ -727,12 +727,7 @@ impl CipherSuite {
     }
 }
 
-struct PathChallenge<'a> {
-    path: Path<'a>,
-    challenge_data: &'a [u8],
-}
-
-enum PathChallengeStatus<'a> {
-    Validated { path_challenge: PathChallenge<'a> },
-    Abandoned { path_challenge: PathChallenge<'a> },
+enum PathChallengeStatus {
+    Validated,
+    Abandoned,
 }

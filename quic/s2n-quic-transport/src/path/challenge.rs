@@ -124,12 +124,9 @@ impl Challenge {
             self.state = State::Abandoned;
             self.abandon_timer.cancel();
             publisher.on_path_challenge_updated(event::builder::PathChallengeUpdated {
-                path_challenge_status: event::builder::PathChallengeStatus::Abandoned {
-                    path_challenge: event::builder::PathChallenge {
-                        path,
-                        challenge_data: self.challenge_data(),
-                    },
-                },
+                path_challenge_status: event::builder::PathChallengeStatus::Abandoned,
+                path,
+                challenge_data: self.challenge_data(),
             });
         }
     }
