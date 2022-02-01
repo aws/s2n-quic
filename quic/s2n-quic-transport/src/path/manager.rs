@@ -679,7 +679,6 @@ impl<Config: endpoint::Config> Manager<Config> {
     ) {
         for (idx, path) in self.paths.iter_mut().enumerate() {
             let path_id = idx as u64;
-            //let path_event = path_event!(path, path_id);
             path.abandon_challenge(publisher, path_id);
         }
     }
