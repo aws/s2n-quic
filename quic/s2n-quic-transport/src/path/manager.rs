@@ -562,7 +562,11 @@ impl<Config: endpoint::Config> Manager<Config> {
     //# A PATH_RESPONSE frame received on any network path validates the path
     //# on which the PATH_CHALLENGE was sent.
     #[inline]
-    pub fn on_path_response(&mut self, response: &frame::PathResponse) {
+    pub fn on_path_response<Pub: event::ConnectionPublisher>(
+        &mut self,
+        response: &frame::PathResponse,
+        publisher: &mut Pub,
+    ) {
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2
         //# A PATH_RESPONSE frame MUST be sent on the network path where the
         //# PATH_CHALLENGE frame was received.
@@ -583,6 +587,12 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         for (id, path) in self.paths.iter_mut().enumerate() {
             if path.on_path_response(response.data) {
+                let id = id as u64;
+                publisher.on_path_challenge_updated(event::builder::PathChallengeUpdated {
+                    path_challenge_status: event::builder::PathChallengeStatus::Validated,
+                    path: path_event!(path, id),
+                    challenge_data: path.challenge.challenge_data().into_event(),
+                });
                 // A path was validated so check if it becomes the new
                 // last_known_active_validated_path
                 if path.is_activated() {
@@ -646,7 +656,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             // Abandon other path validations only if the active path is validated since an
             // attacker could block all path validation attempts simply by forwarding packets.
             if self.active_path().is_validated() {
-                self.abandon_all_path_challenges();
+                self.abandon_all_path_challenges(publisher);
             } else if !self.active_path().is_challenge_pending() {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3
                 //# If the recipient permits the migration, it MUST send subsequent
@@ -660,9 +670,13 @@ impl<Config: endpoint::Config> Manager<Config> {
     }
 
     #[inline]
-    fn abandon_all_path_challenges(&mut self) {
-        for path in self.paths.iter_mut() {
-            path.abandon_challenge();
+    fn abandon_all_path_challenges<Pub: event::ConnectionPublisher>(
+        &mut self,
+        publisher: &mut Pub,
+    ) {
+        for (idx, path) in self.paths.iter_mut().enumerate() {
+            let path_id = idx as u64;
+            path.abandon_challenge(publisher, path_id);
         }
     }
 

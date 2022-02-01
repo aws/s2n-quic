@@ -726,3 +726,8 @@ impl CipherSuite {
         }
     }
 }
+
+enum PathChallengeStatus {
+    Validated,
+    Abandoned,
+}

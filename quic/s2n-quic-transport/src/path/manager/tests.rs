@@ -252,7 +252,7 @@ fn set_path_challenge_on_active_path_on_connection_migration() {
     // Setup:
     let mut publisher = Publisher::snapshot();
     let mut helper = helper_manager_with_paths(&mut publisher);
-    helper.manager[helper.zero_path_id].abandon_challenge();
+    helper.manager[helper.zero_path_id].abandon_challenge(&mut publisher, 0);
     assert!(!helper.manager[helper.zero_path_id].is_challenge_pending());
     assert_eq!(
         helper.manager.last_known_active_validated_path.unwrap(),
@@ -344,7 +344,7 @@ fn validate_path_before_challenge_expiration() {
     let frame = s2n_quic_core::frame::PathResponse {
         data: &helper.second_expected_data,
     };
-    helper.manager.on_path_response(&frame);
+    helper.manager.on_path_response(&frame, &mut publisher);
 
     // Expectation 2:
     assert!(helper.manager[helper.second_path_id].is_validated());
@@ -411,7 +411,7 @@ fn dont_validate_path_if_path_challenge_is_abandoned() {
     let frame = s2n_quic_core::frame::PathResponse {
         data: &helper.second_expected_data,
     };
-    helper.manager.on_path_response(&frame);
+    helper.manager.on_path_response(&frame, &mut publisher);
 
     // Expectation 2:
     assert!(!helper.manager[helper.second_path_id].is_validated());
@@ -431,7 +431,7 @@ fn initiate_path_challenge_if_new_path_is_not_validated() {
     assert!(helper.manager[helper.first_path_id].is_challenge_pending());
 
     assert!(!helper.manager[helper.second_path_id].is_validated());
-    helper.manager[helper.second_path_id].abandon_challenge();
+    helper.manager[helper.second_path_id].abandon_challenge(&mut publisher, 0);
     assert!(!helper.manager[helper.second_path_id].is_challenge_pending());
     assert_eq!(helper.manager.active_path_id(), helper.first_path_id);
 
@@ -595,7 +595,7 @@ fn abandon_all_path_challenges() {
     assert!(helper.manager[helper.second_path_id].is_challenge_pending());
 
     // Trigger:
-    helper.manager.abandon_all_path_challenges();
+    helper.manager.abandon_all_path_challenges(&mut publisher);
 
     // Expectation:
     assert!(!helper.manager[helper.zero_path_id].is_challenge_pending());
@@ -1347,7 +1347,7 @@ fn pending_paths_should_return_paths_pending_validation() {
     helper.manager.paths.push(third_path);
 
     // not pending challenge or response
-    helper.manager[helper.zero_path_id].abandon_challenge();
+    helper.manager[helper.zero_path_id].abandon_challenge(&mut publisher, 0);
     assert!(!helper.manager[helper.zero_path_id].is_challenge_pending());
     assert!(!helper.manager[helper.zero_path_id].is_response_pending());
 
@@ -1633,7 +1633,7 @@ fn last_known_validated_path_should_update_on_path_response() {
     let frame = s2n_quic_core::frame::PathResponse {
         data: &first_expected_data,
     };
-    manager.on_path_response(&frame);
+    manager.on_path_response(&frame, &mut publisher);
     // Expectation 1:
     assert_eq!(manager.active_path_id(), second_path_id);
     // second

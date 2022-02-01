@@ -537,10 +537,11 @@ pub trait PacketSpace<Config: endpoint::Config> {
             .with_frame_type(frame.tag().into()))
     }
 
-    fn handle_path_response_frame(
+    fn handle_path_response_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: PathResponse,
         _path_manager: &mut path::Manager<Config>,
+        _publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         Err(transport::Error::PROTOCOL_VIOLATION
             .with_reason(Self::INVALID_FRAME_ERROR)
@@ -751,7 +752,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 Frame::PathResponse(frame) => {
                     let on_error = on_frame_processed!(frame);
 
-                    self.handle_path_response_frame(frame, path_manager)
+                    self.handle_path_response_frame(frame, path_manager, publisher)
                         .map_err(on_error)?;
                 }
                 Frame::HandshakeDone(frame) => {

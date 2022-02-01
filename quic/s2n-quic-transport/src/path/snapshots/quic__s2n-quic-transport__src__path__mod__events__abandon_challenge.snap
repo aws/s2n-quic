@@ -1,6 +1,6 @@
 ---
 source: quic/s2n-quic-transport/src/path/mod.rs
-assertion_line: 680
+assertion_line: 786
 expression: ""
 
 ---

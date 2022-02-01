@@ -165,8 +165,13 @@ impl<Config: endpoint::Config> Path<Config> {
     }
 
     #[inline]
-    pub fn abandon_challenge(&mut self) {
-        self.challenge.abandon();
+    pub fn abandon_challenge<Pub: event::ConnectionPublisher>(
+        &mut self,
+        publisher: &mut Pub,
+        path_id: u64,
+    ) {
+        self.challenge
+            .abandon(publisher, path_event!(self, path_id));
     }
 
     #[inline]
@@ -226,7 +231,8 @@ impl<Config: endpoint::Config> Path<Config> {
         random_generator: &mut Rnd,
         publisher: &mut Pub,
     ) {
-        self.challenge.on_timeout(timestamp);
+        self.challenge
+            .on_timeout(timestamp, publisher, path_event!(self, path_id));
         self.mtu_controller.on_timeout(timestamp);
         self.ecn_controller.on_timeout(
             timestamp,
@@ -777,9 +783,10 @@ mod tests {
         let mut path = testing::helper_path_server();
         let helper_challenge = helper_challenge();
         path.set_challenge(helper_challenge.challenge);
+        let mut publisher = event::testing::Publisher::snapshot();
 
         // Trigger:
-        path.abandon_challenge();
+        path.abandon_challenge(&mut publisher, 0);
 
         // Expectation:
         assert!(!path.challenge.is_pending());
