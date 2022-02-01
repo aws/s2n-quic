@@ -590,7 +590,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 let id = id as u64;
                 publisher.on_path_challenge_validated(event::builder::PathChallengeValidated {
                     path: path_event!(path, id),
-                    challenge_data: path.challenge.get_challenge_data().into_event(),
+                    challenge_data: path.challenge.challenge_data().into_event(),
                 });
                 // A path was validated so check if it becomes the new
                 // last_known_active_validated_path
@@ -655,7 +655,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             // Abandon other path validations only if the active path is validated since an
             // attacker could block all path validation attempts simply by forwarding packets.
             if self.active_path().is_validated() {
-                self.abandon_all_path_challenges();
+                self.abandon_all_path_challenges(publisher);
             } else if !self.active_path().is_challenge_pending() {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3
                 //# If the recipient permits the migration, it MUST send subsequent
@@ -669,9 +669,14 @@ impl<Config: endpoint::Config> Manager<Config> {
     }
 
     #[inline]
-    fn abandon_all_path_challenges(&mut self) {
-        for path in self.paths.iter_mut() {
-            path.abandon_challenge();
+    fn abandon_all_path_challenges<Pub: event::ConnectionPublisher>(
+        &mut self,
+        publisher: &mut Pub,
+    ) {
+        for (idx, path) in self.paths.iter_mut().enumerate() {
+            let path_id = idx as u64;
+            //let path_event = path_event!(path, path_id);
+            path.abandon_challenge(publisher, path_id);
         }
     }
 
