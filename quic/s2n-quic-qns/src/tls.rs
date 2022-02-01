@@ -10,6 +10,7 @@ use std::{path::PathBuf, str::FromStr};
 #[derive(Clone, Copy, Debug)]
 pub enum TlsProviders {
     /// Use s2n-tls as the tls provider
+    #[cfg(unix)]
     S2N,
     /// Use rustls as the tls provider
     Rustls,
