@@ -463,8 +463,10 @@ impl Builder {
     }
 
     /// Enables the port reuse (SO_REUSEPORT) socket option
-    #[cfg(unix)]
     pub fn with_reuse_port(mut self) -> io::Result<Self> {
+        if !cfg!(unix) {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "reuse_port is not supported on the current platform"));
+        }
         self.reuse_port = true;
         Ok(self)
     }
