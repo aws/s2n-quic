@@ -18,6 +18,16 @@ pub use crate::transport::parameters::ValidationError;
 
 const MAX_HANDSHAKE_DURATION_DEFAULT: Duration = Duration::from_secs(10);
 
+//= https://www.rfc-editor.org/rfc/rfc9000#section-10.1.2
+//# A connection will time out if no packets are sent or received for a
+//# period longer than the time negotiated using the max_idle_timeout
+//# transport parameter; see Section 10.  However, state in middleboxes
+//# might time out earlier than that.  Though REQ-5 in [RFC4787]
+//# recommends a 2-minute timeout interval, experience shows that sending
+//# packets every 30 seconds is necessary to prevent the majority of
+//# middleboxes from losing state for UDP flows [GATEWAY].
+const MAX_KEEP_ALIVE_PERIOD_DEFAULT: Duration = Duration::from_secs(30);
+
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct ConnectionInfo<'a> {
@@ -51,7 +61,7 @@ pub struct Limits {
     pub(crate) ack_ranges_limit: u8,
     pub(crate) max_send_buffer_size: u32,
     pub(crate) max_handshake_duration: Duration,
-    pub(crate) keep_alive_period: Duration,
+    pub(crate) max_keep_alive_period: Duration,
 }
 
 impl Default for Limits {
@@ -87,7 +97,7 @@ impl Limits {
             ack_ranges_limit: ack::Settings::RECOMMENDED.ack_ranges_limit,
             max_send_buffer_size: stream::Limits::RECOMMENDED.max_send_buffer_size,
             max_handshake_duration: MAX_HANDSHAKE_DURATION_DEFAULT,
-            keep_alive_period: Duration::from_secs(20),
+            max_keep_alive_period: MAX_KEEP_ALIVE_PERIOD_DEFAULT,
         }
     }
 
@@ -137,7 +147,7 @@ impl Limits {
         max_handshake_duration,
         Duration
     );
-    setter!(with_keep_alive_period, keep_alive_period, Duration);
+    setter!(with_max_keep_alive_period, max_keep_alive_period, Duration);
 
     // internal APIs
 
@@ -197,8 +207,8 @@ impl Limits {
     }
 
     #[doc(hidden)]
-    pub fn keep_alive_period(&self) -> Duration {
-        self.keep_alive_period
+    pub fn max_keep_alive_period(&self) -> Duration {
+        self.max_keep_alive_period
     }
 }
 

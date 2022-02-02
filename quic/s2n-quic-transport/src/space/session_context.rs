@@ -358,7 +358,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
         let keep_alive = KeepAlive::new(
             self.limits.max_idle_timeout(),
-            self.limits.keep_alive_period(),
+            self.limits.max_keep_alive_period(),
         );
 
         // TODO use interning for these values

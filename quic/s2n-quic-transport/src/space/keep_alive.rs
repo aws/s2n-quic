@@ -12,12 +12,23 @@ pub struct KeepAlive {
 }
 
 impl KeepAlive {
-    pub fn new(max_idle_timeout: Option<Duration>, default_period: Duration) -> Self {
+    pub fn new(max_idle_timeout: Option<Duration>, max_period: Duration) -> Self {
         let period = if let Some(max_idle_timeout) = max_idle_timeout {
             // send a ping frame at 3/4 max idle timeout to ensure it is delivered in time
-            max_idle_timeout * 3 / 4
+            (max_idle_timeout * 3 / 4).min(max_period)
         } else {
-            default_period
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-10.1.2
+            //# A connection will time out if no packets are sent or received for a
+            //# period longer than the time negotiated using the max_idle_timeout
+            //# transport parameter; see Section 10.  However, state in middleboxes
+            //# might time out earlier than that.  Though REQ-5 in [RFC4787]
+            //# recommends a 2-minute timeout interval, experience shows that sending
+            //# packets every 30 seconds is necessary to prevent the majority of
+            //# middleboxes from losing state for UDP flows [GATEWAY].
+
+            // Even though we don't have an idle timeout, we should still have a default
+            // keep-alive period to ensure middleboxes don't drop their UDP flow
+            max_period
         };
 
         Self {

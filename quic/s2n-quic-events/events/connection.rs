@@ -236,5 +236,5 @@ struct TxStreamProgress {
 
 #[event("connectivity::keep_alive_timer_expired")]
 pub struct KeepAliveTimerExpired {
-    timeout: core::time::Duration,
+    timeout: Duration,
 }

@@ -638,7 +638,7 @@ pub mod api {
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub struct KeepAliveTimerExpired {
-        pub timeout: core::time::Duration,
+        pub timeout: Duration,
     }
     impl Event for KeepAliveTimerExpired {
         const NAME: &'static str = "connectivity::keep_alive_timer_expired";
@@ -2950,7 +2950,7 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct KeepAliveTimerExpired {
-        pub timeout: core::time::Duration,
+        pub timeout: Duration,
     }
     impl IntoEvent<api::KeepAliveTimerExpired> for KeepAliveTimerExpired {
         #[inline]

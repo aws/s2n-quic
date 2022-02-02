@@ -1658,8 +1658,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             self.wakeup_handle.wakeup();
         } else {
-            // applications can't ping until the application space is available
-            // TODO: maybe return a better error message?
+            debug_assert!(
+                false,
+                "applications can't interact with the connection until the application space is available"
+            );
             return Err(connection::Error::Unspecified);
         }
 
@@ -1674,8 +1676,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             self.wakeup_handle.wakeup();
         } else {
-            // applications can't ping until the application space is available
-            // TODO: maybe return a better error message?
+            debug_assert!(
+                false,
+                "applications can't interact with the connection until the application space is available"
+            );
             return Err(connection::Error::Unspecified);
         }
 
