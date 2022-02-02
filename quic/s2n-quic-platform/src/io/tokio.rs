@@ -358,7 +358,7 @@ fn bind<A: std::net::ToSocketAddrs>(addr: A, reuse_port: bool) -> io::Result<soc
 
     #[cfg(unix)]
     socket.set_reuse_port(reuse_port)?;
-    
+
     // mark the variable as "used" regardless of platform support
     let _ = reuse_port;
 
@@ -466,7 +466,10 @@ impl Builder {
     /// Enables the port reuse (SO_REUSEPORT) socket option
     pub fn with_reuse_port(mut self) -> io::Result<Self> {
         if !cfg!(unix) {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "reuse_port is not supported on the current platform"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "reuse_port is not supported on the current platform",
+            ));
         }
         self.reuse_port = true;
         Ok(self)
