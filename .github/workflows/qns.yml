@@ -68,9 +68,9 @@ jobs:
             | jq -c '[. | to_entries[] | select(.value.role == "both" or .value.role == "server") | {"client": "s2n-quic", "server": .key}] | sort'
           )
           echo "Servers: $SERVERS"
-          MATRIX=$(echo "[$CLIENTS, $SERVERS]" | jq -c '{"include": . | flatten | sort | unique}')
-          echo "Matrix: $MATRIX"
-          echo "::set-output name=matrix::$MATRIX"
+          IMPLEMENTATIONS=$(echo "[$CLIENTS, $SERVERS]" | jq -c '. | flatten | sort | unique')
+          echo "$IMPLEMENTATIONS"
+          echo "::set-output name=impl::$IMPLEMENTATIONS"
 
   s2n-quic-qns:
     runs-on: ubuntu-latest
@@ -112,51 +112,6 @@ jobs:
           name: s2n-quic-qns-${{ matrix.mode }}
           path: s2n-quic-qns/
 
-  quinn:
-    runs-on: ubuntu-latest
-    # enable debug information
-    env:
-      RUSTFLAGS: "-g"
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          repository: quinn-rs/quinn
-          ref: ${{ env.QUINN_REF }}
-
-      - uses: actions-rs/toolchain@v1.0.7
-        id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
-
-      - uses: camshaft/rust-cache@v1
-
-      - name: Cache quinn
-        id: cache
-        uses: actions/cache@v2.1.7
-        continue-on-error: true
-        with:
-          path: |
-            target/release/perf_client
-            target/release/perf_server
-          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-quinn-${{ hashFiles('**/Cargo.*') }}-${{ hashFiles('**/*.rs') }}
-
-      - name: Build quinn
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: cargo build --bin perf_client --bin perf_server --release
-
-      - name: Prepare artifact
-        run: |
-          mkdir -p quinn
-          cp target/release/perf_client quinn/perf_client
-          cp target/release/perf_server quinn/perf_server
-
-      - uses: actions/upload-artifact@v2
-        with:
-          name: quinn
-          path: quinn/
-
   tshark:
     runs-on: ubuntu-latest
     steps:
@@ -197,7 +152,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: [env, s2n-quic-qns, tshark]
     strategy:
-      matrix: ${{ fromJson(needs.env.outputs.matrix) }}
+      matrix:
+        # tls: ["s2n-tls", "rustls"]
+        include:
+          - client: "aioquic"
+            server: "s2n-quic"
+          - client: "chrome"
+            server: "s2n-quic"
+        # include: ${{ needs.env.outputs.impl }}
     steps:
       - uses: actions/checkout@v2
         with:
@@ -212,6 +174,11 @@ jobs:
         with:
           name: s2n-quic-qns-release
           path: s2n-quic-qns/
+
+      # - name: Set tls env
+      #   run: |
+      #     echo "${{ matrix.tls }}"
+      #     echo "$TLS=${{ matrix.tls }}" >> $GITHUB_ENV
 
       - name: Setup dockerfile
         working-directory: s2n-quic-qns
@@ -302,6 +269,7 @@ jobs:
           done
 
       - uses: aws-actions/configure-aws-credentials@v1.6.0
+        # if: ${{ matrix.tls == 's2n-tls' }}
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -309,12 +277,14 @@ jobs:
 
       - name: Upload to S3
         id: s3
+        # if: ${{ matrix.tls == 's2n-tls' }}
         working-directory: quic-interop-runner
         run: |
           TARGET="${{ github.sha }}/interop/logs/latest"
           aws s3 sync results/logs "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
 
       - uses: actions/upload-artifact@v2
+        # if: ${{ matrix.tls == 's2n-tls' }}
         with:
           name: interop-${{ matrix.client }}-client-${{ matrix.server }}-server
           path: quic-interop-runner/results/result.json
@@ -419,295 +389,3 @@ jobs:
           python3 .github/interop/check.py \
             --required .github/interop/required.json \
             web/logs/latest/result.json
-
-  bench:
-    runs-on: ubuntu-latest
-    needs: [env, s2n-quic-qns, tshark]
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          submodules: true
-
-      - uses: actions-rs/toolchain@v1.0.7
-        id: toolchain
-        with:
-          toolchain: stable
-          override: true
-
-      - uses: camshaft/rust-cache@v1
-
-      - name: Download tshark
-        uses: actions/download-artifact@v2
-        with:
-          name: tshark
-          path: .
-
-      - name: Install tshark
-        run: |
-          chmod +x tshark
-          sudo mv tshark /usr/bin
-          /usr/bin/tshark -v
-
-      - name: Install gnuplot
-        run: |
-          sudo apt-get -o Acquire::Retries=3 update
-          sudo apt-get -o Acquire::Retries=3 install -y gnuplot
-
-      - name: Login to GitHub Packages
-        if: github.event.pull_request
-        uses: docker/login-action@v1
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull s2n-quic-qns:main
-        if: github.event.pull_request
-        run: docker pull ghcr.io/awslabs/s2n-quic/s2n-quic-qns:main
-
-      - uses: actions/download-artifact@v2
-        with:
-          name: s2n-quic-qns-debug
-          path: s2n-quic-qns-build/
-
-      - uses: actions/download-artifact@v2
-        with:
-          name: s2n-quic-qns-release
-          path: s2n-quic-qns-build/
-
-      - name: Setup dockerfile
-        working-directory: s2n-quic-qns-build
-        run: |
-          cp ../.github/interop/Dockerfile .
-          cp ../quic/s2n-quic-qns/etc/run_endpoint.sh .
-
-      - name: Run docker build
-        working-directory: s2n-quic-qns-build
-        run: |
-          docker build . --file Dockerfile --tag awslabs/s2n-quic-qns
-
-      - name: Run script for pull request
-        if: github.event.pull_request
-        run: sudo env "PATH=$PATH" "BUILD_S2N_QUIC=false" "COMPARE_TO_MAIN=true" ./scripts/benchmark/run-all
-
-      - name: Run script for push to main
-        if: github.event_name == 'push'
-        run: sudo env "PATH=$PATH" "BUILD_S2N_QUIC=false" ./scripts/benchmark/run-all
-
-      - uses: aws-actions/configure-aws-credentials@v1.6.0
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
-
-      - name: Upload results
-        id: s3
-        run: |
-          TARGET="${{ github.sha }}/bench"
-          aws s3 sync target/benchmark/results "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/index.html"
-          echo "::set-output name=URL::$URL"
-
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        with:
-          name: 'bench / report'
-          status: 'success'
-          url: "${{ steps.s3.outputs.URL }}"
-
-      - name: Assert no crashes
-        run: |
-          ! grep -Rq 'The s2n-quic-qns application shut down unexpectedly' target/benchmark/results
-
-  h3spec:
-    runs-on: ubuntu-latest
-    needs: [s2n-quic-qns]
-    strategy:
-      matrix:
-        tls: ["s2n-tls", "rustls"]
-
-    steps:
-      - uses: actions/download-artifact@v2
-        with:
-          name: s2n-quic-qns-debug
-
-      - name: Install h3spec
-        run: |
-          curl -L -o h3spec https://github.com/kazu-yamamoto/h3spec/releases/download/$H3_SPEC_VERSION/h3spec-linux-x86_64
-          chmod +x h3spec
-          chmod +x s2n-quic-qns-debug
-
-      - name: Run test (s2n-tls)
-        # the skipped tests here require modifications to the TLS library
-        # TODO remove the skips once these are fixed
-        #      https://github.com/awslabs/s2n-quic/issues/858
-        #      https://github.com/awslabs/s2n-quic/issues/859
-        if: ${{ matrix.tls == 's2n-tls' }}
-        run: |
-          ./s2n-quic-qns-debug interop server --port 4433 --tls ${{ matrix.tls }} &
-          # wait for the server to boot
-          sleep 3
-          ./h3spec localhost 4433 \
-            --skip "MUST send unexpected_message TLS alert if KeyUpdate in Handshake is received [TLS 6]" \
-            --skip "MUST send unexpected_message TLS alert if KeyUpdate in 1-RTT is received [TLS 6]" \
-            --skip "MUST send missing_extension TLS alert if the quic_transport_parameters extension does not included [TLS 8.2]" \
-            --skip "MUST send unexpected_message TLS alert if EndOfEarlyData is received [TLS 8.3]"
-
-      - name: Run test (rustls)
-        # the skipped tests here require modifications to the TLS library
-        # TODO remove the skips once these are fixed
-        #      https://github.com/awslabs/s2n-quic/issues/858
-        #      https://github.com/awslabs/s2n-quic/issues/859
-        if: ${{ matrix.tls == 'rustls' }}
-        run: |
-          ./s2n-quic-qns-debug interop server --port 4433 --tls ${{ matrix.tls }} &
-          # wait for the server to boot
-          sleep 3
-          ./h3spec localhost 4433 \
-            ` h3spec appends the KeyUpdate message to the end of the valid Handshake data. `\
-            ` s2n-quic considers the handshake "done" before it receives the bad message,  `\
-            ` and instead fails because the bad message is considered leftover data. See:  `\
-            ` https://github.com/awslabs/s2n-quic/blob/bb74c8e98adf12d805d26987fad02ffe45df97a7/quic/s2n-quic-transport/src/space/crypto_stream.rs#L64-L73 `\
-            --skip "MUST send unexpected_message TLS alert if KeyUpdate in Handshake is received [TLS 6]" \
-            \
-            ` s2n-quic chooses to ignore CRYPTO frames in application data. See:           `\
-            ` https://github.com/awslabs/s2n-quic/blob/bb74c8e98adf12d805d26987fad02ffe45df97a7/quic/s2n-quic-transport/src/space/application.rs#L625-L630 `\
-            --skip "MUST send unexpected_message TLS alert if KeyUpdate in 1-RTT is received [TLS 6]" \
-            \
-            ` The quic_transport_parameters are part of the ClientHello.                   `\
-            ` s2n-quic currently does not respond to malformed ClientHellos. See:          `\
-            ` https://github.com/awslabs/s2n-quic/blob/bb74c8e98adf12d805d26987fad02ffe45df97a7/quic/s2n-quic-transport/src/endpoint/mod.rs#L725 `\
-            --skip "MUST send missing_extension TLS alert if the quic_transport_parameters extension does not included [TLS 8.2]" \
-            \
-            ` RUSTLS specific failures.                                                    `\
-            ` The quic_transport_parameters are part of the ClientHello.                   `\
-            ` s2n-quic currently does not respond to malformed ClientHellos. See:          `\
-            ` https://github.com/awslabs/s2n-quic/blob/bb74c8e98adf12d805d26987fad02ffe45df97a7/quic/s2n-quic-transport/src/endpoint/mod.rs#L725 `\
-            --skip "MUST send TRANSPORT_PARAMETER_ERROR if initial_source_connection_id is missing [Transport 7.3]" \
-            --skip "MUST send TRANSPORT_PARAMETER_ERROR if original_destination_connection_id is received [Transport 18.2]" \
-            --skip "MUST send TRANSPORT_PARAMETER_ERROR if preferred_address, is received [Transport 18.2]" \
-            --skip "MUST send TRANSPORT_PARAMETER_ERROR if retry_source_connection_id is received [Transport 18.2]" \
-            --skip "MUST send TRANSPORT_PARAMETER_ERROR if stateless_reset_token is received [Transport 18.2]" \
-            --skip "MUST send TRANSPORT_PARAMETER_ERROR if max_udp_payload_size < 1200 [Transport 7.4 and 18.2]" \
-            --skip "MUST send TRANSPORT_PARAMETER_ERROR if ack_delay_exponen > 20 [Transport 7.4 and 18.2]" \
-            --skip "MUST send TRANSPORT_PARAMETER_ERROR if max_ack_delay >= 2^14 [Transport 7.4 and 18.2]" \
-            --skip "MUST send no_application_protocol TLS alert if no application protocols are supported [TLS 8.1]" \
-
-
-  perf:
-    runs-on: ubuntu-latest
-    needs: [quinn, s2n-quic-qns]
-    strategy:
-      matrix:
-        tls: ["s2n-tls", "rustls"]
-        include:
-          - client: "quinn"
-            server: "s2n-quic"
-
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          submodules: true
-
-      - uses: actions-rs/toolchain@v1.0.7
-        id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
-
-      - uses: camshaft/gha-perf@v0.1
-
-      - name: Install inferno
-        uses: camshaft/install@v1
-        with:
-          crate: inferno
-          bins: inferno-collapse-perf,inferno-flamegraph
-
-      - name: Install ultraman
-        uses: camshaft/install@v1
-        with:
-          crate: ultraman
-
-      - uses: actions/download-artifact@v2
-        with:
-          name: s2n-quic-qns-release
-          path: target/release/
-
-      - uses: actions/download-artifact@v2
-        with:
-          name: quinn
-          path: target/perf/quinn/bin/
-
-      - name: Setup artifacts
-        run: |
-          mv target/release/s2n-quic-qns-release target/release/s2n-quic-qns
-          chmod +x target/release/s2n-quic-qns
-          chmod +x target/perf/quinn/bin/perf_client
-          chmod +x target/perf/quinn/bin/perf_server
-
-      - name: Run script
-        env:
-          # ultraman wants a SHELL var to spawn tasks
-          SHELL: /bin/bash
-        run: |
-          set -e
-          mkdir -p target/perf/results
-          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 1000 0 ${{ matrix.server }} ${{ matrix.client }} ${{ matrix.tls }}
-          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 750 250 ${{ matrix.server }} ${{ matrix.client }} ${{ matrix.tls }}
-          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 500 500 ${{ matrix.server }} ${{ matrix.client }} ${{ matrix.tls }}
-          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 250 750 ${{ matrix.server }} ${{ matrix.client }} ${{ matrix.tls }}
-          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 0 1000 ${{ matrix.server }} ${{ matrix.client }} ${{ matrix.tls }}
-          sudo chown -R $(whoami) target/perf/results
-
-      - name: Prepare artifacts
-        run: |
-          cd ./target/perf/results
-          zip perf.zip **/*.script
-          rm -rf **/*.script
-
-      - uses: actions/upload-artifact@v2
-        with:
-          name: perf-${{ matrix.tls }}
-          path: target/perf/results
-
-  perf-report:
-    runs-on: ubuntu-latest
-    needs: [perf]
-    steps:
-      - uses: actions/checkout@v2
-
-      - uses: actions/download-artifact@v2
-        with:
-          name: perf-rustls
-          path: ./perf-results/rustls
-
-      - uses: actions/download-artifact@v2
-        with:
-          name: perf-s2n-tls
-          path: ./perf-results/s2n-tls
-
-      - name: Generate report
-        run: |
-          cd perf-results
-          tree -H "." -T "Performance Results" --noreport --charset utf-8 > index.html
-
-      - uses: aws-actions/configure-aws-credentials@v1.6.0
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
-
-      - name: Upload results
-        id: s3
-        run: |
-          TARGET="${{ github.sha }}/perf"
-          aws s3 sync perf-results "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/index.html"
-          echo "::set-output name=URL::$URL"
-
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        with:
-          name: 'perf / report'
-          status: 'success'
-          url: "${{ steps.s3.outputs.URL }}"
-

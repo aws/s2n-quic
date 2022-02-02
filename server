@@ -1,0 +1,1048 @@
+   0.029911712s s2n_quic:server: platform_feature_configured: configuration=MaxMtu { mtu: 1500 }
+   0.030009577s s2n_quic:server: platform_feature_configured: configuration=Gso { max_segments: 10 }
+   0.030067908s s2n_quic:server: platform_feature_configured: configuration=Ecn { enabled: true }
+   1.031616911s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=true rx_ready=false tx_ready=false
+   2.032464685s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=true rx_ready=false tx_ready=false
+   3.033862790s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=true rx_ready=false tx_ready=false
+   3.890338689s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   3.890496858s s2n_quic:server: platform_rx: count=1
+   3.890579034s s2n_quic:server: version_information: server_versions=[1] client_versions=[] chosen_version=Some(1)
+   3.891020468s s2n_quic:server:conn: key_update: key_type=Initial cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m0
+   3.891113273s s2n_quic:server:conn: connection_started: path=Path { local_addr: [::1]:4433, local_cid: 0x51181b0e6eaca95fd17fa76062aa42e8, remote_addr: [::1]:45167, remote_cid: 0xedceb952e93c0d0a43b64ec181482adc, id: 0, is_active: true } [3mid[0m[2m=[0m0
+   3.891183346s s2n_quic:server:conn: datagram_received: len=1200 [3mid[0m[2m=[0m0
+   3.891235284s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x51181b0e6eaca95fd17fa76062aa42e8, remote_addr: [::1]:45167, remote_cid: 0xedceb952e93c0d0a43b64ec181482adc, id: 0, is_active: true } frame=Crypto { offset: 0, len: 263 } [3mid[0m[2m=[0m0
+   3.891315676s s2n_quic:server:conn: tls_client_hello: payload=[[3, 3, 126, 191, 231, 122, 218, 7, 114, 219, 189, 211, 47, 222, 106, 193, 242, 122, 0, 149, 57, 106, 44, 64, 52, 9, 185, 251, 90, 49, 104, 205, 141, 19, 0, 0, 8, 19, 1, 19, 2, 19, 3, 0, 255, 1, 0, 0, 210, 0, 43, 0, 3, 2, 3, 4, 0, 0, 0, 14, 0, 12, 0, 0, 9, 108, 111, 99, 97, 108, 104, 111, 115, 116, 0, 11, 0, 2, 1, 0, 0, 10, 0, 8, 0, 6, 0, 29, 0, 23, 0, 24, 0, 13, 0, 20, 0, 18, 5, 3, 4, 3, 8, 7, 8, 6, 8, 5, 8, 4, 6, 1, 5, 1, 4, 1, 0, 23, 0, 0, 0, 5, 0, 5, 1, 0, 0, 0, 0, 0, 18, 0, 0, 0, 51, 0, 38, 0, 36, 0, 29, 0, 32, 161, 219, 17, 128, 82, 150, 65, 38, 211, 253, 21, 224, 192, 220, 102, 22, 155, 87, 98, 20, 249, 15, 193, 109, 199, 165, 108, 228, 31, 56, 112, 104, 0, 45, 0, 2, 1, 1, 0, 16, 0, 13, 0, 11, 10, 104, 113, 45, 105, 110, 116, 101, 114, 111, 112, 0, 57, 0, 53, 4, 4, 128, 57, 56, 112, 5, 4, 128, 57, 56, 112, 6, 4, 128, 57, 56, 112, 7, 4, 128, 57, 56, 112, 8, 2, 64, 100, 9, 2, 64, 100, 14, 1, 3, 15, 16, 237, 206, 185, 82, 233, 60, 13, 10, 67, 182, 78, 193, 129, 72, 42, 220, 0, 35, 0, 0]] [3mid[0m[2m=[0m0
+   3.891435112s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x51181b0e6eaca95fd17fa76062aa42e8, remote_addr: [::1]:45167, remote_cid: 0xedceb952e93c0d0a43b64ec181482adc, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m0
+   3.891663694s rustls::server::hs: decided upon suite Tls13(Tls13CipherSuite { suite: TLS13_AES_128_GCM_SHA256, bulk: Aes128Gcm })    
+   3.892194267s rustls::server::hs: Chosen ALPN protocol [104, 113, 45, 105, 110, 116, 101, 114, 111, 112]    
+   3.892448517s s2n_quic:server:conn: key_update: key_type=Handshake cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m0
+   3.892555780s s2n_quic:server:conn: transport_parameters_received: transport_parameters=TransportParameters { original_destination_connection_id: None, initial_source_connection_id: Some(0xedceb952e93c0d0a43b64ec181482adc), retry_source_connection_id: None, stateless_reset_token: None, preferred_address: None, migration_support: true, max_idle_timeout: 0ns, ack_delay_exponent: 3, max_ack_delay: 25ms, max_udp_payload_size: 65527, active_connection_id_limit: 3, initial_max_stream_data_bidi_local: 3750000, initial_max_stream_data_bidi_remote: 3750000, initial_max_stream_data_uni: 3750000, initial_max_streams_bidi: 100, initial_max_streams_uni: 100 } [3mid[0m[2m=[0m0
+   3.892626253s s2n_quic:server:conn: alpn_information: chosen_alpn=[104, 113, 45, 105, 110, 116, 101, 114, 111, 112] [3mid[0m[2m=[0m0
+   3.892656630s s2n_quic:server:conn: sni_information: chosen_sni="localhost" [3mid[0m[2m=[0m0
+   3.892715952s s2n_quic:server:conn: key_update: key_type=OneRtt { generation: 0 } cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m0
+   3.892905671s s2n_quic:server:conn: frame_sent: packet_header=Initial { number: 0, version: 1 } path_id=0 frame=Ack [3mid[0m[2m=[0m0
+   3.892955635s s2n_quic:server:conn: frame_sent: packet_header=Initial { number: 0, version: 1 } path_id=0 frame=Crypto { offset: 0, len: 90 } [3mid[0m[2m=[0m0
+   3.893019867s s2n_quic:server:conn: packet_sent: packet_header=Initial { number: 0, version: 1 } [3mid[0m[2m=[0m0
+   3.893069982s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 0, version: 1 } path_id=0 frame=Crypto { offset: 0, len: 602 } [3mid[0m[2m=[0m0
+   3.893109376s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 0, version: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m0
+   3.893158769s s2n_quic:server:conn: packet_sent: packet_header=Handshake { number: 0, version: 1 } [3mid[0m[2m=[0m0
+   3.893204476s s2n_quic:server:conn: datagram_sent: len=1200 gso_offset=0 [3mid[0m[2m=[0m0
+   3.893300377s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   3.893374146s s2n_quic:server: platform_tx: count=1
+   3.895890452s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   3.895937591s s2n_quic:server: platform_rx: count=1
+   3.895974020s s2n_quic:server: version_information: server_versions=[1] client_versions=[] chosen_version=Some(1)
+   3.896017663s s2n_quic:server:conn: datagram_received: len=1200 [3mid[0m[2m=[0m0
+   3.896073929s s2n_quic:server:conn: packet_received: packet_header=Initial { number: 1, version: 1 } [3mid[0m[2m=[0m0
+   3.896114926s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 1, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x51181b0e6eaca95fd17fa76062aa42e8, remote_addr: [::1]:45167, remote_cid: 0xedceb952e93c0d0a43b64ec181482adc, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m0
+   3.896217741s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x51181b0e6eaca95fd17fa76062aa42e8, remote_addr: [::1]:45167, remote_cid: 0xedceb952e93c0d0a43b64ec181482adc, id: 0, is_active: true } min_rtt=3.114ms smoothed_rtt=3.114ms latest_rtt=3.114ms rtt_variance=1.557ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=1038 [3mid[0m[2m=[0m0
+   3.896280419s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 1, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x51181b0e6eaca95fd17fa76062aa42e8, remote_addr: [::1]:45167, remote_cid: 0xedceb952e93c0d0a43b64ec181482adc, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m0
+   3.896348448s s2n_quic:server:conn: packet_received: packet_header=Handshake { number: 0, version: 1 } [3mid[0m[2m=[0m0
+   3.896383584s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x51181b0e6eaca95fd17fa76062aa42e8, remote_addr: [::1]:45167, remote_cid: 0xedceb952e93c0d0a43b64ec181482adc, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m0
+   3.896448347s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x51181b0e6eaca95fd17fa76062aa42e8, remote_addr: [::1]:45167, remote_cid: 0xedceb952e93c0d0a43b64ec181482adc, id: 0, is_active: true } min_rtt=3.114ms smoothed_rtt=3.114ms latest_rtt=3.114ms rtt_variance=1.557ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=0 [3mid[0m[2m=[0m0
+   3.896503331s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x51181b0e6eaca95fd17fa76062aa42e8, remote_addr: [::1]:45167, remote_cid: 0xedceb952e93c0d0a43b64ec181482adc, id: 0, is_active: true } frame=Crypto { offset: 0, len: 36 } [3mid[0m[2m=[0m0
+   3.896600925s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x51181b0e6eaca95fd17fa76062aa42e8, remote_addr: [::1]:45167, remote_cid: 0xedceb952e93c0d0a43b64ec181482adc, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m0
+   3.896649807s s2n_quic:server:conn: key_space_discarded: space=Initial [3mid[0m[2m=[0m0
+   3.896674905s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x51181b0e6eaca95fd17fa76062aa42e8, remote_addr: [::1]:45167, remote_cid: 0xedceb952e93c0d0a43b64ec181482adc, id: 0, is_active: true } min_rtt=3.114ms smoothed_rtt=3.114ms latest_rtt=3.114ms rtt_variance=1.557ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=0 [3mid[0m[2m=[0m0
+   3.896821422s s2n_quic:server:conn: handshake_status_updated: status=Complete [3mid[0m[2m=[0m0
+   3.896854725s s2n_quic:server:conn: handshake_status_updated: status=Confirmed [3mid[0m[2m=[0m0
+   3.896970153s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 0 } path_id=0 frame=Ping [3mid[0m[2m=[0m0
+   3.897034775s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 0 } path_id=0 frame=Padding [3mid[0m[2m=[0m0
+   3.897082435s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 0 } [3mid[0m[2m=[0m0
+   3.897109657s s2n_quic:server:conn: datagram_sent: len=1452 gso_offset=0 [3mid[0m[2m=[0m0
+   3.897159791s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 1, version: 1 } path_id=0 frame=Ack [3mid[0m[2m=[0m0
+   3.897194687s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 1, version: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m0
+   3.897243860s s2n_quic:server:conn: packet_sent: packet_header=Handshake { number: 1, version: 1 } [3mid[0m[2m=[0m0
+   3.897272214s s2n_quic:server:conn: key_space_discarded: space=Handshake [3mid[0m[2m=[0m0
+   3.897295327s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x51181b0e6eaca95fd17fa76062aa42e8, remote_addr: [::1]:45167, remote_cid: 0xedceb952e93c0d0a43b64ec181482adc, id: 0, is_active: true } min_rtt=3.114ms smoothed_rtt=3.114ms latest_rtt=3.114ms rtt_variance=1.557ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=1529 [3mid[0m[2m=[0m0
+   3.897358256s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 1 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m0
+   3.897397971s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m0
+   3.897442636s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 1 } [3mid[0m[2m=[0m0
+   3.897469537s s2n_quic:server:conn: datagram_sent: len=130 gso_offset=1 [3mid[0m[2m=[0m0
+   3.897543517s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   3.897600574s s2n_quic:server: platform_tx: count=1
+   3.897628908s s2n_quic:server: platform_rx: count=1
+   3.897665878s s2n_quic:server:conn: datagram_received: len=53 [3mid[0m[2m=[0m0
+   3.897712135s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 0 } [3mid[0m[2m=[0m0
+   3.897744887s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 0 } path=Path { local_addr: [::1]:4433, local_cid: 0x51181b0e6eaca95fd17fa76062aa42e8, remote_addr: [::1]:45167, remote_cid: 0xedceb952e93c0d0a43b64ec181482adc, id: 0, is_active: true } frame=Stream { id: 0, offset: 0, len: 13, is_fin: true } [3mid[0m[2m=[0m0
+   3.897828906s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 0 } path=Path { local_addr: [::1]:4433, local_cid: 0x51181b0e6eaca95fd17fa76062aa42e8, remote_addr: [::1]:45167, remote_cid: 0xedceb952e93c0d0a43b64ec181482adc, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m0
+   3.897887106s s2n_quic:server:conn: rx_stream_progress: bytes=13 [3mid[0m[2m=[0m0
+   3.897991343s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=Ack [3mid[0m[2m=[0m0
+   3.898029405s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m0
+   3.898059662s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m0
+   3.898086212s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m0
+   3.898112842s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m0
+   3.898163578s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 2 } [3mid[0m[2m=[0m0
+   3.898192433s s2n_quic:server:conn: datagram_sent: len=151 gso_offset=0 [3mid[0m[2m=[0m0
+   3.898269248s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   3.898317439s s2n_quic:server: platform_tx: count=1
+Accepted a QUIC connection from [::1]:45167 on [::1]:4433
+   3.898676718s s2n_quic_qns::server::interop: 67 bytes ready to send on Stream(0)
+   3.898727765s s2n_quic_qns::server::interop: 67 bytes sent on Stream(0)
+   3.898805481s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=false
+   3.898862038s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 3 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m0
+   3.898917193s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 3 } path_id=0 frame=Stream { id: 0, offset: 0, len: 67, is_fin: false } [3mid[0m[2m=[0m0
+   3.898977216s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 3 } [3mid[0m[2m=[0m0
+   3.899006131s s2n_quic:server:conn: datagram_sent: len=106 gso_offset=0 [3mid[0m[2m=[0m0
+   3.899057478s s2n_quic:server:conn: tx_stream_progress: bytes=67 [3mid[0m[2m=[0m0
+   3.899111580s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=true
+   3.899156525s s2n_quic:server: platform_tx: count=1
+   3.899250733s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=false
+   3.899302741s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m0
+   3.899344290s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=Stream { id: 0, offset: 67, len: 0, is_fin: true } [3mid[0m[2m=[0m0
+   3.899378254s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=Padding [3mid[0m[2m=[0m0
+   3.899425834s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 4 } [3mid[0m[2m=[0m0
+   3.899452695s s2n_quic:server:conn: datagram_sent: len=53 gso_offset=0 [3mid[0m[2m=[0m0
+   3.899523970s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=true
+   3.899570427s s2n_quic:server: platform_tx: count=1
+   3.899626884s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   3.899664726s s2n_quic:server: platform_rx: count=1
+   3.899701235s s2n_quic:server:conn: datagram_received: len=1452 [3mid[0m[2m=[0m0
+   3.899746570s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 1 } [3mid[0m[2m=[0m0
+   3.899781346s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x51181b0e6eaca95fd17fa76062aa42e8, remote_addr: [::1]:45167, remote_cid: 0xedceb952e93c0d0a43b64ec181482adc, id: 0, is_active: true } frame=Ping [3mid[0m[2m=[0m0
+   3.899878580s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x51181b0e6eaca95fd17fa76062aa42e8, remote_addr: [::1]:45167, remote_cid: 0xedceb952e93c0d0a43b64ec181482adc, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m0
+   3.899999629s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   3.900038682s s2n_quic:server: platform_rx: count=1
+   3.900074079s s2n_quic:server:conn: datagram_received: len=153 [3mid[0m[2m=[0m0
+   3.900117812s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 2 } [3mid[0m[2m=[0m0
+   3.900150373s s2n_quic:server:conn: connection_id_updated: path_id=0 cid_consumer=Remote previous=0x51181b0e6eaca95fd17fa76062aa42e8 current=0x7120c78ccdc10bcfafbf938e10d79111 [3mid[0m[2m=[0m0
+   3.900192553s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x7120c78ccdc10bcfafbf938e10d79111, remote_addr: [::1]:45167, remote_cid: 0xedceb952e93c0d0a43b64ec181482adc, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m0
+   3.900245503s s2n_quic:server:conn: handshake_status_updated: status=HandshakeDoneAcked [3mid[0m[2m=[0m0
+   3.900299666s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x7120c78ccdc10bcfafbf938e10d79111, remote_addr: [::1]:45167, remote_cid: 0xedceb952e93c0d0a43b64ec181482adc, id: 0, is_active: true } min_rtt=2.094ms smoothed_rtt=2.9865ms latest_rtt=2.094ms rtt_variance=1.390875ms max_ack_delay=25ms pto_count=0 congestion_window=14520 bytes_in_flight=159 [3mid[0m[2m=[0m0
+   3.900356473s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x7120c78ccdc10bcfafbf938e10d79111, remote_addr: [::1]:45167, remote_cid: 0xedceb952e93c0d0a43b64ec181482adc, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m0
+   3.900415044s s2n_quic:server:conn: connection_id_updated: path_id=0 cid_consumer=Local previous=0xedceb952e93c0d0a43b64ec181482adc current=0xddb5079d80c10ebe5bf8ae885d6ea927 [3mid[0m[2m=[0m0
+   3.900456412s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x7120c78ccdc10bcfafbf938e10d79111, remote_addr: [::1]:45167, remote_cid: 0xddb5079d80c10ebe5bf8ae885d6ea927, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m0
+   3.900507769s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x7120c78ccdc10bcfafbf938e10d79111, remote_addr: [::1]:45167, remote_cid: 0xddb5079d80c10ebe5bf8ae885d6ea927, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m0
+   3.900562302s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x7120c78ccdc10bcfafbf938e10d79111, remote_addr: [::1]:45167, remote_cid: 0xddb5079d80c10ebe5bf8ae885d6ea927, id: 0, is_active: true } frame=RetireConnectionId [3mid[0m[2m=[0m0
+   3.900662000s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=Ack [3mid[0m[2m=[0m0
+   3.900702477s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=RetireConnectionId [3mid[0m[2m=[0m0
+   3.900733205s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=Padding [3mid[0m[2m=[0m0
+   3.900784281s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 5 } [3mid[0m[2m=[0m0
+   3.900812845s s2n_quic:server:conn: datagram_sent: len=53 gso_offset=0 [3mid[0m[2m=[0m0
+   3.900888739s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   3.900937741s s2n_quic:server: platform_tx: count=1
+   3.901004498s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   3.901042760s s2n_quic:server: platform_rx: count=1
+   3.901078447s s2n_quic:server:conn: datagram_received: len=53 [3mid[0m[2m=[0m0
+   3.901122551s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 3 } [3mid[0m[2m=[0m0
+   3.901156004s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 3 } path=Path { local_addr: [::1]:4433, local_cid: 0x7120c78ccdc10bcfafbf938e10d79111, remote_addr: [::1]:45167, remote_cid: 0xddb5079d80c10ebe5bf8ae885d6ea927, id: 0, is_active: true } frame=ConnectionClose [3mid[0m[2m=[0m0
+   3.901207371s s2n_quic:server:conn: connection_closed: error=Closed { initiator: Remote } [3mid[0m[2m=[0m0
+   3.901288204s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   3.901355842s s2n_quic_qns::server::interop: Final stats: MyConnectionContext { packet_sent: 9, stream_requests: 1 }
+   3.904894259s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   3.904944735s s2n_quic:server: platform_rx: count=1
+   3.904988006s s2n_quic:server: endpoint_datagram_dropped: len=53 reason=UnknownDestinationConnectionId
+   3.905044303s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   3.909181542s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=true rx_ready=false tx_ready=false
+   4.911110850s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=true rx_ready=false tx_ready=false
+   5.011965825s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   5.012055294s s2n_quic:server: platform_rx: count=1
+   5.012111971s s2n_quic:server: version_information: server_versions=[1] client_versions=[] chosen_version=Some(1)
+   5.012337738s s2n_quic:server:conn: key_update: key_type=Initial cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m1
+   5.012390397s s2n_quic:server:conn: connection_started: path=Path { local_addr: [::1]:4433, local_cid: 0x42bb42628529179142de4ec7989d7cc8, remote_addr: [::1]:46327, remote_cid: 0xa9830e3596f1b06cc1ace68b856fd2c1, id: 0, is_active: true } [3mid[0m[2m=[0m1
+   5.012438508s s2n_quic:server:conn: datagram_received: len=1200 [3mid[0m[2m=[0m1
+   5.012471841s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x42bb42628529179142de4ec7989d7cc8, remote_addr: [::1]:46327, remote_cid: 0xa9830e3596f1b06cc1ace68b856fd2c1, id: 0, is_active: true } frame=Crypto { offset: 0, len: 263 } [3mid[0m[2m=[0m1
+   5.012535331s s2n_quic:server:conn: tls_client_hello: payload=[[3, 3, 16, 39, 60, 45, 111, 119, 187, 109, 29, 103, 91, 102, 204, 219, 171, 108, 235, 68, 178, 69, 136, 239, 112, 94, 15, 101, 156, 36, 3, 252, 140, 234, 0, 0, 8, 19, 1, 19, 2, 19, 3, 0, 255, 1, 0, 0, 210, 0, 43, 0, 3, 2, 3, 4, 0, 0, 0, 14, 0, 12, 0, 0, 9, 108, 111, 99, 97, 108, 104, 111, 115, 116, 0, 11, 0, 2, 1, 0, 0, 10, 0, 8, 0, 6, 0, 29, 0, 23, 0, 24, 0, 13, 0, 20, 0, 18, 5, 3, 4, 3, 8, 7, 8, 6, 8, 5, 8, 4, 6, 1, 5, 1, 4, 1, 0, 23, 0, 0, 0, 5, 0, 5, 1, 0, 0, 0, 0, 0, 18, 0, 0, 0, 51, 0, 38, 0, 36, 0, 29, 0, 32, 212, 187, 106, 93, 44, 60, 90, 227, 151, 203, 102, 229, 74, 139, 141, 139, 198, 134, 8, 233, 85, 173, 35, 62, 118, 247, 152, 25, 233, 88, 245, 15, 0, 45, 0, 2, 1, 1, 0, 16, 0, 13, 0, 11, 10, 104, 113, 45, 105, 110, 116, 101, 114, 111, 112, 0, 57, 0, 53, 4, 4, 128, 57, 56, 112, 5, 4, 128, 57, 56, 112, 6, 4, 128, 57, 56, 112, 7, 4, 128, 57, 56, 112, 8, 2, 64, 100, 9, 2, 64, 100, 14, 1, 3, 15, 16, 169, 131, 14, 53, 150, 241, 176, 108, 193, 172, 230, 139, 133, 111, 210, 193, 0, 35, 0, 0]] [3mid[0m[2m=[0m1
+   5.012648215s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x42bb42628529179142de4ec7989d7cc8, remote_addr: [::1]:46327, remote_cid: 0xa9830e3596f1b06cc1ace68b856fd2c1, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m1
+   5.012836210s rustls::server::hs: decided upon suite Tls13(Tls13CipherSuite { suite: TLS13_AES_128_GCM_SHA256, bulk: Aes128Gcm })    
+   5.013363176s rustls::server::hs: Chosen ALPN protocol [104, 113, 45, 105, 110, 116, 101, 114, 111, 112]    
+   5.013606927s s2n_quic:server:conn: key_update: key_type=Handshake cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m1
+   5.013717145s s2n_quic:server:conn: transport_parameters_received: transport_parameters=TransportParameters { original_destination_connection_id: None, initial_source_connection_id: Some(0xa9830e3596f1b06cc1ace68b856fd2c1), retry_source_connection_id: None, stateless_reset_token: None, preferred_address: None, migration_support: true, max_idle_timeout: 0ns, ack_delay_exponent: 3, max_ack_delay: 25ms, max_udp_payload_size: 65527, active_connection_id_limit: 3, initial_max_stream_data_bidi_local: 3750000, initial_max_stream_data_bidi_remote: 3750000, initial_max_stream_data_uni: 3750000, initial_max_streams_bidi: 100, initial_max_streams_uni: 100 } [3mid[0m[2m=[0m1
+   5.013775225s s2n_quic:server:conn: alpn_information: chosen_alpn=[104, 113, 45, 105, 110, 116, 101, 114, 111, 112] [3mid[0m[2m=[0m1
+   5.013803919s s2n_quic:server:conn: sni_information: chosen_sni="localhost" [3mid[0m[2m=[0m1
+   5.013859724s s2n_quic:server:conn: key_update: key_type=OneRtt { generation: 0 } cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m1
+   5.014003596s s2n_quic:server:conn: frame_sent: packet_header=Initial { number: 0, version: 1 } path_id=0 frame=Ack [3mid[0m[2m=[0m1
+   5.014051517s s2n_quic:server:conn: frame_sent: packet_header=Initial { number: 0, version: 1 } path_id=0 frame=Crypto { offset: 0, len: 90 } [3mid[0m[2m=[0m1
+   5.014107022s s2n_quic:server:conn: packet_sent: packet_header=Initial { number: 0, version: 1 } [3mid[0m[2m=[0m1
+   5.014149983s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 0, version: 1 } path_id=0 frame=Crypto { offset: 0, len: 601 } [3mid[0m[2m=[0m1
+   5.014189117s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 0, version: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m1
+   5.014236987s s2n_quic:server:conn: packet_sent: packet_header=Handshake { number: 0, version: 1 } [3mid[0m[2m=[0m1
+   5.014278095s s2n_quic:server:conn: datagram_sent: len=1200 gso_offset=0 [3mid[0m[2m=[0m1
+   5.014363837s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   5.014418981s s2n_quic:server: platform_tx: count=1
+   5.016992024s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   5.017042860s s2n_quic:server: platform_rx: count=1
+   5.017083497s s2n_quic:server: version_information: server_versions=[1] client_versions=[] chosen_version=Some(1)
+   5.017128933s s2n_quic:server:conn: datagram_received: len=1200 [3mid[0m[2m=[0m1
+   5.017183085s s2n_quic:server:conn: packet_received: packet_header=Initial { number: 1, version: 1 } [3mid[0m[2m=[0m1
+   5.017226217s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 1, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x42bb42628529179142de4ec7989d7cc8, remote_addr: [::1]:46327, remote_cid: 0xa9830e3596f1b06cc1ace68b856fd2c1, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m1
+   5.017311157s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x42bb42628529179142de4ec7989d7cc8, remote_addr: [::1]:46327, remote_cid: 0xa9830e3596f1b06cc1ace68b856fd2c1, id: 0, is_active: true } min_rtt=3.105ms smoothed_rtt=3.105ms latest_rtt=3.105ms rtt_variance=1.5525ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=1038 [3mid[0m[2m=[0m1
+   5.017373285s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 1, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x42bb42628529179142de4ec7989d7cc8, remote_addr: [::1]:46327, remote_cid: 0xa9830e3596f1b06cc1ace68b856fd2c1, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m1
+   5.017440041s s2n_quic:server:conn: packet_received: packet_header=Handshake { number: 0, version: 1 } [3mid[0m[2m=[0m1
+   5.017476480s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x42bb42628529179142de4ec7989d7cc8, remote_addr: [::1]:46327, remote_cid: 0xa9830e3596f1b06cc1ace68b856fd2c1, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m1
+   5.017543016s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x42bb42628529179142de4ec7989d7cc8, remote_addr: [::1]:46327, remote_cid: 0xa9830e3596f1b06cc1ace68b856fd2c1, id: 0, is_active: true } min_rtt=3.105ms smoothed_rtt=3.105ms latest_rtt=3.105ms rtt_variance=1.5525ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=0 [3mid[0m[2m=[0m1
+   5.017599603s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x42bb42628529179142de4ec7989d7cc8, remote_addr: [::1]:46327, remote_cid: 0xa9830e3596f1b06cc1ace68b856fd2c1, id: 0, is_active: true } frame=Crypto { offset: 0, len: 36 } [3mid[0m[2m=[0m1
+   5.017693590s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x42bb42628529179142de4ec7989d7cc8, remote_addr: [::1]:46327, remote_cid: 0xa9830e3596f1b06cc1ace68b856fd2c1, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m1
+   5.017738876s s2n_quic:server:conn: key_space_discarded: space=Initial [3mid[0m[2m=[0m1
+   5.017768993s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x42bb42628529179142de4ec7989d7cc8, remote_addr: [::1]:46327, remote_cid: 0xa9830e3596f1b06cc1ace68b856fd2c1, id: 0, is_active: true } min_rtt=3.105ms smoothed_rtt=3.105ms latest_rtt=3.105ms rtt_variance=1.5525ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=0 [3mid[0m[2m=[0m1
+   5.017906903s s2n_quic:server:conn: handshake_status_updated: status=Complete [3mid[0m[2m=[0m1
+   5.017940136s s2n_quic:server:conn: handshake_status_updated: status=Confirmed [3mid[0m[2m=[0m1
+   5.018054913s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 0 } path_id=0 frame=Ping [3mid[0m[2m=[0m1
+   5.018117812s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 0 } path_id=0 frame=Padding [3mid[0m[2m=[0m1
+   5.018166013s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 0 } [3mid[0m[2m=[0m1
+   5.018194216s s2n_quic:server:conn: datagram_sent: len=1452 gso_offset=0 [3mid[0m[2m=[0m1
+   5.018248188s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 1, version: 1 } path_id=0 frame=Ack [3mid[0m[2m=[0m1
+   5.018285800s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 1, version: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m1
+   5.018332648s s2n_quic:server:conn: packet_sent: packet_header=Handshake { number: 1, version: 1 } [3mid[0m[2m=[0m1
+   5.018361543s s2n_quic:server:conn: key_space_discarded: space=Handshake [3mid[0m[2m=[0m1
+   5.018384837s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x42bb42628529179142de4ec7989d7cc8, remote_addr: [::1]:46327, remote_cid: 0xa9830e3596f1b06cc1ace68b856fd2c1, id: 0, is_active: true } min_rtt=3.105ms smoothed_rtt=3.105ms latest_rtt=3.105ms rtt_variance=1.5525ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=1529 [3mid[0m[2m=[0m1
+   5.018449018s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 1 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m1
+   5.018487491s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m1
+   5.018533838s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 1 } [3mid[0m[2m=[0m1
+   5.018562102s s2n_quic:server:conn: datagram_sent: len=130 gso_offset=1 [3mid[0m[2m=[0m1
+   5.018636663s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   5.018692448s s2n_quic:server: platform_tx: count=1
+   5.018721483s s2n_quic:server: platform_rx: count=1
+   5.018759024s s2n_quic:server:conn: datagram_received: len=53 [3mid[0m[2m=[0m1
+   5.018812465s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 0 } [3mid[0m[2m=[0m1
+   5.018850326s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 0 } path=Path { local_addr: [::1]:4433, local_cid: 0x42bb42628529179142de4ec7989d7cc8, remote_addr: [::1]:46327, remote_cid: 0xa9830e3596f1b06cc1ace68b856fd2c1, id: 0, is_active: true } frame=Stream { id: 0, offset: 0, len: 13, is_fin: true } [3mid[0m[2m=[0m1
+   5.018923064s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 0 } path=Path { local_addr: [::1]:4433, local_cid: 0x42bb42628529179142de4ec7989d7cc8, remote_addr: [::1]:46327, remote_cid: 0xa9830e3596f1b06cc1ace68b856fd2c1, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m1
+   5.018972417s s2n_quic:server:conn: rx_stream_progress: bytes=13 [3mid[0m[2m=[0m1
+   5.019071795s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=Ack [3mid[0m[2m=[0m1
+   5.019110218s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m1
+   5.019141206s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m1
+   5.019167686s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m1
+   5.019193886s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m1
+   5.019245503s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 2 } [3mid[0m[2m=[0m1
+   5.019274628s s2n_quic:server:conn: datagram_sent: len=151 gso_offset=0 [3mid[0m[2m=[0m1
+   5.019353247s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   5.019400997s s2n_quic:server: platform_tx: count=1
+Accepted a QUIC connection from [::1]:46327 on [::1]:4433
+   5.019654386s s2n_quic_qns::server::interop: 67 bytes ready to send on Stream(0)
+   5.019698279s s2n_quic_qns::server::interop: 67 bytes sent on Stream(0)
+   5.019757611s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=false
+   5.019819488s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 3 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m1
+   5.019867780s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 3 } path_id=0 frame=Stream { id: 0, offset: 0, len: 67, is_fin: false } [3mid[0m[2m=[0m1
+   5.019927442s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 3 } [3mid[0m[2m=[0m1
+   5.019956908s s2n_quic:server:conn: datagram_sent: len=106 gso_offset=0 [3mid[0m[2m=[0m1
+   5.020005881s s2n_quic:server:conn: tx_stream_progress: bytes=67 [3mid[0m[2m=[0m1
+   5.020060754s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=true
+   5.020104347s s2n_quic:server: platform_tx: count=1
+   5.020202222s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=false
+   5.020255893s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m1
+   5.020299015s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=Stream { id: 0, offset: 67, len: 0, is_fin: true } [3mid[0m[2m=[0m1
+   5.020334692s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=Padding [3mid[0m[2m=[0m1
+   5.020382512s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 4 } [3mid[0m[2m=[0m1
+   5.020410615s s2n_quic:server:conn: datagram_sent: len=53 gso_offset=0 [3mid[0m[2m=[0m1
+   5.020483052s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=true
+   5.020530011s s2n_quic:server: platform_tx: count=1
+   5.020588061s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   5.020625101s s2n_quic:server: platform_rx: count=1
+   5.020662251s s2n_quic:server:conn: datagram_received: len=1452 [3mid[0m[2m=[0m1
+   5.020707036s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 1 } [3mid[0m[2m=[0m1
+   5.020743124s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x42bb42628529179142de4ec7989d7cc8, remote_addr: [::1]:46327, remote_cid: 0xa9830e3596f1b06cc1ace68b856fd2c1, id: 0, is_active: true } frame=Ping [3mid[0m[2m=[0m1
+   5.020844536s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x42bb42628529179142de4ec7989d7cc8, remote_addr: [::1]:46327, remote_cid: 0xa9830e3596f1b06cc1ace68b856fd2c1, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m1
+   5.020960044s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   5.021458446s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   5.021503982s s2n_quic:server: platform_rx: count=1
+   5.021547675s s2n_quic:server:conn: datagram_received: len=153 [3mid[0m[2m=[0m1
+   5.021598911s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 2 } [3mid[0m[2m=[0m1
+   5.021634318s s2n_quic:server:conn: connection_id_updated: path_id=0 cid_consumer=Remote previous=0x42bb42628529179142de4ec7989d7cc8 current=0x8e14cd8bef293df27a94c5c1447b9bb3 [3mid[0m[2m=[0m1
+   5.021681237s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x8e14cd8bef293df27a94c5c1447b9bb3, remote_addr: [::1]:46327, remote_cid: 0xa9830e3596f1b06cc1ace68b856fd2c1, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m1
+   5.021739166s s2n_quic:server:conn: handshake_status_updated: status=HandshakeDoneAcked [3mid[0m[2m=[0m1
+   5.021808548s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x8e14cd8bef293df27a94c5c1447b9bb3, remote_addr: [::1]:46327, remote_cid: 0xa9830e3596f1b06cc1ace68b856fd2c1, id: 0, is_active: true } min_rtt=1.733ms smoothed_rtt=2.9335ms latest_rtt=1.733ms rtt_variance=1.4645ms max_ack_delay=25ms pto_count=0 congestion_window=14520 bytes_in_flight=53 [3mid[0m[2m=[0m1
+   5.021873360s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x8e14cd8bef293df27a94c5c1447b9bb3, remote_addr: [::1]:46327, remote_cid: 0xa9830e3596f1b06cc1ace68b856fd2c1, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m1
+   5.021932111s s2n_quic:server:conn: connection_id_updated: path_id=0 cid_consumer=Local previous=0xa9830e3596f1b06cc1ace68b856fd2c1 current=0xe1826cacf337172733973a404c8c5819 [3mid[0m[2m=[0m1
+   5.021979290s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x8e14cd8bef293df27a94c5c1447b9bb3, remote_addr: [::1]:46327, remote_cid: 0xe1826cacf337172733973a404c8c5819, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m1
+   5.022037801s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x8e14cd8bef293df27a94c5c1447b9bb3, remote_addr: [::1]:46327, remote_cid: 0xe1826cacf337172733973a404c8c5819, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m1
+   5.022100209s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x8e14cd8bef293df27a94c5c1447b9bb3, remote_addr: [::1]:46327, remote_cid: 0xe1826cacf337172733973a404c8c5819, id: 0, is_active: true } frame=RetireConnectionId [3mid[0m[2m=[0m1
+   5.022212611s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=Ack [3mid[0m[2m=[0m1
+   5.022257085s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=RetireConnectionId [3mid[0m[2m=[0m1
+   5.022293684s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=Padding [3mid[0m[2m=[0m1
+   5.022347817s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 5 } [3mid[0m[2m=[0m1
+   5.022385708s s2n_quic:server:conn: datagram_sent: len=53 gso_offset=0 [3mid[0m[2m=[0m1
+   5.022472943s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   5.022526124s s2n_quic:server: platform_tx: count=1
+   5.022559296s s2n_quic:server: platform_rx: count=1
+   5.022605664s s2n_quic:server:conn: datagram_received: len=53 [3mid[0m[2m=[0m1
+   5.022657783s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 3 } [3mid[0m[2m=[0m1
+   5.022695965s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 3 } path=Path { local_addr: [::1]:4433, local_cid: 0x8e14cd8bef293df27a94c5c1447b9bb3, remote_addr: [::1]:46327, remote_cid: 0xe1826cacf337172733973a404c8c5819, id: 0, is_active: true } frame=ConnectionClose [3mid[0m[2m=[0m1
+   5.022743695s s2n_quic:server:conn: connection_closed: error=Closed { initiator: Remote } [3mid[0m[2m=[0m1
+   5.022830359s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   5.022898037s s2n_quic_qns::server::interop: Final stats: MyConnectionContext { packet_sent: 9, stream_requests: 1 }
+   5.027440782s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   5.027488713s s2n_quic:server: platform_rx: count=1
+   5.027527967s s2n_quic:server: endpoint_datagram_dropped: len=53 reason=UnknownDestinationConnectionId
+   5.027582590s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   5.030711895s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=true rx_ready=false tx_ready=false
+   6.032025666s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=true rx_ready=false tx_ready=false
+   6.108950974s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   6.109029512s s2n_quic:server: platform_rx: count=1
+   6.109081250s s2n_quic:server: version_information: server_versions=[1] client_versions=[] chosen_version=Some(1)
+   6.109307889s s2n_quic:server:conn: key_update: key_type=Initial cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m2
+   6.109363313s s2n_quic:server:conn: connection_started: path=Path { local_addr: [::1]:4433, local_cid: 0x993e0ab9e3004a39ea5f34ea88e49580, remote_addr: [::1]:52327, remote_cid: 0x1613ca6b97a9ff201d5c78f3d02cf0da, id: 0, is_active: true } [3mid[0m[2m=[0m2
+   6.109415853s s2n_quic:server:conn: datagram_received: len=1200 [3mid[0m[2m=[0m2
+   6.109453935s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x993e0ab9e3004a39ea5f34ea88e49580, remote_addr: [::1]:52327, remote_cid: 0x1613ca6b97a9ff201d5c78f3d02cf0da, id: 0, is_active: true } frame=Crypto { offset: 0, len: 263 } [3mid[0m[2m=[0m2
+   6.109522725s s2n_quic:server:conn: tls_client_hello: payload=[[3, 3, 171, 213, 177, 174, 146, 137, 119, 35, 33, 13, 166, 113, 214, 110, 18, 13, 72, 11, 34, 24, 255, 2, 148, 39, 230, 105, 237, 11, 97, 146, 2, 222, 0, 0, 8, 19, 1, 19, 2, 19, 3, 0, 255, 1, 0, 0, 210, 0, 43, 0, 3, 2, 3, 4, 0, 0, 0, 14, 0, 12, 0, 0, 9, 108, 111, 99, 97, 108, 104, 111, 115, 116, 0, 11, 0, 2, 1, 0, 0, 10, 0, 8, 0, 6, 0, 29, 0, 23, 0, 24, 0, 13, 0, 20, 0, 18, 5, 3, 4, 3, 8, 7, 8, 6, 8, 5, 8, 4, 6, 1, 5, 1, 4, 1, 0, 23, 0, 0, 0, 5, 0, 5, 1, 0, 0, 0, 0, 0, 18, 0, 0, 0, 51, 0, 38, 0, 36, 0, 29, 0, 32, 219, 106, 21, 47, 116, 226, 155, 67, 190, 50, 207, 98, 84, 73, 228, 129, 23, 115, 207, 96, 165, 202, 94, 21, 43, 187, 220, 236, 90, 248, 182, 96, 0, 45, 0, 2, 1, 1, 0, 16, 0, 13, 0, 11, 10, 104, 113, 45, 105, 110, 116, 101, 114, 111, 112, 0, 57, 0, 53, 4, 4, 128, 57, 56, 112, 5, 4, 128, 57, 56, 112, 6, 4, 128, 57, 56, 112, 7, 4, 128, 57, 56, 112, 8, 2, 64, 100, 9, 2, 64, 100, 14, 1, 3, 15, 16, 22, 19, 202, 107, 151, 169, 255, 32, 29, 92, 120, 243, 208, 44, 240, 218, 0, 35, 0, 0]] [3mid[0m[2m=[0m2
+   6.109638313s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x993e0ab9e3004a39ea5f34ea88e49580, remote_addr: [::1]:52327, remote_cid: 0x1613ca6b97a9ff201d5c78f3d02cf0da, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m2
+   6.109827320s rustls::server::hs: decided upon suite Tls13(Tls13CipherSuite { suite: TLS13_AES_128_GCM_SHA256, bulk: Aes128Gcm })    
+   6.110342073s rustls::server::hs: Chosen ALPN protocol [104, 113, 45, 105, 110, 116, 101, 114, 111, 112]    
+   6.110593108s s2n_quic:server:conn: key_update: key_type=Handshake cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m2
+   6.110700180s s2n_quic:server:conn: transport_parameters_received: transport_parameters=TransportParameters { original_destination_connection_id: None, initial_source_connection_id: Some(0x1613ca6b97a9ff201d5c78f3d02cf0da), retry_source_connection_id: None, stateless_reset_token: None, preferred_address: None, migration_support: true, max_idle_timeout: 0ns, ack_delay_exponent: 3, max_ack_delay: 25ms, max_udp_payload_size: 65527, active_connection_id_limit: 3, initial_max_stream_data_bidi_local: 3750000, initial_max_stream_data_bidi_remote: 3750000, initial_max_stream_data_uni: 3750000, initial_max_streams_bidi: 100, initial_max_streams_uni: 100 } [3mid[0m[2m=[0m2
+   6.110758490s s2n_quic:server:conn: alpn_information: chosen_alpn=[104, 113, 45, 105, 110, 116, 101, 114, 111, 112] [3mid[0m[2m=[0m2
+   6.110793116s s2n_quic:server:conn: sni_information: chosen_sni="localhost" [3mid[0m[2m=[0m2
+   6.110856505s s2n_quic:server:conn: key_update: key_type=OneRtt { generation: 0 } cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m2
+   6.111000277s s2n_quic:server:conn: frame_sent: packet_header=Initial { number: 0, version: 1 } path_id=0 frame=Ack [3mid[0m[2m=[0m2
+   6.111049951s s2n_quic:server:conn: frame_sent: packet_header=Initial { number: 0, version: 1 } path_id=0 frame=Crypto { offset: 0, len: 90 } [3mid[0m[2m=[0m2
+   6.111110495s s2n_quic:server:conn: packet_sent: packet_header=Initial { number: 0, version: 1 } [3mid[0m[2m=[0m2
+   6.111161031s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 0, version: 1 } path_id=0 frame=Crypto { offset: 0, len: 602 } [3mid[0m[2m=[0m2
+   6.111206417s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 0, version: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m2
+   6.111260519s s2n_quic:server:conn: packet_sent: packet_header=Handshake { number: 0, version: 1 } [3mid[0m[2m=[0m2
+   6.111305574s s2n_quic:server:conn: datagram_sent: len=1200 gso_offset=0 [3mid[0m[2m=[0m2
+   6.111398911s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   6.111461990s s2n_quic:server: platform_tx: count=1
+   6.114041395s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   6.114093093s s2n_quic:server: platform_rx: count=1
+   6.114131245s s2n_quic:server: version_information: server_versions=[1] client_versions=[] chosen_version=Some(1)
+   6.114180277s s2n_quic:server:conn: datagram_received: len=1200 [3mid[0m[2m=[0m2
+   6.114238137s s2n_quic:server:conn: packet_received: packet_header=Initial { number: 1, version: 1 } [3mid[0m[2m=[0m2
+   6.114281008s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 1, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x993e0ab9e3004a39ea5f34ea88e49580, remote_addr: [::1]:52327, remote_cid: 0x1613ca6b97a9ff201d5c78f3d02cf0da, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m2
+   6.114352593s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x993e0ab9e3004a39ea5f34ea88e49580, remote_addr: [::1]:52327, remote_cid: 0x1613ca6b97a9ff201d5c78f3d02cf0da, id: 0, is_active: true } min_rtt=3.157ms smoothed_rtt=3.157ms latest_rtt=3.157ms rtt_variance=1.5785ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=1038 [3mid[0m[2m=[0m2
+   6.114409521s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 1, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x993e0ab9e3004a39ea5f34ea88e49580, remote_addr: [::1]:52327, remote_cid: 0x1613ca6b97a9ff201d5c78f3d02cf0da, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m2
+   6.114481527s s2n_quic:server:conn: packet_received: packet_header=Handshake { number: 0, version: 1 } [3mid[0m[2m=[0m2
+   6.114518988s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x993e0ab9e3004a39ea5f34ea88e49580, remote_addr: [::1]:52327, remote_cid: 0x1613ca6b97a9ff201d5c78f3d02cf0da, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m2
+   6.114582177s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x993e0ab9e3004a39ea5f34ea88e49580, remote_addr: [::1]:52327, remote_cid: 0x1613ca6b97a9ff201d5c78f3d02cf0da, id: 0, is_active: true } min_rtt=3.157ms smoothed_rtt=3.157ms latest_rtt=3.157ms rtt_variance=1.5785ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=0 [3mid[0m[2m=[0m2
+   6.114638714s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x993e0ab9e3004a39ea5f34ea88e49580, remote_addr: [::1]:52327, remote_cid: 0x1613ca6b97a9ff201d5c78f3d02cf0da, id: 0, is_active: true } frame=Crypto { offset: 0, len: 36 } [3mid[0m[2m=[0m2
+   6.114734024s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x993e0ab9e3004a39ea5f34ea88e49580, remote_addr: [::1]:52327, remote_cid: 0x1613ca6b97a9ff201d5c78f3d02cf0da, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m2
+   6.114783688s s2n_quic:server:conn: key_space_discarded: space=Initial [3mid[0m[2m=[0m2
+   6.114809457s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x993e0ab9e3004a39ea5f34ea88e49580, remote_addr: [::1]:52327, remote_cid: 0x1613ca6b97a9ff201d5c78f3d02cf0da, id: 0, is_active: true } min_rtt=3.157ms smoothed_rtt=3.157ms latest_rtt=3.157ms rtt_variance=1.5785ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=0 [3mid[0m[2m=[0m2
+   6.114944702s s2n_quic:server:conn: handshake_status_updated: status=Complete [3mid[0m[2m=[0m2
+   6.114978105s s2n_quic:server:conn: handshake_status_updated: status=Confirmed [3mid[0m[2m=[0m2
+   6.115094195s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 0 } path_id=0 frame=Ping [3mid[0m[2m=[0m2
+   6.115157254s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 0 } path_id=0 frame=Padding [3mid[0m[2m=[0m2
+   6.115205315s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 0 } [3mid[0m[2m=[0m2
+   6.115233678s s2n_quic:server:conn: datagram_sent: len=1452 gso_offset=0 [3mid[0m[2m=[0m2
+   6.115285506s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 1, version: 1 } path_id=0 frame=Ack [3mid[0m[2m=[0m2
+   6.115321564s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 1, version: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m2
+   6.115368403s s2n_quic:server:conn: packet_sent: packet_header=Handshake { number: 1, version: 1 } [3mid[0m[2m=[0m2
+   6.115397267s s2n_quic:server:conn: key_space_discarded: space=Handshake [3mid[0m[2m=[0m2
+   6.115421042s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x993e0ab9e3004a39ea5f34ea88e49580, remote_addr: [::1]:52327, remote_cid: 0x1613ca6b97a9ff201d5c78f3d02cf0da, id: 0, is_active: true } min_rtt=3.157ms smoothed_rtt=3.157ms latest_rtt=3.157ms rtt_variance=1.5785ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=1529 [3mid[0m[2m=[0m2
+   6.115485053s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 1 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m2
+   6.115523035s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m2
+   6.115573330s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 1 } [3mid[0m[2m=[0m2
+   6.115602024s s2n_quic:server:conn: datagram_sent: len=130 gso_offset=1 [3mid[0m[2m=[0m2
+   6.115676445s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   6.115731950s s2n_quic:server: platform_tx: count=1
+   6.115766886s s2n_quic:server: platform_rx: count=1
+   6.115807032s s2n_quic:server:conn: datagram_received: len=53 [3mid[0m[2m=[0m2
+   6.115854221s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 0 } [3mid[0m[2m=[0m2
+   6.115888245s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 0 } path=Path { local_addr: [::1]:4433, local_cid: 0x993e0ab9e3004a39ea5f34ea88e49580, remote_addr: [::1]:52327, remote_cid: 0x1613ca6b97a9ff201d5c78f3d02cf0da, id: 0, is_active: true } frame=Stream { id: 0, offset: 0, len: 13, is_fin: true } [3mid[0m[2m=[0m2
+   6.115961253s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 0 } path=Path { local_addr: [::1]:4433, local_cid: 0x993e0ab9e3004a39ea5f34ea88e49580, remote_addr: [::1]:52327, remote_cid: 0x1613ca6b97a9ff201d5c78f3d02cf0da, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m2
+   6.116011518s s2n_quic:server:conn: rx_stream_progress: bytes=13 [3mid[0m[2m=[0m2
+   6.116111968s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=Ack [3mid[0m[2m=[0m2
+   6.116150531s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m2
+   6.116180828s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m2
+   6.116208320s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m2
+   6.116235201s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m2
+   6.116287280s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 2 } [3mid[0m[2m=[0m2
+   6.116316976s s2n_quic:server:conn: datagram_sent: len=151 gso_offset=0 [3mid[0m[2m=[0m2
+   6.116395815s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   6.116443835s s2n_quic:server: platform_tx: count=1
+Accepted a QUIC connection from [::1]:52327 on [::1]:4433
+   6.116704608s s2n_quic_qns::server::interop: 67 bytes ready to send on Stream(0)
+   6.116751778s s2n_quic_qns::server::interop: 67 bytes sent on Stream(0)
+   6.116825387s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=false
+   6.116886121s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 3 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m2
+   6.116940534s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 3 } path_id=0 frame=Stream { id: 0, offset: 0, len: 67, is_fin: false } [3mid[0m[2m=[0m2
+   6.117006749s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 3 } [3mid[0m[2m=[0m2
+   6.117040643s s2n_quic:server:conn: datagram_sent: len=106 gso_offset=0 [3mid[0m[2m=[0m2
+   6.117098122s s2n_quic:server:conn: tx_stream_progress: bytes=67 [3mid[0m[2m=[0m2
+   6.117157765s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=true
+   6.117205325s s2n_quic:server: platform_tx: count=1
+   6.117314641s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=false
+   6.117373262s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m2
+   6.117424329s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=Stream { id: 0, offset: 67, len: 0, is_fin: true } [3mid[0m[2m=[0m2
+   6.117464935s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=Padding [3mid[0m[2m=[0m2
+   6.117522524s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 4 } [3mid[0m[2m=[0m2
+   6.117558131s s2n_quic:server:conn: datagram_sent: len=53 gso_offset=0 [3mid[0m[2m=[0m2
+   6.117642641s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=true
+   6.117696443s s2n_quic:server: platform_tx: count=1
+   6.117761265s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   6.117811560s s2n_quic:server: platform_rx: count=1
+   6.117854411s s2n_quic:server:conn: datagram_received: len=1452 [3mid[0m[2m=[0m2
+   6.117906219s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 1 } [3mid[0m[2m=[0m2
+   6.117945273s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x993e0ab9e3004a39ea5f34ea88e49580, remote_addr: [::1]:52327, remote_cid: 0x1613ca6b97a9ff201d5c78f3d02cf0da, id: 0, is_active: true } frame=Ping [3mid[0m[2m=[0m2
+   6.118053237s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x993e0ab9e3004a39ea5f34ea88e49580, remote_addr: [::1]:52327, remote_cid: 0x1613ca6b97a9ff201d5c78f3d02cf0da, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m2
+   6.118182512s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   6.118227697s s2n_quic:server: platform_rx: count=1
+   6.118268484s s2n_quic:server:conn: datagram_received: len=153 [3mid[0m[2m=[0m2
+   6.118317797s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 2 } [3mid[0m[2m=[0m2
+   6.118353254s s2n_quic:server:conn: connection_id_updated: path_id=0 cid_consumer=Remote previous=0x993e0ab9e3004a39ea5f34ea88e49580 current=0x3afb8a8c2e4cf5d28544f078a3139f03 [3mid[0m[2m=[0m2
+   6.118401515s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x3afb8a8c2e4cf5d28544f078a3139f03, remote_addr: [::1]:52327, remote_cid: 0x1613ca6b97a9ff201d5c78f3d02cf0da, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m2
+   6.118461920s s2n_quic:server:conn: handshake_status_updated: status=HandshakeDoneAcked [3mid[0m[2m=[0m2
+   6.118518707s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x3afb8a8c2e4cf5d28544f078a3139f03, remote_addr: [::1]:52327, remote_cid: 0x1613ca6b97a9ff201d5c78f3d02cf0da, id: 0, is_active: true } min_rtt=2.165ms smoothed_rtt=3.033ms latest_rtt=2.165ms rtt_variance=1.400875ms max_ack_delay=25ms pto_count=0 congestion_window=14520 bytes_in_flight=159 [3mid[0m[2m=[0m2
+   6.118581576s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x3afb8a8c2e4cf5d28544f078a3139f03, remote_addr: [::1]:52327, remote_cid: 0x1613ca6b97a9ff201d5c78f3d02cf0da, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m2
+   6.118640507s s2n_quic:server:conn: connection_id_updated: path_id=0 cid_consumer=Local previous=0x1613ca6b97a9ff201d5c78f3d02cf0da current=0x3353a2fdbba7bb7c38d1b17097684b6b [3mid[0m[2m=[0m2
+   6.118686805s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x3afb8a8c2e4cf5d28544f078a3139f03, remote_addr: [::1]:52327, remote_cid: 0x3353a2fdbba7bb7c38d1b17097684b6b, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m2
+   6.118746928s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x3afb8a8c2e4cf5d28544f078a3139f03, remote_addr: [::1]:52327, remote_cid: 0x3353a2fdbba7bb7c38d1b17097684b6b, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m2
+   6.118815127s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x3afb8a8c2e4cf5d28544f078a3139f03, remote_addr: [::1]:52327, remote_cid: 0x3353a2fdbba7bb7c38d1b17097684b6b, id: 0, is_active: true } frame=RetireConnectionId [3mid[0m[2m=[0m2
+   6.118935505s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=Ack [3mid[0m[2m=[0m2
+   6.118981221s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=RetireConnectionId [3mid[0m[2m=[0m2
+   6.119020545s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=Padding [3mid[0m[2m=[0m2
+   6.119076030s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 5 } [3mid[0m[2m=[0m2
+   6.119107750s s2n_quic:server:conn: datagram_sent: len=53 gso_offset=0 [3mid[0m[2m=[0m2
+   6.119195867s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   6.119249879s s2n_quic:server: platform_tx: count=1
+   6.119283643s s2n_quic:server: platform_rx: count=1
+   6.119325933s s2n_quic:server:conn: datagram_received: len=53 [3mid[0m[2m=[0m2
+   6.119379314s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 3 } [3mid[0m[2m=[0m2
+   6.119421183s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 3 } path=Path { local_addr: [::1]:4433, local_cid: 0x3afb8a8c2e4cf5d28544f078a3139f03, remote_addr: [::1]:52327, remote_cid: 0x3353a2fdbba7bb7c38d1b17097684b6b, id: 0, is_active: true } frame=ConnectionClose [3mid[0m[2m=[0m2
+   6.119468732s s2n_quic:server:conn: connection_closed: error=Closed { initiator: Remote } [3mid[0m[2m=[0m2
+   6.119552902s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   6.119625429s s2n_quic_qns::server::interop: Final stats: MyConnectionContext { packet_sent: 9, stream_requests: 1 }
+   6.123277761s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   6.123332976s s2n_quic:server: platform_rx: count=1
+   6.123378843s s2n_quic:server: endpoint_datagram_dropped: len=53 reason=UnknownDestinationConnectionId
+   6.123442833s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   6.127595532s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=true rx_ready=false tx_ready=false
+   6.910340253s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   6.910421356s s2n_quic:server: platform_rx: count=1
+   6.910472072s s2n_quic:server: version_information: server_versions=[1] client_versions=[] chosen_version=Some(1)
+   6.910666109s s2n_quic:server:conn: key_update: key_type=Initial cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m3
+   6.910717356s s2n_quic:server:conn: connection_started: path=Path { local_addr: [::1]:4433, local_cid: 0x7fb6f1c67c036c1f29e9ccd8a1daebc9, remote_addr: [::1]:55309, remote_cid: 0x1204c869fe984169e666a1a0f1c838b4, id: 0, is_active: true } [3mid[0m[2m=[0m3
+   6.910772380s s2n_quic:server:conn: datagram_received: len=1200 [3mid[0m[2m=[0m3
+   6.910809299s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x7fb6f1c67c036c1f29e9ccd8a1daebc9, remote_addr: [::1]:55309, remote_cid: 0x1204c869fe984169e666a1a0f1c838b4, id: 0, is_active: true } frame=Crypto { offset: 0, len: 263 } [3mid[0m[2m=[0m3
+   6.910873661s s2n_quic:server:conn: tls_client_hello: payload=[[3, 3, 182, 137, 47, 63, 85, 74, 13, 53, 67, 42, 183, 9, 132, 90, 179, 91, 60, 4, 131, 234, 73, 218, 65, 163, 121, 63, 153, 167, 176, 158, 12, 49, 0, 0, 8, 19, 1, 19, 2, 19, 3, 0, 255, 1, 0, 0, 210, 0, 43, 0, 3, 2, 3, 4, 0, 0, 0, 14, 0, 12, 0, 0, 9, 108, 111, 99, 97, 108, 104, 111, 115, 116, 0, 11, 0, 2, 1, 0, 0, 10, 0, 8, 0, 6, 0, 29, 0, 23, 0, 24, 0, 13, 0, 20, 0, 18, 5, 3, 4, 3, 8, 7, 8, 6, 8, 5, 8, 4, 6, 1, 5, 1, 4, 1, 0, 23, 0, 0, 0, 5, 0, 5, 1, 0, 0, 0, 0, 0, 18, 0, 0, 0, 51, 0, 38, 0, 36, 0, 29, 0, 32, 243, 40, 141, 191, 226, 29, 55, 230, 68, 86, 253, 66, 90, 22, 70, 48, 52, 179, 224, 50, 63, 127, 26, 59, 56, 166, 112, 220, 251, 36, 151, 68, 0, 45, 0, 2, 1, 1, 0, 16, 0, 13, 0, 11, 10, 104, 113, 45, 105, 110, 116, 101, 114, 111, 112, 0, 57, 0, 53, 4, 4, 128, 57, 56, 112, 5, 4, 128, 57, 56, 112, 6, 4, 128, 57, 56, 112, 7, 4, 128, 57, 56, 112, 8, 2, 64, 100, 9, 2, 64, 100, 14, 1, 3, 15, 16, 18, 4, 200, 105, 254, 152, 65, 105, 230, 102, 161, 160, 241, 200, 56, 180, 0, 35, 0, 0]] [3mid[0m[2m=[0m3
+   6.910993648s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x7fb6f1c67c036c1f29e9ccd8a1daebc9, remote_addr: [::1]:55309, remote_cid: 0x1204c869fe984169e666a1a0f1c838b4, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m3
+   6.911174129s rustls::server::hs: decided upon suite Tls13(Tls13CipherSuite { suite: TLS13_AES_128_GCM_SHA256, bulk: Aes128Gcm })    
+   6.911683923s rustls::server::hs: Chosen ALPN protocol [104, 113, 45, 105, 110, 116, 101, 114, 111, 112]    
+   6.911931430s s2n_quic:server:conn: key_update: key_type=Handshake cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m3
+   6.912039955s s2n_quic:server:conn: transport_parameters_received: transport_parameters=TransportParameters { original_destination_connection_id: None, initial_source_connection_id: Some(0x1204c869fe984169e666a1a0f1c838b4), retry_source_connection_id: None, stateless_reset_token: None, preferred_address: None, migration_support: true, max_idle_timeout: 0ns, ack_delay_exponent: 3, max_ack_delay: 25ms, max_udp_payload_size: 65527, active_connection_id_limit: 3, initial_max_stream_data_bidi_local: 3750000, initial_max_stream_data_bidi_remote: 3750000, initial_max_stream_data_uni: 3750000, initial_max_streams_bidi: 100, initial_max_streams_uni: 100 } [3mid[0m[2m=[0m3
+   6.912096703s s2n_quic:server:conn: alpn_information: chosen_alpn=[104, 113, 45, 105, 110, 116, 101, 114, 111, 112] [3mid[0m[2m=[0m3
+   6.912124415s s2n_quic:server:conn: sni_information: chosen_sni="localhost" [3mid[0m[2m=[0m3
+   6.912179970s s2n_quic:server:conn: key_update: key_type=OneRtt { generation: 0 } cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m3
+   6.912322429s s2n_quic:server:conn: frame_sent: packet_header=Initial { number: 0, version: 1 } path_id=0 frame=Ack [3mid[0m[2m=[0m3
+   6.912375740s s2n_quic:server:conn: frame_sent: packet_header=Initial { number: 0, version: 1 } path_id=0 frame=Crypto { offset: 0, len: 90 } [3mid[0m[2m=[0m3
+   6.912446374s s2n_quic:server:conn: packet_sent: packet_header=Initial { number: 0, version: 1 } [3mid[0m[2m=[0m3
+   6.912498061s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 0, version: 1 } path_id=0 frame=Crypto { offset: 0, len: 601 } [3mid[0m[2m=[0m3
+   6.912542415s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 0, version: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m3
+   6.912595576s s2n_quic:server:conn: packet_sent: packet_header=Handshake { number: 0, version: 1 } [3mid[0m[2m=[0m3
+   6.912640250s s2n_quic:server:conn: datagram_sent: len=1200 gso_offset=0 [3mid[0m[2m=[0m3
+   6.912733777s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   6.912796716s s2n_quic:server: platform_tx: count=1
+   6.915322199s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   6.915368817s s2n_quic:server: platform_rx: count=1
+   6.915407019s s2n_quic:server: version_information: server_versions=[1] client_versions=[] chosen_version=Some(1)
+   6.915450461s s2n_quic:server:conn: datagram_received: len=1200 [3mid[0m[2m=[0m3
+   6.915500867s s2n_quic:server:conn: packet_received: packet_header=Initial { number: 1, version: 1 } [3mid[0m[2m=[0m3
+   6.915541734s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 1, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x7fb6f1c67c036c1f29e9ccd8a1daebc9, remote_addr: [::1]:55309, remote_cid: 0x1204c869fe984169e666a1a0f1c838b4, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m3
+   6.915620623s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x7fb6f1c67c036c1f29e9ccd8a1daebc9, remote_addr: [::1]:55309, remote_cid: 0x1204c869fe984169e666a1a0f1c838b4, id: 0, is_active: true } min_rtt=3.11ms smoothed_rtt=3.11ms latest_rtt=3.11ms rtt_variance=1.555ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=1038 [3mid[0m[2m=[0m3
+   6.915692940s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 1, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x7fb6f1c67c036c1f29e9ccd8a1daebc9, remote_addr: [::1]:55309, remote_cid: 0x1204c869fe984169e666a1a0f1c838b4, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m3
+   6.915775275s s2n_quic:server:conn: packet_received: packet_header=Handshake { number: 0, version: 1 } [3mid[0m[2m=[0m3
+   6.915817715s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x7fb6f1c67c036c1f29e9ccd8a1daebc9, remote_addr: [::1]:55309, remote_cid: 0x1204c869fe984169e666a1a0f1c838b4, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m3
+   6.915887778s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x7fb6f1c67c036c1f29e9ccd8a1daebc9, remote_addr: [::1]:55309, remote_cid: 0x1204c869fe984169e666a1a0f1c838b4, id: 0, is_active: true } min_rtt=3.11ms smoothed_rtt=3.11ms latest_rtt=3.11ms rtt_variance=1.555ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=0 [3mid[0m[2m=[0m3
+   6.915952510s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x7fb6f1c67c036c1f29e9ccd8a1daebc9, remote_addr: [::1]:55309, remote_cid: 0x1204c869fe984169e666a1a0f1c838b4, id: 0, is_active: true } frame=Crypto { offset: 0, len: 36 } [3mid[0m[2m=[0m3
+   6.916050345s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x7fb6f1c67c036c1f29e9ccd8a1daebc9, remote_addr: [::1]:55309, remote_cid: 0x1204c869fe984169e666a1a0f1c838b4, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m3
+   6.916099538s s2n_quic:server:conn: key_space_discarded: space=Initial [3mid[0m[2m=[0m3
+   6.916127341s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x7fb6f1c67c036c1f29e9ccd8a1daebc9, remote_addr: [::1]:55309, remote_cid: 0x1204c869fe984169e666a1a0f1c838b4, id: 0, is_active: true } min_rtt=3.11ms smoothed_rtt=3.11ms latest_rtt=3.11ms rtt_variance=1.555ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=0 [3mid[0m[2m=[0m3
+   6.916268688s s2n_quic:server:conn: handshake_status_updated: status=Complete [3mid[0m[2m=[0m3
+   6.916303303s s2n_quic:server:conn: handshake_status_updated: status=Confirmed [3mid[0m[2m=[0m3
+   6.916423070s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 0 } path_id=0 frame=Ping [3mid[0m[2m=[0m3
+   6.916490417s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 0 } path_id=0 frame=Padding [3mid[0m[2m=[0m3
+   6.916543287s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 0 } [3mid[0m[2m=[0m3
+   6.916574716s s2n_quic:server:conn: datagram_sent: len=1452 gso_offset=0 [3mid[0m[2m=[0m3
+   6.916633026s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 1, version: 1 } path_id=0 frame=Ack [3mid[0m[2m=[0m3
+   6.916673052s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 1, version: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m3
+   6.916725211s s2n_quic:server:conn: packet_sent: packet_header=Handshake { number: 1, version: 1 } [3mid[0m[2m=[0m3
+   6.916757261s s2n_quic:server:conn: key_space_discarded: space=Handshake [3mid[0m[2m=[0m3
+   6.916790724s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x7fb6f1c67c036c1f29e9ccd8a1daebc9, remote_addr: [::1]:55309, remote_cid: 0x1204c869fe984169e666a1a0f1c838b4, id: 0, is_active: true } min_rtt=3.11ms smoothed_rtt=3.11ms latest_rtt=3.11ms rtt_variance=1.555ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=1529 [3mid[0m[2m=[0m3
+   6.916864985s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 1 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m3
+   6.916908627s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m3
+   6.916961347s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 1 } [3mid[0m[2m=[0m3
+   6.916996223s s2n_quic:server:conn: datagram_sent: len=130 gso_offset=1 [3mid[0m[2m=[0m3
+   6.917078578s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   6.917138011s s2n_quic:server: platform_tx: count=1
+   6.917171905s s2n_quic:server: platform_rx: count=1
+   6.917218493s s2n_quic:server:conn: datagram_received: len=53 [3mid[0m[2m=[0m3
+   6.917271533s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 0 } [3mid[0m[2m=[0m3
+   6.917310236s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 0 } path=Path { local_addr: [::1]:4433, local_cid: 0x7fb6f1c67c036c1f29e9ccd8a1daebc9, remote_addr: [::1]:55309, remote_cid: 0x1204c869fe984169e666a1a0f1c838b4, id: 0, is_active: true } frame=Stream { id: 0, offset: 0, len: 13, is_fin: true } [3mid[0m[2m=[0m3
+   6.917389466s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 0 } path=Path { local_addr: [::1]:4433, local_cid: 0x7fb6f1c67c036c1f29e9ccd8a1daebc9, remote_addr: [::1]:55309, remote_cid: 0x1204c869fe984169e666a1a0f1c838b4, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m3
+   6.917444730s s2n_quic:server:conn: rx_stream_progress: bytes=13 [3mid[0m[2m=[0m3
+   6.917554809s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=Ack [3mid[0m[2m=[0m3
+   6.917596648s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m3
+   6.917632115s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m3
+   6.917663744s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m3
+   6.917699061s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m3
+   6.917757542s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 2 } [3mid[0m[2m=[0m3
+   6.917800172s s2n_quic:server:conn: datagram_sent: len=151 gso_offset=0 [3mid[0m[2m=[0m3
+   6.917889732s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   6.917945036s s2n_quic:server: platform_tx: count=1
+Accepted a QUIC connection from [::1]:55309 on [::1]:4433
+   6.918226087s s2n_quic_qns::server::interop: 67 bytes ready to send on Stream(0)
+   6.918272595s s2n_quic_qns::server::interop: 67 bytes sent on Stream(0)
+   6.918337217s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=false
+   6.918397311s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 3 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m3
+   6.918455902s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 3 } path_id=0 frame=Stream { id: 0, offset: 0, len: 67, is_fin: false } [3mid[0m[2m=[0m3
+   6.918520193s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 3 } [3mid[0m[2m=[0m3
+   6.918556682s s2n_quic:server:conn: datagram_sent: len=106 gso_offset=0 [3mid[0m[2m=[0m3
+   6.918611486s s2n_quic:server:conn: tx_stream_progress: bytes=67 [3mid[0m[2m=[0m3
+   6.918670627s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=true
+   6.918722606s s2n_quic:server: platform_tx: count=1
+   6.918835749s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=false
+   6.918898498s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m3
+   6.918951588s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=Stream { id: 0, offset: 67, len: 0, is_fin: true } [3mid[0m[2m=[0m3
+   6.918992365s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=Padding [3mid[0m[2m=[0m3
+   6.919046137s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 4 } [3mid[0m[2m=[0m3
+   6.919077647s s2n_quic:server:conn: datagram_sent: len=53 gso_offset=0 [3mid[0m[2m=[0m3
+   6.919162297s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=true
+   6.919215647s s2n_quic:server: platform_tx: count=1
+   6.919283205s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   6.919326838s s2n_quic:server: platform_rx: count=1
+   6.919369328s s2n_quic:server:conn: datagram_received: len=1452 [3mid[0m[2m=[0m3
+   6.919424472s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 1 } [3mid[0m[2m=[0m3
+   6.919461723s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x7fb6f1c67c036c1f29e9ccd8a1daebc9, remote_addr: [::1]:55309, remote_cid: 0x1204c869fe984169e666a1a0f1c838b4, id: 0, is_active: true } frame=Ping [3mid[0m[2m=[0m3
+   6.919567693s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x7fb6f1c67c036c1f29e9ccd8a1daebc9, remote_addr: [::1]:55309, remote_cid: 0x1204c869fe984169e666a1a0f1c838b4, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m3
+   6.919697789s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   6.919744166s s2n_quic:server: platform_rx: count=1
+   6.919791596s s2n_quic:server:conn: datagram_received: len=153 [3mid[0m[2m=[0m3
+   6.919845969s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 2 } [3mid[0m[2m=[0m3
+   6.919882658s s2n_quic:server:conn: connection_id_updated: path_id=0 cid_consumer=Remote previous=0x7fb6f1c67c036c1f29e9ccd8a1daebc9 current=0x28114458af7c88ab5894dbd963e1e46b [3mid[0m[2m=[0m3
+   6.919931881s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x28114458af7c88ab5894dbd963e1e46b, remote_addr: [::1]:55309, remote_cid: 0x1204c869fe984169e666a1a0f1c838b4, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m3
+   6.919990332s s2n_quic:server:conn: handshake_status_updated: status=HandshakeDoneAcked [3mid[0m[2m=[0m3
+   6.920046207s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x28114458af7c88ab5894dbd963e1e46b, remote_addr: [::1]:55309, remote_cid: 0x1204c869fe984169e666a1a0f1c838b4, id: 0, is_active: true } min_rtt=2.248ms smoothed_rtt=3.00225ms latest_rtt=2.248ms rtt_variance=1.354812ms max_ack_delay=25ms pto_count=0 congestion_window=14520 bytes_in_flight=159 [3mid[0m[2m=[0m3
+   6.920109056s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x28114458af7c88ab5894dbd963e1e46b, remote_addr: [::1]:55309, remote_cid: 0x1204c869fe984169e666a1a0f1c838b4, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m3
+   6.920167026s s2n_quic:server:conn: connection_id_updated: path_id=0 cid_consumer=Local previous=0x1204c869fe984169e666a1a0f1c838b4 current=0xe95c04d29add0e1d3c683fff768a88f1 [3mid[0m[2m=[0m3
+   6.920214135s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x28114458af7c88ab5894dbd963e1e46b, remote_addr: [::1]:55309, remote_cid: 0xe95c04d29add0e1d3c683fff768a88f1, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m3
+   6.920272445s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x28114458af7c88ab5894dbd963e1e46b, remote_addr: [::1]:55309, remote_cid: 0xe95c04d29add0e1d3c683fff768a88f1, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m3
+   6.920344812s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x28114458af7c88ab5894dbd963e1e46b, remote_addr: [::1]:55309, remote_cid: 0xe95c04d29add0e1d3c683fff768a88f1, id: 0, is_active: true } frame=RetireConnectionId [3mid[0m[2m=[0m3
+   6.920460731s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=Ack [3mid[0m[2m=[0m3
+   6.920507970s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=RetireConnectionId [3mid[0m[2m=[0m3
+   6.920547224s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=Padding [3mid[0m[2m=[0m3
+   6.920603771s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 5 } [3mid[0m[2m=[0m3
+   6.920635060s s2n_quic:server:conn: datagram_sent: len=53 gso_offset=0 [3mid[0m[2m=[0m3
+   6.920721734s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   6.920777740s s2n_quic:server: platform_tx: count=1
+   6.920812405s s2n_quic:server: platform_rx: count=1
+   6.920858342s s2n_quic:server:conn: datagram_received: len=53 [3mid[0m[2m=[0m3
+   6.920909188s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 3 } [3mid[0m[2m=[0m3
+   6.920949434s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 3 } path=Path { local_addr: [::1]:4433, local_cid: 0x28114458af7c88ab5894dbd963e1e46b, remote_addr: [::1]:55309, remote_cid: 0xe95c04d29add0e1d3c683fff768a88f1, id: 0, is_active: true } frame=ConnectionClose [3mid[0m[2m=[0m3
+   6.920998427s s2n_quic:server:conn: connection_closed: error=Closed { initiator: Remote } [3mid[0m[2m=[0m3
+   6.921081925s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   6.921148711s s2n_quic_qns::server::interop: Final stats: MyConnectionContext { packet_sent: 9, stream_requests: 1 }
+   6.924650890s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   6.924705453s s2n_quic:server: platform_rx: count=1
+   6.924751530s s2n_quic:server: endpoint_datagram_dropped: len=53 reason=UnknownDestinationConnectionId
+   6.924824127s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   6.928976606s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=true rx_ready=false tx_ready=false
+   7.645546500s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   7.645629477s s2n_quic:server: platform_rx: count=1
+   7.645683819s s2n_quic:server: version_information: server_versions=[1] client_versions=[] chosen_version=Some(1)
+   7.645913493s s2n_quic:server:conn: key_update: key_type=Initial cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m4
+   7.645971353s s2n_quic:server:conn: connection_started: path=Path { local_addr: [::1]:4433, local_cid: 0x3bad96e92f6821a6f01713910a03871f, remote_addr: [::1]:52073, remote_cid: 0x2bd6858c1ea7e8716b8e6e00a8849a4c, id: 0, is_active: true } [3mid[0m[2m=[0m4
+   7.646025144s s2n_quic:server:conn: datagram_received: len=1200 [3mid[0m[2m=[0m4
+   7.646064248s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bad96e92f6821a6f01713910a03871f, remote_addr: [::1]:52073, remote_cid: 0x2bd6858c1ea7e8716b8e6e00a8849a4c, id: 0, is_active: true } frame=Crypto { offset: 0, len: 263 } [3mid[0m[2m=[0m4
+   7.646133619s s2n_quic:server:conn: tls_client_hello: payload=[[3, 3, 107, 250, 62, 74, 159, 9, 179, 43, 46, 182, 171, 229, 125, 234, 251, 94, 172, 197, 27, 99, 49, 169, 150, 250, 38, 75, 211, 194, 187, 133, 0, 110, 0, 0, 8, 19, 1, 19, 2, 19, 3, 0, 255, 1, 0, 0, 210, 0, 43, 0, 3, 2, 3, 4, 0, 0, 0, 14, 0, 12, 0, 0, 9, 108, 111, 99, 97, 108, 104, 111, 115, 116, 0, 11, 0, 2, 1, 0, 0, 10, 0, 8, 0, 6, 0, 29, 0, 23, 0, 24, 0, 13, 0, 20, 0, 18, 5, 3, 4, 3, 8, 7, 8, 6, 8, 5, 8, 4, 6, 1, 5, 1, 4, 1, 0, 23, 0, 0, 0, 5, 0, 5, 1, 0, 0, 0, 0, 0, 18, 0, 0, 0, 51, 0, 38, 0, 36, 0, 29, 0, 32, 175, 240, 161, 225, 124, 202, 229, 170, 6, 159, 45, 132, 224, 142, 0, 229, 147, 211, 207, 147, 75, 95, 155, 117, 145, 116, 200, 95, 67, 80, 140, 76, 0, 45, 0, 2, 1, 1, 0, 16, 0, 13, 0, 11, 10, 104, 113, 45, 105, 110, 116, 101, 114, 111, 112, 0, 57, 0, 53, 4, 4, 128, 57, 56, 112, 5, 4, 128, 57, 56, 112, 6, 4, 128, 57, 56, 112, 7, 4, 128, 57, 56, 112, 8, 2, 64, 100, 9, 2, 64, 100, 14, 1, 3, 15, 16, 43, 214, 133, 140, 30, 167, 232, 113, 107, 142, 110, 0, 168, 132, 154, 76, 0, 35, 0, 0]] [3mid[0m[2m=[0m4
+   7.646284665s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bad96e92f6821a6f01713910a03871f, remote_addr: [::1]:52073, remote_cid: 0x2bd6858c1ea7e8716b8e6e00a8849a4c, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m4
+   7.646474854s rustls::server::hs: decided upon suite Tls13(Tls13CipherSuite { suite: TLS13_AES_128_GCM_SHA256, bulk: Aes128Gcm })    
+   7.646996029s rustls::server::hs: Chosen ALPN protocol [104, 113, 45, 105, 110, 116, 101, 114, 111, 112]    
+   7.647247054s s2n_quic:server:conn: key_update: key_type=Handshake cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m4
+   7.647354827s s2n_quic:server:conn: transport_parameters_received: transport_parameters=TransportParameters { original_destination_connection_id: None, initial_source_connection_id: Some(0x2bd6858c1ea7e8716b8e6e00a8849a4c), retry_source_connection_id: None, stateless_reset_token: None, preferred_address: None, migration_support: true, max_idle_timeout: 0ns, ack_delay_exponent: 3, max_ack_delay: 25ms, max_udp_payload_size: 65527, active_connection_id_limit: 3, initial_max_stream_data_bidi_local: 3750000, initial_max_stream_data_bidi_remote: 3750000, initial_max_stream_data_uni: 3750000, initial_max_streams_bidi: 100, initial_max_streams_uni: 100 } [3mid[0m[2m=[0m4
+   7.647413699s s2n_quic:server:conn: alpn_information: chosen_alpn=[104, 113, 45, 105, 110, 116, 101, 114, 111, 112] [3mid[0m[2m=[0m4
+   7.647445058s s2n_quic:server:conn: sni_information: chosen_sni="localhost" [3mid[0m[2m=[0m4
+   7.647507636s s2n_quic:server:conn: key_update: key_type=OneRtt { generation: 0 } cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m4
+   7.647651548s s2n_quic:server:conn: frame_sent: packet_header=Initial { number: 0, version: 1 } path_id=0 frame=Ack [3mid[0m[2m=[0m4
+   7.647701272s s2n_quic:server:conn: frame_sent: packet_header=Initial { number: 0, version: 1 } path_id=0 frame=Crypto { offset: 0, len: 90 } [3mid[0m[2m=[0m4
+   7.647760725s s2n_quic:server:conn: packet_sent: packet_header=Initial { number: 0, version: 1 } [3mid[0m[2m=[0m4
+   7.647818845s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 0, version: 1 } path_id=0 frame=Crypto { offset: 0, len: 602 } [3mid[0m[2m=[0m4
+   7.647872506s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 0, version: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m4
+   7.647934503s s2n_quic:server:conn: packet_sent: packet_header=Handshake { number: 0, version: 1 } [3mid[0m[2m=[0m4
+   7.647977134s s2n_quic:server:conn: datagram_sent: len=1200 gso_offset=0 [3mid[0m[2m=[0m4
+   7.648073897s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   7.648129011s s2n_quic:server: platform_tx: count=1
+   7.650722332s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   7.650766115s s2n_quic:server: platform_rx: count=1
+   7.650798967s s2n_quic:server: version_information: server_versions=[1] client_versions=[] chosen_version=Some(1)
+   7.650835456s s2n_quic:server:conn: datagram_received: len=1200 [3mid[0m[2m=[0m4
+   7.650879709s s2n_quic:server:conn: packet_received: packet_header=Initial { number: 1, version: 1 } [3mid[0m[2m=[0m4
+   7.650913423s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 1, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bad96e92f6821a6f01713910a03871f, remote_addr: [::1]:52073, remote_cid: 0x2bd6858c1ea7e8716b8e6e00a8849a4c, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m4
+   7.650986010s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x3bad96e92f6821a6f01713910a03871f, remote_addr: [::1]:52073, remote_cid: 0x2bd6858c1ea7e8716b8e6e00a8849a4c, id: 0, is_active: true } min_rtt=3.177ms smoothed_rtt=3.177ms latest_rtt=3.177ms rtt_variance=1.5885ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=1038 [3mid[0m[2m=[0m4
+   7.651042928s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 1, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bad96e92f6821a6f01713910a03871f, remote_addr: [::1]:52073, remote_cid: 0x2bd6858c1ea7e8716b8e6e00a8849a4c, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m4
+   7.651109063s s2n_quic:server:conn: packet_received: packet_header=Handshake { number: 0, version: 1 } [3mid[0m[2m=[0m4
+   7.651144320s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bad96e92f6821a6f01713910a03871f, remote_addr: [::1]:52073, remote_cid: 0x2bd6858c1ea7e8716b8e6e00a8849a4c, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m4
+   7.651204884s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x3bad96e92f6821a6f01713910a03871f, remote_addr: [::1]:52073, remote_cid: 0x2bd6858c1ea7e8716b8e6e00a8849a4c, id: 0, is_active: true } min_rtt=3.177ms smoothed_rtt=3.177ms latest_rtt=3.177ms rtt_variance=1.5885ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=0 [3mid[0m[2m=[0m4
+   7.651260028s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bad96e92f6821a6f01713910a03871f, remote_addr: [::1]:52073, remote_cid: 0x2bd6858c1ea7e8716b8e6e00a8849a4c, id: 0, is_active: true } frame=Crypto { offset: 0, len: 36 } [3mid[0m[2m=[0m4
+   7.651350940s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bad96e92f6821a6f01713910a03871f, remote_addr: [::1]:52073, remote_cid: 0x2bd6858c1ea7e8716b8e6e00a8849a4c, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m4
+   7.651393791s s2n_quic:server:conn: key_space_discarded: space=Initial [3mid[0m[2m=[0m4
+   7.651417426s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x3bad96e92f6821a6f01713910a03871f, remote_addr: [::1]:52073, remote_cid: 0x2bd6858c1ea7e8716b8e6e00a8849a4c, id: 0, is_active: true } min_rtt=3.177ms smoothed_rtt=3.177ms latest_rtt=3.177ms rtt_variance=1.5885ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=0 [3mid[0m[2m=[0m4
+   7.651549886s s2n_quic:server:conn: handshake_status_updated: status=Complete [3mid[0m[2m=[0m4
+   7.651581366s s2n_quic:server:conn: handshake_status_updated: status=Confirmed [3mid[0m[2m=[0m4
+   7.651693768s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 0 } path_id=0 frame=Ping [3mid[0m[2m=[0m4
+   7.651754984s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 0 } path_id=0 frame=Padding [3mid[0m[2m=[0m4
+   7.651804998s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 0 } [3mid[0m[2m=[0m4
+   7.651832550s s2n_quic:server:conn: datagram_sent: len=1452 gso_offset=0 [3mid[0m[2m=[0m4
+   7.651882685s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 1, version: 1 } path_id=0 frame=Ack [3mid[0m[2m=[0m4
+   7.651917802s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 1, version: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m4
+   7.651962827s s2n_quic:server:conn: packet_sent: packet_header=Handshake { number: 1, version: 1 } [3mid[0m[2m=[0m4
+   7.651994827s s2n_quic:server:conn: key_space_discarded: space=Handshake [3mid[0m[2m=[0m4
+   7.652018141s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x3bad96e92f6821a6f01713910a03871f, remote_addr: [::1]:52073, remote_cid: 0x2bd6858c1ea7e8716b8e6e00a8849a4c, id: 0, is_active: true } min_rtt=3.177ms smoothed_rtt=3.177ms latest_rtt=3.177ms rtt_variance=1.5885ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=1529 [3mid[0m[2m=[0m4
+   7.652080950s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 1 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m4
+   7.652118290s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m4
+   7.652163496s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 1 } [3mid[0m[2m=[0m4
+   7.652190527s s2n_quic:server:conn: datagram_sent: len=130 gso_offset=1 [3mid[0m[2m=[0m4
+   7.652263184s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   7.652317256s s2n_quic:server: platform_tx: count=1
+   7.652344869s s2n_quic:server: platform_rx: count=1
+   7.652381147s s2n_quic:server:conn: datagram_received: len=53 [3mid[0m[2m=[0m4
+   7.652426232s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 0 } [3mid[0m[2m=[0m4
+   7.652458453s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 0 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bad96e92f6821a6f01713910a03871f, remote_addr: [::1]:52073, remote_cid: 0x2bd6858c1ea7e8716b8e6e00a8849a4c, id: 0, is_active: true } frame=Stream { id: 0, offset: 0, len: 13, is_fin: true } [3mid[0m[2m=[0m4
+   7.652530419s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 0 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bad96e92f6821a6f01713910a03871f, remote_addr: [::1]:52073, remote_cid: 0x2bd6858c1ea7e8716b8e6e00a8849a4c, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m4
+   7.652579081s s2n_quic:server:conn: rx_stream_progress: bytes=13 [3mid[0m[2m=[0m4
+   7.652676014s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=Ack [3mid[0m[2m=[0m4
+   7.652713345s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m4
+   7.652742139s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m4
+   7.652772787s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m4
+   7.652798336s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m4
+   7.652848791s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 2 } [3mid[0m[2m=[0m4
+   7.652877335s s2n_quic:server:conn: datagram_sent: len=151 gso_offset=0 [3mid[0m[2m=[0m4
+   7.652954260s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   7.653001139s s2n_quic:server: platform_tx: count=1
+Accepted a QUIC connection from [::1]:52073 on [::1]:4433
+   7.653247034s s2n_quic_qns::server::interop: 67 bytes ready to send on Stream(0)
+   7.653289724s s2n_quic_qns::server::interop: 67 bytes sent on Stream(0)
+   7.653347764s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=false
+   7.653405934s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 3 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m4
+   7.653452963s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 3 } path_id=0 frame=Stream { id: 0, offset: 0, len: 67, is_fin: false } [3mid[0m[2m=[0m4
+   7.653511193s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 3 } [3mid[0m[2m=[0m4
+   7.653539797s s2n_quic:server:conn: datagram_sent: len=106 gso_offset=0 [3mid[0m[2m=[0m4
+   7.653586626s s2n_quic:server:conn: tx_stream_progress: bytes=67 [3mid[0m[2m=[0m4
+   7.653643183s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=true
+   7.653686364s s2n_quic:server: platform_tx: count=1
+   7.653793968s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=false
+   7.653860223s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m4
+   7.653904617s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=Stream { id: 0, offset: 67, len: 0, is_fin: true } [3mid[0m[2m=[0m4
+   7.653939402s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=Padding [3mid[0m[2m=[0m4
+   7.653986672s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 4 } [3mid[0m[2m=[0m4
+   7.654013733s s2n_quic:server:conn: datagram_sent: len=53 gso_offset=0 [3mid[0m[2m=[0m4
+   7.654086310s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=true
+   7.654132046s s2n_quic:server: platform_tx: count=1
+   7.654188653s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   7.654225062s s2n_quic:server: platform_rx: count=1
+   7.654260860s s2n_quic:server:conn: datagram_received: len=1452 [3mid[0m[2m=[0m4
+   7.654305775s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 1 } [3mid[0m[2m=[0m4
+   7.654336393s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bad96e92f6821a6f01713910a03871f, remote_addr: [::1]:52073, remote_cid: 0x2bd6858c1ea7e8716b8e6e00a8849a4c, id: 0, is_active: true } frame=Ping [3mid[0m[2m=[0m4
+   7.654435620s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bad96e92f6821a6f01713910a03871f, remote_addr: [::1]:52073, remote_cid: 0x2bd6858c1ea7e8716b8e6e00a8849a4c, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m4
+   7.654548403s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   7.655171251s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   7.655211406s s2n_quic:server: platform_rx: count=1
+   7.655247204s s2n_quic:server:conn: datagram_received: len=153 [3mid[0m[2m=[0m4
+   7.655291378s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 2 } [3mid[0m[2m=[0m4
+   7.655318449s s2n_quic:server:conn: connection_id_updated: path_id=0 cid_consumer=Remote previous=0x3bad96e92f6821a6f01713910a03871f current=0x596d6ea5ad3bbcfc94988816cd7cc1c8 [3mid[0m[2m=[0m4
+   7.655359376s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x596d6ea5ad3bbcfc94988816cd7cc1c8, remote_addr: [::1]:52073, remote_cid: 0x2bd6858c1ea7e8716b8e6e00a8849a4c, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m4
+   7.655414791s s2n_quic:server:conn: handshake_status_updated: status=HandshakeDoneAcked [3mid[0m[2m=[0m4
+   7.655470877s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x596d6ea5ad3bbcfc94988816cd7cc1c8, remote_addr: [::1]:52073, remote_cid: 0x2bd6858c1ea7e8716b8e6e00a8849a4c, id: 0, is_active: true } min_rtt=1.847ms smoothed_rtt=3.01075ms latest_rtt=1.847ms rtt_variance=1.482312ms max_ack_delay=25ms pto_count=0 congestion_window=14520 bytes_in_flight=53 [3mid[0m[2m=[0m4
+   7.655528876s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x596d6ea5ad3bbcfc94988816cd7cc1c8, remote_addr: [::1]:52073, remote_cid: 0x2bd6858c1ea7e8716b8e6e00a8849a4c, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m4
+   7.655588860s s2n_quic:server:conn: connection_id_updated: path_id=0 cid_consumer=Local previous=0x2bd6858c1ea7e8716b8e6e00a8849a4c current=0xbd54fbcf4b75ea130d7f2dd0f15dd166 [3mid[0m[2m=[0m4
+   7.655633314s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x596d6ea5ad3bbcfc94988816cd7cc1c8, remote_addr: [::1]:52073, remote_cid: 0xbd54fbcf4b75ea130d7f2dd0f15dd166, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m4
+   7.655688057s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x596d6ea5ad3bbcfc94988816cd7cc1c8, remote_addr: [::1]:52073, remote_cid: 0xbd54fbcf4b75ea130d7f2dd0f15dd166, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m4
+   7.655743031s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x596d6ea5ad3bbcfc94988816cd7cc1c8, remote_addr: [::1]:52073, remote_cid: 0xbd54fbcf4b75ea130d7f2dd0f15dd166, id: 0, is_active: true } frame=RetireConnectionId [3mid[0m[2m=[0m4
+   7.655849623s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=Ack [3mid[0m[2m=[0m4
+   7.655887945s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=RetireConnectionId [3mid[0m[2m=[0m4
+   7.655916619s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=Padding [3mid[0m[2m=[0m4
+   7.655963438s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 5 } [3mid[0m[2m=[0m4
+   7.655990419s s2n_quic:server:conn: datagram_sent: len=53 gso_offset=0 [3mid[0m[2m=[0m4
+   7.656066893s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   7.656113231s s2n_quic:server: platform_tx: count=1
+   7.656173054s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   7.656209463s s2n_quic:server: platform_rx: count=1
+   7.656244960s s2n_quic:server:conn: datagram_received: len=53 [3mid[0m[2m=[0m4
+   7.656289183s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 3 } [3mid[0m[2m=[0m4
+   7.656321965s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 3 } path=Path { local_addr: [::1]:4433, local_cid: 0x596d6ea5ad3bbcfc94988816cd7cc1c8, remote_addr: [::1]:52073, remote_cid: 0xbd54fbcf4b75ea130d7f2dd0f15dd166, id: 0, is_active: true } frame=ConnectionClose [3mid[0m[2m=[0m4
+   7.656360759s s2n_quic:server:conn: connection_closed: error=Closed { initiator: Remote } [3mid[0m[2m=[0m4
+   7.656434458s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   7.656496535s s2n_quic_qns::server::interop: Final stats: MyConnectionContext { packet_sent: 9, stream_requests: 1 }
+   7.660178975s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   7.660229370s s2n_quic:server: platform_rx: count=1
+   7.660268945s s2n_quic:server: endpoint_datagram_dropped: len=53 reason=UnknownDestinationConnectionId
+   7.660324931s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   7.664455558s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=true rx_ready=false tx_ready=false
+   8.289820057s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   8.289962807s s2n_quic:server: platform_rx: count=1
+   8.290032479s s2n_quic:server: version_information: server_versions=[1] client_versions=[] chosen_version=Some(1)
+   8.290339519s s2n_quic:server:conn: key_update: key_type=Initial cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m5
+   8.290412938s s2n_quic:server:conn: connection_started: path=Path { local_addr: [::1]:4433, local_cid: 0x3be6349562a22bedb8870859f1c04d2d, remote_addr: [::1]:39950, remote_cid: 0x96ccf055f10310a83776cec982770ad4, id: 0, is_active: true } [3mid[0m[2m=[0m5
+   8.290466900s s2n_quic:server:conn: datagram_received: len=1200 [3mid[0m[2m=[0m5
+   8.290506054s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3be6349562a22bedb8870859f1c04d2d, remote_addr: [::1]:39950, remote_cid: 0x96ccf055f10310a83776cec982770ad4, id: 0, is_active: true } frame=Crypto { offset: 0, len: 263 } [3mid[0m[2m=[0m5
+   8.290589521s s2n_quic:server:conn: tls_client_hello: payload=[[3, 3, 52, 238, 103, 84, 206, 50, 143, 239, 198, 37, 224, 52, 178, 136, 116, 205, 137, 139, 214, 150, 109, 247, 69, 30, 181, 227, 237, 97, 23, 227, 193, 206, 0, 0, 8, 19, 1, 19, 2, 19, 3, 0, 255, 1, 0, 0, 210, 0, 43, 0, 3, 2, 3, 4, 0, 0, 0, 14, 0, 12, 0, 0, 9, 108, 111, 99, 97, 108, 104, 111, 115, 116, 0, 11, 0, 2, 1, 0, 0, 10, 0, 8, 0, 6, 0, 29, 0, 23, 0, 24, 0, 13, 0, 20, 0, 18, 5, 3, 4, 3, 8, 7, 8, 6, 8, 5, 8, 4, 6, 1, 5, 1, 4, 1, 0, 23, 0, 0, 0, 5, 0, 5, 1, 0, 0, 0, 0, 0, 18, 0, 0, 0, 51, 0, 38, 0, 36, 0, 29, 0, 32, 93, 188, 35, 107, 231, 85, 81, 51, 213, 138, 202, 90, 185, 157, 112, 15, 120, 243, 14, 104, 122, 63, 199, 190, 81, 112, 78, 11, 152, 240, 49, 27, 0, 45, 0, 2, 1, 1, 0, 16, 0, 13, 0, 11, 10, 104, 113, 45, 105, 110, 116, 101, 114, 111, 112, 0, 57, 0, 53, 4, 4, 128, 57, 56, 112, 5, 4, 128, 57, 56, 112, 6, 4, 128, 57, 56, 112, 7, 4, 128, 57, 56, 112, 8, 2, 64, 100, 9, 2, 64, 100, 14, 1, 3, 15, 16, 150, 204, 240, 85, 241, 3, 16, 168, 55, 118, 206, 201, 130, 119, 10, 212, 0, 35, 0, 0]] [3mid[0m[2m=[0m5
+   8.290704549s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3be6349562a22bedb8870859f1c04d2d, remote_addr: [::1]:39950, remote_cid: 0x96ccf055f10310a83776cec982770ad4, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m5
+   8.290936638s rustls::server::hs: decided upon suite Tls13(Tls13CipherSuite { suite: TLS13_AES_128_GCM_SHA256, bulk: Aes128Gcm })    
+   8.291466299s rustls::server::hs: Chosen ALPN protocol [104, 113, 45, 105, 110, 116, 101, 114, 111, 112]    
+   8.291720269s s2n_quic:server:conn: key_update: key_type=Handshake cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m5
+   8.291827792s s2n_quic:server:conn: transport_parameters_received: transport_parameters=TransportParameters { original_destination_connection_id: None, initial_source_connection_id: Some(0x96ccf055f10310a83776cec982770ad4), retry_source_connection_id: None, stateless_reset_token: None, preferred_address: None, migration_support: true, max_idle_timeout: 0ns, ack_delay_exponent: 3, max_ack_delay: 25ms, max_udp_payload_size: 65527, active_connection_id_limit: 3, initial_max_stream_data_bidi_local: 3750000, initial_max_stream_data_bidi_remote: 3750000, initial_max_stream_data_uni: 3750000, initial_max_streams_bidi: 100, initial_max_streams_uni: 100 } [3mid[0m[2m=[0m5
+   8.291884379s s2n_quic:server:conn: alpn_information: chosen_alpn=[104, 113, 45, 105, 110, 116, 101, 114, 111, 112] [3mid[0m[2m=[0m5
+   8.291910779s s2n_quic:server:conn: sni_information: chosen_sni="localhost" [3mid[0m[2m=[0m5
+   8.291965592s s2n_quic:server:conn: key_update: key_type=OneRtt { generation: 0 } cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m5
+   8.292130474s s2n_quic:server:conn: frame_sent: packet_header=Initial { number: 0, version: 1 } path_id=0 frame=Ack [3mid[0m[2m=[0m5
+   8.292178324s s2n_quic:server:conn: frame_sent: packet_header=Initial { number: 0, version: 1 } path_id=0 frame=Crypto { offset: 0, len: 90 } [3mid[0m[2m=[0m5
+   8.292235492s s2n_quic:server:conn: packet_sent: packet_header=Initial { number: 0, version: 1 } [3mid[0m[2m=[0m5
+   8.292280117s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 0, version: 1 } path_id=0 frame=Crypto { offset: 0, len: 601 } [3mid[0m[2m=[0m5
+   8.292318810s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 0, version: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m5
+   8.292364596s s2n_quic:server:conn: packet_sent: packet_header=Handshake { number: 0, version: 1 } [3mid[0m[2m=[0m5
+   8.292408449s s2n_quic:server:conn: datagram_sent: len=1200 gso_offset=0 [3mid[0m[2m=[0m5
+   8.292520541s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   8.292619338s s2n_quic:server: platform_tx: count=1
+   8.295163667s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   8.295209804s s2n_quic:server: platform_rx: count=1
+   8.295242175s s2n_quic:server: version_information: server_versions=[1] client_versions=[] chosen_version=Some(1)
+   8.295279405s s2n_quic:server:conn: datagram_received: len=1200 [3mid[0m[2m=[0m5
+   8.295323910s s2n_quic:server:conn: packet_received: packet_header=Initial { number: 1, version: 1 } [3mid[0m[2m=[0m5
+   8.295358625s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 1, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3be6349562a22bedb8870859f1c04d2d, remote_addr: [::1]:39950, remote_cid: 0x96ccf055f10310a83776cec982770ad4, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m5
+   8.295438676s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x3be6349562a22bedb8870859f1c04d2d, remote_addr: [::1]:39950, remote_cid: 0x96ccf055f10310a83776cec982770ad4, id: 0, is_active: true } min_rtt=3.149ms smoothed_rtt=3.149ms latest_rtt=3.149ms rtt_variance=1.5745ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=1038 [3mid[0m[2m=[0m5
+   8.295495354s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 1, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3be6349562a22bedb8870859f1c04d2d, remote_addr: [::1]:39950, remote_cid: 0x96ccf055f10310a83776cec982770ad4, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m5
+   8.295563773s s2n_quic:server:conn: packet_received: packet_header=Handshake { number: 0, version: 1 } [3mid[0m[2m=[0m5
+   8.295599020s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3be6349562a22bedb8870859f1c04d2d, remote_addr: [::1]:39950, remote_cid: 0x96ccf055f10310a83776cec982770ad4, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m5
+   8.295660656s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x3be6349562a22bedb8870859f1c04d2d, remote_addr: [::1]:39950, remote_cid: 0x96ccf055f10310a83776cec982770ad4, id: 0, is_active: true } min_rtt=3.149ms smoothed_rtt=3.149ms latest_rtt=3.149ms rtt_variance=1.5745ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=0 [3mid[0m[2m=[0m5
+   8.295715430s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3be6349562a22bedb8870859f1c04d2d, remote_addr: [::1]:39950, remote_cid: 0x96ccf055f10310a83776cec982770ad4, id: 0, is_active: true } frame=Crypto { offset: 0, len: 36 } [3mid[0m[2m=[0m5
+   8.295814797s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3be6349562a22bedb8870859f1c04d2d, remote_addr: [::1]:39950, remote_cid: 0x96ccf055f10310a83776cec982770ad4, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m5
+   8.295860093s s2n_quic:server:conn: key_space_discarded: space=Initial [3mid[0m[2m=[0m5
+   8.295883758s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x3be6349562a22bedb8870859f1c04d2d, remote_addr: [::1]:39950, remote_cid: 0x96ccf055f10310a83776cec982770ad4, id: 0, is_active: true } min_rtt=3.149ms smoothed_rtt=3.149ms latest_rtt=3.149ms rtt_variance=1.5745ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=0 [3mid[0m[2m=[0m5
+   8.296020887s s2n_quic:server:conn: handshake_status_updated: status=Complete [3mid[0m[2m=[0m5
+   8.296052487s s2n_quic:server:conn: handshake_status_updated: status=Confirmed [3mid[0m[2m=[0m5
+   8.296168486s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 0 } path_id=0 frame=Ping [3mid[0m[2m=[0m5
+   8.296229862s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 0 } path_id=0 frame=Padding [3mid[0m[2m=[0m5
+   8.296281710s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 0 } [3mid[0m[2m=[0m5
+   8.296309653s s2n_quic:server:conn: datagram_sent: len=1452 gso_offset=0 [3mid[0m[2m=[0m5
+   8.296359948s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 1, version: 1 } path_id=0 frame=Ack [3mid[0m[2m=[0m5
+   8.296394924s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 1, version: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m5
+   8.296439438s s2n_quic:server:conn: packet_sent: packet_header=Handshake { number: 1, version: 1 } [3mid[0m[2m=[0m5
+   8.296467130s s2n_quic:server:conn: key_space_discarded: space=Handshake [3mid[0m[2m=[0m5
+   8.296489713s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x3be6349562a22bedb8870859f1c04d2d, remote_addr: [::1]:39950, remote_cid: 0x96ccf055f10310a83776cec982770ad4, id: 0, is_active: true } min_rtt=3.149ms smoothed_rtt=3.149ms latest_rtt=3.149ms rtt_variance=1.5745ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=1529 [3mid[0m[2m=[0m5
+   8.296552532s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 1 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m5
+   8.296592177s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m5
+   8.296637001s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 1 } [3mid[0m[2m=[0m5
+   8.296663942s s2n_quic:server:conn: datagram_sent: len=130 gso_offset=1 [3mid[0m[2m=[0m5
+   8.296738052s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   8.296801612s s2n_quic:server: platform_tx: count=1
+   8.296830838s s2n_quic:server: platform_rx: count=1
+   8.296867868s s2n_quic:server:conn: datagram_received: len=53 [3mid[0m[2m=[0m5
+   8.296914065s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 0 } [3mid[0m[2m=[0m5
+   8.296946837s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 0 } path=Path { local_addr: [::1]:4433, local_cid: 0x3be6349562a22bedb8870859f1c04d2d, remote_addr: [::1]:39950, remote_cid: 0x96ccf055f10310a83776cec982770ad4, id: 0, is_active: true } frame=Stream { id: 0, offset: 0, len: 13, is_fin: true } [3mid[0m[2m=[0m5
+   8.297024484s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 0 } path=Path { local_addr: [::1]:4433, local_cid: 0x3be6349562a22bedb8870859f1c04d2d, remote_addr: [::1]:39950, remote_cid: 0x96ccf055f10310a83776cec982770ad4, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m5
+   8.297072965s s2n_quic:server:conn: rx_stream_progress: bytes=13 [3mid[0m[2m=[0m5
+   8.297169618s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=Ack [3mid[0m[2m=[0m5
+   8.297207349s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m5
+   8.297236474s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m5
+   8.297263335s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m5
+   8.297288753s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m5
+   8.297339068s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 2 } [3mid[0m[2m=[0m5
+   8.297367101s s2n_quic:server:conn: datagram_sent: len=151 gso_offset=0 [3mid[0m[2m=[0m5
+   8.297444598s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   8.297492789s s2n_quic:server: platform_tx: count=1
+Accepted a QUIC connection from [::1]:39950 on [::1]:4433
+   8.297769542s s2n_quic_qns::server::interop: 67 bytes ready to send on Stream(0)
+   8.297815549s s2n_quic_qns::server::interop: 67 bytes sent on Stream(0)
+   8.297874160s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=false
+   8.297933271s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 3 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m5
+   8.297983646s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 3 } path_id=0 frame=Stream { id: 0, offset: 0, len: 67, is_fin: false } [3mid[0m[2m=[0m5
+   8.298041746s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 3 } [3mid[0m[2m=[0m5
+   8.298070811s s2n_quic:server:conn: datagram_sent: len=106 gso_offset=0 [3mid[0m[2m=[0m5
+   8.298118261s s2n_quic:server:conn: tx_stream_progress: bytes=67 [3mid[0m[2m=[0m5
+   8.298171632s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=true
+   8.298216246s s2n_quic:server: platform_tx: count=1
+   8.298311897s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=false
+   8.298367281s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m5
+   8.298409742s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=Stream { id: 0, offset: 67, len: 0, is_fin: true } [3mid[0m[2m=[0m5
+   8.298443896s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=Padding [3mid[0m[2m=[0m5
+   8.298491386s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 4 } [3mid[0m[2m=[0m5
+   8.298518908s s2n_quic:server:conn: datagram_sent: len=53 gso_offset=0 [3mid[0m[2m=[0m5
+   8.298590063s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=true
+   8.298636430s s2n_quic:server: platform_tx: count=1
+   8.298692877s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   8.298729917s s2n_quic:server: platform_rx: count=1
+   8.298769121s s2n_quic:server:conn: datagram_received: len=1452 [3mid[0m[2m=[0m5
+   8.298815198s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 1 } [3mid[0m[2m=[0m5
+   8.298845906s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3be6349562a22bedb8870859f1c04d2d, remote_addr: [::1]:39950, remote_cid: 0x96ccf055f10310a83776cec982770ad4, id: 0, is_active: true } frame=Ping [3mid[0m[2m=[0m5
+   8.298945374s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3be6349562a22bedb8870859f1c04d2d, remote_addr: [::1]:39950, remote_cid: 0x96ccf055f10310a83776cec982770ad4, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m5
+   8.299061484s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   8.299098834s s2n_quic:server: platform_rx: count=1
+   8.299133219s s2n_quic:server:conn: datagram_received: len=153 [3mid[0m[2m=[0m5
+   8.299177282s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 2 } [3mid[0m[2m=[0m5
+   8.299205416s s2n_quic:server:conn: connection_id_updated: path_id=0 cid_consumer=Remote previous=0x3be6349562a22bedb8870859f1c04d2d current=0xcf92d7eab55e0c09eda44e9aae0c80a2 [3mid[0m[2m=[0m5
+   8.299246072s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0xcf92d7eab55e0c09eda44e9aae0c80a2, remote_addr: [::1]:39950, remote_cid: 0x96ccf055f10310a83776cec982770ad4, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m5
+   8.299297700s s2n_quic:server:conn: handshake_status_updated: status=HandshakeDoneAcked [3mid[0m[2m=[0m5
+   8.299349007s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0xcf92d7eab55e0c09eda44e9aae0c80a2, remote_addr: [::1]:39950, remote_cid: 0x96ccf055f10310a83776cec982770ad4, id: 0, is_active: true } min_rtt=1.975ms smoothed_rtt=3.00225ms latest_rtt=1.975ms rtt_variance=1.437687ms max_ack_delay=25ms pto_count=0 congestion_window=14520 bytes_in_flight=159 [3mid[0m[2m=[0m5
+   8.299405724s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0xcf92d7eab55e0c09eda44e9aae0c80a2, remote_addr: [::1]:39950, remote_cid: 0x96ccf055f10310a83776cec982770ad4, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m5
+   8.299465728s s2n_quic:server:conn: connection_id_updated: path_id=0 cid_consumer=Local previous=0x96ccf055f10310a83776cec982770ad4 current=0xd95874b4d6dfb75583a22e9b075f7c1a [3mid[0m[2m=[0m5
+   8.299506945s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0xcf92d7eab55e0c09eda44e9aae0c80a2, remote_addr: [::1]:39950, remote_cid: 0xd95874b4d6dfb75583a22e9b075f7c1a, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m5
+   8.299558643s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0xcf92d7eab55e0c09eda44e9aae0c80a2, remote_addr: [::1]:39950, remote_cid: 0xd95874b4d6dfb75583a22e9b075f7c1a, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m5
+   8.299613637s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0xcf92d7eab55e0c09eda44e9aae0c80a2, remote_addr: [::1]:39950, remote_cid: 0xd95874b4d6dfb75583a22e9b075f7c1a, id: 0, is_active: true } frame=RetireConnectionId [3mid[0m[2m=[0m5
+   8.299712925s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=Ack [3mid[0m[2m=[0m5
+   8.299753582s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=RetireConnectionId [3mid[0m[2m=[0m5
+   8.299788668s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=Padding [3mid[0m[2m=[0m5
+   8.299835757s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 5 } [3mid[0m[2m=[0m5
+   8.299862978s s2n_quic:server:conn: datagram_sent: len=53 gso_offset=0 [3mid[0m[2m=[0m5
+   8.299940224s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   8.299989668s s2n_quic:server: platform_tx: count=1
+   8.300231254s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   8.300271711s s2n_quic:server: platform_rx: count=1
+   8.300307959s s2n_quic:server:conn: datagram_received: len=53 [3mid[0m[2m=[0m5
+   8.300352974s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 3 } [3mid[0m[2m=[0m5
+   8.300386688s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 3 } path=Path { local_addr: [::1]:4433, local_cid: 0xcf92d7eab55e0c09eda44e9aae0c80a2, remote_addr: [::1]:39950, remote_cid: 0xd95874b4d6dfb75583a22e9b075f7c1a, id: 0, is_active: true } frame=ConnectionClose [3mid[0m[2m=[0m5
+   8.300426694s s2n_quic:server:conn: connection_closed: error=Closed { initiator: Remote } [3mid[0m[2m=[0m5
+   8.300504731s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   8.300569704s s2n_quic_qns::server::interop: Final stats: MyConnectionContext { packet_sent: 9, stream_requests: 1 }
+   8.304173916s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   8.304223380s s2n_quic:server: platform_rx: count=1
+   8.304262664s s2n_quic:server: endpoint_datagram_dropped: len=53 reason=UnknownDestinationConnectionId
+   8.304316886s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   8.308454496s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=true rx_ready=false tx_ready=false
+   8.939143891s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   8.939287001s s2n_quic:server: platform_rx: count=1
+   8.939355972s s2n_quic:server: version_information: server_versions=[1] client_versions=[] chosen_version=Some(1)
+   8.939704029s s2n_quic:server:conn: key_update: key_type=Initial cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m6
+   8.939792086s s2n_quic:server:conn: connection_started: path=Path { local_addr: [::1]:4433, local_cid: 0x5629361bdbc727b237121b740474c4fd, remote_addr: [::1]:40180, remote_cid: 0x1b4805194a377daa7065eda71140525b, id: 0, is_active: true } [3mid[0m[2m=[0m6
+   8.939850687s s2n_quic:server:conn: datagram_received: len=1200 [3mid[0m[2m=[0m6
+   8.939891363s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x5629361bdbc727b237121b740474c4fd, remote_addr: [::1]:40180, remote_cid: 0x1b4805194a377daa7065eda71140525b, id: 0, is_active: true } frame=Crypto { offset: 0, len: 263 } [3mid[0m[2m=[0m6
+   8.939967638s s2n_quic:server:conn: tls_client_hello: payload=[[3, 3, 68, 88, 116, 11, 81, 238, 217, 130, 108, 226, 76, 205, 192, 33, 254, 157, 62, 42, 60, 167, 212, 105, 158, 203, 21, 79, 86, 70, 68, 179, 114, 255, 0, 0, 8, 19, 1, 19, 2, 19, 3, 0, 255, 1, 0, 0, 210, 0, 43, 0, 3, 2, 3, 4, 0, 0, 0, 14, 0, 12, 0, 0, 9, 108, 111, 99, 97, 108, 104, 111, 115, 116, 0, 11, 0, 2, 1, 0, 0, 10, 0, 8, 0, 6, 0, 29, 0, 23, 0, 24, 0, 13, 0, 20, 0, 18, 5, 3, 4, 3, 8, 7, 8, 6, 8, 5, 8, 4, 6, 1, 5, 1, 4, 1, 0, 23, 0, 0, 0, 5, 0, 5, 1, 0, 0, 0, 0, 0, 18, 0, 0, 0, 51, 0, 38, 0, 36, 0, 29, 0, 32, 20, 49, 166, 155, 167, 212, 43, 142, 217, 90, 161, 202, 34, 9, 28, 226, 160, 8, 11, 2, 26, 234, 25, 165, 51, 216, 79, 193, 97, 197, 7, 31, 0, 45, 0, 2, 1, 1, 0, 16, 0, 13, 0, 11, 10, 104, 113, 45, 105, 110, 116, 101, 114, 111, 112, 0, 57, 0, 53, 4, 4, 128, 57, 56, 112, 5, 4, 128, 57, 56, 112, 6, 4, 128, 57, 56, 112, 7, 4, 128, 57, 56, 112, 8, 2, 64, 100, 9, 2, 64, 100, 14, 1, 3, 15, 16, 27, 72, 5, 25, 74, 55, 125, 170, 112, 101, 237, 167, 17, 64, 82, 91, 0, 35, 0, 0]] [3mid[0m[2m=[0m6
+   8.940081573s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x5629361bdbc727b237121b740474c4fd, remote_addr: [::1]:40180, remote_cid: 0x1b4805194a377daa7065eda71140525b, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m6
+   8.940313141s rustls::server::hs: decided upon suite Tls13(Tls13CipherSuite { suite: TLS13_AES_128_GCM_SHA256, bulk: Aes128Gcm })    
+   8.940854203s rustls::server::hs: Chosen ALPN protocol [104, 113, 45, 105, 110, 116, 101, 114, 111, 112]    
+   8.941113493s s2n_quic:server:conn: key_update: key_type=Handshake cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m6
+   8.941218993s s2n_quic:server:conn: transport_parameters_received: transport_parameters=TransportParameters { original_destination_connection_id: None, initial_source_connection_id: Some(0x1b4805194a377daa7065eda71140525b), retry_source_connection_id: None, stateless_reset_token: None, preferred_address: None, migration_support: true, max_idle_timeout: 0ns, ack_delay_exponent: 3, max_ack_delay: 25ms, max_udp_payload_size: 65527, active_connection_id_limit: 3, initial_max_stream_data_bidi_local: 3750000, initial_max_stream_data_bidi_remote: 3750000, initial_max_stream_data_uni: 3750000, initial_max_streams_bidi: 100, initial_max_streams_uni: 100 } [3mid[0m[2m=[0m6
+   8.941274918s s2n_quic:server:conn: alpn_information: chosen_alpn=[104, 113, 45, 105, 110, 116, 101, 114, 111, 112] [3mid[0m[2m=[0m6
+   8.941302490s s2n_quic:server:conn: sni_information: chosen_sni="localhost" [3mid[0m[2m=[0m6
+   8.941359338s s2n_quic:server:conn: key_update: key_type=OneRtt { generation: 0 } cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m6
+   8.941527065s s2n_quic:server:conn: frame_sent: packet_header=Initial { number: 0, version: 1 } path_id=0 frame=Ack [3mid[0m[2m=[0m6
+   8.941575206s s2n_quic:server:conn: frame_sent: packet_header=Initial { number: 0, version: 1 } path_id=0 frame=Crypto { offset: 0, len: 90 } [3mid[0m[2m=[0m6
+   8.941633676s s2n_quic:server:conn: packet_sent: packet_header=Initial { number: 0, version: 1 } [3mid[0m[2m=[0m6
+   8.941678792s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 0, version: 1 } path_id=0 frame=Crypto { offset: 0, len: 603 } [3mid[0m[2m=[0m6
+   8.941722594s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 0, version: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m6
+   8.941776576s s2n_quic:server:conn: packet_sent: packet_header=Handshake { number: 0, version: 1 } [3mid[0m[2m=[0m6
+   8.941824788s s2n_quic:server:conn: datagram_sent: len=1200 gso_offset=0 [3mid[0m[2m=[0m6
+   8.941920769s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   8.942000680s s2n_quic:server: platform_tx: count=1
+   8.944512077s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   8.944569285s s2n_quic:server: platform_rx: count=1
+   8.944610312s s2n_quic:server: version_information: server_versions=[1] client_versions=[] chosen_version=Some(1)
+   8.944657211s s2n_quic:server:conn: datagram_received: len=1200 [3mid[0m[2m=[0m6
+   8.944713076s s2n_quic:server:conn: packet_received: packet_header=Initial { number: 1, version: 1 } [3mid[0m[2m=[0m6
+   8.944756248s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 1, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x5629361bdbc727b237121b740474c4fd, remote_addr: [::1]:40180, remote_cid: 0x1b4805194a377daa7065eda71140525b, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m6
+   8.944848252s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x5629361bdbc727b237121b740474c4fd, remote_addr: [::1]:40180, remote_cid: 0x1b4805194a377daa7065eda71140525b, id: 0, is_active: true } min_rtt=3.119ms smoothed_rtt=3.119ms latest_rtt=3.119ms rtt_variance=1.5595ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=1038 [3mid[0m[2m=[0m6
+   8.944904859s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 1, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x5629361bdbc727b237121b740474c4fd, remote_addr: [::1]:40180, remote_cid: 0x1b4805194a377daa7065eda71140525b, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m6
+   8.944974601s s2n_quic:server:conn: packet_received: packet_header=Handshake { number: 0, version: 1 } [3mid[0m[2m=[0m6
+   8.945011380s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x5629361bdbc727b237121b740474c4fd, remote_addr: [::1]:40180, remote_cid: 0x1b4805194a377daa7065eda71140525b, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m6
+   8.945075301s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x5629361bdbc727b237121b740474c4fd, remote_addr: [::1]:40180, remote_cid: 0x1b4805194a377daa7065eda71140525b, id: 0, is_active: true } min_rtt=3.119ms smoothed_rtt=3.119ms latest_rtt=3.119ms rtt_variance=1.5595ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=0 [3mid[0m[2m=[0m6
+   8.945131938s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x5629361bdbc727b237121b740474c4fd, remote_addr: [::1]:40180, remote_cid: 0x1b4805194a377daa7065eda71140525b, id: 0, is_active: true } frame=Crypto { offset: 0, len: 36 } [3mid[0m[2m=[0m6
+   8.945224152s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x5629361bdbc727b237121b740474c4fd, remote_addr: [::1]:40180, remote_cid: 0x1b4805194a377daa7065eda71140525b, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m6
+   8.945268105s s2n_quic:server:conn: key_space_discarded: space=Initial [3mid[0m[2m=[0m6
+   8.945292471s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x5629361bdbc727b237121b740474c4fd, remote_addr: [::1]:40180, remote_cid: 0x1b4805194a377daa7065eda71140525b, id: 0, is_active: true } min_rtt=3.119ms smoothed_rtt=3.119ms latest_rtt=3.119ms rtt_variance=1.5595ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=0 [3mid[0m[2m=[0m6
+   8.945440491s s2n_quic:server:conn: handshake_status_updated: status=Complete [3mid[0m[2m=[0m6
+   8.945473975s s2n_quic:server:conn: handshake_status_updated: status=Confirmed [3mid[0m[2m=[0m6
+   8.945591537s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 0 } path_id=0 frame=Ping [3mid[0m[2m=[0m6
+   8.945654185s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 0 } path_id=0 frame=Padding [3mid[0m[2m=[0m6
+   8.945702246s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 0 } [3mid[0m[2m=[0m6
+   8.945730419s s2n_quic:server:conn: datagram_sent: len=1452 gso_offset=0 [3mid[0m[2m=[0m6
+   8.945785323s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 1, version: 1 } path_id=0 frame=Ack [3mid[0m[2m=[0m6
+   8.945822844s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 1, version: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m6
+   8.945869672s s2n_quic:server:conn: packet_sent: packet_header=Handshake { number: 1, version: 1 } [3mid[0m[2m=[0m6
+   8.945898787s s2n_quic:server:conn: key_space_discarded: space=Handshake [3mid[0m[2m=[0m6
+   8.945921490s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x5629361bdbc727b237121b740474c4fd, remote_addr: [::1]:40180, remote_cid: 0x1b4805194a377daa7065eda71140525b, id: 0, is_active: true } min_rtt=3.119ms smoothed_rtt=3.119ms latest_rtt=3.119ms rtt_variance=1.5595ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=1529 [3mid[0m[2m=[0m6
+   8.945985762s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 1 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m6
+   8.946026719s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m6
+   8.946073037s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 1 } [3mid[0m[2m=[0m6
+   8.946100719s s2n_quic:server:conn: datagram_sent: len=130 gso_offset=1 [3mid[0m[2m=[0m6
+   8.946175951s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   8.946233710s s2n_quic:server: platform_tx: count=1
+   8.946265961s s2n_quic:server: platform_rx: count=1
+   8.946303683s s2n_quic:server:conn: datagram_received: len=53 [3mid[0m[2m=[0m6
+   8.946350932s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 0 } [3mid[0m[2m=[0m6
+   8.946384586s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 0 } path=Path { local_addr: [::1]:4433, local_cid: 0x5629361bdbc727b237121b740474c4fd, remote_addr: [::1]:40180, remote_cid: 0x1b4805194a377daa7065eda71140525b, id: 0, is_active: true } frame=Stream { id: 0, offset: 0, len: 13, is_fin: true } [3mid[0m[2m=[0m6
+   8.946463956s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 0 } path=Path { local_addr: [::1]:4433, local_cid: 0x5629361bdbc727b237121b740474c4fd, remote_addr: [::1]:40180, remote_cid: 0x1b4805194a377daa7065eda71140525b, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m6
+   8.946513880s s2n_quic:server:conn: rx_stream_progress: bytes=13 [3mid[0m[2m=[0m6
+   8.946612496s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=Ack [3mid[0m[2m=[0m6
+   8.946651350s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m6
+   8.946680845s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m6
+   8.946708959s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m6
+   8.946735569s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m6
+   8.946792517s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 2 } [3mid[0m[2m=[0m6
+   8.946822623s s2n_quic:server:conn: datagram_sent: len=151 gso_offset=0 [3mid[0m[2m=[0m6
+   8.946906322s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   8.946955975s s2n_quic:server: platform_tx: count=1
+Accepted a QUIC connection from [::1]:40180 on [::1]:4433
+   8.947244922s s2n_quic_qns::server::interop: 67 bytes ready to send on Stream(0)
+   8.947292051s s2n_quic_qns::server::interop: 67 bytes sent on Stream(0)
+   8.947352976s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=false
+   8.947409753s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 3 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m6
+   8.947460850s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 3 } path_id=0 frame=Stream { id: 0, offset: 0, len: 67, is_fin: false } [3mid[0m[2m=[0m6
+   8.947521615s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 3 } [3mid[0m[2m=[0m6
+   8.947551842s s2n_quic:server:conn: datagram_sent: len=106 gso_offset=0 [3mid[0m[2m=[0m6
+   8.947599862s s2n_quic:server:conn: tx_stream_progress: bytes=67 [3mid[0m[2m=[0m6
+   8.947655057s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=true
+   8.947700643s s2n_quic:server: platform_tx: count=1
+   8.947805351s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=false
+   8.947861216s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m6
+   8.947905119s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=Stream { id: 0, offset: 67, len: 0, is_fin: true } [3mid[0m[2m=[0m6
+   8.947940246s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=Padding [3mid[0m[2m=[0m6
+   8.947989649s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 4 } [3mid[0m[2m=[0m6
+   8.948018183s s2n_quic:server:conn: datagram_sent: len=53 gso_offset=0 [3mid[0m[2m=[0m6
+   8.948092784s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=true
+   8.948140033s s2n_quic:server: platform_tx: count=1
+   8.948197973s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   8.948236516s s2n_quic:server: platform_rx: count=1
+   8.948274698s s2n_quic:server:conn: datagram_received: len=1452 [3mid[0m[2m=[0m6
+   8.948321086s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 1 } [3mid[0m[2m=[0m6
+   8.948353567s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x5629361bdbc727b237121b740474c4fd, remote_addr: [::1]:40180, remote_cid: 0x1b4805194a377daa7065eda71140525b, id: 0, is_active: true } frame=Ping [3mid[0m[2m=[0m6
+   8.948449498s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x5629361bdbc727b237121b740474c4fd, remote_addr: [::1]:40180, remote_cid: 0x1b4805194a377daa7065eda71140525b, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m6
+   8.948568794s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   8.948608679s s2n_quic:server: platform_rx: count=1
+   8.948644898s s2n_quic:server:conn: datagram_received: len=153 [3mid[0m[2m=[0m6
+   8.948690975s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 2 } [3mid[0m[2m=[0m6
+   8.948720130s s2n_quic:server:conn: connection_id_updated: path_id=0 cid_consumer=Remote previous=0x5629361bdbc727b237121b740474c4fd current=0x407a0667441fb02e31c8b598672e69f9 [3mid[0m[2m=[0m6
+   8.948765666s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x407a0667441fb02e31c8b598672e69f9, remote_addr: [::1]:40180, remote_cid: 0x1b4805194a377daa7065eda71140525b, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m6
+   8.948821101s s2n_quic:server:conn: handshake_status_updated: status=HandshakeDoneAcked [3mid[0m[2m=[0m6
+   8.948880373s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x407a0667441fb02e31c8b598672e69f9, remote_addr: [::1]:40180, remote_cid: 0x1b4805194a377daa7065eda71140525b, id: 0, is_active: true } min_rtt=2.042ms smoothed_rtt=2.984375ms latest_rtt=2.042ms rtt_variance=1.405218ms max_ack_delay=25ms pto_count=0 congestion_window=14520 bytes_in_flight=159 [3mid[0m[2m=[0m6
+   8.948939645s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x407a0667441fb02e31c8b598672e69f9, remote_addr: [::1]:40180, remote_cid: 0x1b4805194a377daa7065eda71140525b, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m6
+   8.948995901s s2n_quic:server:conn: connection_id_updated: path_id=0 cid_consumer=Local previous=0x1b4805194a377daa7065eda71140525b current=0xc6c454d355bede1540d862090fea6f90 [3mid[0m[2m=[0m6
+   8.949037960s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x407a0667441fb02e31c8b598672e69f9, remote_addr: [::1]:40180, remote_cid: 0xc6c454d355bede1540d862090fea6f90, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m6
+   8.949089889s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x407a0667441fb02e31c8b598672e69f9, remote_addr: [::1]:40180, remote_cid: 0xc6c454d355bede1540d862090fea6f90, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m6
+   8.949146486s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0x407a0667441fb02e31c8b598672e69f9, remote_addr: [::1]:40180, remote_cid: 0xc6c454d355bede1540d862090fea6f90, id: 0, is_active: true } frame=RetireConnectionId [3mid[0m[2m=[0m6
+   8.949248098s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=Ack [3mid[0m[2m=[0m6
+   8.949289496s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=RetireConnectionId [3mid[0m[2m=[0m6
+   8.949319903s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=Padding [3mid[0m[2m=[0m6
+   8.949368165s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 5 } [3mid[0m[2m=[0m6
+   8.949396518s s2n_quic:server:conn: datagram_sent: len=53 gso_offset=0 [3mid[0m[2m=[0m6
+   8.949476279s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   8.949525392s s2n_quic:server: platform_tx: count=1
+   8.949631051s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   8.949671037s s2n_quic:server: platform_rx: count=1
+   8.949708408s s2n_quic:server:conn: datagram_received: len=53 [3mid[0m[2m=[0m6
+   8.949754284s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 3 } [3mid[0m[2m=[0m6
+   8.949794370s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 3 } path=Path { local_addr: [::1]:4433, local_cid: 0x407a0667441fb02e31c8b598672e69f9, remote_addr: [::1]:40180, remote_cid: 0xc6c454d355bede1540d862090fea6f90, id: 0, is_active: true } frame=ConnectionClose [3mid[0m[2m=[0m6
+   8.949835328s s2n_quic:server:conn: connection_closed: error=Closed { initiator: Remote } [3mid[0m[2m=[0m6
+   8.949914978s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   8.949977276s s2n_quic_qns::server::interop: Final stats: MyConnectionContext { packet_sent: 9, stream_requests: 1 }
+   8.953570908s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   8.953621153s s2n_quic:server: platform_rx: count=1
+   8.953661419s s2n_quic:server: endpoint_datagram_dropped: len=53 reason=UnknownDestinationConnectionId
+   8.953718176s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   8.957858622s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=true rx_ready=false tx_ready=false
+   9.639553939s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   9.639697871s s2n_quic:server: platform_rx: count=1
+   9.639771901s s2n_quic:server: version_information: server_versions=[1] client_versions=[] chosen_version=Some(1)
+   9.640088570s s2n_quic:server:conn: key_update: key_type=Initial cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m7
+   9.640162189s s2n_quic:server:conn: connection_started: path=Path { local_addr: [::1]:4433, local_cid: 0x3bba198babf5cd7d0a32ea598c7a781a, remote_addr: [::1]:33340, remote_cid: 0x4f3eb0db66894830b37df10edaf4d003, id: 0, is_active: true } [3mid[0m[2m=[0m7
+   9.640216993s s2n_quic:server:conn: datagram_received: len=1200 [3mid[0m[2m=[0m7
+   9.640256437s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bba198babf5cd7d0a32ea598c7a781a, remote_addr: [::1]:33340, remote_cid: 0x4f3eb0db66894830b37df10edaf4d003, id: 0, is_active: true } frame=Crypto { offset: 0, len: 263 } [3mid[0m[2m=[0m7
+   9.640332190s s2n_quic:server:conn: tls_client_hello: payload=[[3, 3, 36, 192, 156, 92, 35, 254, 41, 156, 156, 123, 134, 114, 116, 161, 40, 55, 69, 33, 202, 64, 155, 226, 46, 222, 62, 76, 107, 90, 178, 103, 49, 232, 0, 0, 8, 19, 1, 19, 2, 19, 3, 0, 255, 1, 0, 0, 210, 0, 43, 0, 3, 2, 3, 4, 0, 0, 0, 14, 0, 12, 0, 0, 9, 108, 111, 99, 97, 108, 104, 111, 115, 116, 0, 11, 0, 2, 1, 0, 0, 10, 0, 8, 0, 6, 0, 29, 0, 23, 0, 24, 0, 13, 0, 20, 0, 18, 5, 3, 4, 3, 8, 7, 8, 6, 8, 5, 8, 4, 6, 1, 5, 1, 4, 1, 0, 23, 0, 0, 0, 5, 0, 5, 1, 0, 0, 0, 0, 0, 18, 0, 0, 0, 51, 0, 38, 0, 36, 0, 29, 0, 32, 200, 113, 186, 118, 213, 202, 218, 87, 232, 235, 125, 113, 83, 126, 130, 144, 115, 243, 92, 237, 64, 152, 31, 15, 182, 114, 241, 53, 233, 146, 31, 51, 0, 45, 0, 2, 1, 1, 0, 16, 0, 13, 0, 11, 10, 104, 113, 45, 105, 110, 116, 101, 114, 111, 112, 0, 57, 0, 53, 4, 4, 128, 57, 56, 112, 5, 4, 128, 57, 56, 112, 6, 4, 128, 57, 56, 112, 7, 4, 128, 57, 56, 112, 8, 2, 64, 100, 9, 2, 64, 100, 14, 1, 3, 15, 16, 79, 62, 176, 219, 102, 137, 72, 48, 179, 125, 241, 14, 218, 244, 208, 3, 0, 35, 0, 0]] [3mid[0m[2m=[0m7
+   9.640446366s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bba198babf5cd7d0a32ea598c7a781a, remote_addr: [::1]:33340, remote_cid: 0x4f3eb0db66894830b37df10edaf4d003, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m7
+   9.640679958s rustls::server::hs: decided upon suite Tls13(Tls13CipherSuite { suite: TLS13_AES_128_GCM_SHA256, bulk: Aes128Gcm })    
+   9.641214087s rustls::server::hs: Chosen ALPN protocol [104, 113, 45, 105, 110, 116, 101, 114, 111, 112]    
+   9.641469430s s2n_quic:server:conn: key_update: key_type=Handshake cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m7
+   9.641572865s s2n_quic:server:conn: transport_parameters_received: transport_parameters=TransportParameters { original_destination_connection_id: None, initial_source_connection_id: Some(0x4f3eb0db66894830b37df10edaf4d003), retry_source_connection_id: None, stateless_reset_token: None, preferred_address: None, migration_support: true, max_idle_timeout: 0ns, ack_delay_exponent: 3, max_ack_delay: 25ms, max_udp_payload_size: 65527, active_connection_id_limit: 3, initial_max_stream_data_bidi_local: 3750000, initial_max_stream_data_bidi_remote: 3750000, initial_max_stream_data_uni: 3750000, initial_max_streams_bidi: 100, initial_max_streams_uni: 100 } [3mid[0m[2m=[0m7
+   9.641628420s s2n_quic:server:conn: alpn_information: chosen_alpn=[104, 113, 45, 105, 110, 116, 101, 114, 111, 112] [3mid[0m[2m=[0m7
+   9.641654710s s2n_quic:server:conn: sni_information: chosen_sni="localhost" [3mid[0m[2m=[0m7
+   9.641709965s s2n_quic:server:conn: key_update: key_type=OneRtt { generation: 0 } cipher_suite=TLS_AES_128_GCM_SHA256 [3mid[0m[2m=[0m7
+   9.641881338s s2n_quic:server:conn: frame_sent: packet_header=Initial { number: 0, version: 1 } path_id=0 frame=Ack [3mid[0m[2m=[0m7
+   9.641938987s s2n_quic:server:conn: frame_sent: packet_header=Initial { number: 0, version: 1 } path_id=0 frame=Crypto { offset: 0, len: 90 } [3mid[0m[2m=[0m7
+   9.641997758s s2n_quic:server:conn: packet_sent: packet_header=Initial { number: 0, version: 1 } [3mid[0m[2m=[0m7
+   9.642041721s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 0, version: 1 } path_id=0 frame=Crypto { offset: 0, len: 602 } [3mid[0m[2m=[0m7
+   9.642080795s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 0, version: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m7
+   9.642127353s s2n_quic:server:conn: packet_sent: packet_header=Handshake { number: 0, version: 1 } [3mid[0m[2m=[0m7
+   9.642171918s s2n_quic:server:conn: datagram_sent: len=1200 gso_offset=0 [3mid[0m[2m=[0m7
+   9.642263471s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   9.642341578s s2n_quic:server: platform_tx: count=1
+   9.644833067s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   9.644877842s s2n_quic:server: platform_rx: count=1
+   9.644912627s s2n_quic:server: version_information: server_versions=[1] client_versions=[] chosen_version=Some(1)
+   9.644959185s s2n_quic:server:conn: datagram_received: len=1200 [3mid[0m[2m=[0m7
+   9.645005353s s2n_quic:server:conn: packet_received: packet_header=Initial { number: 1, version: 1 } [3mid[0m[2m=[0m7
+   9.645043385s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 1, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bba198babf5cd7d0a32ea598c7a781a, remote_addr: [::1]:33340, remote_cid: 0x4f3eb0db66894830b37df10edaf4d003, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m7
+   9.645124197s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x3bba198babf5cd7d0a32ea598c7a781a, remote_addr: [::1]:33340, remote_cid: 0x4f3eb0db66894830b37df10edaf4d003, id: 0, is_active: true } min_rtt=3.069ms smoothed_rtt=3.069ms latest_rtt=3.069ms rtt_variance=1.5345ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=1038 [3mid[0m[2m=[0m7
+   9.645183029s s2n_quic:server:conn: frame_received: packet_header=Initial { number: 1, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bba198babf5cd7d0a32ea598c7a781a, remote_addr: [::1]:33340, remote_cid: 0x4f3eb0db66894830b37df10edaf4d003, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m7
+   9.645252700s s2n_quic:server:conn: packet_received: packet_header=Handshake { number: 0, version: 1 } [3mid[0m[2m=[0m7
+   9.645289770s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bba198babf5cd7d0a32ea598c7a781a, remote_addr: [::1]:33340, remote_cid: 0x4f3eb0db66894830b37df10edaf4d003, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m7
+   9.645353721s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x3bba198babf5cd7d0a32ea598c7a781a, remote_addr: [::1]:33340, remote_cid: 0x4f3eb0db66894830b37df10edaf4d003, id: 0, is_active: true } min_rtt=3.069ms smoothed_rtt=3.069ms latest_rtt=3.069ms rtt_variance=1.5345ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=0 [3mid[0m[2m=[0m7
+   9.645410418s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bba198babf5cd7d0a32ea598c7a781a, remote_addr: [::1]:33340, remote_cid: 0x4f3eb0db66894830b37df10edaf4d003, id: 0, is_active: true } frame=Crypto { offset: 0, len: 36 } [3mid[0m[2m=[0m7
+   9.645506219s s2n_quic:server:conn: frame_received: packet_header=Handshake { number: 0, version: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bba198babf5cd7d0a32ea598c7a781a, remote_addr: [::1]:33340, remote_cid: 0x4f3eb0db66894830b37df10edaf4d003, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m7
+   9.645556064s s2n_quic:server:conn: key_space_discarded: space=Initial [3mid[0m[2m=[0m7
+   9.645582143s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x3bba198babf5cd7d0a32ea598c7a781a, remote_addr: [::1]:33340, remote_cid: 0x4f3eb0db66894830b37df10edaf4d003, id: 0, is_active: true } min_rtt=3.069ms smoothed_rtt=3.069ms latest_rtt=3.069ms rtt_variance=1.5345ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=0 [3mid[0m[2m=[0m7
+   9.645726335s s2n_quic:server:conn: handshake_status_updated: status=Complete [3mid[0m[2m=[0m7
+   9.645758907s s2n_quic:server:conn: handshake_status_updated: status=Confirmed [3mid[0m[2m=[0m7
+   9.645883883s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 0 } path_id=0 frame=Ping [3mid[0m[2m=[0m7
+   9.645946622s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 0 } path_id=0 frame=Padding [3mid[0m[2m=[0m7
+   9.645995715s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 0 } [3mid[0m[2m=[0m7
+   9.646023647s s2n_quic:server:conn: datagram_sent: len=1452 gso_offset=0 [3mid[0m[2m=[0m7
+   9.646074894s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 1, version: 1 } path_id=0 frame=Ack [3mid[0m[2m=[0m7
+   9.646111243s s2n_quic:server:conn: frame_sent: packet_header=Handshake { number: 1, version: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m7
+   9.646157049s s2n_quic:server:conn: packet_sent: packet_header=Handshake { number: 1, version: 1 } [3mid[0m[2m=[0m7
+   9.646185874s s2n_quic:server:conn: key_space_discarded: space=Handshake [3mid[0m[2m=[0m7
+   9.646209669s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0x3bba198babf5cd7d0a32ea598c7a781a, remote_addr: [::1]:33340, remote_cid: 0x4f3eb0db66894830b37df10edaf4d003, id: 0, is_active: true } min_rtt=3.069ms smoothed_rtt=3.069ms latest_rtt=3.069ms rtt_variance=1.5345ms max_ack_delay=25ms pto_count=0 congestion_window=12000 bytes_in_flight=1529 [3mid[0m[2m=[0m7
+   9.646273560s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 1 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m7
+   9.646313505s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 1 } path_id=0 frame=Padding [3mid[0m[2m=[0m7
+   9.646359552s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 1 } [3mid[0m[2m=[0m7
+   9.646388918s s2n_quic:server:conn: datagram_sent: len=130 gso_offset=1 [3mid[0m[2m=[0m7
+   9.646465512s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   9.646523342s s2n_quic:server: platform_tx: count=1
+   9.646554631s s2n_quic:server: platform_rx: count=1
+   9.646592252s s2n_quic:server:conn: datagram_received: len=53 [3mid[0m[2m=[0m7
+   9.646640343s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 0 } [3mid[0m[2m=[0m7
+   9.646674517s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 0 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bba198babf5cd7d0a32ea598c7a781a, remote_addr: [::1]:33340, remote_cid: 0x4f3eb0db66894830b37df10edaf4d003, id: 0, is_active: true } frame=Stream { id: 0, offset: 0, len: 13, is_fin: true } [3mid[0m[2m=[0m7
+   9.646754318s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 0 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bba198babf5cd7d0a32ea598c7a781a, remote_addr: [::1]:33340, remote_cid: 0x4f3eb0db66894830b37df10edaf4d003, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m7
+   9.646811747s s2n_quic:server:conn: rx_stream_progress: bytes=13 [3mid[0m[2m=[0m7
+   9.646913870s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=Ack [3mid[0m[2m=[0m7
+   9.646952503s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m7
+   9.646982339s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m7
+   9.647015542s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m7
+   9.647043715s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 2 } path_id=0 frame=NewConnectionId [3mid[0m[2m=[0m7
+   9.647096545s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 2 } [3mid[0m[2m=[0m7
+   9.647126922s s2n_quic:server:conn: datagram_sent: len=151 gso_offset=0 [3mid[0m[2m=[0m7
+   9.647205611s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   9.647255856s s2n_quic:server: platform_tx: count=1
+Accepted a QUIC connection from [::1]:33340 on [::1]:4433
+   9.647539262s s2n_quic_qns::server::interop: 67 bytes ready to send on Stream(0)
+   9.647585820s s2n_quic_qns::server::interop: 67 bytes sent on Stream(0)
+   9.647647466s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=false
+   9.647703753s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 3 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m7
+   9.647753677s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 3 } path_id=0 frame=Stream { id: 0, offset: 0, len: 67, is_fin: false } [3mid[0m[2m=[0m7
+   9.647825693s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 3 } [3mid[0m[2m=[0m7
+   9.647855890s s2n_quic:server:conn: datagram_sent: len=106 gso_offset=0 [3mid[0m[2m=[0m7
+   9.647904833s s2n_quic:server:conn: tx_stream_progress: bytes=67 [3mid[0m[2m=[0m7
+   9.647960448s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=true
+   9.648007166s s2n_quic:server: platform_tx: count=1
+   9.648106915s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=false
+   9.648164654s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=HandshakeDone [3mid[0m[2m=[0m7
+   9.648208467s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=Stream { id: 0, offset: 67, len: 0, is_fin: true } [3mid[0m[2m=[0m7
+   9.648243874s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 4 } path_id=0 frame=Padding [3mid[0m[2m=[0m7
+   9.648293157s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 4 } [3mid[0m[2m=[0m7
+   9.648322182s s2n_quic:server:conn: datagram_sent: len=53 gso_offset=0 [3mid[0m[2m=[0m7
+   9.648395570s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=false tx_ready=true
+   9.648443030s s2n_quic:server: platform_tx: count=1
+   9.648501801s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   9.648539993s s2n_quic:server: platform_rx: count=1
+   9.648577414s s2n_quic:server:conn: datagram_received: len=1452 [3mid[0m[2m=[0m7
+   9.648624363s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 1 } [3mid[0m[2m=[0m7
+   9.648656113s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bba198babf5cd7d0a32ea598c7a781a, remote_addr: [::1]:33340, remote_cid: 0x4f3eb0db66894830b37df10edaf4d003, id: 0, is_active: true } frame=Ping [3mid[0m[2m=[0m7
+   9.648752475s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 1 } path=Path { local_addr: [::1]:4433, local_cid: 0x3bba198babf5cd7d0a32ea598c7a781a, remote_addr: [::1]:33340, remote_cid: 0x4f3eb0db66894830b37df10edaf4d003, id: 0, is_active: true } frame=Padding [3mid[0m[2m=[0m7
+   9.648878142s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   9.648918468s s2n_quic:server: platform_rx: count=1
+   9.648955589s s2n_quic:server:conn: datagram_received: len=153 [3mid[0m[2m=[0m7
+   9.649001636s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 2 } [3mid[0m[2m=[0m7
+   9.649031021s s2n_quic:server:conn: connection_id_updated: path_id=0 cid_consumer=Remote previous=0x3bba198babf5cd7d0a32ea598c7a781a current=0xc4635ddee1c6dea8459dd48e36f2b3e7 [3mid[0m[2m=[0m7
+   9.649078701s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0xc4635ddee1c6dea8459dd48e36f2b3e7, remote_addr: [::1]:33340, remote_cid: 0x4f3eb0db66894830b37df10edaf4d003, id: 0, is_active: true } frame=Ack [3mid[0m[2m=[0m7
+   9.649132373s s2n_quic:server:conn: handshake_status_updated: status=HandshakeDoneAcked [3mid[0m[2m=[0m7
+   9.649185553s s2n_quic:server:conn: recovery_metrics: path=Path { local_addr: [::1]:4433, local_cid: 0xc4635ddee1c6dea8459dd48e36f2b3e7, remote_addr: [::1]:33340, remote_cid: 0x4f3eb0db66894830b37df10edaf4d003, id: 0, is_active: true } min_rtt=2.054ms smoothed_rtt=2.942125ms latest_rtt=2.054ms rtt_variance=1.372906ms max_ack_delay=25ms pto_count=0 congestion_window=14520 bytes_in_flight=159 [3mid[0m[2m=[0m7
+   9.649243864s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0xc4635ddee1c6dea8459dd48e36f2b3e7, remote_addr: [::1]:33340, remote_cid: 0x4f3eb0db66894830b37df10edaf4d003, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m7
+   9.649300931s s2n_quic:server:conn: connection_id_updated: path_id=0 cid_consumer=Local previous=0x4f3eb0db66894830b37df10edaf4d003 current=0x17ced8e222e986f2a36d85fcbc081cde [3mid[0m[2m=[0m7
+   9.649343111s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0xc4635ddee1c6dea8459dd48e36f2b3e7, remote_addr: [::1]:33340, remote_cid: 0x17ced8e222e986f2a36d85fcbc081cde, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m7
+   9.649396041s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0xc4635ddee1c6dea8459dd48e36f2b3e7, remote_addr: [::1]:33340, remote_cid: 0x17ced8e222e986f2a36d85fcbc081cde, id: 0, is_active: true } frame=NewConnectionId [3mid[0m[2m=[0m7
+   9.649451817s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 2 } path=Path { local_addr: [::1]:4433, local_cid: 0xc4635ddee1c6dea8459dd48e36f2b3e7, remote_addr: [::1]:33340, remote_cid: 0x17ced8e222e986f2a36d85fcbc081cde, id: 0, is_active: true } frame=RetireConnectionId [3mid[0m[2m=[0m7
+   9.649553298s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=Ack [3mid[0m[2m=[0m7
+   9.649594697s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=RetireConnectionId [3mid[0m[2m=[0m7
+   9.649625495s s2n_quic:server:conn: frame_sent: packet_header=OneRtt { number: 5 } path_id=0 frame=Padding [3mid[0m[2m=[0m7
+   9.649677704s s2n_quic:server:conn: packet_sent: packet_header=OneRtt { number: 5 } [3mid[0m[2m=[0m7
+   9.649706428s s2n_quic:server:conn: datagram_sent: len=53 gso_offset=0 [3mid[0m[2m=[0m7
+   9.649792110s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=true
+   9.649844990s s2n_quic:server: platform_tx: count=1
+   9.650067029s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   9.650107215s s2n_quic:server: platform_rx: count=1
+   9.650144305s s2n_quic:server:conn: datagram_received: len=53 [3mid[0m[2m=[0m7
+   9.650190964s s2n_quic:server:conn: packet_received: packet_header=OneRtt { number: 3 } [3mid[0m[2m=[0m7
+   9.650225068s s2n_quic:server:conn: frame_received: packet_header=OneRtt { number: 3 } path=Path { local_addr: [::1]:4433, local_cid: 0xc4635ddee1c6dea8459dd48e36f2b3e7, remote_addr: [::1]:33340, remote_cid: 0x17ced8e222e986f2a36d85fcbc081cde, id: 0, is_active: true } frame=ConnectionClose [3mid[0m[2m=[0m7
+   9.650265935s s2n_quic:server:conn: connection_closed: error=Closed { initiator: Remote } [3mid[0m[2m=[0m7
+   9.650344544s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   9.650411070s s2n_quic_qns::server::interop: Final stats: MyConnectionContext { packet_sent: 9, stream_requests: 1 }
+   9.654030761s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   9.654081246s s2n_quic:server: platform_rx: count=1
+   9.654120430s s2n_quic:server: endpoint_datagram_dropped: len=53 reason=UnknownDestinationConnectionId
+   9.654175053s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=false rx_ready=true tx_ready=false
+   9.657308025s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=true rx_ready=false tx_ready=false
+  10.658619964s s2n_quic:server: platform_event_loop_wakeup: timeout_expired=true rx_ready=false tx_ready=false

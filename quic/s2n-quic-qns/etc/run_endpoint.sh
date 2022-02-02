@@ -23,6 +23,7 @@ LOG=$LOG_DIR/logs.txt
 
 QNS_BIN="s2n-quic-qns"
 QNS_MODE=${QNS_MODE:-interop}
+TLS=${TLS:-s2n-tls}
 
 # Disable GSO as it does not work with Docker
 SERVER_PARAMS+=" --disable-gso"
@@ -51,6 +52,12 @@ if [ -d "/certs" ]; then
     elif [ "$ROLE" == "client" ]; then
         CLIENT_PARAMS+=" --ca /certs/ca.pem"
     fi
+fi
+
+if [ "$ROLE" == "server" ]; then
+    SERVER_PARAMS+=" --tls $TLS"
+elif [ "$ROLE" == "client" ]; then
+    CLIENT_PARAMS+=" --tls $TLS"
 fi
 
 if [ "$ROLE" == "client" ]; then
