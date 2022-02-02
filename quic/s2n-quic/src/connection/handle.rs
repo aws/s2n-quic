@@ -187,6 +187,16 @@ macro_rules! impl_handle_api {
             self.0.ping()
         }
 
+        /// Enables or disables the connection to actively keep the connection alive with the peer
+        ///
+        /// This can be useful for maintaining connections beyond the configured idle timeout. The
+        /// connection will continue to be held open until the keep alive is disabled or the
+        /// connection is no longer able to be maintained due to connectivity.
+        #[inline]
+        pub fn keep_alive(&mut self, enabled: bool) -> $crate::connection::Result<()> {
+            self.0.keep_alive(enabled)
+        }
+
         /// TODO
         ///
         /// # Examples

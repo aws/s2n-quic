@@ -33,6 +33,7 @@ mod crypto_stream;
 mod handshake;
 mod handshake_status;
 mod initial;
+mod keep_alive;
 pub(crate) mod rx_packet_numbers;
 mod session_context;
 mod tx_packet_numbers;

@@ -258,6 +258,10 @@ impl connection::Trait for TestConnection {
         todo!()
     }
 
+    fn keep_alive(&mut self, _enabled: bool) -> Result<(), connection::Error> {
+        todo!()
+    }
+
     fn local_address(&self) -> Result<SocketAddress, connection::Error> {
         todo!()
     }

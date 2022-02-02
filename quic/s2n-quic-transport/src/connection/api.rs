@@ -174,6 +174,10 @@ impl Connection {
         self.api.ping()
     }
 
+    pub fn keep_alive(&self, enabled: bool) -> Result<(), connection::Error> {
+        self.api.keep_alive(enabled)
+    }
+
     #[inline]
     pub fn local_address(&self) -> Result<SocketAddress, connection::Error> {
         self.api.local_address()

@@ -233,3 +233,8 @@ struct RxStreamProgress {
 struct TxStreamProgress {
     bytes: usize,
 }
+
+#[event("connectivity::keep_alive_timer_expired")]
+pub struct KeepAliveTimerExpired {
+    timeout: Duration,
+}
