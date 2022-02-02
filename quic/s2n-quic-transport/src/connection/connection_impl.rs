@@ -1576,7 +1576,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         request: &mut stream::ops::Request,
         context: Option<&Context>,
     ) -> Result<stream::ops::Response, stream::StreamError> {
-        self.error?;
+        // Don't check the `self.error` here so streams can handle errors individually. This is especially
+        // important for receive streams that may have buffered stream data that haven't been
+        // consumed by the application.
 
         let (space, _) = self
             .space_manager

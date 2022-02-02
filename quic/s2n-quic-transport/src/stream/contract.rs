@@ -107,7 +107,7 @@ pub mod tx {
             }
 
             // resetting takes priority
-            if self.reset.is_some() {
+            if self.reset.is_some() || response.map_or(false, |res| res.is_reset()) {
                 let response = response.expect("reset should never fail");
 
                 assert_eq!(
@@ -141,13 +141,6 @@ pub mod tx {
 
                 // none of the other checks apply so return early
                 return;
-            }
-
-            if let Ok(response) = response {
-                assert!(
-                    !response.is_reset() && !response.is_resetting(),
-                    "is_reset should only be set on a reset request"
-                );
             }
 
             // the request is interested in push availability
