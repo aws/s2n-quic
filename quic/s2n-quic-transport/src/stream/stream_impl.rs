@@ -148,10 +148,37 @@ impl StreamImpl {
     ) -> Result<ops::Response, StreamError> {
         let mut response = ops::Response::default();
         if let Some(rx) = request.rx.as_mut() {
-            response.rx = Some(self.receive_stream.poll_request(rx, context)?);
+            match self.receive_stream.poll_request(rx, context) {
+                Ok(rx) => response.rx = Some(rx),
+                Err(err) => {
+                    // only fail the request if tx is not set
+                    if response.tx.is_none() {
+                        return Err(err);
+                    } else {
+                        response.rx = Some(ops::rx::Response {
+                            status: ops::Status::Reset(err),
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
         }
+
         if let Some(tx) = request.tx.as_mut() {
-            response.tx = Some(self.send_stream.poll_request(tx, context)?);
+            match self.send_stream.poll_request(tx, context) {
+                Ok(tx) => response.tx = Some(tx),
+                Err(err) => {
+                    // only fail the request if rx is not set
+                    if response.rx.is_none() {
+                        return Err(err);
+                    } else {
+                        response.tx = Some(ops::tx::Response {
+                            status: ops::Status::Reset(err),
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
         }
 
         Ok(response)
