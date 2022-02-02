@@ -686,13 +686,6 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Create directory
-        env:
-          SHELL: /bin/bash
-        run: |
-          set -e
-          mkdir -p pref-results
-
       - uses: actions/download-artifact@v2
         with:
           name: perf-rustls
