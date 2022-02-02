@@ -357,9 +357,10 @@ fn bind<A: std::net::ToSocketAddrs>(addr: A, reuse_port: bool) -> io::Result<soc
     socket.set_reuse_address(true)?;
 
     #[cfg(unix)]
-    if reuse_port {
-        socket.set_reuse_port(true)?;
-    }
+    socket.set_reuse_port(reuse_port)?;
+    
+    // mark the variable as "used" regardless of platform support
+    let _ = reuse_port;
 
     socket.bind(&addr.into())?;
 
