@@ -29,7 +29,7 @@ jobs:
   env:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.implementations.outputs.matrix }}
+      matrix: ${{ steps.implementations.outputs.bla }}
     steps:
       - uses: ouzi-dev/commit-status-updater@v1.1.2
         with:
@@ -70,7 +70,7 @@ jobs:
           echo "Servers: $SERVERS"
           IMPLEMENTATIONS=$(echo "[$CLIENTS, $SERVERS]" | jq -c 'flatten | sort | unique')
           echo $IMPLEMENTATIONS
-          echo "::set-output name=matrix::$IMPLEMENTATIONS"
+          echo "::set-output name=bla::$IMPLEMENTATIONS"
 
   s2n-quic-qns:
     runs-on: ubuntu-latest
@@ -154,13 +154,13 @@ jobs:
     strategy:
       matrix:
         # tls: ["s2n-tls", "rustls"]
-        # include: [{"client":"aioquic","server":"s2n-quic"},{"client":"chrome","server":"s2n-quic"}]
-        include:
-          - client: "aioquic"
-            server: "s2n-quic"
+        include: [{"client":"aioquic","server":"s2n-quic"},{"client":"chrome","server":"s2n-quic"}]
+        # include:
+        #   - client: "aioquic"
+        #     server: "s2n-quic"
         #   - client: "chrome"
         #     server: "s2n-quic"
-        # include: ${{ toJSON(needs.env.outputs.matrix) }}
+        # include: ${{ fromJSON(needs.env.outputs.bla) }}
     steps:
       - uses: actions/checkout@v2
         with:
@@ -175,6 +175,7 @@ jobs:
         run: |
           echo "${{ needs.env.outputs.matrix }}"
           echo "${{ toJSON(needs.env.outputs.matrix) }}"
+          echo "${{ fromJSON(needs.env.outputs.matrix) }}"
           echo "${{ matrix.tls }}"
           echo "$TLS=${{ matrix.tls }}" >> $GITHUB_ENV
 
