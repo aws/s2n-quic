@@ -75,8 +75,8 @@ jobs:
       - name: print env
         run: |
           echo "${{ needs.env.outputs.bla }}"
-          echo "${{ toJSON(needs.env.outputs.bla) }}"
-          echo "${{ fromJson(needs.env.outputs.bla) }}"
+          # echo "${{ toJSON(needs.env.outputs.bla) }}"
+          # echo "${{ fromJson(needs.env.outputs.bla) }}"
 
   interop:
     runs-on: ubuntu-latest
