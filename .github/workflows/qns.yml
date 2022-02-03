@@ -68,9 +68,9 @@ jobs:
             | jq -c '[. | to_entries[] | select(.value.role == "both" or .value.role == "server") | {"client": "s2n-quic", "server": .key}] | sort'
           )
           echo "Servers: $SERVERS"
-          IMPLEMENTATIONS=$(echo "[$CLIENTS, $SERVERS]" | jq -c '. | flatten | sort | unique')
-          echo "$IMPLEMENTATIONS"
-          echo "::set-output name=impl::$IMPLEMENTATIONS"
+          IMPLEMENTATIONS=$(echo "[$CLIENTS, $SERVERS]" | jq -c 'flatten | sort | unique')
+          echo $IMPLEMENTATIONS
+          echo "::set-output name=matrix::$IMPLEMENTATIONS"
 
   s2n-quic-qns:
     runs-on: ubuntu-latest
@@ -155,12 +155,12 @@ jobs:
       matrix:
         # tls: ["s2n-tls", "rustls"]
         # include: [{"client":"aioquic","server":"s2n-quic"},{"client":"chrome","server":"s2n-quic"}]
-        # include:
-        #   - client: "aioquic"
-        #     server: "s2n-quic"
+        include:
+          - client: "aioquic"
+            server: "s2n-quic"
         #   - client: "chrome"
         #     server: "s2n-quic"
-        include: ${{ needs.env.outputs.impl }}
+        # include: ${{ toJSON(needs.env.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v2
         with:
@@ -171,10 +171,12 @@ jobs:
           name: s2n-quic-qns-debug
           path: s2n-quic-qns/
 
-      # - name: Set tls env
-      #   run: |
-      #     echo "${{ matrix.tls }}"
-      #     echo "$TLS=${{ matrix.tls }}" >> $GITHUB_ENV
+      - name: Set tls env
+        run: |
+          echo "${{ needs.env.outputs.matrix }}"
+          echo "${{ toJSON(needs.env.outputs.matrix) }}"
+          echo "${{ matrix.tls }}"
+          echo "$TLS=${{ matrix.tls }}" >> $GITHUB_ENV
 
       - name: Setup dockerfile
         working-directory: s2n-quic-qns
