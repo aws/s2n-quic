@@ -63,7 +63,7 @@ jobs:
           SERVERS=$(cat implementations.json \
             | jq -c '[. | to_entries[] | select(.value.role == "both" or .value.role == "server") | {"client": "s2n-quic", "server": .key}] | sort'
           )
-          SERVERS=$(echo "SERVERS" | jq -c '.[] += {"tls":"s2n-tls"}')
+          SERVERS=$(echo "$SERVERS" | jq -c '.[] += {"tls":"s2n-tls"}')
           echo "Servers: $SERVERS"
           IMPLEMENTATIONS=$(echo [$CLIENTS, $SERVERS] | jq -c '{"include": . | flatten | sort | unique}')
 
