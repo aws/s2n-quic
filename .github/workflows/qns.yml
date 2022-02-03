@@ -68,6 +68,16 @@ jobs:
           echo $IMPLEMENTATIONS
           echo "::set-output name=bla::$IMPLEMENTATIONS"
 
+  log:
+    runs-on: ubuntu-latest
+    needs: [env]
+    steps:
+      - name: print env
+        run: |
+          echo "${{ needs.env.outputs.bla }}"
+          echo "${{ toJSON(needs.env.outputs.bla) }}"
+          echo "${{ fromJson(needs.env.outputs.bla) }}"
+
   interop:
     runs-on: ubuntu-latest
     needs: [env]
@@ -93,9 +103,9 @@ jobs:
 
       - name: Set tls env
         run: |
-          echo "${{ needs.env.outputs.matrix }}"
-          echo "${{ toJSON(needs.env.outputs.matrix) }}"
-          echo "${{ matrix.tls }}"
-          echo "$TLS=${{ matrix.tls }}" >> $GITHUB_ENV
+          echo "${{ needs.env.outputs.bla }}"
+          echo "${{ toJSON(needs.env.outputs.bla) }}"
+          # echo "${{ matrix.tls }}"
+          # echo "$TLS=${{ matrix.tls }}" >> $GITHUB_ENV
 
 
