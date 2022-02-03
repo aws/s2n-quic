@@ -63,7 +63,8 @@ jobs:
             | jq -c '[. | to_entries[] | select(.value.role == "both" or .value.role == "server") | {"client": "s2n-quic", "server": .key}] | sort'
           )
           echo "Servers: $SERVERS"
-          IMPLEMENTATIONS=$(echo [$CLIENTS, $SERVERS] | jq -c 'flatten | sort | unique')
+          # IMPLEMENTATIONS=$(echo [$CLIENTS, $SERVERS] | jq -c 'flatten | sort | unique')
+          IMPLEMENTATIONS=[{"client":"aioquic","server":"s2n-quic"},{"client":"chrome","server":"s2n-quic"}]
           echo $IMPLEMENTATIONS
           echo "::set-output name=bla::$IMPLEMENTATIONS"
 
