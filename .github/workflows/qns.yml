@@ -76,7 +76,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        mode: ["debug", "release"]
+        mode: ["debug"]
     # enable debug information
     env:
       RUSTFLAGS: "-g"
@@ -169,11 +169,6 @@ jobs:
       - uses: actions/download-artifact@v2
         with:
           name: s2n-quic-qns-debug
-          path: s2n-quic-qns/
-
-      - uses: actions/download-artifact@v2
-        with:
-          name: s2n-quic-qns-release
           path: s2n-quic-qns/
 
       # - name: Set tls env
