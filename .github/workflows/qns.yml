@@ -73,6 +73,7 @@ jobs:
     needs: [env]
     steps:
       - name: print env
+        working-directory: log
         run: |
           echo "print something"
           echo "${{ needs.env.outputs.bla }}"
