@@ -43,9 +43,9 @@ if [ "$QNS_MODE" == "interop" ]; then
     fi
 fi
 
-if [ "$TEST_TYPE" == "MEASUREMENT" ] && [ -x "$(command -v s2n-quic-qns-release)" ]; then
+if [ "$TEST_TYPE" == "MEASUREMENT" ] && [ -x "$(command -v s2n-quic-qns-debug)" ]; then
     echo "using optimized build"
-    QNS_BIN="s2n-quic-qns-release"
+    QNS_BIN="s2n-quic-qns-debug"
     unset RUST_LOG
 fi
 

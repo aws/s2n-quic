@@ -38,10 +38,10 @@ index 7541cae..ba1b4da 100644
        - VERSION=$VERSION
      depends_on:
 diff --git a/implementations.json b/implementations.json
-index 3df16da..7ed4f6e 100644
+index 3df16da..19d0ee8 100644
 --- a/implementations.json
 +++ b/implementations.json
-@@ -1,24 +1,19 @@
+@@ -1,77 +1,12 @@
  {
 +  "s2n-quic": {
 +    "image": "awslabs/s2n-quic-qns:latest",
@@ -51,26 +51,79 @@ index 3df16da..7ed4f6e 100644
    "quic-go": {
      "image": "martenseemann/quic-go-interop:latest",
      "url": "https://github.com/lucas-clemente/quic-go",
-     "role": "both"
-   },
+-    "role": "both"
+-  },
 -  "quicly": {
 -    "image": "h2oserver/quicly-interop-runner:latest",
 -    "url": "https://github.com/h2o/quicly",
 -    "role": "both"
 -  },
-   "ngtcp2": {
-     "image": "ghcr.io/ngtcp2/ngtcp2-interop:latest",
-     "url": "https://github.com/ngtcp2/ngtcp2",
-     "role": "both"
-   },
+-  "ngtcp2": {
+-    "image": "ghcr.io/ngtcp2/ngtcp2-interop:latest",
+-    "url": "https://github.com/ngtcp2/ngtcp2",
+-    "role": "both"
+-  },
 -  "quant": {
 -    "image": "ntap/quant:interop",
 -    "url": "https://github.com/NTAP/quant",
 -    "role": "both"
 -  },
-   "mvfst": {
-     "image": "lnicco/mvfst-qns:latest",
-     "url": "https://github.com/facebookincubator/mvfst",
+-  "mvfst": {
+-    "image": "lnicco/mvfst-qns:latest",
+-    "url": "https://github.com/facebookincubator/mvfst",
+-    "role": "both"
+-  },
+-  "quiche": {
+-    "image": "cloudflare/quiche-qns:latest",
+-    "url": "https://github.com/cloudflare/quiche",
+-    "role": "both"
+-  },
+-  "kwik": {
+-    "image": "peterdoornbosch/kwik_n_flupke-interop",
+-    "url": "https://github.com/ptrd/kwik",
+-    "role": "both"
+-  },
+-  "picoquic": {
+-    "image": "privateoctopus/picoquic:latest",
+-    "url": "https://github.com/private-octopus/picoquic",
+-    "role": "both"
+-  },
+-  "aioquic": {
+-    "image": "aiortc/aioquic-qns:latest",
+-    "url": "https://github.com/aiortc/aioquic",
+-    "role": "both"
+-  },
+-  "neqo": {
+-    "image": "neqoquic/neqo-qns:latest",
+-    "url": "https://github.com/mozilla/neqo",
+-    "role": "both"
+-  },
+-  "nginx": {
+-    "image": "nginx/nginx-quic-qns:latest",
+-    "url": "https://quic.nginx.org/",
+-    "role": "server"
+-  },
+-  "msquic": {
+-    "image": "mcr.microsoft.com/msquic/qns:latest",
+-    "url": "https://github.com/microsoft/msquic",
+-    "role": "both"
+-  },
+-  "chrome": {
+-    "image": "martenseemann/chrome-quic-interop-runner",
+-    "url": "https://github.com/marten-seemann/chrome-quic-interop-runner",
+     "role": "client"
+-  },
+-  "xquic": {
+-  "image": "kulsk/xquic:latest",
+-  "url": "https://github.com/Kulsk/xquic",
+-  "role": "both"
+-  },
+-  "lsquic": {
+-    "image": "litespeedtech/lsquic-qir:latest",
+-    "url": "https://github.com/litespeedtech/lsquic",
+-    "role": "both"
+   }
+ }
 diff --git a/interop.py b/interop.py
 index 4dea51d..d84bdac 100644
 --- a/interop.py
