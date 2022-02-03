@@ -11,7 +11,8 @@ DOWNLOAD_MB=${1:-1000}
 UPLOAD_MB=${2:-0}
 SERVER=${3:-s2n-quic}
 CLIENT=${4:-quinn}
-DURATION=${5-10}
+TLS=${5:-s2n-tls}
+DURATION=${6-10}
 
 TEST="${DOWNLOAD_MB}MB-down-${UPLOAD_MB}MB-up"
 TITLE="${DOWNLOAD_MB}MB Download, ${UPLOAD_MB}MB Upload"
@@ -27,6 +28,7 @@ SERVER=$SERVER \
   CLIENT=$CLIENT \
   DOWNLOAD_BYTES=$DOWNLOAD_BYTES \
   UPLOAD_BYTES=$UPLOAD_BYTES \
+  TLS=$TLS \
   DURATION=$DURATION \
   SERVER_PORT=4433 \
   TMP_DIR=$TMP_DIR \
@@ -45,7 +47,7 @@ function report() {
   if [ -f "$OUT_DIR/$TEST.$1.1.stacks" ]; then
     echo "$1 - generating flamegraph"
     inferno-flamegraph "$OUT_DIR/$TEST.$1.1.stacks" \
-      --title "$2 $1 - $TITLE" \
+      --title "$2 $1 ($TLS) - $TITLE" \
       > $OUT_DIR/$TEST.$1.svg
 
     echo "$1 - flamegraph available in $OUT_DIR/$TEST.$1.svg"
