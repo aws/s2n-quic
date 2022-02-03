@@ -58,12 +58,12 @@ jobs:
           CLIENTS=$(cat implementations.json \
             | jq -c '[. | to_entries[] | select(.value.role == "both" or .value.role == "client") | {"client": .key, "server": "s2n-quic"}] | sort'
           )
-          CLIENTS=$(echo "$CLIENTS" | jq -c '.[] += {"tls": "s2n-tls"}')
+          CLIENTS=$(echo "$CLIENTS" | jq -c '.[] += {"tls":"s2n-tls"}')
           echo "Clients: $CLIENTS"
           SERVERS=$(cat implementations.json \
             | jq -c '[. | to_entries[] | select(.value.role == "both" or .value.role == "server") | {"client": "s2n-quic", "server": .key}] | sort'
           )
-          SERVERS=$(echo "SERVERS" | jq -c '.[] += {"tls": "s2n-tls"}')
+          SERVERS=$(echo "SERVERS" | jq -c '.[] += {"tls":"s2n-tls"}')
           echo "Servers: $SERVERS"
           IMPLEMENTATIONS=$(echo [$CLIENTS, $SERVERS] | jq -c '{"include": . | flatten | sort | unique}')
 
