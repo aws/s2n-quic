@@ -63,12 +63,15 @@ jobs:
           CLIENTS=$(cat implementations.json \
             | jq -c '[. | to_entries[] | select(.value.role == "both" or .value.role == "client") | {"client": .key, "server": "s2n-quic"}] | sort'
           )
+          CLIENTS=$(echo "$CLIENTS" | jq -c '.[] += {"tls": "s2n-tls"}')
           echo "Clients: $CLIENTS"
           SERVERS=$(cat implementations.json \
             | jq -c '[. | to_entries[] | select(.value.role == "both" or .value.role == "server") | {"client": "s2n-quic", "server": .key}] | sort'
           )
+          SERVERS=$(echo "$SERVERS" | jq -c '.[] += {"tls": "s2n-tls"}')
           echo "Servers: $SERVERS"
           MATRIX=$(echo "[$CLIENTS, $SERVERS]" | jq -c '{"include": . | flatten | sort | unique}')
+          MATRIX=$(echo "$MATRIX" | jq -c '.include += [{"client": "s2n-quic", "server": "s2n-quic", "tls": "rustls"}]')
           echo "Matrix: $MATRIX"
           echo "::set-output name=matrix::$MATRIX"
 
@@ -302,12 +305,14 @@ jobs:
           done
 
       - uses: aws-actions/configure-aws-credentials@v1.6.0
+        if: ${{ matrix.tls == 's2n-tls' }}
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload to S3
+        if: ${{ matrix.tls == 's2n-tls' }}
         id: s3
         working-directory: quic-interop-runner
         run: |
@@ -315,6 +320,7 @@ jobs:
           aws s3 sync results/logs "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
 
       - uses: actions/upload-artifact@v2
+        if: ${{ matrix.tls == 's2n-tls' }}
         with:
           name: interop-${{ matrix.client }}-client-${{ matrix.server }}-server
           path: quic-interop-runner/results/result.json
