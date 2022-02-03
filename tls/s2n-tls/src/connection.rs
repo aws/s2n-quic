@@ -201,12 +201,6 @@ impl Connection {
         }
     }
 
-    /// Returns the TLS alert code, if any
-    pub fn alert(&self) -> Option<u8> {
-        let alert = call!(s2n_connection_get_alert(self.connection)).ok()?;
-        Some(alert as u8)
-    }
-
     /// Sets the SNI value for the connection
     pub fn set_sni(&mut self, sni: &[u8]) -> Result<(), Error> {
         let sni = std::ffi::CString::new(sni).map_err(|_| Error::InvalidInput)?;

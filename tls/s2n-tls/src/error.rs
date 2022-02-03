@@ -102,6 +102,22 @@ impl Error {
             Self::Code(code) => unsafe { s2n_error_get_type(*code) }.into(),
         }
     }
+
+    pub fn alert(&self) -> Option<u8> {
+        match self {
+            Self::InvalidInput => None,
+            Self::Code(code) => {
+                None
+                // TODO: We should use the new s2n-tls method
+                //       once it's available.
+                // let mut alert = 0;
+                // match call!(s2n_error_get_alert(*code, &mut alert)) {
+                //     Ok(_) => Some(alert),
+                //     Err(_) => None,
+                // }
+            }
+        }
+    }
 }
 
 /// # Safety
