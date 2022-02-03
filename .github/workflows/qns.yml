@@ -154,11 +154,12 @@ jobs:
     strategy:
       matrix:
         # tls: ["s2n-tls", "rustls"]
-        include:
-          - client: "aioquic"
-            server: "s2n-quic"
-          - client: "chrome"
-            server: "s2n-quic"
+        include: [{"client":"aioquic","server":"s2n-quic"},{"client":"chrome","server":"s2n-quic"}]
+        # include:
+        #   - client: "aioquic"
+        #     server: "s2n-quic"
+        #   - client: "chrome"
+        #     server: "s2n-quic"
         # include: ${{ needs.env.outputs.impl }}
     steps:
       - uses: actions/checkout@v2
