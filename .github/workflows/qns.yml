@@ -29,7 +29,7 @@ jobs:
   env:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.implementations.outputs.bla }}
+      matrix: ${{ steps.implementations.outputs.matrix }}
     steps:
       - uses: ouzi-dev/commit-status-updater@v1.1.2
         with:
@@ -66,7 +66,7 @@ jobs:
           IMPLEMENTATIONS=$(echo [$CLIENTS, $SERVERS] | jq -c 'flatten | sort | unique')
           # IMPLEMENTATIONS='\"[{\"client\":\"aioquic\",\"server\":\"s2n-quic\"}]\"'
           echo $IMPLEMENTATIONS
-          echo "::set-output name=bla::$IMPLEMENTATIONS"
+          echo "::set-output name=matrix::$IMPLEMENTATIONS"
 
   log:
     runs-on: ubuntu-latest
@@ -76,9 +76,9 @@ jobs:
         working-directory: log
         run: |
           echo "print something"
-          echo "${{ needs.env.outputs.bla }}"
-          # echo "${{ toJSON(needs.env.outputs.bla) }}"
-          # echo "${{ fromJson(needs.env.outputs.bla) }}"
+          echo "${{ needs.env.outputs.matrix }}"
+          # echo "${{ toJSON(needs.env.outputs.matrix) }}"
+          # echo "${{ fromJson(needs.env.outputs.matrix) }}"
 
   interop:
     runs-on: ubuntu-latest
@@ -92,7 +92,7 @@ jobs:
         #     server: "s2n-quic"
         #   - client: "chrome"
         #     server: "s2n-quic"
-        include: ${{ fromJson(needs.env.outputs.bla) }}
+        include: ${{ fromJson(needs.env.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v2
         with:
