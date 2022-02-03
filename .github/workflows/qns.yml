@@ -64,7 +64,7 @@ jobs:
           )
           echo "Servers: $SERVERS"
           # IMPLEMENTATIONS=$(echo [$CLIENTS, $SERVERS] | jq -c 'flatten | sort | unique')
-          IMPLEMENTATIONS='[{"client":"aioquic","server":"s2n-quic"},{"client":"chrome","server":"s2n-quic"}]'
+          IMPLEMENTATIONS='"[{"client":"aioquic","server":"s2n-quic"},{"client":"chrome","server":"s2n-quic"}]"'
           echo $IMPLEMENTATIONS
           echo "::set-output name=bla::$IMPLEMENTATIONS"
 
