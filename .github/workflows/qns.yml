@@ -74,6 +74,7 @@ jobs:
     steps:
       - name: print env
         run: |
+          echo "print something"
           echo "${{ needs.env.outputs.bla }}"
           # echo "${{ toJSON(needs.env.outputs.bla) }}"
           # echo "${{ fromJson(needs.env.outputs.bla) }}"
