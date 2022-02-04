@@ -3,30 +3,30 @@
 
 use bytes::Bytes;
 
-#[derive(Clone)]
-/// Sni holds a negotiated
+/// ServerName holds a negotiated
 /// [Server Name Indication](https://en.wikipedia.org/wiki/Server_Name_Indication)
 /// value, encoded as UTF-8.
 ///
-/// SNI should be a valid UTF-8 string, therfore this struct can only be
+/// ServerName should be a valid UTF-8 string, therfore this struct can only be
 /// constructed from a `&str` or `String`.
 ///
 /// ```rust
-/// # use s2n_quic_core::application::Sni;
+/// # use s2n_quic_core::application::ServerName;
 /// let string: String = String::from("a valid utf-8 string");
-/// let sni: Sni = string.into();
+/// let name: ServerName = string.into();
 ///
 /// let str_arr: &str = &"a valid utf-8 str array";
-/// let sni: Sni = str_arr.into();
+/// let name: ServerName = str_arr.into();
 /// ```
 ///
-/// `Sni` serves a dual purpose:
+/// `ServerName` serves a dual purpose:
 /// - It can be converted into [`Bytes`] which supports zero-copy slicing and
 /// reference counting.
 /// - It can be accessed as `&str` so that applications can reason about the string value.
-pub struct Sni(Bytes);
+#[derive(Clone)]
+pub struct ServerName(Bytes);
 
-impl Sni {
+impl ServerName {
     #[inline]
     pub fn into_bytes(self) -> Bytes {
         self.0
@@ -40,28 +40,28 @@ impl Sni {
     }
 }
 
-impl From<&str> for Sni {
+impl From<&str> for ServerName {
     #[inline]
     fn from(data: &str) -> Self {
-        Sni(Bytes::copy_from_slice(data.as_bytes()))
+        Self(Bytes::copy_from_slice(data.as_bytes()))
     }
 }
 
 #[cfg(feature = "alloc")]
-impl From<alloc::string::String> for Sni {
+impl From<alloc::string::String> for ServerName {
     #[inline]
     fn from(data: alloc::string::String) -> Self {
-        Sni(data.into_bytes().into())
+        Self(data.into_bytes().into())
     }
 }
 
-impl core::fmt::Debug for Sni {
+impl core::fmt::Debug for ServerName {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         self.as_str().fmt(f)
     }
 }
 
-impl core::ops::Deref for Sni {
+impl core::ops::Deref for ServerName {
     type Target = str;
 
     #[inline]

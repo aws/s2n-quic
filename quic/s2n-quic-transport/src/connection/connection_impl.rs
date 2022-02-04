@@ -32,7 +32,7 @@ use core::{
 };
 use s2n_quic_core::{
     application,
-    application::Sni,
+    application::ServerName,
     connection::{id::Generator as _, InitialId, PeerId},
     crypto::{tls, CryptoSuite},
     endpoint::Location,
@@ -1691,15 +1691,15 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         self.wakeup_handle.wakeup();
     }
 
-    fn sni(&self) -> Option<Sni> {
+    fn server_name(&self) -> Option<ServerName> {
         // TODO move SNI to connection
-        self.space_manager.application()?.sni.clone()
+        self.space_manager.application()?.server_name.clone()
     }
 
-    fn alpn(&self) -> Bytes {
+    fn application_protocol(&self) -> Bytes {
         // TODO move ALPN to connection
         if let Some(space) = self.space_manager.application() {
-            space.alpn.clone()
+            space.application_protocol.clone()
         } else {
             Bytes::from_static(&[])
         }

@@ -4,7 +4,7 @@
 use bytes::BytesMut;
 use core::{ffi::c_void, marker::PhantomData};
 use s2n_quic_core::{
-    application::Sni,
+    application::ServerName,
     crypto::{tls, CryptoError, CryptoSuite},
     endpoint, transport,
 };
@@ -410,7 +410,8 @@ unsafe fn get_application_params<'a>(
     //# Unless
     //# another mechanism is used for agreeing on an application protocol,
     //# endpoints MUST use ALPN for this purpose.
-    let alpn_protocol = get_alpn(connection).ok_or(CryptoError::NO_APPLICATION_PROTOCOL)?;
+    let application_protocol =
+        get_application_protocol(connection).ok_or(CryptoError::NO_APPLICATION_PROTOCOL)?;
 
     //= https://www.rfc-editor.org/rfc/rfc9001.txt#8.1
     //# When using ALPN, endpoints MUST immediately close a connection (see
@@ -425,16 +426,16 @@ unsafe fn get_application_params<'a>(
     let transport_parameters =
         get_transport_parameters(connection).ok_or(CryptoError::MISSING_EXTENSION)?;
 
-    let sni = get_sni(connection);
+    let server_name = get_server_name(connection);
 
     Ok(tls::ApplicationParameters {
-        alpn_protocol,
-        sni,
+        application_protocol,
+        server_name,
         transport_parameters,
     })
 }
 
-unsafe fn get_sni(connection: *mut s2n_connection) -> Option<Sni> {
+unsafe fn get_server_name(connection: *mut s2n_connection) -> Option<ServerName> {
     let ptr = call!(s2n_get_server_name(connection)).ok()?;
     let data = get_cstr_slice(ptr)?;
 
@@ -443,7 +444,7 @@ unsafe fn get_sni(connection: *mut s2n_connection) -> Option<Sni> {
     Some(string.into())
 }
 
-unsafe fn get_alpn<'a>(connection: *mut s2n_connection) -> Option<&'a [u8]> {
+unsafe fn get_application_protocol<'a>(connection: *mut s2n_connection) -> Option<&'a [u8]> {
     let ptr = call!(s2n_get_application_protocol(connection)).ok()?;
     get_cstr_slice(ptr)
 }

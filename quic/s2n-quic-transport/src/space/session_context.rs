@@ -363,14 +363,28 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
         // TODO use interning for these values
         // issue: https://github.com/awslabs/s2n-quic/issues/248
-        let sni = application_parameters.sni;
-        let alpn = Bytes::copy_from_slice(application_parameters.alpn_protocol);
+        let server_name = application_parameters.server_name;
+        let application_protocol =
+            Bytes::copy_from_slice(application_parameters.application_protocol);
 
         self.publisher
-            .on_alpn_information(event::builder::AlpnInformation { chosen_alpn: &alpn });
-        if let Some(chosen_sni) = &sni {
+            .on_alpn_information(event::builder::AlpnInformation {
+                chosen_alpn: &application_protocol,
+            });
+        self.publisher.on_application_protocol_information(
+            event::builder::ApplicationProtocolInformation {
+                chosen_application_protocol: &application_protocol,
+            },
+        );
+        if let Some(chosen_server_name) = &server_name {
             self.publisher
-                .on_sni_information(event::builder::SniInformation { chosen_sni });
+                .on_sni_information(event::builder::SniInformation {
+                    chosen_sni: chosen_server_name,
+                });
+            self.publisher
+                .on_server_name_information(event::builder::ServerNameInformation {
+                    chosen_server_name,
+                });
         };
 
         let cipher_suite = key.cipher_suite().into_event();
@@ -381,8 +395,8 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             stream_manager,
             ack_manager,
             keep_alive,
-            sni,
-            alpn,
+            server_name,
+            application_protocol,
         )));
         self.publisher.on_key_update(event::builder::KeyUpdate {
             key_type: event::builder::KeyType::OneRtt { generation: 0 },

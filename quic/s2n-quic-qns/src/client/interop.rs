@@ -36,7 +36,7 @@ pub struct Interop {
     ca: Option<PathBuf>,
 
     #[structopt(long, default_value = "hq-interop")]
-    alpn_protocols: Vec<String>,
+    application_protocols: Vec<String>,
 
     #[structopt(long)]
     download_dir: Option<PathBuf>,
@@ -231,7 +231,9 @@ impl Interop {
                     .with_certificate(tls::s2n::ca(self.ca.as_ref())?)?
                     // the "amplificationlimit" tests generates a very large chain so bump the limit
                     .with_max_cert_chain_depth(10)?
-                    .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+                    .with_application_protocols(
+                        self.application_protocols.iter().map(String::as_bytes),
+                    )?
                     .with_key_logging()?
                     .build()?;
                 client.with_tls(tls)?.start().unwrap()
@@ -241,7 +243,9 @@ impl Interop {
                     .with_certificate(tls::rustls::ca(self.ca.as_ref())?)?
                     // the "amplificationlimit" tests generates a very large chain so bump the limit
                     .with_max_cert_chain_depth(10)?
-                    .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+                    .with_application_protocols(
+                        self.application_protocols.iter().map(String::as_bytes),
+                    )?
                     .with_key_logging()?
                     .build()?;
                 client.with_tls(tls)?.start().unwrap()
@@ -257,7 +261,7 @@ impl Interop {
         for req in &self.requests {
             if let Some(host) = req.host() {
                 if let Entry::Vacant(entry) = endpoints.entry(host.clone()) {
-                    let (ip, hostname) = match host {
+                    let (ip, server_name) = match host {
                         Host::Domain(domain) => {
                             let ip = if let Some(ip) = self.ip {
                                 ip
@@ -281,11 +285,11 @@ impl Interop {
 
                     let connect = Connect::new((ip, port));
 
-                    let connect = if let Some(hostname) = hostname {
-                        connect.with_hostname(hostname)
+                    let connect = if let Some(server_name) = server_name {
+                        connect.with_server_name(server_name)
                     } else {
                         // TODO make it optional
-                        connect.with_hostname("localhost")
+                        connect.with_server_name("localhost")
                     };
 
                     entry.insert(connect);

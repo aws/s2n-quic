@@ -202,7 +202,7 @@ impl Connection {
     }
 
     /// Sets the SNI value for the connection
-    pub fn set_sni(&mut self, sni: &[u8]) -> Result<(), Error> {
+    pub fn set_server_name(&mut self, sni: &[u8]) -> Result<(), Error> {
         let sni = std::ffi::CString::new(sni).map_err(|_| Error::InvalidInput)?;
         call!(s2n_set_server_name(self.connection, sni.as_ptr()))?;
         Ok(())

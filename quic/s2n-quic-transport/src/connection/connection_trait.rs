@@ -19,7 +19,7 @@ use core::task::{Context, Poll};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     application,
-    application::Sni,
+    application::ServerName,
     event::{self, supervisor, ConnectionPublisher, IntoEvent},
     inet::{DatagramInfo, SocketAddress},
     io::tx,
@@ -375,9 +375,9 @@ pub trait ConnectionTrait: 'static + Send + Sized {
 
     fn application_close(&mut self, error: Option<application::Error>);
 
-    fn sni(&self) -> Option<Sni>;
+    fn server_name(&self) -> Option<ServerName>;
 
-    fn alpn(&self) -> Bytes;
+    fn application_protocol(&self) -> Bytes;
 
     fn ping(&mut self) -> Result<(), connection::Error>;
 

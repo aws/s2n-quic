@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{application::Sni, crypto::CryptoSuite, transport};
+use crate::{application::ServerName, crypto::CryptoSuite, transport};
 pub use bytes::{Bytes, BytesMut};
 use core::{convert::TryFrom, fmt::Debug};
 use s2n_codec::EncoderValue;
@@ -14,9 +14,9 @@ pub mod testing;
 #[derive(Debug)]
 pub struct ApplicationParameters<'a> {
     /// The negotiated Application Layer Protocol
-    pub alpn_protocol: &'a [u8],
+    pub application_protocol: &'a [u8],
     /// Server Name Indication
-    pub sni: Option<crate::application::Sni>,
+    pub server_name: Option<crate::application::ServerName>,
     /// Encoded transport parameters
     pub transport_parameters: &'a [u8],
 }
@@ -95,7 +95,7 @@ pub trait Endpoint: 'static + Sized + Send {
     fn new_client_session<Params: EncoderValue>(
         &mut self,
         transport_parameters: &Params,
-        sni: Sni,
+        server_name: ServerName,
     ) -> Self::Session;
 
     /// The maximum length of a tag for any algorithm that may be negotiated

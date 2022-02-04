@@ -29,7 +29,7 @@ pub struct Perf {
     //= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#2.1
     //# The ALPN used by the QUIC performance protocol is "perf".
     #[structopt(long, default_value = "perf")]
-    alpn_protocols: Vec<String>,
+    application_protocols: Vec<String>,
 
     #[structopt(long)]
     connections: Option<usize>,
@@ -184,7 +184,9 @@ impl Perf {
                         tls::s2n::ca(self.certificate.as_ref())?,
                         tls::s2n::private_key(self.private_key.as_ref())?,
                     )?
-                    .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+                    .with_application_protocols(
+                        self.application_protocols.iter().map(String::as_bytes),
+                    )?
                     .with_key_logging()?
                     .build()?;
 
@@ -198,7 +200,9 @@ impl Perf {
                         tls::rustls::ca(self.certificate.as_ref())?,
                         tls::rustls::private_key(self.private_key.as_ref())?,
                     )?
-                    .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+                    .with_application_protocols(
+                        self.application_protocols.iter().map(String::as_bytes),
+                    )?
                     .with_key_logging()?
                     .build()?;
 
