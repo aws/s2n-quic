@@ -1,0 +1,128 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+use crate::{connection::Owner, units::Rates, Checkpoints, Connection, Result, Trace};
+use core::task::{Context, Poll};
+use futures::ready;
+
+mod thread;
+mod timer;
+
+use thread::Thread;
+
+pub struct Driver<'a, C: Connection> {
+    pub connection: C,
+    local_thread: Thread<'a>,
+    local_rates: Rates,
+    peer_streams: Vec<(Poll<()>, Thread<'a>)>,
+    peer_rates: Rates,
+    can_accept: bool,
+    is_finished: bool,
+}
+
+impl<'a, C: Connection> Driver<'a, C> {
+    pub fn new(scenario: &'a crate::scenario::Connection, connection: C) -> Self {
+        Self {
+            connection,
+            local_thread: Thread::new(&scenario.ops, Owner::Local),
+            local_rates: Default::default(),
+            peer_streams: scenario
+                .peer_streams
+                .iter()
+                .map(|ops| (Poll::Pending, Thread::new(ops, Owner::Remote)))
+                .collect(),
+            peer_rates: Default::default(),
+            can_accept: true,
+            is_finished: false,
+        }
+    }
+
+    pub async fn run<T: Trace, Ch: Checkpoints>(
+        mut self,
+        trace: &mut T,
+        checkpoints: &mut Ch,
+    ) -> Result<C> {
+        futures::future::poll_fn(|cx| self.poll(trace, checkpoints, cx)).await?;
+        Ok(self.connection)
+    }
+
+    pub fn poll<T: Trace, Ch: Checkpoints>(
+        &mut self,
+        trace: &mut T,
+        checkpoints: &mut Ch,
+        cx: &mut Context,
+    ) -> Poll<Result<()>> {
+        if self.is_finished {
+            return self.connection.poll_finish(cx);
+        }
+
+        let mut poll_accept = false;
+        let mut all_ready = true;
+
+        trace.enter(0, 0);
+        let result = self.local_thread.poll(
+            &mut self.connection,
+            trace,
+            checkpoints,
+            &mut self.local_rates,
+            cx,
+        );
+        trace.exit();
+
+        match result {
+            Poll::Ready(Ok(_)) => {}
+            Poll::Ready(Err(err)) => return Err(err).into(),
+            Poll::Pending => all_ready = false,
+        }
+
+        for (idx, (accepted, thread)) in self.peer_streams.iter_mut().enumerate() {
+            // if we're still waiting to accept this stream move on
+            if accepted.is_pending() {
+                all_ready = false;
+                poll_accept = self.can_accept;
+                continue;
+            }
+
+            trace.enter(1, idx);
+            let result = thread.poll(
+                &mut self.connection,
+                trace,
+                checkpoints,
+                &mut self.peer_rates,
+                cx,
+            );
+            trace.exit();
+
+            match result {
+                Poll::Ready(Ok(_)) => {}
+                Poll::Ready(Err(err)) => return Err(err).into(),
+                Poll::Pending => all_ready = false,
+            }
+        }
+
+        if poll_accept {
+            match self.connection.poll_accept_stream(cx) {
+                Poll::Ready(Ok(Some(id))) => {
+                    trace.accept(id);
+                    if let Some((accepted, _)) = self.peer_streams.get_mut(id as usize) {
+                        *accepted = Poll::Ready(());
+                        cx.waker().wake_by_ref();
+                    } else {
+                        todo!("return a not found error")
+                    }
+                }
+                Poll::Ready(Ok(None)) => self.can_accept = false,
+                Poll::Ready(Err(err)) => return Err(err).into(),
+                Poll::Pending => all_ready = false,
+            }
+        }
+
+        if all_ready {
+            self.is_finished = true;
+            self.connection.poll_finish(cx)
+        } else {
+            ready!(self.connection.poll_progress(cx))?;
+            Poll::Pending
+        }
+    }
+}
