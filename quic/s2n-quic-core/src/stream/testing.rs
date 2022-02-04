@@ -127,7 +127,7 @@ impl Data {
 
         let chunk = DATA.slice(offset..offset + to_send);
 
-        self.offset += to_send as u64;
+        self.seek_forward(to_send as u64);
 
         Some(chunk)
     }
