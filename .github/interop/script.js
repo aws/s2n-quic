@@ -38,7 +38,7 @@
         if (server.startsWith('s2n-quic') && (server != 's2n-quic-rustls')) {
             server = 's2n-quic';
         }
-        if (client.startsWith('s2n-quic') && (server != 's2n-quic-rustls')) {
+        if (client.startsWith('s2n-quic') && (client != 's2n-quic-rustls')) {
             client = 's2n-quic';
         }
 
