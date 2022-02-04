@@ -222,7 +222,8 @@ jobs:
       - name: Run docker build
         working-directory: s2n-quic-qns
         run: |
-          docker build . --file Dockerfile --tag awslabs/s2n-quic-qns
+          docker build . --file Dockerfile --tag awslabs/s2n-quic-qns --build-arg tls=s2n-tls
+          docker build . --file Dockerfile --tag awslabs/s2n-quic-qns-rustls --build-arg tls=rustls
 
       - uses: actions/checkout@v2
         with:
