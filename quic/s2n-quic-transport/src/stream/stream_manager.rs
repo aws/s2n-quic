@@ -198,7 +198,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
     {
         let result = func(self);
         if let Err(err) = result.as_ref() {
-            self.close((*err).into());
+            self.close((*err).into(), false);
         }
         result
     }
@@ -334,7 +334,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
         Ok(())
     }
 
-    fn close(&mut self, error: connection::Error) {
+    fn close(&mut self, error: connection::Error, flush: bool) {
         if self.close_reason.is_some() {
             return;
         }
@@ -345,7 +345,11 @@ impl<S: StreamTrait> StreamManagerState<S> {
                 // We have to wake inside the lock, since `StreamEvent`s has no capacity
                 // to carry wakers in another iteration
                 let mut events = StreamEvents::new();
-                stream.on_internal_reset(error.into(), &mut events);
+                if flush {
+                    stream.on_flush(error.into(), &mut events);
+                } else {
+                    stream.on_internal_reset(error.into(), &mut events);
+                }
                 events.wake_all();
             });
 
@@ -368,6 +372,17 @@ impl<S: StreamTrait> StreamManagerState<S> {
         }
 
         self.stream_controller.close();
+    }
+
+    fn flush(&mut self, error: connection::Error) -> Poll<()> {
+        self.close(error, true);
+
+        // if we still have active streams, we're not done flushing
+        if self.streams.nr_active_streams() > 0 {
+            Poll::Pending
+        } else {
+            Poll::Ready(())
+        }
     }
 }
 
@@ -647,13 +662,21 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     /// allow to forward frames to the contained Streams as well as to query them
     /// for data. However new Streams can not be created.
     pub fn close(&mut self, error: connection::Error) {
-        self.inner.close(error);
+        self.inner.close(error, false);
     }
 
     /// If the `StreamManager` is closed, this returns the error which which was
     /// used to close it.
     pub fn close_reason(&self) -> Option<connection::Error> {
         self.inner.close_reason
+    }
+
+    /// Closes the [`AbstractStreamManager`], flushes all send streams and resets all receive streams.
+    ///
+    /// This is used for when the application drops the connection but still has pending data to
+    /// transmit.
+    pub fn flush(&mut self, error: connection::Error) -> Poll<()> {
+        self.inner.flush(error)
     }
 
     /// Queries the component for any outgoing frames that need to get sent

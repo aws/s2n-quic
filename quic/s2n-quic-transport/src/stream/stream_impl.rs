@@ -111,6 +111,11 @@ pub trait StreamTrait: StreamInterestProvider + timer::Provider + core::fmt::Deb
     /// not related to a frame. E.g. due to a connection failure.
     fn on_internal_reset(&mut self, error: StreamError, events: &mut StreamEvents);
 
+    /// This method is called when the application drops the connection
+    ///
+    /// The stream should finish any pending operations and close
+    fn on_flush(&mut self, error: StreamError, events: &mut StreamEvents);
+
     /// Queries the component for any outgoing frames that need to get sent
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError>;
 
@@ -298,6 +303,15 @@ impl StreamTrait for StreamImpl {
     fn on_internal_reset(&mut self, error: StreamError, events: &mut StreamEvents) {
         self.receive_stream.on_internal_reset(error, events);
         self.send_stream.on_internal_reset(error, events);
+    }
+
+    #[inline]
+    fn on_flush(&mut self, error: StreamError, events: &mut StreamEvents) {
+        // flushing a receive stream is the same as resetting it
+        self.receive_stream.on_internal_reset(error, events);
+
+        // tell the send stream to flush any pending data
+        self.send_stream.on_flush(error, events);
     }
 
     #[inline]
