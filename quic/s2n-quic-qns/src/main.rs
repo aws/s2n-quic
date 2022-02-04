@@ -8,11 +8,11 @@ pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 mod client;
 mod file;
+mod h3;
 mod interop;
 mod perf;
 mod server;
 mod tls;
-mod h3;
 
 /// This message is searched in interop logs to ensure the application doesn't panic
 ///
