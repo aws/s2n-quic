@@ -34,12 +34,11 @@
             log_url_pattern = log_dir;
         }
 
-        // Use original s2n-quic names
-        if (server.startsWith('s2n-quic')) {
+        // Use original s2n-quic names.
+        if (server.startsWith('s2n-quic') && (server != 's2n-quic-rustls')) {
             server = 's2n-quic';
         }
-
-        if (client.startsWith('s2n-quic')) {
+        if (client.startsWith('s2n-quic') && (server != 's2n-quic-rustls')) {
             client = 's2n-quic';
         }
 

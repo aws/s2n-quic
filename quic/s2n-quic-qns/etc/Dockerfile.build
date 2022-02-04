@@ -68,3 +68,6 @@ RUN set -eux; \
   # ensure the binary works \
   s2n-quic-qns --help; \
   echo done
+
+ARG tls
+ENV TLS="${tls}"

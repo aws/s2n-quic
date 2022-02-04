@@ -28,3 +28,6 @@ RUN set -eux; \
 
 # help with debugging
 ENV RUST_BACKTRACE=1
+
+ARG tls
+ENV TLS="${tls}"
