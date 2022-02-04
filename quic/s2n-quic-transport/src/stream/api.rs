@@ -118,7 +118,8 @@ macro_rules! tx_stream_apis {
         /// The method will return:
         /// - `Poll::Ready(Ok(count))` if part of the slice was enqueued for sending. Any of the
         ///   consumed `Bytes` will be replaced with an empty `Bytes`, in order to reduce needless
-        ///   ref count increases.
+        ///   ref count increases. If `count` does not equal the total number of chunks, the stream
+        ///   will store the waker and wake the task once more capacity is available.
         /// - `Poll::Ready(Err(stream_error))` if the data could not be sent, because the stream
         ///   had previously entered an error state.
         /// - `Poll::Pending` if the send buffer capacity is currently exhausted. In this case, the
@@ -132,7 +133,11 @@ macro_rules! tx_stream_apis {
                 return Poll::Ready(Ok(0));
             }
 
-            let response = ready!(self.tx_request()?.send(chunks).poll(Some(cx))?.into_poll());
+            let response = self.tx_request()?.send(chunks).poll(Some(cx))?;
+
+            if response.chunks.consumed == 0 {
+                return Poll::Pending;
+            }
 
             Ok(response.tx().expect("invalid response").chunks.consumed).into()
         }
