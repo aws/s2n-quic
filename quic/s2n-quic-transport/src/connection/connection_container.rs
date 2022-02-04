@@ -32,7 +32,7 @@ use intrusive_collections::{
 };
 use s2n_quic_core::{
     application,
-    application::Sni,
+    application::ServerName,
     event::{
         query::{Query, QueryMut},
         supervisor,
@@ -270,12 +270,12 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
         });
     }
 
-    fn sni(&self) -> Result<Option<Sni>, connection::Error> {
-        self.api_read_call(|conn| Ok(conn.sni()))
+    fn server_name(&self) -> Result<Option<ServerName>, connection::Error> {
+        self.api_read_call(|conn| Ok(conn.server_name()))
     }
 
-    fn alpn(&self) -> Result<Bytes, connection::Error> {
-        self.api_read_call(|conn| Ok(conn.alpn()))
+    fn application_protocol(&self) -> Result<Bytes, connection::Error> {
+        self.api_read_call(|conn| Ok(conn.application_protocol()))
     }
 
     fn id(&self) -> u64 {

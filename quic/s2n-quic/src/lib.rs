@@ -50,7 +50,10 @@ pub mod server;
 pub mod stream;
 
 pub mod application {
-    pub use s2n_quic_core::application::{Error, Sni};
+    pub use s2n_quic_core::application::{Error, ServerName};
+
+    #[deprecated(note = "use `s2n_quic::application::ServerName` instead")]
+    pub type Sni = ServerName;
 }
 
 pub use client::Client;

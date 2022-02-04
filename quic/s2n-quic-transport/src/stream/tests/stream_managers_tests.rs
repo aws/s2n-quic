@@ -266,6 +266,11 @@ impl StreamTrait for MockStream {
         self.store_wakers(events);
     }
 
+    fn on_flush(&mut self, error: StreamError, events: &mut StreamEvents) {
+        // for testing purposes, it's the same as a reset
+        self.on_internal_reset(error, events);
+    }
+
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
         self.on_transmit_count += 1;
         let count = self

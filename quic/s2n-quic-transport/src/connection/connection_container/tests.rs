@@ -246,11 +246,11 @@ impl connection::Trait for TestConnection {
         // no-op
     }
 
-    fn sni(&self) -> Option<Sni> {
+    fn server_name(&self) -> Option<ServerName> {
         todo!()
     }
 
-    fn alpn(&self) -> Bytes {
+    fn application_protocol(&self) -> Bytes {
         todo!()
     }
 

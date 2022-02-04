@@ -340,20 +340,42 @@ pub mod api {
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     #[doc = " Application level protocol"]
+    #[deprecated(note = "use `on_application_protocol_information` instead")]
     pub struct AlpnInformation<'a> {
         pub chosen_alpn: &'a [u8],
     }
+    #[allow(deprecated)]
     impl<'a> Event for AlpnInformation<'a> {
         const NAME: &'static str = "transport:alpn_information";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " Application level protocol"]
+    pub struct ApplicationProtocolInformation<'a> {
+        pub chosen_application_protocol: &'a [u8],
+    }
+    impl<'a> Event for ApplicationProtocolInformation<'a> {
+        const NAME: &'static str = "transport:application_protocol_information";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Server Name Indication"]
+    #[deprecated(note = "use `on_server_name_information` instead")]
     pub struct SniInformation<'a> {
         pub chosen_sni: &'a str,
     }
+    #[allow(deprecated)]
     impl<'a> Event for SniInformation<'a> {
         const NAME: &'static str = "transport:sni_information";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Server Name was negotiated for the connection"]
+    pub struct ServerNameInformation<'a> {
+        pub chosen_server_name: &'a str,
+    }
+    impl<'a> Event for ServerNameInformation<'a> {
+        const NAME: &'static str = "transport:server_name_information";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1207,6 +1229,7 @@ pub mod api {
                 tracing :: span ! (target : "s2n_quic" , parent : parent , tracing :: Level :: DEBUG , "conn" , id = meta . id)
             }
             #[inline]
+            #[allow(deprecated)]
             fn on_alpn_information(
                 &mut self,
                 context: &mut Self::ConnectionContext,
@@ -1218,6 +1241,20 @@ pub mod api {
                 tracing :: event ! (target : "alpn_information" , parent : id , tracing :: Level :: DEBUG , chosen_alpn = tracing :: field :: debug (chosen_alpn));
             }
             #[inline]
+            fn on_application_protocol_information(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::ApplicationProtocolInformation,
+            ) {
+                let id = context.id();
+                let api::ApplicationProtocolInformation {
+                    chosen_application_protocol,
+                } = event;
+                tracing :: event ! (target : "application_protocol_information" , parent : id , tracing :: Level :: DEBUG , chosen_application_protocol = tracing :: field :: debug (chosen_application_protocol));
+            }
+            #[inline]
+            #[allow(deprecated)]
             fn on_sni_information(
                 &mut self,
                 context: &mut Self::ConnectionContext,
@@ -1227,6 +1264,17 @@ pub mod api {
                 let id = context.id();
                 let api::SniInformation { chosen_sni } = event;
                 tracing :: event ! (target : "sni_information" , parent : id , tracing :: Level :: DEBUG , chosen_sni = tracing :: field :: debug (chosen_sni));
+            }
+            #[inline]
+            fn on_server_name_information(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &api::ConnectionMeta,
+                event: &api::ServerNameInformation,
+            ) {
+                let id = context.id();
+                let api::ServerNameInformation { chosen_server_name } = event;
+                tracing :: event ! (target : "server_name_information" , parent : id , tracing :: Level :: DEBUG , chosen_server_name = tracing :: field :: debug (chosen_server_name));
             }
             #[inline]
             fn on_packet_sent(
@@ -2435,6 +2483,7 @@ pub mod builder {
     pub struct AlpnInformation<'a> {
         pub chosen_alpn: &'a [u8],
     }
+    #[allow(deprecated)]
     impl<'a> IntoEvent<api::AlpnInformation<'a>> for AlpnInformation<'a> {
         #[inline]
         fn into_event(self) -> api::AlpnInformation<'a> {
@@ -2445,16 +2494,47 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Application level protocol"]
+    pub struct ApplicationProtocolInformation<'a> {
+        pub chosen_application_protocol: &'a [u8],
+    }
+    impl<'a> IntoEvent<api::ApplicationProtocolInformation<'a>> for ApplicationProtocolInformation<'a> {
+        #[inline]
+        fn into_event(self) -> api::ApplicationProtocolInformation<'a> {
+            let ApplicationProtocolInformation {
+                chosen_application_protocol,
+            } = self;
+            api::ApplicationProtocolInformation {
+                chosen_application_protocol: chosen_application_protocol.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Server Name Indication"]
     pub struct SniInformation<'a> {
         pub chosen_sni: &'a str,
     }
+    #[allow(deprecated)]
     impl<'a> IntoEvent<api::SniInformation<'a>> for SniInformation<'a> {
         #[inline]
         fn into_event(self) -> api::SniInformation<'a> {
             let SniInformation { chosen_sni } = self;
             api::SniInformation {
                 chosen_sni: chosen_sni.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Server Name was negotiated for the connection"]
+    pub struct ServerNameInformation<'a> {
+        pub chosen_server_name: &'a str,
+    }
+    impl<'a> IntoEvent<api::ServerNameInformation<'a>> for ServerNameInformation<'a> {
+        #[inline]
+        fn into_event(self) -> api::ServerNameInformation<'a> {
+            let ServerNameInformation { chosen_server_name } = self;
+            api::ServerNameInformation {
+                chosen_server_name: chosen_server_name.into_event(),
             }
         }
     }
@@ -3370,6 +3450,8 @@ mod traits {
         }
         #[doc = "Called when the `AlpnInformation` event is triggered"]
         #[inline]
+        #[deprecated(note = "use `on_application_protocol_information` instead")]
+        #[allow(deprecated)]
         fn on_alpn_information(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -3380,13 +3462,39 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `ApplicationProtocolInformation` event is triggered"]
+        #[inline]
+        fn on_application_protocol_information(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &ApplicationProtocolInformation,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `SniInformation` event is triggered"]
         #[inline]
+        #[deprecated(note = "use `on_server_name_information` instead")]
+        #[allow(deprecated)]
         fn on_sni_information(
             &mut self,
             context: &mut Self::ConnectionContext,
             meta: &ConnectionMeta,
             event: &SniInformation,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `ServerNameInformation` event is triggered"]
+        #[inline]
+        fn on_server_name_information(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &ServerNameInformation,
         ) {
             let _ = context;
             let _ = meta;
@@ -3939,6 +4047,7 @@ mod traits {
             }
         }
         #[inline]
+        #[allow(deprecated)]
         fn on_alpn_information(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -3949,6 +4058,17 @@ mod traits {
             (self.1).on_alpn_information(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_application_protocol_information(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &ApplicationProtocolInformation,
+        ) {
+            (self.0).on_application_protocol_information(&mut context.0, meta, event);
+            (self.1).on_application_protocol_information(&mut context.1, meta, event);
+        }
+        #[inline]
+        #[allow(deprecated)]
         fn on_sni_information(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -3957,6 +4077,16 @@ mod traits {
         ) {
             (self.0).on_sni_information(&mut context.0, meta, event);
             (self.1).on_sni_information(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_server_name_information(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &ServerNameInformation,
+        ) {
+            (self.0).on_server_name_information(&mut context.0, meta, event);
+            (self.1).on_server_name_information(&mut context.1, meta, event);
         }
         #[inline]
         fn on_packet_sent(
@@ -4530,8 +4660,15 @@ mod traits {
     pub trait ConnectionPublisher {
         #[doc = "Publishes a `AlpnInformation` event to the publisher's subscriber"]
         fn on_alpn_information(&mut self, event: builder::AlpnInformation);
+        #[doc = "Publishes a `ApplicationProtocolInformation` event to the publisher's subscriber"]
+        fn on_application_protocol_information(
+            &mut self,
+            event: builder::ApplicationProtocolInformation,
+        );
         #[doc = "Publishes a `SniInformation` event to the publisher's subscriber"]
         fn on_sni_information(&mut self, event: builder::SniInformation);
+        #[doc = "Publishes a `ServerNameInformation` event to the publisher's subscriber"]
+        fn on_server_name_information(&mut self, event: builder::ServerNameInformation);
         #[doc = "Publishes a `PacketSent` event to the publisher's subscriber"]
         fn on_packet_sent(&mut self, event: builder::PacketSent);
         #[doc = "Publishes a `PacketReceived` event to the publisher's subscriber"]
@@ -4625,6 +4762,7 @@ mod traits {
     }
     impl<'a, Sub: Subscriber> ConnectionPublisher for ConnectionPublisherSubscriber<'a, Sub> {
         #[inline]
+        #[allow(deprecated)]
         fn on_alpn_information(&mut self, event: builder::AlpnInformation) {
             let event = event.into_event();
             self.subscriber
@@ -4634,10 +4772,32 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_application_protocol_information(
+            &mut self,
+            event: builder::ApplicationProtocolInformation,
+        ) {
+            let event = event.into_event();
+            self.subscriber
+                .on_application_protocol_information(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        #[allow(deprecated)]
         fn on_sni_information(&mut self, event: builder::SniInformation) {
             let event = event.into_event();
             self.subscriber
                 .on_sni_information(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_server_name_information(&mut self, event: builder::ServerNameInformation) {
+            let event = event.into_event();
+            self.subscriber
+                .on_server_name_information(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -4920,7 +5080,9 @@ pub mod testing {
         location: Option<Location>,
         output: Vec<String>,
         pub alpn_information: u32,
+        pub application_protocol_information: u32,
         pub sni_information: u32,
+        pub server_name_information: u32,
         pub packet_sent: u32,
         pub packet_received: u32,
         pub active_path_updated: u32,
@@ -4988,7 +5150,9 @@ pub mod testing {
                 location: None,
                 output: Default::default(),
                 alpn_information: 0,
+                application_protocol_information: 0,
                 sni_information: 0,
+                server_name_information: 0,
                 packet_sent: 0,
                 packet_received: 0,
                 active_path_updated: 0,
@@ -5042,6 +5206,7 @@ pub mod testing {
             _info: &api::ConnectionInfo,
         ) -> Self::ConnectionContext {
         }
+        #[allow(deprecated)]
         fn on_alpn_information(
             &mut self,
             _context: &mut Self::ConnectionContext,
@@ -5053,6 +5218,18 @@ pub mod testing {
                 self.output.push(format!("{:?} {:?}", meta, event));
             }
         }
+        fn on_application_protocol_information(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::ApplicationProtocolInformation,
+        ) {
+            self.application_protocol_information += 1;
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
+        }
+        #[allow(deprecated)]
         fn on_sni_information(
             &mut self,
             _context: &mut Self::ConnectionContext,
@@ -5060,6 +5237,17 @@ pub mod testing {
             event: &api::SniInformation,
         ) {
             self.sni_information += 1;
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
+        }
+        fn on_server_name_information(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::ServerNameInformation,
+        ) {
+            self.server_name_information += 1;
             if self.location.is_some() {
                 self.output.push(format!("{:?} {:?}", meta, event));
             }
@@ -5477,7 +5665,9 @@ pub mod testing {
         location: Option<Location>,
         output: Vec<String>,
         pub alpn_information: u32,
+        pub application_protocol_information: u32,
         pub sni_information: u32,
+        pub server_name_information: u32,
         pub packet_sent: u32,
         pub packet_received: u32,
         pub active_path_updated: u32,
@@ -5535,7 +5725,9 @@ pub mod testing {
                 location: None,
                 output: Default::default(),
                 alpn_information: 0,
+                application_protocol_information: 0,
                 sni_information: 0,
+                server_name_information: 0,
                 packet_sent: 0,
                 packet_received: 0,
                 active_path_updated: 0,
@@ -5655,6 +5847,7 @@ pub mod testing {
         }
     }
     impl super::ConnectionPublisher for Publisher {
+        #[allow(deprecated)]
         fn on_alpn_information(&mut self, event: builder::AlpnInformation) {
             self.alpn_information += 1;
             let event = event.into_event();
@@ -5662,8 +5855,26 @@ pub mod testing {
                 self.output.push(format!("{:?}", event));
             }
         }
+        fn on_application_protocol_information(
+            &mut self,
+            event: builder::ApplicationProtocolInformation,
+        ) {
+            self.application_protocol_information += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
+        }
+        #[allow(deprecated)]
         fn on_sni_information(&mut self, event: builder::SniInformation) {
             self.sni_information += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
+        }
+        fn on_server_name_information(&mut self, event: builder::ServerNameInformation) {
+            self.server_name_information += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 self.output.push(format!("{:?}", event));

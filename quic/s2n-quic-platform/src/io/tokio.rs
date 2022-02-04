@@ -91,6 +91,7 @@ impl Io {
             send_buffer_size,
             max_mtu,
             max_segments,
+            reuse_port,
         } = self.builder;
 
         endpoint.set_max_mtu(max_mtu);
@@ -131,7 +132,7 @@ impl Io {
             rx_socket.set_nonblocking(true)?;
             rx_socket
         } else if let Some(recv_addr) = recv_addr {
-            bind(recv_addr)?
+            bind(recv_addr, reuse_port)?
         } else {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -144,7 +145,7 @@ impl Io {
             tx_socket.set_nonblocking(true)?;
             tx_socket
         } else if let Some(send_addr) = send_addr {
-            bind(send_addr)?
+            bind(send_addr, reuse_port)?
         } else {
             // No tx_socket or send address was specified, so the tx socket
             // will be a handle to the rx socket.
@@ -314,7 +315,7 @@ impl Io {
     }
 }
 
-fn bind<A: std::net::ToSocketAddrs>(addr: A) -> io::Result<socket2::Socket> {
+fn bind<A: std::net::ToSocketAddrs>(addr: A, reuse_port: bool) -> io::Result<socket2::Socket> {
     use socket2::{Domain, Protocol, Socket, Type};
 
     let addr = addr.to_socket_addrs()?.next().ok_or_else(|| {
@@ -356,7 +357,10 @@ fn bind<A: std::net::ToSocketAddrs>(addr: A) -> io::Result<socket2::Socket> {
     socket.set_reuse_address(true)?;
 
     #[cfg(unix)]
-    socket.set_reuse_port(true)?;
+    socket.set_reuse_port(reuse_port)?;
+
+    // mark the variable as "used" regardless of platform support
+    let _ = reuse_port;
 
     socket.bind(&addr.into())?;
 
@@ -374,6 +378,7 @@ pub struct Builder {
     send_buffer_size: Option<usize>,
     max_mtu: MaxMtu,
     max_segments: gso::MaxSegments,
+    reuse_port: bool,
 }
 
 impl Builder {
@@ -455,6 +460,18 @@ impl Builder {
     /// GSO fails. If it is known that GSO is not available, set this option to explicitly disable it.
     pub fn with_gso_disabled(mut self) -> io::Result<Self> {
         self.max_segments = 1.try_into().expect("1 is always a valid MaxSegments value");
+        Ok(self)
+    }
+
+    /// Enables the port reuse (SO_REUSEPORT) socket option
+    pub fn with_reuse_port(mut self) -> io::Result<Self> {
+        if !cfg!(unix) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "reuse_port is not supported on the current platform",
+            ));
+        }
+        self.reuse_port = true;
         Ok(self)
     }
 
@@ -874,14 +891,14 @@ mod tests {
         receive_addr: A,
         send_addr: Option<A>,
     ) -> io::Result<()> {
-        let rx_socket = bind(receive_addr)?;
+        let rx_socket = bind(receive_addr, false)?;
         let rx_socket: std::net::UdpSocket = rx_socket.into();
         let addr = rx_socket.local_addr()?;
 
         let mut io_builder = Io::builder().with_rx_socket(rx_socket)?;
 
         if let Some(addr) = send_addr {
-            let tx_socket = bind(addr)?;
+            let tx_socket = bind(addr, false)?;
             let tx_socket: std::net::UdpSocket = tx_socket.into();
             io_builder = io_builder.with_tx_socket(tx_socket)?
         }

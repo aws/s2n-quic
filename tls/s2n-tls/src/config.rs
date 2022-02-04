@@ -95,7 +95,7 @@ impl Builder {
     /// list is used to negotiate a mutual application protocol with the client. After
     /// the negotiation for the connection has completed, the agreed upon protocol can
     /// be retrieved with s2n_get_application_protocol
-    pub fn set_alpn_preference<P: IntoIterator<Item = I>, I: AsRef<[u8]>>(
+    pub fn set_application_protocol_preference<P: IntoIterator<Item = I>, I: AsRef<[u8]>>(
         &mut self,
         protocols: P,
     ) -> Result<(), Error> {

@@ -47,7 +47,7 @@ pub struct Interop {
     private_key: Option<PathBuf>,
 
     #[structopt(long, default_value = "hq-interop")]
-    alpn_protocols: Vec<String>,
+    application_protocols: Vec<String>,
 
     #[structopt(long, default_value = ".")]
     www_dir: PathBuf,
@@ -269,7 +269,9 @@ impl Interop {
                         tls::s2n::ca(self.certificate.as_ref())?,
                         tls::s2n::private_key(self.private_key.as_ref())?,
                     )?
-                    .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+                    .with_application_protocols(
+                        self.application_protocols.iter().map(String::as_bytes),
+                    )?
                     .with_key_logging()?
                     .build()?;
 
@@ -283,7 +285,9 @@ impl Interop {
                         tls::rustls::ca(self.certificate.as_ref())?,
                         tls::rustls::private_key(self.private_key.as_ref())?,
                     )?
-                    .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+                    .with_application_protocols(
+                        self.application_protocols.iter().map(String::as_bytes),
+                    )?
                     .with_key_logging()?
                     .build()?;
 

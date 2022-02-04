@@ -20,15 +20,19 @@ pub trait Endpoint: 'static + Debug + Send {
 #[non_exhaustive]
 pub struct PathInfo<'a> {
     pub remote_address: SocketAddress<'a>,
+    #[deprecated(note = "use `application_protocol` instead")]
     pub alpn: Option<&'a [u8]>,
+    pub application_protocol: Option<&'a [u8]>,
     pub max_datagram_size: u16,
 }
 
 impl<'a> PathInfo<'a> {
+    #[allow(deprecated)]
     pub fn new(remote_address: &'a inet::SocketAddress) -> Self {
         Self {
             remote_address: remote_address.into_event(),
             alpn: None,
+            application_protocol: None,
             max_datagram_size: MINIMUM_MTU,
         }
     }

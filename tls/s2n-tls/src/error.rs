@@ -106,12 +106,15 @@ impl Error {
     pub fn alert(&self) -> Option<u8> {
         match self {
             Self::InvalidInput => None,
-            Self::Code(code) => {
-                let mut alert = 0;
-                match call!(s2n_error_get_alert(*code, &mut alert)) {
-                    Ok(_) => Some(alert),
-                    Err(_) => None,
-                }
+            Self::Code(_code) => {
+                None
+                // TODO: We should use the new s2n-tls method
+                //       once it's available.
+                // let mut alert = 0;
+                // match call!(s2n_error_get_alert(*code, &mut alert)) {
+                //     Ok(_) => Some(alert),
+                //     Err(_) => None,
+                // }
             }
         }
     }

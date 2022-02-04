@@ -5,7 +5,7 @@ use crate::{certificate, encode_transport_parameters, session::Session};
 use core::convert::TryFrom;
 use rustls::{quic, ClientConfig};
 use s2n_codec::EncoderValue;
-use s2n_quic_core::{application::Sni, crypto::tls};
+use s2n_quic_core::{application::ServerName, crypto::tls};
 use std::sync::Arc;
 
 pub struct Client {
@@ -52,7 +52,7 @@ impl tls::Endpoint for Client {
     fn new_client_session<Params: EncoderValue>(
         &mut self,
         transport_parameters: &Params,
-        sni: Sni,
+        server_name: ServerName,
     ) -> Self::Session {
         use quic::ClientQuicExt;
 
@@ -60,12 +60,13 @@ impl tls::Endpoint for Client {
         //# Endpoints MUST send the quic_transport_parameters extension;
         let transport_parameters = encode_transport_parameters(transport_parameters);
 
-        let sni = rustls::ServerName::try_from(sni.as_ref()).expect("invalid sni hostname");
+        let server_name =
+            rustls::ServerName::try_from(server_name.as_ref()).expect("invalid server name");
 
         let session = rustls::ClientConnection::new_quic(
             self.config.clone(),
             crate::QUIC_VERSION,
-            sni,
+            server_name,
             transport_parameters,
         )
         .expect("could not create rustls client session");
@@ -80,7 +81,7 @@ impl tls::Endpoint for Client {
 
 pub struct Builder {
     cert_store: rustls::RootCertStore,
-    alpn_protocols: Vec<Vec<u8>>,
+    application_protocols: Vec<Vec<u8>>,
     key_log: Option<Arc<dyn rustls::KeyLog>>,
 }
 
@@ -94,7 +95,7 @@ impl Builder {
     pub fn new() -> Self {
         Self {
             cert_store: rustls::RootCertStore::empty(),
-            alpn_protocols: vec![b"h3".to_vec()],
+            application_protocols: vec![b"h3".to_vec()],
             key_log: None,
         }
     }
@@ -119,12 +120,20 @@ impl Builder {
         Ok(self)
     }
 
-    pub fn with_alpn_protocols<P: Iterator<Item = I>, I: AsRef<[u8]>>(
+    pub fn with_application_protocols<P: Iterator<Item = I>, I: AsRef<[u8]>>(
         mut self,
         protocols: P,
     ) -> Result<Self, rustls::Error> {
-        self.alpn_protocols = protocols.map(|p| p.as_ref().to_vec()).collect();
+        self.application_protocols = protocols.map(|p| p.as_ref().to_vec()).collect();
         Ok(self)
+    }
+
+    #[deprecated(note = "use `with_application_protocols` instead")]
+    pub fn with_alpn_protocols<P: Iterator<Item = I>, I: AsRef<[u8]>>(
+        self,
+        protocols: P,
+    ) -> Result<Self, rustls::Error> {
+        self.with_application_protocols(protocols)
     }
 
     pub fn with_key_logging(mut self) -> Result<Self, rustls::Error> {
@@ -150,7 +159,7 @@ impl Builder {
             .with_no_client_auth();
 
         config.max_fragment_size = None;
-        config.alpn_protocols = self.alpn_protocols;
+        config.alpn_protocols = self.application_protocols;
 
         if let Some(key_log) = self.key_log {
             config.key_log = key_log;

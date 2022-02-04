@@ -10,7 +10,7 @@ use rustls::{
     Connection,
 };
 use s2n_quic_core::{
-    application::Sni,
+    application::ServerName,
     crypto::{self, tls, CryptoError},
     transport,
 };
@@ -76,7 +76,7 @@ impl Session {
         //# Unless
         //# another mechanism is used for agreeing on an application protocol,
         //# endpoints MUST use ALPN for this purpose.
-        let alpn_protocol = self.connection.alpn_protocol().ok_or_else(||
+        let application_protocol = self.connection.alpn_protocol().ok_or_else(||
             //= https://www.rfc-editor.org/rfc/rfc9001.txt#8.1
             //# When using ALPN, endpoints MUST immediately close a connection (see
             //# Section 10.2 of [QUIC-TRANSPORT]) with a no_application_protocol TLS
@@ -100,20 +100,22 @@ impl Session {
                 CryptoError::MISSING_EXTENSION.with_reason("Missing QUIC transport parameters")
             })?;
 
-        let sni = self.sni();
+        let server_name = self.server_name();
 
         Ok(tls::ApplicationParameters {
-            alpn_protocol,
-            sni,
+            application_protocol,
+            server_name,
             transport_parameters,
         })
     }
 
-    fn sni(&self) -> Option<Sni> {
+    fn server_name(&self) -> Option<ServerName> {
         match &self.connection {
             // TODO return the original value
             Connection::Client(_) => None,
-            Connection::Server(server) => server.sni_hostname().map(|sni| sni.into()),
+            Connection::Server(server) => {
+                server.sni_hostname().map(|server_name| server_name.into())
+            }
         }
     }
 

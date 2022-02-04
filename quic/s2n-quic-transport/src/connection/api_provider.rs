@@ -16,7 +16,7 @@ use core::{
 };
 use s2n_quic_core::{
     application,
-    application::Sni,
+    application::ServerName,
     event::query::{Query, QueryMut},
     inet::SocketAddress,
     stream::{ops, StreamId, StreamType},
@@ -53,9 +53,9 @@ pub(crate) trait ConnectionApiProvider: Sync + Send {
 
     fn close_connection(&self, code: Option<application::Error>);
 
-    fn sni(&self) -> Result<Option<Sni>, connection::Error>;
+    fn server_name(&self) -> Result<Option<ServerName>, connection::Error>;
 
-    fn alpn(&self) -> Result<Bytes, connection::Error>;
+    fn application_protocol(&self) -> Result<Bytes, connection::Error>;
 
     fn id(&self) -> u64;
 

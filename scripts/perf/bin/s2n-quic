@@ -12,7 +12,8 @@ case "$PS" in
           ../../target/release/s2n-quic-qns \
             perf \
             server \
-            --port $SERVER_PORT
+            --port $SERVER_PORT \
+            --tls "${TLS}"
         ;;
     client*)
           ../../target/release/s2n-quic-qns \
@@ -21,6 +22,7 @@ case "$PS" in
             --download-size "${DOWNLOAD_BYTES}b" \
             --upload-size "${UPLOAD_BYTES}b" \
             --duration "${DURATION}s" \
+            --tls "${TLS}" \
             --port $SERVER_PORT \
             --hostname localhost
         ;;

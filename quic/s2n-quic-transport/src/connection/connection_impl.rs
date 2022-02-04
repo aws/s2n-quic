@@ -32,7 +32,7 @@ use core::{
 };
 use s2n_quic_core::{
     application,
-    application::Sni,
+    application::ServerName,
     connection::{id::Generator as _, InitialId, PeerId},
     crypto::{tls, CryptoSuite},
     endpoint::Location,
@@ -81,6 +81,10 @@ enum ConnectionState {
     Handshaking,
     /// The connection is active
     Active,
+    /// The connection was dropped by the application but still has stream data to transmit to the peer.
+    ///
+    /// Once all of the data is transmitted, the connection will be closed.
+    Flushing,
     /// The connection is closing, as described in
     /// https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
     Closing,
@@ -347,7 +351,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         &mut self,
         packet: &ProcessedPacket,
         subscriber: &mut Config::EventSubscriber,
-    ) {
+    ) -> Result<(), connection::Error> {
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
         //# An endpoint restarts its idle timer when a packet from its peer is
         //# received and processed successfully.
@@ -367,6 +371,13 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
                 bytes: packet.bytes_progressed,
             })
         }
+
+        // check to see if we're flushing and should now close the connection
+        if self.poll_flush().is_ready() {
+            self.error?;
+        }
+
+        Ok(())
     }
 
     fn on_ack_eliciting_packet_sent(&mut self, timestamp: Timestamp) {
@@ -499,6 +510,33 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
 
         Ok(())
     }
+
+    /// Polls for the connection to flush all of the outstanding streams
+    ///
+    /// Once all of the streams are finished, `Poll::Ready` will be returned
+    fn poll_flush(&mut self) -> Poll<()> {
+        if matches!(self.state, ConnectionState::Flushing) {
+            let is_finished = if let Some((space, _)) = self.space_manager.application_mut() {
+                space
+                    .stream_manager
+                    .flush(transport::Error::NO_ERROR.into())
+                    .is_ready()
+            } else {
+                debug_assert!(
+                    false,
+                    "connection should only be flushing with application space"
+                );
+                true
+            };
+
+            if is_finished {
+                self.error = Err(transport::Error::NO_ERROR.into());
+                return Poll::Ready(());
+            }
+        }
+
+        Poll::Pending
+    }
 }
 
 impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
@@ -617,7 +655,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 // The connection is already closing
                 return;
             }
-            ConnectionState::Handshaking | ConnectionState::Active => {}
+            ConnectionState::Handshaking | ConnectionState::Active | ConnectionState::Flushing => {}
         }
 
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
@@ -757,7 +795,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         );
 
         match self.state {
-            ConnectionState::Handshaking | ConnectionState::Active => {
+            ConnectionState::Handshaking | ConnectionState::Active | ConnectionState::Flushing => {
                 let mut outcome = transmission::Outcome::default();
                 let path_id = self.path_manager.active_path_id();
 
@@ -845,6 +883,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     publisher.on_tx_stream_progress(TxStreamProgress {
                         bytes: outcome.bytes_progressed,
                     })
+                }
+
+                // check to see if we are flushing and should close
+                if self.poll_flush().is_ready() {
+                    // trigger a wake up so we can close
+                    self.wakeup_handle.wakeup();
                 }
             }
             ConnectionState::Closing => {
@@ -943,6 +987,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .is_ready()
         {
             self.on_supervisor_timeout(timestamp, subscriber, supervisor_context)?;
+        }
+
+        // check to see if we're flushing the connection
+        if self.poll_flush().is_ready() {
+            return self.error;
         }
 
         // TODO: enable this check once all of the component timers are fixed
@@ -1140,7 +1189,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             self.update_crypto_state(datagram.timestamp, subscriber)?;
 
             // notify the connection a packet was processed
-            self.on_processed_packet(&processed_packet, subscriber);
+            self.on_processed_packet(&processed_packet, subscriber)?;
         }
 
         Ok(())
@@ -1218,7 +1267,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             self.update_crypto_state(datagram.timestamp, subscriber)?;
 
             // notify the connection a packet was processed
-            self.on_processed_packet(&processed_packet, subscriber);
+            self.on_processed_packet(&processed_packet, subscriber)?;
         }
 
         Ok(())
@@ -1317,7 +1366,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             )?;
 
             // notify the connection a packet was processed
-            self.on_processed_packet(&processed_packet, subscriber);
+            self.on_processed_packet(&processed_packet, subscriber)?;
         }
 
         Ok(())
@@ -1533,7 +1582,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         }
 
         match self.state {
-            ConnectionState::Active | ConnectionState::Handshaking => {
+            ConnectionState::Active | ConnectionState::Handshaking | ConnectionState::Flushing => {
                 let constraint = self.path_manager.transmission_constraint();
 
                 interests.transmission = self.can_transmit(constraint);
@@ -1627,26 +1676,30 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             return;
         }
 
-        self.error = Err(match error {
-            Some(error) => connection::Error::Application {
+        if let Some(error) = error {
+            self.error = Err(connection::Error::Application {
                 error,
                 initiator: endpoint::Location::Local,
-            },
-            None => transport::Error::APPLICATION_ERROR.into(),
-        });
+            });
+        } else {
+            // give the connection some time to flush all outstanding streams
+            self.state = ConnectionState::Flushing;
+
+            let _ = self.poll_flush();
+        }
 
         self.wakeup_handle.wakeup();
     }
 
-    fn sni(&self) -> Option<Sni> {
+    fn server_name(&self) -> Option<ServerName> {
         // TODO move SNI to connection
-        self.space_manager.application()?.sni.clone()
+        self.space_manager.application()?.server_name.clone()
     }
 
-    fn alpn(&self) -> Bytes {
+    fn application_protocol(&self) -> Bytes {
         // TODO move ALPN to connection
         if let Some(space) = self.space_manager.application() {
-            space.alpn.clone()
+            space.application_protocol.clone()
         } else {
             Bytes::from_static(&[])
         }

@@ -20,7 +20,7 @@ pub struct Perf {
     port: u16,
 
     #[structopt(short, long)]
-    hostname: Option<String>,
+    server_name: Option<String>,
 
     #[structopt(long)]
     ca: Option<PathBuf>,
@@ -28,7 +28,7 @@ pub struct Perf {
     //= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#2.1
     //# The ALPN used by the QUIC performance protocol is "perf".
     #[structopt(long, default_value = "perf")]
-    alpn_protocols: Vec<String>,
+    application_protocols: Vec<String>,
 
     #[structopt(long)]
     connections: Option<usize>,
@@ -52,11 +52,11 @@ impl Perf {
         // TODO support a richer connection strategy
         for _ in 0..self.connections.unwrap_or(1) {
             let mut connect = client::Connect::new((self.ip, self.port));
-            if let Some(hostname) = self.hostname.as_deref() {
-                connect = connect.with_hostname(hostname);
+            if let Some(server_name) = self.server_name.as_deref() {
+                connect = connect.with_server_name(server_name);
             } else {
-                // TODO allow skipping setting the hostname
-                connect = connect.with_hostname("localhost");
+                // TODO allow skipping setting the server_name
+                connect = connect.with_server_name("localhost");
             }
             let connection = client.connect(connect).await?;
 
@@ -111,7 +111,9 @@ impl Perf {
             TlsProviders::S2N => {
                 let tls = s2n_quic::provider::tls::s2n_tls::Client::builder()
                     .with_certificate(tls::s2n::ca(self.ca.as_ref())?)?
-                    .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+                    .with_application_protocols(
+                        self.application_protocols.iter().map(String::as_bytes),
+                    )?
                     .with_key_logging()?
                     .build()?;
                 client.with_tls(tls)?.start().unwrap()
@@ -119,7 +121,9 @@ impl Perf {
             TlsProviders::Rustls => {
                 let tls = s2n_quic::provider::tls::rustls::Client::builder()
                     .with_certificate(tls::rustls::ca(self.ca.as_ref())?)?
-                    .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+                    .with_application_protocols(
+                        self.application_protocols.iter().map(String::as_bytes),
+                    )?
                     .with_key_logging()?
                     .build()?;
                 client.with_tls(tls)?.start().unwrap()

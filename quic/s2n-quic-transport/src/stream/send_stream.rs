@@ -696,6 +696,18 @@ impl SendStream {
         }
     }
 
+    pub fn on_flush(&mut self, error: StreamError, events: &mut StreamEvents) {
+        match self.data_sender.state() {
+            data_sender::State::Finishing(_) | data_sender::State::Finished => {
+                // wait until the data sender is done sending
+            }
+            _ => {
+                // since, we aren't finalizing, any other state should trigger a reset
+                self.on_internal_reset(error, events);
+            }
+        }
+    }
+
     /// This method is called when a connection window is available
     pub fn on_connection_window_available(&mut self) {
         // Outstanding flow control requests are only fulfilled if the Stream

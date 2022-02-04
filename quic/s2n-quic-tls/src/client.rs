@@ -3,7 +3,7 @@
 
 use crate::{certificate::IntoCertificate, keylog::KeyLogHandle, params::Params, session::Session};
 use s2n_codec::EncoderValue;
-use s2n_quic_core::{application::Sni, crypto::tls, endpoint};
+use s2n_quic_core::{application::ServerName, crypto::tls, endpoint};
 use s2n_tls::{
     config::{self, Config},
     error::Error,
@@ -42,7 +42,9 @@ impl Default for Builder {
         config.enable_quic().unwrap();
         // https://github.com/awslabs/s2n/blob/main/docs/USAGE-GUIDE.md#s2n_config_set_cipher_preferences
         config.set_cipher_preference("default_tls13").unwrap();
-        config.set_alpn_preference(&[b"h3"]).unwrap();
+        config
+            .set_application_protocol_preference(&[b"h3"])
+            .unwrap();
 
         Self {
             config,
@@ -52,12 +54,20 @@ impl Default for Builder {
 }
 
 impl Builder {
-    pub fn with_alpn_protocols<P: IntoIterator<Item = I>, I: AsRef<[u8]>>(
+    pub fn with_application_protocols<P: IntoIterator<Item = I>, I: AsRef<[u8]>>(
         mut self,
         protocols: P,
     ) -> Result<Self, Error> {
-        self.config.set_alpn_preference(protocols)?;
+        self.config.set_application_protocol_preference(protocols)?;
         Ok(self)
+    }
+
+    #[deprecated(note = "use `with_application_protocols` instead")]
+    pub fn with_alpn_protocols<P: IntoIterator<Item = I>, I: AsRef<[u8]>>(
+        self,
+        protocols: P,
+    ) -> Result<Self, Error> {
+        self.with_application_protocols(protocols)
     }
 
     pub fn with_certificate<C: IntoCertificate>(mut self, certificate: C) -> Result<Self, Error> {
@@ -114,14 +124,14 @@ impl tls::Endpoint for Client {
     fn new_client_session<Params: EncoderValue>(
         &mut self,
         params: &Params,
-        sni: Sni,
+        server_name: ServerName,
     ) -> Self::Session {
         let config = self.config.clone();
         self.params.with(params, |params| {
             let mut session = Session::new(endpoint::Type::Client, config, params).unwrap();
             session
                 .connection
-                .set_sni(sni.as_bytes())
+                .set_server_name(server_name.as_bytes())
                 .expect("invalid sni value");
             session
         })

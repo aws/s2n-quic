@@ -4,7 +4,7 @@
 use crate::{certificate, encode_transport_parameters, session::Session};
 use rustls::{quic, ServerConfig};
 use s2n_codec::EncoderValue;
-use s2n_quic_core::{application::Sni, crypto::tls};
+use s2n_quic_core::{application::ServerName, crypto::tls};
 use std::sync::Arc;
 
 pub struct Server {
@@ -63,7 +63,7 @@ impl tls::Endpoint for Server {
     fn new_client_session<Params: EncoderValue>(
         &mut self,
         _transport_parameters: &Params,
-        _sni: Sni,
+        _sni: ServerName,
     ) -> Self::Session {
         panic!("cannot create a client session from a server config");
     }
@@ -75,7 +75,7 @@ impl tls::Endpoint for Server {
 
 pub struct Builder {
     cert_resolver: Option<Arc<dyn rustls::server::ResolvesServerCert>>,
-    alpn_protocols: Vec<Vec<u8>>,
+    application_protocols: Vec<Vec<u8>>,
     key_log: Option<Arc<dyn rustls::KeyLog>>,
 }
 
@@ -89,7 +89,7 @@ impl Builder {
     pub fn new() -> Self {
         Self {
             cert_resolver: None,
-            alpn_protocols: vec![b"h3".to_vec()],
+            application_protocols: vec![b"h3".to_vec()],
             key_log: None,
         }
     }
@@ -114,12 +114,20 @@ impl Builder {
         Ok(self)
     }
 
-    pub fn with_alpn_protocols<P: Iterator<Item = I>, I: AsRef<[u8]>>(
+    pub fn with_application_protocols<P: Iterator<Item = I>, I: AsRef<[u8]>>(
         mut self,
         protocols: P,
     ) -> Result<Self, rustls::Error> {
-        self.alpn_protocols = protocols.map(|p| p.as_ref().to_vec()).collect();
+        self.application_protocols = protocols.map(|p| p.as_ref().to_vec()).collect();
         Ok(self)
+    }
+
+    #[deprecated(note = "use `with_application_protocols` instead")]
+    pub fn with_alpn_protocols<P: Iterator<Item = I>, I: AsRef<[u8]>>(
+        self,
+        protocols: P,
+    ) -> Result<Self, rustls::Error> {
+        self.with_application_protocols(protocols)
     }
 
     pub fn with_key_logging(mut self) -> Result<Self, rustls::Error> {
@@ -144,7 +152,7 @@ impl Builder {
 
         config.ignore_client_order = true;
         config.max_fragment_size = None;
-        config.alpn_protocols = self.alpn_protocols;
+        config.alpn_protocols = self.application_protocols;
 
         if let Some(key_log) = self.key_log {
             config.key_log = key_log;

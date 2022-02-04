@@ -935,7 +935,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             connect:
                 endpoint::connect::Connect {
                     remote_address,
-                    hostname,
+                    server_name: hostname,
                 },
             sender,
         } = request;

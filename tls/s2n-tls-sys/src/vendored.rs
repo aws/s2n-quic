@@ -911,21 +911,6 @@ extern "C" {
     ) -> ::libc::c_int;
 }
 extern "C" {
-    #[doc = " Returns the number of session tickets issued by the server."]
-    #[doc = ""]
-    #[doc = " In TLS1.3, this number can be up to the limit configured by s2n_config_set_initial_ticket_count"]
-    #[doc = " and s2n_connection_add_new_tickets_to_send. In earlier versions of TLS, this number will be either 0 or 1."]
-    #[doc = ""]
-    #[doc = " This method only works for server connections."]
-    #[doc = ""]
-    #[doc = " @param conn A pointer to the connection object."]
-    #[doc = " @param num The number of additional session tickets sent."]
-    pub fn s2n_connection_get_tickets_sent(
-        conn: *mut s2n_connection,
-        num: *mut u16,
-    ) -> ::libc::c_int;
-}
-extern "C" {
     #[doc = " Sets the keying material lifetime for >=TLS1.3 session tickets so that one session doesn't get re-used ad infinitum."]
     #[doc = " The default value is one week."]
     #[doc = ""]
@@ -1597,118 +1582,49 @@ pub enum s2n_async_pkey_op_type {
     AsyncDecrypt = 0,
     AsyncSign = 1,
 }
-#[doc = " Callback function for handling private key operations"]
-#[doc = ""]
-#[doc = " Invoked every time an operation requiring the private key is encountered"]
-#[doc = " during the handshake."]
-#[doc = ""]
-#[doc = " # Safety"]
-#[doc = " * `op` is owned by the application and MUST be freed."]
-#[doc = ""]
-#[doc = " @param conn Connection which triggered the callback"]
-#[doc = " @param op An opaque object representing the private key operation"]
 pub type s2n_async_pkey_fn = ::core::option::Option<
     unsafe extern "C" fn(conn: *mut s2n_connection, op: *mut s2n_async_pkey_op) -> ::libc::c_int,
 >;
 extern "C" {
-    #[doc = " Sets up the callback to invoke when private key operations occur."]
-    #[doc = ""]
-    #[doc = " @param config Config to set the callback"]
-    #[doc = " @param fn The function that should be called for each private key operation"]
     pub fn s2n_config_set_async_pkey_callback(
         config: *mut s2n_config,
         fn_: s2n_async_pkey_fn,
     ) -> ::libc::c_int;
 }
 extern "C" {
-    #[doc = " Performs a private key operation using the given private key."]
-    #[doc = ""]
-    #[doc = " # Safety"]
-    #[doc = " * Can only be called once. Any subsequent calls will produce a `S2N_ERR_T_USAGE` error."]
-    #[doc = " * Safe to call from inside s2n_async_pkey_fn"]
-    #[doc = " * Safe to call from a different thread, as long as no other thread is operating on `op`."]
-    #[doc = ""]
-    #[doc = " @param op An opaque object representing the private key operation"]
-    #[doc = " @param s2n_cert_private_key The private key used for the operation. It can be extracted from"]
-    #[doc = " `conn` through the `s2n_connection_get_selected_cert` and `s2n_cert_chain_and_key_get_key` calls"]
     pub fn s2n_async_pkey_op_perform(
         op: *mut s2n_async_pkey_op,
         key: *mut s2n_cert_private_key,
     ) -> ::libc::c_int;
 }
 extern "C" {
-    #[doc = " Finalizes a private key operation and unblocks the connection."]
-    #[doc = ""]
-    #[doc = " # Safety"]
-    #[doc = " * `conn` must match the connection that originally triggered the callback."]
-    #[doc = " * Must be called after the operation is performed."]
-    #[doc = " * Can only be called once. Any subsequent calls will produce a `S2N_ERR_T_USAGE` error."]
-    #[doc = " * Safe to call from inside s2n_async_pkey_fn"]
-    #[doc = " * Safe to call from a different thread, as long as no other thread is operating on `op`."]
-    #[doc = ""]
-    #[doc = " @param op An opaque object representing the private key operation"]
-    #[doc = " @param conn The connection associated with the operation that should be unblocked"]
     pub fn s2n_async_pkey_op_apply(
         op: *mut s2n_async_pkey_op,
         conn: *mut s2n_connection,
     ) -> ::libc::c_int;
 }
 extern "C" {
-    #[doc = " Frees the opaque structure representing a private key operation."]
-    #[doc = ""]
-    #[doc = " # Safety"]
-    #[doc = " * MUST be called for every operation passed to s2n_async_pkey_fn"]
-    #[doc = " * Safe to call before or after the connection that created the operation is freed"]
-    #[doc = ""]
-    #[doc = " @param op An opaque object representing the private key operation"]
     pub fn s2n_async_pkey_op_free(op: *mut s2n_async_pkey_op) -> ::libc::c_int;
 }
 extern "C" {
-    #[doc = " Configures whether or not s2n-tls will perform potentially expensive validation of"]
-    #[doc = " the results of a private key operation."]
-    #[doc = ""]
-    #[doc = " @param config Config to set the validation mode for"]
-    #[doc = " @param mode What level of validation to perform"]
     pub fn s2n_config_set_async_pkey_validation_mode(
         config: *mut s2n_config,
         mode: s2n_async_pkey_validation_mode,
     ) -> ::libc::c_int;
 }
 extern "C" {
-    #[doc = " Returns the type of the private key operation."]
-    #[doc = ""]
-    #[doc = " @param op An opaque object representing the private key operation"]
-    #[doc = " @param type A pointer to be set to the type"]
     pub fn s2n_async_pkey_op_get_op_type(
         op: *mut s2n_async_pkey_op,
         type_: *mut s2n_async_pkey_op_type,
     ) -> ::libc::c_int;
 }
 extern "C" {
-    #[doc = " Returns the size of the input to the private key operation."]
-    #[doc = ""]
-    #[doc = " @param op An opaque object representing the private key operation"]
-    #[doc = " @param data_len A pointer to be set to the size"]
     pub fn s2n_async_pkey_op_get_input_size(
         op: *mut s2n_async_pkey_op,
         data_len: *mut u32,
     ) -> ::libc::c_int;
 }
 extern "C" {
-    #[doc = " Returns the input to the private key operation."]
-    #[doc = ""]
-    #[doc = " When signing, the input is the digest to sign."]
-    #[doc = " When decrypting, the input is the data to decrypt."]
-    #[doc = ""]
-    #[doc = " # Safety"]
-    #[doc = " * `data` must be sufficiently large to contain the input."]
-    #[doc = "   `s2n_async_pkey_op_get_input_size` can be called to determine how much memory is required."]
-    #[doc = " * s2n-tls does not take ownership of `data`."]
-    #[doc = "   The application still owns the memory and must free it if necessary."]
-    #[doc = ""]
-    #[doc = " @param op An opaque object representing the private key operation"]
-    #[doc = " @param data A pointer to a buffer to copy the input into"]
-    #[doc = " @param data_len The maximum size of the `data` buffer"]
     pub fn s2n_async_pkey_op_get_input(
         op: *mut s2n_async_pkey_op,
         data: *mut u8,
@@ -1716,15 +1632,6 @@ extern "C" {
     ) -> ::libc::c_int;
 }
 extern "C" {
-    #[doc = " Sets the output of the private key operation."]
-    #[doc = ""]
-    #[doc = " # Safety"]
-    #[doc = " * s2n-tls does not take ownership of `data`."]
-    #[doc = "   The application still owns the memory and must free it if necessary."]
-    #[doc = ""]
-    #[doc = " @param op An opaque object representing the private key operation"]
-    #[doc = " @param data A pointer to a buffer containing the output"]
-    #[doc = " @param data_len The size of the `data` buffer"]
     pub fn s2n_async_pkey_op_set_output(
         op: *mut s2n_async_pkey_op,
         data: *const u8,
@@ -2097,7 +2004,4 @@ extern "C" {
         cb_func: s2n_secret_cb,
         ctx: *mut ::libc::c_void,
     ) -> ::libc::c_int;
-}
-extern "C" {
-    pub fn s2n_error_get_alert(error: ::libc::c_int, alert: *mut u8) -> ::libc::c_int;
 }
