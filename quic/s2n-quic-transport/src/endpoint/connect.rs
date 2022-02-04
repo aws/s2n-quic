@@ -24,18 +24,18 @@ pub(crate) type ConnectionSender = oneshot::Sender<Result<Connection, connection
 #[derive(Clone, Debug)]
 pub struct Connect {
     pub(crate) remote_address: RemoteAddress,
-    pub(crate) hostname: Option<ServerName>,
+    pub(crate) server_name: Option<ServerName>,
 }
 
 impl fmt::Display for Connect {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if f.alternate() {
-            if let Some(hostname) = self.hostname.as_deref() {
+            if let Some(hostname) = self.server_name.as_deref() {
                 write!(f, "{} at {}", hostname, &*self.remote_address)
             } else {
                 write!(f, "{}", &*self.remote_address)
             }
-        } else if let Some(hostname) = self.hostname.as_deref() {
+        } else if let Some(hostname) = self.server_name.as_deref() {
             write!(f, "{}", hostname)
         } else {
             write!(f, "{}", &*self.remote_address)
@@ -48,15 +48,15 @@ impl Connect {
     pub fn new<Addr: Into<SocketAddress>>(addr: Addr) -> Self {
         Self {
             remote_address: addr.into().into(),
-            hostname: None,
+            server_name: None,
         }
     }
 
-    /// Specifies the hostname to use for the connection
+    /// Specifies the server name to use for the connection
     #[must_use]
-    pub fn with_hostname<Hostname: Into<ServerName>>(self, hostname: Hostname) -> Self {
+    pub fn with_server_name<Name: Into<ServerName>>(self, server_name: Name) -> Self {
         Self {
-            hostname: Some(hostname.into()),
+            server_name: Some(server_name.into()),
             ..self
         }
     }

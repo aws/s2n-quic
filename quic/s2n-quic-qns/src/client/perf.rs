@@ -20,7 +20,7 @@ pub struct Perf {
     port: u16,
 
     #[structopt(short, long)]
-    hostname: Option<String>,
+    server_name: Option<String>,
 
     #[structopt(long)]
     ca: Option<PathBuf>,
@@ -52,11 +52,11 @@ impl Perf {
         // TODO support a richer connection strategy
         for _ in 0..self.connections.unwrap_or(1) {
             let mut connect = client::Connect::new((self.ip, self.port));
-            if let Some(hostname) = self.hostname.as_deref() {
-                connect = connect.with_hostname(hostname);
+            if let Some(server_name) = self.server_name.as_deref() {
+                connect = connect.with_server_name(server_name);
             } else {
-                // TODO allow skipping setting the hostname
-                connect = connect.with_hostname("localhost");
+                // TODO allow skipping setting the server_name
+                connect = connect.with_server_name("localhost");
             }
             let connection = client.connect(connect).await?;
 
