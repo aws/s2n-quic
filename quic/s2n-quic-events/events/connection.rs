@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #[event("transport:alpn_information")]
+#[deprecated(note = "use `on_application_protocol_information` instead")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.2
 //# QUIC implementations each have their own list of application level
 //# protocols and versions thereof they support.
@@ -10,10 +11,26 @@ struct AlpnInformation<'a> {
     chosen_alpn: &'a [u8],
 }
 
+#[event("transport:application_protocol_information")]
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.2
+//# QUIC implementations each have their own list of application level
+//# protocols and versions thereof they support.
+/// Application level protocol
+struct ApplicationProtocolInformation<'a> {
+    chosen_application_protocol: &'a [u8],
+}
+
 #[event("transport:sni_information")]
+#[deprecated(note = "use `on_server_name_information` instead")]
 /// Server Name Indication
 struct SniInformation<'a> {
     chosen_sni: &'a str,
+}
+
+#[event("transport:server_name_information")]
+/// Server Name was negotiated for the connection
+struct ServerNameInformation<'a> {
+    chosen_server_name: &'a str,
 }
 
 #[event("transport:packet_sent")]

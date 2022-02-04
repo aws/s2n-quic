@@ -19,7 +19,7 @@ use bytes::Bytes;
 use core::{convert::TryInto, fmt, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
-    application::Sni,
+    application::ServerName,
     crypto::{application::KeySet, tls, CryptoSuite},
     event::{self, ConnectionPublisher as _, IntoEvent},
     frame::{
@@ -67,8 +67,8 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     //# Unless
     //# another mechanism is used for agreeing on an application protocol,
     //# endpoints MUST use ALPN for this purpose.
-    pub alpn: Bytes,
-    pub sni: Option<Sni>,
+    pub application_protocol: Bytes,
+    pub server_name: Option<ServerName>,
     ping: flag::Ping,
     keep_alive: KeepAlive,
     processed_packet_numbers: SlidingWindow,
@@ -79,11 +79,11 @@ impl<Config: endpoint::Config> fmt::Debug for ApplicationSpace<Config> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ApplicationSpace")
             .field("ack_manager", &self.ack_manager)
-            .field("alpn", &self.alpn)
+            .field("application_protocol", &self.application_protocol)
             .field("ping", &self.ping)
             .field("processed_packet_numbers", &self.processed_packet_numbers)
             .field("recovery_manager", &self.recovery_manager)
-            .field("sni", &self.sni)
+            .field("server_name", &self.server_name)
             .field("stream_manager", &self.stream_manager)
             .field("tx_packet_numbers", &self.tx_packet_numbers)
             .finish()
@@ -99,8 +99,8 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         stream_manager: AbstractStreamManager<Config::Stream>,
         ack_manager: AckManager,
         keep_alive: KeepAlive,
-        sni: Option<Sni>,
-        alpn: Bytes,
+        server_name: Option<ServerName>,
+        application_protocol: Bytes,
     ) -> Self {
         let key_set = KeySet::new(key);
 
@@ -111,8 +111,8 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             stream_manager,
             key_set,
             header_key,
-            sni,
-            alpn,
+            server_name,
+            application_protocol,
             ping: flag::Ping::default(),
             keep_alive,
             processed_packet_numbers: SlidingWindow::default(),

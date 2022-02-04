@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    application::Sni,
+    application::ServerName,
     crypto::{
         header_crypto::{LONG_HEADER_MASK, SHORT_HEADER_MASK},
         tls, CryptoSuite, HeaderKey, Key,
@@ -50,7 +50,7 @@ impl super::Endpoint for Endpoint {
     fn new_client_session<Params: EncoderValue>(
         &mut self,
         _transport_parameters: &Params,
-        _sni: Sni,
+        _server_name: ServerName,
     ) -> Self::Session {
         Session
     }
@@ -87,14 +87,18 @@ pub struct Pair<S: tls::Session, C: tls::Session> {
     pub server: (S, Context<S>),
     pub client: (C, Context<C>),
     pub iterations: usize,
-    pub sni: Sni,
+    pub server_name: ServerName,
 }
 
 const TEST_SERVER_TRANSPORT_PARAMS: &[u8] = &[1, 2, 3];
 const TEST_CLIENT_TRANSPORT_PARAMS: &[u8] = &[3, 2, 1];
 
 impl<S: tls::Session, C: tls::Session> Pair<S, C> {
-    pub fn new<SE, CE>(server_endpoint: &mut SE, client_endpoint: &mut CE, sni: Sni) -> Self
+    pub fn new<SE, CE>(
+        server_endpoint: &mut SE,
+        client_endpoint: &mut CE,
+        server_name: ServerName,
+    ) -> Self
     where
         SE: tls::Endpoint<Session = S>,
         CE: tls::Endpoint<Session = C>,
@@ -103,17 +107,18 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
 
         let server = server_endpoint.new_server_session(&TEST_SERVER_TRANSPORT_PARAMS);
         let mut server_context = Context::default();
-        server_context.initial.crypto = Some(S::InitialKey::new_server(sni.as_bytes()));
+        server_context.initial.crypto = Some(S::InitialKey::new_server(server_name.as_bytes()));
 
-        let client = client_endpoint.new_client_session(&TEST_CLIENT_TRANSPORT_PARAMS, sni.clone());
+        let client =
+            client_endpoint.new_client_session(&TEST_CLIENT_TRANSPORT_PARAMS, server_name.clone());
         let mut client_context = Context::default();
-        client_context.initial.crypto = Some(C::InitialKey::new_client(sni.as_bytes()));
+        client_context.initial.crypto = Some(C::InitialKey::new_client(server_name.as_bytes()));
 
         Self {
             server: (server, server_context),
             client: (client, client_context),
             iterations: 0,
-            sni,
+            server_name,
         }
     }
 
@@ -207,10 +212,14 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
             "server did not receive the client transport parameters"
         );
         // TODO fix sni bug in s2n-quic-rustls
-        // assert_eq!(self.client.1.sni.as_ref().expect("missing SNI on client"), &self.sni[..]);
+        // assert_eq!(self.client.1.server_name.as_ref().expect("missing SNI on client"), &self.server_name[..]);
         assert_eq!(
-            self.server.1.sni.as_ref().expect("missing SNI on server"),
-            &self.sni[..]
+            self.server
+                .1
+                .server_name
+                .as_ref()
+                .expect("missing ServerName on server"),
+            &self.server_name[..]
         );
 
         // TODO check 0-rtt keys
@@ -224,8 +233,8 @@ pub struct Context<C: CryptoSuite> {
     pub application: Space<C::OneRttKey, C::OneRttHeaderKey>,
     pub zero_rtt_crypto: Option<(C::ZeroRttKey, C::ZeroRttHeaderKey)>,
     pub handshake_complete: bool,
-    pub sni: Option<Bytes>,
-    pub alpn: Option<Bytes>,
+    pub server_name: Option<Bytes>,
+    pub application_protocol: Option<Bytes>,
     pub transport_parameters: Option<Bytes>,
 }
 
@@ -237,8 +246,8 @@ impl<C: CryptoSuite> Default for Context<C> {
             application: Space::default(),
             zero_rtt_crypto: None,
             handshake_complete: false,
-            sni: None,
-            alpn: None,
+            server_name: None,
+            application_protocol: None,
             transport_parameters: None,
         }
     }
@@ -252,8 +261,8 @@ impl<C: CryptoSuite> fmt::Debug for Context<C> {
             .field("application", &self.application)
             .field("zero_rtt_crypto", &self.zero_rtt_crypto.is_some())
             .field("handshake_complete", &self.handshake_complete)
-            .field("sni", &self.sni)
-            .field("alpn", &self.alpn)
+            .field("sni", &self.server_name)
+            .field("application_protocol", &self.application_protocol)
             .field("transport_parameters", &self.transport_parameters)
             .finish()
     }
@@ -278,8 +287,8 @@ impl<C: CryptoSuite> Context<C> {
         //    "sni is not consistent between endpoints"
         //);
         assert_eq!(
-            self.alpn, other.alpn,
-            "alpn is not consistent between endpoints"
+            self.application_protocol, other.application_protocol,
+            "application_protocol is not consistent between endpoints"
         );
 
         assert_eq!(
@@ -301,13 +310,13 @@ impl<C: CryptoSuite> Context<C> {
             "missing application crypto"
         );
         assert!(self.handshake_complete);
-        assert!(self.alpn.is_some());
+        assert!(self.application_protocol.is_some());
         assert!(self.transport_parameters.is_some());
     }
 
     fn on_application_params(&mut self, params: tls::ApplicationParameters) {
-        self.alpn = Some(Bytes::copy_from_slice(params.alpn_protocol));
-        self.sni = params.sni.map(|sni| sni.into_bytes());
+        self.application_protocol = Some(Bytes::copy_from_slice(params.application_protocol));
+        self.server_name = params.server_name.map(|sni| sni.into_bytes());
         self.transport_parameters = Some(Bytes::copy_from_slice(params.transport_parameters));
     }
 

@@ -147,8 +147,10 @@ macro_rules! impl_handle_api {
         /// // TODO
         /// ```
         #[inline]
-        pub fn sni(&self) -> $crate::connection::Result<Option<$crate::application::Sni>> {
-            self.0.sni()
+        pub fn server_name(
+            &self,
+        ) -> $crate::connection::Result<Option<$crate::application::ServerName>> {
+            self.0.server_name()
         }
 
         /// TODO
@@ -159,8 +161,34 @@ macro_rules! impl_handle_api {
         /// // TODO
         /// ```
         #[inline]
+        #[deprecated(note = "use `server_name` instead")]
+        pub fn sni(&self) -> $crate::connection::Result<Option<$crate::application::ServerName>> {
+            self.server_name()
+        }
+
+        /// TODO
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// // TODO
+        /// ```
+        #[inline]
+        pub fn application_protocol(&self) -> $crate::connection::Result<::bytes::Bytes> {
+            self.0.application_protocol()
+        }
+
+        /// TODO
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// // TODO
+        /// ```
+        #[inline]
+        #[deprecated(note = "use `application_protocol` instead")]
         pub fn alpn(&self) -> $crate::connection::Result<::bytes::Bytes> {
-            self.0.alpn()
+            self.application_protocol()
         }
 
         /// Returns the identifier for the [`crate::Connection`]

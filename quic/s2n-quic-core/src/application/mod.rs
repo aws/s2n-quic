@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod error;
-mod sni;
+mod server_name;
 
 pub use error::Error;
-pub use sni::Sni;
+pub use server_name::ServerName;

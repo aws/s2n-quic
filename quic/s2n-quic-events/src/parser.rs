@@ -72,6 +72,8 @@ impl Struct {
 
         let derive_attrs = &attrs.derive_attrs;
         let extra_attrs = &attrs.extra;
+        let deprecated = &attrs.deprecated;
+        let allow_deprecated = &attrs.allow_deprecated;
 
         let destructure_fields: Vec<_> = fields.iter().map(Field::destructure).collect();
         let builder_fields = fields.iter().map(Field::builder);
@@ -85,6 +87,7 @@ impl Struct {
                 #(#builder_fields)*
             }
 
+            #allow_deprecated
             impl #generics IntoEvent<api::#ident #generics> for #ident #generics {
                 #[inline]
                 fn into_event(self) -> api::#ident #generics {
@@ -110,6 +113,7 @@ impl Struct {
         output.api.extend(quote!(
             #derive_attrs
             #extra_attrs
+            #deprecated
             pub struct #ident #generics {
                 #(#api_fields)*
             }
@@ -117,6 +121,7 @@ impl Struct {
 
         if let Some(event_name) = attrs.event_name.as_ref() {
             output.api.extend(quote!(
+                #allow_deprecated
                 impl #generics Event for #ident #generics {
                     const NAME: &'static str = #event_name;
                 }
@@ -147,6 +152,8 @@ impl Struct {
                     output.subscriber.extend(quote!(
                         #[doc = #subscriber_doc]
                         #[inline]
+                        #deprecated
+                        #allow_deprecated
                         fn #function(&mut self, meta: &EndpointMeta, event: &#ident) {
                             let _ = meta;
                             let _ = event;
@@ -155,6 +162,7 @@ impl Struct {
 
                     output.tuple_subscriber.extend(quote!(
                         #[inline]
+                        #allow_deprecated
                         fn #function(&mut self, meta: &EndpointMeta, event: &#ident) {
                             (self.0).#function(meta, event);
                             (self.1).#function(meta, event);
@@ -163,6 +171,7 @@ impl Struct {
 
                     output.tracing_subscriber.extend(quote!(
                         #[inline]
+                        #allow_deprecated
                         fn #function(&mut self, meta: &api::EndpointMeta, event: &api::#ident) {
                             let parent = match meta.endpoint_type {
                                 api::EndpointType::Client {} => {
@@ -184,6 +193,7 @@ impl Struct {
 
                     output.endpoint_publisher_subscriber.extend(quote!(
                         #[inline]
+                        #allow_deprecated
                         fn #function(&mut self, event: builder::#ident) {
                             let event = event.into_event();
                             self.subscriber.#function(&self.meta, &event);
@@ -192,6 +202,7 @@ impl Struct {
                     ));
 
                     output.subscriber_testing.extend(quote!(
+                        #allow_deprecated
                         fn #function(&mut self, meta: &api::EndpointMeta, event: &api::#ident) {
                             self.#counter += 1;
                             self.output.push(format!("{:?} {:?}", meta, event));
@@ -199,6 +210,7 @@ impl Struct {
                     ));
 
                     output.endpoint_publisher_testing.extend(quote!(
+                        #allow_deprecated
                         fn #function(&mut self, event: builder::#ident) {
                             self.#counter += 1;
                             let event = event.into_event();
@@ -210,6 +222,8 @@ impl Struct {
                     output.subscriber.extend(quote!(
                         #[doc = #subscriber_doc]
                         #[inline]
+                        #deprecated
+                        #allow_deprecated
                         fn #function(&mut self, context: &mut Self::ConnectionContext, meta: &ConnectionMeta, event: &#ident) {
                             let _ = context;
                             let _ = meta;
@@ -219,6 +233,7 @@ impl Struct {
 
                     output.tuple_subscriber.extend(quote!(
                         #[inline]
+                        #allow_deprecated
                         fn #function(&mut self, context: &mut Self::ConnectionContext, meta: &ConnectionMeta, event: &#ident) {
                             (self.0).#function(&mut context.0, meta, event);
                             (self.1).#function(&mut context.1, meta, event);
@@ -227,6 +242,7 @@ impl Struct {
 
                     output.tracing_subscriber.extend(quote!(
                         #[inline]
+                        #allow_deprecated
                         fn #function(&mut self, context: &mut Self::ConnectionContext, _meta: &api::ConnectionMeta, event: &api::#ident) {
                             let id = context.id();
                             let api::#ident { #(#destructure_fields),* } = event;
@@ -241,6 +257,7 @@ impl Struct {
 
                     output.connection_publisher_subscriber.extend(quote!(
                         #[inline]
+                        #allow_deprecated
                         fn #function(&mut self, event: builder::#ident) {
                             let event = event.into_event();
                             self.subscriber.#function(self.context, &self.meta, &event);
@@ -250,6 +267,7 @@ impl Struct {
                     ));
 
                     output.subscriber_testing.extend(quote!(
+                        #allow_deprecated
                         fn #function(&mut self, _context: &mut Self::ConnectionContext, meta: &api::ConnectionMeta, event: &api::#ident) {
                             self.#counter += 1;
                             if self.location.is_some() {
@@ -259,6 +277,7 @@ impl Struct {
                     ));
 
                     output.connection_publisher_testing.extend(quote!(
+                        #allow_deprecated
                         fn #function(&mut self, event: builder::#ident) {
                             self.#counter += 1;
                             let event = event.into_event();
@@ -308,6 +327,8 @@ impl Enum {
 
         let derive_attrs = &attrs.derive_attrs;
         let extra_attrs = &attrs.extra;
+        let deprecated = &attrs.deprecated;
+        let allow_deprecated = &attrs.allow_deprecated;
 
         let builder_fields = variants.iter().map(Variant::builder);
         let builder_field_impls = variants.iter().map(Variant::builder_impl);
@@ -320,6 +341,7 @@ impl Enum {
                 #(#builder_fields)*
             }
 
+            #allow_deprecated
             impl #generics IntoEvent<api::#ident #generics> for #ident #generics {
                 #[inline]
                 fn into_event(self) -> api::#ident #generics {
@@ -342,6 +364,7 @@ impl Enum {
         output.api.extend(quote!(
             #derive_attrs
             #extra_attrs
+            #deprecated
             pub enum #ident #generics {
                 #(#api_fields)*
             }
@@ -352,6 +375,8 @@ impl Enum {
 #[derive(Debug)]
 struct ContainerAttrs {
     event_name: Option<syn::LitStr>,
+    deprecated: TokenStream,
+    allow_deprecated: TokenStream,
     subject: Subject,
     exhaustive: bool,
     derive: bool,
@@ -364,6 +389,8 @@ impl ContainerAttrs {
         let mut v = Self {
             // events must include a name to be considered an event
             event_name: None,
+            deprecated: TokenStream::default(),
+            allow_deprecated: TokenStream::default(),
             // most event subjects relate to actual connections so make that the default
             subject: Subject::Connection,
             // default to #[non_exhaustive]
@@ -376,6 +403,12 @@ impl ContainerAttrs {
         for attr in attrs {
             if attr.path.is_ident("event") {
                 v.event_name = Some(attr.parse_args().unwrap());
+            } else if attr.path.is_ident("deprecated") {
+                attr.to_tokens(&mut v.deprecated);
+
+                if v.allow_deprecated.is_empty() {
+                    v.allow_deprecated = quote!(#[allow(deprecated)]);
+                }
             } else if attr.path.is_ident("subject") {
                 v.subject = attr.parse_args().unwrap();
             } else if attr.path.is_ident("exhaustive") {
