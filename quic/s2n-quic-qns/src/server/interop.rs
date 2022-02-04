@@ -3,13 +3,17 @@
 
 use crate::{
     file::File,
+    h3,
     interop::{self, Testcase},
     tls,
     tls::TlsProviders,
     Result,
 };
+use bytes::Bytes;
 use core::convert::TryInto;
 use futures::stream::StreamExt;
+use http::StatusCode;
+use hyperium_h3::{quic::BidiStream, server::RequestStream};
 use s2n_quic::{
     provider::{
         endpoint_limits,
@@ -72,10 +76,84 @@ impl Interop {
                 connection.local_addr().unwrap_or(unspecified)
             );
 
-            // TODO check the ALPN of the connection to determine handler
-
             // spawn a task per connection
-            spawn(handle_h09_connection(connection, www_dir.clone()));
+            match &(connection.alpn()?)[..] {
+                b"h3" => spawn(handle_h3_connection(connection, www_dir.clone())),
+                b"hq-interop" => spawn(handle_h09_connection(connection, www_dir.clone())),
+                _ => spawn(async move {
+                    eprintln!("Unsupported alpn: {:?}", connection.alpn());
+                }),
+            };
+        }
+
+        async fn handle_h3_connection(connection: Connection, www_dir: Arc<Path>) {
+            let mut conn = hyperium_h3::server::Connection::new(h3::Connection::new(connection))
+                .await
+                .unwrap();
+
+            while let Some((req, stream)) = conn.accept().await.unwrap() {
+                let www_dir = www_dir.clone();
+                tokio::spawn(async {
+                    if let Err(err) = handle_h3_stream(req, stream, www_dir).await {
+                        eprintln!("Stream errror: {:?}", err)
+                    }
+                });
+            }
+        }
+
+        async fn handle_h3_stream<T>(
+            req: http::Request<()>,
+            mut stream: RequestStream<T, Bytes>,
+            www_dir: Arc<Path>,
+        ) -> Result<()>
+        where
+            T: BidiStream<Bytes>,
+        {
+            let mut abs_path = www_dir.to_path_buf();
+            abs_path.extend(
+                req.uri()
+                    .path()
+                    .split('/')
+                    .filter(|segment| !segment.starts_with('.'))
+                    .map(std::path::Path::new),
+            );
+            let mut file = File::open(&abs_path).await?;
+            let resp = http::Response::builder().status(StatusCode::OK).body(())?;
+
+            stream.send_response(resp).await?;
+
+            loop {
+                match timeout(Duration::from_secs(1), file.next()).await {
+                    Ok(Some(Ok(chunk))) => {
+                        let len = chunk.len();
+                        debug!(
+                            "{:?} bytes ready to send for request({:?})",
+                            len,
+                            req.uri().path()
+                        );
+                        stream.send_data(chunk).await?;
+                        debug!("{:?} bytes sent for request({:?})", len, req.uri().path());
+                    }
+                    Ok(Some(Err(err))) => {
+                        eprintln!("error opening {:?}", abs_path);
+                        stream
+                            .send_response(
+                                http::Response::builder()
+                                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                    .body(())?,
+                            )
+                            .await?;
+                        return Err(err.into());
+                    }
+                    Ok(None) => {
+                        stream.finish().await?;
+                        return Ok(());
+                    }
+                    Err(_) => {
+                        eprintln!("timeout opening {:?}", abs_path);
+                    }
+                }
+            }
         }
 
         async fn handle_h09_connection(mut connection: Connection, www_dir: Arc<Path>) {
@@ -233,8 +311,7 @@ fn is_supported_testcase(testcase: Testcase) -> bool {
         Resumption => false,
         // TODO implement 0rtt
         ZeroRtt => false,
-        // TODO integrate a H3 implementation
-        Http3 => false,
+        Http3 => true,
         Multiconnect => true,
         Ecn => true,
         ConnectionMigration => true,

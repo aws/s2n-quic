@@ -12,6 +12,7 @@ mod interop;
 mod perf;
 mod server;
 mod tls;
+mod h3;
 
 /// This message is searched in interop logs to ensure the application doesn't panic
 ///
