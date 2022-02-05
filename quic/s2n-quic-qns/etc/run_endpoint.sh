@@ -34,6 +34,11 @@ if [ "$QNS_MODE" == "interop" ]; then
     elif [ "$ROLE" == "client" ]; then
         CLIENT_PARAMS+=" --download-dir /downloads"
     fi
+
+    if [ "$TESTCASE" == "http3" ]; then
+        SERVER_PARAMS+=" --application-protocols h3"
+        CLIENT_PARAMS+=" --application-protocols h3"
+    fi
 fi
 
 if [ "$TEST_TYPE" == "MEASUREMENT" ] && [ -x "$(command -v s2n-quic-qns-release)" ]; then
