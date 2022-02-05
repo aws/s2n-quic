@@ -78,8 +78,7 @@ where
         cx: &mut task::Context<'_>,
     ) -> Poll<Result<Option<Self::RecvStream>, Self::Error>> {
         let recv = match ready!(self.recv_acceptor.poll_next_unpin(cx)) {
-            // TODO: use correct error
-            Some(x) => x.map_err(|_| s2n_quic::connection::Error::Unspecified)?,
+            Some(x) => x?,
             None => return Poll::Ready(Ok(None)),
         };
         Poll::Ready(Ok(Some(Self::RecvStream::new(recv))))

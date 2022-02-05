@@ -77,11 +77,14 @@ impl Interop {
             );
 
             // spawn a task per connection
-            match &(connection.alpn()?)[..] {
+            match &(connection.application_protocol()?)[..] {
                 b"h3" => spawn(handle_h3_connection(connection, www_dir.clone())),
                 b"hq-interop" => spawn(handle_h09_connection(connection, www_dir.clone())),
                 _ => spawn(async move {
-                    eprintln!("Unsupported alpn: {:?}", connection.alpn());
+                    eprintln!(
+                        "Unsupported application protocol: {:?}",
+                        connection.application_protocol()
+                    );
                 }),
             };
         }
@@ -91,11 +94,11 @@ impl Interop {
                 .await
                 .unwrap();
 
-            while let Some((req, stream)) = conn.accept().await.unwrap() {
+            while let Ok(Some((req, stream))) = conn.accept().await {
                 let www_dir = www_dir.clone();
                 tokio::spawn(async {
                     if let Err(err) = handle_h3_stream(req, stream, www_dir).await {
-                        eprintln!("Stream errror: {:?}", err)
+                        eprintln!("Stream error: {:?}", err)
                     }
                 });
             }
@@ -109,14 +112,7 @@ impl Interop {
         where
             T: BidiStream<Bytes>,
         {
-            let mut abs_path = www_dir.to_path_buf();
-            abs_path.extend(
-                req.uri()
-                    .path()
-                    .split('/')
-                    .filter(|segment| !segment.starts_with('.'))
-                    .map(std::path::Path::new),
-            );
+            let abs_path = Interop::abs_path(req.uri().path(), &www_dir);
             let mut file = File::open(&abs_path).await?;
             let resp = http::Response::builder().status(StatusCode::OK).body(())?;
 
@@ -125,14 +121,7 @@ impl Interop {
             loop {
                 match timeout(Duration::from_secs(1), file.next()).await {
                     Ok(Some(Ok(chunk))) => {
-                        let len = chunk.len();
-                        debug!(
-                            "{:?} bytes ready to send for request({:?})",
-                            len,
-                            req.uri().path()
-                        );
                         stream.send_data(chunk).await?;
-                        debug!("{:?} bytes sent for request({:?})", len, req.uri().path());
                     }
                     Ok(Some(Err(err))) => {
                         eprintln!("error opening {:?}", abs_path);
@@ -195,12 +184,7 @@ impl Interop {
         async fn handle_h09_stream(stream: BidirectionalStream, www_dir: Arc<Path>) -> Result<()> {
             let (rx_stream, mut tx_stream) = stream.split();
             let path = interop::read_request(rx_stream).await?;
-            let mut abs_path = www_dir.to_path_buf();
-            abs_path.extend(
-                path.split('/')
-                    .filter(|segment| !segment.starts_with('.'))
-                    .map(std::path::Path::new),
-            );
+            let abs_path = Interop::abs_path(&path, &www_dir);
             let mut file = File::open(&abs_path).await?;
             loop {
                 match timeout(Duration::from_secs(1), file.next()).await {
@@ -231,6 +215,16 @@ impl Interop {
         }
 
         Err(crate::CRASH_ERROR_MESSAGE.into())
+    }
+
+    fn abs_path(path: &str, www_dir: &Path) -> PathBuf {
+        let mut abs_path = www_dir.to_path_buf();
+        abs_path.extend(
+            path.split('/')
+                .filter(|segment| !segment.starts_with('.'))
+                .map(std::path::Path::new),
+        );
+        abs_path
     }
 
     fn server(&self) -> Result<Server> {
