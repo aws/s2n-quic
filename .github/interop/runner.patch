@@ -147,7 +147,7 @@ index c2d6d1f..844bbd5 100644
  print("\nPulling the iperf endpoint...")
  os.system("docker pull martenseemann/quic-interop-iperf-endpoint")
 diff --git a/testcases.py b/testcases.py
-index 1d81d25..7260408 100644
+index 1d81d25..99394cc 100644
 --- a/testcases.py
 +++ b/testcases.py
 @@ -90,6 +90,10 @@ class TestCase(abc.ABC):
@@ -235,19 +235,17 @@ index 1d81d25..7260408 100644
      @staticmethod
      def abbreviation():
          return "G"
-@@ -1528,9 +1508,9 @@ TESTCASES = [
+@@ -1528,8 +1508,8 @@ TESTCASES = [
      TestCaseChaCha20,
      TestCaseMultiplexing,
      TestCaseRetry,
 -    TestCaseResumption,
 -    TestCaseZeroRTT,
--    TestCaseHTTP3,
 +    # TestCaseResumption,
 +    # TestCaseZeroRTT,
-+    # TestCaseHTTP3,
+     TestCaseHTTP3,
      TestCaseBlackhole,
      TestCaseKeyUpdate,
-     TestCaseECN,
 @@ -1540,11 +1520,9 @@ TESTCASES = [
      TestCaseHandshakeCorruption,
      TestCaseTransferCorruption,
