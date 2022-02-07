@@ -203,7 +203,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
             if version != self.quic_version() {
                 self.with_event_publisher(
                     datagram.timestamp,
-                    path_id,
+                    Some(path_id),
                     subscriber,
                     |publisher, path| {
                         publisher.on_packet_dropped(event::builder::PacketDropped {
@@ -283,7 +283,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 {
                     self.with_event_publisher(
                         datagram.timestamp,
-                        path_id,
+                        Some(path_id),
                         subscriber,
                         |publisher, path| {
                             publisher.on_packet_dropped(event::builder::PacketDropped {
@@ -308,7 +308,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                     if !payload.is_empty() {
                         self.with_event_publisher(
                             datagram.timestamp,
-                            path_id,
+                            Some(path_id),
                             subscriber,
                             |publisher, path| {
                                 publisher.on_packet_dropped(event::builder::PacketDropped {
@@ -336,7 +336,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 // would be difficult to recover from an invalid packet.
                 self.with_event_publisher(
                     datagram.timestamp,
-                    path_id,
+                    Some(path_id),
                     subscriber,
                     |publisher, path| {
                         publisher.on_packet_dropped(event::builder::PacketDropped {
@@ -396,7 +396,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     fn with_event_publisher<F>(
         &mut self,
         timestamp: Timestamp,
-        path_id: path::Id,
+        path_id: Option<path::Id>,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         f: F,
     ) where
