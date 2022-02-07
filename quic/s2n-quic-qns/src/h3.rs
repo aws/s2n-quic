@@ -3,13 +3,13 @@
 use std::{
     convert::TryInto,
     fmt::{self, Display},
-    pin::Pin,
+    marker::PhantomData,
     sync::Arc,
     task::{self, Poll},
 };
 
 use bytes::{Buf, Bytes};
-use futures::{ready, AsyncWrite as _, FutureExt as _, StreamExt as _};
+use futures::ready;
 use hyperium_h3::quic::{self, Error, StreamId, WriteBuf};
 use s2n_quic::stream::{BidirectionalStream, ReceiveStream};
 use s2n_quic_core::varint::VarInt;
@@ -77,8 +77,8 @@ where
         &mut self,
         cx: &mut task::Context<'_>,
     ) -> Poll<Result<Option<Self::RecvStream>, Self::Error>> {
-        let recv = match ready!(self.recv_acceptor.poll_next_unpin(cx)) {
-            Some(x) => x?,
+        let recv = match ready!(self.recv_acceptor.poll_accept_receive_stream(cx))? {
+            Some(x) => x,
             None => return Poll::Ready(Ok(None)),
         };
         Poll::Ready(Ok(Some(Self::RecvStream::new(recv))))
@@ -88,8 +88,8 @@ where
         &mut self,
         cx: &mut task::Context<'_>,
     ) -> Poll<Result<Option<Self::BidiStream>, Self::Error>> {
-        let (recv, send) = match ready!(self.bidi_acceptor.next().poll_unpin(cx)) {
-            Some(x) => x?.split(),
+        let (recv, send) = match ready!(self.bidi_acceptor.poll_accept_bidirectional_stream(cx))? {
+            Some(x) => x.split(),
             None => return Poll::Ready(Ok(None)),
         };
         Poll::Ready(Ok(Some(Self::BidiStream {
@@ -102,10 +102,8 @@ where
         &mut self,
         cx: &mut task::Context<'_>,
     ) -> Poll<Result<Self::BidiStream, Self::Error>> {
-        self.conn
-            .poll_open_bidirectional_stream(cx)
-            .map_ok(|bidi| bidi.into())
-            .map_err(|err| err.into())
+        let stream = ready!(self.conn.poll_open_bidirectional_stream(cx))?;
+        Ok(stream.into()).into()
     }
 
     fn poll_open_send(
@@ -141,9 +139,9 @@ impl<B> quic::OpenStreams<B> for OpenStreams
 where
     B: Buf,
 {
-    type RecvStream = RecvStream;
-    type SendStream = SendStream<B>;
     type BidiStream = BidiStream<B>;
+    type SendStream = SendStream<B>;
+    type RecvStream = RecvStream;
     type Error = ConnectionError;
 
     fn poll_open_bidi(
@@ -340,7 +338,8 @@ impl Error for ReadError {
 
 pub struct SendStream<B: Buf> {
     stream: s2n_quic::stream::SendStream,
-    writing: Option<WriteBuf<B>>,
+    available_bytes: usize,
+    buf: PhantomData<B>,
 }
 
 impl<B> SendStream<B>
@@ -350,7 +349,8 @@ where
     fn new(stream: s2n_quic::stream::SendStream) -> SendStream<B> {
         Self {
             stream,
-            writing: None,
+            available_bytes: 0,
+            buf: Default::default(),
         }
     }
 }
@@ -362,33 +362,24 @@ where
     type Error = SendStreamError;
 
     fn poll_ready(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
-        if let Some(ref mut data) = self.writing {
-            while data.has_remaining() {
-                match ready!(Pin::new(&mut self.stream).poll_write(cx, data.chunk())) {
-                    Ok(cnt) => data.advance(cnt),
-                    Err(_err) => {
-                        //TODO: use correct error
-                        return Poll::Ready(Err(SendStreamError::Write(
-                            s2n_quic::stream::Error::NonWritable,
-                        )));
-                    }
-                }
-            }
-        }
-        self.writing = None;
+        self.available_bytes = ready!(self.stream.poll_send_ready(cx))?;
         Poll::Ready(Ok(()))
     }
 
     fn send_data<D: Into<WriteBuf<B>>>(&mut self, data: D) -> Result<(), Self::Error> {
-        if self.writing.is_some() {
-            return Err(Self::Error::NotReady);
+        let mut data = data.into();
+        while self.available_bytes > 0 && data.has_remaining() {
+            let len = data.chunk().len();
+            let chunk = data.copy_to_bytes(len);
+            self.stream.send_data(chunk)?;
+            self.available_bytes = self.available_bytes.saturating_sub(len);
         }
-        self.writing = Some(data.into());
         Ok(())
     }
 
-    fn poll_finish(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.stream.poll_close(cx).map_err(|error| error.into())
+    fn poll_finish(&mut self, _cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.stream.finish()?;
+        Ok(()).into()
     }
 
     fn reset(&mut self, reset_code: u64) {
