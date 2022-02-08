@@ -15,15 +15,15 @@ env:
   RUST_BACKTRACE: 1
   # This kept breaking builds so we're pinning for now. We should do our best to keep
   # up with the changes, though.
-  INTEROP_RUNNER_REF: 37c7eb05402c43ad1d7daa0e1c903db80f6478b9
+  INTEROP_RUNNER_REF: a4ba14bd5ca769007fc11b37b6aaea89fdbf1d9e
   # This should be updated when updating wesleyrosenblum/quic-network-simulator
   NETWORK_SIMULATOR_REF: sha256:20abe0bed8c0e39e1d8750507b24295f7c978bdd7e05fa6f3a5afed4b76dc191
   IPERF_ENDPOINT_REF: sha256:cb50cc8019d45d9cad5faecbe46a3c21dd5e871949819a5175423755a9045106
-  WIRESHARK_VERSION: 3.4.9
+  WIRESHARK_VERSION: 3.6.1
   CDN: https://dnglbrstg7yg.cloudfront.net
   LOG_URL: logs/latest/SERVER_CLIENT/TEST/index.html
   H3_SPEC_VERSION: v0.1.8
-  QUINN_REF: 730fdaf723eef125c175fbcdba1ac3fe3324f7ce
+  QUINN_REF: d8615d9c2bae9cca78471f8875a15911fd1f443b
 
 jobs:
   env:
