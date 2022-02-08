@@ -4,7 +4,7 @@
 use crate::cipher_suite::{
     HeaderProtectionKey, HeaderProtectionKeys, OneRttKey, PacketKey, PacketKeys,
 };
-use core::fmt;
+use core::{fmt, fmt::Debug, task::Poll};
 use rustls::{
     quic::{self, QuicExt},
     Connection,
@@ -163,7 +163,10 @@ impl crypto::CryptoSuite for Session {
 }
 
 impl tls::Session for Session {
-    fn poll<C: tls::Context<Self>>(&mut self, context: &mut C) -> Result<(), transport::Error> {
+    fn poll<C: tls::Context<Self>>(
+        &mut self,
+        context: &mut C,
+    ) -> Poll<Result<(), transport::Error>> {
         // Tracks if we have attempted to receive data at least once
         let mut has_tried_receive = false;
 
@@ -181,12 +184,12 @@ impl tls::Session for Session {
                 self.try_complete_handshake(context)?;
 
                 // If there's nothing to receive then we're done for now
-                return Ok(());
+                return Poll::Ready(Ok(()));
             }
 
             self.try_complete_handshake(context)?;
             if self.emitted_handshake_complete {
-                return Ok(());
+                return Poll::Ready(Ok(()));
             }
 
             // mark that we tried to receive some data so we know next time we loop

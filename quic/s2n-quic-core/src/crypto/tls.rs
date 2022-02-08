@@ -3,7 +3,7 @@
 
 use crate::{application::ServerName, crypto::CryptoSuite, transport};
 pub use bytes::{Bytes, BytesMut};
-use core::{convert::TryFrom, fmt::Debug};
+use core::{convert::TryFrom, fmt::Debug, task::Poll};
 use s2n_codec::EncoderValue;
 use zerocopy::{AsBytes, FromBytes, Unaligned};
 
@@ -103,7 +103,7 @@ pub trait Endpoint: 'static + Sized + Send {
 }
 
 pub trait Session: CryptoSuite + Sized + Send + Debug {
-    fn poll<C: Context<Self>>(&mut self, context: &mut C) -> Result<(), transport::Error>;
+    fn poll<C: Context<Self>>(&mut self, context: &mut C) -> Poll<Result<(), transport::Error>>;
 }
 
 #[derive(Copy, Clone, Debug)]

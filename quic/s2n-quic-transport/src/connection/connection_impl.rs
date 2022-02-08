@@ -269,13 +269,16 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
     ) -> Result<(), connection::Error> {
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
         let space_manager = &mut self.space_manager;
-        space_manager.poll_crypto(
+        match space_manager.poll_crypto(
             &mut self.path_manager,
             &mut self.local_id_registry,
             &mut self.limits,
             timestamp,
             &mut publisher,
-        )?;
+        ) {
+            Poll::Ready(res) => res?,
+            Poll::Pending => return Ok(()),
+        }
 
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.1
         //#

@@ -61,7 +61,7 @@ impl CryptoSuite for Session {
 }
 
 impl tls::Session for Session {
-    fn poll<W>(&mut self, context: &mut W) -> Result<(), transport::Error>
+    fn poll<W>(&mut self, context: &mut W) -> Poll<Result<(), transport::Error>>
     where
         W: tls::Context<Self>,
     {
@@ -84,7 +84,7 @@ impl tls::Session for Session {
 
         callback.unset(&mut self.connection)?;
 
-        match result {
+        let res = match result {
             Poll::Ready(Ok(())) => {
                 // only emit handshake done once
                 if !self.handshake_complete {
@@ -99,6 +99,8 @@ impl tls::Session for Session {
                 .unwrap_or(CryptoError::HANDSHAKE_FAILURE)
                 .into()),
             Poll::Pending => Ok(()),
-        }
+        };
+
+        Poll::Ready(res)
     }
 }

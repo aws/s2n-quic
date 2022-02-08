@@ -10,7 +10,7 @@ use crate::{
     transport,
 };
 use bytes::Bytes;
-use core::fmt;
+use core::{fmt, task::Poll};
 use s2n_codec::EncoderValue;
 use std::collections::VecDeque;
 
@@ -64,7 +64,10 @@ impl super::Endpoint for Endpoint {
 pub struct Session;
 
 impl super::Session for Session {
-    fn poll<C: tls::Context<Self>>(&mut self, _context: &mut C) -> Result<(), transport::Error> {
+    fn poll<C: tls::Context<Self>>(
+        &mut self,
+        _context: &mut C,
+    ) -> Poll<Result<(), transport::Error>> {
         todo!("implement dummy handshake")
     }
 }
@@ -129,8 +132,15 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
 
     /// Continues progress of the handshake
     pub fn poll(&mut self) -> Result<(), transport::Error> {
-        self.client.0.poll(&mut self.client.1)?;
-        self.server.0.poll(&mut self.server.1)?;
+        match self.client.0.poll(&mut self.client.1) {
+            Poll::Ready(res) => res?,
+            Poll::Pending => return Ok(()),
+        }
+        match self.server.0.poll(&mut self.server.1) {
+            Poll::Ready(res) => res?,
+            Poll::Pending => return Ok(()),
+        }
+
         self.client.1.transfer(&mut self.server.1);
         self.iterations += 1;
 
