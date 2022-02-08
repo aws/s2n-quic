@@ -7,7 +7,7 @@ use crate::inet::{
 use core::fmt;
 use s2n_codec::zerocopy::U16;
 
-//= https://tools.ietf.org/rfc/rfc2373.txt#2.0
+//= https://www.rfc-editor.org/rfc/rfc2373#section-2.0
 //# IPv6 addresses are 128-bit identifiers for interfaces and sets of interfaces.
 const IPV6_LEN: usize = 128 / 8;
 
@@ -46,7 +46,7 @@ impl IpV6Address {
             [0, 0, 0, 0, 0, 0, 0, 0] => IpAddress::Ipv6(self),
             [0, 0, 0, 0, 0, 0, 0, 1] => IpAddress::Ipv6(self),
 
-            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.5.1
+            //= https://www.rfc-editor.org/rfc/rfc4291#section-2.5.5.1
             //# The format of the "IPv4-Compatible IPv6 address" is as
             //# follows:
             //#
@@ -55,7 +55,7 @@ impl IpV6Address {
             //# |0000..............................0000|0000|    IPv4 address     |
             //# +--------------------------------------+----+---------------------+
 
-            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.5.2
+            //= https://www.rfc-editor.org/rfc/rfc4291#section-2.5.5.2
             //# The format of the "IPv4-mapped IPv6
             //# address" is as follows:
             //#
@@ -64,7 +64,7 @@ impl IpV6Address {
             //# |0000..............................0000|FFFF|    IPv4 address     |
             //# +--------------------------------------+----+---------------------+
 
-            //= https://www.rfc-editor.org/rfc/rfc6052.txt#2.1
+            //= https://www.rfc-editor.org/rfc/rfc6052#section-2.1
             //# This document reserves a "Well-Known Prefix" for use in an
             //# algorithmic mapping.  The value of this IPv6 prefix is:
             //#
@@ -97,6 +97,8 @@ impl IpV6Address {
     /// assert_eq!(IpV6Address::from([0xfc02, 0, 0, 0, 0, 0, 0, 0]).unicast_scope(), Some(Private));
     /// // documentation
     /// assert_eq!(IpV6Address::from([0x2001, 0xdb8, 0, 0, 0, 0, 0, 0]).unicast_scope(), None);
+    /// // benchmarking
+    /// assert_eq!(IpV6Address::from([0x2001, 0x0200, 0, 0, 0, 0, 0, 0]).unicast_scope(), None);
     /// // IPv4-mapped address
     /// assert_eq!(IpV4Address::from([92, 88, 99, 123]).to_ipv6_mapped().unicast_scope(), Some(Global));
     /// ```
@@ -111,24 +113,87 @@ impl IpV6Address {
 
         // https://www.iana.org/assignments/ipv6-address-space/ipv6-address-space.xhtml
         match self.segments() {
-            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.2
+            //= https://www.rfc-editor.org/rfc/rfc4291#section-2.5.2
             //# The address 0:0:0:0:0:0:0:0 is called the unspecified address.
             [0, 0, 0, 0, 0, 0, 0, 0] => None,
 
-            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.3
+            //= https://www.rfc-editor.org/rfc/rfc4291#section-2.5.3
             //# The unicast address 0:0:0:0:0:0:0:1 is called the loopback address.
             [0, 0, 0, 0, 0, 0, 0, 1] => Some(Loopback),
 
-            //= https://www.rfc-editor.org/rfc/rfc3849.txt#4
+            //= https://www.rfc-editor.org/rfc/rfc6666.html#section-4
+            //# Per this document, IANA has recorded the allocation of the IPv6
+            //# address prefix 0100::/64 as a Discard-Only Prefix in the "Internet
+            //# Protocol Version 6 Address Space" and added the prefix to the "IANA
+            //# IPv6 Special Purpose Address Registry" [IANA-IPV6REG].
+            [0x0100, 0, 0, 0, ..] => None,
+
+            //= https://www.rfc-editor.org/rfc/rfc7723.html#section-4.2
+            //# +----------------------+-------------------------------------------+
+            //# | Attribute            | Value                                     |
+            //# +----------------------+-------------------------------------------+
+            //# | Address Block        | 2001:1::1/128                             |
+            //# | Name                 | Port Control Protocol Anycast             |
+            //# | RFC                  | RFC 7723 (this document)                  |
+            //# | Allocation Date      | October 2015                              |
+            //# | Termination Date     | N/A                                       |
+            //# | Source               | True                                      |
+            //# | Destination          | True                                      |
+            //# | Forwardable          | True                                      |
+            //# | Global               | True                                      |
+            //# | Reserved-by-Protocol | False                                     |
+            //# +----------------------+-------------------------------------------+
+            [0x2001, 0x1, 0, 0, 0, 0, 0, 0x1] => Some(Global),
+
+            //= https://www.rfc-editor.org/rfc/rfc8155.html#section-8.2
+            //# +----------------------+-------------------------------------------+
+            //# | Attribute            | Value                                     |
+            //# +----------------------+-------------------------------------------+
+            //# | Address Block        | 2001:1::2/128                             |
+            //# | Name                 | Traversal Using Relays around NAT Anycast |
+            //# | RFC                  | RFC 8155                                  |
+            //# | Allocation Date      | 2017-02                                   |
+            //# | Termination Date     | N/A                                       |
+            //# | Source               | True                                      |
+            //# | Destination          | True                                      |
+            //# | Forwardable          | True                                      |
+            //# | Global               | True                                      |
+            //# | Reserved-by-Protocol | False                                     |
+            //# +----------------------+-------------------------------------------+
+            [0x2001, 0x1, 0, 0, 0, 0, 0, 0x2] => Some(Global),
+
+            //= https://www.rfc-editor.org/rfc/rfc6890#section-2.2.3
+            //# +----------------------+---------------------------+
+            //# | Attribute            | Value                     |
+            //# +----------------------+---------------------------+
+            //# | Address Block        | 2001::/23                 |
+            //# | Name                 | IETF Protocol Assignments |
+            //# | RFC                  | [RFC2928]                 |
+            //# | Allocation Date      | September 2000            |
+            //# | Termination Date     | N/A                       |
+            //# | Source               | False[1]                  |
+            //# | Destination          | False[1]                  |
+            //# | Forwardable          | False[1]                  |
+            //# | Global               | False[1]                  |
+            //# | Reserved-by-Protocol | False                     |
+            //# +----------------------+---------------------------+
+            [0x2001, 0x0..=0x01ff, ..] => None,
+
+            //= https://www.rfc-editor.org/rfc/rfc5180#section-8
+            //# The IANA has allocated 2001:0200::/48 for IPv6 benchmarking, which is
+            //# a 48-bit prefix from the RFC 4773 pool.
+            [0x2001, 0x0200, 0, ..] => None,
+
+            //= https://www.rfc-editor.org/rfc/rfc3849#section-4
             //# IANA is to record the allocation of the IPv6 global unicast address
             //# prefix  2001:DB8::/32 as a documentation-only prefix  in the IPv6
             //# address registry.
             [0x2001, 0xdb8, ..] => None,
 
-            //= https://www.rfc-editor.org/rfc/rfc4193.txt#8
+            //= https://www.rfc-editor.org/rfc/rfc4193#section-8
             //# The IANA has assigned the FC00::/7 prefix to "Unique Local Unicast".
             [0xfc00..=0xfdff, ..] => {
-                //= https://www.rfc-editor.org/rfc/rfc4193.txt#1
+                //= https://www.rfc-editor.org/rfc/rfc4193#section-1
                 //# They are not
                 //# expected to be routable on the global Internet.  They are routable
                 //# inside of a more limited area such as a site.  They may also be
@@ -136,7 +201,7 @@ impl IpV6Address {
                 Some(Private)
             }
 
-            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.5.6
+            //= https://www.rfc-editor.org/rfc/rfc4291#section-2.5.6
             //# Link-Local addresses have the following format:
             //# |   10     |
             //# |  bits    |         54 bits         |          64 bits           |
@@ -145,7 +210,7 @@ impl IpV6Address {
             //# +----------+-------------------------+----------------------------+
             [0xfe80..=0xfebf, ..] => Some(LinkLocal),
 
-            //= https://www.rfc-editor.org/rfc/rfc4291.txt#2.7
+            //= https://www.rfc-editor.org/rfc/rfc4291#section-2.7
             //# binary 11111111 at the start of the address identifies the address
             //# as being a multicast address.
             [0xff00..=0xffff, ..] => None,
@@ -432,7 +497,14 @@ mod tests {
                     assert!(network.is_unicast_link_local());
                 }
                 None => {
-                    assert!(expected.is_multicast() || expected.is_unspecified());
+                    assert!(
+                        expected.is_multicast()
+                            || expected.is_unspecified()
+                            // Discard space
+                            || subject.segments()[0] == 0x0100
+                            // IETF Reserved
+                            || subject.segments()[0] == 0x2001
+                    );
                 }
             }
         })

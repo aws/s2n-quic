@@ -30,10 +30,13 @@ const DATA_LEN: usize = (DEFAULT_STREAM_LEN as usize) * if cfg!(miri) { 1 } else
 const DEFAULT_STREAM_LEN: u64 = if cfg!(miri) { DATA_MOD as _ } else { 1024 };
 const DATA_MOD: usize = 256; // Only the first 256 offsets of DATA are unique
 
+#[cfg(any(feature = "generator", test))]
+const GENERATOR: core::ops::RangeInclusive<u64> = 0..=DEFAULT_STREAM_LEN;
+
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
 #[cfg_attr(any(feature = "generator", test), derive(TypeGenerator))]
 pub struct Data {
-    #[cfg_attr(any(feature = "generator", test), generator(0..=DEFAULT_STREAM_LEN))]
+    #[cfg_attr(any(feature = "generator", test), generator(GENERATOR))]
     len: u64,
     #[cfg_attr(any(feature = "generator", test), generator(constant(0)))]
     offset: u64,
