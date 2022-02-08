@@ -102,6 +102,27 @@ impl Provider for (&[u8], &[u8]) {
     }
 }
 
+impl Provider for &[u8] {
+    type Server = <Default as Provider>::Server;
+    type Client = <Default as Provider>::Client;
+    type Error = Box<dyn std::error::Error>;
+
+    fn start_server(self) -> Result<Self::Server, Self::Error> {
+        let empty_cert = &[][..];
+        let server = default::Server::builder()
+            .with_certificate(empty_cert, self)?
+            .build()?;
+
+        Ok(server)
+    }
+
+    fn start_client(self) -> Result<Self::Client, Self::Error> {
+        let client = default::Client::builder().with_certificate(self)?.build()?;
+
+        Ok(client)
+    }
+}
+
 impl Provider for (&str, &str) {
     type Server = <Default as Provider>::Server;
     type Client = <Default as Provider>::Client;
@@ -120,6 +141,27 @@ impl Provider for (&str, &str) {
         let client = default::Client::builder()
             .with_certificate(self.0)?
             .build()?;
+
+        Ok(client)
+    }
+}
+
+impl Provider for &str {
+    type Server = <Default as Provider>::Server;
+    type Client = <Default as Provider>::Client;
+    type Error = Box<dyn std::error::Error>;
+
+    fn start_server(self) -> Result<Self::Server, Self::Error> {
+        let empty_cert = "";
+        let server = default::Server::builder()
+            .with_certificate(empty_cert, self)?
+            .build()?;
+
+        Ok(server)
+    }
+
+    fn start_client(self) -> Result<Self::Client, Self::Error> {
+        let client = default::Client::builder().with_certificate(self)?.build()?;
 
         Ok(client)
     }
