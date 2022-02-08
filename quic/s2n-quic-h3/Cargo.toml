@@ -10,10 +10,6 @@ publish = false
 [dependencies]
 bytes = { version = "1", default-features = false }
 futures = "0.3"
-http = "0.2"
 hyperium-h3 = { git = "https://github.com/hyperium/h3", package = "h3" } # TODO: Update once hyperium h3 is in crates.io
 s2n-quic = { path = "../s2n-quic", default-features = false }
 s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", default-features = false }
-tokio = { version = "1", features = ["full"] }
-tracing = "0.1"
-url = "2"

@@ -1,12 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{h3, Result};
+use crate::Result;
 use bytes::Buf;
 use futures::future::try_join_all;
 use http::Uri;
-use hyperium_h3::client::SendRequest;
 use s2n_quic::{client::Connect, Client};
+use s2n_quic_h3::{h3, hyperium_h3};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -54,7 +54,7 @@ pub async fn create_h3_connection<'a, R: IntoIterator<Item = &'a Url>>(
 }
 
 async fn create_h3_stream<B: Buf, T: hyperium_h3::quic::OpenStreams<B>>(
-    send_request: SendRequest<T, B>,
+    send_request: hyperium_h3::client::SendRequest<T, B>,
     request: Url,
     download_dir: Arc<Option<PathBuf>>,
 ) -> Result<()> {
@@ -73,7 +73,7 @@ async fn create_h3_stream<B: Buf, T: hyperium_h3::quic::OpenStreams<B>>(
 }
 
 async fn create_h3_stream_inner<B: Buf, T: hyperium_h3::quic::OpenStreams<B>>(
-    mut send_request: SendRequest<T, B>,
+    mut send_request: hyperium_h3::client::SendRequest<T, B>,
     request: Url,
     download_dir: Arc<Option<PathBuf>>,
 ) -> Result<()> {

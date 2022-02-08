@@ -3,13 +3,14 @@
 
 use crate::{
     file::{abs_path, File},
-    h3, Result,
+    Result,
 };
 use bytes::Bytes;
 use futures::StreamExt;
 use http::StatusCode;
 use hyperium_h3::{quic::BidiStream, server::RequestStream};
 use s2n_quic::Connection;
+use s2n_quic_h3::{h3, hyperium_h3};
 use std::{path::Path, sync::Arc, time::Duration};
 use tokio::time::timeout;
 

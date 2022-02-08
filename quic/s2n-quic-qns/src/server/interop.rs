@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    file::{abs_path, File},
     interop::{self, Testcase},
+    server::h3::handle_h3_connection,
     tls,
     tls::TlsProviders,
     Result,
@@ -18,7 +20,6 @@ use s2n_quic::{
     stream::BidirectionalStream,
     Connection, Server,
 };
-use s2n_quic_h3::file::{abs_path, File};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -74,10 +75,7 @@ impl Interop {
 
             // spawn a task per connection
             match &(connection.application_protocol()?)[..] {
-                b"h3" => spawn(s2n_quic_h3::server::interop::handle_h3_connection(
-                    connection,
-                    www_dir.clone(),
-                )),
+                b"h3" => spawn(handle_h3_connection(connection, www_dir.clone())),
                 b"hq-interop" => spawn(handle_h09_connection(connection, www_dir.clone())),
                 _ => spawn(async move {
                     eprintln!(

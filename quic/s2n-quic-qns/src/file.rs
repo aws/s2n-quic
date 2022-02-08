@@ -67,7 +67,7 @@ impl Stream for File {
     }
 }
 
-pub fn abs_path(path: &str, www_dir: &Path) -> PathBuf {
+pub(crate) fn abs_path(path: &str, www_dir: &Path) -> PathBuf {
     let mut abs_path = www_dir.to_path_buf();
     abs_path.extend(
         path.split('/')

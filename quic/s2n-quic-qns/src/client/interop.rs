@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    client::h3,
     interop::{self, Testcase},
     tls,
     tls::TlsProviders,
@@ -104,7 +105,7 @@ impl Interop {
                     .collect::<Vec<_>>();
 
                 if let Some(Testcase::Http3) = self.testcase {
-                    s2n_quic_h3::client::interop::create_h3_connection(
+                    h3::create_h3_connection(
                         client.clone(),
                         connect,
                         requests,
