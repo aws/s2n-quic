@@ -2,18 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    file::File,
-    h3,
     interop::{self, Testcase},
     tls,
     tls::TlsProviders,
     Result,
 };
-use bytes::Bytes;
 use core::convert::TryInto;
 use futures::stream::StreamExt;
-use http::StatusCode;
-use hyperium_h3::{quic::BidiStream, server::RequestStream};
 use s2n_quic::{
     provider::{
         endpoint_limits,
@@ -23,6 +18,7 @@ use s2n_quic::{
     stream::BidirectionalStream,
     Connection, Server,
 };
+use s2n_quic_h3::file::{abs_path, File};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -78,7 +74,10 @@ impl Interop {
 
             // spawn a task per connection
             match &(connection.application_protocol()?)[..] {
-                b"h3" => spawn(handle_h3_connection(connection, www_dir.clone())),
+                b"h3" => spawn(s2n_quic_h3::server::interop::handle_h3_connection(
+                    connection,
+                    www_dir.clone(),
+                )),
                 b"hq-interop" => spawn(handle_h09_connection(connection, www_dir.clone())),
                 _ => spawn(async move {
                     eprintln!(
@@ -87,62 +86,6 @@ impl Interop {
                     );
                 }),
             };
-        }
-
-        async fn handle_h3_connection(connection: Connection, www_dir: Arc<Path>) {
-            let mut conn = hyperium_h3::server::Connection::new(h3::Connection::new(connection))
-                .await
-                .unwrap();
-
-            while let Ok(Some((req, stream))) = conn.accept().await {
-                let www_dir = www_dir.clone();
-                tokio::spawn(async {
-                    if let Err(err) = handle_h3_stream(req, stream, www_dir).await {
-                        eprintln!("Stream error: {:?}", err)
-                    }
-                });
-            }
-        }
-
-        async fn handle_h3_stream<T>(
-            req: http::Request<()>,
-            mut stream: RequestStream<T, Bytes>,
-            www_dir: Arc<Path>,
-        ) -> Result<()>
-        where
-            T: BidiStream<Bytes>,
-        {
-            let abs_path = Interop::abs_path(req.uri().path(), &www_dir);
-            let mut file = File::open(&abs_path).await?;
-            let resp = http::Response::builder().status(StatusCode::OK).body(())?;
-
-            stream.send_response(resp).await?;
-
-            loop {
-                match timeout(Duration::from_secs(1), file.next()).await {
-                    Ok(Some(Ok(chunk))) => {
-                        stream.send_data(chunk).await?;
-                    }
-                    Ok(Some(Err(err))) => {
-                        eprintln!("error opening {:?}", abs_path);
-                        stream
-                            .send_response(
-                                http::Response::builder()
-                                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                                    .body(())?,
-                            )
-                            .await?;
-                        return Err(err.into());
-                    }
-                    Ok(None) => {
-                        stream.finish().await?;
-                        return Ok(());
-                    }
-                    Err(_) => {
-                        eprintln!("timeout opening {:?}", abs_path);
-                    }
-                }
-            }
         }
 
         async fn handle_h09_connection(mut connection: Connection, www_dir: Arc<Path>) {
@@ -184,7 +127,7 @@ impl Interop {
         async fn handle_h09_stream(stream: BidirectionalStream, www_dir: Arc<Path>) -> Result<()> {
             let (rx_stream, mut tx_stream) = stream.split();
             let path = interop::read_request(rx_stream).await?;
-            let abs_path = Interop::abs_path(&path, &www_dir);
+            let abs_path = abs_path(&path, &www_dir);
             let mut file = File::open(&abs_path).await?;
             loop {
                 match timeout(Duration::from_secs(1), file.next()).await {
@@ -215,16 +158,6 @@ impl Interop {
         }
 
         Err(crate::CRASH_ERROR_MESSAGE.into())
-    }
-
-    fn abs_path(path: &str, www_dir: &Path) -> PathBuf {
-        let mut abs_path = www_dir.to_path_buf();
-        abs_path.extend(
-            path.split('/')
-                .filter(|segment| !segment.starts_with('.'))
-                .map(std::path::Path::new),
-        );
-        abs_path
     }
 
     fn server(&self) -> Result<Server> {

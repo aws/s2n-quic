@@ -6,7 +6,7 @@ use bytes::{BufMut, Bytes, BytesMut};
 use core::mem::MaybeUninit;
 use futures::{ready, stream::Stream};
 use std::{
-    path::Path,
+    path::{Path, PathBuf},
     pin::Pin,
     task::{Context, Poll},
 };
@@ -65,4 +65,14 @@ impl Stream for File {
         let chunk = self.buf.split();
         Poll::Ready(Some(Ok(chunk.freeze())))
     }
+}
+
+pub fn abs_path(path: &str, www_dir: &Path) -> PathBuf {
+    let mut abs_path = www_dir.to_path_buf();
+    abs_path.extend(
+        path.split('/')
+            .filter(|segment| !segment.starts_with('.'))
+            .map(std::path::Path::new),
+    );
+    abs_path
 }
