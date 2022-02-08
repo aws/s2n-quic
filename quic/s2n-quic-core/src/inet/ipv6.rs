@@ -497,7 +497,14 @@ mod tests {
                     assert!(network.is_unicast_link_local());
                 }
                 None => {
-                    assert!(expected.is_multicast() || expected.is_unspecified());
+                    assert!(
+                        expected.is_multicast()
+                            || expected.is_unspecified()
+                            // Discard space
+                            || subject.segments()[0] == 0x0100
+                            // IETF Reserved
+                            || subject.segments()[0] == 0x2001
+                    );
                 }
             }
         })

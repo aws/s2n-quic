@@ -157,9 +157,7 @@ mod tests {
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, PartialOrd, Ord)]
 #[cfg_attr(any(feature = "generator", test), derive(TypeGenerator))]
-pub struct VarInt(
-    #[cfg_attr(any(feature = "generator", test), generator(0..=MAX_VARINT_VALUE))] u64,
-);
+pub struct VarInt(#[cfg_attr(any(feature = "generator", test), generator(Self::GENERATOR))] u64);
 
 impl core::fmt::Display for VarInt {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -169,6 +167,9 @@ impl core::fmt::Display for VarInt {
 
 impl VarInt {
     pub const MAX: Self = Self(MAX_VARINT_VALUE);
+
+    #[cfg(any(feature = "generator", test))]
+    const GENERATOR: core::ops::RangeInclusive<u64> = 0..=MAX_VARINT_VALUE;
 
     pub fn new(v: u64) -> Result<Self, VarIntError> {
         if v > MAX_VARINT_VALUE {

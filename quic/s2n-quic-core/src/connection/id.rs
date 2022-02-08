@@ -39,7 +39,7 @@ macro_rules! id {
         #[cfg_attr(any(feature = "generator", test), derive(TypeGenerator))]
         pub struct $type {
             bytes: [u8; MAX_LEN],
-            #[cfg_attr(any(feature = "generator", test), generator($min_len..=(MAX_LEN as u8)))]
+            #[cfg_attr(any(feature = "generator", test), generator(Self::GENERATOR))]
             len: u8,
         }
 
@@ -52,6 +52,9 @@ macro_rules! id {
         impl $type {
             /// The minimum length for this connection ID type
             pub const MIN_LEN: usize = $min_len;
+
+            #[cfg(any(feature = "generator", test))]
+            const GENERATOR: core::ops::RangeInclusive<u8> = $min_len..=(MAX_LEN as u8);
 
             /// Creates a connection ID from a byte array.
             ///
