@@ -18,6 +18,9 @@ skip-tree = [
 ]
 
 [sources]
+allow-git = [
+    "https://github.com/hyperium/h3", # TODO: Remove once hyperium h3 is in crates.io
+]
 unknown-registry = "deny"
 unknown-git = "deny"
 

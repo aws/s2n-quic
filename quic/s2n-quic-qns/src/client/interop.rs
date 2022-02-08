@@ -2,26 +2,25 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    interop::{self, Testcase},
+    client::{h09, h3},
+    interop::Testcase,
     tls,
     tls::TlsProviders,
     Result,
 };
 use core::time::Duration;
-use futures::future::try_join_all;
 use s2n_quic::{
     client::Connect,
-    connection::Handle,
     provider::{event, io},
     Client,
 };
 use std::{
     collections::{hash_map::Entry, HashMap},
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::Arc,
 };
 use structopt::StructOpt;
-use tokio::{fs::File, io::AsyncWriteExt, net::lookup_host, spawn};
+use tokio::net::lookup_host;
 use url::{Host, Url};
 
 #[derive(Debug, StructOpt)]
@@ -82,8 +81,8 @@ impl Interop {
         if let Some(Testcase::Multiconnect) = self.testcase {
             for request in &self.requests {
                 let connect = endpoints.get(&request.host().unwrap()).unwrap().clone();
-                let requests = core::iter::once(request.path().to_string());
-                create_connection(
+                let requests = core::iter::once(request);
+                h09::create_connection(
                     client.clone(),
                     connect,
                     requests,
@@ -100,115 +99,34 @@ impl Interop {
                 let requests = self
                     .requests
                     .iter()
-                    .filter_map(|req| {
-                        if req.host().as_ref() == Some(&host) {
-                            Some(req.path().to_string())
-                        } else {
-                            None
-                        }
-                    })
+                    .filter(|req| req.host().as_ref() == Some(&host))
                     .collect::<Vec<_>>();
 
-                create_connection(
-                    client.clone(),
-                    connect,
-                    requests,
-                    download_dir.clone(),
-                    self.keep_alive,
-                )
-                .await?;
+                if let Some(Testcase::Http3) = self.testcase {
+                    h3::create_connection(
+                        client.clone(),
+                        connect,
+                        requests,
+                        download_dir.clone(),
+                        self.keep_alive,
+                    )
+                    .await?;
+                } else {
+                    h09::create_connection(
+                        client.clone(),
+                        connect,
+                        requests,
+                        download_dir.clone(),
+                        self.keep_alive,
+                    )
+                    .await?;
+                }
             }
         }
 
         client.wait_idle().await?;
 
-        return Ok(());
-
-        async fn create_connection<R: IntoIterator<Item = String>>(
-            client: Client,
-            connect: Connect,
-            requests: R,
-            download_dir: Arc<Option<PathBuf>>,
-            keep_alive: Option<Duration>,
-        ) -> Result<()> {
-            eprintln!("connecting to {:#}", connect);
-            let mut connection = client.connect(connect).await?;
-
-            if keep_alive.is_some() {
-                connection.keep_alive(true)?;
-            }
-
-            let mut streams = vec![];
-            for request in requests {
-                streams.push(spawn(create_stream(
-                    connection.handle(),
-                    request,
-                    download_dir.clone(),
-                )));
-            }
-
-            for result in try_join_all(streams).await? {
-                // `try_join_all` should be returning an Err if any stream fails, but it
-                // seems to just include the Err in the Vec of results. This will force
-                // any Error to bubble up so it can be printed in the output.
-                result?;
-            }
-
-            if let Some(keep_alive) = keep_alive {
-                tokio::time::sleep(keep_alive).await;
-                connection.keep_alive(false)?;
-            }
-
-            Ok(())
-        }
-
-        async fn create_stream(
-            connection: Handle,
-            request: String,
-            download_dir: Arc<Option<PathBuf>>,
-        ) -> Result<()> {
-            eprintln!("GET {}", request);
-
-            match create_stream_inner(connection, &request, download_dir).await {
-                Ok(()) => {
-                    eprintln!("Request {} completed successfully", request);
-                    Ok(())
-                }
-                Err(error) => {
-                    eprintln!("Request {} failed: {:?}", request, error);
-                    Err(error)
-                }
-            }
-        }
-
-        async fn create_stream_inner(
-            mut connection: Handle,
-            request: &str,
-            download_dir: Arc<Option<PathBuf>>,
-        ) -> Result<()> {
-            let stream = connection.open_bidirectional_stream().await?;
-            let (mut rx_stream, tx_stream) = stream.split();
-
-            interop::write_request(tx_stream, request).await?;
-
-            if let Some(download_dir) = download_dir.as_ref() {
-                if download_dir == Path::new("/dev/null") {
-                    crate::perf::handle_receive_stream(rx_stream).await?;
-                } else {
-                    let mut abs_path = download_dir.to_path_buf();
-                    abs_path.push(Path::new(request.trim_start_matches('/')));
-                    let mut file = File::create(&abs_path).await?;
-                    tokio::io::copy(&mut rx_stream, &mut file).await?;
-                    file.flush().await?;
-                }
-            } else {
-                let mut stdout = tokio::io::stdout();
-                tokio::io::copy(&mut rx_stream, &mut stdout).await?;
-                stdout.flush().await?;
-            };
-
-            Ok(())
-        }
+        Ok(())
     }
 
     fn client(&self) -> Result<Client> {
@@ -317,8 +235,7 @@ fn is_supported_testcase(testcase: Testcase) -> bool {
         Resumption => false,
         // TODO implement 0rtt
         ZeroRtt => false,
-        // TODO integrate a H3 implementation
-        Http3 => false,
+        Http3 => true,
         Multiconnect => true,
         Ecn => true,
         // TODO support the ability to actively migrate on the client

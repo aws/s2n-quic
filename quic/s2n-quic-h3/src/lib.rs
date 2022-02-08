@@ -1,10 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-mod h09;
-mod h3;
-pub mod interop;
-pub mod perf;
+mod s2n_quic;
 
-pub use interop::Interop;
-pub use perf::Perf;
+pub use self::s2n_quic::*;
+pub use h3;
