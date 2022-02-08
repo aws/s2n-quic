@@ -3,7 +3,6 @@
 use std::{
     convert::TryInto,
     fmt::{self, Display},
-    marker::PhantomData,
     sync::Arc,
     task::{self, Poll},
 };
@@ -110,10 +109,8 @@ where
         &mut self,
         cx: &mut task::Context<'_>,
     ) -> Poll<Result<Self::SendStream, Self::Error>> {
-        self.conn
-            .poll_open_send_stream(cx)
-            .map_ok(|send| send.into())
-            .map_err(|err| err.into())
+        let stream = ready!(self.conn.poll_open_send_stream(cx))?;
+        Ok(stream.into()).into()
     }
 
     fn opener(&self) -> Self::OpenStreams {
@@ -148,20 +145,16 @@ where
         &mut self,
         cx: &mut task::Context<'_>,
     ) -> Poll<Result<Self::BidiStream, Self::Error>> {
-        self.conn
-            .poll_open_bidirectional_stream(cx)
-            .map_ok(|bidi| bidi.into())
-            .map_err(|err| err.into())
+        let stream = ready!(self.conn.poll_open_bidirectional_stream(cx))?;
+        Ok(stream.into()).into()
     }
 
     fn poll_open_send(
         &mut self,
         cx: &mut task::Context<'_>,
     ) -> Poll<Result<Self::SendStream, Self::Error>> {
-        self.conn
-            .poll_open_send_stream(cx)
-            .map_ok(|send| send.into())
-            .map_err(|err| err.into())
+        let stream = ready!(self.conn.poll_open_send_stream(cx))?;
+        Ok(stream.into()).into()
     }
 
     fn close(&mut self, code: hyperium_h3::error::Code, _reason: &[u8]) {
@@ -278,7 +271,8 @@ impl quic::RecvStream for RecvStream {
         &mut self,
         cx: &mut task::Context<'_>,
     ) -> Poll<Result<Option<Self::Buf>, Self::Error>> {
-        self.stream.poll_receive(cx).map_err(|error| error.into())
+        let buf = ready!(self.stream.poll_receive(cx))?;
+        Ok(buf).into()
     }
 
     fn stop_sending(&mut self, error_code: u64) {
@@ -338,8 +332,8 @@ impl Error for ReadError {
 
 pub struct SendStream<B: Buf> {
     stream: s2n_quic::stream::SendStream,
-    available_bytes: usize,
-    buf: PhantomData<B>,
+    buf: Option<WriteBuf<B>>, // TODO: Replace with buf: PhantomData<B>
+                              //       after https://github.com/hyperium/h3/issues/78 is resolved
 }
 
 impl<B> SendStream<B>
@@ -349,7 +343,6 @@ where
     fn new(stream: s2n_quic::stream::SendStream) -> SendStream<B> {
         Self {
             stream,
-            available_bytes: 0,
             buf: Default::default(),
         }
     }
@@ -362,19 +355,37 @@ where
     type Error = SendStreamError;
 
     fn poll_ready(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.available_bytes = ready!(self.stream.poll_send_ready(cx))?;
+        if let Some(ref mut data) = self.buf {
+            while data.has_remaining() {
+                let len = data.chunk().len();
+                let mut chunk = data.copy_to_bytes(len);
+                ready!(self.stream.poll_send(&mut chunk, cx))?;
+            }
+        }
+        self.buf = None;
         Poll::Ready(Ok(()))
+
+        // TODO: Replace with following after https://github.com/hyperium/h3/issues/78 is resolved
+        // self.available_bytes = ready!(self.stream.poll_send_ready(cx))?;
+        // Poll::Ready(Ok(()))
     }
 
     fn send_data<D: Into<WriteBuf<B>>>(&mut self, data: D) -> Result<(), Self::Error> {
-        let mut data = data.into();
-        while self.available_bytes > 0 && data.has_remaining() {
-            let len = data.chunk().len();
-            let chunk = data.copy_to_bytes(len);
-            self.stream.send_data(chunk)?;
-            self.available_bytes = self.available_bytes.saturating_sub(len);
+        if self.buf.is_some() {
+            return Err(Self::Error::NotReady);
         }
+        self.buf = Some(data.into());
         Ok(())
+
+        // TODO: Replace with following after https://github.com/hyperium/h3/issues/78 is resolved
+        // let mut data = data.into();
+        // while self.available_bytes > 0 && data.has_remaining() {
+        //     let len = data.chunk().len();
+        //     let chunk = data.copy_to_bytes(len);
+        //     self.stream.send_data(chunk)?;
+        //     self.available_bytes = self.available_bytes.saturating_sub(len);
+        // }
+        // Ok(())
     }
 
     fn poll_finish(&mut self, _cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
