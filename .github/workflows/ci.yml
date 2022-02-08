@@ -372,7 +372,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        example: [examples/quic-echo-server]
+        example: [examples/echo]
     steps:
       - uses: actions/checkout@v2
         with:
@@ -518,7 +518,7 @@ jobs:
 
       - name: Run cargo build
         run: |
-          cd examples/quic-echo-server
+          cd examples/echo
           cargo build -Z timings --release
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
@@ -531,7 +531,7 @@ jobs:
         id: s3
         run: |
           TARGET="${{ github.sha }}/timing/index.html"
-          aws s3 cp examples/quic-echo-server/cargo-timing.html "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          aws s3 cp examples/echo/cargo-timing.html "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET"
           echo "::set-output name=URL::$URL"
 

@@ -31,7 +31,7 @@ impl BidirectionalStream {
         )
     }
 
-    impl_connection_api!(|_stream| todo!());
+    impl_connection_api!(|stream| crate::connection::Handle(stream.0.connection().clone()));
 }
 
 impl_receive_stream_trait!(BidirectionalStream, |stream, call| call!(stream.0));
