@@ -4,7 +4,7 @@
 use crate::cipher_suite::{
     HeaderProtectionKey, HeaderProtectionKeys, OneRttKey, PacketKey, PacketKeys,
 };
-use core::fmt;
+use core::{fmt, fmt::Debug, task::Poll};
 use rustls::{
     quic::{self, QuicExt},
     Connection,
@@ -132,10 +132,10 @@ impl Session {
     /// Check and process TLS handshake complete.
     ///
     /// Upon TLS handshake complete, emit an event to notify the transport layer.
-    fn try_complete_handshake<C: tls::Context<Self>>(
+    fn poll_complete_handshake<C: tls::Context<Self>>(
         &mut self,
         context: &mut C,
-    ) -> Result<(), transport::Error> {
+    ) -> Poll<Result<(), transport::Error>> {
         if self.tx_phase == HandshakePhase::Application && !self.connection.is_handshaking() {
             // the handshake is complete!
             if !self.emitted_handshake_complete {
@@ -146,7 +146,11 @@ impl Session {
             self.emitted_handshake_complete = true;
         }
 
-        Ok(())
+        if self.emitted_handshake_complete {
+            Poll::Ready(Ok(()))
+        } else {
+            Poll::Pending
+        }
     }
 }
 
@@ -163,7 +167,10 @@ impl crypto::CryptoSuite for Session {
 }
 
 impl tls::Session for Session {
-    fn poll<C: tls::Context<Self>>(&mut self, context: &mut C) -> Result<(), transport::Error> {
+    fn poll<C: tls::Context<Self>>(
+        &mut self,
+        context: &mut C,
+    ) -> Poll<Result<(), transport::Error>> {
         // Tracks if we have attempted to receive data at least once
         let mut has_tried_receive = false;
 
@@ -178,15 +185,12 @@ impl tls::Session for Session {
             if let Some(crypto_data) = crypto_data {
                 self.receive(&crypto_data)?;
             } else if has_tried_receive {
-                self.try_complete_handshake(context)?;
-
+                return self.poll_complete_handshake(context);
                 // If there's nothing to receive then we're done for now
-                return Ok(());
             }
 
-            self.try_complete_handshake(context)?;
-            if self.emitted_handshake_complete {
-                return Ok(());
+            if let Poll::Ready(()) = self.poll_complete_handshake(context)? {
+                return Poll::Ready(Ok(()));
             }
 
             // mark that we tried to receive some data so we know next time we loop

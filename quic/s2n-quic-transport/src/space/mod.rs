@@ -9,7 +9,7 @@ use crate::{
     transmission,
 };
 use bytes::Bytes;
-use core::fmt;
+use core::{fmt, task::Poll};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     ack,
@@ -185,7 +185,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         limits: &mut Limits,
         now: Timestamp,
         publisher: &mut Pub,
-    ) -> Result<(), transport::Error> {
+    ) -> Poll<Result<(), transport::Error>> {
         if let Some(session_info) = self.session_info.as_mut() {
             let mut context: SessionContext<Config, Pub> = SessionContext {
                 now,
@@ -202,16 +202,17 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 publisher,
             };
 
-            session_info.session.poll(&mut context)?;
-
-            // The TLS session and retry_cid is no longer needed
-            if self.is_handshake_confirmed() {
-                self.session_info = None;
-                self.retry_cid = None;
-            }
+            match session_info.session.poll(&mut context)? {
+                Poll::Ready(_success) => {
+                    // The TLS session and retry_cid is no longer needed
+                    self.session_info = None;
+                    self.retry_cid = None;
+                }
+                Poll::Pending => return Poll::Pending,
+            };
         }
 
-        Ok(())
+        Poll::Ready(Ok(()))
     }
 
     /// Called when the connection timer expired

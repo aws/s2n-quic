@@ -61,7 +61,7 @@ impl CryptoSuite for Session {
 }
 
 impl tls::Session for Session {
-    fn poll<W>(&mut self, context: &mut W) -> Result<(), transport::Error>
+    fn poll<W>(&mut self, context: &mut W) -> Poll<Result<(), transport::Error>>
     where
         W: tls::Context<Self>,
     {
@@ -91,14 +91,14 @@ impl tls::Session for Session {
                     context.on_handshake_complete()?;
                     self.handshake_complete = true;
                 }
-                Ok(())
+                Poll::Ready(Ok(()))
             }
-            Poll::Ready(Err(e)) => Err(e
+            Poll::Ready(Err(e)) => Poll::Ready(Err(e
                 .alert()
                 .map(CryptoError::new)
                 .unwrap_or(CryptoError::HANDSHAKE_FAILURE)
-                .into()),
-            Poll::Pending => Ok(()),
+                .into())),
+            Poll::Pending => Poll::Pending,
         }
     }
 }
