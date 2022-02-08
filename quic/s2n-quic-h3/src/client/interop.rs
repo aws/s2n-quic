@@ -3,7 +3,7 @@
 
 use crate::{h3, Result};
 use bytes::Buf;
-use futures::{future, future::try_join_all};
+use futures::future::try_join_all;
 use http::Uri;
 use hyperium_h3::client::SendRequest;
 use s2n_quic::{client::Connect, Client};
@@ -32,11 +32,6 @@ pub async fn create_h3_connection<'a, R: IntoIterator<Item = &'a Url>>(
     let (mut driver, send_request) =
         hyperium_h3::client::new(h3::Connection::new(connection)).await?;
 
-    let drive = tokio::spawn(async move {
-        let _ = future::poll_fn(|cx| driver.poll_close(cx)).await;
-        Ok::<_, ()>(())
-    });
-
     let mut streams = vec![];
     for request in requests {
         streams.push(spawn(create_h3_stream(
@@ -53,7 +48,7 @@ pub async fn create_h3_connection<'a, R: IntoIterator<Item = &'a Url>>(
         result?;
     }
 
-    let _ = drive.await?;
+    driver.shutdown(0).await?;
 
     Ok(())
 }
