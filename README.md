@@ -1,6 +1,6 @@
 # s2n-quic
 
-s2n-quic is a Rust implementation of the [QUIC protocol](https://quicwg.org/)
+`s2n-quic` is a Rust implementation of the [IETF QUIC protocol](https://quicwg.org/).
 
 [![Crates.io][crates-badge]][crates-url]
 [![docs.rs][docs-badge]][docs-url]
@@ -18,7 +18,7 @@ s2n-quic is a Rust implementation of the [QUIC protocol](https://quicwg.org/)
 s2n-quic = "1"
 ```
 
-__NOTE__: On unix systems, [s2n-tls](https://github.com/aws/s2n-tls) will be used as the default TLS provider and requires a C compiler to be installed.
+__NOTE__: On unix systems, [`s2n-tls`](https://github.com/aws/s2n-tls) will be used as the default TLS provider and requires a C compiler to be installed.
 
 ## Example
 
@@ -98,7 +98,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 ### MSRV
 
-s2n-quic will maintain a rolling MSRV (minimum supported rust version) policy of at least 6 months.
+`s2n-quic` will maintain a rolling MSRV (minimum supported rust version) policy of at least 6 months.
 
 The current MSRV is [1.53.0][msrv-url].
 
