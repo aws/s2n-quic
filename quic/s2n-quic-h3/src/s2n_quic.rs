@@ -9,7 +9,7 @@ use std::{
 
 use bytes::{Buf, Bytes};
 use futures::ready;
-use hyperium_h3::quic::{self, Error, StreamId, WriteBuf};
+use h3::quic::{self, Error, StreamId, WriteBuf};
 use s2n_quic::stream::{BidirectionalStream, ReceiveStream};
 use s2n_quic_core::varint::VarInt;
 
@@ -119,7 +119,7 @@ where
         }
     }
 
-    fn close(&mut self, code: hyperium_h3::error::Code, _reason: &[u8]) {
+    fn close(&mut self, code: h3::error::Code, _reason: &[u8]) {
         self.conn.close(
             code.value()
                 .try_into()
@@ -157,7 +157,7 @@ where
         Ok(stream.into()).into()
     }
 
-    fn close(&mut self, code: hyperium_h3::error::Code, _reason: &[u8]) {
+    fn close(&mut self, code: h3::error::Code, _reason: &[u8]) {
         self.conn.close(
             code.value()
                 .try_into()

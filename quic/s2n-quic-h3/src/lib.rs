@@ -3,4 +3,4 @@
 pub mod s2n_quic;
 
 pub use self::s2n_quic::*;
-pub use hyperium_h3;
+pub use h3;

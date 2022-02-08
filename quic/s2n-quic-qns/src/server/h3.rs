@@ -7,15 +7,15 @@ use crate::{
 };
 use bytes::Bytes;
 use futures::StreamExt;
+use h3::{quic::BidiStream, server::RequestStream};
 use http::StatusCode;
-use hyperium_h3::{quic::BidiStream, server::RequestStream};
 use s2n_quic::Connection;
-use s2n_quic_h3::hyperium_h3;
+use s2n_quic_h3::h3;
 use std::{path::Path, sync::Arc, time::Duration};
 use tokio::time::timeout;
 
 pub async fn handle_connection(connection: Connection, www_dir: Arc<Path>) {
-    let mut conn = hyperium_h3::server::Connection::new(s2n_quic_h3::Connection::new(connection))
+    let mut conn = h3::server::Connection::new(s2n_quic_h3::Connection::new(connection))
         .await
         .unwrap();
 

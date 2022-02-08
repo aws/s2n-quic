@@ -6,7 +6,7 @@ use bytes::Buf;
 use futures::future::try_join_all;
 use http::Uri;
 use s2n_quic::{client::Connect, Client};
-use s2n_quic_h3::hyperium_h3;
+use s2n_quic_h3::h3;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -30,7 +30,7 @@ pub async fn create_connection<'a, R: IntoIterator<Item = &'a Url>>(
     }
 
     let (mut driver, send_request) =
-        hyperium_h3::client::new(s2n_quic_h3::Connection::new(connection)).await?;
+        h3::client::new(s2n_quic_h3::Connection::new(connection)).await?;
 
     let mut streams = vec![];
     for request in requests {
@@ -53,8 +53,8 @@ pub async fn create_connection<'a, R: IntoIterator<Item = &'a Url>>(
     Ok(())
 }
 
-async fn create_stream<B: Buf, T: hyperium_h3::quic::OpenStreams<B>>(
-    send_request: hyperium_h3::client::SendRequest<T, B>,
+async fn create_stream<B: Buf, T: h3::quic::OpenStreams<B>>(
+    send_request: h3::client::SendRequest<T, B>,
     request: Url,
     download_dir: Arc<Option<PathBuf>>,
 ) -> Result<()> {
@@ -72,8 +72,8 @@ async fn create_stream<B: Buf, T: hyperium_h3::quic::OpenStreams<B>>(
     }
 }
 
-async fn create_stream_inner<B: Buf, T: hyperium_h3::quic::OpenStreams<B>>(
-    mut send_request: hyperium_h3::client::SendRequest<T, B>,
+async fn create_stream_inner<B: Buf, T: h3::quic::OpenStreams<B>>(
+    mut send_request: h3::client::SendRequest<T, B>,
     request: Url,
     download_dir: Arc<Option<PathBuf>>,
 ) -> Result<()> {
