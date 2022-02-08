@@ -247,6 +247,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             &mut publisher,
         );
 
+        let max_mtu = self.max_mtu;
         let connection_parameters = connection::Parameters {
             internal_connection_id,
             local_id_registry,
@@ -263,7 +264,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             timestamp: datagram.timestamp,
             quic_version,
             limits,
-            max_mtu: self.max_mtu,
+            max_mtu,
             event_context,
             supervisor_context: &supervisor_context,
             event_subscriber: endpoint_context.event_subscriber,
@@ -271,59 +272,81 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters)?;
 
-        let path_id = connection.on_datagram_received(
-            &header.path,
-            datagram,
-            endpoint_context.congestion_controller,
-            endpoint_context.path_migration,
-            self.max_mtu,
-            endpoint_context.event_subscriber,
-        )?;
+        let endpoint_context = self.config.context();
+        let handle_first_packet =
+            move |connection: &mut <Config as endpoint::Config>::Connection| {
+                let path_id = connection.on_datagram_received(
+                    &header.path,
+                    datagram,
+                    endpoint_context.congestion_controller,
+                    endpoint_context.path_migration,
+                    max_mtu,
+                    endpoint_context.event_subscriber,
+                )?;
 
-        connection
-            .handle_cleartext_initial_packet(
-                datagram,
-                path_id,
-                packet,
-                endpoint_context.random_generator,
+                connection
+                    .handle_cleartext_initial_packet(
+                        datagram,
+                        path_id,
+                        packet,
+                        endpoint_context.random_generator,
+                        endpoint_context.event_subscriber,
+                    )
+                    .map_err(|err| {
+                        use connection::ProcessingError;
+                        match err {
+                            ProcessingError::CryptoError(err) => err.into(),
+                            ProcessingError::ConnectionError(err) => err,
+                            // this is the first packet this connection has received
+                            // so getting this error would be incorrect
+                            ProcessingError::DuplicatePacket => {
+                                debug_assert!(false, "got duplicate packet error on first packet");
+                                transport::Error::INTERNAL_ERROR.into()
+                            }
+                            // this error is only raised by the client
+                            ProcessingError::NonEmptyRetryToken => {
+                                debug_assert!(false, "got non empty retry token error on server");
+                                transport::Error::INTERNAL_ERROR.into()
+                            }
+                            // this error is only emitted when processing a Retry packet
+                            ProcessingError::RetryScidEqualsDcid => {
+                                debug_assert!(
+                                    false,
+                                    "got a Retry packet error while processing an Initial packet"
+                                );
+                                transport::Error::INTERNAL_ERROR.into()
+                            }
+                        }
+                    })?;
+
+                connection.handle_remaining_packets(
+                    &header.path,
+                    datagram,
+                    path_id,
+                    endpoint_context.connection_id_format,
+                    remaining,
+                    endpoint_context.random_generator,
+                    endpoint_context.event_subscriber,
+                )?;
+
+                Ok(())
+            };
+
+        if let Err(error) = handle_first_packet(&mut connection) {
+            let endpoint_context = self.config.context();
+
+            connection.with_event_publisher(
+                datagram.timestamp,
+                None,
                 endpoint_context.event_subscriber,
-            )
-            .map_err(|err| {
-                use connection::ProcessingError;
-                match err {
-                    ProcessingError::CryptoError(err) => err.into(),
-                    ProcessingError::ConnectionError(err) => err,
-                    // this is the first packet this connection has received
-                    // so getting this error would be incorrect
-                    ProcessingError::DuplicatePacket => {
-                        debug_assert!(false, "got duplicate packet error on first packet");
-                        transport::Error::INTERNAL_ERROR.into()
-                    }
-                    // this error is only raised by the client
-                    ProcessingError::NonEmptyRetryToken => {
-                        debug_assert!(false, "got non empty retry token error on server");
-                        transport::Error::INTERNAL_ERROR.into()
-                    }
-                    // this error is only emitted when processing a Retry packet
-                    ProcessingError::RetryScidEqualsDcid => {
-                        debug_assert!(
-                            false,
-                            "got a Retry packet error while processing an Initial packet"
-                        );
-                        transport::Error::INTERNAL_ERROR.into()
-                    }
-                }
-            })?;
+                |publisher, _path| {
+                    use s2n_quic_core::event::{builder::ConnectionClosed, ConnectionPublisher};
+                    publisher.on_connection_closed(ConnectionClosed { error });
+                },
+            );
 
-        connection.handle_remaining_packets(
-            &header.path,
-            datagram,
-            path_id,
-            endpoint_context.connection_id_format,
-            remaining,
-            endpoint_context.random_generator,
-            endpoint_context.event_subscriber,
-        )?;
+            return Err(error);
+        }
 
         //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.3
         //= type=TODO
