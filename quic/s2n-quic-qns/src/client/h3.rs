@@ -48,6 +48,10 @@ pub async fn create_connection<'a, R: IntoIterator<Item = &'a Url>>(
         result?;
     }
 
+    if let Some(keep_alive) = keep_alive {
+        tokio::time::sleep(keep_alive).await;
+    }
+
     driver.shutdown(0).await?;
 
     Ok(())
