@@ -84,23 +84,21 @@ impl tls::Session for Session {
 
         callback.unset(&mut self.connection)?;
 
-        let res = match result {
+        match result {
             Poll::Ready(Ok(())) => {
                 // only emit handshake done once
                 if !self.handshake_complete {
                     context.on_handshake_complete()?;
                     self.handshake_complete = true;
                 }
-                Ok(())
+                Poll::Ready(Ok(()))
             }
-            Poll::Ready(Err(e)) => Err(e
+            Poll::Ready(Err(e)) => Poll::Ready(Err(e
                 .alert()
                 .map(CryptoError::new)
                 .unwrap_or(CryptoError::HANDSHAKE_FAILURE)
-                .into()),
-            Poll::Pending => Ok(()),
-        };
-
-        Poll::Ready(res)
+                .into())),
+            Poll::Pending => Poll::Pending,
+        }
     }
 }

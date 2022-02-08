@@ -134,11 +134,11 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
     pub fn poll(&mut self) -> Result<(), transport::Error> {
         match self.client.0.poll(&mut self.client.1) {
             Poll::Ready(res) => res?,
-            Poll::Pending => return Ok(()),
+            Poll::Pending => (),
         }
         match self.server.0.poll(&mut self.server.1) {
             Poll::Ready(res) => res?,
-            Poll::Pending => return Ok(()),
+            Poll::Pending => (),
         }
 
         self.client.1.transfer(&mut self.server.1);

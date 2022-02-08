@@ -132,10 +132,10 @@ impl Session {
     /// Check and process TLS handshake complete.
     ///
     /// Upon TLS handshake complete, emit an event to notify the transport layer.
-    fn try_complete_handshake<C: tls::Context<Self>>(
+    fn poll_complete_handshake<C: tls::Context<Self>>(
         &mut self,
         context: &mut C,
-    ) -> Result<(), transport::Error> {
+    ) -> Poll<Result<(), transport::Error>> {
         if self.tx_phase == HandshakePhase::Application && !self.connection.is_handshaking() {
             // the handshake is complete!
             if !self.emitted_handshake_complete {
@@ -146,7 +146,11 @@ impl Session {
             self.emitted_handshake_complete = true;
         }
 
-        Ok(())
+        if self.emitted_handshake_complete {
+            Poll::Ready(Ok(()))
+        } else {
+            Poll::Pending
+        }
     }
 }
 
@@ -181,14 +185,11 @@ impl tls::Session for Session {
             if let Some(crypto_data) = crypto_data {
                 self.receive(&crypto_data)?;
             } else if has_tried_receive {
-                self.try_complete_handshake(context)?;
-
+                return self.poll_complete_handshake(context);
                 // If there's nothing to receive then we're done for now
-                return Poll::Ready(Ok(()));
             }
 
-            self.try_complete_handshake(context)?;
-            if self.emitted_handshake_complete {
+            if let Poll::Ready(()) = self.poll_complete_handshake(context)? {
                 return Poll::Ready(Ok(()));
             }
 

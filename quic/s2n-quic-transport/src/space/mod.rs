@@ -205,10 +205,8 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
             match session_info.session.poll(&mut context)? {
                 Poll::Ready(_success) => {
                     // The TLS session and retry_cid is no longer needed
-                    if self.is_handshake_confirmed() {
-                        self.session_info = None;
-                        self.retry_cid = None;
-                    }
+                    self.session_info = None;
+                    self.retry_cid = None;
                 }
                 Poll::Pending => return Poll::Pending,
             };
