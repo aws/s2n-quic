@@ -2,32 +2,26 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    file::{abs_path, File},
-    interop::{self, Testcase},
-    server::h3,
+    interop::Testcase,
+    server::{h09, h3},
     tls,
     tls::TlsProviders,
     Result,
 };
-use core::convert::TryInto;
-use futures::stream::StreamExt;
 use s2n_quic::{
     provider::{
         endpoint_limits,
         event::{events, Subscriber},
         io,
     },
-    stream::BidirectionalStream,
-    Connection, Server,
+    Server,
 };
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
-    time::Duration,
 };
 use structopt::StructOpt;
-use tokio::{spawn, time::timeout};
-use tracing::debug;
+use tokio::spawn;
 
 #[derive(Debug, StructOpt)]
 pub struct Interop {
@@ -76,7 +70,7 @@ impl Interop {
             // spawn a task per connection
             match &(connection.application_protocol()?)[..] {
                 b"h3" => spawn(h3::handle_connection(connection, www_dir.clone())),
-                b"hq-interop" => spawn(handle_h09_connection(connection, www_dir.clone())),
+                b"hq-interop" => spawn(h09::handle_connection(connection, www_dir.clone())),
                 _ => spawn(async move {
                     eprintln!(
                         "Unsupported application protocol: {:?}",
@@ -84,75 +78,6 @@ impl Interop {
                     );
                 }),
             };
-        }
-
-        async fn handle_h09_connection(mut connection: Connection, www_dir: Arc<Path>) {
-            loop {
-                match connection.accept_bidirectional_stream().await {
-                    Ok(Some(stream)) => {
-                        let _ = connection.query_event_context_mut(
-                            |context: &mut MyConnectionContext| context.stream_requests += 1,
-                        );
-
-                        let www_dir = www_dir.clone();
-                        // spawn a task per stream
-                        tokio::spawn(async move {
-                            if let Err(err) = handle_h09_stream(stream, www_dir).await {
-                                eprintln!("Stream errror: {:?}", err)
-                            }
-                        });
-                    }
-                    Ok(None) => {
-                        // the connection was closed without an error
-                        let context = connection
-                            .query_event_context(|context: &MyConnectionContext| *context)
-                            .expect("query should execute");
-                        debug!("Final stats: {:?}", context);
-                        return;
-                    }
-                    Err(err) => {
-                        eprintln!("error while accepting stream: {}", err);
-                        let context = connection
-                            .query_event_context(|context: &MyConnectionContext| *context)
-                            .expect("query should execute");
-                        debug!("Final stats: {:?}", context);
-                        return;
-                    }
-                }
-            }
-        }
-
-        async fn handle_h09_stream(stream: BidirectionalStream, www_dir: Arc<Path>) -> Result<()> {
-            let (rx_stream, mut tx_stream) = stream.split();
-            let path = interop::read_request(rx_stream).await?;
-            let abs_path = abs_path(&path, &www_dir);
-            let mut file = File::open(&abs_path).await?;
-            loop {
-                match timeout(Duration::from_secs(1), file.next()).await {
-                    Ok(Some(Ok(chunk))) => {
-                        let len = chunk.len();
-                        debug!(
-                            "{:?} bytes ready to send on Stream({:?})",
-                            len,
-                            tx_stream.id()
-                        );
-                        tx_stream.send(chunk).await?;
-                        debug!("{:?} bytes sent on Stream({:?})", len, tx_stream.id());
-                    }
-                    Ok(Some(Err(err))) => {
-                        eprintln!("error opening {:?}", abs_path);
-                        tx_stream.reset(1u32.try_into()?)?;
-                        return Err(err.into());
-                    }
-                    Ok(None) => {
-                        tx_stream.finish()?;
-                        return Ok(());
-                    }
-                    Err(_) => {
-                        eprintln!("timeout opening {:?}", abs_path);
-                    }
-                }
-            }
         }
 
         Err(crate::CRASH_ERROR_MESSAGE.into())
@@ -250,7 +175,7 @@ fn is_supported_testcase(testcase: Testcase) -> bool {
 #[derive(Debug, Clone, Copy)]
 pub struct MyConnectionContext {
     packet_sent: u64,
-    stream_requests: u64,
+    pub(crate) stream_requests: u64,
 }
 
 pub struct EventSubscriber(usize);
