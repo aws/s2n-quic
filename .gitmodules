@@ -1,3 +1,0 @@
-[submodule "tls/s2n-tls-sys/s2n"]
-	path = tls/s2n-tls-sys/s2n
-	url = https://github.com/awslabs/s2n.git

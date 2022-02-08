@@ -9,11 +9,11 @@ use s2n_quic_core::{
     endpoint, transport,
 };
 use s2n_quic_ring::RingCryptoSuite;
-use s2n_tls::{
+use s2n_tls::raw::{
     config::Config,
-    connection::{Connection, Mode},
+    connection::Connection,
     error::Error,
-    raw::s2n_blinding,
+    ffi::{s2n_blinding, s2n_mode},
 };
 
 #[derive(Debug)]
@@ -28,15 +28,15 @@ pub struct Session {
 impl Session {
     pub fn new(endpoint: endpoint::Type, config: Config, params: &[u8]) -> Result<Self, Error> {
         let mut connection = Connection::new(match endpoint {
-            endpoint::Type::Server => Mode::Server,
-            endpoint::Type::Client => Mode::Client,
+            endpoint::Type::Server => s2n_mode::SERVER,
+            endpoint::Type::Client => s2n_mode::CLIENT,
         });
 
         connection.set_config(config)?;
         connection.enable_quic()?;
         connection.set_quic_transport_parameters(params)?;
         // QUIC handles sending alerts, so no need to apply TLS blinding
-        connection.set_blinding(s2n_blinding::SelfServiceBlinding)?;
+        connection.set_blinding(s2n_blinding::SELF_SERVICE_BLINDING)?;
 
         Ok(Self {
             endpoint,
@@ -80,7 +80,7 @@ impl tls::Session for Session {
             callback.set(&mut self.connection);
         }
 
-        let result = self.connection.negotiate();
+        let result = self.connection.negotiate().map_ok(|_| ());
 
         callback.unset(&mut self.connection)?;
 

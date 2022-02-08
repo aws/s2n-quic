@@ -9,9 +9,10 @@ use crate::{
 };
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls, endpoint};
-use s2n_tls::{
+use s2n_tls::raw::{
     config::{self, Config},
     error::Error,
+    security,
 };
 use std::sync::Arc;
 
@@ -46,7 +47,9 @@ impl Default for Builder {
         let mut config = config::Builder::default();
         config.enable_quic().unwrap();
         // https://github.com/awslabs/s2n/blob/main/docs/USAGE-GUIDE.md#s2n_config_set_cipher_preferences
-        config.set_cipher_preference("default_tls13").unwrap();
+        config
+            .set_security_policy(&security::DEFAULT_TLS13)
+            .unwrap();
         config
             .set_application_protocol_preference(&[b"h3"])
             .unwrap();

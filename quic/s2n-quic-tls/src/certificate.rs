@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use bytes::Bytes;
-use s2n_tls::error::Error;
+use s2n_tls::raw::error::Error;
 
 impl Format {
     pub fn as_pem(&self) -> Option<&[u8]> {
