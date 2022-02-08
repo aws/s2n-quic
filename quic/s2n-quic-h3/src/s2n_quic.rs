@@ -1,18 +1,17 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use bytes::{Buf, Bytes};
+use futures::ready;
+use h3::quic::{self, Error, StreamId, WriteBuf};
+use s2n_quic::stream::{BidirectionalStream, ReceiveStream};
+use s2n_quic_core::varint::VarInt;
 use std::{
     convert::TryInto,
     fmt::{self, Display},
     sync::Arc,
     task::{self, Poll},
 };
-
-use bytes::{Buf, Bytes};
-use futures::ready;
-use h3::quic::{self, Error, StreamId, WriteBuf};
-use s2n_quic::stream::{BidirectionalStream, ReceiveStream};
-use s2n_quic_core::varint::VarInt;
 
 pub struct Connection {
     conn: s2n_quic::connection::Handle,
@@ -124,7 +123,7 @@ where
         self.conn.close(
             code.value()
                 .try_into()
-                .unwrap_or_else(|_| VarInt::MAX.into()),
+                .expect("s2n-quic supports error codes up to 2^62-1"),
         );
     }
 }
@@ -278,7 +277,8 @@ impl quic::RecvStream for RecvStream {
 
     fn stop_sending(&mut self, error_code: u64) {
         let _ = self.stream.stop_sending(
-            s2n_quic::application::Error::new(error_code).expect("invalid error_code"),
+            s2n_quic::application::Error::new(error_code)
+                .expect("s2n-quic supports error codes up to 2^62-1"),
         );
     }
 }
