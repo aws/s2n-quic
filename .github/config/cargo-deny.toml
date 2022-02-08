@@ -14,6 +14,7 @@ multiple-versions = "deny"
 skip-tree = [
     { name = "cargo-compliance" },
     { name = "criterion" }, # criterion is always going to be just a test dependency
+    { name = "hyperium-h3" }, # TODO: Update once hyperium h3 is in crates.io
     { name = "s2n-quic-integration" }, # s2n-quic-integration is a private crate
 ]
 
