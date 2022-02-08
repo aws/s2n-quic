@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use cfg_if::cfg_if;
 use s2n_quic_core::crypto;
 
 /// Provides TLS support for an endpoint
@@ -17,6 +18,22 @@ pub trait Provider {
 }
 
 impl_provider_utils!();
+
+cfg_if! {
+    if #[cfg(feature = "default-tls-provider")] {
+        pub mod default {
+            pub use super::default_tls::*;
+        }
+    } else if #[cfg(feature = "s2n-tls")] {
+        pub use s2n_tls as default;
+    } else if #[cfg(feature = "rustls")] {
+        pub use rustls as default;
+    } else {
+        pub mod default {
+            pub use super::default_tls::*;
+        }
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct Default;
@@ -168,7 +185,7 @@ impl Provider for &str {
 }
 
 #[cfg(feature = "default-tls-provider")]
-pub mod default {
+mod default_tls {
     pub use s2n_quic_tls_default::*;
 
     // We need to implement the provider trait for whatever the default is as long as it's
@@ -214,7 +231,7 @@ pub mod default {
     }
 }
 #[cfg(not(feature = "default-tls-provider"))]
-pub mod default {
+mod default_tls {
     // TODO stub out default that fails with error when started
 }
 
