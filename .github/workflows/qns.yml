@@ -222,7 +222,8 @@ jobs:
       - name: Run docker build
         working-directory: s2n-quic-qns
         run: |
-          docker build . --file Dockerfile --tag awslabs/s2n-quic-qns
+          docker build . --file Dockerfile --tag awslabs/s2n-quic-qns --build-arg tls=s2n-tls
+          docker build . --file Dockerfile --tag awslabs/s2n-quic-qns-rustls --build-arg tls=rustls
 
       - uses: actions/checkout@v2
         with:
@@ -301,7 +302,7 @@ jobs:
                 $from
           done
 
-      - uses: aws-actions/configure-aws-credentials@v1.6.0
+      - uses: aws-actions/configure-aws-credentials@v1.6.1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -392,7 +393,7 @@ jobs:
             results/**/result.json > \
               web/logs/latest/result.json
 
-      - uses: aws-actions/configure-aws-credentials@v1.6.0
+      - uses: aws-actions/configure-aws-credentials@v1.6.1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -494,7 +495,7 @@ jobs:
         if: github.event_name == 'push'
         run: sudo env "PATH=$PATH" "BUILD_S2N_QUIC=false" ./scripts/benchmark/run-all
 
-      - uses: aws-actions/configure-aws-credentials@v1.6.0
+      - uses: aws-actions/configure-aws-credentials@v1.6.1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -701,7 +702,7 @@ jobs:
           cd perf-results
           tree -H "." -T "Performance Results" --noreport --charset utf-8 > index.html
 
-      - uses: aws-actions/configure-aws-credentials@v1.6.0
+      - uses: aws-actions/configure-aws-credentials@v1.6.1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

@@ -38,13 +38,18 @@ index 7541cae..ba1b4da 100644
        - VERSION=$VERSION
      depends_on:
 diff --git a/implementations.json b/implementations.json
-index 3df16da..7ed4f6e 100644
+index 3df16da..70ff578 100644
 --- a/implementations.json
 +++ b/implementations.json
-@@ -1,24 +1,19 @@
+@@ -1,24 +1,24 @@
  {
 +  "s2n-quic": {
 +    "image": "awslabs/s2n-quic-qns:latest",
++    "url": "https://github.com/awslabs/s2n-quic",
++    "role": "both"
++  },
++  "s2n-quic-rustls": {
++    "image": "awslabs/s2n-quic-qns-rustls:latest",
 +    "url": "https://github.com/awslabs/s2n-quic",
 +    "role": "both"
 +  },

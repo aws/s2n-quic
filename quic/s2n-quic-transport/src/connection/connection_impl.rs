@@ -602,7 +602,22 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         };
 
         if Config::ENDPOINT_TYPE.is_client() {
-            connection.update_crypto_state(parameters.timestamp, parameters.event_subscriber)?;
+            if let Err(error) =
+                connection.update_crypto_state(parameters.timestamp, parameters.event_subscriber)
+            {
+                connection.with_event_publisher(
+                    parameters.timestamp,
+                    None,
+                    parameters.event_subscriber,
+                    |publisher, _path| {
+                        use s2n_quic_core::event::{
+                            builder::ConnectionClosed, ConnectionPublisher,
+                        };
+                        publisher.on_connection_closed(ConnectionClosed { error });
+                    },
+                );
+                return Err(error);
+            }
         }
 
         let meta = event::builder::ConnectionMeta {
@@ -1769,7 +1784,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     fn with_event_publisher<F>(
         &mut self,
         timestamp: Timestamp,
-        path_id: path::Id,
+        path_id: Option<path::Id>,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         f: F,
     ) where
@@ -1781,7 +1796,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         ),
     {
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
-        let path = &self.path_manager[path_id];
+        let path = if let Some(path_id) = path_id {
+            &self.path_manager[path_id]
+        } else {
+            self.path_manager.active_path()
+        };
         f(&mut publisher, path);
     }
 }
