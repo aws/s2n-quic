@@ -13,7 +13,6 @@ use std::{
     time::Duration,
 };
 use tokio::{fs::File, io::AsyncWriteExt, spawn};
-use tracing::debug;
 use url::Url;
 
 pub async fn create_h3_connection<'a, R: IntoIterator<Item = &'a Url>>(
@@ -54,7 +53,7 @@ pub async fn create_h3_connection<'a, R: IntoIterator<Item = &'a Url>>(
         result?;
     }
 
-    drive.await?.expect("driver");
+    let _ = drive.await?;
 
     Ok(())
 }
@@ -90,8 +89,8 @@ async fn create_h3_stream_inner<B: Buf, T: hyperium_h3::quic::OpenStreams<B>>(
 
     let resp = stream.recv_response().await?;
 
-    debug!("Response: {:?} {}", resp.version(), resp.status());
-    debug!("Headers: {:#?}", resp.headers());
+    eprintln!("Response: {:?} {}", resp.version(), resp.status());
+    eprintln!("Headers: {:#?}", resp.headers());
 
     if let Some(download_dir) = download_dir.as_ref() {
         let mut abs_path = download_dir.to_path_buf();
