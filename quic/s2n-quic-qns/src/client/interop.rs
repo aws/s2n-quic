@@ -105,7 +105,7 @@ impl Interop {
                     .collect::<Vec<_>>();
 
                 if let Some(Testcase::Http3) = self.testcase {
-                    h3::create_h3_connection(
+                    h3::create_connection(
                         client.clone(),
                         connect,
                         requests,

@@ -4,7 +4,7 @@
 use crate::{
     file::{abs_path, File},
     interop::{self, Testcase},
-    server::h3::handle_h3_connection,
+    server::h3,
     tls,
     tls::TlsProviders,
     Result,
@@ -75,7 +75,7 @@ impl Interop {
 
             // spawn a task per connection
             match &(connection.application_protocol()?)[..] {
-                b"h3" => spawn(handle_h3_connection(connection, www_dir.clone())),
+                b"h3" => spawn(h3::handle_connection(connection, www_dir.clone())),
                 b"hq-interop" => spawn(handle_h09_connection(connection, www_dir.clone())),
                 _ => spawn(async move {
                     eprintln!(

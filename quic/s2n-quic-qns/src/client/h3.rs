@@ -15,7 +15,7 @@ use std::{
 use tokio::{fs::File, io::AsyncWriteExt, spawn};
 use url::Url;
 
-pub async fn create_h3_connection<'a, R: IntoIterator<Item = &'a Url>>(
+pub async fn create_connection<'a, R: IntoIterator<Item = &'a Url>>(
     client: Client,
     connect: Connect,
     requests: R,
@@ -34,7 +34,7 @@ pub async fn create_h3_connection<'a, R: IntoIterator<Item = &'a Url>>(
 
     let mut streams = vec![];
     for request in requests {
-        streams.push(spawn(create_h3_stream(
+        streams.push(spawn(create_stream(
             send_request.clone(),
             request.clone(),
             download_dir.clone(),
@@ -53,14 +53,14 @@ pub async fn create_h3_connection<'a, R: IntoIterator<Item = &'a Url>>(
     Ok(())
 }
 
-async fn create_h3_stream<B: Buf, T: hyperium_h3::quic::OpenStreams<B>>(
+async fn create_stream<B: Buf, T: hyperium_h3::quic::OpenStreams<B>>(
     send_request: hyperium_h3::client::SendRequest<T, B>,
     request: Url,
     download_dir: Arc<Option<PathBuf>>,
 ) -> Result<()> {
     eprintln!("GET {}", request);
 
-    match create_h3_stream_inner(send_request, request.clone(), download_dir).await {
+    match create_stream_inner(send_request, request.clone(), download_dir).await {
         Ok(()) => {
             eprintln!("Request {} completed successfully", request);
             Ok(())
@@ -72,7 +72,7 @@ async fn create_h3_stream<B: Buf, T: hyperium_h3::quic::OpenStreams<B>>(
     }
 }
 
-async fn create_h3_stream_inner<B: Buf, T: hyperium_h3::quic::OpenStreams<B>>(
+async fn create_stream_inner<B: Buf, T: hyperium_h3::quic::OpenStreams<B>>(
     mut send_request: hyperium_h3::client::SendRequest<T, B>,
     request: Url,
     download_dir: Arc<Option<PathBuf>>,

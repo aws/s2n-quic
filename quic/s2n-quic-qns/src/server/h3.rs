@@ -14,7 +14,7 @@ use s2n_quic_h3::{h3, hyperium_h3};
 use std::{path::Path, sync::Arc, time::Duration};
 use tokio::time::timeout;
 
-pub async fn handle_h3_connection(connection: Connection, www_dir: Arc<Path>) {
+pub async fn handle_connection(connection: Connection, www_dir: Arc<Path>) {
     let mut conn = hyperium_h3::server::Connection::new(h3::Connection::new(connection))
         .await
         .unwrap();
@@ -22,14 +22,14 @@ pub async fn handle_h3_connection(connection: Connection, www_dir: Arc<Path>) {
     while let Ok(Some((req, stream))) = conn.accept().await {
         let www_dir = www_dir.clone();
         tokio::spawn(async {
-            if let Err(err) = handle_h3_stream(req, stream, www_dir).await {
+            if let Err(err) = handle_stream(req, stream, www_dir).await {
                 eprintln!("Stream error: {:?}", err)
             }
         });
     }
 }
 
-async fn handle_h3_stream<T>(
+async fn handle_stream<T>(
     req: http::Request<()>,
     mut stream: RequestStream<T, Bytes>,
     www_dir: Arc<Path>,
