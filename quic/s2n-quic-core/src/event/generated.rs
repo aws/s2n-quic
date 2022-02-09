@@ -215,6 +215,16 @@ pub mod api {
         UnknownDestinationConnectionId {},
         #[non_exhaustive]
         RejectedConnectionAttempt {},
+        #[non_exhaustive]
+        UnknownServerAddress {},
+        #[non_exhaustive]
+        ConnectionMigrationDuringHandshake {},
+        #[non_exhaustive]
+        RejectedConnectionMigration {},
+        #[non_exhaustive]
+        PathLimitExceeded {},
+        #[non_exhaustive]
+        InsufficientConnectionIds {},
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -2236,6 +2246,11 @@ pub mod builder {
         InvalidSourceConnectionId,
         UnknownDestinationConnectionId,
         RejectedConnectionAttempt,
+        UnknownServerAddress,
+        ConnectionMigrationDuringHandshake,
+        RejectedConnectionMigration,
+        PathLimitExceeded,
+        InsufficientConnectionIds,
     }
     impl IntoEvent<api::DatagramDropReason> for DatagramDropReason {
         #[inline]
@@ -2249,6 +2264,11 @@ pub mod builder {
                 Self::InvalidSourceConnectionId => InvalidSourceConnectionId {},
                 Self::UnknownDestinationConnectionId => UnknownDestinationConnectionId {},
                 Self::RejectedConnectionAttempt => RejectedConnectionAttempt {},
+                Self::UnknownServerAddress => UnknownServerAddress {},
+                Self::ConnectionMigrationDuringHandshake => ConnectionMigrationDuringHandshake {},
+                Self::RejectedConnectionMigration => RejectedConnectionMigration {},
+                Self::PathLimitExceeded => PathLimitExceeded {},
+                Self::InsufficientConnectionIds => InsufficientConnectionIds {},
             }
         }
     }

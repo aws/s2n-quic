@@ -551,25 +551,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             },
                         );
 
-                        // TODO https://github.com/awslabs/s2n-quic/issues/669
-                        // The on_datagram_dropped event is currently invoked within on_datagram_received,
-                        // allowing for the possibility of an error being returned without the
-                        // on_datagram_dropped event being recorded. To eliminate this possibility,
-                        //
-                        //
-                        // errors to be returned
-                        //
-                        //
-                        // An error received at this point was caused by a datagram that has not
-                        // been authenticated yet, and thus the connection should not be closed.
-                        // to prevent
-
-                        // We are ignoring all errors here which seems like a bad
-                        // practice. If we truly want to ignor all error, lets change the
-                        // signature of on_datagram_received to not return a Result.
-                        // Otherwise we should introduce an Error code that signifies
-                        // it should be silently ignored.
-
                         //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
                         //# If the peer
                         //# violates this requirement, the endpoint MUST either drop the incoming
