@@ -236,7 +236,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         migration_validator: &mut Config::PathMigrationValidator,
         max_mtu: MaxMtu,
         publisher: &mut Pub,
-    ) -> Result<(Id, bool), transport::Error> {
+    ) -> Result<(Id, bool), DatagramDropReason> {
         let valid_initial_received = self.valid_initial_received();
 
         if let Some((id, path)) = self.path_mut(path_handle) {
@@ -256,14 +256,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 //# subsequent Initial packets include a different Source Connection ID,
                 //# they MUST be discarded.
 
-                publisher.on_datagram_dropped(event::builder::DatagramDropped {
-                    len: datagram.payload_len as u16,
-                    reason: DatagramDropReason::InvalidSourceConnectionId,
-                });
-
-                // This error will cause the datagram to be dropped
-                return Err(transport::Error::PROTOCOL_VIOLATION
-                    .with_reason("source connection ID changed from the first Initial packet"));
+                return Err(DatagramDropReason::InvalidSourceConnectionId);
             }
 
             let unblocked = path.on_bytes_received(datagram.payload_len);
@@ -276,7 +269,9 @@ impl<Config: endpoint::Config> Manager<Config> {
         // Even though this returns an error, it is ignored by the endpoint and the connection remains open.
         // TODO return a specialized enum for dropping the packet (see https://github.com/awslabs/s2n-quic/issues/669)
         if Config::ENDPOINT_TYPE.is_client() {
-            return Err(transport::Error::PROTOCOL_VIOLATION.with_reason("unknown server address"));
+            // TODO: add new drop reason
+            return Err(DatagramDropReason::RejectedConnectionAttempt);
+            //return Err(transport::Error::PROTOCOL_VIOLATION.with_reason("unknown server address"));
         };
 
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
@@ -285,7 +280,9 @@ impl<Config: endpoint::Config> Manager<Config> {
         //# connection migration before the handshake is confirmed, as defined
         //# in section 4.1.2 of [QUIC-TLS].
         if !handshake_confirmed {
-            return Err(transport::Error::PROTOCOL_VIOLATION);
+            // TODO: add new drop reason
+            return Err(DatagramDropReason::RejectedConnectionAttempt);
+            //return Err(transport::Error::PROTOCOL_VIOLATION);
         }
 
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
@@ -316,7 +313,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         migration_validator: &mut Config::PathMigrationValidator,
         max_mtu: MaxMtu,
         publisher: &mut Pub,
-    ) -> Result<(Id, bool), transport::Error> {
+    ) -> Result<(Id, bool), DatagramDropReason> {
         //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
         //# Clients are responsible for initiating all migrations.
         debug_assert!(Config::ENDPOINT_TYPE.is_server());
@@ -353,14 +350,18 @@ impl<Config: endpoint::Config> Manager<Config> {
                 publisher.on_connection_migration_denied(reason.into_event());
                 // Even though this returns an error, it is ignored by the endpoint and the connection remains open.
                 // TODO return a specialized enum for dropping the packet (see https://github.com/awslabs/s2n-quic/issues/669)
-                return Err(
-                    transport::Error::PROTOCOL_VIOLATION.with_reason("migration attempt denied")
-                );
+                // TODO: add new drop reason
+                return Err(DatagramDropReason::RejectedConnectionAttempt);
+                // return Err(
+                //     transport::Error::PROTOCOL_VIOLATION.with_reason("migration attempt denied")
+                // );
             }
             _ => {
-                return Err(
-                    transport::Error::INTERNAL_ERROR.with_reason("unimplemented migration outcome")
-                );
+                // TODO: add new drop reason
+                return Err(DatagramDropReason::RejectedConnectionAttempt);
+                // return Err(
+                //     transport::Error::INTERNAL_ERROR.with_reason("unimplemented migration outcome")
+                // );
             }
         }
 
@@ -381,8 +382,10 @@ impl<Config: endpoint::Config> Manager<Config> {
         // in the path array. This can result in an unbounded number of paths. To prevent
         // this we limit the max number of paths per connection.
         if new_path_idx >= MAX_ALLOWED_PATHS {
-            return Err(transport::Error::INTERNAL_ERROR
-                .with_reason("exceeded the max allowed paths per connection"));
+            // TODO: add new drop reason
+            return Err(DatagramDropReason::RejectedConnectionAttempt);
+            // return Err(transport::Error::INTERNAL_ERROR
+            //     .with_reason("exceeded the max allowed paths per connection"));
         }
         let new_path_id = Id(new_path_idx as u8);
 
@@ -422,9 +425,10 @@ impl<Config: endpoint::Config> Manager<Config> {
                     // Investigate if there is a safer way to expose an error here.
                     //
                     // Currently all errors are ignored when calling on_datagram_received in endpoint/mod.rs
-                    .ok_or_else(|| {
-                        transport::Error::INTERNAL_ERROR.with_reason("insufficient connection ids")
-                    })?
+                    .ok_or(
+                        // TODO: add new drop reason
+                        DatagramDropReason::RejectedConnectionAttempt, //    transport::Error::INTERNAL_ERROR.with_reason("insufficient connection ids")
+                    )?
             } else {
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.5
                 //# Due to network changes outside

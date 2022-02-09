@@ -20,7 +20,7 @@ use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     application,
     application::ServerName,
-    event::{self, supervisor, ConnectionPublisher, IntoEvent},
+    event::{self, builder::DatagramDropReason, supervisor, ConnectionPublisher, IntoEvent},
     inet::{DatagramInfo, SocketAddress},
     io::tx,
     packet::{
@@ -179,7 +179,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         migration_validator: &mut <Self::Config as endpoint::Config>::PathMigrationValidator,
         max_mtu: MaxMtu,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
-    ) -> Result<path::Id, connection::Error>;
+    ) -> Result<path::Id, DatagramDropReason>;
 
     /// Returns the Connections interests
     fn interests(&self) -> ConnectionInterests;

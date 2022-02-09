@@ -535,8 +535,35 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         max_mtu,
                         endpoint_context.event_subscriber,
                     )
-                    .map_err(|_| {
+                    .map_err(|datagram_drop_reason| {
+                        // An error received at this point was caused by a datagram that has not
+                        // been authenticated yet, and thus the connection should not be closed.
+                        conn.with_event_publisher(
+                            datagram.timestamp,
+                            None,
+                            endpoint_context.event_subscriber,
+                            |publisher, _path| {
+                                use s2n_quic_core::event::ConnectionPublisher;
+                                publisher.on_datagram_dropped(event::builder::DatagramDropped {
+                                    len: datagram.payload_len as u16,
+                                    reason: datagram_drop_reason,
+                                });
+                            },
+                        );
+
                         // TODO https://github.com/awslabs/s2n-quic/issues/669
+                        // The on_datagram_dropped event is currently invoked within on_datagram_received,
+                        // allowing for the possibility of an error being returned without the
+                        // on_datagram_dropped event being recorded. To eliminate this possibility,
+                        //
+                        //
+                        // errors to be returned
+                        //
+                        //
+                        // An error received at this point was caused by a datagram that has not
+                        // been authenticated yet, and thus the connection should not be closed.
+                        // to prevent
+
                         // We are ignoring all errors here which seems like a bad
                         // practice. If we truly want to ignor all error, lets change the
                         // signature of on_datagram_received to not return a Result.

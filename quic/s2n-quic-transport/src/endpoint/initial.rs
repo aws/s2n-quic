@@ -282,7 +282,27 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                     endpoint_context.path_migration,
                     max_mtu,
                     endpoint_context.event_subscriber,
-                )?;
+                );
+                debug_assert!(
+                    path_id.is_ok(),
+                    "on_datagram_received should not fail for a newly created connection"
+                );
+
+                let path_id = path_id.map_err(|err| {
+                    connection.with_event_publisher(
+                        datagram.timestamp,
+                        None,
+                        endpoint_context.event_subscriber,
+                        |publisher, _path| {
+                            use s2n_quic_core::event::ConnectionPublisher;
+                            publisher.on_datagram_dropped(event::builder::DatagramDropped {
+                                len: datagram.payload_len as u16,
+                                reason: err,
+                            });
+                        },
+                    );
+                    connection::Error::Unspecified
+                })?;
 
                 connection
                     .handle_cleartext_initial_packet(
