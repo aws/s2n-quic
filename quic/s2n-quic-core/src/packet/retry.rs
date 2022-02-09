@@ -208,7 +208,7 @@ impl<'a> Retry<'a> {
             //# by the server; a client MUST ignore these bits.
             // The last 4 bits are unused. They are set to 0x0f here to allow easy testing with
             // example packets provided in the RFC.
-            // https://www.rfc-editor.org/rfc/rfc9001#A.2
+            // https://www.rfc-editor.org/rfc/rfc9001#section-A.2
             tag: (retry_tag!() << 4) | 0x0f,
             version: initial_packet.version,
             destination_connection_id: initial_packet.source_connection_id(),

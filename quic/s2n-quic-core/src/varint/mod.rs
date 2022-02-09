@@ -117,7 +117,7 @@ mod tests {
         }
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#A.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-A.1
     //# For example, the eight-byte sequence 0xc2197c5eff14e88c decodes to
     //# the decimal value 151,288,809,941,952,652; the four-byte sequence
     //# 0x9d7f3e7d decodes to 494,878,333; the two-byte sequence 0x7bbd
