@@ -9,7 +9,10 @@ use crate::{
     transmission,
 };
 use bytes::Bytes;
-use core::{fmt, task::Poll};
+use core::{
+    fmt,
+    task::{Poll, Waker},
+};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     ack,
@@ -184,6 +187,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         local_id_registry: &mut connection::LocalIdRegistry,
         limits: &mut Limits,
         now: Timestamp,
+        waker: &Waker,
         publisher: &mut Pub,
     ) -> Poll<Result<(), transport::Error>> {
         if let Some(session_info) = self.session_info.as_mut() {
@@ -199,6 +203,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 handshake_status: &mut self.handshake_status,
                 local_id_registry,
                 limits,
+                waker,
                 publisher,
             };
 

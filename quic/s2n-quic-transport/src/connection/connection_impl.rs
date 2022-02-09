@@ -24,10 +24,11 @@ use crate::{
     transmission::interest::Provider,
     wakeup_queue::WakeupHandle,
 };
+use alloc::sync::Arc;
 use bytes::Bytes;
 use core::{
     fmt,
-    task::{Context, Poll},
+    task::{Context, Poll, Waker},
     time::Duration,
 };
 use s2n_quic_core::{
@@ -267,13 +268,16 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         timestamp: Timestamp,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), connection::Error> {
+        let waker = Waker::from(Arc::new(self.wakeup_handle.clone()));
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
         let space_manager = &mut self.space_manager;
+
         match space_manager.poll_crypto(
             &mut self.path_manager,
             &mut self.local_id_registry,
             &mut self.limits,
             timestamp,
+            &waker,
             &mut publisher,
         ) {
             Poll::Ready(res) => res?,
@@ -1036,7 +1040,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Handles all external wakeups on the [`Connection`].
-    fn on_wakeup(&mut self, _timestamp: Timestamp) -> Result<(), connection::Error> {
+    fn on_wakeup(&mut self) -> Result<(), connection::Error> {
         self.wakeup_handle.wakeup_handled();
 
         // return an error if the application set one

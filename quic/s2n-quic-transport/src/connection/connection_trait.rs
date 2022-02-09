@@ -98,7 +98,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     ) -> Result<(), connection::Error>;
 
     /// Handles all external wakeups on the [`Connection`].
-    fn on_wakeup(&mut self, timestamp: Timestamp) -> Result<(), connection::Error>;
+    fn on_wakeup(&mut self) -> Result<(), connection::Error>;
 
     // Packet handling
 

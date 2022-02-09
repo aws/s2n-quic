@@ -11,7 +11,7 @@ use crate::{
     stream::AbstractStreamManager,
 };
 use bytes::Bytes;
-use core::ops::Not;
+use core::{ops::Not, task::Waker};
 use s2n_codec::{DecoderBuffer, DecoderValue};
 use s2n_quic_core::{
     ack,
@@ -45,6 +45,7 @@ pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPu
     pub handshake_status: &'a mut HandshakeStatus,
     pub local_id_registry: &'a mut connection::LocalIdRegistry,
     pub limits: &'a mut Limits,
+    pub waker: &'a Waker,
     pub publisher: &'a mut Pub,
 }
 
@@ -504,5 +505,9 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
     fn send_application(&mut self, _transmission: Bytes) {
         unimplemented!("application level crypto frames cannot currently be sent")
+    }
+
+    fn waker(&self) -> &Waker {
+        self.waker
     }
 }

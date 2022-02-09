@@ -9,7 +9,7 @@ license = "Apache-2.0"
 default = ["alloc", "std"]
 alloc = []
 std = ["alloc", "thiserror"]
-testing = ["std", "generator", "s2n-codec/testing", "checked-counters", "insta"]
+testing = ["std", "generator", "s2n-codec/testing", "checked-counters", "insta", "futures-test"]
 generator = ["bolero-generator"]
 checked-counters = []
 event-tracing = ["tracing"]
@@ -28,11 +28,13 @@ thiserror = { version = "1", optional = true }
 tracing = { version = "0.1", default-features = false, optional = true }
 zerocopy = "=0.6.0"
 zerocopy-derive = "=0.3.0"
+futures-test = { version = "0.3", optional = true } # For testing Waker interactions
 
 [dev-dependencies]
 bolero = "0.6"
 bolero-generator = { version = "0.6", default-features = false }
 insta = "1"
+futures-test = "0.3"
 ip_network = "0.4"
 plotters = { version = "0.3", default-features = false, features = ["svg_backend", "line_series"] }
 s2n-codec = { version = "0.1", path = "../../common/s2n-codec", features = ["testing"] }

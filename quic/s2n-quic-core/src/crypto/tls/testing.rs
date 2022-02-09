@@ -10,7 +10,11 @@ use crate::{
     transport,
 };
 use bytes::Bytes;
-use core::{fmt, task::Poll};
+use core::{
+    fmt,
+    task::{Poll, Waker},
+};
+use futures_test::task::new_count_waker;
 use s2n_codec::EncoderValue;
 use std::collections::VecDeque;
 
@@ -246,10 +250,12 @@ pub struct Context<C: CryptoSuite> {
     pub server_name: Option<Bytes>,
     pub application_protocol: Option<Bytes>,
     pub transport_parameters: Option<Bytes>,
+    waker: Waker,
 }
 
 impl<C: CryptoSuite> Default for Context<C> {
     fn default() -> Self {
+        let (waker, _wake_counter) = new_count_waker();
         Self {
             initial: Space::default(),
             handshake: Space::default(),
@@ -259,6 +265,7 @@ impl<C: CryptoSuite> Default for Context<C> {
             server_name: None,
             application_protocol: None,
             transport_parameters: None,
+            waker,
         }
     }
 }
@@ -568,5 +575,9 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
         );
         self.log("tx application");
         self.application.tx(transmission)
+    }
+
+    fn waker(&self) -> &Waker {
+        &self.waker
     }
 }
