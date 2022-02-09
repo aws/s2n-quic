@@ -16,5 +16,8 @@ s2n-tls = { version = "0.0.3", features = ["quic"] }
 
 [dev-dependencies]
 checkers = "0.6"
+# Pin to this version until s2n-tls supports OpenSSL 3.0
+# Build the vendored version to make it easy to test in dev
+openssl-sys = { version = "<= 0.9.68", features = ["vendored"] }
 s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", features = ["testing"] }
 s2n-quic-rustls = { version = "0.1", path = "../s2n-quic-rustls" }
