@@ -341,10 +341,10 @@ impl<Config: endpoint::Config> Manager<Config> {
             }
             migration::Outcome::Deny(reason) => {
                 publisher.on_connection_migration_denied(reason.into_event());
-                return Err(DatagramDropReason::RejectedConnectionAttempt);
+                return Err(DatagramDropReason::RejectedConnectionMigration);
             }
             _ => {
-                return Err(DatagramDropReason::RejectedConnectionAttempt);
+                return Err(DatagramDropReason::RejectedConnectionMigration);
             }
         }
 
