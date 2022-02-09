@@ -1,9 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Provides connection id support for an endpoint
+
 pub use s2n_quic_core::connection::id::{ConnectionInfo, Format, Generator, LocalId, Validator};
 
-/// Provides connection id support for an endpoint
 pub trait Provider: 'static {
     type Format: 'static + Format;
     type Error: core::fmt::Display;
@@ -11,13 +12,6 @@ pub trait Provider: 'static {
     fn start(self) -> Result<Self::Format, Self::Error>;
 }
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "rand")] {
-        pub use random as default;
-    } else {
-        // TODO implement stub that panics
-    }
-}
 pub use default::Provider as Default;
 
 impl_provider_utils!();
@@ -31,8 +25,7 @@ impl<T: 'static + Format> Provider for T {
     }
 }
 
-#[cfg(feature = "rand")]
-pub mod random {
+pub mod default {
     use core::{
         convert::{Infallible, TryInto},
         time::Duration,

@@ -120,7 +120,6 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
-        #[cfg(feature = "std")]
         #[inline]
         pub fn local_addr(&self) -> $crate::connection::Result<std::net::SocketAddr> {
             self.0.local_address().map(std::net::SocketAddr::from)
@@ -133,7 +132,6 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
-        #[cfg(feature = "std")]
         #[inline]
         pub fn remote_addr(&self) -> $crate::connection::Result<std::net::SocketAddr> {
             self.0.remote_address().map(std::net::SocketAddr::from)

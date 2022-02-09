@@ -160,7 +160,6 @@ impl Client {
     /// #    Ok(())
     /// # }
     /// ```
-    #[cfg(feature = "std")]
     pub fn local_addr(&self) -> Result<std::net::SocketAddr, std::io::Error> {
         // TODO: Return the actual local address
         Ok("0.0.0.0:0".parse().unwrap())

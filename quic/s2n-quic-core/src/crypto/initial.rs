@@ -88,7 +88,7 @@ pub const EXAMPLE_SERVER_INITIAL_SECRET: [u8; 32] = hex!(
 //# 3900320408ffffffffffffffff050480 00ffff07048000ffff08011001048000
 //# 75300901100f088394c8f03e51570806 048000ffff
 
-/// Example payload from https://www.rfc-editor.org/rfc/rfc9001#section-A.2
+/// Example payload from <https://www.rfc-editor.org/rfc/rfc9001#section-A.2>
 pub const EXAMPLE_CLIENT_INITIAL_PAYLOAD: [u8; 245] = hex!(
     "
    060040f1010000ed0303ebf8fa56f129 39b9584a3896472ec40bb863cfd3e868
@@ -181,7 +181,7 @@ fn client_initial_protection_test() {
 //# 7e78bfe706ca4cf5e9c5453e9f7cfd2b 8b4c8d169a44e55c88d4a9a7f9474241
 //# e221af44860018ab0856972e194cd934
 
-/// https://www.rfc-editor.org/rfc/rfc9001#section-A.2
+/// <https://www.rfc-editor.org/rfc/rfc9001#section-A.2>
 pub const EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET: [u8; 1200] = hex!(
     "
    c000000001088394c8f03e5157080000 449e7b9aec34d1b1c98dd7689fb8ec11
@@ -235,7 +235,7 @@ pub const EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET: [u8; 1200] = hex!(
 //# 020304
 //#
 
-/// Example payload from https://www.rfc-editor.org/rfc/rfc9001#section-A.3
+/// Example payload from <https://www.rfc-editor.org/rfc/rfc9001#section-A.3>
 pub const EXAMPLE_SERVER_INITIAL_PAYLOAD: [u8; 99] = hex!(
     "
    02000000000600405a020000560303ee fce7f7b37ba1d1632e96677825ddf739
@@ -283,7 +283,7 @@ fn server_initial_protection_test() {
 //# 2158407dd074ee
 
 /// Example protected packet from
-/// https://www.rfc-editor.org/rfc/rfc9001#section-A.3
+/// <https://www.rfc-editor.org/rfc/rfc9001#section-A.3>
 pub const EXAMPLE_SERVER_INITIAL_PROTECTED_PACKET: [u8; 135] = hex!(
     "
    cf000000010008f067a5502a4262b500 4075c0d95a482cd0991cd25b0aac406a

@@ -190,14 +190,14 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// # #[tokio::main]
         /// # async fn main() -> Result<(), Box<dyn Error>> {
         /// let server = Server::builder()
-        ///     .with_token(MyTokenProvider::new())?
+        ///     .with_address_token(MyTokenProvider::new())?
         ///     .start()?;
         /// #
         /// #    Ok(())
         /// # }
         /// ```
-        with_token,
-        token,
+        with_address_token,
+        address_token,
         ServerProviders
     );
 

@@ -1,9 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Provides stateless reset token support for an endpoint
+
 pub use s2n_quic_core::stateless_reset::token::Generator;
 
-/// Provides stateless reset token support for an endpoint
 pub trait Provider: 'static {
     type Generator: 'static + Generator;
     type Error: core::fmt::Display;
@@ -11,18 +12,11 @@ pub trait Provider: 'static {
     fn start(self) -> Result<Self::Generator, Self::Error>;
 }
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "rand")] {
-        pub use random::Provider as Default;
-    } else {
-        // TODO implement stub that panics
-    }
-}
+pub use random::Provider as Default;
 
 impl_provider_utils!();
 
-#[cfg(feature = "rand")]
-pub mod random {
+mod random {
     use core::convert::Infallible;
     use rand::prelude::*;
     use s2n_quic_core::{frame::new_connection_id::STATELESS_RESET_TOKEN_LEN, stateless_reset};
