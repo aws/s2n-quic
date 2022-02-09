@@ -108,7 +108,7 @@ impl transmission::interest::Provider for CloseSender {
                 ..
             }
         ) {
-            //= https://www.rfc-editor.org/rfc/rfc9002.txt#3
+            //= https://www.rfc-editor.org/rfc/rfc9002#3
             //# Packets containing frames besides ACK or CONNECTION_CLOSE frames
             //# count toward congestion control limits and are considered to be in
             //# flight.
@@ -165,7 +165,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> tx::Message
     fn write_payload(&mut self, buffer: &mut [u8], gso_offset: usize) -> usize {
         let len = self.packet.len();
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#10.2.1
         //# |  Note: Allowing retransmission of a closing packet is an
         //# |  exception to the requirement that a new packet number be used
         //# |  for each packet; see Section 12.3.  Sending new packet numbers
@@ -261,7 +261,7 @@ enum TransmissionState {
     Transmitting,
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.1
+//= https://www.rfc-editor.org/rfc/rfc9000#10.2.1
 //# An endpoint SHOULD limit the rate at which it generates packets in
 //# the closing state.  For instance, an endpoint could wait for a
 //# progressively increasing number of received packets or amount of time

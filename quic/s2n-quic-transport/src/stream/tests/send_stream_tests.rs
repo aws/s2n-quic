@@ -869,13 +869,13 @@ fn retransmitted_data_is_sent_in_same_packets_as_new_data() {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#4.1
+//= https://www.rfc-editor.org/rfc/rfc9000#4.1
 //= type=test
 //# A sender SHOULD send a
 //# STREAM_DATA_BLOCKED or DATA_BLOCKED frame to indicate to the receiver
 //# that it has data to write but is blocked by flow control limits.
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.13
+//= https://www.rfc-editor.org/rfc/rfc9000#19.13
 //= type=test
 //# A sender SHOULD send a STREAM_DATA_BLOCKED frame (type=0x15) when it
 //# wishes to send data, but is unable to do so due to stream-level flow
@@ -1052,14 +1052,14 @@ fn writes_not_more_than_max_data_even_if_more_data_is_enqueued() {
         Instruction::AckPacket(pn(4), ExpectWakeup(Some(false))),
         Instruction::CheckInterests(stream_interests(&["cf"])),
         Instruction::CheckNoTx,
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#4.1
         //= type=test
         //# A sender MUST ignore any MAX_STREAM_DATA or MAX_DATA frames that do
         //# not increase flow control limits.
         Instruction::SetMaxData(VarInt::from_u32(2499)),
         Instruction::CheckInterests(stream_interests(&["cf"])),
         Instruction::CheckNoTx,
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#4.1
         //= type=test
         //# A sender MUST ignore any MAX_STREAM_DATA or MAX_DATA frames that do
         //# not increase flow control limits.

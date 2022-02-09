@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#4.6"
+target = "https://www.rfc-editor.org/rfc/rfc9000#4.6"
 
 # 4.6.  Controlling Concurrency
 #

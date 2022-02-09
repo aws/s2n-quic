@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#9.5"
+target = "https://www.rfc-editor.org/rfc/rfc9000#9.5"
 
 # 9.5.  Privacy Implications of Connection Migration
 #

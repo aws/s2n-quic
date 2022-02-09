@@ -20,31 +20,31 @@ use s2n_quic_core::{
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum State {
-    //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
+    //= https://www.rfc-editor.org/rfc/rfc8899#5.2
     //# The DISABLED state is the initial state before probing has started.
     Disabled,
     // SEARCH_REQUESTED is used to indicate a probe packet has been requested
     // to be transmitted, but has not been transmitted yet.
     SearchRequested,
-    //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
+    //= https://www.rfc-editor.org/rfc/rfc8899#5.2
     //# The SEARCHING state is the main probing state.
     Searching(PacketNumber, Timestamp),
-    //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
+    //= https://www.rfc-editor.org/rfc/rfc8899#5.2
     //# The SEARCH_COMPLETE state indicates that a search has completed.
     SearchComplete,
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#14.3
+//= https://www.rfc-editor.org/rfc/rfc9000#14.3
 //# Endpoints SHOULD set the initial value of BASE_PLPMTU (Section 5.1 of
 //# [DPLPMTUD]) to be consistent with QUIC's smallest allowed maximum
 //# datagram size.
 
-//= https://tools.ietf.org/rfc/rfc8899.txt#5.1.2
+//= https://www.rfc-editor.org/rfc/rfc8899#5.1.2
 //# When using IPv4, there is no currently equivalent size specified,
 //# and a default BASE_PLPMTU of 1200 bytes is RECOMMENDED.
 const BASE_PLPMTU: u16 = MINIMUM_MTU;
 
-//= https://tools.ietf.org/rfc/rfc8899.txt#5.1.2
+//= https://www.rfc-editor.org/rfc/rfc8899#5.1.2
 //# The MAX_PROBES is the maximum value of the PROBE_COUNT
 //# counter (see Section 5.1.3).  MAX_PROBES represents the limit for
 //# the number of consecutive probe attempts of any size.  Search
@@ -56,7 +56,7 @@ const MAX_PROBES: u8 = 3;
 // The minimum length of the data field of a packet sent over an
 // Ethernet is 1500 octets, thus the maximum length of an IP datagram
 // sent over an Ethernet is 1500 octets.
-// See https://tools.ietf.org/rfc/rfc894.txt
+// See https://www.rfc-editor.org/rfc/rfc894.txt
 const ETHERNET_MTU: u16 = 1500;
 
 // If the next value to probe is within the PROBE_THRESHOLD bytes of
@@ -76,7 +76,7 @@ const BLACK_HOLE_THRESHOLD: u8 = 3;
 // before probing for a larger MTU again.
 const BLACK_HOLE_COOL_OFF_DURATION: Duration = Duration::from_secs(60);
 
-//= https://tools.ietf.org/rfc/rfc8899.txt#5.1.1
+//= https://www.rfc-editor.org/rfc/rfc8899#5.1.1
 //# The PMTU_RAISE_TIMER is configured to the period a
 //# sender will continue to use the current PLPMTU, after which it
 //# reenters the Search Phase.  This timer has a period of 600
@@ -86,13 +86,13 @@ const PMTU_RAISE_TIMER_DURATION: Duration = Duration::from_secs(600);
 #[derive(Clone, Debug)]
 pub struct Controller {
     state: State,
-    //= https://tools.ietf.org/rfc/rfc8899.txt#2
+    //= https://www.rfc-editor.org/rfc/rfc8899#2
     //# The Packetization Layer PMTU is an estimate of the largest size
     //# of PL datagram that can be sent by a path, controlled by PLPMTUD
     plpmtu: u16,
     // The maximum size the UDP payload can reach for any probe packet.
     max_udp_payload: u16,
-    //= https://tools.ietf.org/rfc/rfc8899.txt#5.1.3
+    //= https://www.rfc-editor.org/rfc/rfc8899#5.1.3
     //# The PROBED_SIZE is the size of the current probe packet
     //# as determined at the PL.  This is a tentative value for the
     //# PLPMTU, which is awaiting confirmation by an acknowledgment.
@@ -100,7 +100,7 @@ pub struct Controller {
     // The maximum size datagram to probe for. In contrast to the max_udp_payload,
     // this value will decrease if probes are not acknowledged.
     max_probe_size: u16,
-    //= https://tools.ietf.org/rfc/rfc8899.txt#5.1.3
+    //= https://www.rfc-editor.org/rfc/rfc8899#5.1.3
     //# The PROBE_COUNT is a count of the number of successive
     //# unsuccessful probe packets that have been sent.
     probe_count: u8,
@@ -110,7 +110,7 @@ pub struct Controller {
     // The largest acknowledged packet with size >= the plpmtu. Used when tracking
     // packets that have been lost for the purpose of detecting a black hole.
     largest_acked_mtu_sized_packet: Option<PacketNumber>,
-    //= https://tools.ietf.org/rfc/rfc8899.txt#5.1.1
+    //= https://www.rfc-editor.org/rfc/rfc8899#5.1.1
     //# The PMTU_RAISE_TIMER is configured to the period a
     //# sender will continue to use the current PLPMTU, after which it
     //# reenters the Search Phase.
@@ -171,7 +171,7 @@ impl Controller {
         }
     }
 
-    //= https://tools.ietf.org/rfc/rfc8899.txt#4.2
+    //= https://www.rfc-editor.org/rfc/rfc8899#4.2
     //# When
     //# supported, this mechanism MAY also be used by DPLPMTUD to acknowledge
     //# reception of a probe packet.
@@ -205,7 +205,7 @@ impl Controller {
 
                 self.update_probed_size();
 
-                //= https://tools.ietf.org/rfc/rfc8899.txt#8
+                //= https://www.rfc-editor.org/rfc/rfc8899#8
                 //# To avoid excessive load, the interval between individual probe
                 //# packets MUST be at least one RTT, and the interval between rounds of
                 //# probing is determined by the PMTU_RAISE_TIMER.
@@ -217,7 +217,7 @@ impl Controller {
         }
     }
 
-    //= https://tools.ietf.org/rfc/rfc8899.txt#3
+    //= https://www.rfc-editor.org/rfc/rfc8899#3
     //# The PL is REQUIRED to be
     //# robust in the case where probe packets are lost due to other
     //# reasons (including link transmission error, congestion).
@@ -274,7 +274,7 @@ impl Controller {
     /// written by this method to be in its own connection transmission.
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         if self.state != State::SearchRequested || !context.transmission_mode().is_mtu_probing() {
-            //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
+            //= https://www.rfc-editor.org/rfc/rfc8899#5.2
             //# When used with an acknowledged PL (e.g., SCTP), DPLPMTUD SHOULD NOT continue to
             //# generate PLPMTU probes in this state.
             return;
@@ -293,17 +293,17 @@ impl Controller {
             return;
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#14.4
         //# Endpoints could limit the content of PMTU probes to PING and PADDING
         //# frames, since packets that are larger than the current maximum
         //# datagram size are more likely to be dropped by the network.
 
-        //= https://tools.ietf.org/rfc/rfc8899.txt#3
+        //= https://www.rfc-editor.org/rfc/rfc8899#3
         //# Probe loss recovery: It is RECOMMENDED to use probe packets that
         //# do not carry any user data that would require retransmission if
         //# lost.
 
-        //= https://tools.ietf.org/rfc/rfc8899.txt#4.1
+        //= https://www.rfc-editor.org/rfc/rfc8899#4.1
         //# DPLPMTUD MAY choose to use only one of these methods to simplify the
         //# implementation.
 
@@ -329,7 +329,7 @@ impl Controller {
 
     /// Sets `probed_size` to the next MTU size to probe for based on a binary search
     fn update_probed_size(&mut self) {
-        //= https://tools.ietf.org/rfc/rfc8899.txt#5.3.2
+        //= https://www.rfc-editor.org/rfc/rfc8899#5.3.2
         //# Implementations SHOULD select the set of probe packet sizes to
         //# maximize the gain in PLPMTU from each search step.
         self.probed_size = self.plpmtu + ((self.max_probe_size - self.plpmtu) / 2)
@@ -447,7 +447,7 @@ mod test {
 
     #[test]
     fn base_plpmtu_is_1200() {
-        //= https://tools.ietf.org/rfc/rfc8899.txt#5.1.2
+        //= https://www.rfc-editor.org/rfc/rfc8899#5.1.2
         //= type=test
         //# When using
         //# IPv4, there is no currently equivalent size specified, and a
@@ -535,7 +535,7 @@ mod test {
         assert_eq!(State::SearchRequested, controller.state);
     }
 
-    //= https://tools.ietf.org/rfc/rfc8899.txt#4.2
+    //= https://www.rfc-editor.org/rfc/rfc8899#4.2
     //= type=test
     //# When
     //# supported, this mechanism MAY also be used by DPLPMTUD to acknowledge
@@ -593,12 +593,12 @@ mod test {
         assert!(!controller.pmtu_raise_timer.is_armed());
     }
 
-    //= https://tools.ietf.org/rfc/rfc8899.txt#5.3.2
+    //= https://www.rfc-editor.org/rfc/rfc8899#5.3.2
     //= type=test
     //# Implementations SHOULD select the set of probe packet sizes to
     //# maximize the gain in PLPMTU from each search step.
 
-    //= https://tools.ietf.org/rfc/rfc8899.txt#8
+    //= https://www.rfc-editor.org/rfc/rfc8899#8
     //= type=test
     //# To avoid excessive load, the interval between individual probe
     //# packets MUST be at least one RTT, and the interval between rounds of
@@ -682,7 +682,7 @@ mod test {
         assert_eq!(Some(pnum), controller.largest_acked_mtu_sized_packet);
     }
 
-    //= https://tools.ietf.org/rfc/rfc8899.txt#3
+    //= https://www.rfc-editor.org/rfc/rfc8899#3
     //= type=test
     //# The PL is REQUIRED to be
     //# robust in the case where probe packets are lost due to other
@@ -804,7 +804,7 @@ mod test {
         }
     }
 
-    //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
+    //= https://www.rfc-editor.org/rfc/rfc8899#5.2
     //= type=test
     //# When used with an
     //# acknowledged PL (e.g., SCTP), DPLPMTUD SHOULD NOT continue to
@@ -878,19 +878,19 @@ mod test {
         assert_eq!(State::SearchComplete, controller.state);
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.4
+    //= https://www.rfc-editor.org/rfc/rfc9000#14.4
     //= type=test
     //# Endpoints could limit the content of PMTU probes to PING and PADDING
     //# frames, since packets that are larger than the current maximum
     //# datagram size are more likely to be dropped by the network.
 
-    //= https://tools.ietf.org/rfc/rfc8899.txt#3
+    //= https://www.rfc-editor.org/rfc/rfc8899#3
     //= type=test
     //# Probe loss recovery: It is RECOMMENDED to use probe packets that
     //# do not carry any user data that would require retransmission if
     //# lost.
 
-    //= https://tools.ietf.org/rfc/rfc8899.txt#4.1
+    //= https://www.rfc-editor.org/rfc/rfc8899#4.1
     //= type=test
     //# DPLPMTUD MAY choose to use only one of these methods to simplify the
     //# implementation.

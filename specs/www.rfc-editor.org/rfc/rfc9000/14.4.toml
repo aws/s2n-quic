@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#14.4"
+target = "https://www.rfc-editor.org/rfc/rfc9000#14.4"
 
 # 14.4.  Sending QUIC PMTU Probes
 #

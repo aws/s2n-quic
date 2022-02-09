@@ -1,5 +1,5 @@
 [[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#17.4"
+target = "https://www.rfc-editor.org/rfc/rfc9000#17.4"
 quote = '''
 The spin bit is an OPTIONAL feature of this version of QUIC.
 '''
@@ -7,7 +7,7 @@ tracking-issue = "517"
 feature = "latency spin bit"
 
 [[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#17.4"
+target = "https://www.rfc-editor.org/rfc/rfc9000#17.4"
 quote = '''
 Implementations MUST allow administrators
 of clients and servers to disable the spin bit either globally or on
@@ -17,7 +17,7 @@ tracking-issue = "517"
 feature = "Latency Spin Bit"
 
 [[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#17.4"
+target = "https://www.rfc-editor.org/rfc/rfc9000#17.4"
 quote = '''
 Even when the spin bit is not disabled by
 the administrator, endpoints MUST disable their use of the spin bit
@@ -28,7 +28,7 @@ tracking-issue = "517"
 feature = "Latency Spin Bit"
 
 [[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#17.4"
+target = "https://www.rfc-editor.org/rfc/rfc9000#17.4"
 quote = '''
 When the spin bit is disabled, endpoints MAY set the spin bit to any
 value, and MUST ignore any incoming value.
@@ -37,7 +37,7 @@ tracking-issue = "517"
 feature = "Latency Spin Bit"
 
 [[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#17.4"
+target = "https://www.rfc-editor.org/rfc/rfc9000#17.4"
 quote = '''
 It is RECOMMENDED that
 endpoints set the spin bit to a random value either chosen

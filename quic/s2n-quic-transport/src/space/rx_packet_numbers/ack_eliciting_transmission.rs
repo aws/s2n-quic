@@ -77,7 +77,7 @@ pub struct AckElicitingTransmission {
 impl AckElicitingTransmission {
     /// Called when a set of packets was acknowledged or lost
     pub fn ack_range<A: ack::Set>(&self, ack_set: &A) -> Option<AckRange> {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.2.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#13.2.4
         //# When a packet containing an ACK frame is acknowledged, the receiver can stop
         //# acknowledging packets less than or equal to the Largest Acknowledged
         //# field in the sent ACK frame.

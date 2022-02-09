@@ -14,7 +14,7 @@ use bolero_generator::*;
 
 pub mod migration;
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#14
+//= https://www.rfc-editor.org/rfc/rfc9000#14
 //# QUIC MUST NOT be used if the network path cannot support a
 //# maximum datagram size of at least 1200 bytes.
 pub const MINIMUM_MTU: u16 = 1200;
@@ -26,7 +26,7 @@ pub const DEFAULT_MAX_MTU: MaxMtu = MaxMtu(unsafe { NonZeroU16::new_unchecked(15
 // Length is the length in octets of this user datagram  including  this
 // header and the data. (This means the minimum value of the length is
 // eight.)
-// See https://tools.ietf.org/rfc/rfc768.txt
+// See https://www.rfc-editor.org/rfc/rfc768.txt
 pub const UDP_HEADER_LEN: u16 = 8;
 
 // IPv4 header ranges from 20-60 bytes, depending on Options

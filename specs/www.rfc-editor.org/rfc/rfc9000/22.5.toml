@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#22.5"
+target = "https://www.rfc-editor.org/rfc/rfc9000#22.5"
 
 # 22.5.  QUIC Transport Error Codes Registry
 #

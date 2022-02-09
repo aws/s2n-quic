@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#9.4"
+target = "https://www.rfc-editor.org/rfc/rfc9000#9.4"
 
 # 9.4.  Loss Detection and Congestion Control
 #

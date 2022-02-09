@@ -7,7 +7,7 @@ use core::convert::{TryFrom, TryInto};
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
 use subtle::ConstantTimeEq;
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
+//= https://www.rfc-editor.org/rfc/rfc9000#10.3
 //# Stateless Reset {
 //#   Fixed Bits (2) = 1,
 //#   Unpredictable Bits (38..),
@@ -60,7 +60,7 @@ impl AsMut<[u8]> for Token {
 }
 
 impl PartialEq for Token {
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#10.3.1
     //# When comparing a datagram to stateless reset token values, endpoints
     //# MUST perform the comparison without leaking information about the
     //# value of the token.
@@ -142,7 +142,7 @@ pub mod testing {
 mod tests {
     use crate::stateless_reset::token::{testing::TEST_TOKEN_1, LEN};
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#10.3.1
     //= type=test
     //# When comparing a datagram to stateless reset token values, endpoints
     //# MUST perform the comparison without leaking information about the

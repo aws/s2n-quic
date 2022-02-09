@@ -35,7 +35,7 @@ macro_rules! is_supported {
             .any(|v| v == $packet.version);
 
         if supported {
-            //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.1
+            //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.1
             //# Upon receiving a client initial with a supported version, the
             //# server logs this event with server_versions and chosen_version set
             $publisher.on_version_information(event::builder::VersionInformation {
@@ -44,7 +44,7 @@ macro_rules! is_supported {
                 chosen_version: Some($packet.version),
             });
         } else {
-            //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.1
+            //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.1
             //# Upon receiving a client initial with an unsupported version, the
             //# server logs this event with server_versions set and
             //# client_versions to the single-element array containing the
@@ -103,7 +103,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
                     return Ok(());
                 }
 
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#6.1
+                //= https://www.rfc-editor.org/rfc/rfc9000#6.1
                 //# a server that is able to recognize packets as
                 //# 0-RTT might choose not to send Version Negotiation packets in
                 //# response to 0-RTT packets with the expectation that it will
@@ -111,7 +111,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
                 return Err(Error);
             }
             ProtectedPacket::VersionNegotiation(_packet) => {
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#6.1
+                //= https://www.rfc-editor.org/rfc/rfc9000#6.1
                 //# An endpoint MUST NOT send a Version Negotiation packet
                 //# in response to receiving a Version Negotiation packet.
                 return Ok(());
@@ -119,35 +119,35 @@ impl<Config: endpoint::Config> Negotiator<Config> {
             _ => return Ok(()),
         };
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#5.2.2
         //# If a server receives a packet that indicates an unsupported version
         //# and if the packet is large enough to initiate a new connection for
         //# any supported version, the server SHOULD send a Version Negotiation
         //# packet as described in Section 6.1.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#6
+        //= https://www.rfc-editor.org/rfc/rfc9000#6
         //# A server might not send a Version
         //# Negotiation packet if the datagram it receives is smaller than the
         //# minimum size specified in a different version;
         if payload_len < (MINIMUM_MTU as usize) {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.2
+            //= https://www.rfc-editor.org/rfc/rfc9000#5.2.2
             //# Servers MUST
             //# drop smaller packets that specify unsupported versions.
             return Err(Error);
         }
 
         {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.2
+            //= https://www.rfc-editor.org/rfc/rfc9000#5.2.2
             //# A server MAY limit the number of packets
             //# to which it responds with a Version Negotiation packet.
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#6.1
+            //= https://www.rfc-editor.org/rfc/rfc9000#6.1
             //# A server MAY limit the number of Version Negotiation packets it
             //# sends.
 
             // store the peer's address if we're not at capacity
             if self.transmissions.len() != self.max_peers {
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.2
+                //= https://www.rfc-editor.org/rfc/rfc9000#5.2.2
                 //# Servers SHOULD respond with a Version
                 //# Negotiation packet, provided that the datagram is sufficiently long.
                 self.transmissions
@@ -280,16 +280,16 @@ impl EncoderValue for SupportedVersions {
             encoder.encode(version);
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#6.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#6.3
         //# Endpoints MAY add reserved versions to any field where unknown or
         //# unsupported versions are ignored to test that a peer correctly
         //# ignores the value.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#6.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#6.3
         //# Endpoints MAY send packets with a reserved version to test that a
         //# peer correctly discards the packet.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#6.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#6.3
         //# For a server to use a new version in the future, clients need to
         //# correctly handle unsupported versions.  Some version numbers
         //# (0x?a?a?a?a as defined in Section 15) are reserved for inclusion in

@@ -21,7 +21,7 @@ use crate::{
 };
 use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue};
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.4
+//= https://www.rfc-editor.org/rfc/rfc9000#17.2.4
 //# Handshake Packet {
 //#   Header Form (1) = 1,
 //#   Fixed Bit (1) = 1,
@@ -38,7 +38,7 @@ use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder,
 //#   Packet Payload (..),
 //# }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.4
+//= https://www.rfc-editor.org/rfc/rfc9000#17.2.4
 //# A Handshake packet uses long headers with a type value of 0x2
 macro_rules! handshake_tag {
     () => {
@@ -70,7 +70,7 @@ impl<'a> ProtectedHandshake<'a> {
     ) -> DecoderBufferMutResult<ProtectedHandshake> {
         let mut decoder = HeaderDecoder::new_long(&buffer);
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#17.2
         //# Endpoints that receive a version 1 long header
         //# with a value larger than 20 MUST drop the packet.
         let destination_connection_id = decoder.decode_destination_connection_id(&buffer)?;
@@ -149,7 +149,7 @@ impl<'a> EncryptedHandshake<'a> {
 
         let header = header.into_less_safe_slice();
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#17.2
         //# The value
         //# included prior to protection MUST be set to 0.  An endpoint MUST
         //# treat receipt of a packet that has a non-zero value for these bits

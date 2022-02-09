@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#21.5.3"
+target = "https://www.rfc-editor.org/rfc/rfc9000#21.5.3"
 
 # 21.5.3.  Request Forgery with Preferred Addresses
 #

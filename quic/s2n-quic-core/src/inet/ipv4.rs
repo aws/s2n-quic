@@ -9,7 +9,7 @@ use crate::inet::{
 use core::{fmt, mem::size_of};
 use s2n_codec::zerocopy::U16;
 
-//= https://tools.ietf.org/rfc/rfc791.txt#2.3
+//= https://www.rfc-editor.org/rfc/rfc791#2.3
 //# Addresses are fixed length of four octets (32 bits).
 const IPV4_LEN: usize = 32 / 8;
 
@@ -63,7 +63,7 @@ impl IpV4Address {
         match self.octets {
             // NOTE: this RFC doesn't quite follow modern formatting so it doesn't parse with the
             // compliance tool
-            // https://www.rfc-editor.org/rfc/rfc1122.txt#3.2.1.3
+            // https://www.rfc-editor.org/rfc/rfc1122#3.2.1.3
             // (a)  { 0, 0 }
             //
             //     This host on this network.  MUST NOT be sent, except as
@@ -82,14 +82,14 @@ impl IpV4Address {
 
             // NOTE: this RFC doesn't quite follow modern formatting so it doesn't parse with the
             // compliance tool
-            // https://www.rfc-editor.org/rfc/rfc1122.txt#3.2.1.3
+            // https://www.rfc-editor.org/rfc/rfc1122#3.2.1.3
             // (g)  { 127, <any> }
             //
             //   Internal host loopback address.  Addresses of this form
             //   MUST NOT appear outside a host.
             [127, _, _, _] => Some(Loopback),
 
-            //= https://www.rfc-editor.org/rfc/rfc1918.txt#3
+            //= https://www.rfc-editor.org/rfc/rfc1918#3
             //# The Internet Assigned Numbers Authority (IANA) has reserved the
             //# following three blocks of the IP address space for private internets:
             //#
@@ -100,22 +100,22 @@ impl IpV4Address {
             [172, 16..=31, _, _] => Some(Private),
             [192, 168, _, _] => Some(Private),
 
-            //= https://www.rfc-editor.org/rfc/rfc6598.txt#7
+            //= https://www.rfc-editor.org/rfc/rfc6598#7
             //# The Shared Address Space address range is 100.64.0.0/10.
             [100, 64..=127, _, _] => {
-                //= https://www.rfc-editor.org/rfc/rfc6598.txt#1
+                //= https://www.rfc-editor.org/rfc/rfc6598#1
                 //# Shared Address Space is similar to [RFC1918] private address space in
                 //# that it is not globally routable address space and can be used by
                 //# multiple pieces of equipment.
                 Some(Private)
             }
 
-            //= https://www.rfc-editor.org/rfc/rfc3927.txt#8
+            //= https://www.rfc-editor.org/rfc/rfc3927#8
             //# The IANA has allocated the prefix 169.254/16 for the use described in
             //# this document.
             [169, 254, _, _] => Some(LinkLocal),
 
-            //= https://www.rfc-editor.org/rfc/rfc7723.txt#4.1
+            //= https://www.rfc-editor.org/rfc/rfc7723#4.1
             //# +----------------------+-------------------------------------------+
             //# | Attribute            | Value                                     |
             //# +----------------------+-------------------------------------------+
@@ -130,7 +130,7 @@ impl IpV4Address {
             //# | Global               | True                                      |
             [192, 0, 0, 9] => Some(Global),
 
-            //= https://www.rfc-editor.org/rfc/rfc8155.txt#8.1
+            //= https://www.rfc-editor.org/rfc/rfc8155#8.1
             //# +----------------------+-------------------------------------------+
             //# | Attribute            | Value                                     |
             //# +----------------------+-------------------------------------------+
@@ -145,18 +145,18 @@ impl IpV4Address {
             //# | Global               | True                                      |
             [192, 0, 0, 10] => Some(Global),
 
-            //= https://www.rfc-editor.org/rfc/rfc6890.txt#2.1
+            //= https://www.rfc-editor.org/rfc/rfc6890#2.1
             //# Table 7 of this document records the assignment of an IPv4 address
             //# block (192.0.0.0/24) to IANA for IETF protocol assignments.
             [192, 0, 0, _] => None,
 
-            //= https://www.rfc-editor.org/rfc/rfc2544.txt#C.2.2
+            //= https://www.rfc-editor.org/rfc/rfc2544#C.2.2
             //# The network addresses 192.18.0.0 through 198.19.255.255 are have been
             //# assigned to the BMWG by the IANA for this purpose.
             // NOTE: this range should be 198.18.0.0/15 as corrected by https://www.rfc-editor.org/errata/eid423
             [198, 18..=19, _, _] => None,
 
-            //= https://www.rfc-editor.org/rfc/rfc5737.txt#3
+            //= https://www.rfc-editor.org/rfc/rfc5737#3
             //# The blocks 192.0.2.0/24 (TEST-NET-1), 198.51.100.0/24 (TEST-NET-2),
             //# and 203.0.113.0/24 (TEST-NET-3) are provided for use in
             //# documentation.
@@ -164,18 +164,18 @@ impl IpV4Address {
             [198, 51, 100, _] => None,
             [203, 0, 113, _] => None,
 
-            //= https://www.rfc-editor.org/rfc/rfc6676.txt#2
+            //= https://www.rfc-editor.org/rfc/rfc6676#2
             //# For Any-Source Multicast (ASM), the IPv4 multicast addresses
             //# allocated for documentation purposes are 233.252.0.0 - 233.252.0.255
             //# (233.252.0.0/24).
             [233, 252, 0, _] => None,
 
-            //= https://www.rfc-editor.org/rfc/rfc1112.txt#4
+            //= https://www.rfc-editor.org/rfc/rfc1112#4
             //# Class E IP addresses, i.e.,
             //# those with "1111" as their high-order four bits, are reserved for
             //# future addressing modes.
 
-            //= https://www.rfc-editor.org/rfc/rfc919.txt#7
+            //= https://www.rfc-editor.org/rfc/rfc919#7
             //# The address 255.255.255.255 denotes a broadcast on a local hardware
             //# network, which must not be forwarded.
             [240..=255, _, _, _] => None,
@@ -188,7 +188,7 @@ impl IpV4Address {
     /// Converts the IP address into a IPv6 mapped address
     #[inline]
     pub const fn to_ipv6_mapped(self) -> IpV6Address {
-        //= https://tools.ietf.org/rfc/rfc5156.txt#2.2
+        //= https://www.rfc-editor.org/rfc/rfc5156#2.2
         //# ::FFFF:0:0/96 are the IPv4-mapped addresses [RFC4291].
         let mut addr = [0; size_of::<IpV6Address>()];
         let [a, b, c, d] = self.octets;

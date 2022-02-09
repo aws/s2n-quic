@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#3.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#3.2"
 
 # 3.2.  Receiving Stream States
 #

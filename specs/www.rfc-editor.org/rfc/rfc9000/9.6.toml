@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#9.6"
+target = "https://www.rfc-editor.org/rfc/rfc9000#9.6"
 
 # 9.6.  Server's Preferred Address
 #

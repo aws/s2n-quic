@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#19.16"
+target = "https://www.rfc-editor.org/rfc/rfc9000#19.16"
 
 # 19.16.  RETIRE_CONNECTION_ID Frames
 #

@@ -38,17 +38,17 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             "only servers can accept new initial connections"
         );
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#14.1
         //# A client MUST expand the payload of all UDP datagrams carrying
         //# Initial packets to at least the smallest allowed maximum datagram
         //# size of 1200 bytes
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#14.1
         //# A server MUST discard an Initial packet that is carried in a UDP
         //# datagram with a payload that is smaller than the smallest allowed
         //# maximum datagram size of 1200 bytes.
 
-        //= https://www.rfc-editor.org/rfc/rfc9001.txt#9.3
+        //= https://www.rfc-editor.org/rfc/rfc9001#9.3
         //# First, the packet
         //# containing a ClientHello MUST be padded to a minimum size.
         if datagram.payload_len < 1200 {
@@ -71,7 +71,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             // ID as the initial_connection_id.
             initial_connection_id = datagram.destination_connection_id;
         } else {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+            //= https://www.rfc-editor.org/rfc/rfc9000#7.2
             //# When an Initial packet is sent by a client that has not previously
             //# received an Initial or Retry packet from the server, the client
             //# populates the Destination Connection ID field with an unpredictable
@@ -92,7 +92,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 .generate(&connection_info);
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#17.2
         //# Endpoints that receive a version 1 long header
         //# with a value larger than 20 MUST drop the packet.
         let source_connection_id = packet
@@ -100,7 +100,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .try_into()
             .map_err(transport::Error::from)?;
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#17.2.5.2
         //# Changing the Destination Connection ID field also results in
         //# a change to the keys used to protect the Initial packet.
         let (initial_key, initial_header_key) =
@@ -154,7 +154,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         transport_parameters.load_limits(&limits);
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#7.3
         //# A server includes the Destination Connection ID field from the first
         //# Initial packet it received from the client in the
         //# original_destination_connection_id transport parameter; if the server
@@ -176,7 +176,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             );
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#7.3
         //# Each endpoint includes the value of the Source Connection ID field
         //# from the first Initial packet it sent in the
         //# initial_source_connection_id transport parameter
@@ -187,7 +187,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 .expect("connection ID already validated"),
         );
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#18.2
         //# active_connection_id_limit (0x0e):  This is an integer value
         //#    specifying the maximum number of connection IDs from the peer that
         //#    an endpoint is willing to store.  This value includes the
@@ -254,7 +254,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             peer_id_registry,
             space_manager,
             wakeup_handle,
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+            //= https://www.rfc-editor.org/rfc/rfc9000#7.2
             //# A server MUST set the Destination Connection ID it
             //# uses for sending packets based on the first received Initial packet.
             peer_connection_id: source_connection_id,
@@ -348,7 +348,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             return Err(error);
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.3
+        //= https://www.rfc-editor.org/rfc/rfc9001#4.3
         //= type=TODO
         //= tracking-issue=299
         //# If the

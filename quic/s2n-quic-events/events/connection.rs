@@ -3,7 +3,7 @@
 
 #[event("transport:alpn_information")]
 #[deprecated(note = "use `on_application_protocol_information` instead")]
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.2
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.2
 //# QUIC implementations each have their own list of application level
 //# protocols and versions thereof they support.
 /// Application level protocol
@@ -12,7 +12,7 @@ struct AlpnInformation<'a> {
 }
 
 #[event("transport:application_protocol_information")]
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.2
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.2
 //# QUIC implementations each have their own list of application level
 //# protocols and versions thereof they support.
 /// Application level protocol
@@ -34,21 +34,21 @@ struct ServerNameInformation<'a> {
 }
 
 #[event("transport:packet_sent")]
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.5
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.5
 /// Packet was sent by a connection
 struct PacketSent {
     packet_header: PacketHeader,
 }
 
 #[event("transport:packet_received")]
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.6
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.6
 /// Packet was received by a connection
 struct PacketReceived {
     packet_header: PacketHeader,
 }
 
 #[event("connectivity:active_path_updated")]
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.8
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.1.8
 /// Active path was updated
 struct ActivePathUpdated<'a> {
     // TODO: many events seem to require PacketHeader. Make it more ergonomic
@@ -66,7 +66,7 @@ struct PathCreated<'a> {
 }
 
 #[event("transport:frame_sent")]
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.5
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.5
 // This diverges a bit from the qlog spec, which prefers to log data as part of the
 // packet events.
 /// Frame was sent
@@ -77,7 +77,7 @@ struct FrameSent {
 }
 
 #[event("transport:frame_received")]
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.6
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.6
 // This diverges a bit from the qlog spec, which prefers to log data as part of the
 // packet events.
 /// Frame was received
@@ -88,7 +88,7 @@ struct FrameReceived<'a> {
 }
 
 #[event("recovery:packet_lost")]
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.4.5
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.4.5
 /// Packet was lost
 struct PacketLost<'a> {
     packet_header: PacketHeader,
@@ -98,7 +98,7 @@ struct PacketLost<'a> {
 }
 
 #[event("recovery:metrics_updated")]
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.4.2
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.4.2
 /// Recovery metrics updated
 struct RecoveryMetrics<'a> {
     path: Path<'a>,
@@ -126,7 +126,7 @@ struct PacketDropped<'a> {
 }
 
 #[event("security:key_update")]
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.2.1
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.2.1
 /// Crypto key updated
 struct KeyUpdate {
     key_type: KeyType,
@@ -139,14 +139,14 @@ struct KeySpaceDiscarded {
 }
 
 #[event("connectivity:connection_started")]
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.2
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.1.2
 /// Connection started
 struct ConnectionStarted<'a> {
     path: Path<'a>,
 }
 
 #[event("connectivity:connection_closed")]
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.3
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.1.3
 /// Connection closed
 struct ConnectionClosed {
     error: crate::connection::Error,
@@ -167,7 +167,7 @@ struct TransportParametersReceived<'a> {
 }
 
 #[event("transport:datagram_sent")]
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.10
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.10
 /// Datagram sent by a connection
 struct DatagramSent {
     len: u16,
@@ -176,19 +176,19 @@ struct DatagramSent {
     /// If this value is greater than 0, it indicates that this datagram has been sent with other
     /// segments in a single buffer.
     ///
-    /// See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads.html#generic-segmentation-offload) for more details.
+    /// See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads#generic-segmentation-offload) for more details.
     gso_offset: usize,
 }
 
 #[event("transport:datagram_received")]
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.11
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.11
 /// Datagram received by a connection
 struct DatagramReceived {
     len: u16,
 }
 
 #[event("transport:datagram_dropped")]
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.12
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.12
 /// Datagram dropped by a connection
 struct DatagramDropped {
     len: u16,
@@ -196,7 +196,7 @@ struct DatagramDropped {
 }
 
 #[event("connectivity:connection_id_updated")]
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.4
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.1.4
 /// ConnectionId updated
 struct ConnectionIdUpdated<'a> {
     path_id: u64,

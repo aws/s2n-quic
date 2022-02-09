@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#19.11"
+target = "https://www.rfc-editor.org/rfc/rfc9000#19.11"
 
 # 19.11.  MAX_STREAMS Frames
 #

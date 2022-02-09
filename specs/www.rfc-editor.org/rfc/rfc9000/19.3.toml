@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#19.3"
+target = "https://www.rfc-editor.org/rfc/rfc9000#19.3"
 
 # 19.3.  ACK Frames
 #

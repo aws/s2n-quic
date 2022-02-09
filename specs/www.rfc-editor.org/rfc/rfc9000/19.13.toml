@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#19.13"
+target = "https://www.rfc-editor.org/rfc/rfc9000#19.13"
 
 # 19.13.  STREAM_DATA_BLOCKED Frames
 #

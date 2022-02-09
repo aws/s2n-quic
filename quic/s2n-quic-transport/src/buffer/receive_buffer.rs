@@ -49,7 +49,7 @@ struct SlotPosition {
 /// It not overwritten, it will always allocate buffers of this size, and fill
 /// them with incoming data.
 /// This limitation is documented here:
-/// https://docs.rs/bytes/0.4.12/bytes/struct.Bytes.html#inline-bytes
+/// https://docs.rs/bytes/0.4.12/bytes/struct.Bytes#inline-bytes
 pub const DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE: usize = 4096;
 
 /// For buffers below this size [`BytesMut`] will inline bytes, which prevents
@@ -61,7 +61,7 @@ fn align_offset(offset: u64, alignment: usize) -> u64 {
     (offset / (alignment as u64)) * (alignment as u64)
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#2.2
+//= https://www.rfc-editor.org/rfc/rfc9000#2.2
 //# Endpoints MUST be able to deliver stream data to an application as an
 //# ordered byte-stream.
 

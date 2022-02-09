@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#4.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#4.2"
 
 # 4.2.  Increasing Flow Control Limits
 #

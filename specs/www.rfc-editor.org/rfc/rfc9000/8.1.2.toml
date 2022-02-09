@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#8.1.2"
 
 # 8.1.2.  Address Validation Using Retry Packets
 #

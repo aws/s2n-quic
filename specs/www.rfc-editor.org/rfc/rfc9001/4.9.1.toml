@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9001.txt#4.9.1"
+target = "https://www.rfc-editor.org/rfc/rfc9001#4.9.1"
 
 # 4.9.1.  Discarding Initial Keys
 #

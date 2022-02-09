@@ -10,7 +10,7 @@ use s2n_codec::{decoder_value, Encoder, EncoderValue};
 #[cfg(any(test, feature = "generator"))]
 use bolero_generator::*;
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#16
+//= https://www.rfc-editor.org/rfc/rfc9000#16
 //# QUIC packets and frames commonly use a variable-length encoding for
 //# non-negative integer values.  This encoding ensures that smaller
 //# integer values need fewer bytes to encode.
@@ -20,7 +20,7 @@ use bolero_generator::*;
 //# the integer encoding length in bytes.  The integer value is encoded
 //# on the remaining bits, in network byte order.
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#16
+//= https://www.rfc-editor.org/rfc/rfc9000#16
 //# This means that integers are encoded on 1, 2, 4, or 8 bytes and can
 //# encode 6-, 14-, 30-, or 62-bit values, respectively.  Table 4
 //# summarizes the encoding properties.
@@ -117,7 +117,7 @@ mod tests {
         }
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#A.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#A.1
     //# For example, the eight-byte sequence 0xc2197c5eff14e88c decodes to
     //# the decimal value 151,288,809,941,952,652; the four-byte sequence
     //# 0x9d7f3e7d decodes to 494,878,333; the two-byte sequence 0x7bbd

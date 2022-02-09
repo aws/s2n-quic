@@ -84,7 +84,7 @@ fn get_path_by_address_test() {
     );
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3.2
+//= https://www.rfc-editor.org/rfc/rfc9000#9.3.2
 //= type=test
 //# To protect the connection from failing due to such a spurious
 //# migration, an endpoint MUST revert to using the last validated peer
@@ -328,13 +328,13 @@ fn validate_path_before_challenge_expiration() {
     assert!(!helper.manager[helper.second_path_id].is_validated());
 
     // Trigger 2:
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2
+    //= https://www.rfc-editor.org/rfc/rfc9000#8.2.2
     //= type=test
     //# This requirement MUST NOT be enforced by the endpoint that initiates
     //# path validation, as that would enable an attack on migration; see
     //# Section 9.3.3.
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.3
+    //= https://www.rfc-editor.org/rfc/rfc9000#8.2.3
     //= type=test
     //# A PATH_RESPONSE frame received on any network path validates the path
     //# on which the PATH_CHALLENGE was sent.
@@ -390,7 +390,7 @@ fn dont_validate_path_if_path_challenge_is_abandoned() {
     assert!(helper.manager[helper.second_path_id].is_challenge_pending());
 
     // Trigger 1:
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.4
+    //= https://www.rfc-editor.org/rfc/rfc9000#8.2.4
     //= type=test
     //# Endpoints SHOULD abandon path validation based on a timer.
     // A response 100ms after the challenge should fail
@@ -418,7 +418,7 @@ fn dont_validate_path_if_path_challenge_is_abandoned() {
 }
 
 #[test]
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3
+//= https://www.rfc-editor.org/rfc/rfc9000#9.3
 //# If the recipient permits the migration, it MUST send subsequent
 //# packets to the new peer address and MUST initiate path validation
 //# (Section 8.2) to verify the peer's ownership of the address if
@@ -454,18 +454,18 @@ fn initiate_path_challenge_if_new_path_is_not_validated() {
 }
 
 #[test]
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#9
+//= https://www.rfc-editor.org/rfc/rfc9000#9
 //= type=test
 //# When an endpoint has no validated path on which to send packets, it
 //# MAY discard connection state.
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3.2
+//= https://www.rfc-editor.org/rfc/rfc9000#9.3.2
 //= type=test
 //# If an endpoint has no state about the last validated peer address, it
 //# MUST close the connection silently by discarding all connection
 //# state.
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#10
+//= https://www.rfc-editor.org/rfc/rfc9000#10
 //= type=test
 //# An endpoint MAY discard connection state if it does not have a
 //# validated path on which it can send packets; see Section 8.2
@@ -518,7 +518,7 @@ fn silently_return_when_there_is_no_valid_path() {
 }
 
 #[test]
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3
+//= https://www.rfc-editor.org/rfc/rfc9000#9.3
 //= type=test
 //# After changing the address to which it sends non-probing packets, an
 //# endpoint can abandon any path validation for other addresses.
@@ -604,7 +604,7 @@ fn abandon_all_path_challenges() {
 }
 
 #[test]
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#9.2
+//= https://www.rfc-editor.org/rfc/rfc9000#9.2
 //= type=test
 //# An endpoint can migrate a connection to a new local address by
 //# sending packets containing non-probing frames from that address.
@@ -633,7 +633,7 @@ fn non_probing_should_update_path_to_active_path() {
 }
 
 #[test]
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#9.2
+//= https://www.rfc-editor.org/rfc/rfc9000#9.2
 //= type=test
 //# An endpoint can migrate a connection to a new local address by
 //# sending packets containing non-probing frames from that address.
@@ -782,7 +782,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
 }
 
 #[test]
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#9
+//= https://www.rfc-editor.org/rfc/rfc9000#9
 //= type=test
 //# If a client receives packets from an unknown server address,
 //# the client MUST discard these packets.
@@ -842,7 +842,7 @@ fn do_not_add_new_path_if_client() {
 }
 
 #[test]
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+//= https://www.rfc-editor.org/rfc/rfc9000#7.2
 //= type=test
 //# Until a packet is received from the server, the client MUST
 //# use the same Destination Connection ID value on all packets in this
@@ -997,14 +997,14 @@ fn connection_migration_challenge_behavior() {
         &mut publisher,
     );
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
+    //= https://www.rfc-editor.org/rfc/rfc9000#9
     //= type=test
     //# An endpoint MUST
     //# perform path validation (Section 8.2) if it detects any change to a
     //# peer's address, unless it has previously validated that address.
     assert!(manager[path_id].is_challenge_pending());
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#8.2.1
     //= type=test
     //# The endpoint MUST use unpredictable data in every PATH_CHALLENGE
     //# frame so that it can associate the peer's response with the
@@ -1015,7 +1015,7 @@ fn connection_migration_challenge_behavior() {
     let mut expected_data: [u8; 8] = [0; 8];
     test_rnd_generator.public_random_fill(&mut expected_data);
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
+    //= https://www.rfc-editor.org/rfc/rfc9000#9
     //= type=test
     //# An endpoint MUST
     //# perform path validation (Section 8.2) if it detects any change to a
@@ -1195,11 +1195,11 @@ fn connection_migration_new_path_abandon_timer() {
     manager[second_path_id].on_transmit(&mut context);
 
     // Trigger 2:
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.4
+    //= https://www.rfc-editor.org/rfc/rfc9000#8.2.4
     //= type=test
     //# Endpoints SHOULD abandon path validation based on a timer.
     //
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.4
+    //= https://www.rfc-editor.org/rfc/rfc9000#8.2.4
     //= type=test
     //# Endpoints SHOULD abandon path validation based on a timer.  When
     //# setting this timer, implementations are cautioned that the new path
@@ -1229,7 +1229,7 @@ fn connection_migration_new_path_abandon_timer() {
     assert!(!manager[second_path_id].is_challenge_pending());
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#5.1.2
+//= https://www.rfc-editor.org/rfc/rfc9000#5.1.2
 //= type=test
 //# Upon receipt of an increased Retire Prior To field, the peer MUST
 //# stop using the corresponding connection IDs and retire them with

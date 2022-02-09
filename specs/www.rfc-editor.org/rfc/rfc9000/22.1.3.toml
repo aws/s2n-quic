@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#22.1.3"
+target = "https://www.rfc-editor.org/rfc/rfc9000#22.1.3"
 
 # 22.1.3.  Reclaiming Provisional Codepoints
 #

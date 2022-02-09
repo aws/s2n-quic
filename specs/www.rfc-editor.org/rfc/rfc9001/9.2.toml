@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9001.txt#9.2"
+target = "https://www.rfc-editor.org/rfc/rfc9001#9.2"
 
 # 9.2.  Replay Attacks with 0-RTT
 #

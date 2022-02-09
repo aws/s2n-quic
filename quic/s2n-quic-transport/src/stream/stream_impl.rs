@@ -255,7 +255,7 @@ impl StreamTrait for StreamImpl {
         frame: &MaxStreamData,
         events: &mut StreamEvents,
     ) -> Result<(), transport::Error> {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.10
+        //= https://www.rfc-editor.org/rfc/rfc9000#19.10
         //# An endpoint that
         //# receives a MAX_STREAM_DATA frame for a receive-only stream MUST
         //# terminate the connection with error STREAM_STATE_ERROR.

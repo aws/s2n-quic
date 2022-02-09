@@ -155,12 +155,12 @@ fn header_protection_sample(
 ) -> Result<&[u8], DecoderError> {
     let buffer = buffer.skip(header_len)?;
 
-    //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.4.2
+    //= https://www.rfc-editor.org/rfc/rfc9001#5.4.2
     //# in sampling packet ciphertext for header protection, the Packet Number field is
     //# assumed to be 4 bytes long
     let buffer = buffer.skip(PacketNumberLen::MAX_LEN)?;
 
-    //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.4.2
+    //= https://www.rfc-editor.org/rfc/rfc9001#5.4.2
     //# An endpoint MUST discard packets that are not long enough to contain
     //# a complete sample.
     let (sample, _) = buffer.decode_slice(sample_len)?;

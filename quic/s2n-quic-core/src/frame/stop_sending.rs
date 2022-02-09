@@ -3,7 +3,7 @@
 
 use crate::varint::VarInt;
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.5
+//= https://www.rfc-editor.org/rfc/rfc9000#19.5
 //# An endpoint uses a STOP_SENDING frame (type=0x05) to communicate that
 //# incoming data is being discarded on receipt per application request.
 //# STOP_SENDING requests that a peer cease transmission on a stream.
@@ -14,14 +14,14 @@ macro_rules! stop_sending_tag {
     };
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.5
+//= https://www.rfc-editor.org/rfc/rfc9000#19.5
 //# STOP_SENDING Frame {
 //#   Type (i) = 0x05,
 //#   Stream ID (i),
 //#   Application Protocol Error Code (i),
 //# }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.5
+//= https://www.rfc-editor.org/rfc/rfc9000#19.5
 //# STOP_SENDING frames contain the following fields:
 //#
 //# Stream ID:  A variable-length integer carrying the stream ID of the

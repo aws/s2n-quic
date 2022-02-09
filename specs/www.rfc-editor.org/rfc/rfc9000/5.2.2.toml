@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#5.2.2"
 
 # 5.2.2.  Server Packet Handling
 #

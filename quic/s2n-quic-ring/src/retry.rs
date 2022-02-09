@@ -145,7 +145,7 @@ mod tests {
                 _ => None,
             }
         {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.1
+            //= https://www.rfc-editor.org/rfc/rfc9000#17.2.5.1
             //= type=test
             //# This value MUST NOT be equal to the Destination
             //# Connection ID field of the packet sent by the client.

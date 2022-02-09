@@ -96,29 +96,29 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
         let encoder = EncoderBuffer::new(buffer);
         let initial_capacity = encoder.capacity();
 
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#7
+        //= https://www.rfc-editor.org/rfc/rfc9002#7
         //# An endpoint MUST NOT send a packet if it would cause bytes_in_flight
         //# (see Appendix B.2) to be larger than the congestion window, unless
         //# the packet is sent on a PTO timer expiration (see Section 6.2) or
         //# when entering recovery (see Section 7.3.2).
 
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.4
+        //= https://www.rfc-editor.org/rfc/rfc9002#6.2.4
         //# In addition to sending data in the packet number space for which the
         //# timer expired, the sender SHOULD send ack-eliciting packets from
         //# other packet number spaces with in-flight data, coalescing packets if
         //# possible.
         let transmission_constraint =
             if space_manager.requires_probe() && self.context.transmission_mode.is_normal() {
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.4
+                //= https://www.rfc-editor.org/rfc/rfc9002#6.2.4
                 //# When a PTO timer expires, a sender MUST send at least one ack-
                 //# eliciting packet in the packet number space as a probe.
 
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.4
+                //= https://www.rfc-editor.org/rfc/rfc9002#6.2.4
                 //# An endpoint SHOULD include new data in packets that are sent on PTO
                 //# expiration.  Previously sent data MAY be sent if no new data can be
                 //# sent.
 
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.5
+                //= https://www.rfc-editor.org/rfc/rfc9002#7.5
                 //# Probe packets MUST NOT be blocked by the congestion controller.
                 self.context.transmission_mode = transmission::Mode::LossRecoveryProbing;
                 transmission::Constraint::None
@@ -126,13 +126,13 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 self.context.path().transmission_constraint()
             };
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#14.1
         //# A client MUST expand the payload of all UDP datagrams carrying
         //# Initial packets to at least the smallest allowed maximum datagram
         //# size of 1200 bytes by adding PADDING frames to the Initial packet or
         //# by coalescing the Initial packet; see Section 12.2.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#14.1
         //# Similarly, a
         //# server MUST expand the payload of all UDP datagrams carrying ack-
         //# eliciting Initial packets to at least the smallest allowed maximum
@@ -154,13 +154,13 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
             } else if has_transmission(space_manager.handshake(), transmission_constraint) {
                 Some(PacketNumberSpace::Handshake)
             } else {
-                //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9
+                //= https://www.rfc-editor.org/rfc/rfc9001#4.9
                 //# These packets MAY also include PADDING frames.
                 Some(PacketNumberSpace::Initial)
             }
         };
 
-        //= https://www.rfc-editor.org/rfc/rfc9001.txt#4
+        //= https://www.rfc-editor.org/rfc/rfc9001#4
         //# When packets of different types need to be sent,
         //# endpoints SHOULD use coalesced packets to send them in the same UDP
         //# datagram.
@@ -187,7 +187,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                     if Config::ENDPOINT_TYPE.is_server()
                         && !outcome.ack_elicitation().is_ack_eliciting()
                     {
-                        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.1
+                        //= https://www.rfc-editor.org/rfc/rfc9000#14.1
                         //# Similarly, a
                         //# server MUST expand the payload of all UDP datagrams carrying ack-
                         //# eliciting Initial packets to at least the smallest allowed maximum
@@ -236,7 +236,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 encoder,
             ) {
                 Ok((outcome, encoder)) => {
-                    //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9.1
+                    //= https://www.rfc-editor.org/rfc/rfc9001#4.9.1
                     //# a client MUST discard Initial keys when it first sends a
                     //# Handshake packet
 
@@ -270,7 +270,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 }
             };
 
-            //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9.2
+            //= https://www.rfc-editor.org/rfc/rfc9001#4.9.2
             //# An endpoint MUST discard its handshake keys when the TLS handshake is
             //# confirmed (Section 4.1.2).
             if space_manager.is_handshake_confirmed() {
@@ -283,7 +283,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
             encoder
         };
 
-        //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9
+        //= https://www.rfc-editor.org/rfc/rfc9001#4.9
         //# Though an endpoint might retain older keys, new data MUST be sent at
         //# the highest currently-available encryption level.
 
@@ -300,11 +300,11 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
             // Pad the packet when sending path validation frames so that MTU is also validated.
             let path = &self.context.path_manager[self.context.path_id];
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.1
+            //= https://www.rfc-editor.org/rfc/rfc9000#8.2.1
             //# An endpoint MUST expand datagrams that contain a PATH_CHALLENGE frame
             //# to at least the smallest allowed maximum datagram size of 1200 bytes.
             //
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2
+            //= https://www.rfc-editor.org/rfc/rfc9000#8.2.2
             //# An endpoint MUST expand datagrams that contain a PATH_RESPONSE frame
             //# to at least the smallest allowed maximum datagram size of 1200 bytes.
             // Pad the packet when sending path validation frames so that MTU is also validated.

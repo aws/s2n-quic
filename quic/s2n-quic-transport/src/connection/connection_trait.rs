@@ -51,7 +51,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     fn is_handshaking(&self) -> bool;
 
     /// Initiates closing the connection as described in
-    /// https://www.rfc-editor.org/rfc/rfc9000.txt#10
+    /// https://www.rfc-editor.org/rfc/rfc9000#10
     fn close(
         &mut self,
         error: connection::Error,
@@ -196,7 +196,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), ProcessingError> {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#5.2.1
         //# If a client receives a packet that uses a different version than it
         //# initially selected, it MUST discard that packet.
         if let Some(version) = packet.version() {
@@ -218,7 +218,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
             }
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.4
+        //= https://www.rfc-editor.org/rfc/rfc9001#4.1.4
         //# An endpoint SHOULD continue
         //# to respond to packets that can be processed during this time.
         // We make a best effort to process all of the packet spaces we have available. There isn't
@@ -273,7 +273,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
             {
                 payload = remaining;
 
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#12.2
+                //= https://www.rfc-editor.org/rfc/rfc9000#12.2
                 //# Senders MUST NOT coalesce QUIC packets
                 //# with different connection IDs into a single UDP datagram.  Receivers
                 //# SHOULD ignore any subsequent packets with a different Destination
@@ -322,7 +322,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                     return Err(err);
                 }
             } else {
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#12.2
+                //= https://www.rfc-editor.org/rfc/rfc9000#12.2
                 //# Every QUIC packet that is coalesced into a single UDP datagram is
                 //# separate and complete.  The receiver of coalesced QUIC packets MUST
                 //# individually process each QUIC packet and separately acknowledge

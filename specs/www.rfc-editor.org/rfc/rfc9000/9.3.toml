@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#9.3"
+target = "https://www.rfc-editor.org/rfc/rfc9000#9.3"
 
 # 9.3.  Responding to Connection Migration
 #

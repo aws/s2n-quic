@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#21.5.6"
+target = "https://www.rfc-editor.org/rfc/rfc9000#21.5.6"
 
 # 21.5.6.  Generic Request Forgery Countermeasures
 #

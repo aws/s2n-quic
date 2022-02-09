@@ -67,7 +67,7 @@ impl MaxSegments {
     // interval may drop below the timer granularity, resulting in `MAX_BURST_PACKETS` being
     // exceeded. In such networks, setting a MaxSegments size higher than the default may have a
     // positive effect on efficiency.
-    //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.7
+    //= https://www.rfc-editor.org/rfc/rfc9002#7.7
     //# Senders SHOULD limit bursts to the initial congestion window
     const DEFAULT: Self = MaxSegments(unsafe {
         NonZeroUsize::new_unchecked(s2n_quic_core::recovery::MAX_BURST_PACKETS as usize)

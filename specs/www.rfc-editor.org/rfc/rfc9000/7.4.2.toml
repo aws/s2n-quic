@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#7.4.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#7.4.2"
 
 # 7.4.2.  New Transport Parameters
 #

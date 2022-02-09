@@ -5,7 +5,7 @@ use crate::{frame::Tag, varint::VarInt};
 use core::{convert::TryInto, mem::size_of};
 use s2n_codec::{decoder_invariant, decoder_parameterized_value, Encoder, EncoderValue};
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
+//= https://www.rfc-editor.org/rfc/rfc9000#19.15
 //# An endpoint sends a NEW_CONNECTION_ID frame (type=0x18) to provide
 //# its peer with alternative connection IDs that can be used to break
 //# linkability when migrating connections; see Section 9.5.
@@ -16,7 +16,7 @@ macro_rules! new_connection_id_tag {
     };
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
+//= https://www.rfc-editor.org/rfc/rfc9000#19.15
 //# NEW_CONNECTION_ID Frame {
 //#   Type (i) = 0x18,
 //#   Sequence Number (i),
@@ -26,7 +26,7 @@ macro_rules! new_connection_id_tag {
 //#   Stateless Reset Token (128),
 //# }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
+//= https://www.rfc-editor.org/rfc/rfc9000#19.15
 //# NEW_CONNECTION_ID frames contain the following fields:
 //#
 //# Sequence Number:  The sequence number assigned to the connection ID
@@ -78,11 +78,11 @@ decoder_parameterized_value!(
             let (sequence_number, buffer) = buffer.decode()?;
             let (retire_prior_to, buffer) = buffer.decode()?;
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
+            //= https://www.rfc-editor.org/rfc/rfc9000#19.15
             //# The value in the Retire Prior To field
             //# MUST be less than or equal to the value in the Sequence Number field.
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
+            //= https://www.rfc-editor.org/rfc/rfc9000#19.15
             //# Receiving a value in the Retire Prior To field that is greater than
             //# that in the Sequence Number field MUST be treated as a connection
             //# error of type FRAME_ENCODING_ERROR.
@@ -93,7 +93,7 @@ decoder_parameterized_value!(
 
             let (connection_id_len, buffer) = buffer.decode::<u8>()?;
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.15
+            //= https://www.rfc-editor.org/rfc/rfc9000#19.15
             //# Values less than 1 and greater than 20 are invalid
             //# and MUST be treated as a connection error of type
             //# FRAME_ENCODING_ERROR.

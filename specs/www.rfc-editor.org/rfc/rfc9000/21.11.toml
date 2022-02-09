@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#21.11"
+target = "https://www.rfc-editor.org/rfc/rfc9000#21.11"
 
 # 21.11.  Stateless Reset Oracle
 #

@@ -17,7 +17,7 @@ pub mod ack_elicitation;
 pub mod congestion_controlled;
 pub mod path_validation;
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19
+//= https://www.rfc-editor.org/rfc/rfc9000#19
 //# As described in Section 12.4, packets contain one or more frames.
 //# This section describes the format and semantics of the core QUIC
 //# frame types.

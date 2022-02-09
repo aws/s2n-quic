@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9001.txt#5.7"
+target = "https://www.rfc-editor.org/rfc/rfc9001#5.7"
 
 # 5.7.  Receiving Out-of-Order Protected Packets
 #

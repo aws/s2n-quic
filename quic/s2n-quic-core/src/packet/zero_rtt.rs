@@ -20,7 +20,7 @@ use crate::{
 };
 use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue};
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.3
+//= https://www.rfc-editor.org/rfc/rfc9000#17.2.3
 //# 0-RTT Packet {
 //#   Header Form (1) = 1,
 //#   Fixed Bit (1) = 1,
@@ -37,7 +37,7 @@ use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder,
 //#   Packet Payload (..),
 //# }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.3
+//= https://www.rfc-editor.org/rfc/rfc9000#17.2.3
 //# A 0-RTT packet uses long headers with a type value of 0x1,
 macro_rules! zero_rtt_tag {
     () => {
@@ -69,7 +69,7 @@ impl<'a> ProtectedZeroRtt<'a> {
     ) -> DecoderBufferMutResult<ProtectedZeroRtt> {
         let mut decoder = HeaderDecoder::new_long(&buffer);
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#17.2
         //# Endpoints that receive a version 1 long header
         //# with a value larger than 20 MUST drop the packet.
         let destination_connection_id = decoder.decode_destination_connection_id(&buffer)?;

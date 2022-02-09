@@ -15,7 +15,7 @@ use s2n_codec::{
     EncoderValue,
 };
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.1
+//= https://www.rfc-editor.org/rfc/rfc9000#17.2.1
 //# Version Negotiation Packet {
 //#   Header Form (1) = 1,
 //#   Unused (7),
@@ -27,7 +27,7 @@ use s2n_codec::{
 //#   Supported Version (32) ...,
 //# }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.1
+//= https://www.rfc-editor.org/rfc/rfc9000#17.2.1
 //# The value in the Unused field is set to an arbitrary value by the
 //# server.  Clients MUST ignore the value of this field.  Where QUIC
 //# might be multiplexed with other protocols (see [RFC7983]), servers
@@ -42,7 +42,7 @@ macro_rules! version_negotiation_no_fixed_bit_tag {
 
 const ENCODING_TAG: u8 = 0b1100_0000;
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.1
+//= https://www.rfc-editor.org/rfc/rfc9000#17.2.1
 //# The Version field of a Version Negotiation packet MUST be set to
 //# 0x00000000.
 
@@ -131,11 +131,11 @@ impl<'a, SupportedVersions: EncoderValue> VersionNegotiation<'a, SupportedVersio
         // back to the client.
         Self {
             tag: 0,
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.1
+            //= https://www.rfc-editor.org/rfc/rfc9000#17.2.1
             //# The server MUST include the value from the Source Connection ID field
             //# of the packet it receives in the Destination Connection ID field.
             destination_connection_id: initial_packet.source_connection_id(),
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.1
+            //= https://www.rfc-editor.org/rfc/rfc9000#17.2.1
             //# The value for Source Connection ID MUST be copied from the
             //# Destination Connection ID of the received packet, which is initially
             //# randomly selected by a client.

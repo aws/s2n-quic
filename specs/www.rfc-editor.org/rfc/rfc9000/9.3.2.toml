@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#9.3.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#9.3.2"
 
 # 9.3.2.  On-Path Address Spoofing
 #

@@ -10,7 +10,7 @@ use s2n_codec::{
     decoder_parameterized_value, decoder_value, DecoderBuffer, DecoderError, Encoder, EncoderValue,
 };
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.3
+//= https://www.rfc-editor.org/rfc/rfc9000#19.3
 //# Receivers send ACK frames (types 0x02 and 0x03) to inform senders of
 //# packets they have received and processed.  The ACK frame contains one
 //# or more ACK Ranges.  ACK Ranges identify acknowledged packets.  If
@@ -26,7 +26,7 @@ macro_rules! ack_tag {
 const ACK_TAG: u8 = 0x02;
 const ACK_W_ECN_TAG: u8 = 0x03;
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.3
+//= https://www.rfc-editor.org/rfc/rfc9000#19.3
 //# ACK Frame {
 //#   Type (i) = 0x02..0x03,
 //#   Largest Acknowledged (i),
@@ -37,7 +37,7 @@ const ACK_W_ECN_TAG: u8 = 0x03;
 //#   [ECN Counts (..)],
 //# }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.3
+//= https://www.rfc-editor.org/rfc/rfc9000#19.3
 //# ACK frames contain the following fields:
 //#
 //# Largest Acknowledged:  A variable-length integer representing the
@@ -175,7 +175,7 @@ impl<A: AckRanges> EncoderValue for Ack<A> {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.3.1
+//= https://www.rfc-editor.org/rfc/rfc9000#19.3.1
 //# Each ACK Range consists of alternating Gap and ACK Range Length
 //# values in descending packet number order.  ACK Ranges can be
 //# repeated.  The number of Gap and ACK Range Length values is
@@ -231,20 +231,20 @@ impl<'a> core::fmt::Debug for AckRangesDecoder<'a> {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.3.1
+//= https://www.rfc-editor.org/rfc/rfc9000#19.3.1
 //# Each ACK Range consists of alternating Gap and ACK Range Length
 //# values in descending packet number order.  ACK Ranges can be
 //# repeated.  The number of Gap and ACK Range Length values is
 //# determined by the ACK Range Count field; one of each value is present
 //# for each value in the ACK Range Count field.
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.3.1
+//= https://www.rfc-editor.org/rfc/rfc9000#19.3.1
 //# ACK Range {
 //#   Gap (i),
 //#   ACK Range Length (i),
 //# }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.3.1
+//= https://www.rfc-editor.org/rfc/rfc9000#19.3.1
 //# The fields that form each ACK Range are:
 //#
 //# Gap:  A variable-length integer indicating the number of contiguous
@@ -314,7 +314,7 @@ decoder_parameterized_value!(
     }
 );
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.3.1
+//= https://www.rfc-editor.org/rfc/rfc9000#19.3.1
 //# An ACK Range acknowledges all packets between the smallest packet
 //# number and the largest, inclusive.
 //#
@@ -393,28 +393,28 @@ impl<'a> core::fmt::Debug for AckRangesIter<'a> {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.3.1
+//= https://www.rfc-editor.org/rfc/rfc9000#19.3.1
 //# If any computed packet number is negative, an endpoint MUST generate
 //# a connection error of type FRAME_ENCODING_ERROR.
 
 const ACK_RANGE_DECODING_ERROR: DecoderError =
     DecoderError::InvariantViolation("invalid ACK ranges");
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.3.2
+//= https://www.rfc-editor.org/rfc/rfc9000#19.3.2
 //# The ACK frame uses the least significant bit of the type value (that
 //# is, type 0x03) to indicate ECN feedback and report receipt of QUIC
 //# packets with associated ECN codepoints of ECT(0), ECT(1), or ECN-CE
 //# in the packet's IP header.  ECN counts are only present when the ACK
 //# frame type is 0x03.
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.3.2
+//= https://www.rfc-editor.org/rfc/rfc9000#19.3.2
 //# ECN Counts {
 //#   ECT0 Count (i),
 //#   ECT1 Count (i),
 //#   ECN-CE Count (i),
 //# }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.3.2
+//= https://www.rfc-editor.org/rfc/rfc9000#19.3.2
 //# The ECN count fields are:
 //#
 //# ECT0 Count:  A variable-length integer representing the total number

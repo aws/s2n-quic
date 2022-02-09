@@ -48,7 +48,7 @@ struct Env {
 
 impl Env {
     fn new() -> Self {
-        // See https://doc.rust-lang.org/cargo/reference/environment-variables.html#environment-variables-cargo-sets-for-build-scripts
+        // See https://doc.rust-lang.org/cargo/reference/environment-variables#environment-variables-cargo-sets-for-build-scripts
         Self {
             rustc: env("RUSTC"),
             out_dir: env("OUT_DIR"),

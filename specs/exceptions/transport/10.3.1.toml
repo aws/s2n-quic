@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1"
+target = "https://www.rfc-editor.org/rfc/rfc9000#10.3.1"
 
 [[exception]]
 quote = '''

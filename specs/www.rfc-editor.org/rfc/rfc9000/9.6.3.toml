@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#9.6.3"
+target = "https://www.rfc-editor.org/rfc/rfc9000#9.6.3"
 
 # 9.6.3.  Interaction of Client Migration and Preferred Address
 #

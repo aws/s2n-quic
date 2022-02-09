@@ -110,7 +110,7 @@ impl Formatter for Production {
             return transport::Error::PROTOCOL_VIOLATION.into();
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9001.html#section-4.8
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-4.8
         //# QUIC permits the use of a generic code in place of a specific error
         //# code; see Section 11 of [QUIC-TRANSPORT].  For TLS alerts, this
         //# includes replacing any alert with a generic alert, such as
@@ -145,7 +145,7 @@ impl Formatter for Production {
         _context: &Context,
         _error: application::Error,
     ) -> ConnectionClose {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#10.2.3
         //# Sending a CONNECTION_CLOSE of type 0x1d in an Initial or Handshake
         //# packet could expose application state or be used to alter application
         //# state.  A CONNECTION_CLOSE of type 0x1d MUST be replaced by a

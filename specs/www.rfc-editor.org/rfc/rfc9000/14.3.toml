@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#14.3"
+target = "https://www.rfc-editor.org/rfc/rfc9000#14.3"
 
 # 14.3.  Datagram Packetization Layer PMTU Discovery
 #

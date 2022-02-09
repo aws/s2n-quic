@@ -25,7 +25,7 @@ struct BaseKey {
     // HMAC key for signing and verifying
     key: Option<(Timestamp, hmac::Key)>,
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
+    //= https://www.rfc-editor.org/rfc/rfc9000#8.1.4
     //# To protect against such attacks, servers MUST ensure that
     //# replay of tokens is prevented or limited.
     duplicate_filter: cuckoofilter::CuckooFilter<HashHasher>,
@@ -50,7 +50,7 @@ impl BaseKey {
     fn poll_key(&mut self, random: &mut dyn random::Generator) -> Option<hmac::Key> {
         let now = s2n_quic_platform::time::now();
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#21.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#21.3
         //# Servers SHOULD provide mitigations for this attack by limiting the
         //# usage and lifetime of address validation tokens; see Section 8.1.3.
         if let Some((expires_at, key)) = self.key.as_ref() {
@@ -83,7 +83,7 @@ const DEFAULT_KEY_ROTATION_PERIOD: Duration = Duration::from_millis(1000);
 
 #[derive(Debug)]
 pub struct Provider {
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
+    //= https://www.rfc-editor.org/rfc/rfc9000#8.1.3
     //# Thus, a token SHOULD have an
     //# expiration time, which could be either an explicit expiration time or
     //# an issued timestamp that can be used to dynamically calculate the
@@ -123,7 +123,7 @@ impl super::Provider for Provider {
 }
 
 pub struct Format {
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
+    //= https://www.rfc-editor.org/rfc/rfc9000#8.1.4
     //= type=exception
     //= reason=We use a duplicate filter to prevent tokens from being used more than once.
     //# Servers are encouraged to allow tokens to be used only
@@ -132,7 +132,7 @@ pub struct Format {
     /// Key validity period
     key_rotation_period: Duration,
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
+    //= https://www.rfc-editor.org/rfc/rfc9000#8.1.4
     //# Servers SHOULD ensure that
     //# tokens sent in Retry packets are only accepted for a short time.
     /// Timestamp to rotate current key
@@ -167,7 +167,7 @@ impl Format {
     ) -> Option<hmac::Tag> {
         let mut ctx = self.keys[token.header.key_id() as usize].hasher(context.random)?;
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#8.1.4
         //# Tokens
         //# sent in Retry packets SHOULD include information that allows the
         //# server to verify that the source IP address and port in client
@@ -235,34 +235,34 @@ impl super::Format for Format {
         _source_connection_id: &connection::LocalId,
         _output_buffer: &mut [u8],
     ) -> Option<()> {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#8.1.3
         //= type=TODO
         //= tracking-issue=418
         //# A server MAY provide clients with an address validation token during
         //# one connection that can be used on a subsequent connection.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#8.1.4
         //= type=TODO
         //= tracking-issue=346
         //# Tokens sent in NEW_TOKEN frames MUST include information that allows
         //# the server to verify that the client IP address has not changed from
         //# when the token was issued.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#8.1.3
         //= type=TODO
         //= tracking-issue=345
         //# A token issued with NEW_TOKEN MUST NOT include information that would
         //# allow values to be linked by an observer to the connection on which
         //# it was issued.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#8.1.3
         //= type=TODO
         //= tracking-issue=387
         //# A server MUST ensure that every NEW_TOKEN frame it sends
         //# is unique across all clients, with the exception of those sent to
         //# repair losses of previously sent NEW_TOKEN frames.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#8.1.3
         //= type=TODO
         //= tracking-issue=394
         //# A server MAY provide clients with an address validation token during
@@ -271,7 +271,7 @@ impl super::Format for Format {
         None
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.2
+    //= https://www.rfc-editor.org/rfc/rfc9000#8.1.2
     //# Requiring the server
     //# to provide a different connection ID, along with the
     //# original_destination_connection_id transport parameter defined in
@@ -315,7 +315,7 @@ impl super::Format for Format {
         Some(())
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
+    //= https://www.rfc-editor.org/rfc/rfc9000#8.1.3
     //# When a server receives an Initial packet with an address validation
     //# token, it MUST attempt to validate the token, unless it has already
     //# completed address validation.
@@ -340,14 +340,14 @@ impl super::Format for Format {
             Source::RetryPacket => self.validate_retry_token(context, token),
             Source::NewTokenFrame => None, // Not supported in the default provider
         }
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#8.1.4
         //= type=TODO
         //= tracking-issue=347
         //# Tokens that are provided
         //# in NEW_TOKEN frames (Section 19.7) need to be valid for longer but
         //# SHOULD NOT be accepted multiple times.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#8.1.3
         //= type=TODO
         //= tracking-issue=388
         //# Clients that want to break continuity of identity with a server can
@@ -374,7 +374,7 @@ impl Header {
     fn new(source: Source, key_id: u8) -> Header {
         let mut header: u8 = 0;
         header |= TOKEN_VERSION << VERSION_SHIFT;
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#8.1.3
         //# Information that
         //# allows the server to distinguish between tokens from Retry and
         //# NEW_TOKEN MAY be accessible to entities other than the server.
@@ -398,7 +398,7 @@ impl Header {
         (self.0 & KEY_ID_MASK) >> KEY_ID_SHIFT
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#8.1.1
     //# A token sent in a NEW_TOKEN frame or a Retry packet MUST be
     //# constructed in a way that allows the server to identify how it was
     //# provided to a client.  These tokens are carried in the same field but
@@ -412,7 +412,7 @@ impl Header {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
+//= https://www.rfc-editor.org/rfc/rfc9000#8.1.4
 //#   There is no need for a single well-defined format for the token
 //#   because the server that generates the token also consumes it.
 #[derive(Copy, Clone, Debug, FromBytes, AsBytes, Unaligned)]
@@ -423,14 +423,14 @@ struct Token {
     odcid_len: u8,
     original_destination_connection_id: [u8; 20],
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
+    //= https://www.rfc-editor.org/rfc/rfc9000#8.1.4
     //# An address validation token MUST be difficult to guess.  Including a
     //# random value with at least 128 bits of entropy in the token would be
     //# sufficient, but this depends on the server remembering the value it
     //# sends to clients.
     nonce: [u8; 32],
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
+    //= https://www.rfc-editor.org/rfc/rfc9000#8.1.4
     //# A token-based scheme allows the server to offload any state
     //# associated with validation to the client.  For this design to work,
     //# the token MUST be covered by integrity protection against
@@ -493,7 +493,7 @@ mod tests {
                 let header = Header::new(*source, key_id);
                 // The version should always be the constant TOKEN_VERSION
                 assert_eq!(header.version(), TOKEN_VERSION);
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.1
+                //= https://www.rfc-editor.org/rfc/rfc9000#8.1.1
                 //= type=test
                 //# A token sent in a NEW_TOKEN frames or a Retry packet MUST be
                 //# constructed in a way that allows the server to identify how it was
@@ -548,7 +548,7 @@ mod tests {
 
     #[test]
     fn test_retry_ip_port_validation() {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#8.1.4
         //= type=test
         //# Tokens
         //# sent in Retry packets SHOULD include information that allows the
@@ -588,7 +588,7 @@ mod tests {
 
     #[test]
     fn test_key_rotation() {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#8.1.3
         //= type=test
         //# Thus, a token SHOULD have an
         //# expiration time, which could be either an explicit expiration time or
@@ -620,7 +620,7 @@ mod tests {
 
     #[test]
     fn test_expired_retry_token() {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#8.1.4
         //= type=test
         //# Servers SHOULD ensure that
         //# tokens sent in Retry packets are only accepted for a short time.
@@ -638,7 +638,7 @@ mod tests {
             .generate_retry_token(&mut context, &orig_conn_id, &mut buf)
             .unwrap();
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#21.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#21.3
         //= type=test
         //# Servers SHOULD provide mitigations for this attack by limiting the
         //# usage and lifetime of address validation tokens; see Section 8.1.3.
@@ -672,7 +672,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_token_detection() {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#8.1.4
         //= type=test
         //# To protect against such attacks, servers MUST ensure that
         //# replay of tokens is prevented or limited.
@@ -695,7 +695,7 @@ mod tests {
 
     #[test]
     fn test_token_modification_detection() {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#8.1.4
         //= type=test
         //# For this design to work,
         //# the token MUST be covered by integrity protection against
@@ -742,7 +742,7 @@ mod tests {
         let conn_id = connection::PeerId::try_from_bytes(&[2, 4, 6, 8, 10]).unwrap();
         let addr = SocketAddress::default();
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#8.1.4
         //= type=test
         //# For this design to work,
         //# the token MUST be covered by integrity protection against
