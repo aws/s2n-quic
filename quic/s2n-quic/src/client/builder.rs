@@ -18,31 +18,6 @@ impl Default for Builder<DefaultProviders> {
 
 impl<Providers: ClientProviders> Builder<Providers> {
     impl_provider_method!(
-        /// Sets the congestion controller provider for the [`Client`]
-        ///
-        /// # Examples
-        ///
-        /// Sets the congestion controller to `Cubic` with the default configuration.
-        ///
-        /// ```rust,no_run
-        /// # use std::error::Error;
-        /// use s2n_quic::{Client, provider::congestion_controller};
-        ///
-        /// # #[tokio::main]
-        /// # async fn main() -> Result<(), Box<dyn Error>> {
-        /// let client = Client::builder()
-        ///     .with_congestion_controller(congestion_controller::cubic::Provider::default())?
-        ///     .start()?;
-        /// #
-        /// #    Ok(())
-        /// # }
-        /// ```
-        with_congestion_controller,
-        congestion_controller,
-        ClientProviders
-    );
-
-    impl_provider_method!(
         /// Sets the connection ID provider for the [`Client`]
         ///
         /// # Examples
