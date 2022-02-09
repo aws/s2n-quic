@@ -140,7 +140,7 @@ jobs:
         uses: actions-rs/cargo@v1.0.3
         with:
           command: doc
-          args: --all-features --no-deps --workspace --exclude cargo-compliance --exclude compliance --exclude s2n-quic-qns
+          args: --all-features --no-deps --workspace --exclude duvet --exclude s2n-quic-qns
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
         with:
@@ -283,19 +283,19 @@ jobs:
       - uses: camshaft/rust-cache@v1
 
       - name: Clean up cache
-        run: rm -f target/release/cargo-compliance
+        run: rm -f target/release/duvet
 
-      - name: Cache cargo-compliance
+      - name: Cache duvet
         uses: actions/cache@v2.1.7
         continue-on-error: true
         with:
-          path: target/release/cargo-compliance
-          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-cargo-compliance-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('common/compliance/**') }}
+          path: target/release/duvet
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-duvet-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('common/duvet/**') }}
 
-      - name: Build cargo compliance
-        run: test -f target/release/cargo-compliance || cargo build --bin cargo-compliance --release
+      - name: Build duvet
+        run: test -f target/release/duvet || cargo build --bin duvet --release
 
-      - name: Run cargo compliance
+      - name: Run duvet
         run: ./scripts/compliance ${{ github.sha }}
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1

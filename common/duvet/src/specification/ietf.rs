@@ -223,7 +223,7 @@ macro_rules! ietf_test {
         fn $name() {
             let res = parse(include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../specs/",
+                "/specs/",
                 $file
             )))
             .unwrap();
