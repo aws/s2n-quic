@@ -3,6 +3,8 @@
 Utilities for decoding and encoding values in a safe and performance-oriented
 way.
 
+This is an internal crate used by [s2n-quic](https://github.com/awslabs/s2n-quic). The API is not currently stable and should not be used directly.
+
 ## Decoder
 
 Consider the following code:

@@ -1,5 +1,6 @@
 ---
-source: common/compliance/cargo-compliance/src/specification/ietf.rs
+source: common/duvet/src/specification/ietf.rs
+assertion_line: 235
 expression: res
 
 ---
