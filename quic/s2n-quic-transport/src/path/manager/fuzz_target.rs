@@ -311,12 +311,12 @@ impl Model {
                 }
             }
             Err(err) => {
-                // Ignore errors emitted by the migration::validator and peer_id_registry
-                let ignore_err = err.reason == "insufficient connection ids"
-                    || err.reason == "migration attempt denied";
-                if !ignore_err {
-                    panic!("{}", err)
-                }
+                match err {
+                    // Ignore errors emitted by the migration::validator and peer_id_registry
+                    DatagramDropReason::InsufficientConnectionIds => {}
+                    DatagramDropReason::RejectedConnectionMigration => {}
+                    err => panic!("{:?}", err),
+                };
             }
         }
     }

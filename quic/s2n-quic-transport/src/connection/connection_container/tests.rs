@@ -15,6 +15,7 @@ use bytes::Bytes;
 use core::task::{Context, Poll};
 use s2n_quic_core::{
     application, event,
+    event::builder::DatagramDropReason,
     inet::{DatagramInfo, SocketAddress},
     io::tx,
     packet::{
@@ -203,7 +204,7 @@ impl connection::Trait for TestConnection {
         _path_migration: &mut <Self::Config as endpoint::Config>::PathMigrationValidator,
         _max_mtu: MaxMtu,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
-    ) -> Result<path::Id, connection::Error> {
+    ) -> Result<path::Id, DatagramDropReason> {
         todo!()
     }
 
