@@ -551,7 +551,7 @@ pub mod api {
         #[doc = " If this value is greater than 0, it indicates that this datagram has been sent with other"]
         #[doc = " segments in a single buffer."]
         #[doc = ""]
-        #[doc = " See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads#generic-segmentation-offload) for more details."]
+        #[doc = " See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads.html#generic-segmentation-offload) for more details."]
         pub gso_offset: usize,
     }
     impl Event for DatagramSent {
@@ -704,7 +704,7 @@ pub mod api {
         #[doc = " If this value is greater than 0, it indicates that this datagram has been sent with other"]
         #[doc = " segments in a single buffer."]
         #[doc = ""]
-        #[doc = " See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads#generic-segmentation-offload) for more details."]
+        #[doc = " See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads.html#generic-segmentation-offload) for more details."]
         pub gso_offset: usize,
     }
     impl Event for EndpointDatagramSent {
@@ -2844,7 +2844,7 @@ pub mod builder {
         #[doc = " If this value is greater than 0, it indicates that this datagram has been sent with other"]
         #[doc = " segments in a single buffer."]
         #[doc = ""]
-        #[doc = " See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads#generic-segmentation-offload) for more details."]
+        #[doc = " See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads.html#generic-segmentation-offload) for more details."]
         pub gso_offset: usize,
     }
     impl IntoEvent<api::DatagramSent> for DatagramSent {
@@ -3100,7 +3100,7 @@ pub mod builder {
         #[doc = " If this value is greater than 0, it indicates that this datagram has been sent with other"]
         #[doc = " segments in a single buffer."]
         #[doc = ""]
-        #[doc = " See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads#generic-segmentation-offload) for more details."]
+        #[doc = " See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads.html#generic-segmentation-offload) for more details."]
         pub gso_offset: usize,
     }
     impl IntoEvent<api::EndpointDatagramSent> for EndpointDatagramSent {

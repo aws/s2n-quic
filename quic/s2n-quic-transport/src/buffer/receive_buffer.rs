@@ -49,7 +49,7 @@ struct SlotPosition {
 /// It not overwritten, it will always allocate buffers of this size, and fill
 /// them with incoming data.
 /// This limitation is documented here:
-/// https://docs.rs/bytes/0.4.12/bytes/struct.Bytes#inline-bytes
+/// https://docs.rs/bytes/0.4.12/bytes/struct.Bytes.html#inline-bytes
 pub const DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE: usize = 4096;
 
 /// For buffers below this size [`BytesMut`] will inline bytes, which prevents

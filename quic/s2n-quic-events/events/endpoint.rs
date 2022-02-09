@@ -40,7 +40,7 @@ struct EndpointDatagramSent {
     /// If this value is greater than 0, it indicates that this datagram has been sent with other
     /// segments in a single buffer.
     ///
-    /// See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads#generic-segmentation-offload) for more details.
+    /// See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads.html#generic-segmentation-offload) for more details.
     gso_offset: usize,
 }
 
