@@ -1,9 +1,8 @@
 [workspace]
 members = [
-    "common/compliance/cargo-compliance",
+    "common/duvet",
     "common/s2n-*",
     "quic/s2n-*",
-    "tls/s2n-*",
 ]
 resolver = "2"
 
