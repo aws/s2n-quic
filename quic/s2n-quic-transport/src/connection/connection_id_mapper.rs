@@ -269,7 +269,7 @@ impl ConnectionIdMapper {
         peer_stateless_reset_token: &stateless_reset::Token,
     ) -> Option<InternalConnectionId> {
         let mut guard = self.state.borrow_mut();
-        //= https://www.rfc-editor.org/rfc/rfc9000#10.3.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3.1
         //# When comparing a datagram to stateless reset token values, endpoints
         //# MUST perform the comparison without leaking information about the
         //# value of the token.

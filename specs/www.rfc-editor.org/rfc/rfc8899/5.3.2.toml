@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc8899#5.3.2"
+target = "https://www.rfc-editor.org/rfc/rfc8899#section-5.3.2"
 
 # 5.3.2.  Selection of Probe Sizes
 #

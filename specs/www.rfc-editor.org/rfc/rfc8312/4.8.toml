@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc8312#4.8"
+target = "https://www.rfc-editor.org/rfc/rfc8312#section-4.8"
 
 # 4.8.  Slow Start
 #

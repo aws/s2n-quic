@@ -21,7 +21,7 @@ pub struct ApplicationParameters<'a> {
     pub transport_parameters: &'a [u8],
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#4
+//= https://www.rfc-editor.org/rfc/rfc9000#section-4
 //= type=TODO
 //= tracking-issue=332
 //# To avoid excessive buffering at multiple layers, QUIC implementations
@@ -49,7 +49,7 @@ pub trait Context<Crypto: CryptoSuite> {
         application_parameters: ApplicationParameters,
     ) -> Result<(), transport::Error>;
 
-    //= https://www.rfc-editor.org/rfc/rfc9001#4.1.1
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.1
     //# The TLS handshake is considered complete when the
     //# TLS stack has reported that the handshake is complete.  This happens
     //# when the TLS stack has both sent a Finished message and verified the

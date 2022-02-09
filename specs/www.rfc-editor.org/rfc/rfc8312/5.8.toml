@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc8312#5.8"
+target = "https://www.rfc-editor.org/rfc/rfc8312#section-5.8"
 
 # 5.8.  Behavior for Application-Limited Flows
 #

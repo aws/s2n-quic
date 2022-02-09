@@ -57,7 +57,7 @@ impl StreamId {
     /// ```
     #[inline]
     pub fn initial(initator: endpoint::Type, stream_type: StreamType) -> StreamId {
-        //= https://www.rfc-editor.org/rfc/rfc9000#2.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-2.1
         //# The two least significant bits from a stream ID therefore identify a
         //# stream as one of four types, as summarized in Table 1.
         //#
@@ -131,7 +131,7 @@ impl StreamId {
     /// Returns whether the client or server initated the Stream
     #[inline]
     pub fn initiator(self) -> endpoint::Type {
-        //= https://www.rfc-editor.org/rfc/rfc9000#2.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-2.1
         //# The least significant bit (0x1) of the stream ID identifies the
         //# initiator of the stream.  Client-initiated streams have even-numbered
         //# stream IDs (with the bit set to 0)
@@ -145,7 +145,7 @@ impl StreamId {
     /// Returns whether the Stream is unidirectional or bidirectional.
     #[inline]
     pub fn stream_type(self) -> StreamType {
-        //= https://www.rfc-editor.org/rfc/rfc9000#2.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-2.1
         //# The second least significant bit (0x2) of the stream ID distinguishes
         //# between bidirectional streams (with the bit set to 0) and
         //# unidirectional streams (with the bit set to 1).

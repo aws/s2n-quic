@@ -154,7 +154,7 @@ pub trait PacketEncoder<K: CryptoKey, H: HeaderKey, Payload: PacketPayloadEncode
         // view of remaining capacity.
         estimator.write_repeated(key.tag_len(), 0);
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#10.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3
         //# To achieve that end,
         //# the endpoint SHOULD ensure that all packets it sends are at least 22
         //# bytes longer than the minimum connection ID length that it requests
@@ -171,7 +171,7 @@ pub trait PacketEncoder<K: CryptoKey, H: HeaderKey, Payload: PacketPayloadEncode
         // minimum_packet_len
         let minimum_payload_len = minimum_packet_len.saturating_sub(estimator.len());
 
-        //= https://www.rfc-editor.org/rfc/rfc9001#5.4.2
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-5.4.2
         //# in sampling packet ciphertext for header protection,
         //# the Packet Number field is assumed to be 4 bytes long
 

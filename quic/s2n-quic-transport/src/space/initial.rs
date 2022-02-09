@@ -32,20 +32,20 @@ use smallvec::SmallVec;
 
 pub struct InitialSpace<Config: endpoint::Config> {
     pub ack_manager: AckManager,
-    //= https://www.rfc-editor.org/rfc/rfc9001#4
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-4
     //# If QUIC needs to retransmit that data, it MUST use
     //# the same keys even if TLS has already updated to newer keys.
     pub key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialKey,
     pub header_key:
         <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialHeaderKey,
-    //= https://www.rfc-editor.org/rfc/rfc9001#4.9
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-4.9
     //# If packets from a lower encryption level contain
     //# CRYPTO frames, frames that retransmit that data MUST be sent at the
     //# same encryption level.
     pub crypto_stream: CryptoStream,
     pub tx_packet_numbers: TxPacketNumbers,
     pub received_hello_message: bool,
-    //= https://www.rfc-editor.org/rfc/rfc9000#17.2.5.3
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.3
     //# Subsequent Initial packets from the client include the connection ID
     //# and token values from the Retry packet.
     retry_token: Vec<u8>,
@@ -97,7 +97,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         debug_assert!(Config::ENDPOINT_TYPE.is_client());
         self.retry_token = retry_token.to_vec();
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#17.2.5.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.2
         //# Changing the Destination Connection ID field also results in
         //# a change to the keys used to protect the Initial packet.
         let (initial_key, initial_header_key) =
@@ -108,7 +108,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         self.key = initial_key;
         self.header_key = initial_header_key;
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#17.2.5.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.3
         //# Other than updating the Destination Connection ID and Token fields,
         //# the Initial packet sent by the client is subject to the same
         //# restrictions as the first Initial packet.  A client MUST use the same
@@ -155,7 +155,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         let mut packet_number = self.tx_packet_numbers.next();
 
         if self.recovery_manager.requires_probe() {
-            //= https://www.rfc-editor.org/rfc/rfc9002#6.2.4
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
             //# If the sender wants to elicit a faster acknowledgement on PTO, it can
             //# skip a packet number to eliminate the acknowledgment delay.
 
@@ -412,7 +412,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         })?;
 
         if Config::ENDPOINT_TYPE.is_client() && !decrypted.token.is_empty() {
-            //= https://www.rfc-editor.org/rfc/rfc9000#17.2.2
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.2
             //# Initial packets sent by the server MUST set the Token Length field
             //# to 0; clients that receive an Initial packet with a non-zero Token
             //# Length field MUST either discard the packet or generate a
@@ -609,7 +609,7 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
     fn on_rtt_update(&mut self) {}
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.2.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.2
 //# The payload of an Initial packet includes a CRYPTO frame (or frames)
 //# containing a cryptographic handshake message, ACK frames, or both.
 //# PING, PADDING, and CONNECTION_CLOSE frames of type 0x1c are also
@@ -660,7 +660,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
         _datagram: &DatagramInfo,
         _path: &mut Path<Config>,
     ) -> Result<(), transport::Error> {
-        //= https://www.rfc-editor.org/rfc/rfc9000#17.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.2
         //# CONNECTION_CLOSE frames of type 0x1c are also
         //# permitted.
 

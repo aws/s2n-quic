@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000#22.3"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-22.3"
 
 # 22.3.  QUIC Transport Parameters Registry
 #

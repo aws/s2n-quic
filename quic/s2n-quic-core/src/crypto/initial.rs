@@ -23,19 +23,19 @@ pub trait InitialKey: crypto::Key + Sized {
 /// caught by the type system.
 pub trait InitialHeaderKey: crypto::HeaderKey {}
 
-//= https://www.rfc-editor.org/rfc/rfc9001#5.2
+//= https://www.rfc-editor.org/rfc/rfc9001#section-5.2
 //# initial_salt = 0x38762cf7f55934b34d179ae6a4c80cadccbb7f0a
 
 pub const INITIAL_SALT: [u8; 20] = hex!("38762cf7f55934b34d179ae6a4c80cadccbb7f0a");
 
-//= https://www.rfc-editor.org/rfc/rfc9001#5.2
+//= https://www.rfc-editor.org/rfc/rfc9001#section-5.2
 //# client_initial_secret = HKDF-Expand-Label(initial_secret,
 //#                                           "client in", "",
 //#                                           Hash.length)
 
 pub const INITIAL_CLIENT_LABEL: [u8; 9] = *b"client in";
 
-//= https://www.rfc-editor.org/rfc/rfc9001#5.2
+//= https://www.rfc-editor.org/rfc/rfc9001#section-5.2
 //# server_initial_secret = HKDF-Expand-Label(initial_secret,
 //#                                           "server in", "",
 //#                                           Hash.length)

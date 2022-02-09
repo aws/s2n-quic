@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000#17.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-17.2"
 
 # 17.2.  Long Header Packets
 #

@@ -116,7 +116,7 @@ pub mod default {
             let active_addr = to_addr(&attempt.active_path.remote_addr);
             let packet_addr = to_addr(&attempt.packet.remote_address);
 
-            //= https://www.rfc-editor.org/rfc/rfc9000#21.5.6
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-21.5.6
             //# it might be possible over time to identify
             //# specific UDP ports that are common targets of attacks or particular
             //# patterns in datagrams that are used for attacks.  Endpoints MAY
@@ -131,14 +131,14 @@ pub mod default {
                 return Outcome::Deny(DenyReason::PortScopeChanged);
             }
 
-            //= https://www.rfc-editor.org/rfc/rfc9000#21.5.6
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-21.5.6
             //# Endpoints MAY prevent connection attempts or
             //# migration to a loopback address.  Endpoints SHOULD NOT allow
             //# connections or migration to a loopback address if the same service
             //# was previously available at a different interface or if the address
             //# was provided by a service at a non-loopback address.
 
-            //= https://www.rfc-editor.org/rfc/rfc9000#21.5.6
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-21.5.6
             //# Similarly, endpoints could regard a change in address to a link-local
             //# address [RFC4291] or an address in a private-use range [RFC1918] from
             //# a global, unique-local [RFC4193], or non-private address as a
@@ -163,7 +163,7 @@ pub mod default {
     impl PortScope {
         #[inline]
         pub const fn new(value: u16) -> Self {
-            //= https://www.rfc-editor.org/rfc/rfc6335#6
+            //= https://www.rfc-editor.org/rfc/rfc6335#section-6
             //# o  the System Ports, also known as the Well Known Ports, from 0-1023
             //#    (assigned by IANA)
             //#

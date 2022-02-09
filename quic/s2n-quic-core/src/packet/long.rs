@@ -10,7 +10,7 @@ use s2n_codec::{
     decoder_invariant, CheckedRange, DecoderError, Encoder, EncoderBuffer, EncoderValue,
 };
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2
 //# Long Header Packet {
 //#   Header Form (1) = 1,
 //#   Fixed Bit (1) = 1,
@@ -23,14 +23,14 @@ use s2n_codec::{
 //#   Source Connection ID (0..160),
 //# }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2
 //# Header Form:  The most significant bit (0x80) of byte 0 (the first
 //#   byte) is set to 1 for long headers.
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2
 //# Fixed Bit:  The next bit (0x40) of byte 0 is set to 1.
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2
 //# Long Packet Type:  The next two bits (those with a mask of 0x30)
 //#    of byte 0 contain a packet type.  Packet types are listed in
 //#    Table 5.
@@ -38,18 +38,18 @@ use s2n_codec::{
 pub(crate) const PACKET_TYPE_MASK: u8 = 0x30;
 const PACKET_TYPE_OFFSET: u8 = 4;
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2
 //# Type-Specific Bits:  The semantics of the lower four bits (those with
 //# a mask of 0x0f) of byte 0 are determined by the packet type.
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2
 //# Version: The QUIC Version is a 32-bit field that follows the first
 //#    byte.  This field indicates the version of QUIC that is in use and
 //#    determines how the rest of the protocol fields are interpreted.
 
 pub(crate) type Version = u32;
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2
 //# Destination Connection ID Length:  The byte following the version
 //#    contains the length in bytes of the Destination Connection ID
 //#    field that follows it.  This length is encoded as an 8-bit
@@ -59,7 +59,7 @@ pub(crate) type Version = u32;
 pub(crate) type DestinationConnectionIdLen = u8;
 pub(crate) const DESTINATION_CONNECTION_ID_MAX_LEN: usize = 20;
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2
 //# Destination Connection ID:  The Destination Connection ID field
 //#   follows the Destination Connection ID Length field, which
 //#   indicates the length of this field.  Section 7.2 describes the use
@@ -72,7 +72,7 @@ pub(crate) fn validate_destination_connection_id_range(
 }
 
 pub(crate) fn validate_destination_connection_id_len(len: usize) -> Result<(), DecoderError> {
-    //= https://www.rfc-editor.org/rfc/rfc9000#17.2
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2
     //# Endpoints that receive a version 1 long header with a value
     //# larger than 20 MUST drop the packet.
     decoder_invariant!(
@@ -82,7 +82,7 @@ pub(crate) fn validate_destination_connection_id_len(len: usize) -> Result<(), D
     Ok(())
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2
 //# Source Connection ID Length:  The byte following the Destination
 //#   Connection ID contains the length in bytes of the Source
 //#   Connection ID field that follows it.  This length is encoded as a
@@ -92,7 +92,7 @@ pub(crate) fn validate_destination_connection_id_len(len: usize) -> Result<(), D
 pub(crate) type SourceConnectionIdLen = u8;
 pub(crate) const SOURCE_CONNECTION_ID_MAX_LEN: usize = 20;
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2
 //# Source Connection ID:  The Source Connection ID field follows the
 //#   Source Connection ID Length field, which indicates the length of
 //#   this field.  Section 7.2 describes the use of this field in more
@@ -101,7 +101,7 @@ pub(crate) const SOURCE_CONNECTION_ID_MAX_LEN: usize = 20;
 pub(crate) fn validate_source_connection_id_range(
     range: &CheckedRange,
 ) -> Result<(), DecoderError> {
-    //= https://www.rfc-editor.org/rfc/rfc9000#17.2
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2
     //# Endpoints that receive a version 1 long header
     //# with a value larger than 20 MUST drop the packet.
     validate_source_connection_id_len(range.len())
@@ -115,7 +115,7 @@ pub(crate) fn validate_source_connection_id_len(len: usize) -> Result<(), Decode
     Ok(())
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2
 //# In this version of QUIC, the following packet types with the long
 //# header are defined:
 //#
@@ -170,25 +170,25 @@ impl From<PacketType> for u8 {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2
 //# Reserved Bits:  Two bits (those with a mask of 0x0c) of byte 0 are
 //#    reserved across multiple packet types.  These bits are protected
 //#    using header protection; see Section 5.4 of [QUIC-TLS].
 pub const RESERVED_BITS_MASK: u8 = 0x0c;
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2
 //# Packet Number Length:  In packet types that contain a Packet Number
 //# field, the least significant two bits (those with a mask of 0x03)
 //# of byte 0 contain the length of the Packet Number field, encoded
 //# as an unsigned two-bit integer that is one less than the length of
 //# the Packet Number field in bytes.
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2
 //# Length:  This is the length of the remainder of the packet (that is,
 //# the Packet Number and Payload fields) in bytes, encoded as a
 //# variable-length integer (Section 16).
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2
 //# Packet Number:  This field is 1 to 4 bytes long.  The packet number
 //# is protected using header protection; see Section 5.4 of
 //# [QUIC-TLS].  The length of the Packet Number field is encoded in

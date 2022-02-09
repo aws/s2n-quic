@@ -34,7 +34,7 @@ impl TxPacketNumbers {
     ) -> Result<(), transport::Error> {
         let largest = ack_set.largest();
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#13.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-13.1
         //# An endpoint SHOULD treat receipt of an acknowledgment for a packet it
         //# did not send as a connection error of type PROTOCOL_VIOLATION, if it
         //# is able to detect the condition.
@@ -54,7 +54,7 @@ impl TxPacketNumbers {
 
     /// Called after a packet is transmitted with a given packet number
     pub fn on_transmit(&mut self, packet_number: PacketNumber) {
-        //= https://www.rfc-editor.org/rfc/rfc9000#12.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-12.3
         //# A QUIC endpoint MUST NOT reuse a packet number within the same packet
         //# number space in one connection.  If the packet number for sending
         //# reaches 2^62-1, the sender MUST close the connection without sending

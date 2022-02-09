@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc8899#4.4"
+target = "https://www.rfc-editor.org/rfc/rfc8899#section-4.4"
 
 # 4.4.  The Maximum Packet Size (MPS)
 #

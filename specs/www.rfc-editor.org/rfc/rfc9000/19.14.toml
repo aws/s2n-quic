@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000#19.14"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-19.14"
 
 # 19.14.  STREAMS_BLOCKED Frames
 #

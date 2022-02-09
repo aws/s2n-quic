@@ -67,7 +67,7 @@ impl NegotiatedCipherSuite {
     }
 
     /// Update the cipher_suite as defined in
-    /// https://www.rfc-editor.org/rfc/rfc9001#6
+    /// https://www.rfc-editor.org/rfc/rfc9001#section-6
     pub fn update(&self) -> Self {
         dispatch!(self, |cipher| cipher.update().into())
     }

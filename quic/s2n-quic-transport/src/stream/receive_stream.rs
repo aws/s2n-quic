@@ -26,7 +26,7 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-//= https://www.rfc-editor.org/rfc/rfc9000#3.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-3.2
 //#          o
 //#          | Recv STREAM / STREAM_DATA_BLOCKED / RESET_STREAM
 //#          | Create Bidirectional Stream (Sending)
@@ -164,7 +164,7 @@ impl ReceiveStreamFlowController {
     ) -> Result<(), transport::Error> {
         // Step 1: Check the stream limit
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#19.10
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-19.10
         //# The data sent on a stream MUST NOT exceed the largest maximum stream
         //# data value advertised by the receiver.  An endpoint MUST terminate a
         //# connection with an error of type FLOW_CONTROL_ERROR if it receives
@@ -172,7 +172,7 @@ impl ReceiveStreamFlowController {
         //# the affected stream.  This includes violations of remembered limits
         //# in Early Data; see Section 7.4.1.
         if offset > self.read_window_sync.latest_value() {
-            //= https://www.rfc-editor.org/rfc/rfc9000#4.1
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-4.1
             //# A receiver MUST close the connection with an error of type
             //# FLOW_CONTROL_ERROR if the sender violates the advertised connection
             //# or stream data limits; see Section 11 for details on error handling.
@@ -200,7 +200,7 @@ impl ReceiveStreamFlowController {
             self.connection_flow_controller
                 .acquire_window(additional_connection_window)
                 .map_err(|err| {
-                    //= https://www.rfc-editor.org/rfc/rfc9000#4.1
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-4.1
                     //# A receiver MUST close the connection with an error of type
                     //# FLOW_CONTROL_ERROR if the sender violates the advertised connection
                     //# or stream data limits; see Section 11 for details on error handling.
@@ -222,7 +222,7 @@ impl ReceiveStreamFlowController {
     fn release_window(&mut self, amount: VarInt) {
         self.released_connection_window += amount;
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#4.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.2
         //# Therefore, a receiver MUST NOT wait for a
         //# STREAM_DATA_BLOCKED or DATA_BLOCKED frame before sending a
         //# MAX_STREAM_DATA or MAX_DATA frame; doing so could result in the
@@ -372,7 +372,7 @@ impl ReceiveStream {
 
                 if let Some(total_size) = total_size {
                     if data_end > total_size || frame.is_fin && data_end != total_size {
-                        //= https://www.rfc-editor.org/rfc/rfc9000#4.5
+                        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
                         //# Once a final size for a stream is known, it cannot change.  If a
                         //# RESET_STREAM or STREAM frame is received indicating a change in the
                         //# final size for the stream, an endpoint SHOULD respond with an error
@@ -391,7 +391,7 @@ impl ReceiveStream {
                     .write_at(frame.offset, frame.data)
                     .map_err(|error| {
                         match error {
-                            //= https://www.rfc-editor.org/rfc/rfc9000#19.9
+                            //= https://www.rfc-editor.org/rfc/rfc9000#section-19.9
                             //# An endpoint MUST terminate a connection with an error of type
                             //# FLOW_CONTROL_ERROR if it receives more data than the maximum data
                             //# value that it has sent.  This includes violations of remembered
@@ -430,7 +430,7 @@ impl ReceiveStream {
                     // Store the total size
                     total_size = Some(data_end.into());
 
-                    //= https://www.rfc-editor.org/rfc/rfc9000#4.5
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
                     //# The receiver MUST use the final size of the stream to
                     //# account for all bytes sent on the stream in its connection level flow
                     //# controller.
@@ -445,7 +445,7 @@ impl ReceiveStream {
                     // the FIN and more data to us. Since we neither can prove the peer
                     // right there is nothing we can do about this.
 
-                    //= https://www.rfc-editor.org/rfc/rfc9000#3.2
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-3.2
                     //# When a STREAM frame with a FIN bit is received, the final size of the
                     //# stream is known; see Section 4.5.  The receiving part of the stream
                     //# then enters the "Size Known" state.  In this state, the endpoint no
@@ -520,7 +520,7 @@ impl ReceiveStream {
         frame: &ResetStream,
         events: &mut StreamEvents,
     ) -> Result<(), transport::Error> {
-        //= https://www.rfc-editor.org/rfc/rfc9000#3.5
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-3.5
         //= type=exception
         //= reason=It's simpler to accept any RESET_STREAM frame instead of ignore
         //# An endpoint that sends a STOP_SENDING frame MAY ignore the
@@ -549,7 +549,7 @@ impl ReceiveStream {
         actual_size: Option<VarInt>,
         frame_tag: Option<u8>,
     ) -> Result<(), transport::Error> {
-        //= https://www.rfc-editor.org/rfc/rfc9000#3.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-3.2
         //# An implementation MAY
         //# interrupt delivery of stream data, discard any data that was not
         //# consumed, and signal the receipt of the RESET_STREAM.
@@ -564,7 +564,7 @@ impl ReceiveStream {
                     // diverges from the stream size which had been communicated
                     // before this is an error
 
-                    //= https://www.rfc-editor.org/rfc/rfc9000#4.5
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
                     //# Once a final size for a stream is known, it cannot change.  If a
                     //# RESET_STREAM or STREAM frame is received indicating a change in the
                     //# final size for the stream, an endpoint SHOULD respond with an error
@@ -649,7 +649,7 @@ impl ReceiveStream {
     ) -> Result<(), OnTransmitError> {
         self.stop_sending_sync.on_transmit(stream_id, context)?;
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#4.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.2
         //= type=TODO
         //= tracking-issue=334
         //# To avoid blocking a sender, a receiver MAY send a MAX_STREAM_DATA or
@@ -671,16 +671,16 @@ impl ReceiveStream {
 
         if let Some(error_code) = request.stop_sending {
             match self.state {
-                //= https://www.rfc-editor.org/rfc/rfc9000#3.3
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-3.3
                 //# A receiver MAY send a STOP_SENDING frame in any state where it has
                 //# not received a RESET_STREAM frame -- that is, states other than
                 //# "Reset Recvd" or "Reset Read".
 
-                //= https://www.rfc-editor.org/rfc/rfc9000#3.5
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-3.5
                 //# STOP_SENDING SHOULD only be sent for a stream that has not been reset
                 //# by the peer.
                 ReceiveStreamState::Reset(_) => (),
-                //= https://www.rfc-editor.org/rfc/rfc9000#3.5
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-3.5
                 //# If the stream is in the "Recv" or "Size Known" states, the transport
                 //# SHOULD signal this by sending a STOP_SENDING frame to prompt closure
                 //# of the stream in the opposite direction.

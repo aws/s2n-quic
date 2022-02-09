@@ -145,7 +145,7 @@ impl Formatter for Production {
         _context: &Context,
         _error: application::Error,
     ) -> ConnectionClose {
-        //= https://www.rfc-editor.org/rfc/rfc9000#10.2.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.3
         //# Sending a CONNECTION_CLOSE of type 0x1d in an Initial or Handshake
         //# packet could expose application state or be used to alter application
         //# state.  A CONNECTION_CLOSE of type 0x1d MUST be replaced by a

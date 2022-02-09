@@ -15,7 +15,7 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-//= https://www.rfc-editor.org/rfc/rfc9000#13.4.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-13.4.2
 //# If an endpoint has cause to expect that IP packets with an ECT codepoint
 //# might be dropped by a faulty network element, the endpoint could set an
 //# ECT codepoint for only the first ten outgoing packets on a path, or for
@@ -137,19 +137,19 @@ impl Controller {
             State::Testing(_) => ExplicitCongestionNotification::Ect0,
             State::Capable(ref mut ce_suppression_timer) => {
                 if ce_suppression_timer.poll_expiration(now).is_ready() {
-                    //= https://www.rfc-editor.org/rfc/rfc9002#8.3
+                    //= https://www.rfc-editor.org/rfc/rfc9002#section-8.3
                     //# A sender can detect suppression of reports by marking occasional
                     //# packets that it sends with an ECN-CE marking.
                     ExplicitCongestionNotification::Ce
                 } else {
-                    //= https://www.rfc-editor.org/rfc/rfc9000#13.4.2.2
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-13.4.2.2
                     //# Upon successful validation, an endpoint MAY continue to set an ECT
                     //# codepoint in subsequent packets it sends, with the expectation that
                     //# the path is ECN-capable.
                     ExplicitCongestionNotification::Ect0
                 }
             }
-            //= https://www.rfc-editor.org/rfc/rfc9000#13.4.2.2
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-13.4.2.2
             //# If validation fails, then the endpoint MUST disable ECN. It stops setting the ECT
             //# codepoint in IP packets that it sends, assuming that either the network path or
             //# the peer does not support ECN.
@@ -187,7 +187,7 @@ impl Controller {
         matches!(self.state, State::Capable(_))
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#13.4.2.2
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-13.4.2.2
     //# Network routing and path elements can change mid-connection; an endpoint
     //# MUST disable ECN if validation later fails.
     /// Validate the given `EcnCounts`, updating the current validation state based on the
@@ -218,7 +218,7 @@ impl Controller {
 
         if ack_frame_ecn_counts.is_none() {
             if newly_acked_ecn_counts.as_option().is_some() {
-                //= https://www.rfc-editor.org/rfc/rfc9000#13.4.2.1
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-13.4.2.1
                 //# If an ACK frame newly acknowledges a packet that the endpoint sent with
                 //# either the ECT(0) or ECT(1) codepoint set, ECN validation fails if the
                 //# corresponding ECN counts are not present in the ACK frame. This check
@@ -275,7 +275,7 @@ impl Controller {
         ValidationOutcome::Passed
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#13.4.2.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-13.4.2.1
     //# ECN validation also fails if the sum of the increase in ECT(0)
     //# and ECN-CE counts is less than the number of newly acknowledged
     //# packets that were originally sent with an ECT(0) marking.
@@ -287,7 +287,7 @@ impl Controller {
         ect_0_increase < newly_acked_ecn_counts.ect_0_count
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#13.4.2.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-13.4.2.1
     //# ECN validation can fail if the received total count for either ECT(0) or ECT(1)
     //# exceeds the total number of packets sent with each corresponding ECT codepoint.
     #[inline]
@@ -299,13 +299,13 @@ impl Controller {
             || incremental_ecn_counts.ect_1_count > sent_packet_ecn_counts.ect_1_count
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9002#8.3
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-8.3
     //# A receiver can misreport ECN markings to alter the congestion
     //# response of a sender.  Suppressing reports of ECN-CE markings could
     //# cause a sender to increase their send rate.  This increase could
     //# result in congestion and loss.
 
-    //= https://www.rfc-editor.org/rfc/rfc9002#8.3
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-8.3
     //# A sender can detect suppression of reports by marking occasional
     //# packets that it sends with an ECN-CE marking.  If a packet sent with
     //# an ECN-CE marking is not reported as having been CE marked when the
@@ -396,7 +396,7 @@ impl Controller {
         path: event::builder::Path,
         publisher: &mut Pub,
     ) {
-        //= https://www.rfc-editor.org/rfc/rfc9000#13.4.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-13.4.2.2
         //# Even if validation fails, an endpoint MAY revalidate ECN for the same path at any later
         //# time in the connection. An endpoint could continue to periodically attempt validation.
         let mut retest_timer = Timer::default();

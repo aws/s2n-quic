@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000#19.5"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-19.5"
 
 # 19.5.  STOP_SENDING Frames
 #

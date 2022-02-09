@@ -76,7 +76,7 @@ impl HandshakeStatus {
         match self {
             HandshakeStatus::InProgress | HandshakeStatus::ClientComplete => false,
             HandshakeStatus::ServerCompleteConfirmed(_) => {
-                //= https://www.rfc-editor.org/rfc/rfc9001#4.1.2
+                //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.2
                 //# the TLS handshake is considered confirmed at the
                 //# server when the handshake completes
                 true
@@ -95,7 +95,7 @@ impl HandshakeStatus {
             publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
                 status: event::builder::HandshakeStatus::Confirmed,
             });
-            //= https://www.rfc-editor.org/rfc/rfc9001#4.1.2
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.2
             //# At the client, the handshake is
             //# considered confirmed when a HANDSHAKE_DONE frame is received.
             *self = HandshakeStatus::Confirmed;
@@ -120,7 +120,7 @@ impl HandshakeStatus {
             publisher.on_handshake_status_updated(event::builder::HandshakeStatusUpdated {
                 status: event::builder::HandshakeStatus::Confirmed,
             });
-            //= https://www.rfc-editor.org/rfc/rfc9001#4.1.2
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.2
             //# The server MUST send a HANDSHAKE_DONE
             //# frame as soon as the handshake is complete.
             let mut flag = Flag::default();
@@ -159,7 +159,7 @@ impl HandshakeStatus {
         publisher: &mut Pub,
     ) {
         if let HandshakeStatus::ServerCompleteConfirmed(flag) = self {
-            //= https://www.rfc-editor.org/rfc/rfc9000#13.3
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-13.3
             //# The HANDSHAKE_DONE frame MUST be retransmitted until it is
             //# acknowledged.
             if flag.on_packet_loss(ack_set) {
@@ -173,7 +173,7 @@ impl HandshakeStatus {
     /// Queries if any HANDSHAKE_DONE frames need to get sent
     pub fn on_transmit<C: WriteContext>(&mut self, context: &mut C) {
         if let HandshakeStatus::ServerCompleteConfirmed(flag) = self {
-            //= https://www.rfc-editor.org/rfc/rfc9000#19.20
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-19.20
             //# A HANDSHAKE_DONE frame can only be sent by the server.
             let _ = flag.on_transmit(context);
         }
@@ -245,7 +245,7 @@ mod tests {
             "status should not transmit in default state"
         );
 
-        //= https://www.rfc-editor.org/rfc/rfc9001#4.1.2
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.2
         //= type=test
         //# the TLS handshake is considered confirmed at the
         //# server when the handshake completes.

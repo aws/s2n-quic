@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000#19.18"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-19.18"
 
 # 19.18.  PATH_RESPONSE Frames
 #

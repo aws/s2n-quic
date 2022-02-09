@@ -32,7 +32,7 @@ pub const QUIC_IV_12: [u8; 17] = hex!("000c0d746c733133207175696320697600");
 
 pub const QUIC_HP_16: [u8; 17] = hex!("00100d746c733133207175696320687000");
 
-//= https://www.rfc-editor.org/rfc/rfc9001#6.1
+//= https://www.rfc-editor.org/rfc/rfc9001#section-6.1
 //# Endpoints maintain separate read and write secrets for packet
 //# protection.  An endpoint initiates a key update by updating its
 //# packet protection write secret and using that to protect new packets.

@@ -3,7 +3,7 @@
 
 use crate::varint::VarInt;
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.13
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.13
 //# This frame is analogous to DATA_BLOCKED (Section 19.12).
 
 macro_rules! stream_data_blocked_tag {
@@ -12,14 +12,14 @@ macro_rules! stream_data_blocked_tag {
     };
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.13
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.13
 //# STREAM_DATA_BLOCKED Frame {
 //#   Type (i) = 0x15,
 //#   Stream ID (i),
 //#   Maximum Stream Data (i),
 //# }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.13
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.13
 //# STREAM_DATA_BLOCKED frames contain the following fields:
 //#
 //# Stream ID:  A variable-length integer indicating the stream that is

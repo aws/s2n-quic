@@ -204,7 +204,7 @@ impl<'a> SocketAddressRef<'a> {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#21.5.6
+//= https://www.rfc-editor.org/rfc/rfc9000#section-21.5.6
 //# Similarly, endpoints could regard a change in address to a link-local
 //# address [RFC4291] or an address in a private-use range [RFC1918] from
 //# a global, unique-local [RFC4193], or non-private address as a
@@ -296,7 +296,7 @@ mod tests {
     ];
 
     #[test]
-    //= https://www.rfc-editor.org/rfc/rfc5156#2.2
+    //= https://www.rfc-editor.org/rfc/rfc5156#section-2.2
     //= type=test
     //# ::FFFF:0:0/96 are the IPv4-mapped addresses [RFC4291].
     fn to_ipv6_mapped_test() {

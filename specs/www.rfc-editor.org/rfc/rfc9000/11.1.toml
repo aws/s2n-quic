@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000#11.1"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-11.1"
 
 # 11.1.  Connection Errors
 #

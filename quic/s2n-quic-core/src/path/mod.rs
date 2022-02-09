@@ -14,7 +14,7 @@ use bolero_generator::*;
 
 pub mod migration;
 
-//= https://www.rfc-editor.org/rfc/rfc9000#14
+//= https://www.rfc-editor.org/rfc/rfc9000#section-14
 //# QUIC MUST NOT be used if the network path cannot support a
 //# maximum datagram size of at least 1200 bytes.
 pub const MINIMUM_MTU: u16 = 1200;

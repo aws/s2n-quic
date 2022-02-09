@@ -18,7 +18,7 @@ impl Div<Fraction> for Duration {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9002#7.7
+//= https://www.rfc-editor.org/rfc/rfc9002#section-7.7
 //# Using a value for "N" that is small, but at least 1 (for example, 1.25) ensures
 //# that variations in RTT do not result in underutilization of the congestion window.
 const N: Fraction = Fraction(5, 4); // 5/4 = 1.25
@@ -99,7 +99,7 @@ impl Pacer {
         // bursts of packets evenly over time.
         let packet_size = (MAX_BURST_PACKETS * max_datagram_size) as u32;
 
-        //= https://www.rfc-editor.org/rfc/rfc9002#7.7
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.7
         //# A perfectly paced sender spreads packets exactly evenly over time.
         //# For a window-based congestion controller, such as the one in this
         //# document, that rate can be computed by averaging the congestion

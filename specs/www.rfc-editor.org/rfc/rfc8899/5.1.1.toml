@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc8899#5.1.1"
+target = "https://www.rfc-editor.org/rfc/rfc8899#section-5.1.1"
 
 # 5.1.1.  Timers
 #

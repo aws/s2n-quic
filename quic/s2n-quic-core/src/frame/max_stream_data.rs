@@ -3,7 +3,7 @@
 
 use crate::varint::VarInt;
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.10
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.10
 //# A MAX_STREAM_DATA frame (type=0x11) is used in flow control to inform
 //# a peer of the maximum amount of data that can be sent on a stream.
 
@@ -13,14 +13,14 @@ macro_rules! max_stream_data_tag {
     };
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.10
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.10
 //# MAX_STREAM_DATA Frame {
 //#   Type (i) = 0x11,
 //#   Stream ID (i),
 //#   Maximum Stream Data (i),
 //# }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.10
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.10
 //# MAX_STREAM_DATA frames contain the following fields:
 //#
 //# Stream ID:  The stream ID of the affected stream, encoded as a

@@ -46,7 +46,7 @@ impl tls::Endpoint for Server {
     ) -> Self::Session {
         use quic::ServerQuicExt;
 
-        //= https://www.rfc-editor.org/rfc/rfc9001#8.2
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-8.2
         //# Endpoints MUST send the quic_transport_parameters extension;
         let transport_parameters = encode_transport_parameters(transport_parameters);
 

@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000#2.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-2.2"
 
 # 2.2.  Sending and Receiving Data
 #

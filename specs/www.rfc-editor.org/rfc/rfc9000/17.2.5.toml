@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000#17.2.5"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5"
 
 # 17.2.5.  Retry Packet
 #

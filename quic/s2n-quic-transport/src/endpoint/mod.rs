@@ -347,7 +347,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         match outcome {
             Outcome::Allow => Some(()),
             Outcome::Retry { delay: _ } => {
-                //= https://www.rfc-editor.org/rfc/rfc9000#8.1.2
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.2
                 //# A server can also use a Retry packet to defer the state and
                 //# processing costs of connection establishment.  Requiring the server
                 //# to provide a different connection ID, along with the
@@ -375,7 +375,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 None
             }
             Outcome::Close { delay: _ } => {
-                //= https://www.rfc-editor.org/rfc/rfc9000#5.2.2
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.2
                 //= type=TODO
                 //= tracking-issue=270
                 //# If a server refuses to accept a new connection, it SHOULD send an
@@ -429,10 +429,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
         ) {
             (packet, remaining)
         } else {
-            //= https://www.rfc-editor.org/rfc/rfc9000#5.2.2
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.2
             //# Servers MUST drop incoming packets under all other circumstances.
 
-            //= https://www.rfc-editor.org/rfc/rfc9000#10.3
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3
             //# However, endpoints MUST treat any packet ending in a
             //# valid stateless reset token as a Stateless Reset, as other QUIC
             //# versions might allow the use of a long header.
@@ -543,7 +543,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         // Otherwise we should introduce an Error code that signifies
                         // it should be silently ignored.
 
-                        //= https://www.rfc-editor.org/rfc/rfc9000#9
+                        //= https://www.rfc-editor.org/rfc/rfc9000#section-9
                         //# If the peer
                         //# violates this requirement, the endpoint MUST either drop the incoming
                         //# packets on that path without generating a Stateless Reset or proceed
@@ -553,7 +553,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         //# manipulating observed traffic.
                     })?;
 
-                //= https://www.rfc-editor.org/rfc/rfc9000#10.2.1
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
                 //# An endpoint
                 //# that is closing is not required to process any received frame.
 
@@ -569,7 +569,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             // We discard duplicate packets
                         }
                         ProcessingError::NonEmptyRetryToken => {
-                            //= https://www.rfc-editor.org/rfc/rfc9000#17.2.2
+                            //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.2
                             //# Initial packets sent by the server MUST set the Token Length field
                             //# to 0; clients that receive an Initial packet with a non-zero Token
                             //# Length field MUST either discard the packet or generate a
@@ -580,7 +580,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             // from gaining the ability to close a connection by setting a retry token.
                         }
                         ProcessingError::RetryScidEqualsDcid => {
-                            //= https://www.rfc-editor.org/rfc/rfc9000#17.2.5.1
+                            //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.1
                             //# A client MUST
                             //# discard a Retry packet that contains a Source Connection ID field
                             //# that is identical to the Destination Connection ID field of its
@@ -601,7 +601,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             // will be silently discarded, but are a potential indication of a
                             // stateless reset from the peer
 
-                            //= https://www.rfc-editor.org/rfc/rfc9000#5.2.1
+                            //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.1
                             //# Due to packet reordering or loss, a client might receive packets for
                             //# a connection that are encrypted with a key it has not yet computed.
                             //# The client MAY drop these packets, or it MAY buffer them in
@@ -609,7 +609,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             //
                             // Packets that fail decryption are discarded rather than buffered.
 
-                            //= https://www.rfc-editor.org/rfc/rfc9000#10.3.1
+                            //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3.1
                             //# Endpoints MAY skip this check if any packet from a datagram is
                             //# successfully processed.  However, the comparison MUST be performed
                             //# when the first packet in an incoming datagram either cannot be
@@ -665,14 +665,14 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         }
                     };
 
-                //= https://www.rfc-editor.org/rfc/rfc9000#8.1
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1
                 //= type=TODO
                 //= tracking-issue=140
                 //# Additionally, an endpoint MAY consider the peer address validated if
                 //# the peer uses a connection ID chosen by the endpoint and the
                 //# connection ID contains at least 64 bits of entropy
 
-                //= https://www.rfc-editor.org/rfc/rfc9000#8.1.2
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.2
                 //# In response to processing an Initial packet containing a token that
                 //# was provided in a Retry packet, a server cannot send another Retry
                 //# packet; it can only refuse the connection or permit it to proceed.
@@ -686,19 +686,19 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         .token
                         .validate_token(&mut context, packet.token())
                     {
-                        //= https://www.rfc-editor.org/rfc/rfc9000#8.1.3
+                        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.3
                         //# If the validation succeeds, the server SHOULD then allow
                         //# the handshake to proceed.
                         Some(id)
                     } else {
-                        //= https://www.rfc-editor.org/rfc/rfc9000#8.1.3
+                        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.3
                         //= type=TODO
                         //= tracking-issue=344
                         //# If the token is invalid, then the
                         //# server SHOULD proceed as if the client did not have a validated
                         //# address, including potentially sending a Retry packet.
 
-                        //= https://www.rfc-editor.org/rfc/rfc9000#8.1.2
+                        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.2
                         //= type=TODO
                         //= tracking-issue=344
                         //# Instead, the
@@ -711,13 +711,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             },
                         );
 
-                        //= https://www.rfc-editor.org/rfc/rfc9000#8.1.3
+                        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.3
                         //# Servers MAY
                         //# discard any Initial packet that does not carry the expected token.
                         return;
                     }
                 } else {
-                    //= https://www.rfc-editor.org/rfc/rfc9000#8.1.2
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.2
                     //# Upon receiving the client's Initial packet, the server can request
                     //# address validation by sending a Retry packet (Section 17.2.5)
                     //# containing a token.
@@ -725,7 +725,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         .connection_allowed(header, &packet, payload_len, timestamp)
                         .is_none()
                     {
-                        //= https://www.rfc-editor.org/rfc/rfc9000#17.2.5.1
+                        //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.1
                         //# A server MUST NOT send more than one Retry
                         //# packet in response to a single UDP datagram.
                         return;
@@ -762,13 +762,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 });
 
                 let is_short_header_packet = matches!(packet, ProtectedPacket::Short(_));
-                //= https://www.rfc-editor.org/rfc/rfc9000#10.3.1
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3.1
                 //# Endpoints MAY skip this check if any packet from a datagram is
                 //# successfully processed.  However, the comparison MUST be performed
                 //# when the first packet in an incoming datagram either cannot be
                 //# associated with a connection, or cannot be decrypted.
 
-                //= https://www.rfc-editor.org/rfc/rfc9000#10.3
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3
                 //# However, endpoints MUST treat any packet ending in a
                 //# valid stateless reset token as a Stateless Reset, as other QUIC
                 //# versions might allow the use of a long header.
@@ -776,15 +776,15 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     .close_on_matching_stateless_reset(payload, timestamp)
                     .is_some();
 
-                //= https://www.rfc-editor.org/rfc/rfc9000#9.3.2
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-9.3.2
                 //# For instance, an endpoint MAY send a Stateless Reset in
                 //# response to any further incoming packets.
 
-                //= https://www.rfc-editor.org/rfc/rfc9000#10.3
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3
                 //# An endpoint MAY send a Stateless Reset in response to receiving a packet
                 //# that it cannot associate with an active connection.
 
-                //= https://www.rfc-editor.org/rfc/rfc9000#10.3
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3
                 //# Because the stateless reset token is not available
                 //# until connection establishment is complete or near completion,
                 //# ignoring an unknown packet with a long header might be as effective
@@ -838,7 +838,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
     ) -> Option<InternalConnectionId> {
         let buffer = DecoderBuffer::new(payload);
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#10.3.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3.1
         //# The endpoint
         //# identifies a received datagram as a Stateless Reset by comparing the
         //# last 16 bytes of the datagram with all stateless reset tokens
@@ -867,7 +867,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         let close_packet_buffer = &mut self.close_packet_buffer;
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#10.3.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3.1
         //# If the last 16 bytes of the datagram are identical in value to a
         //# stateless reset token, the endpoint MUST enter the draining period
         //# and not send any further packets on this connection.
@@ -973,7 +973,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         let endpoint_context = self.config.context();
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#7.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
         //# When an Initial packet is sent by a client that has not previously
         //# received an Initial or Retry packet from the server, the client
         //# populates the Destination Connection ID field with an unpredictable
@@ -986,7 +986,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             InitialId::try_from_bytes(&data).expect("InitialId creation failed.")
         };
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#10.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3
         //# Note that clients cannot use the
         //# stateless_reset_token transport parameter because their transport
         //# parameters do not have confidentiality protection.
@@ -1005,7 +1005,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 .new_congestion_controller(path_info)
         };
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#15
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-15
         //# This version of the specification is identified by the number
         //# 0x00000001.
         let quic_version = 0x00000001;
@@ -1047,7 +1047,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         .try_into()
         .unwrap();
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#7.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
         //# The Destination Connection ID field from the first Initial packet
         //# sent by a client is used to determine packet protection keys for
         //# Initial packets.

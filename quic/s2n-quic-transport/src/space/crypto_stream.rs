@@ -61,7 +61,7 @@ impl CryptoStream {
         self.is_finished = true;
         self.tx.finish();
 
-        //= https://www.rfc-editor.org/rfc/rfc9001#4.1.3
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.3
         //# When TLS
         //# provides keys for a higher encryption level, if there is data from
         //# a previous encryption level that TLS has not consumed, this MUST
@@ -74,7 +74,7 @@ impl CryptoStream {
     }
 
     pub fn on_crypto_frame(&mut self, frame: CryptoRef) -> Result<(), transport::Error> {
-        //= https://www.rfc-editor.org/rfc/rfc9001#4.1.3
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.3
         //# *  If the packet is from a previously installed encryption level, it
         //# MUST NOT contain data that extends past the end of previously
         //# received data in that flow.  Implementations MUST treat any
@@ -85,14 +85,14 @@ impl CryptoStream {
             return Err(transport::Error::PROTOCOL_VIOLATION);
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#7.5
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-7.5
         //= type=TODO
         //= tracking-issue=356
         //= feature=Crypto buffer limits
         //# Implementations MUST support buffering at least 4096 bytes of data
         //# received in out-of-order CRYPTO frames.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#7.5
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-7.5
         //= type=TODO
         //= tracking-issue=356
         //= feature=Crypto buffer limits
@@ -102,7 +102,7 @@ impl CryptoStream {
         //TODO we need to limit the buffer size here
 
         self.rx.write_at(frame.offset, frame.data).map_err(|_| {
-            //= https://www.rfc-editor.org/rfc/rfc9000#7.5
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-7.5
             //# If an endpoint does not expand its buffer, it MUST close
             //# the connection with a CRYPTO_BUFFER_EXCEEDED error code.
 

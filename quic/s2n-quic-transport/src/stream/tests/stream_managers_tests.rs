@@ -643,19 +643,19 @@ fn max_data_replenishes_connection_flow_control_window() {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#4.6
+//= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
 //= type=test
 //# MAX_STREAMS frames that do not increase the stream limit MUST be ignored.
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.11
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
 //= type=test
 //# MAX_STREAMS frames that do not increase the stream limit MUST be ignored.
 
-//= https://www.rfc-editor.org/rfc/rfc9000#4.6
+//= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
 //= type=test
 //# Endpoints MUST NOT exceed the limit set by their peer.
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.11
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
 //= type=test
 //# An endpoint MUST NOT open more streams than permitted by the current
 //# stream limit set by its peer.
@@ -701,7 +701,7 @@ fn max_streams_replenishes_stream_control_capacity() {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#4.6
+//= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
 //= type=test
 //# An endpoint MUST NOT wait
 //# to receive this signal before advertising additional credit, since
@@ -789,12 +789,12 @@ fn peer_closing_streams_transmits_max_streams() {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#4.6
+//= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
 //= type=test
 //# An endpoint that is unable to open a new stream due to the peer's
 //# limits SHOULD send a STREAMS_BLOCKED frame (Section 19.14).
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.14
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.14
 //= type=test
 //# A sender SHOULD send a STREAMS_BLOCKED frame (type=0x16 or 0x17) when
 //# it wishes to open a stream but is unable to do so due to the maximum
@@ -951,7 +951,7 @@ fn streams_blocked_period() {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#4.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-4.1
 //= type=test
 //# To keep the
 //# connection from closing, a sender that is flow control limited SHOULD
@@ -1041,13 +1041,13 @@ where
     );
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#4.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-4.1
 //= type=test
 //# A sender SHOULD send a
 //# STREAM_DATA_BLOCKED or DATA_BLOCKED frame to indicate to the receiver
 //# that it has data to write but is blocked by flow control limits.
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.12
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.12
 //= type=test
 //# A sender SHOULD send a DATA_BLOCKED frame (type=0x14) when it wishes
 //# to send data, but is unable to do so due to connection-level flow
@@ -1180,13 +1180,13 @@ fn send_data_blocked_frame_when_blocked_by_connection_flow_limits() {
     );
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#4.6
+//= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
 //= type=test
 //# An endpoint that receives a frame with a stream ID exceeding the limit it has
 //# sent MUST treat this as a connection error of type
 //# STREAM_LIMIT_ERROR; see Section 11 for details on error handling.
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.11
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
 //= type=test
 //# An endpoint MUST terminate a connection
 //# with an error of type STREAM_LIMIT_ERROR if a peer opens more streams
@@ -1801,7 +1801,7 @@ fn max_data_causes_on_connection_window_available_to_be_called_on_streams() {
         stream.on_connection_window_available_retrieve_window = 220
     });
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#4.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-4.1
     //= type=test
     //# A sender MUST ignore any MAX_STREAM_DATA or MAX_DATA frames that do
     //# not increase flow control limits.

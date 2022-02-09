@@ -11,7 +11,7 @@ use crate::{
 use core::{fmt, ops};
 use s2n_codec::DecoderError;
 
-//= https://www.rfc-editor.org/rfc/rfc9000#20
+//= https://www.rfc-editor.org/rfc/rfc9000#section-20
 //# QUIC transport error codes and application error codes are 62-bit
 //# unsigned integers.
 
@@ -136,7 +136,7 @@ impl From<VarInt> for Code {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.19
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.19
 //# A value of 0 (equivalent to the mention
 //# of the PADDING frame) is used when the frame type is unknown.
 const UNKNOWN_FRAME_TYPE: u32 = 0;
@@ -184,7 +184,7 @@ macro_rules! impl_errors {
 }
 
 impl_errors! {
-    //= https://www.rfc-editor.org/rfc/rfc9000#20.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-20.1
     //# NO_ERROR (0x00):  An endpoint uses this with CONNECTION_CLOSE to
     //#    signal that the connection is being closed abruptly in the absence
     //#    of any error.
@@ -193,28 +193,28 @@ impl_errors! {
     /// of any error
     NO_ERROR = 0x0.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#20.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-20.1
     //# INTERNAL_ERROR (0x01):  The endpoint encountered an internal error and
     //#    cannot continue with the connection.
     /// The endpoint encountered an internal error
     /// and cannot continue with the connection.
     INTERNAL_ERROR = 0x1.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#20.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-20.1
     //# CONNECTION_REFUSED (0x02):  The server refused to accept a new
     //#  connection.
     /// The server refused to accept a new
     ///  connection.
     CONNECTION_REFUSED = 0x2.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#20.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-20.1
     //# FLOW_CONTROL_ERROR (0x03):  An endpoint received more data than it
     //#    permitted in its advertised data limits; see Section 4.
     /// An endpoint received more data than it
     /// permitted in its advertised data limits.
     FLOW_CONTROL_ERROR = 0x3.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#20.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-20.1
     //# STREAM_LIMIT_ERROR (0x04):  An endpoint received a frame for a stream
     //#    identifier that exceeded its advertised stream limit for the
     //#    corresponding stream type.
@@ -223,14 +223,14 @@ impl_errors! {
     /// corresponding stream type.
     STREAM_LIMIT_ERROR = 0x4.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#20.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-20.1
     //# STREAM_STATE_ERROR (0x05):  An endpoint received a frame for a stream
     //#    that was not in a state that permitted that frame; see Section 3.
     /// An endpoint received a frame for a stream
     /// that was not in a state that permitted that frame.
     STREAM_STATE_ERROR = 0x5.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#20.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-20.1
     //# FINAL_SIZE_ERROR (0x06):  (1) An endpoint received a STREAM frame
     //#    containing data that exceeded the previously established final
     //#    size, (2) an endpoint received a STREAM frame or a RESET_STREAM
@@ -243,7 +243,7 @@ impl_errors! {
     /// size.
     FINAL_SIZE_ERROR = 0x6.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#20.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-20.1
     //# FRAME_ENCODING_ERROR (0x07):  An endpoint received a frame that was
     //#   badly formatted -- for instance, a frame of an unknown type or an
     //#   ACK frame that has more acknowledgment ranges than the remainder
@@ -252,7 +252,7 @@ impl_errors! {
     /// badly formatted.
     FRAME_ENCODING_ERROR = 0x7.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#20.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-20.1
     //# TRANSPORT_PARAMETER_ERROR (0x08):  An endpoint received transport
     //#    parameters that were badly formatted, included an invalid value,
     //#    omitted a mandatory transport parameter, included a forbidden
@@ -261,7 +261,7 @@ impl_errors! {
     /// parameters that were badly formatted.
     TRANSPORT_PARAMETER_ERROR = 0x8.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#20.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-20.1
     //# CONNECTION_ID_LIMIT_ERROR (0x09):  The number of connection IDs
     //#    provided by the peer exceeds the advertised
     //#    active_connection_id_limit.
@@ -270,7 +270,7 @@ impl_errors! {
     /// active_connection_id_limit.
     CONNECTION_ID_LIMIT_ERROR = 0x9.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#20.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-20.1
     //# PROTOCOL_VIOLATION (0x0a):  An endpoint detected an error with
     //#    protocol compliance that was not covered by more specific error
     //#    codes.
@@ -279,21 +279,21 @@ impl_errors! {
     /// codes.
     PROTOCOL_VIOLATION = 0xA.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#20.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-20.1
     //# INVALID_TOKEN (0x0b):  A server received a client Initial that
     //#     contained an invalid Token field.
     /// A server received a client Initial that
     /// contained an invalid Token field.
     INVALID_TOKEN = 0xB.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#20.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-20.1
     //# APPLICATION_ERROR (0x0c):  The application or application protocol
     //#    caused the connection to be closed.
     /// The application or application protocol
     /// caused the connection to be closed.
     APPLICATION_ERROR = 0xC,
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#20.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-20.1
     //# CRYPTO_BUFFER_EXCEEDED (0x0d):  An endpoint has received more data in
     //#    CRYPTO frames than it can buffer.
     /// An endpoint has received more data in
@@ -315,7 +315,7 @@ impl_errors! {
     AEAD_LIMIT_REACHED = 0xf.with_frame_type(UNKNOWN_FRAME_TYPE),
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#20.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-20.1
 //# CRYPTO_ERROR (0x0100-0x01ff):  The cryptographic handshake failed.  A
 //#   range of 256 values is reserved for carrying error codes specific
 //#   to the cryptographic handshake that is used.  Codes for errors
@@ -342,7 +342,7 @@ impl Error {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#20.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-20.2
 //# The management of application error codes is left to application
 //# protocols.  Application protocol error codes are used for the
 //# RESET_STREAM frame (Section 19.4), the STOP_SENDING frame

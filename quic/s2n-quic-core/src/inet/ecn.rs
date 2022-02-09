@@ -4,7 +4,7 @@
 #[cfg(feature = "generator")]
 use bolero_generator::*;
 
-//= https://www.rfc-editor.org/rfc/rfc3168#5
+//= https://www.rfc-editor.org/rfc/rfc3168#section-5
 //# This document specifies that the Internet provide a congestion
 //# indication for incipient congestion (as in RED and earlier work
 //# [RJ90]) where the notification can sometimes be through marking

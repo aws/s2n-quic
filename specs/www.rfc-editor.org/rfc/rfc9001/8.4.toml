@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9001#8.4"
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-8.4"
 
 # 8.4.  Prohibit TLS Middlebox Compatibility Mode
 #

@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9001#4.3"
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-4.3"
 
 # 4.3.  ClientHello Size
 #

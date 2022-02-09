@@ -11,7 +11,7 @@ pub struct ConnectionTimers {
     /// The timer which is used to check peer idle times
     pub peer_idle_timer: Timer,
     /// Stores if sending an ack-eliciting packet will rearm the idle timer
-    //= https://www.rfc-editor.org/rfc/rfc9000#10.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-10.1
     //# An endpoint also restarts its
     //# idle timer when sending an ack-eliciting packet if no other ack-
     //# eliciting packets have been sent since last receiving and processing

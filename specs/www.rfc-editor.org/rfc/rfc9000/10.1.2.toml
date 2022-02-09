@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000#10.1.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-10.1.2"
 
 # 10.1.2.  Deferring Idle Timeout
 #

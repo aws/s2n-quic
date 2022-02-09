@@ -246,7 +246,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
     /// inside this method. The already enqueued bytes can be retrieved by
     /// calling [`total_enqueued_len()`].
     pub fn push(&mut self, data: Bytes) {
-        //= https://www.rfc-editor.org/rfc/rfc9000#4.5
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
         //# An endpoint MUST NOT send data on a stream at or beyond the final
         //# size.
         debug_assert!(

@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc8899#5"
+target = "https://www.rfc-editor.org/rfc/rfc8899#section-5"
 
 # 5.  Datagram Packetization Layer PMTUD
 #

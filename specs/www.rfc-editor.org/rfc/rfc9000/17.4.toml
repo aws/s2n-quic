@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000#17.4"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-17.4"
 
 # 17.4.  Latency Spin Bit
 #

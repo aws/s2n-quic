@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc8312#4.2"
+target = "https://www.rfc-editor.org/rfc/rfc8312#section-4.2"
 
 # 4.2.  TCP-Friendly Region
 #

@@ -164,7 +164,7 @@ pub mod random {
 
                 let id = format.generate(&connection_info);
 
-                //= https://www.rfc-editor.org/rfc/rfc9000#10.3.2
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3.2
                 //= type=test
                 //# An endpoint that uses this design MUST
                 //# either use the same connection ID length for all connections or

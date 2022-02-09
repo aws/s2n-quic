@@ -34,7 +34,7 @@ impl PersistentCongestionCalculator {
             .first_rtt_sample
             .map_or(true, |ts| packet_info.time_sent < ts)
         {
-            //= https://www.rfc-editor.org/rfc/rfc9002#7.6.2
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-7.6.2
             //# The persistent congestion period SHOULD NOT start until there is at
             //# least one RTT sample.  Before the first RTT sample, a sender arms its
             //# PTO timer based on the initial RTT (Section 6.2.2), which could be
@@ -60,7 +60,7 @@ impl PersistentCongestionCalculator {
         if let Some(current_period) = &mut self.current_period {
             // We are currently tracking a persistent congestion period
 
-            //= https://www.rfc-editor.org/rfc/rfc9002#7.6.2
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-7.6.2
             //# A sender establishes persistent congestion after the receipt of an
             //# acknowledgment if two packets that are ack-eliciting are declared
             //# lost, and:
@@ -83,7 +83,7 @@ impl PersistentCongestionCalculator {
         if self.current_period.is_none() && packet_info.ack_elicitation.is_ack_eliciting() {
             // Start tracking a new persistent congestion period
 
-            //= https://www.rfc-editor.org/rfc/rfc9002#7.6.2
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-7.6.2
             //# These two packets MUST be ack-eliciting, since a receiver is required
             //# to acknowledge only ack-eliciting packets within its maximum
             //# acknowledgment delay; see Section 13.2 of [QUIC-TRANSPORT].
@@ -122,7 +122,7 @@ impl PersistentCongestionPeriod {
         debug_assert!(packet_info.time_sent >= self.start);
 
         if packet_info.ack_elicitation.is_ack_eliciting() {
-            //= https://www.rfc-editor.org/rfc/rfc9002#7.6.2
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-7.6.2
             //# These two packets MUST be ack-eliciting, since a receiver is required
             //# to acknowledge only ack-eliciting packets within its maximum
             //# acknowledgment delay; see Section 13.2 of [QUIC-TRANSPORT].

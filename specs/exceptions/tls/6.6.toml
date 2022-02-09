@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9001#6.6"
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-6.6"
 
 [[exception]]
 quote = '''
@@ -14,7 +14,7 @@ TLS provider. In the end this means it is unenforceable by s2n-quic itself.
 '''
 
 [[exception]]
-target = "https://www.rfc-editor.org/rfc/rfc9001#6.6"
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-6.6"
 quote = '''
 Future analyses and specifications MAY relax confidentiality or
 integrity limits for an AEAD.

@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9002#7.6.2"
+target = "https://www.rfc-editor.org/rfc/rfc9002#section-7.6.2"
 
 # 7.6.2.  Establishing Persistent Congestion
 #

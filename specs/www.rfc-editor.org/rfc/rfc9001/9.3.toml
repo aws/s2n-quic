@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9001#9.3"
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-9.3"
 
 # 9.3.  Packet Reflection Attack Mitigation
 #

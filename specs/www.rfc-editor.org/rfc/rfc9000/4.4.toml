@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000#4.4"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-4.4"
 
 # 4.4.  Handling Stream Cancellation
 #

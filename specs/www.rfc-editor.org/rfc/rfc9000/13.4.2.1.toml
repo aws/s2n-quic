@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000#13.4.2.1"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-13.4.2.1"
 
 # 13.4.2.1.  Receiving ACK Frames with ECN Counts
 #

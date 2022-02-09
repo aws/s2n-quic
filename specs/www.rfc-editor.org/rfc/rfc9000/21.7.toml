@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000#21.7"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-21.7"
 
 # 21.7.  Stream Fragmentation and Reassembly Attacks
 #

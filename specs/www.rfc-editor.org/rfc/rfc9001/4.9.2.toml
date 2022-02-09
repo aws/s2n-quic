@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9001#4.9.2"
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-4.9.2"
 
 # 4.9.2.  Discarding Handshake Keys
 #

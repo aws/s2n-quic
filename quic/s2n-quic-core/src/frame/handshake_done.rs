@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.20
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.20
 //# The server uses a HANDSHAKE_DONE frame (type=0x1e) to signal
 //# confirmation of the handshake to the client.
 

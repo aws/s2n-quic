@@ -34,7 +34,7 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-//= https://www.rfc-editor.org/rfc/rfc9000#5.1.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-5.1.2
 //= type=test
 //# An endpoint SHOULD limit the number of connection IDs it has retired
 //# locally for which RETIRE_CONNECTION_ID frames have not yet been
@@ -72,7 +72,7 @@ fn error_when_exceeding_retired_connection_id_limit() {
     assert_eq!(Some(ExceededRetiredConnectionIdLimit), result.err());
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#5.1.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-5.1.1
 //= type=test
 //# After processing a NEW_CONNECTION_ID frame and
 //# adding and retiring active connection IDs, if the number of active
@@ -108,7 +108,7 @@ fn error_when_exceeding_active_connection_id_limit() {
     assert_eq!(Some(ExceededActiveConnectionIdLimit), result.err());
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.15
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.15
 //= type=test
 //# Receipt of the same frame multiple times MUST NOT be treated as a
 //# connection error.
@@ -128,7 +128,7 @@ fn no_error_when_duplicate() {
     assert_eq!(PendingRetirement, reg.registered_ids[1].status);
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //= type=test
 //# The value of the active_connection_id_limit parameter MUST be at least 2.
 #[test]
@@ -151,7 +151,7 @@ fn active_connection_id_limit_must_be_at_least_2() {
     );
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.15
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.15
 //= type=test
 //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
 //# previously issued connection ID with a different Stateless Reset
@@ -176,7 +176,7 @@ fn duplicate_new_id_different_token_or_sequence_number() {
     assert_eq!(Some(InvalidNewConnectionId), result.err());
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.15
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.15
 //= type=test
 //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
 //# previously issued connection ID with a different Stateless Reset
@@ -197,7 +197,7 @@ fn non_duplicate_new_id_same_token_or_sequence_number() {
     let mut result = reg.on_new_connection_id(&id_3, 1, 0, &TEST_TOKEN_2);
     assert_eq!(Some(InvalidNewConnectionId), result.err());
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#10.3.2
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3.2
     //= type=test
     //# Endpoints are not required to compare new values
     //# against all previous values, but a duplicate value MAY be treated as
@@ -207,7 +207,7 @@ fn non_duplicate_new_id_same_token_or_sequence_number() {
     assert_eq!(Some(InvalidNewConnectionId), result.err());
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.15
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.15
 //= type=test
 //# A receiver MUST ignore any Retire Prior To fields that do not
 //# increase the largest received Retire Prior To value.
@@ -226,7 +226,7 @@ fn ignore_retire_prior_to_that_does_not_increase() {
     assert_eq!(1, reg.retire_prior_to);
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#5.1.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-5.1.2
 //= type=test
 //# Upon receipt of an increased Retire Prior To field, the peer MUST
 //# stop using the corresponding connection IDs and retire them with
@@ -305,7 +305,7 @@ fn retire_connection_id_when_retire_prior_to_increases() {
     // ID 1 was removed
     assert_eq!(reg.registered_ids.len(), 1);
     assert_eq!(id_2, reg.registered_ids[0].id);
-    //= https://www.rfc-editor.org/rfc/rfc9000#10.3.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3.1
     //= type=test
     //# An endpoint MUST NOT check for any stateless reset tokens associated
     //# with connection IDs it has not used or for connection IDs that have
@@ -321,7 +321,7 @@ fn retire_connection_id_when_retire_prior_to_increases() {
     );
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.15
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.15
 //= type=test
 //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
 //# previously issued connection ID with a different Stateless Reset
@@ -440,7 +440,7 @@ pub fn consume_new_id_should_error_if_no_ids_are_available() {
 
 #[test]
 fn error_conversion() {
-    //= https://www.rfc-editor.org/rfc/rfc9000#19.15
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-19.15
     //= type=test
     //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
     //# previously issued connection ID with a different Stateless Reset
@@ -455,7 +455,7 @@ fn error_conversion() {
         transport_error.code
     );
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#5.1.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-5.1.1
     //= type=test
     //# After processing a NEW_CONNECTION_ID frame and
     //# adding and retiring active connection IDs, if the number of active
@@ -468,7 +468,7 @@ fn error_conversion() {
         transport_error.code
     );
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#5.1.2
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-5.1.2
     //= type=test
     //# An endpoint MUST NOT forget a connection ID without retiring it,
     //# though it MAY choose to treat having connection IDs in need of

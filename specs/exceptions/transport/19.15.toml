@@ -1,7 +1,7 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000#19.15"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-19.15"
 
 [[exception]]
-target = "https://www.rfc-editor.org/rfc/rfc9000#19.15"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-19.15"
 quote = '''
 An endpoint MUST NOT send this frame if it currently requires that
 its peer send packets with a zero-length Destination Connection ID.

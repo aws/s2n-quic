@@ -40,7 +40,7 @@ impl KeyPair {
     }
 
     /// Update the cipher_suite as defined in
-    /// <https://www.rfc-editor.org/rfc/rfc9001#6>
+    /// <https://www.rfc-editor.org/rfc/rfc9001#section-6>
     #[inline]
     pub fn update(&self) -> Self {
         Self {
@@ -129,7 +129,7 @@ macro_rules! negotiated_crypto {
             }
 
             /// Update the cipher suite as defined in
-            /// <https://www.rfc-editor.org/rfc/rfc9001#6>
+            /// <https://www.rfc-editor.org/rfc/rfc9001#section-6>
             #[inline]
             #[must_use]
             pub fn update(&self) -> Self {

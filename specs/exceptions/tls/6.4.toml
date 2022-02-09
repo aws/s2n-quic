@@ -1,5 +1,5 @@
 [[exception]]
-target = "https://www.rfc-editor.org/rfc/rfc9001#6.4"
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-6.4"
 quote = '''
 An endpoint that successfully removes protection with old
 keys when newer keys were used for packets with lower packet numbers

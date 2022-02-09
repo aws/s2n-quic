@@ -10,7 +10,7 @@ use s2n_codec::{
     decoder_parameterized_value, DecoderBuffer, DecoderBufferMut, Encoder, EncoderValue,
 };
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.6
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.6
 //# A CRYPTO frame (type=0x06) is used to transmit cryptographic
 //# handshake messages.
 
@@ -20,7 +20,7 @@ macro_rules! crypto_tag {
     };
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.6
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.6
 //# CRYPTO Frame {
 //#   Type (i) = 0x06,
 //#   Offset (i),
@@ -28,7 +28,7 @@ macro_rules! crypto_tag {
 //#   Crypto Data (..),
 //# }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#19.6
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.6
 //# CRYPTO frames contain the following fields:
 //#
 //# Offset:  A variable-length integer specifying the byte offset in the

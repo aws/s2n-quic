@@ -120,7 +120,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.last_known_active_validated_path = Some(self.active);
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#9.3.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-9.3.3
         //# In response to an apparent migration, endpoints MUST validate the
         //# previously active path using a PATH_CHALLENGE frame.
         //
@@ -187,7 +187,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         });
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#9.3
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-9.3
     //= type=TODO
     //= tracking-issue=714
     //# An endpoint MAY skip validation of a peer address if
@@ -245,12 +245,12 @@ impl<Config: endpoint::Config> Manager<Config> {
             });
 
             if source_cid_changed {
-                //= https://www.rfc-editor.org/rfc/rfc9000#7.2
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
                 //# Once a client has received a valid Initial packet from the server, it MUST
                 //# discard any subsequent packet it receives on that connection with a
                 //# different Source Connection ID.
 
-                //= https://www.rfc-editor.org/rfc/rfc9000#7.2
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
                 //# Any further changes to the Destination Connection ID are only
                 //# permitted if the values are taken from NEW_CONNECTION_ID frames; if
                 //# subsequent Initial packets include a different Source Connection ID,
@@ -270,7 +270,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             return Ok((id, unblocked));
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#9
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-9
         //# If a client receives packets from an unknown server address,
         //# the client MUST discard these packets.
         // Even though this returns an error, it is ignored by the endpoint and the connection remains open.
@@ -279,7 +279,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             return Err(transport::Error::PROTOCOL_VIOLATION.with_reason("unknown server address"));
         };
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#9
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-9
         //# The design of QUIC relies on endpoints retaining a stable address
         //# for the duration of the handshake.  An endpoint MUST NOT initiate
         //# connection migration before the handshake is confirmed, as defined
@@ -288,7 +288,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             return Err(transport::Error::PROTOCOL_VIOLATION);
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#9
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-9
         //# If the peer
         //# violates this requirement, the endpoint MUST either drop the incoming
         //# packets on that path without generating a Stateless Reset or proceed
@@ -317,7 +317,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         max_mtu: MaxMtu,
         publisher: &mut Pub,
     ) -> Result<(Id, bool), transport::Error> {
-        //= https://www.rfc-editor.org/rfc/rfc9000#9
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-9
         //# Clients are responsible for initiating all migrations.
         debug_assert!(Config::ENDPOINT_TYPE.is_server());
 
@@ -386,14 +386,14 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
         let new_path_id = Id(new_path_idx as u8);
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#9.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-9.4
         //= type=TODO
         //# Because port-only changes are commonly the
         //# result of NAT rebinding or other middlebox activity, the endpoint MAY
         //# instead retain its congestion control state and round-trip estimate
         //# in those cases instead of reverting to initial values.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#9.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-9.4
         //# On confirming a peer's ownership of its new address, an endpoint MUST
         //# immediately reset the congestion controller and round-trip time
         //# estimator for the new path to initial values (see Appendices A.3 and
@@ -409,7 +409,7 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         let peer_connection_id = {
             if self.active_path().local_connection_id != datagram.destination_connection_id {
-                //= https://www.rfc-editor.org/rfc/rfc9000#9.5
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-9.5
                 //# Similarly, an endpoint MUST NOT reuse a connection ID when sending to
                 //# more than one destination address.
 
@@ -426,7 +426,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                         transport::Error::INTERNAL_ERROR.with_reason("insufficient connection ids")
                     })?
             } else {
-                //= https://www.rfc-editor.org/rfc/rfc9000#9.5
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-9.5
                 //# Due to network changes outside
                 //# the control of its peer, an endpoint might receive packets from a new
                 //# source address with the same Destination Connection ID field value,
@@ -437,11 +437,11 @@ impl<Config: endpoint::Config> Manager<Config> {
             }
         };
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#9.3.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-9.3.1
         //# Until a peer's address is deemed valid, an endpoint limits
         //# the amount of data it sends to that address; see Section 8.
         //
-        //= https://www.rfc-editor.org/rfc/rfc9000#9.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-9.3
         //# An endpoint MAY send data to an unvalidated peer address, but it MUST
         //# protect against potential attacks as described in Sections 9.3.1 and
         //# 9.3.2.
@@ -477,17 +477,17 @@ impl<Config: endpoint::Config> Manager<Config> {
     }
 
     fn set_challenge(&mut self, path_id: Id, random_generator: &mut Config::RandomGenerator) {
-        //= https://www.rfc-editor.org/rfc/rfc9000#8.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2.1
         //# The endpoint MUST use unpredictable data in every PATH_CHALLENGE
         //# frame so that it can associate the peer's response with the
         //# corresponding PATH_CHALLENGE.
         let mut data: challenge::Data = [0; 8];
         random_generator.public_random_fill(&mut data);
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#8.2.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2.4
         //# Endpoints SHOULD abandon path validation based on a timer.
         //
-        //= https://www.rfc-editor.org/rfc/rfc9000#8.2.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2.4
         //# When
         //# setting this timer, implementations are cautioned that the new path
         //# could have a longer round-trip time than the original.  A value of
@@ -499,12 +499,12 @@ impl<Config: endpoint::Config> Manager<Config> {
                 .pto_period(PacketNumberSpace::ApplicationData),
         );
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#9
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-9
         //# An endpoint MUST
         //# perform path validation (Section 8.2) if it detects any change to a
         //# peer's address, unless it has previously validated that address.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#9.6.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-9.6.3
         //# Servers SHOULD initiate path validation to the client's new address
         //# upon receiving a probe packet from a different address.
         let challenge = challenge::Challenge::new(abandon_duration, data);
@@ -556,7 +556,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         self[path_id].on_path_challenge(challenge.data);
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#8.2.3
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2.3
     //# Path validation succeeds when a PATH_RESPONSE frame is received that
     //# contains the data that was sent in a previous PATH_CHALLENGE frame.
     //# A PATH_RESPONSE frame received on any network path validates the path
@@ -567,11 +567,11 @@ impl<Config: endpoint::Config> Manager<Config> {
         response: &frame::PathResponse,
         publisher: &mut Pub,
     ) {
-        //= https://www.rfc-editor.org/rfc/rfc9000#8.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2.2
         //# A PATH_RESPONSE frame MUST be sent on the network path where the
         //# PATH_CHALLENGE frame was received.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#8.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2.2
         //# This requirement MUST NOT be enforced by the endpoint that initiates
         //# path validation, as that would enable an attack on migration; see
         //# Section 9.3.3.
@@ -581,7 +581,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         // genuine packet, the genuine packet will be discarded as a duplicate
         // and path validation will fail.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#8.2.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2.3
         //# A PATH_RESPONSE frame received on any network path validates the path
         //# on which the PATH_CHALLENGE was sent.
 
@@ -615,12 +615,12 @@ impl<Config: endpoint::Config> Manager<Config> {
         random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        //= https://www.rfc-editor.org/rfc/rfc9000#7.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
         //# A client MUST change the Destination Connection ID it uses for
         //# sending packets in response to only the first received Initial or
         //# Retry packet.
         if !self.valid_initial_received() {
-            //= https://www.rfc-editor.org/rfc/rfc9000#7.2
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
             //# Until a packet is received from the server, the client MUST
             //# use the same Destination Connection ID value on all packets in this
             //# connection.
@@ -643,13 +643,13 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.set_challenge(path_id, random_generator);
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#9.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-9.2
         //# An endpoint can migrate a connection to a new local address by
         //# sending packets containing non-probing frames from that address.
         if !path_validation_probing.is_probing() && self.active_path_id() != path_id {
             self.update_active_path(path_id, random_generator, publisher)?;
 
-            //= https://www.rfc-editor.org/rfc/rfc9000#9.3
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-9.3
             //# After changing the address to which it sends non-probing packets, an
             //# endpoint can abandon any path validation for other addresses.
             //
@@ -658,7 +658,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             if self.active_path().is_validated() {
                 self.abandon_all_path_challenges(publisher);
             } else if !self.active_path().is_challenge_pending() {
-                //= https://www.rfc-editor.org/rfc/rfc9000#9.3
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-9.3
                 //# If the recipient permits the migration, it MUST send subsequent
                 //# packets to the new peer address and MUST initiate path validation
                 //# (Section 8.2) to verify the peer's ownership of the address if
@@ -680,7 +680,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#10.3
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3
     //# Tokens are
     //# invalidated when their associated connection ID is retired via a
     //# RETIRE_CONNECTION_ID frame (Section 19.16).
@@ -705,7 +705,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             stateless_reset_token,
         )?;
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#5.1.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-5.1.2
         //# Upon receipt of an increased Retire Prior To field, the peer MUST
         //# stop using the corresponding connection IDs and retire them with
         //# RETIRE_CONNECTION_ID frames before adding the newly provided
@@ -743,7 +743,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         if self.active_path().failed_validation() {
             match self.last_known_active_validated_path {
                 Some(last_known_active_validated_path) => {
-                    //= https://www.rfc-editor.org/rfc/rfc9000#9.3.2
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-9.3.2
                     //# To protect the connection from failing due to such a spurious
                     //# migration, an endpoint MUST revert to using the last validated peer
                     //# address when validation of a new peer address fails.
@@ -753,23 +753,23 @@ impl<Config: endpoint::Config> Manager<Config> {
                     self.last_known_active_validated_path = None;
                 }
                 None => {
-                    //= https://www.rfc-editor.org/rfc/rfc9000#9
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-9
                     //# When an endpoint has no validated path on which to send packets, it
                     //# MAY discard connection state.
 
-                    //= https://www.rfc-editor.org/rfc/rfc9000#9
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-9
                     //= type=TODO
                     //= tracking-issue=713
                     //# An endpoint capable of connection
                     //# migration MAY wait for a new path to become available before
                     //# discarding connection state.
 
-                    //= https://www.rfc-editor.org/rfc/rfc9000#9.3.2
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-9.3.2
                     //# If an endpoint has no state about the last validated peer address, it
                     //# MUST close the connection silently by discarding all connection
                     //# state.
 
-                    //= https://www.rfc-editor.org/rfc/rfc9000#10
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-10
                     //# An endpoint MAY discard connection state if it does not have a
                     //# validated path on which it can send packets; see Section 8.2
                     return Err(connection::Error::NoValidPath);

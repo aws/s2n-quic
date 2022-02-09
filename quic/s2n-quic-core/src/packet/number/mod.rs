@@ -7,7 +7,7 @@ pub use sliding_window::{SlidingWindow, SlidingWindowError};
 mod protected_packet_number;
 pub use protected_packet_number::ProtectedPacketNumber;
 
-//= https://www.rfc-editor.org/rfc/rfc9000#12.3
+//= https://www.rfc-editor.org/rfc/rfc9000#section-12.3
 //# The packet number is an integer in the range 0 to 2^62-1.  This
 //# number is used in determining the cryptographic nonce for packet
 //# protection.  Each endpoint maintains a separate packet number for
@@ -18,7 +18,7 @@ use crate::varint::VarInt;
 mod packet_number;
 pub use packet_number::PacketNumber;
 
-//= https://www.rfc-editor.org/rfc/rfc9000#12.3
+//= https://www.rfc-editor.org/rfc/rfc9000#section-12.3
 //# Packet numbers are limited to this range because they need to be
 //# representable in whole in the Largest Acknowledged field of an ACK
 //# frame (Section 19.3).  When present in a long or short header
@@ -28,7 +28,7 @@ pub use packet_number::PacketNumber;
 mod truncated_packet_number;
 pub use truncated_packet_number::TruncatedPacketNumber;
 
-//= https://www.rfc-editor.org/rfc/rfc9000#12.3
+//= https://www.rfc-editor.org/rfc/rfc9000#section-12.3
 //# Initial space:  All Initial packets (Section 17.2.2) are in this
 //# space.
 //#
@@ -41,7 +41,7 @@ pub use truncated_packet_number::TruncatedPacketNumber;
 mod packet_number_space;
 pub use packet_number_space::PacketNumberSpace;
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.1
 //# Packet numbers are integers in the range 0 to 2^62-1 (Section 12.3).
 //# When present in long or short packet headers, they are encoded in 1
 //# to 4 bytes.  The number of bits required to represent the packet
@@ -62,7 +62,7 @@ pub mod map;
 #[cfg(feature = "alloc")]
 pub use map::Map;
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.1
 //# the sender MUST use a packet number size able to represent more than
 //# twice as large a range as the difference between the largest
 //# acknowledged packet number and the packet number being sent.  A peer
@@ -87,7 +87,7 @@ fn derive_truncation_range(
         .and_then(|value| PacketNumberLen::from_varint(value, space))
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.1
 //# As a result, the size of the packet number encoding is at least one
 //# bit more than the base-2 logarithm of the number of contiguous
 //# unacknowledged packet numbers, including the new packet.
@@ -127,7 +127,7 @@ fn packet_number_len_example_test() {
     );
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#17.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.1
 //# At a receiver, protection of the packet number is removed prior to
 //# recovering the full packet number.  The full packet number is then
 //# reconstructed based on the number of significant bits present, the

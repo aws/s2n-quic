@@ -50,20 +50,20 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     pub spin_bit: SpinBit,
     /// The crypto suite for application data
     /// TODO: What about ZeroRtt?
-    //= https://www.rfc-editor.org/rfc/rfc9001#6.3
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-6.3
     //# For this reason, endpoints MUST be able to retain two sets of packet
     //# protection keys for receiving packets: the current and the next.
 
-    //= https://www.rfc-editor.org/rfc/rfc9001#6.1
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-6.1
     //# An endpoint MUST NOT initiate a key update prior to having confirmed
     //# the handshake (Section 4.1.2).
     key_set: KeySet<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttKey>,
     header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttHeaderKey,
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#7
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-7
     //# Endpoints MUST explicitly negotiate an application protocol.
 
-    //= https://www.rfc-editor.org/rfc/rfc9001#8.1
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
     //# Unless
     //# another mechanism is used for agreeing on an application protocol,
     //# endpoints MUST use ALPN for this purpose.
@@ -155,7 +155,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         let mut packet_number = self.tx_packet_numbers.next();
 
         if self.recovery_manager.requires_probe() {
-            //= https://www.rfc-editor.org/rfc/rfc9002#6.2.4
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
             //# If the sender wants to elicit a faster acknowledgement on PTO, it can
             //# skip a packet number to eliminate the acknowledgment delay.
 
@@ -348,12 +348,12 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         // Retire the local connection ID used during the handshake to reduce linkability
         local_id_registry.retire_handshake_connection_id();
 
-        //= https://www.rfc-editor.org/rfc/rfc9002#6.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# A sender SHOULD restart its PTO timer every time an ack-eliciting
         //# packet is sent or acknowledged, or when Initial or Handshake keys are
         //# discarded (Section 4.9 of [QUIC-TLS]).
 
-        //= https://www.rfc-editor.org/rfc/rfc9002#6.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# An endpoint MUST NOT set its PTO timer for the Application Data
         //# packet number space until the handshake is confirmed.
 
@@ -470,13 +470,13 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         let decrypted = self.key_set.decrypt_packet(
             packet,
             largest_acked,
-            //= https://www.rfc-editor.org/rfc/rfc9001#6.3
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-6.3
             //# For a short period after a key
             //# update completes, up to the PTO, endpoints MAY defer generation of
             //# the next set of receive packet protection keys.  This allows
             //# endpoints to retain only two sets of receive keys; see Section 6.5.
 
-            //= https://www.rfc-editor.org/rfc/rfc9001#6.5
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-6.5
             //# An endpoint MAY allow a period of approximately the Probe Timeout
             //# (PTO; see [QUIC-RECOVERY]) after promoting the next set of receive
             //# keys to be current before it creates the subsequent set of packet
@@ -503,7 +503,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 });
             }
         }
-        //= https://www.rfc-editor.org/rfc/rfc9001#9.5
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-9.5
         //# For authentication to be
         //# free from side channels, the entire process of header protection
         //# removal, packet number recovery, and packet protection removal MUST
@@ -655,7 +655,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         _path: &mut Path<Config>,
         _publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        //= https://www.rfc-editor.org/rfc/rfc9000#7.5
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-7.5
         //# Once the handshake completes, if an endpoint is unable to buffer all
         //# data in a CRYPTO frame, it MAY discard that CRYPTO frame and all
         //# CRYPTO frames received in the future, or it MAY close the connection
@@ -748,7 +748,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
     }
 
     fn handle_new_token_frame(&mut self, frame: NewToken) -> Result<(), transport::Error> {
-        //= https://www.rfc-editor.org/rfc/rfc9000#19.7
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-19.7
         //# A server MUST treat receipt
         //# of a NEW_TOKEN frame as a connection error of type
         //# PROTOCOL_VIOLATION.
@@ -770,7 +770,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         if path_manager.active_path().peer_connection_id.is_empty() {
-            //= https://www.rfc-editor.org/rfc/rfc9000#19.15
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-19.15
             //# An endpoint that is sending packets with a zero-length Destination
             //# Connection ID MUST treat receipt of a NEW_CONNECTION_ID frame as a
             //# connection error of type PROTOCOL_VIOLATION.
@@ -813,16 +813,16 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
             .try_into()
             .map_err(|_err| transport::Error::PROTOCOL_VIOLATION)?;
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#19.16
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-19.16
         //# The sequence number specified in a RETIRE_CONNECTION_ID frame MUST
         //# NOT refer to the Destination Connection ID field of the packet in
         //# which the frame is contained.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#19.16
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-19.16
         //# The peer MAY treat this as a
         //# connection error of type PROTOCOL_VIOLATION.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#19.16
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-19.16
         //# Receipt of a RETIRE_CONNECTION_ID frame containing a sequence number
         //# greater than any previously sent to the peer MUST be treated as a
         //# connection error of type PROTOCOL_VIOLATION.
@@ -865,7 +865,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         handshake_status: &mut HandshakeStatus,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        //= https://www.rfc-editor.org/rfc/rfc9000#19.20
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-19.20
         //# A server MUST
         //# treat receipt of a HANDSHAKE_DONE frame as a connection error of type
         //# PROTOCOL_VIOLATION.
@@ -878,7 +878,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
 
         handshake_status.on_handshake_done_received(publisher);
 
-        //= https://www.rfc-editor.org/rfc/rfc9001#4.1.2
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.2
         //# At the
         //# client, the handshake is considered confirmed when a HANDSHAKE_DONE
         //# frame is received.

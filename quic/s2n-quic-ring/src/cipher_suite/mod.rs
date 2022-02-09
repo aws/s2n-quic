@@ -60,7 +60,7 @@ macro_rules! impl_cipher_suite {
             }
 
             /// Update the cipher_suite as defined in
-            /// https://www.rfc-editor.org/rfc/rfc9001#6
+            /// https://www.rfc-editor.org/rfc/rfc9001#section-6
             #[inline]
             pub fn update(&self) -> Self {
                 let secret: hkdf::Prk = self
@@ -180,7 +180,7 @@ macro_rules! impl_cipher_suite {
                 $cipher.tag_len()
             }
 
-            //= https://www.rfc-editor.org/rfc/rfc9001#6.6
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-6.6
             //# Any TLS cipher suite that is specified for use with QUIC MUST define
             //# limits on the use of the associated AEAD function that preserves
             //# margins for confidentiality and integrity.
@@ -256,7 +256,7 @@ macro_rules! impl_cipher_suite {
     };
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9001#6.6
+//= https://www.rfc-editor.org/rfc/rfc9001#section-6.6
 //# For AEAD_AES_128_GCM and AEAD_AES_256_GCM, the confidentiality limit
 //# is 2^23 encrypted packets; see Appendix B.1.
 impl_cipher_suite!(
@@ -274,7 +274,7 @@ impl_cipher_suite!(
     tls_aes_256_gcm_sha384_test
 );
 
-//= https://www.rfc-editor.org/rfc/rfc9001#6.6
+//= https://www.rfc-editor.org/rfc/rfc9001#section-6.6
 //# For
 //# AEAD_CHACHA20_POLY1305, the confidentiality limit is greater than the
 //# number of possible packets (2^62) and so can be disregarded.
