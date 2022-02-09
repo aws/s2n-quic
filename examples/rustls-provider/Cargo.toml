@@ -1,0 +1,13 @@
+[package]
+name = "rustls-provider"
+version = "0.1.0"
+authors = ["AWS s2n"]
+edition = "2018"
+
+[dependencies]
+# Remove the `default-tls-provider` feature and add `rustls`
+s2n-quic = { version = "0.1", path = "../../quic/s2n-quic", default-features = false, features = ["default-token-provider", "rand-provider", "std", "tokio-runtime", "rustls"] }
+tokio = { version = "1", features = ["full"] }
+
+[workspace]
+members = ["."]
