@@ -7,7 +7,7 @@ This crate contains an application for testing the s2n-quic client and server mo
 
 ## Building
 
-Ensure the build requirement are met in the main `s2n-quic` readme. Then run:
+Ensure the build requirements are met in the main `s2n-quic` readme. Then run:
 
 ```bash
 cargo build --release --bin s2n-quic-qns
@@ -19,7 +19,7 @@ The `s2n-quic-qns` application will be available at `target/release/s2n-quic-qns
 
 ### hq-interop
 
-This application protocol is designed for executing tests defined in the [`quic-interop-runner`](https://github.com/marten-seemann/quic-interop-runner). The server serves a directory (defaulting to `.`). The client connects to the server and can request the served files by opening a stream and issuing a [`HTTP 0.9` request](https://www.w3.org/Protocols/HTTP/AsImplemented.html). The server responds with the contents of the file and closes the stream.
+This application protocol is designed for executing tests defined in the [`quic-interop-runner`](https://github.com/marten-seemann/quic-interop-runner). The server serves a directory (defaulting to `.`). The client connects to the server and can request the served files by opening a stream and issuing an [`HTTP 0.9` request](https://www.w3.org/Protocols/HTTP/AsImplemented.html). The server responds with the contents of the file and closes the stream.
 
 #### Examples
 
@@ -44,7 +44,7 @@ __Client__:
 
 ### perf
 
-This application protocol is designed for testing throughput and efficiency of quic implementations. The client opens one or more connections to a server and opens one or more streams, which include the number of bytes that should be transmitted.
+This application protocol is designed for testing throughput and efficiency of QUIC implementations. The client opens one or more connections to a server and opens one or more streams, which include the number of bytes that should be transmitted.
 
 __Server__:
 
