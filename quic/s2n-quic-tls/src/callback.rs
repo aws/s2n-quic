@@ -14,7 +14,7 @@ use s2n_quic_ring::{
     ring::{aead, hkdf},
     Prk, RingCryptoSuite, SecretPair,
 };
-use s2n_tls::{call, connection::Connection, raw::*};
+use s2n_tls::raw::{connection::Connection, error::Fallible, ffi::*};
 
 /// The preallocated size of the outgoing buffer
 ///
@@ -74,10 +74,10 @@ where
             unsafe extern "C" fn secret_cb(
                 _context: *mut c_void,
                 _conn: *mut s2n_connection,
-                _secret_type: s2n_secret_type_t,
+                _secret_type: s2n_secret_type_t::Type,
                 _secret: *mut u8,
                 _secret_size: u8,
-            ) -> s2n_status_code {
+            ) -> s2n_status_code::Type {
                 -1
             }
 
@@ -85,7 +85,7 @@ where
                 _context: *mut c_void,
                 _data: *const u8,
                 _len: u32,
-            ) -> s2n_status_code {
+            ) -> s2n_status_code::Type {
                 -1
             }
 
@@ -93,7 +93,7 @@ where
                 _context: *mut c_void,
                 _data: *mut u8,
                 _len: u32,
-            ) -> s2n_status_code {
+            ) -> s2n_status_code::Type {
                 -1
             }
 
@@ -123,10 +123,10 @@ where
     unsafe extern "C" fn secret_cb(
         context: *mut c_void,
         conn: *mut s2n_connection,
-        secret_type: s2n_secret_type_t,
+        secret_type: s2n_secret_type_t::Type,
         secret: *mut u8,
         secret_size: u8,
-    ) -> s2n_status_code {
+    ) -> s2n_status_code::Type {
         let context = &mut *(context as *mut Self);
         let secret = core::slice::from_raw_parts_mut(secret, secret_size as _);
         match context.on_secret(conn, secret_type, secret) {
@@ -142,12 +142,12 @@ where
     fn on_secret(
         &mut self,
         conn: *mut s2n_connection,
-        id: s2n_secret_type_t,
+        id: s2n_secret_type_t::Type,
         secret: &mut [u8],
     ) -> Result<(), transport::Error> {
         match core::mem::replace(&mut self.state.secrets, Secrets::Waiting) {
             Secrets::Waiting => {
-                if id == s2n_secret_type_t::ClientEarlyTrafficSecret {
+                if id == s2n_secret_type_t::CLIENT_EARLY_TRAFFIC_SECRET {
                     // TODO enable with 0rtt
                     // I couldn't find a good citation but here's the issue: https://github.com/awslabs/s2n-quic/issues/301
                     return Ok(());
@@ -168,23 +168,23 @@ where
                 let secret = Prk::new_less_safe(prk_algo, secret);
                 let pair = match (id, other_id) {
                     (
-                        s2n_secret_type_t::ClientHandshakeTrafficSecret,
-                        s2n_secret_type_t::ServerHandshakeTrafficSecret,
+                        s2n_secret_type_t::CLIENT_HANDSHAKE_TRAFFIC_SECRET,
+                        s2n_secret_type_t::SERVER_HANDSHAKE_TRAFFIC_SECRET,
                     )
                     | (
-                        s2n_secret_type_t::ClientApplicationTrafficSecret,
-                        s2n_secret_type_t::ServerApplicationTrafficSecret,
+                        s2n_secret_type_t::CLIENT_APPLICATION_TRAFFIC_SECRET,
+                        s2n_secret_type_t::SERVER_APPLICATION_TRAFFIC_SECRET,
                     ) => SecretPair {
                         client: secret,
                         server: other_secret,
                     },
                     (
-                        s2n_secret_type_t::ServerHandshakeTrafficSecret,
-                        s2n_secret_type_t::ClientHandshakeTrafficSecret,
+                        s2n_secret_type_t::SERVER_HANDSHAKE_TRAFFIC_SECRET,
+                        s2n_secret_type_t::CLIENT_HANDSHAKE_TRAFFIC_SECRET,
                     )
                     | (
-                        s2n_secret_type_t::ServerApplicationTrafficSecret,
-                        s2n_secret_type_t::ClientApplicationTrafficSecret,
+                        s2n_secret_type_t::SERVER_APPLICATION_TRAFFIC_SECRET,
+                        s2n_secret_type_t::CLIENT_APPLICATION_TRAFFIC_SECRET,
                     ) => SecretPair {
                         server: secret,
                         client: other_secret,
@@ -232,7 +232,7 @@ where
         context: *mut c_void,
         data: *const u8,
         len: u32,
-    ) -> s2n_status_code {
+    ) -> s2n_status_code::Type {
         let context = &mut *(context as *mut Self);
         let data = core::slice::from_raw_parts(data, len as _);
         context.on_write(data) as _
@@ -281,7 +281,11 @@ where
     }
 
     /// The function s2n-tls calls when it wants to receive data
-    unsafe extern "C" fn recv_cb(context: *mut c_void, data: *mut u8, len: u32) -> s2n_status_code {
+    unsafe extern "C" fn recv_cb(
+        context: *mut c_void,
+        data: *mut u8,
+        len: u32,
+    ) -> s2n_status_code::Type {
         let context = &mut *(context as *mut Self);
         let data = core::slice::from_raw_parts_mut(data, len as _);
         match context.on_read(data) {
@@ -347,7 +351,10 @@ impl Default for HandshakePhase {
 #[derive(Debug)]
 enum Secrets {
     Waiting,
-    Half { secret: Prk, id: s2n_secret_type_t },
+    Half {
+        secret: Prk,
+        id: s2n_secret_type_t::Type,
+    },
 }
 
 impl Default for Secrets {
@@ -360,12 +367,11 @@ fn get_algo_type(
     connection: *mut s2n_connection,
 ) -> Option<(hkdf::Algorithm, &'static aead::Algorithm)> {
     let mut cipher = [0, 0];
-    call!(s2n_connection_get_cipher_iana_value(
-        connection,
-        &mut cipher[0],
-        &mut cipher[1]
-    ))
-    .ok()?;
+    unsafe {
+        s2n_connection_get_cipher_iana_value(connection, &mut cipher[0], &mut cipher[1])
+            .into_result()
+            .ok()?;
+    }
 
     //= https://tools.ietf.org/rfc/rfc8446#appendix-B.4
     //# This specification defines the following cipher suites for use with
@@ -436,7 +442,7 @@ unsafe fn get_application_params<'a>(
 }
 
 unsafe fn get_server_name(connection: *mut s2n_connection) -> Option<ServerName> {
-    let ptr = call!(s2n_get_server_name(connection)).ok()?;
+    let ptr = s2n_get_server_name(connection).into_result().ok()?;
     let data = get_cstr_slice(ptr)?;
 
     // validate sni is a valid UTF-8 string
@@ -445,7 +451,9 @@ unsafe fn get_server_name(connection: *mut s2n_connection) -> Option<ServerName>
 }
 
 unsafe fn get_application_protocol<'a>(connection: *mut s2n_connection) -> Option<&'a [u8]> {
-    let ptr = call!(s2n_get_application_protocol(connection)).ok()?;
+    let ptr = s2n_get_application_protocol(connection)
+        .into_result()
+        .ok()?;
     get_cstr_slice(ptr)
 }
 
@@ -453,10 +461,9 @@ unsafe fn get_transport_parameters<'a>(connection: *mut s2n_connection) -> Optio
     let mut ptr = core::ptr::null();
     let mut len = 0u16;
 
-    call!(s2n_connection_get_quic_transport_parameters(
-        connection, &mut ptr, &mut len,
-    ))
-    .ok()?;
+    s2n_connection_get_quic_transport_parameters(connection, &mut ptr, &mut len)
+        .into_result()
+        .ok()?;
 
     get_slice(ptr, len as _)
 }
