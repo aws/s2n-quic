@@ -24,4 +24,4 @@ s2n-quic-rustls = { version = "0.1", path = "../s2n-quic-rustls" }
 
 # we don't use openssl-sys directly; it's just here to pin and vendor in dev
 [package.metadata.cargo-udeps.ignore]
-normal = [ "openssl-sys" ]
+development = [ "openssl-sys" ]
