@@ -21,3 +21,7 @@ checkers = "0.6"
 openssl-sys = { version = "<= 0.9.68", features = ["vendored"] }
 s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", features = ["testing"] }
 s2n-quic-rustls = { version = "0.1", path = "../s2n-quic-rustls" }
+
+# we don't use openssl-sys directly; it's just here to pin and vendor in dev
+[package.metadata.cargo-udeps.ignore]
+normal = [ "openssl-sys" ]
