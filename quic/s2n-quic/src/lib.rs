@@ -10,8 +10,8 @@
 //! _Enabled by default_
 //!
 //! Enables the default address token provider, which
-//! will securely generate address tokens for a single QUIC server. If your infrastructure requires
-//! multiple servers handle address tokens, this provider should not be used. Instead, a custom
+//! will securely generate address tokens for a single QUIC server. If your deployment requires
+//! that multiple servers handle address tokens, this provider should not be used. Instead, a custom
 //! implementation of [`provider::address_token::Format`] should be specified.
 //!
 //! ### `provider-event-tracing`
@@ -25,7 +25,7 @@
 //!
 //! _Enabled by default_
 //!
-//! Enables platform detection for the most appropriate version of TLS. Currently, this uses
+//! Enables platform detection for the recommended implementation of TLS. Currently, this uses
 //! [`s2n-tls`][s2n-tls] on unix-like platforms and [`rustls`][rustls] on everything else.
 //!
 //! ### `provider-tls-rustls`
