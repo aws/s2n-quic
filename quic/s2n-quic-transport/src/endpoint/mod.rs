@@ -550,15 +550,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                                 });
                             },
                         );
-
-                        //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
-                        //# If the peer
-                        //# violates this requirement, the endpoint MUST either drop the incoming
-                        //# packets on that path without generating a Stateless Reset or proceed
-                        //# with path validation and allow the peer to migrate.  Generating a
-                        //# Stateless Reset or closing the connection would allow third parties
-                        //# in the network to cause connections to close by spoofing or otherwise
-                        //# manipulating observed traffic.
                     })?;
 
                 //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.1
