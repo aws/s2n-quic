@@ -344,7 +344,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 return Err(DatagramDropReason::RejectedConnectionMigration);
             }
             _ => {
-                return Err(DatagramDropReason::RejectedConnectionMigration);
+                unimplemented!("unimplemented migration outcome");
             }
         }
 

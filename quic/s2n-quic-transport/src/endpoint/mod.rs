@@ -29,7 +29,9 @@ use s2n_quic_core::{
     },
     crypto::{tls, tls::Endpoint as _, CryptoSuite, InitialKey},
     endpoint::{limits::Outcome, Limiter as _},
-    event::{self, supervisor, EndpointPublisher as _, IntoEvent, Subscriber as _},
+    event::{
+        self, supervisor, ConnectionPublisher, EndpointPublisher as _, IntoEvent, Subscriber as _,
+    },
     inet::{datagram, DatagramInfo},
     io::{rx, tx},
     packet::{initial::ProtectedInitial, ProtectedPacket},
@@ -543,7 +545,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             None,
                             endpoint_context.event_subscriber,
                             |publisher, _path| {
-                                use s2n_quic_core::event::ConnectionPublisher;
                                 publisher.on_datagram_dropped(event::builder::DatagramDropped {
                                     len: datagram.payload_len as u16,
                                     reason: datagram_drop_reason,

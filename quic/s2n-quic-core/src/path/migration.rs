@@ -74,6 +74,7 @@ pub enum Outcome {
     /// The connection will drop the packet that attempted to migrate and not reserve any state
     /// for the new path.
     Deny(DenyReason),
+    // Additional outcomes must be handled in the path::Manager
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

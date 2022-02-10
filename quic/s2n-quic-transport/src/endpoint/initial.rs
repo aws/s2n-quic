@@ -283,10 +283,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                     max_mtu,
                     endpoint_context.event_subscriber,
                 );
-                debug_assert!(
-                    path_id.is_ok(),
-                    "on_datagram_received should not fail for a newly created connection"
-                );
 
                 let path_id = path_id.map_err(|err| {
                     connection.with_event_publisher(
@@ -300,6 +296,10 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                                 reason: err,
                             });
                         },
+                    );
+                    debug_assert!(
+                        false,
+                        "on_datagram_received should not fail for a newly created connection"
                     );
                     connection::Error::Unspecified
                 })?;

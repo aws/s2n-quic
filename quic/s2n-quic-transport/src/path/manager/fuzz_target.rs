@@ -310,12 +310,12 @@ impl Model {
                         .unwrap();
                 }
             }
-            Err(err) => {
-                match err {
+            Err(datagram_drop_reason) => {
+                match datagram_drop_reason {
                     // Ignore errors emitted by the migration::validator and peer_id_registry
                     DatagramDropReason::InsufficientConnectionIds => {}
                     DatagramDropReason::RejectedConnectionMigration => {}
-                    err => panic!("{:?}", err),
+                    datagram_drop_reason => panic!("{:?}", datagram_drop_reason),
                 };
             }
         }
