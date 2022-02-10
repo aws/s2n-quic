@@ -561,8 +561,8 @@ impl FieldAttrs {
 
 #[derive(Debug)]
 struct Variant {
-    // TODO attributes
     ident: syn::Ident,
+    attrs: Vec<syn::Attribute>,
     fields: Vec<Field>,
 }
 
@@ -570,31 +570,41 @@ impl Variant {
     fn parse(item: syn::Variant) -> Self {
         Self {
             ident: item.ident,
+            attrs: item.attrs,
             fields: item.fields.into_iter().map(Field::parse).collect(),
         }
     }
 
     fn api(&self) -> TokenStream {
-        let Self { ident, fields } = self;
+        let Self {
+            ident,
+            attrs,
+            fields,
+        } = self;
         let fields = fields.iter().map(Field::enum_api);
         quote!(
             #[non_exhaustive]
+            #(#attrs)*
             #ident { #(#fields)* },
         )
     }
 
     fn builder(&self) -> TokenStream {
-        let Self { ident, fields } = self;
+        let Self {
+            ident,
+            fields,
+            attrs,
+        } = self;
         if fields.is_empty() {
-            quote!(#ident,)
+            quote!(#(#attrs)* #ident,)
         } else {
             let fields = fields.iter().map(Field::enum_builder);
-            quote!(#ident { #(#fields)* },)
+            quote!(#(#attrs)* #ident { #(#fields)* },)
         }
     }
 
     fn builder_impl(&self) -> TokenStream {
-        let Self { ident, fields } = self;
+        let Self { ident, fields, .. } = self;
         if fields.is_empty() {
             quote!(Self::#ident => #ident { },)
         } else {
