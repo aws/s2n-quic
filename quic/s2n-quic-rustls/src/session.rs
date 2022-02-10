@@ -48,7 +48,7 @@ impl Session {
             .read_hs(crypto_data)
             .map_err(crate::error::reason)
             .map_err(|reason| {
-                //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.8
+                //= https://www.rfc-editor.org/rfc/rfc9001#section-4.8
                 //# QUIC is only able to convey an alert level of "fatal".  In TLS 1.3,
                 //# the only existing uses for the "warning" level are to signal
                 //# connection close; see Section 6.1 of [TLS13].  As QUIC provides
@@ -57,7 +57,7 @@ impl Session {
                 //# MUST treat any alert from TLS as if it were at the "fatal" level.
 
                 // According to the rustls docs, `alert` only returns fatal alerts:
-                // > https://docs.rs/rustls/0.19.0/rustls/quic/trait.QuicExt.html#tymethod.get_alert
+                // > https://docs.rs/rustls/0.19.0/rustls/quic/trait.QuicExt#tymethod.get_alert
                 // > Emit the TLS description code of a fatal alert, if one has arisen.
 
                 self.connection
@@ -72,24 +72,24 @@ impl Session {
     }
 
     fn application_parameters(&self) -> Result<tls::ApplicationParameters, transport::Error> {
-        //= https://www.rfc-editor.org/rfc/rfc9001.txt#8.1
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
         //# Unless
         //# another mechanism is used for agreeing on an application protocol,
         //# endpoints MUST use ALPN for this purpose.
         let application_protocol = self.connection.alpn_protocol().ok_or_else(||
-            //= https://www.rfc-editor.org/rfc/rfc9001.txt#8.1
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
             //# When using ALPN, endpoints MUST immediately close a connection (see
             //# Section 10.2 of [QUIC-TRANSPORT]) with a no_application_protocol TLS
             //# alert (QUIC error code 0x178; see Section 4.8) if an application
             //# protocol is not negotiated.
 
-            //= https://www.rfc-editor.org/rfc/rfc9001.txt#8.1
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
             //# While [ALPN] only specifies that servers
             //# use this alert, QUIC clients MUST use error 0x178 to terminate a
             //# connection when ALPN negotiation fails.
             CryptoError::NO_APPLICATION_PROTOCOL.with_reason("Missing ALPN protocol"))?;
 
-        //= https://www.rfc-editor.org/rfc/rfc9001.txt#8.2
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-8.2
         //# endpoints that
         //# receive ClientHello or EncryptedExtensions messages without the
         //# quic_transport_parameters extension MUST close the connection with an

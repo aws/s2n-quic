@@ -18,7 +18,7 @@ use crate::{
 };
 use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue};
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.3.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.3.1
 //# 1-RTT Packet {
 //#   Header Form (1) = 0,
 //#   Fixed Bit (1) = 1,
@@ -31,7 +31,7 @@ use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder,
 //#   Packet Payload (..),
 //# }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.3.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.3.1
 //# Header Form:  The most significant bit (0x80) of byte 0 is set to 0
 //#    for the short header.
 //#
@@ -45,13 +45,13 @@ macro_rules! short_tag {
 
 const ENCODING_TAG: u8 = 0b0100_0000;
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.3.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.3.1
 //# Spin Bit:  The third most significant bit (0x20) of byte 0 is the
 //#    latency spin bit, set as described in Section 17.4.
 
 const SPIN_BIT_MASK: u8 = 0x20;
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.3.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.3.1
 //#  Reserved Bits:  The next two bits (those with a mask of 0x18) of byte
 //#      0 are reserved.
 
@@ -86,30 +86,30 @@ impl SpinBit {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.3.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.3.1
 //# Reserved Bits:  The next two bits (those with a mask of 0x18) of byte
 //#    0 are reserved.  These bits are protected using header protection;
 //#    see Section 5.4 of [QUIC-TLS].
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.3.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.3.1
 //# Packet Number Length:  The least significant two bits (those with a
 //#    mask of 0x03) of byte 0 contain the length of the Packet Number
 //#    field, encoded as an unsigned two-bit integer that is one less
 //#    than the length of the Packet Number field in bytes.
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.3.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.3.1
 //# Destination Connection ID:  The Destination Connection ID is a
 //#    connection ID that is chosen by the intended recipient of the
 //#    packet.
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.3.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.3.1
 //# Packet Number:  The Packet Number field is 1 to 4 bytes long.  The
 //#    packet number is protected using header protection; see
 //#    Section 5.4 of [QUIC-TLS].  The length of the Packet Number field
 //#    is encoded in Packet Number Length field.  See Section 17.1 for
 //#    details.
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.3.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.3.1
 //# Packet Payload:  1-RTT packets always include a 1-RTT protected
 //#    payload.
 
@@ -210,7 +210,7 @@ impl<'a> EncryptedShort<'a> {
 
         let header = header.into_less_safe_slice();
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.3.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-17.3.1
         //# An endpoint MUST treat receipt of a
         //# packet that has a non-zero value for these bits, after removing
         //# both packet and header protection, as a connection error of type

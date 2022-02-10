@@ -1,5 +1,5 @@
 [[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.1"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-8.2.1"
 tracking-issue = "409"
 feature = "Connection migration"
 quote = '''
@@ -8,7 +8,7 @@ packet loss.
 '''
 
 [[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.1"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-8.2.1"
 tracking-issue = "409"
 feature = "Connection migration"
 quote = '''
@@ -17,7 +17,7 @@ PATH_CHALLENGE frames in a single packet.
 '''
 
 [[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.1"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-8.2.1"
 tracking-issue = "410"
 feature = "Connection migration"
 quote = '''
@@ -26,7 +26,7 @@ to at least the smallest allowed maximum datagram size of 1200 bytes.
 '''
 
 [[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-8.2.2"
 tracking-issue = "410"
 feature = "Client connection migration"
 quote = '''
@@ -35,7 +35,7 @@ to at least the smallest allowed maximum datagram size of 1200 bytes.
 '''
 
 [[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.1"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-8.2.1"
 tracking-issue = "411"
 feature = "Connection migration"
 quote = '''
@@ -45,7 +45,7 @@ packet.
 '''
 
 [[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-8.2.2"
 tracking-issue = "405"
 feature = "Connection migration"
 quote = '''
@@ -54,7 +54,7 @@ PATH_CHALLENGE frame was received.
 '''
 
 [[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-8.2.2"
 tracking-issue = "405"
 feature = "Connection migration"
 quote = '''
@@ -64,7 +64,7 @@ Section 9.3.3.
 '''
 
 [[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#8.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-8.2"
 tracking-issue = "414"
 feature = "Connection migration"
 quote = '''

@@ -78,12 +78,12 @@ pub struct Crypto;
 impl FrameWriter for Crypto {
     type Context = ();
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.6
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-19.6
     //# The stream does not have an explicit end, so CRYPTO frames do not
     //# have a FIN bit.
     const WRITES_FIN: bool = false;
 
-    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.4
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
     //# An endpoint SHOULD include new data in packets that are sent on PTO
     //# expiration.  Previously sent data MAY be sent if no new data can be
     //# sent.
@@ -129,7 +129,7 @@ impl FrameWriter for Crypto {
         _writer_context: Self::Context,
         _context: &mut W,
     ) -> Result<(), FitError> {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.6
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-19.6
         //# The stream does not have an explicit end, so CRYPTO frames do not
         //# have a FIN bit.
         // do nothing

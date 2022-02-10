@@ -96,7 +96,7 @@ macro_rules! packet_space_api {
                 path_id: path::Id,
                 publisher: &mut Pub,
             ) {
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.2
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2
                 //# When Initial or Handshake keys are discarded, the PTO and loss
                 //# detection timers MUST be reset, because discarding keys indicates
                 //# forward progress and the loss detection timer might have been set for
@@ -106,7 +106,7 @@ macro_rules! packet_space_api {
                     space.on_discard(path, path_id, publisher);
                 }
 
-                //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9.1
+                //= https://www.rfc-editor.org/rfc/rfc9001#section-4.9.1
                 //# Endpoints MUST NOT send
                 //# Initial packets after this point.
                 // By discarding a space, we are no longer capable of sending packets with those
@@ -300,7 +300,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         context: &mut connection::ConnectionTransmissionContext<Config>,
         packet_buffer: &mut endpoint::PacketBuffer,
     ) -> Option<Bytes> {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.3
         //# When sending a CONNECTION_CLOSE frame, the goal is to ensure that the
         //# peer will process the frame.  Generally, this means sending the frame
         //# in a packet with the highest level of packet protection to avoid the
@@ -309,7 +309,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         let mut can_send_handshake = self.handshake.is_some();
         let can_send_application = self.application.is_some();
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.3
         //# After the handshake is confirmed (see
         //# Section 4.1.2 of [QUIC-TLS]), an endpoint MUST send any
         //# CONNECTION_CLOSE frames in a 1-RTT packet.
@@ -322,7 +322,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
             );
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.3
         //# A client will always know whether the server has Handshake keys
         //# (see Section 17.2.2.1), but it is possible that a server does not
         //# know whether the client has Handshake keys.  Under these
@@ -401,7 +401,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 impl<Config: endpoint::Config> timer::Provider for PacketSpaceManager<Config> {
     #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# When ack-eliciting packets in multiple packet number spaces are in
         //# flight, the timer MUST be set to the earlier value of the Initial and
         //# Handshake packet number spaces.
@@ -631,7 +631,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
             });
             match frame {
                 Frame::Padding(frame) => {
-                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.1
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-19.1
                     //# A PADDING frame (type=0x00) has no semantic value.  PADDING frames
                     //# can be used to increase the size of a packet.  Padding can be used to
                     //# increase an Initial packet to the minimum required size or to provide
@@ -639,7 +639,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     let _ = on_frame_processed!(frame);
                 }
                 Frame::Ping(frame) => {
-                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.2
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-19.2
                     //# Endpoints can use PING frames (type=0x01) to verify that their peers
                     //# are still alive or to check reachability to the peer.
                     let _ = on_frame_processed!(frame);
@@ -647,7 +647,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 Frame::Crypto(frame) => {
                     let on_error = on_frame_processed!(frame);
 
-                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.5
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-7.5
                     //# Packets containing
                     //# discarded CRYPTO frames MUST be acknowledged because the packet has
                     //# been received and processed by the transport even though the CRYPTO
@@ -742,7 +742,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 Frame::PathChallenge(frame) => {
                     let on_error = on_frame_processed!(frame);
 
-                    //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3.3
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-9.3.3
                     //# An endpoint that receives a PATH_CHALLENGE on an active path SHOULD
                     //# send a non-probing packet in response.
                     if path_manager.active_path_id() == path_id {
@@ -774,7 +774,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
             payload = remaining;
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#12.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-12.4
         //# The payload of a packet that contains frames MUST contain at least
         //# one frame, and MAY contain multiple frames and multiple frame types.
         //# An endpoint MUST treat receipt of a packet containing no frames as a
@@ -793,7 +793,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
             publisher,
         )?;
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-13.1
         //# A packet MUST NOT be acknowledged until packet protection has been
         //# successfully removed and all frames contained in the packet have been
         //# processed.  For STREAM frames, this means the data has been enqueued

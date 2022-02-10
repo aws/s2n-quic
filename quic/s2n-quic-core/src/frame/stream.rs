@@ -10,7 +10,7 @@ use s2n_codec::{
     decoder_parameterized_value, DecoderBuffer, DecoderBufferMut, Encoder, EncoderValue,
 };
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.8
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.8
 //# STREAM frames implicitly create a stream and carry stream data.  The
 //# Type field in the STREAM frame takes the form 0b00001XXX (or the set
 //# of values from 0x08 to 0x0f).
@@ -23,7 +23,7 @@ macro_rules! stream_tag {
 
 const STREAM_TAG: u8 = 0x08;
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.8
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.8
 //# *  The OFF bit (0x04) in the frame type is set to indicate that there
 //#    is an Offset field present.  When set to 1, the Offset field is
 //#    present.  When set to 0, the Offset field is absent and the Stream
@@ -33,7 +33,7 @@ const STREAM_TAG: u8 = 0x08;
 
 const OFF_BIT: u8 = 0x04;
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.8
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.8
 //# *  The LEN bit (0x02) in the frame type is set to indicate that there
 //#    is a Length field present.  If this bit is set to 0, the Length
 //#    field is absent and the Stream Data field extends to the end of
@@ -41,14 +41,14 @@ const OFF_BIT: u8 = 0x04;
 
 const LEN_BIT: u8 = 0x02;
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.8
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.8
 //# *  The FIN bit (0x01) indicates that the frame marks the end of the
 //#    stream.  The final size of the stream is the sum of the offset and
 //#    the length of this frame.
 
 const FIN_BIT: u8 = 0x01;
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.8
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.8
 //# STREAM Frame {
 //#   Type (i) = 0x08..0x0f,
 //#   Stream ID (i),
@@ -57,7 +57,7 @@ const FIN_BIT: u8 = 0x01;
 //#   Stream Data (..),
 //# }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.8
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.8
 //# STREAM frames contain the following fields:
 //#
 //# Stream ID:  A variable-length integer indicating the stream ID of the

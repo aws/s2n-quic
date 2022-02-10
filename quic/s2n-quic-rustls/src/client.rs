@@ -56,7 +56,7 @@ impl tls::Endpoint for Client {
     ) -> Self::Session {
         use quic::ClientQuicExt;
 
-        //= https://www.rfc-editor.org/rfc/rfc9001.txt#8.2
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-8.2
         //# Endpoints MUST send the quic_transport_parameters extension;
         let transport_parameters = encode_transport_parameters(transport_parameters);
 
@@ -144,7 +144,7 @@ impl Builder {
     pub fn build(self) -> Result<Client, rustls::Error> {
         // TODO load system root store?
         if self.cert_store.is_empty() {
-            //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.4
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-4.4
             //# A client MUST authenticate the identity of the server.
             return Err(rustls::Error::General(
                 "missing trusted root certificate(s)".to_string(),

@@ -1,5 +1,5 @@
 [[exception]]
-target = "https://www.rfc-editor.org/rfc/rfc9001.txt#6.3"
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-6.3"
 quote = '''
 An endpoint MAY
 generate new keys as part of packet processing, but this creates a

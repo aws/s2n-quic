@@ -88,7 +88,7 @@ macro_rules! alert_descriptions {
     };
 }
 
-//= https://tools.ietf.org/rfc/rfc8446.txt#B.2
+//= https://www.rfc-editor.org/rfc/rfc8446#appendix-B.2
 //# enum { warning(1), fatal(2), (255) } AlertLevel;
 //#
 //# enum {

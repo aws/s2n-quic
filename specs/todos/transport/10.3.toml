@@ -1,5 +1,5 @@
 [[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#10.3"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-10.3"
 tracking-issue = "463"
 feature = "Discard too small packets"
 quote = '''

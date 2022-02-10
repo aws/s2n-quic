@@ -36,7 +36,7 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> Context<'a, 'b, 'sub, Config> {
             return;
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-9
         //# Servers do not send non-
         //# probing packets (see Section 9.1) toward a client address until they
         //# see a non-probing packet from that address.

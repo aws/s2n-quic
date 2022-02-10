@@ -6,7 +6,7 @@ use s2n_quic_transport::stream;
 /// A QUIC stream that is only allowed to receive data.
 ///
 /// The [`ReceiveStream`] implements the required operations receive described in the
-/// [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000.html#name-streams)
+/// [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000#name-streams)
 #[derive(Debug)]
 pub struct ReceiveStream(stream::ReceiveStream);
 

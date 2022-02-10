@@ -26,7 +26,7 @@ pub struct Perf {
     #[structopt(long)]
     private_key: Option<PathBuf>,
 
-    //= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#2.1
+    //= https://tools.ietf.org/id/draft-banks-quic-performance-00#2.1
     //# The ALPN used by the QUIC performance protocol is "perf".
     #[structopt(long, default_value = "perf")]
     application_protocols: Vec<String>,
@@ -87,7 +87,7 @@ impl Perf {
                         Some(stream) => {
                             // spawn a task per stream
                             tokio::spawn(async move {
-                                //= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#2.3.1
+                                //= https://tools.ietf.org/id/draft-banks-quic-performance-00#2.3.1
                                 //# On the server side, any stream that is closed before all 8 bytes are
                                 //# received should just be ignored, and gracefully closed on its end (if
                                 //# applicable).
@@ -109,7 +109,7 @@ impl Perf {
                             let sender = handle.open_send_stream().await?;
                             // spawn a task per stream
                             tokio::spawn(async move {
-                                //= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#2.3.1
+                                //= https://tools.ietf.org/id/draft-banks-quic-performance-00#2.3.1
                                 //# On the server side, any stream that is closed before all 8 bytes are
                                 //# received should just be ignored, and gracefully closed on its end (if
                                 //# applicable).
@@ -127,7 +127,7 @@ impl Perf {
             let _ = futures::try_join!(bidi, uni);
         }
 
-        //= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#2.3.2
+        //= https://tools.ietf.org/id/draft-banks-quic-performance-00#2.3.2
         //# When a client uses a bidirectional stream to request a response
         //# payload from the server, the server sends the requested data on the
         //# same stream.  If no data is requested by the client, the server
@@ -144,7 +144,7 @@ impl Perf {
             Ok(())
         }
 
-        //= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#2.3.2
+        //= https://tools.ietf.org/id/draft-banks-quic-performance-00#2.3.2
         //# When a client uses a unidirectional stream to request a response
         //# payload from the server, the server opens a new unidirectional stream
         //# to send the requested data.  If no data is requested by the client,

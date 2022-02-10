@@ -4,7 +4,7 @@
 use crate::{application, frame::Tag, varint::VarInt};
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.19
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.19
 //# An endpoint sends a CONNECTION_CLOSE frame (type=0x1c or 0x1d) to
 //# notify its peer that the connection is being closed.  The
 //# CONNECTION_CLOSE frame with a type of 0x1c is used to signal errors
@@ -20,7 +20,7 @@ macro_rules! connection_close_tag {
 const QUIC_ERROR_TAG: u8 = 0x1c;
 const APPLICATION_ERROR_TAG: u8 = 0x1d;
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.19
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.19
 //# CONNECTION_CLOSE Frame {
 //#   Type (i) = 0x1c..0x1d,
 //#   Error Code (i),
@@ -29,7 +29,7 @@ const APPLICATION_ERROR_TAG: u8 = 0x1d;
 //#   Reason Phrase (..),
 //# }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.19
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.19
 //# CONNECTION_CLOSE frames contain the following fields:
 //#
 //# Error Code:  A variable-length integer that indicates the reason for

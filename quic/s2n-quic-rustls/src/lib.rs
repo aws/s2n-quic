@@ -16,7 +16,7 @@ pub mod server;
 pub use client::Client;
 pub use server::Server;
 
-//= https://www.rfc-editor.org/rfc/rfc9001.txt#4.2
+//= https://www.rfc-editor.org/rfc/rfc9001#section-4.2
 //# Clients MUST NOT offer TLS versions older than 1.3.
 static PROTOCOL_VERSIONS: &[&rustls::SupportedProtocolVersion] = &[&rustls::version::TLS13];
 

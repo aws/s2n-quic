@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#21.4"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-21.4"
 
 # 21.4.  Optimistic ACK Attack
 #

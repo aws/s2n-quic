@@ -30,14 +30,14 @@ pub trait HeaderKey: Send {
     fn sealing_sample_len(&self) -> usize;
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9001.txt#5.4.1
+//= https://www.rfc-editor.org/rfc/rfc9001#section-5.4.1
 //# The output of this algorithm is a 5 byte mask that is applied to the
 //# protected header fields using exclusive OR.
 
 pub const HEADER_PROTECTION_MASK_LEN: usize = 5;
 pub type HeaderProtectionMask = [u8; HEADER_PROTECTION_MASK_LEN];
 
-//= https://www.rfc-editor.org/rfc/rfc9001.txt#5.4.1
+//= https://www.rfc-editor.org/rfc/rfc9001#section-5.4.1
 //# Figure 6 shows a sample algorithm for applying header protection.
 //# Removing header protection only differs in the order in which the
 //# packet number length (pn_length) is determined (here "^" is used to

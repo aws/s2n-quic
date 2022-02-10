@@ -335,10 +335,10 @@ impl OutgoingController {
     }
 
     fn on_max_streams(&mut self, frame: &MaxStreams) {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.6
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
         //# MAX_STREAMS frames that do not increase the stream limit MUST be ignored.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.11
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
         //# MAX_STREAMS frames that do not increase the stream limit MUST be ignored.
         if self.peer_cumulative_stream_limit >= frame.maximum_streams {
             return;
@@ -357,11 +357,11 @@ impl OutgoingController {
             // Store a waker that can be woken when we get more credit
             self.wakers.push(context.waker().clone());
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.6
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
             //# An endpoint that is unable to open a new stream due to the peer's
             //# limits SHOULD send a STREAMS_BLOCKED frame (Section 19.14).
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.14
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-19.14
             //# A sender SHOULD send a STREAMS_BLOCKED frame (type=0x16 or 0x17) when
             //# it wishes to open a stream but is unable to do so due to the maximum
             //# stream limit set by its peer; see Section 19.11.
@@ -453,7 +453,7 @@ impl OutgoingController {
         {
             // We are already sending an ack-eliciting packet, so no need to send another STREAMS_BLOCKED.
             // This matches the RFC requirement below for STREAM_DATA_BLOCKED and DATA_BLOCKED.
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.1
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-4.1
             //# To keep the
             //# connection from closing, a sender that is flow control limited SHOULD
             //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
@@ -523,14 +523,14 @@ impl ValueToFrameWriter<VarInt> for StreamsBlockedToFrameWriter {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#4.6
+//= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
 //# An endpoint MUST NOT wait
 //# to receive this signal before advertising additional credit, since
 //# doing so will mean that the peer will be blocked for at least an
 //# entire round trip
 // Send a MAX_STREAMS frame whenever 1/10th of the window has been closed
 pub(super) const MAX_STREAMS_SYNC_FRACTION: VarInt = VarInt::from_u8(10);
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.11
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
 //# Maximum Streams:  A count of the cumulative number of streams of the
 //# corresponding type that can be opened over the lifetime of the
 //# connection.  This value cannot exceed 2^60, as it is not possible
@@ -570,13 +570,13 @@ impl IncomingController {
         .expect("max_streams is limited to MAX_STREAMS_MAX_VALUE");
 
         if stream_id > max_stream_id {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.6
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
             //# Endpoints MUST NOT exceed the limit set by their peer.  An endpoint
             //# that receives a frame with a stream ID exceeding the limit it has
             //# sent MUST treat this as a connection error of type
             //# STREAM_LIMIT_ERROR; see Section 11 for details on error handling.
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.11
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
             //# An endpoint MUST terminate a connection
             //# with an error of type STREAM_LIMIT_ERROR if a peer opens more streams
             //# than was permitted.

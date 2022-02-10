@@ -298,7 +298,7 @@ impl crypto::OneRttKey for OneRttKey {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9001.txt#5.3
+//= https://www.rfc-editor.org/rfc/rfc9001#section-5.3
 //# A cipher suite MUST NOT be
 //# negotiated unless a header protection scheme is defined for the
 //# cipher suite.

@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#11.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-11.2"
 
 # 11.2.  Stream Errors
 #

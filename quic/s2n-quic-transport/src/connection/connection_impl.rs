@@ -86,10 +86,10 @@ enum ConnectionState {
     /// Once all of the data is transmitted, the connection will be closed.
     Flushing,
     /// The connection is closing, as described in
-    /// https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
+    /// https://www.rfc-editor.org/rfc/rfc9000#section-10.1
     Closing,
     /// The connection is draining, as described in
-    /// https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
+    /// https://www.rfc-editor.org/rfc/rfc9000#section-10.1
     Draining,
     /// The connection was drained, and is in its terminal state.
     /// The connection will be removed from the endpoint when it reached this state.
@@ -104,11 +104,11 @@ impl From<connection::Error> for ConnectionState {
                 ConnectionState::Finished
             }
             connection::Error::NoValidPath => {
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-9
                 //# When an endpoint has no validated path on which to send packets, it
                 //# MAY discard connection state.
 
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3.2
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-9.3.2
                 //# If an endpoint has no state about the last validated peer address, it
                 //# MUST close the connection silently by discarding all connection
                 //# state.
@@ -119,7 +119,7 @@ impl From<connection::Error> for ConnectionState {
             | connection::Error::Application { initiator, .. }
                 if initiator.is_local() =>
             {
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.1
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
                 //# An endpoint enters the closing state after initiating an immediate
                 //# close.
                 ConnectionState::Closing
@@ -127,14 +127,14 @@ impl From<connection::Error> for ConnectionState {
             connection::Error::Closed { .. }
             | connection::Error::Transport { .. }
             | connection::Error::Application { .. } => {
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.2
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.2
                 //# The draining state is entered once an endpoint receives a
                 //# CONNECTION_CLOSE frame, which indicates that its peer is closing or
                 //# draining.
                 ConnectionState::Draining
             }
             connection::Error::StatelessReset => {
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3.1
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3.1
                 //# If the last 16 bytes of the datagram are identical in value to a
                 //# stateless reset token, the endpoint MUST enter the draining period
                 //# and not send any further packets on this connection.
@@ -280,7 +280,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             Poll::Pending => return Ok(()),
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-7.1
         //#
         //#   Client                                                  Server
         //#
@@ -329,7 +329,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
 
     /// Returns the idle timeout based on transport parameters of both peers
     fn get_idle_timer_duration(&self) -> Option<Duration> {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.1
         //# Each endpoint advertises a max_idle_timeout, but the effective value
         //# at an endpoint is computed as the minimum of the two advertised
         //# values (or the sole advertised value, if only one endpoint advertises
@@ -339,7 +339,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
 
         let mut duration = self.limits.max_idle_timeout()?;
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.1
         //# To avoid excessively small idle timeout periods, endpoints MUST
         //# increase the idle timeout period to be at least three times the
         //# current Probe Timeout (PTO).  This allows for multiple PTOs to
@@ -355,7 +355,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         packet: &ProcessedPacket,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), connection::Error> {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.1
         //# An endpoint restarts its idle timer when a packet from its peer is
         //# received and processed successfully.
         if let Some(duration) = self.get_idle_timer_duration() {
@@ -384,7 +384,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
     }
 
     fn on_ack_eliciting_packet_sent(&mut self, timestamp: Timestamp) {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.1
         //# An endpoint also restarts its
         //# idle timer when sending an ack-eliciting packet if no other ack-
         //# eliciting packets have been sent since last receiving and processing
@@ -472,7 +472,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         }
         .into_event();
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#21.6
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-21.6
         //# QUIC deployments SHOULD provide mitigations for the Slowloris
         //# attacks, such as increasing the maximum number of clients the server
         //# will allow, limiting the number of connections a single IP address is
@@ -659,7 +659,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Initiates closing the connection as described in
-    /// https://www.rfc-editor.org/rfc/rfc9000.txt#10
+    /// https://www.rfc-editor.org/rfc/rfc9000#section-10
     fn close(
         &mut self,
         error: connection::Error,
@@ -688,7 +688,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         self.state = error.into();
         self.error = Err(error);
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3
         //# An endpoint that wishes to communicate a fatal
         //# connection error MUST use a CONNECTION_CLOSE frame if it is able.
 
@@ -715,7 +715,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut context,
                 packet_buffer,
             ) {
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2
                 //# The closing and draining connection states exist to ensure that
                 //# connections close cleanly and that delayed or reordered packets are
                 //# properly discarded.  These states SHOULD persist for at least three
@@ -731,12 +731,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             }
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
         //# In the closing state, an endpoint retains only enough information to
         //# generate a packet containing a CONNECTION_CLOSE frame and to identify
         //# packets as belonging to the connection.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
         //# An endpoint's selected connection ID and the QUIC version are
         //# sufficient information to identify packets for a closing connection;
         //# the endpoint MAY discard all other connection state.
@@ -756,7 +756,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         // We don't discard the application space so the application can
         // be notified and read what happened.
         if let Some((application, _handshake_status)) = self.space_manager.application_mut() {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2
             //# A CONNECTION_CLOSE frame
             //# causes all streams to immediately become closed; open streams can be
             //# assumed to be implicitly reset.
@@ -877,11 +877,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         // We can't transmit more until a future time, so arm the pacing
                         // timer to pause transmission until the earliest departure time.
 
-                        //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.7
+                        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.7
                         //# A sender SHOULD pace sending of all in-flight packets based on input
                         //# from the congestion controller.
 
-                        //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.7
+                        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.7
                         //# Senders MUST either use pacing or limit such bursts.
                         self.timers.pacing_timer.set(edt);
                     }
@@ -947,7 +947,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), connection::Error> {
         if self.close_sender.on_timeout(timestamp).is_ready() {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2
             //# Once its closing or draining state ends, an endpoint SHOULD discard
             //# all connection state.
             self.state = ConnectionState::Finished;
@@ -1057,13 +1057,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     ) -> Result<path::Id, DatagramDropReason> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#9
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-9
         //# The design of QUIC relies on endpoints retaining a stable address
         //# for the duration of the handshake.  An endpoint MUST NOT initiate
         //# connection migration before the handshake is confirmed, as defined
         //# in section 4.1.2 of [QUIC-TLS].
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
         //# An endpoint in the closing state MUST either discard
         //# packets received from an unvalidated address or limit the cumulative
         //# size of packets it sends to an unvalidated address to three times the
@@ -1085,7 +1085,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         });
 
         if matches!(self.state, ConnectionState::Closing) {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.1
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
             //# An endpoint in the closing
             //# state sends a packet containing a CONNECTION_CLOSE frame in response
             //# to any incoming packet that it attributes to the connection.
@@ -1098,7 +1098,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     .on_datagram_received(rtt, datagram.timestamp);
             }
         } else if unblocked {
-            //= https://www.rfc-editor.org/rfc/rfc9002.txt#A.6
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-A.6
             //# When a server is blocked by anti-amplification limits, receiving a
             //# datagram unblocks it, even if none of the packets in the datagram are
             //# successfully processed.  In such a case, the PTO timer will need to
@@ -1119,14 +1119,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
         //= type=TODO
         //# Once a
         //# client has received a valid Initial packet from the server, it MUST
         //# discard any subsequent packet it receives on that connection with a
         //# different Source Connection ID.
         //
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
         //= type=TODO
         //# Any further changes to the Destination Connection ID are only
         //# permitted if the values are taken from NEW_CONNECTION_ID frames; if
@@ -1174,14 +1174,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         if let Some((space, handshake_status)) = self.space_manager.initial_mut() {
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2
             //= type=TODO
             //= tracking-issue=336
             //# Invalid packets that lack strong integrity protection, such as
             //# Initial, Retry, or Version Negotiation, MAY be discarded.
             // Attempt to validate some of the enclosed frames?
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.2
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.2
             //= type=TODO
             //= tracking-issue=385
             //# This token MUST be repeated by the client in all
@@ -1222,13 +1222,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.1
         //= type=TODO
         //= tracking-issue=337
         //# The client MAY drop these packets, or it MAY buffer them in
         //# anticipation of later packets that allow it to compute the key.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.2
         //= type=TODO
         //= tracking-issue=340
         //# Clients are not able to send Handshake packets prior to
@@ -1265,7 +1265,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             )?;
 
             if Self::Config::ENDPOINT_TYPE.is_server() {
-                //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9.1
+                //= https://www.rfc-editor.org/rfc/rfc9001#section-4.9.1
                 //# a server MUST discard Initial keys when it first
                 //# successfully processes a Handshake packet.
                 self.space_manager.discard_initial(
@@ -1275,7 +1275,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 );
             }
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1
             //# Once an endpoint has successfully processed a
             //# Handshake packet from the peer, it can consider the peer address to
             //# have been validated.
@@ -1300,16 +1300,16 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), ProcessingError> {
-        //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.7
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-5.7
         //# Endpoints in either role MUST NOT decrypt 1-RTT packets from
         //# their peer prior to completing the handshake.
 
-        //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.7
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-5.7
         //# A server MUST NOT process
         //# incoming 1-RTT protected packets before the TLS handshake is
         //# complete.
 
-        //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.7
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-5.7
         //# Even if it has 1-RTT secrets, a client MUST NOT
         //# process incoming 1-RTT protected packets before the TLS handshake is
         //# complete.
@@ -1323,21 +1323,21 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 },
             });
 
-            //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.7
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-5.7
             //= type=TODO
             //= tracking-issue=320
             //# Received
             //# packets protected with 1-RTT keys MAY be stored and later decrypted
             //# and used once the handshake is complete.
 
-            //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.7
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-5.7
             //= type=TODO
             //= tracking-issue=320
             //= feature=0-RTT
             //# The server MAY retain these packets for
             //# later decryption in anticipation of receiving a ClientHello.
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.1
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.1
             //= type=TODO
             //# The client MAY drop these packets, or it MAY buffer them in
             //# anticipation of later packets that allow it to compute the key.
@@ -1403,7 +1403,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         publisher.on_packet_received(event::builder::PacketReceived {
             packet_header: event::builder::PacketHeader::VersionNegotiation {},
         });
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#6.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-6.2
         //= type=TODO
         //= feature=Version negotiation handler
         //= tracking-issue=349
@@ -1411,7 +1411,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# current connection attempt if it receives a Version Negotiation
         //# packet, with the following two exceptions.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#6.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-6.2
         //= type=TODO
         //= feature=Version negotiation handler
         //= tracking-issue=349
@@ -1420,7 +1420,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# processed any other packet, including an earlier Version Negotiation
         //# packet.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#6.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-6.2
         //= type=TODO
         //= feature=Version negotiation handler
         //= tracking-issue=349
@@ -1447,7 +1447,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 version: publisher.quic_version(),
             },
         });
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#5.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.2
         //= type=TODO
         //= tracking-issue=339
         //# If the packet is a 0-RTT packet, the server MAY buffer a limited
@@ -1483,7 +1483,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             },
         });
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.2
         //# A client MUST accept and process at most one Retry packet for each
         //# connection attempt.
         if self.space_manager.retry_cid().is_some() {
@@ -1497,7 +1497,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             return Ok(());
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.2
         //# After the client has received and processed an
         //# Initial or Retry packet from the server, it MUST discard any
         //# subsequent Retry packets that it receives.
@@ -1512,7 +1512,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             return Ok(());
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.1
         //# A client MUST
         //# discard a Retry packet that contains a Source Connection ID field
         //# that is identical to the Destination Connection ID field of its
@@ -1533,7 +1533,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let initial_cid = InitialId::try_from_bytes(path.peer_connection_id.as_ref())
             .expect("initial ID length already validated locally");
 
-        //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.8
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-5.8
         //# Retry packets (see Section 17.2.5 of [QUIC-TRANSPORT]) carry a Retry
         //# Integrity Tag that provides two properties: it allows the discarding
         //# of packets that have accidentally been corrupted by the network, and
@@ -1557,12 +1557,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let retry_source_connection_id = PeerId::try_from_bytes(packet.source_connection_id())
             .expect("SCID bytes have been validated");
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.1
         //# The client MUST use the value from the Source
         //# Connection ID field of the Retry packet in the Destination Connection
         //# ID field of subsequent packets that it sends.
         //
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
         //# A client MUST change the Destination Connection ID it uses for
         //# sending packets in response to only the first received Initial or
         //# Retry packet.
@@ -1622,7 +1622,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 interests.finalization = self.close_sender.finalization_status().is_final();
             }
             ConnectionState::Draining | ConnectionState::Finished => {
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.2
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.2
                 //# While otherwise identical to the closing state, an
                 //# endpoint in the draining state MUST NOT send any packets.
                 interests.transmission = false;

@@ -30,13 +30,13 @@ use s2n_quic_core::{
 
 pub struct HandshakeSpace<Config: endpoint::Config> {
     pub ack_manager: AckManager,
-    //= https://www.rfc-editor.org/rfc/rfc9001.txt#4
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-4
     //# If QUIC needs to retransmit that data, it MUST use
     //# the same keys even if TLS has already updated to newer keys.
     pub key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::HandshakeKey,
     pub header_key:
         <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::HandshakeHeaderKey,
-    //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-4.9
     //# If packets from a lower encryption level contain
     //# CRYPTO frames, frames that retransmit that data MUST be sent at the
     //# same encryption level.
@@ -110,7 +110,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         let mut packet_number = self.tx_packet_numbers.next();
 
         if self.recovery_manager.requires_probe() {
-            //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.4
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
             //# If the sender wants to elicit a faster acknowledgement on PTO, it can
             //# skip a packet number to eliminate the acknowledgment delay.
 
@@ -251,7 +251,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
             "Clients are never in an anti-amplification state"
         );
 
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#A.6
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-A.6
         //# When a server is blocked by anti-amplification limits, receiving a
         //# datagram unblocks it, even if none of the packets in the datagram are
         //# successfully processed.  In such a case, the PTO timer will need to
@@ -469,7 +469,7 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
     fn on_rtt_update(&mut self) {}
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.4
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.4
 //# The payload of this packet contains CRYPTO frames and could contain
 //# PING, PADDING, or ACK frames.  Handshake packets MAY contain
 //# CONNECTION_CLOSE frames of type 0x1c.  Endpoints MUST treat receipt
@@ -512,7 +512,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for HandshakeSpace<Config> {
         _datagram: &DatagramInfo,
         _path: &mut Path<Config>,
     ) -> Result<(), transport::Error> {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.4
         //# Handshake packets MAY contain
         //# CONNECTION_CLOSE frames of type 0x1c.
 

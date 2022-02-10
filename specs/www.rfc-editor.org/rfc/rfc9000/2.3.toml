@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#2.3"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-2.3"
 
 # 2.3.  Stream Prioritization
 #

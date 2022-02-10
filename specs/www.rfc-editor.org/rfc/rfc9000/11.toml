@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#11"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-11"
 
 # 11.  Error Handling
 #

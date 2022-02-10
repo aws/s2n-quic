@@ -60,7 +60,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
         let (peer_parameters, remaining) =
             ServerTransportParameters::decode(decoder).map_err(|_| {
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-7.4
                 //# An endpoint SHOULD treat receipt of
                 //# duplicate transport parameters as a connection error of type
                 //# TRANSPORT_PARAMETER_ERROR.
@@ -75,7 +75,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             },
         );
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-7.3
         //# An endpoint MUST treat the following as a connection error of type
         //# TRANSPORT_PARAMETER_ERROR or PROTOCOL_VIOLATION:
         self.validate_initial_source_connection_id(
@@ -99,7 +99,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 }
             }
             (Some(_), None) => {
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-7.3
                 //# *  absence of the retry_source_connection_id transport parameter from
                 //# the server after receiving a Retry packet,
                 return Err(transport::Error::TRANSPORT_PARAMETER_ERROR.with_reason(
@@ -108,7 +108,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 ));
             }
             (None, Some(_)) => {
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-7.3
                 //# *  presence of the retry_source_connection_id transport parameter
                 //# when no Retry packet was received, or
                 return Err(transport::Error::TRANSPORT_PARAMETER_ERROR.with_reason(
@@ -120,7 +120,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         }
 
         if let Some(peer_value) = peer_parameters.original_destination_connection_id {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-7.3
             //# The values provided by a peer for these transport parameters MUST
             //# match the values that an endpoint used in the Destination and Source
             //# Connection ID fields of Initial packets that it sent (and received,
@@ -136,7 +136,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                     .with_reason("original_destination_connection_id mismatch"));
             }
         } else {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-7.3
             //# An endpoint MUST treat the absence of the
             //# initial_source_connection_id transport parameter from either endpoint
             //# or the absence of the original_destination_connection_id transport
@@ -146,7 +146,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 .with_reason("missing original_destination_connection_id"));
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3
         //# Servers can also issue a stateless_reset_token transport parameter during the
         //# handshake that applies to the connection ID that it selected during
         //# the handshake.  These exchanges are protected by encryption, so only
@@ -177,7 +177,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
         let (peer_parameters, remaining) =
             ClientTransportParameters::decode(decoder).map_err(|_| {
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-7.4
                 //# An endpoint SHOULD treat receipt of
                 //# duplicate transport parameters as a connection error of type
                 //# TRANSPORT_PARAMETER_ERROR.
@@ -192,7 +192,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             },
         );
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-7.3
         //# An endpoint MUST treat the following as a connection error of type
         //# TRANSPORT_PARAMETER_ERROR or PROTOCOL_VIOLATION:
         self.validate_initial_source_connection_id(
@@ -212,7 +212,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         Ok((initial_flow_control_limits, active_connection_id_limit))
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-7.3
     //# Each endpoint includes the value of the Source Connection ID field
     //# from the first Initial packet it sent in the
     //# initial_source_connection_id transport parameter
@@ -226,12 +226,12 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         peer_value: &Option<InitialSourceConnectionId>,
         expected_value: &[u8],
     ) -> Result<(), transport::Error> {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-7.3
         //# * a mismatch between values received from a peer in these transport
         //# parameters and the value sent in the corresponding Destination or
         //# Source Connection ID fields of Initial packets.
         if let Some(peer_value) = peer_value {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-7.3
             //# The values provided by a peer for these transport parameters MUST
             //# match the values that an endpoint used in the Destination and Source
             //# Connection ID fields of Initial packets that it sent (and received,
@@ -242,7 +242,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                     .with_reason("initial_source_connection_id mismatch"));
             }
         } else {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.3
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-7.3
             //# An endpoint MUST treat the absence of the
             //# initial_source_connection_id transport parameter from either endpoint
             //# or the absence of the original_destination_connection_id transport
@@ -327,7 +327,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         }
 
         if Config::ENDPOINT_TYPE.is_client() {
-            //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.9.3
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-4.9.3
             //# Therefore, a client SHOULD discard 0-RTT keys as soon as it installs
             //# 1-RTT keys as they have no use after that moment.
 
@@ -421,7 +421,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 // All of the other spaces are discarded by the time the handshake is complete so
                 // we only need to notify the application space
                 //
-                //= https://www.rfc-editor.org/rfc/rfc9001.txt#4.1.2
+                //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.2
                 //# the TLS handshake is considered confirmed at the
                 //# server when the handshake completes.
                 application.on_handshake_confirmed(

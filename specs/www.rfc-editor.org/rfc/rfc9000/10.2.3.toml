@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#10.2.3"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-10.2.3"
 
 # 10.2.3.  Immediate Close during the Handshake
 #

@@ -30,11 +30,11 @@ pub struct Manager<Config: endpoint::Config> {
     // The packet space for this recovery manager
     space: PacketNumberSpace,
 
-    //= https://www.rfc-editor.org/rfc/rfc9002.txt#A.3
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-A.3
     //# The largest packet number acknowledged in the packet number space so far.
     largest_acked_packet: Option<PacketNumber>,
 
-    //= https://www.rfc-editor.org/rfc/rfc9002.txt#A.3
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-A.3
     //# An association of packet numbers in a packet number space to information about them.
     //  These are packets that are pending acknowledgement.
     sent_packets: SentPackets,
@@ -42,7 +42,7 @@ pub struct Manager<Config: endpoint::Config> {
     // Timer set when packets may be declared lost at a time in the future
     loss_timer: Timer,
 
-    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2
     //# A Probe Timeout (PTO) triggers the sending of one or two probe
     //# datagrams when ack-eliciting packets are not acknowledged within the
     //# expected period of time or the server may not have validated the
@@ -50,7 +50,7 @@ pub struct Manager<Config: endpoint::Config> {
     //# tail packets or acknowledgments.
     pto: Pto,
 
-    //= https://www.rfc-editor.org/rfc/rfc9002.txt#A.3
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-A.3
     //# The time the most recent ack-eliciting packet was sent.
     time_of_last_ack_eliciting_packet: Option<Timestamp>,
 
@@ -64,7 +64,7 @@ pub struct Manager<Config: endpoint::Config> {
     config: PhantomData<Config>,
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9002.txt#6.1.1
+//= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.1
 //# The RECOMMENDED initial value for the packet reordering threshold
 //# (kPacketThreshold) is 3, based on best practices for TCP loss
 //# detection [RFC5681] [RFC6675].  In order to remain similar to TCP,
@@ -151,11 +151,11 @@ impl<Config: endpoint::Config> Manager<Config> {
                 .pto
                 .on_timeout(!self.sent_packets.is_empty(), timestamp);
 
-            //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2
             //# A PTO timer expiration event does not indicate packet loss and MUST
             //# NOT cause prior unacknowledged packets to be marked as lost.
 
-            //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
             //# When a PTO timer expires, the PTO backoff MUST be increased,
             //# resulting in the PTO period being set to twice its current value.
             if pto_expired {
@@ -171,7 +171,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         publisher.on_recovery_metrics(recovery_event!(path_id, path));
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9002.txt#A.5
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-A.5
     //# After a packet is sent, information about the packet is stored.
     pub fn on_packet_sent<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
@@ -182,12 +182,12 @@ impl<Config: endpoint::Config> Manager<Config> {
         context: &mut Ctx,
         publisher: &mut Pub,
     ) {
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#7
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-7
         //# Similar to TCP, packets containing only ACK frames do not count
         //# towards bytes in flight and are not congestion controlled.
 
         // Everything else (including probe packets) are counted, as specified below:
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.5
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.5
         //# A sender MUST however count these packets as being additionally in
         //# flight, since these packets add network load without establishing
         //# packet loss.
@@ -219,7 +219,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             if outcome.ack_elicitation.is_ack_eliciting() {
                 self.time_of_last_ack_eliciting_packet = Some(time_sent);
             }
-            //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
             //# A sender SHOULD restart its PTO timer every time an ack-eliciting
             //# packet is sent or acknowledged,
             let is_handshake_confirmed = context.is_handshake_confirmed();
@@ -240,7 +240,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         now: Timestamp,
         is_handshake_confirmed: bool,
     ) {
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2.1
         //# If no additional data can be sent, the server's PTO timer MUST NOT be
         //# armed until datagrams have been received from the client, because
         //# packets sent on PTO count against the anti-amplification limit.
@@ -254,7 +254,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             sent_info.congestion_controlled && sent_info.ack_elicitation.is_ack_eliciting()
         });
 
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2.1
         //# it is the client's responsibility to send packets to unblock the server
         //# until it is certain that the server has finished its address validation
         if !ack_eliciting_packets_in_flight && path.is_peer_validated() {
@@ -270,7 +270,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 .expect("there is at least one ack eliciting packet in flight")
         } else {
             // Arm PTO from now when there are no inflight packets.
-            //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.2.1
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2.1
             //# That is,
             //# the client MUST set the PTO timer if the client has not received an
             //# acknowledgment for any of its Handshake packets and the handshake is
@@ -279,7 +279,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             now
         };
 
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# An endpoint MUST NOT set its PTO timer for the Application Data
         //# packet number space until the handshake is confirmed.
         if self.space.is_application_data() && !is_handshake_confirmed {
@@ -340,7 +340,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             publisher,
         )?;
 
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.1
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-5.1
         //# An endpoint generates an RTT sample on receiving an ACK frame that
         //# meets the following two conditions:
         //#
@@ -458,18 +458,18 @@ impl<Config: endpoint::Config> Manager<Config> {
         let is_handshake_confirmed = context.is_handshake_confirmed();
         let (largest_newly_acked_packet_number, largest_newly_acked_info) = largest_newly_acked;
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-9.4
         //# Packets sent on the old path MUST NOT contribute to
         //# congestion control or RTT estimation for the new path.
         should_update_rtt &= context.path_id() == largest_newly_acked_info.path_id;
 
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.1
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-5.1
         //# To avoid generating multiple RTT samples for a single packet, an ACK
         //# frame SHOULD NOT be used to update RTT estimates if it does not newly
         //# acknowledge the largest acknowledged packet.
         should_update_rtt &= largest_newly_acked_packet_number == largest_acked_packet_number;
 
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.1
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-5.1
         //# An RTT sample MUST NOT be generated on receiving an ACK frame that
         //# does not newly acknowledge at least one ack-eliciting packet.
         should_update_rtt &= includes_ack_eliciting;
@@ -509,7 +509,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         context: &mut Ctx,
         publisher: &mut Pub,
     ) {
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.1.2
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
         //# Once a later packet within the same packet number space has been
         //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
         //# was sent a threshold amount of time in the past.
@@ -537,7 +537,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 );
             }
 
-            //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
             //# The PTO backoff factor is reset when an acknowledgment is received,
             //# except in the following case.  A server might take longer to respond
             //# to packets during the handshake than otherwise.  To protect such a
@@ -555,7 +555,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             }
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# A sender SHOULD restart its PTO timer every time an ack-eliciting
         //# packet is sent or acknowledged,
         debug_assert!(
@@ -563,7 +563,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             "this method assumes there was at least one newly-acked packet"
         );
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-13.4.2.1
         //# Validating ECN counts from reordered ACK frames can result in failure.
         //# An endpoint MUST NOT fail ECN validation as a result of processing an
         //# ACK frame that does not increase the largest acknowledged packet number.
@@ -614,7 +614,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         );
 
         if matches!(outcome, ValidationOutcome::CongestionExperienced) {
-            //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.1
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-7.1
             //# If a path has been validated to support Explicit Congestion
             //# Notification (ECN) [RFC3168] [RFC8311], QUIC treats a Congestion
             //# Experienced (CE) codepoint in the IP header as a signal of
@@ -640,7 +640,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         matches!(self.pto.state, PtoState::RequiresTransmission(_))
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9002.txt#B.9
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-B.9
     //# When Initial or Handshake keys are discarded, packets sent in that
     //# space no longer count toward bytes in flight.
     /// Clears bytes in flight for sent packets.
@@ -669,7 +669,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             .on_packet_discarded(discarded_bytes);
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9002.txt#A.10
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-A.10
     //# DetectAndRemoveLostPackets is called every time an ACK is received or the time threshold
     //# loss detection timer expires. This function operates on the sent_packets for that packet
     //# number space and returns a list of packets newly detected as lost.
@@ -735,7 +735,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 .expect("largest_acked_packet >= unacked_packet_number")
                 >= K_PACKET_THRESHOLD;
 
-            //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.1
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1
             //# A packet is declared lost if it meets all of the following
             //# conditions:
             //#
@@ -759,7 +759,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 persistent_congestion_calculator
                     .on_lost_packet(unacked_packet_number, unacked_sent_info);
             } else {
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.1.2
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
                 //# If packets sent prior to the largest acknowledged packet cannot yet
                 //# be declared lost, then a timer SHOULD be set for the remaining time.
                 self.loss_timer.set(packet_lost_time);
@@ -771,7 +771,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     self
                 );
 
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
                 //# The PTO timer MUST NOT be set if a timer is set for time threshold
                 //# loss detection; see Section 6.1.2.  A timer that is set for time
                 //# threshold loss detection will expire earlier than the PTO timer in
@@ -807,7 +807,7 @@ impl<Config: endpoint::Config> Manager<Config> {
 
             self.sent_packets.remove(packet_number);
 
-            //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-7.6.2
             //# A sender that does not have state for all packet
             //# number spaces or an implementation that cannot compare send times
             //# across packet number spaces MAY use state for just the packet number
@@ -819,12 +819,12 @@ impl<Config: endpoint::Config> Manager<Config> {
 
             let mut is_mtu_probe = false;
             if sent_info.sent_bytes as usize > path.mtu_controller.mtu() {
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.4
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-14.4
                 //# Loss of a QUIC packet that is carried in a PMTU probe is therefore not a
                 //# reliable indication of congestion and SHOULD NOT trigger a congestion
                 //# control reaction; see Item 7 in Section 3 of [DPLPMTUD].
 
-                //= https://tools.ietf.org/rfc/rfc8899.txt#3
+                //= https://www.rfc-editor.org/rfc/rfc8899#section-3
                 //# Loss of a probe packet SHOULD NOT be treated as an
                 //# indication of congestion and SHOULD NOT trigger a congestion
                 //# control reaction [RFC4821] because this could result in
@@ -873,7 +873,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             );
 
             if persistent_congestion {
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#5.2
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-5.2
                 //# Endpoints SHOULD set the min_rtt to the newest RTT sample after
                 //# persistent congestion is established.
                 path.rtt_estimator.on_persistent_congestion();
@@ -890,18 +890,18 @@ impl<Config: endpoint::Config> Manager<Config> {
     }
 
     fn calculate_loss_time_threshold(rtt_estimator: &RttEstimator) -> Duration {
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.1.2
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
         //# The time threshold is:
         //#
         //# max(kTimeThreshold * max(smoothed_rtt, latest_rtt), kGranularity)
         let mut time_threshold = max(rtt_estimator.smoothed_rtt(), rtt_estimator.latest_rtt());
 
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.1.2
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
         //# The RECOMMENDED time threshold (kTimeThreshold), expressed as an
         //# RTT multiplier, is 9/8.
         time_threshold = (time_threshold * 9) / 8;
 
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.1.2
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
         //# To avoid declaring
         //# packets as lost too early, this time threshold MUST be set to at
         //# least the local timer granularity, as indicated by the kGranularity
@@ -913,7 +913,7 @@ impl<Config: endpoint::Config> Manager<Config> {
 impl<Config: endpoint::Config> timer::Provider for Manager<Config> {
     #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# The PTO timer MUST NOT be set if a timer is set for time threshold
         //# loss detection; see Section 6.1.2.  A timer that is set for time
         //# threshold loss detection will expire earlier than the PTO timer in
@@ -996,24 +996,24 @@ impl Pto {
     /// Called when a timeout has occurred. Returns true if the PTO timer had expired.
     pub fn on_timeout(&mut self, packets_in_flight: bool, timestamp: Timestamp) -> bool {
         if self.timer.poll_expiration(timestamp).is_ready() {
-            //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.4
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
             //# When a PTO timer expires, a sender MUST send at least one ack-
             //# eliciting packet in the packet number space as a probe.
 
-            //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.2.1
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2.1
             //# Since the server could be blocked until more datagrams are received
             //# from the client, it is the client's responsibility to send packets to
             //# unblock the server until it is certain that the server has finished
             //# its address validation
 
-            //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.4
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
             //# An endpoint
             //# MAY send up to two full-sized datagrams containing ack-eliciting
             //# packets to avoid an expensive consecutive PTO expiration due to a
             //# single lost datagram or to transmit data from multiple packet number
             //# spaces.
 
-            //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.4
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
             //# Sending two packets on PTO
             //# expiration increases resilience to packet drops, thus reducing the
             //# probability of consecutive PTO events.
@@ -1039,25 +1039,25 @@ impl Pto {
         match self.state {
             PtoState::RequiresTransmission(0) => self.state = PtoState::Idle,
             PtoState::RequiresTransmission(remaining) => {
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.4
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
                 //# When there is no data to send, the sender SHOULD send
                 //# a PING or other ack-eliciting frame in a single packet, re-arming the
                 //# PTO timer.
 
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.2.1
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2.1
                 //# When the PTO fires, the client MUST send a Handshake packet if it
                 //# has Handshake keys, otherwise it MUST send an Initial packet in a
                 //# UDP datagram with a payload of at least 1200 bytes.
 
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#A.9
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-A.9
                 //# // Client sends an anti-deadlock packet: Initial is padded
                 //# // to earn more anti-amplification credit,
                 //# // a Handshake packet proves address ownership.
 
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.4
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
                 //# All probe packets sent on a PTO MUST be ack-eliciting.
 
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.5
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-7.5
                 //# Probe packets MUST NOT be blocked by the congestion controller.
 
                 // The early transmission will automatically ensure all initial packets sent by the
@@ -1077,7 +1077,7 @@ impl Pto {
         }
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.2.1
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
     //# A sender SHOULD restart its PTO timer every time an ack-eliciting
     //# packet is sent or acknowledged, or when Initial or Handshake keys are
     //# discarded (Section 4.9 of [QUIC-TLS]).

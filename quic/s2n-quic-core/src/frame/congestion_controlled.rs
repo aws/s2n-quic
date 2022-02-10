@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//= https://www.rfc-editor.org/rfc/rfc9002.txt#7
+//= https://www.rfc-editor.org/rfc/rfc9002#section-7
 //# Similar to TCP, packets containing only ACK frames do not count
 //# towards bytes in flight and are not congestion controlled.
 

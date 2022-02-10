@@ -21,7 +21,7 @@ struct EndpointMeta {
 
 struct ConnectionInfo {}
 
-// https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.3
+// https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.3
 struct TransportParameters<'a> {
     original_destination_connection_id: Option<ConnectionId<'a>>,
     initial_source_connection_id: Option<ConnectionId<'a>>,
@@ -275,7 +275,7 @@ impl IntoEvent<builder::DuplicatePacketError> for crate::packet::number::Sliding
     }
 }
 
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.7
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#A.7
 enum Frame {
     Padding,
     Ping,
@@ -463,9 +463,9 @@ impl<'a> IntoEvent<builder::StreamType> for &crate::stream::StreamType {
     }
 }
 
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.2
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#A.2
 //
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#A.4
 enum PacketHeader {
     Initial { number: u64, version: u32 },
     Handshake { number: u64, version: u32 },
@@ -514,7 +514,7 @@ enum KeyType {
 enum Subject {
     Endpoint,
 
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#4
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#4
     //# it is recommended to use
     //# QUIC's Original Destination Connection ID (ODCID, the CID chosen by
     //# the client when first contacting the server)

@@ -4,7 +4,7 @@
 use crate::{frame::Tag, stream::StreamType, varint::VarInt};
 use s2n_codec::{decoder_invariant, decoder_parameterized_value, Encoder, EncoderValue};
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.11
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
 //# A MAX_STREAMS frame (type=0x12 or 0x13) inform the peer of the
 //# cumulative number of streams of a given type it is permitted to open.
 //# A MAX_STREAMS frame with a type of 0x12 applies to bidirectional
@@ -19,13 +19,13 @@ macro_rules! max_streams_tag {
 const BIDIRECTIONAL_TAG: u8 = 0x12;
 const UNIDIRECTIONAL_TAG: u8 = 0x13;
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.11
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
 //# MAX_STREAMS Frame {
 //#   Type (i) = 0x12..0x13,
 //#   Maximum Streams (i),
 //# }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.11
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
 //# MAX_STREAMS frames contain the following field:
 //#
 //# Maximum Streams:  A count of the cumulative number of streams of the
@@ -61,7 +61,7 @@ decoder_parameterized_value!(
 
             let (maximum_streams, buffer) = buffer.decode::<VarInt>()?;
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.6
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
             //# If a max_streams transport parameter or a MAX_STREAMS frame is
             //# received with a value greater than 2^60, this would allow a maximum
             //# stream ID that cannot be expressed as a variable-length integer; see
@@ -71,7 +71,7 @@ decoder_parameterized_value!(
             //# type FRAME_ENCODING_ERROR if it was received in a frame; see
             //# Section 10.2.
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.11
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
             //# This value cannot exceed 2^60, as it is not possible
             //# to encode stream IDs larger than 2^62-1.  Receipt of a frame that
             //# permits opening of a stream larger than this limit MUST be treated

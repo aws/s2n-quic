@@ -4,7 +4,7 @@
 use crate::{frame::Tag, varint::VarInt};
 use s2n_codec::{decoder_invariant, decoder_parameterized_value, Encoder, EncoderValue};
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.7
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.7
 //# A server sends a NEW_TOKEN frame (type=0x07) to provide the client
 //# with a token to send in the header of an Initial packet for a future
 //# connection.
@@ -15,14 +15,14 @@ macro_rules! new_token_tag {
     };
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.7
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.7
 //# NEW_TOKEN Frame {
 //#   Type (i) = 0x07,
 //#   Token Length (i),
 //#   Token (..),
 //# }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.7
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.7
 //# NEW_TOKEN frames contain the following fields:
 //#
 //# Token Length:  A variable-length integer specifying the length of the
@@ -51,7 +51,7 @@ decoder_parameterized_value!(
             let (token, buffer) = buffer.decode_slice_with_len_prefix::<VarInt>()?;
             let token = token.into_less_safe_slice();
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.7
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-19.7
             //# A client MUST treat receipt of a NEW_TOKEN frame
             //# with an empty Token field as a connection error
             //# of type FRAME_ENCODING_ERROR.

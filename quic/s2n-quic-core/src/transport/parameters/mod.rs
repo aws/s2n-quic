@@ -50,11 +50,11 @@ pub trait TransportParameterValidator: Sized {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-7.4.1
 //# To enable 0-RTT, endpoints store the values of the server transport
 //# parameters with any session tickets it receives on the connection.
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-7.4.1
 //# *  active_connection_id_limit
 //# *  initial_max_data
 //# *  initial_max_stream_data_bidi_local
@@ -63,7 +63,7 @@ pub trait TransportParameterValidator: Sized {
 //# *  initial_max_streams_bidi
 //# *  initial_max_streams_uni
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-7.4.1
 //# A client MUST NOT use remembered values for the following parameters:
 //# ack_delay_exponent, max_ack_delay, initial_source_connection_id,
 //# original_destination_connection_id, preferred_address,
@@ -117,7 +117,7 @@ impl<
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18
 //# The extension_data field of the quic_transport_parameters extension
 //# defined in [QUIC-TLS] contains the QUIC transport parameters.  They
 //# are encoded as a sequence of transport parameters, as shown in
@@ -151,7 +151,7 @@ decoder_value!(
     }
 );
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18
 //# Transport Parameter {
 //#    Transport Parameter ID (i),
 //#    Transport Parameter Length (i),
@@ -438,7 +438,7 @@ macro_rules! connection_id_parameter {
     };
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# original_destination_connection_id (0x00): This parameter is the value of the
 //#    Destination Connection ID field from the first Initial packet sent
 //#    by the client; see Section 7.3.  This transport parameter is only
@@ -447,7 +447,7 @@ macro_rules! connection_id_parameter {
 connection_id_parameter!(OriginalDestinationConnectionId, InitialId, 0x00);
 optional_transport_parameter!(OriginalDestinationConnectionId);
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# max_idle_timeout (0x01):  The maximum idle timeout is a value in
 //#    milliseconds that is encoded as an integer; see (Section 10.1).
 //#    Idle timeout is disabled when both endpoints omit this transport
@@ -461,7 +461,7 @@ impl MaxIdleTimeout {
 
     /// Loads a value setting from a peer's transport parameter
     pub fn load_peer(&mut self, peer: &Self) {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#10.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.1
         //# Each endpoint advertises a max_idle_timeout, but the effective value
         //# at an endpoint is computed as the minimum of the two advertised
         //# values.
@@ -489,7 +489,7 @@ impl MaxIdleTimeout {
     pub fn as_duration(&self) -> Option<Duration> {
         let duration = Duration::from_millis(self.0.as_u64());
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
         //# Idle timeout is disabled when both endpoints omit this transport
         //# parameter or specify a value of 0.
         if duration == Duration::from_secs(0) {
@@ -517,7 +517,7 @@ impl From<MaxIdleTimeout> for Duration {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# stateless_reset_token (0x02):  A stateless reset token is used in
 //#    verifying a stateless reset; see Section 10.3.  This parameter is
 //#    a sequence of 16 bytes.  This transport parameter MUST NOT be sent
@@ -548,7 +548,7 @@ impl TransportParameter for stateless_reset::Token {
 
 impl TransportParameterValidator for stateless_reset::Token {}
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# max_udp_payload_size (0x03):  The maximum UDP payload size parameter
 //#    is an integer value that limits the size of UDP payloads that the
 //#    endpoint is willing to receive.  UDP datagrams with payloads
@@ -585,7 +585,7 @@ impl TryFrom<u16> for MaxUdpPayloadSize {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# initial_max_data (0x04):  The initial maximum data parameter is an
 //#    integer value that contains the initial value for the maximum
 //#    amount of data that can be sent on the connection.  This is
@@ -635,7 +635,7 @@ impl InitialMaxData {
 
 impl TransportParameterValidator for InitialMaxData {}
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# initial_max_stream_data_bidi_local (0x05):  This parameter is an
 //#    integer value specifying the initial flow control limit for
 //#    locally-initiated bidirectional streams.  This limit applies to
@@ -655,7 +655,7 @@ impl InitialMaxStreamDataBidiLocal {
 
 impl TransportParameterValidator for InitialMaxStreamDataBidiLocal {}
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# initial_max_stream_data_bidi_remote (0x06):  This parameter is an
 //#    integer value specifying the initial flow control limit for peer-
 //#    initiated bidirectional streams.  This limit applies to newly
@@ -674,7 +674,7 @@ impl InitialMaxStreamDataBidiRemote {
 
 impl TransportParameterValidator for InitialMaxStreamDataBidiRemote {}
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# initial_max_stream_data_uni (0x07):  This parameter is an integer
 //#    value specifying the initial flow control limit for unidirectional
 //#    streams.  This limit applies to newly created unidirectional
@@ -693,7 +693,7 @@ impl InitialMaxStreamDataUni {
 
 impl TransportParameterValidator for InitialMaxStreamDataUni {}
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# initial_max_streams_bidi (0x08):  The initial maximum bidirectional
 //#    streams parameter is an integer value that contains the initial
 //#    maximum number of bidirectional streams the endpoint that receives
@@ -712,7 +712,7 @@ impl InitialMaxStreamsBidi {
 
 impl TransportParameterValidator for InitialMaxStreamsBidi {
     fn validate(self) -> Result<Self, DecoderError> {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.6
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
         //# If a max_streams transport parameter or a MAX_STREAMS frame is
         //# received with a value greater than 2^60, this would allow a maximum
         //# stream ID that cannot be expressed as a variable-length integer; see
@@ -730,7 +730,7 @@ impl TransportParameterValidator for InitialMaxStreamsBidi {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# initial_max_streams_uni (0x09):  The initial maximum unidirectional
 //#    streams parameter is an integer value that contains the initial
 //#    maximum number of unidirectional streams the endpoint that
@@ -749,7 +749,7 @@ impl InitialMaxStreamsUni {
 
 impl TransportParameterValidator for InitialMaxStreamsUni {
     fn validate(self) -> Result<Self, DecoderError> {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.6
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
         //# If a max_streams transport parameter or a MAX_STREAMS frame is
         //# received with a value greater than 2^60, this would allow a maximum
         //# stream ID that cannot be expressed as a variable-length integer; see
@@ -767,7 +767,7 @@ impl TransportParameterValidator for InitialMaxStreamsUni {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# ack_delay_exponent (0x0a):  The acknowledgement delay exponent is an
 //#    integer value indicating an exponent used to decode the ACK Delay
 //#    field in the ACK frame (Section 19.3).  If this value is absent, a
@@ -792,7 +792,7 @@ impl TransportParameterValidator for AckDelayExponent {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# max_ack_delay (0x0b):  The maximum acknowledgment delay is an integer
 //#    value indicating the maximum amount of time in milliseconds by
 //#    which the endpoint will delay sending acknowledgments.  This value
@@ -819,7 +819,7 @@ impl TransportParameterValidator for MaxAckDelay {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# disable_active_migration (0x0c): The disable active migration
 //#    transport parameter is included if the endpoint does not support
 //#    active connection migration (Section 9) on the address being used
@@ -861,7 +861,7 @@ impl TransportParameter for MigrationSupport {
 
 impl TransportParameterValidator for MigrationSupport {}
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# preferred_address (0x0d):  The server's preferred address is used to
 //#    effect a change in server address at the end of the handshake, as
 //#    described in Section 9.6.  This transport parameter is only sent
@@ -872,7 +872,7 @@ impl TransportParameterValidator for MigrationSupport {}
 
 optional_transport_parameter!(PreferredAddress);
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# Preferred Address {
 //#   IPv4 Address (32),
 //#   IPv4 Port (16),
@@ -975,7 +975,7 @@ impl EncoderValue for PreferredAddress {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# active_connection_id_limit (0x0e):  This is an integer value
 //#   specifying the maximum number of connection IDs from the peer that
 //#   an endpoint is willing to store.  This value includes the
@@ -1014,7 +1014,7 @@ impl ActiveConnectionIdLimit {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# initial_source_connection_id (0x0f):  This is the value that the
 //# endpoint included in the Source Connection ID field of the first
 //# Initial packet it sends for the connection; see Section 7.3.
@@ -1028,7 +1028,7 @@ impl From<connection::id::LocalId> for InitialSourceConnectionId {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# retry_source_connection_id (0x10):  This is the value that the server
 //#    included in the Source Connection ID field of a Retry packet; see
 //#    Section 7.3.  This transport parameter is only sent by a server.
@@ -1036,7 +1036,7 @@ impl From<connection::id::LocalId> for InitialSourceConnectionId {
 connection_id_parameter!(RetrySourceConnectionId, LocalId, 0x10);
 optional_transport_parameter!(RetrySourceConnectionId);
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# If present, transport parameters that set initial per-stream flow
 //# control limits (initial_max_stream_data_bidi_local,
 //# initial_max_stream_data_bidi_remote, and initial_max_stream_data_uni)
@@ -1136,7 +1136,7 @@ impl<
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#18.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# A client MUST NOT include any server-only transport parameter:
 //# original_destination_connection_id, preferred_address,
 //# retry_source_connection_id, or stateless_reset_token.  A server MUST
@@ -1310,7 +1310,7 @@ macro_rules! impl_transport_parameters {
                                     concat!(stringify!($field), " is not allowed in this context")
                                 );
 
-                                //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4
+                                //= https://www.rfc-editor.org/rfc/rfc9000#section-7.4
                                 //# An endpoint MUST NOT send a parameter more than once in a given
                                 //# transport parameters extension.
                                 s2n_codec::decoder_invariant!(
@@ -1321,7 +1321,7 @@ macro_rules! impl_transport_parameters {
                                 let (value, inner_buffer) =
                                     inner_buffer.decode::<TransportParameterCodec<$field_ty>>()?;
 
-                                //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4
+                                //= https://www.rfc-editor.org/rfc/rfc9000#section-7.4
                                 //# An endpoint MUST treat receipt of a transport parameter with an
                                 //# invalid value as a connection error of type
                                 //# TRANSPORT_PARAMETER_ERROR.
@@ -1331,7 +1331,7 @@ macro_rules! impl_transport_parameters {
                             }
                         )*
                         _ => {
-                            //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4.2
+                            //= https://www.rfc-editor.org/rfc/rfc9000#section-7.4.2
                             //# An endpoint MUST ignore transport parameters that it does
                             //# not support.
 
@@ -1531,7 +1531,7 @@ mod snapshot_tests {
         let _ = encoded_output;
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#7.4.2
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-7.4.2
     //= type=test
     //# An endpoint MUST ignore transport parameters that it does
     //# not support.

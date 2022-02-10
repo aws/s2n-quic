@@ -25,7 +25,7 @@ fn bytes_to_packets(bytes: f32, max_datagram_size: u16) -> f32 {
 }
 
 #[test]
-//= https://tools.ietf.org/rfc/rfc8312.txt#4.1
+//= https://www.rfc-editor.org/rfc/rfc8312#section-4.1
 //= type=test
 fn w_cubic() {
     let max_datagram_size = 1200;
@@ -49,7 +49,7 @@ fn w_cubic() {
     // K = cubic_root(2304 * 0.75) = 12
     assert_eq!(cubic.k, Duration::from_secs(12));
 
-    //= https://tools.ietf.org/rfc/rfc8312#5.1
+    //= https://www.rfc-editor.org/rfc/rfc8312#section-5.1
     //= type=test
     //# Therefore, C SHOULD be set to 0.4.
 
@@ -65,7 +65,7 @@ fn w_cubic() {
 }
 
 #[test]
-//= https://tools.ietf.org/rfc/rfc8312.txt#4.6
+//= https://www.rfc-editor.org/rfc/rfc8312#section-4.6
 //= type=test
 fn w_est() {
     let max_datagram_size = 1200;
@@ -83,7 +83,7 @@ fn w_est() {
 
 #[allow(clippy::float_cmp)]
 #[test]
-//= https://tools.ietf.org/rfc/rfc8312.txt#4.5
+//= https://www.rfc-editor.org/rfc/rfc8312#section-4.5
 //= type=test
 fn multiplicative_decrease() {
     let max_datagram_size = 1200.0;
@@ -102,7 +102,7 @@ fn multiplicative_decrease() {
         cubic.multiplicative_decrease(80000.0),
         (80000.0 * BETA_CUBIC)
     );
-    //= https://tools.ietf.org/rfc/rfc8312#4.6
+    //= https://www.rfc-editor.org/rfc/rfc8312#section-4.6
     //= type=test
     //# To speed up this bandwidth release by
     //# existing flows, the following mechanism called "fast convergence"
@@ -112,14 +112,14 @@ fn multiplicative_decrease() {
     // W_max = W_max*(1.0+beta_cubic)/2.0 = W_max * .85
     assert_delta!(cubic.w_max, 80000.0 * 0.85 / max_datagram_size, 0.001);
 
-    //= https://tools.ietf.org/rfc/rfc8312#4.5
+    //= https://www.rfc-editor.org/rfc/rfc8312#section-4.5
     //= type=test
     //# Parameter beta_cubic SHOULD be set to 0.7.
     assert_eq!(0.7, BETA_CUBIC);
 }
 
 #[test]
-//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.8
+//= https://www.rfc-editor.org/rfc/rfc9002#section-7.8
 //= type=test
 fn is_congestion_limited() {
     let max_datagram_size = 1000;
@@ -164,7 +164,7 @@ fn is_congestion_window_under_utilized() {
     assert!(!cc.is_congestion_window_under_utilized());
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.2
+//= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
 //= type=test
 //# Endpoints SHOULD use an initial congestion
 //# window of ten times the maximum datagram size (max_datagram_size),
@@ -191,7 +191,7 @@ fn initial_window() {
     );
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.2
+//= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
 //= type=test
 //# The RECOMMENDED
 //# value is 2 * max_datagram_size.
@@ -229,7 +229,7 @@ fn on_packet_sent() {
         PacketNumberSpace::ApplicationData,
     );
 
-    //= https://tools.ietf.org/rfc/rfc8312#4.8
+    //= https://www.rfc-editor.org/rfc/rfc8312#section-4.8
     //= type=test
     //# CUBIC MUST employ a slow-start algorithm, when the cwnd is no more
     //# than ssthresh.  Among the slow-start algorithms, CUBIC MAY choose the
@@ -316,7 +316,7 @@ fn on_packet_sent_fast_retransmission() {
     assert_eq!(cc.state, Recovery(now, Idle));
 }
 
-//= https://tools.ietf.org/rfc/rfc8312#5.8
+//= https://www.rfc-editor.org/rfc/rfc8312#section-5.8
 //= type=test
 //# In case of long periods when cwnd has not been updated due
 //# to the application rate limit, such as idle periods, t in Eq. 1 MUST
@@ -473,7 +473,7 @@ fn on_packet_lost() {
     cc.on_packets_lost(100, false, now + Duration::from_secs(10));
 
     assert_eq!(cc.bytes_in_flight, 100_000u32 - 100);
-    //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.1
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.1
     //= type=test
     //# The sender MUST exit slow start and enter a recovery period when a
     //# packet is lost or when the ECN-CE count reported by its peer
@@ -482,7 +482,7 @@ fn on_packet_lost() {
         cc.state,
         Recovery(now + Duration::from_secs(10), RequiresTransmission)
     );
-    //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.2
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
     //= type=test
     //# Implementations MAY reduce the congestion window immediately upon
     //# entering a recovery period or use other mechanisms, such as
@@ -522,7 +522,7 @@ fn on_packet_lost_already_in_recovery() {
     assert_delta!(cc.congestion_window, 10000.0, 0.001);
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
+//= https://www.rfc-editor.org/rfc/rfc9002#section-7.6.2
 //= type=test
 //# When persistent congestion is declared, the sender's congestion
 //# window MUST be reduced to the minimum congestion window
@@ -545,7 +545,7 @@ fn on_packet_lost_persistent_congestion() {
     assert_eq!(cc.cubic.k, Duration::from_millis(0));
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.2
+//= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
 //= type=test
 //# If the maximum datagram size is decreased in order to complete the
 //# handshake, the congestion window SHOULD be set to the new initial
@@ -565,12 +565,12 @@ fn on_mtu_update_decrease() {
     );
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.2
+//= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
 //= type=test
 //# If the maximum datagram size changes during the connection, the
 //# initial congestion window SHOULD be recalculated with the new size.
 
-//= https://tools.ietf.org/rfc/rfc8899.txt#3
+//= https://www.rfc-editor.org/rfc/rfc8899#section-3
 //= type=test
 //# A PL that maintains the congestion window in terms of a limit to
 //# the number of outstanding fixed-size packets SHOULD adapt this
@@ -590,14 +590,14 @@ fn on_mtu_update_increase() {
 
     assert_delta!(cc.congestion_window, 200_000.0, 0.001);
 
-    //= https://tools.ietf.org/rfc/rfc8899.txt#3
+    //= https://www.rfc-editor.org/rfc/rfc8899#section-3
     //= type=test
     //# An update to the PLPMTU (or MPS) MUST NOT increase the congestion
     //# window measured in bytes [RFC4821].
     assert_delta!(cc.congestion_window / mtu as f32, cwnd_in_bytes, 0.001);
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9002.txt#6.4
+//= https://www.rfc-editor.org/rfc/rfc9002#section-6.4
 //= type=test
 //# The sender MUST discard all recovery state associated with
 //# those packets and MUST remove them from the count of bytes in flight.
@@ -618,7 +618,7 @@ fn on_packet_discarded() {
     assert_eq!(Recovery(now, FastRetransmission::Idle), cc.state);
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.8
+//= https://www.rfc-editor.org/rfc/rfc9002#section-7.8
 //= type=test
 //# When bytes in flight is smaller than the congestion window and
 //# sending is not pacing limited, the congestion window is
@@ -708,7 +708,7 @@ fn on_packet_ack_utilized_then_under_utilized() {
 }
 
 #[test]
-//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.2
+//= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
 //= type=test
 fn on_packet_ack_recovery_to_congestion_avoidance() {
     let mut cc = CubicCongestionController::new(5000);
@@ -733,7 +733,7 @@ fn on_packet_ack_recovery_to_congestion_avoidance() {
 }
 
 #[test]
-//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.2
+//= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
 //= type=test
 fn on_packet_ack_slow_start_to_congestion_avoidance() {
     let mut cc = CubicCongestionController::new(5000);
@@ -822,7 +822,7 @@ fn on_packet_ack_congestion_avoidance() {
     assert_delta!(cc.congestion_window, cc2.congestion_window, 0.001);
 }
 
-//= https://tools.ietf.org/rfc/rfc8312#4.2
+//= https://www.rfc-editor.org/rfc/rfc8312#section-4.2
 //= type=test
 //# If so, CUBIC is in the TCP-friendly region and cwnd SHOULD
 //# be set to W_est(t) at each reception of an ACK.
@@ -843,7 +843,7 @@ fn on_packet_ack_congestion_avoidance_tcp_friendly_region() {
     assert_delta!(cc.congestion_window, cc.cubic.w_est(t, rtt) * 5000.0, 0.001);
 }
 
-//= https://tools.ietf.org/rfc/rfc8312#4.3
+//= https://www.rfc-editor.org/rfc/rfc8312#section-4.3
 //= type=test
 //# In this region, cwnd MUST be incremented by
 //# (W_cubic(t+RTT) - cwnd)/cwnd for each received ACK, where
@@ -875,7 +875,7 @@ fn on_packet_ack_congestion_avoidance_concave_region() {
     assert_delta!(cc.congestion_window, 2_400_180.5, 0.001);
 }
 
-//= https://tools.ietf.org/rfc/rfc8312#4.4
+//= https://www.rfc-editor.org/rfc/rfc8312#section-4.4
 //= type=test
 //# In this region, cwnd MUST be incremented by
 //# (W_cubic(t+RTT) - cwnd)/cwnd for each received ACK, where
