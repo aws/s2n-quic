@@ -15,7 +15,9 @@ pub use builder::*;
 pub use providers::*;
 
 /// A QUIC server endpoint, capable of accepting connections
-pub struct Server(Acceptor);
+pub struct Server {
+    acceptor: Acceptor,
+}
 
 impl fmt::Debug for Server {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -108,7 +110,7 @@ impl Server {
     /// // TODO
     /// ```
     pub fn poll_accept(&mut self, cx: &mut Context) -> Poll<Option<Connection>> {
-        match self.0.poll_accept(cx) {
+        match self.acceptor.poll_accept(cx) {
             Poll::Ready(Some(connection)) => Poll::Ready(Some(Connection::new(connection))),
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
