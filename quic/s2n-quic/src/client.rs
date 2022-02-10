@@ -22,7 +22,11 @@ pub use providers::*;
 
 /// A QUIC client endpoint, capable of opening connections
 #[derive(Clone)]
-pub struct Client(Connector);
+pub struct Client {
+    connector: Connector,
+    #[cfg(feature = "std")]
+    local_addr: std::net::SocketAddr,
+}
 
 impl fmt::Debug for Client {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -103,7 +107,7 @@ impl Client {
     /// # }
     /// ```
     pub fn connect(&self, connect: Connect) -> ConnectionAttempt {
-        let attempt = self.0.connect(connect);
+        let attempt = self.connector.connect(connect);
         ConnectionAttempt(attempt)
     }
 
@@ -138,7 +142,7 @@ impl Client {
     /// # }
     /// ```
     pub async fn wait_idle(&mut self) -> Result<(), connection::Error> {
-        futures::future::poll_fn(|cx| self.0.poll_close(cx)).await
+        futures::future::poll_fn(|cx| self.connector.poll_close(cx)).await
     }
 
     /// Returns the local address that this listener is bound to.
@@ -162,8 +166,7 @@ impl Client {
     /// ```
     #[cfg(feature = "std")]
     pub fn local_addr(&self) -> Result<std::net::SocketAddr, std::io::Error> {
-        // TODO: Return the actual local address
-        Ok("0.0.0.0:0".parse().unwrap())
+        Ok(self.local_addr)
     }
 }
 
