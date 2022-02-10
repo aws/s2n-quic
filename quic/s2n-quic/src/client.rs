@@ -24,8 +24,7 @@ pub use providers::*;
 #[derive(Clone)]
 pub struct Client {
     connector: Connector,
-    #[cfg(feature = "std")]
-    local_addr: std::net::SocketAddr,
+    local_addr: s2n_quic_core::inet::SocketAddress,
 }
 
 impl fmt::Debug for Client {
@@ -165,7 +164,7 @@ impl Client {
     /// # }
     /// ```
     pub fn local_addr(&self) -> Result<std::net::SocketAddr, std::io::Error> {
-        Ok(self.local_addr)
+        Ok(self.local_addr.into())
     }
 }
 

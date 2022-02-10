@@ -80,7 +80,7 @@ impl Io {
     pub fn start<E: Endpoint<PathHandle = PathHandle>>(
         self,
         mut endpoint: E,
-    ) -> io::Result<(tokio::task::JoinHandle<()>, std::net::SocketAddr)> {
+    ) -> io::Result<(tokio::task::JoinHandle<()>, SocketAddress)> {
         let Builder {
             handle,
             rx_socket,
@@ -298,7 +298,7 @@ impl Io {
             endpoint,
         };
 
-        let local_addr = instance.rx_socket.local_addr()?;
+        let local_addr = instance.rx_socket.local_addr()?.into();
 
         let task = handle.spawn(async move {
             if let Err(err) = instance.event_loop().await {
@@ -910,6 +910,8 @@ mod tests {
         let endpoint = TestEndpoint::new(addr.into());
 
         let (task, local_addr) = io.start(endpoint)?;
+
+        let local_addr: std::net::SocketAddr = local_addr.into();
 
         assert_eq!(local_addr, addr);
 

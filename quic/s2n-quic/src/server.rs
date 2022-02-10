@@ -18,8 +18,7 @@ pub use s2n_quic_core::application::ServerName as Name;
 /// A QUIC server endpoint, capable of accepting connections
 pub struct Server {
     acceptor: Acceptor,
-    #[cfg(feature = "std")]
-    local_addr: std::net::SocketAddr,
+    local_addr: s2n_quic_core::inet::SocketAddress,
 }
 
 impl fmt::Debug for Server {
@@ -140,7 +139,7 @@ impl Server {
     /// # }
     /// ```
     pub fn local_addr(&self) -> Result<std::net::SocketAddr, std::io::Error> {
-        Ok(self.local_addr)
+        Ok(self.local_addr.into())
     }
 }
 
