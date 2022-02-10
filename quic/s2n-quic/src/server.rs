@@ -6,6 +6,7 @@ use core::{
     fmt,
     task::{Context, Poll},
 };
+use s2n_quic_core::inet::SocketAddress;
 use s2n_quic_transport::endpoint::handle::Acceptor;
 
 mod builder;
@@ -17,6 +18,7 @@ pub use providers::*;
 /// A QUIC server endpoint, capable of accepting connections
 pub struct Server {
     acceptor: Acceptor,
+    local_addr: SocketAddress,
 }
 
 impl fmt::Debug for Server {
@@ -138,8 +140,7 @@ impl Server {
     /// ```
     #[cfg(feature = "std")]
     pub fn local_addr(&self) -> Result<std::net::SocketAddr, std::io::Error> {
-        // TODO: Return the actual local address
-        Ok("0.0.0.0:0".parse().unwrap())
+        Ok(self.local_addr.into())
     }
 }
 

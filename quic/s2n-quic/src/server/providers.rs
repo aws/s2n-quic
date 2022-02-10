@@ -6,7 +6,7 @@ use core::marker::PhantomData;
 use s2n_quic_core::{connection::id::Generator, crypto, path};
 use s2n_quic_transport::{
     connection,
-    endpoint::{self, handle::Acceptor},
+    endpoint::{self},
     stream,
 };
 
@@ -63,7 +63,7 @@ impl<
         Token,
     >
 {
-    pub fn start(self) -> Result<Acceptor, StartError> {
+    pub fn start(self) -> Result<Server, StartError> {
         let Self {
             congestion_controller,
             connection_close_formatter,
@@ -128,7 +128,11 @@ impl<
         // Start the IO last
         io.start(endpoint).map_err(StartError::new)?;
 
-        Ok(acceptor)
+        Ok(Server {
+            acceptor,
+            // TODO: Return the actual local address
+            local_addr: Default::default(),
+        })
     }
 }
 
