@@ -80,8 +80,15 @@ pub mod api {
     #[non_exhaustive]
     pub enum DuplicatePacketError {
         #[non_exhaustive]
+        #[doc = " The packet number was already received and is a duplicate."]
         Duplicate {},
         #[non_exhaustive]
+        #[doc = " The received packet number was outside the range of tracked packet numbers."]
+        #[doc = ""]
+        #[doc = " This can happen when packets are heavily delayed or reordered. Currently, the maximum"]
+        #[doc = " amount of reordering is limited to 128 packets. For example, if packet number `142`"]
+        #[doc = " is received, the allowed range would be limited to `14-142`. If an endpoint received"]
+        #[doc = " packet `< 14`, it would trigger this event."]
         TooOld {},
     }
     #[derive(Clone, Debug)]
@@ -180,6 +187,7 @@ pub mod api {
         #[non_exhaustive]
         Endpoint {},
         #[non_exhaustive]
+        #[doc = " This maps to an internal connection id, which is a stable identifier across CID changes."]
         Connection { id: u64 },
     }
     #[derive(Clone, Debug)]
@@ -187,8 +195,10 @@ pub mod api {
     #[doc = " Used to disambiguate events that can occur for the local or the remote endpoint."]
     pub enum Location {
         #[non_exhaustive]
+        #[doc = " The Local endpoint"]
         Local {},
         #[non_exhaustive]
+        #[doc = " The Remote endpoint"]
         Remote {},
     }
     #[derive(Clone, Debug)]
@@ -202,28 +212,45 @@ pub mod api {
     #[non_exhaustive]
     pub enum DatagramDropReason {
         #[non_exhaustive]
+        #[doc = " There was an error while attempting to decode the datagram."]
         DecodingFailed {},
         #[non_exhaustive]
+        #[doc = " There was an error while parsing the Retry token."]
         InvalidRetryToken {},
         #[non_exhaustive]
+        #[doc = " The peer specified an unsupported QUIC version."]
         UnsupportedVersion {},
         #[non_exhaustive]
+        #[doc = " The peer sent an invalid Destination Connection Id."]
         InvalidDestinationConnectionId {},
         #[non_exhaustive]
+        #[doc = " The peer sent an invalid Source Connection Id."]
         InvalidSourceConnectionId {},
         #[non_exhaustive]
+        #[doc = " The Destination Connection Id is unknown and does not map to a Connection."]
+        #[doc = ""]
+        #[doc = " Connections are mapped to Destination Connections Ids (DCID) and packets"]
+        #[doc = " in a Datagram are routed to a connection based on the DCID in the first"]
+        #[doc = " packet. If a Connection is not found for the specified DCID then the"]
+        #[doc = " datagram can not be processed and is dropped."]
         UnknownDestinationConnectionId {},
         #[non_exhaustive]
+        #[doc = " The connection attempt was rejected."]
         RejectedConnectionAttempt {},
         #[non_exhaustive]
+        #[doc = " A datagram was received from an unknown server address."]
         UnknownServerAddress {},
         #[non_exhaustive]
+        #[doc = " The peer initiated a connection migration before the handshake was confirmed."]
         ConnectionMigrationDuringHandshake {},
         #[non_exhaustive]
+        #[doc = " The attempted connection migration was rejected."]
         RejectedConnectionMigration {},
         #[non_exhaustive]
+        #[doc = " The maximum number of paths per connection was exceeded."]
         PathLimitExceeded {},
         #[non_exhaustive]
+        #[doc = " The peer initiated a connection migration without supplying enough connection IDs to use."]
         InsufficientConnectionIds {},
     }
     #[derive(Clone, Debug)]
@@ -242,28 +269,45 @@ pub mod api {
     #[non_exhaustive]
     pub enum PacketDropReason<'a> {
         #[non_exhaustive]
+        #[doc = " A connection error occurred and is no longer able to process packets."]
         ConnectionError { path: Path<'a> },
         #[non_exhaustive]
+        #[doc = " The handshake needed to be complete before processing the packet."]
+        #[doc = ""]
+        #[doc = " To ensure the connection stays secure, short packets can only be processed"]
+        #[doc = " once the handshake has completed."]
         HandshakeNotComplete { path: Path<'a> },
         #[non_exhaustive]
+        #[doc = " The packet contained a version which did not match the version negotiated"]
+        #[doc = " during the handshake."]
         VersionMismatch { version: u32, path: Path<'a> },
         #[non_exhaustive]
+        #[doc = " A datagram contained more than one destination connection ID, which is"]
+        #[doc = " not allowed."]
         ConnectionIdMismatch {
             packet_cid: &'a [u8],
             path: Path<'a>,
         },
         #[non_exhaustive]
+        #[doc = " There was a failure when attempting to remove header protection."]
         UnprotectFailed { space: KeySpace, path: Path<'a> },
         #[non_exhaustive]
+        #[doc = " There was a failure when attempting to decrypt the packet."]
         DecryptionFailed {
             path: Path<'a>,
             packet_header: PacketHeader,
         },
         #[non_exhaustive]
+        #[doc = " Packet decoding failed."]
+        #[doc = ""]
+        #[doc = " The payload is decoded one packet at a time. If decoding fails"]
+        #[doc = " then the remaining packets are also discarded."]
         DecodingFailed { path: Path<'a> },
         #[non_exhaustive]
+        #[doc = " The client received a non-empty retry token."]
         NonEmptyRetryToken { path: Path<'a> },
         #[non_exhaustive]
+        #[doc = " A Retry packet was discarded."]
         RetryDiscarded {
             reason: RetryDiscardReason<'a>,
             path: Path<'a>,
@@ -273,12 +317,17 @@ pub mod api {
     #[non_exhaustive]
     pub enum RetryDiscardReason<'a> {
         #[non_exhaustive]
+        #[doc = " Received a Retry packet with SCID field equal to DCID field."]
         ScidEqualsDcid { cid: &'a [u8] },
         #[non_exhaustive]
+        #[doc = " A client only processes at most one Retry packet."]
         RetryAlreadyProcessed {},
         #[non_exhaustive]
+        #[doc = " The client discards Retry packets if a valid Initial packet"]
+        #[doc = " has been received and processed."]
         InitialAlreadyProcessed {},
         #[non_exhaustive]
+        #[doc = " The Retry packet received contained an invalid retry integrity tag"]
         InvalidIntegrityTag {},
     }
     #[derive(Clone, Debug)]
@@ -296,12 +345,16 @@ pub mod api {
     #[doc = " The current state of the ECN controller for the path"]
     pub enum EcnState {
         #[non_exhaustive]
+        #[doc = " ECN capability is being actively tested"]
         Testing {},
         #[non_exhaustive]
+        #[doc = " ECN capability has been tested, but not validated yet"]
         Unknown {},
         #[non_exhaustive]
+        #[doc = " ECN capability testing has failed validation"]
         Failed {},
         #[non_exhaustive]
+        #[doc = " ECN capability has been confirmed"]
         Capable {},
     }
     #[derive(Clone, Debug)]
@@ -309,12 +362,23 @@ pub mod api {
     #[doc = " Events tracking the progress of handshake status"]
     pub enum HandshakeStatus {
         #[non_exhaustive]
+        #[doc = " The handshake has completed."]
         Complete {},
         #[non_exhaustive]
+        #[doc = " The handshake has been confirmed."]
         Confirmed {},
         #[non_exhaustive]
+        #[doc = " A HANDSHAKE_DONE frame was delivered or received."]
+        #[doc = ""]
+        #[doc = " A Client endpoint receives a HANDSHAKE_DONE frame and"]
+        #[doc = " only a Server is allowed to send the HANDSHAKE_DONE"]
+        #[doc = " frame."]
         HandshakeDoneAcked {},
         #[non_exhaustive]
+        #[doc = " A HANDSHAKE_DONE frame was declared lost."]
+        #[doc = ""]
+        #[doc = " The Server is responsible for re-transmitting the"]
+        #[doc = " HANDSHAKE_DONE frame until it is acked by the peer."]
         HandshakeDoneLost {},
     }
     #[derive(Clone, Debug)]
@@ -322,8 +386,10 @@ pub mod api {
     #[doc = " The source that caused a congestion event"]
     pub enum CongestionSource {
         #[non_exhaustive]
+        #[doc = " Explicit Congestion Notification"]
         Ecn {},
         #[non_exhaustive]
+        #[doc = " One or more packets were detected lost"]
         PacketLoss {},
     }
     #[derive(Clone, Debug)]
@@ -810,6 +876,7 @@ pub mod api {
     #[non_exhaustive]
     pub enum PlatformFeatureConfiguration {
         #[non_exhaustive]
+        #[doc = " Emitted when segment offload was configured"]
         Gso {
             #[doc = " The maximum number of segments that can be sent in a single GSO packet"]
             #[doc = ""]
@@ -817,8 +884,10 @@ pub mod api {
             max_segments: usize,
         },
         #[non_exhaustive]
+        #[doc = " Emitted when ECN support is configured"]
         Ecn { enabled: bool },
         #[non_exhaustive]
+        #[doc = " Emitted when the maximum transmission unit is configured"]
         MaxMtu { mtu: u16 },
     }
     impl<'a> IntoEvent<builder::PreferredAddress<'a>>
@@ -2019,7 +2088,14 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub enum DuplicatePacketError {
+        #[doc = " The packet number was already received and is a duplicate."]
         Duplicate,
+        #[doc = " The received packet number was outside the range of tracked packet numbers."]
+        #[doc = ""]
+        #[doc = " This can happen when packets are heavily delayed or reordered. Currently, the maximum"]
+        #[doc = " amount of reordering is limited to 128 packets. For example, if packet number `142`"]
+        #[doc = " is received, the allowed range would be limited to `14-142`. If an endpoint received"]
+        #[doc = " packet `< 14`, it would trigger this event."]
         TooOld,
     }
     impl IntoEvent<api::DuplicatePacketError> for DuplicatePacketError {
@@ -2192,7 +2268,10 @@ pub mod builder {
     #[doc = " An event can occur in the context of an Endpoint or Connection"]
     pub enum Subject {
         Endpoint,
-        Connection { id: u64 },
+        #[doc = " This maps to an internal connection id, which is a stable identifier across CID changes."]
+        Connection {
+            id: u64,
+        },
     }
     impl IntoEvent<api::Subject> for Subject {
         #[inline]
@@ -2209,7 +2288,9 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Used to disambiguate events that can occur for the local or the remote endpoint."]
     pub enum Location {
+        #[doc = " The Local endpoint"]
         Local,
+        #[doc = " The Remote endpoint"]
         Remote,
     }
     impl IntoEvent<api::Location> for Location {
@@ -2239,17 +2320,34 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub enum DatagramDropReason {
+        #[doc = " There was an error while attempting to decode the datagram."]
         DecodingFailed,
+        #[doc = " There was an error while parsing the Retry token."]
         InvalidRetryToken,
+        #[doc = " The peer specified an unsupported QUIC version."]
         UnsupportedVersion,
+        #[doc = " The peer sent an invalid Destination Connection Id."]
         InvalidDestinationConnectionId,
+        #[doc = " The peer sent an invalid Source Connection Id."]
         InvalidSourceConnectionId,
+        #[doc = " The Destination Connection Id is unknown and does not map to a Connection."]
+        #[doc = ""]
+        #[doc = " Connections are mapped to Destination Connections Ids (DCID) and packets"]
+        #[doc = " in a Datagram are routed to a connection based on the DCID in the first"]
+        #[doc = " packet. If a Connection is not found for the specified DCID then the"]
+        #[doc = " datagram can not be processed and is dropped."]
         UnknownDestinationConnectionId,
+        #[doc = " The connection attempt was rejected."]
         RejectedConnectionAttempt,
+        #[doc = " A datagram was received from an unknown server address."]
         UnknownServerAddress,
+        #[doc = " The peer initiated a connection migration before the handshake was confirmed."]
         ConnectionMigrationDuringHandshake,
+        #[doc = " The attempted connection migration was rejected."]
         RejectedConnectionMigration,
+        #[doc = " The maximum number of paths per connection was exceeded."]
         PathLimitExceeded,
+        #[doc = " The peer initiated a connection migration without supplying enough connection IDs to use."]
         InsufficientConnectionIds,
     }
     impl IntoEvent<api::DatagramDropReason> for DatagramDropReason {
@@ -2293,34 +2391,37 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub enum PacketDropReason<'a> {
-        ConnectionError {
-            path: Path<'a>,
-        },
-        HandshakeNotComplete {
-            path: Path<'a>,
-        },
-        VersionMismatch {
-            version: u32,
-            path: Path<'a>,
-        },
+        #[doc = " A connection error occurred and is no longer able to process packets."]
+        ConnectionError { path: Path<'a> },
+        #[doc = " The handshake needed to be complete before processing the packet."]
+        #[doc = ""]
+        #[doc = " To ensure the connection stays secure, short packets can only be processed"]
+        #[doc = " once the handshake has completed."]
+        HandshakeNotComplete { path: Path<'a> },
+        #[doc = " The packet contained a version which did not match the version negotiated"]
+        #[doc = " during the handshake."]
+        VersionMismatch { version: u32, path: Path<'a> },
+        #[doc = " A datagram contained more than one destination connection ID, which is"]
+        #[doc = " not allowed."]
         ConnectionIdMismatch {
             packet_cid: &'a [u8],
             path: Path<'a>,
         },
-        UnprotectFailed {
-            space: KeySpace,
-            path: Path<'a>,
-        },
+        #[doc = " There was a failure when attempting to remove header protection."]
+        UnprotectFailed { space: KeySpace, path: Path<'a> },
+        #[doc = " There was a failure when attempting to decrypt the packet."]
         DecryptionFailed {
             path: Path<'a>,
             packet_header: PacketHeader,
         },
-        DecodingFailed {
-            path: Path<'a>,
-        },
-        NonEmptyRetryToken {
-            path: Path<'a>,
-        },
+        #[doc = " Packet decoding failed."]
+        #[doc = ""]
+        #[doc = " The payload is decoded one packet at a time. If decoding fails"]
+        #[doc = " then the remaining packets are also discarded."]
+        DecodingFailed { path: Path<'a> },
+        #[doc = " The client received a non-empty retry token."]
+        NonEmptyRetryToken { path: Path<'a> },
+        #[doc = " A Retry packet was discarded."]
         RetryDiscarded {
             reason: RetryDiscardReason<'a>,
             path: Path<'a>,
@@ -2371,9 +2472,14 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub enum RetryDiscardReason<'a> {
+        #[doc = " Received a Retry packet with SCID field equal to DCID field."]
         ScidEqualsDcid { cid: &'a [u8] },
+        #[doc = " A client only processes at most one Retry packet."]
         RetryAlreadyProcessed,
+        #[doc = " The client discards Retry packets if a valid Initial packet"]
+        #[doc = " has been received and processed."]
         InitialAlreadyProcessed,
+        #[doc = " The Retry packet received contained an invalid retry integrity tag"]
         InvalidIntegrityTag,
     }
     impl<'a> IntoEvent<api::RetryDiscardReason<'a>> for RetryDiscardReason<'a> {
@@ -2410,9 +2516,13 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " The current state of the ECN controller for the path"]
     pub enum EcnState {
+        #[doc = " ECN capability is being actively tested"]
         Testing,
+        #[doc = " ECN capability has been tested, but not validated yet"]
         Unknown,
+        #[doc = " ECN capability testing has failed validation"]
         Failed,
+        #[doc = " ECN capability has been confirmed"]
         Capable,
     }
     impl IntoEvent<api::EcnState> for EcnState {
@@ -2430,9 +2540,20 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Events tracking the progress of handshake status"]
     pub enum HandshakeStatus {
+        #[doc = " The handshake has completed."]
         Complete,
+        #[doc = " The handshake has been confirmed."]
         Confirmed,
+        #[doc = " A HANDSHAKE_DONE frame was delivered or received."]
+        #[doc = ""]
+        #[doc = " A Client endpoint receives a HANDSHAKE_DONE frame and"]
+        #[doc = " only a Server is allowed to send the HANDSHAKE_DONE"]
+        #[doc = " frame."]
         HandshakeDoneAcked,
+        #[doc = " A HANDSHAKE_DONE frame was declared lost."]
+        #[doc = ""]
+        #[doc = " The Server is responsible for re-transmitting the"]
+        #[doc = " HANDSHAKE_DONE frame until it is acked by the peer."]
         HandshakeDoneLost,
     }
     impl IntoEvent<api::HandshakeStatus> for HandshakeStatus {
@@ -2450,7 +2571,9 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " The source that caused a congestion event"]
     pub enum CongestionSource {
+        #[doc = " Explicit Congestion Notification"]
         Ecn,
+        #[doc = " One or more packets were detected lost"]
         PacketLoss,
     }
     impl IntoEvent<api::CongestionSource> for CongestionSource {
@@ -3273,18 +3396,17 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub enum PlatformFeatureConfiguration {
+        #[doc = " Emitted when segment offload was configured"]
         Gso {
             #[doc = " The maximum number of segments that can be sent in a single GSO packet"]
             #[doc = ""]
             #[doc = " If this value not greater than 1, GSO is disabled."]
             max_segments: usize,
         },
-        Ecn {
-            enabled: bool,
-        },
-        MaxMtu {
-            mtu: u16,
-        },
+        #[doc = " Emitted when ECN support is configured"]
+        Ecn { enabled: bool },
+        #[doc = " Emitted when the maximum transmission unit is configured"]
+        MaxMtu { mtu: u16 },
     }
     impl IntoEvent<api::PlatformFeatureConfiguration> for PlatformFeatureConfiguration {
         #[inline]
