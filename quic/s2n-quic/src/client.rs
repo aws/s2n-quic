@@ -164,7 +164,6 @@ impl Client {
     /// #    Ok(())
     /// # }
     /// ```
-    #[cfg(feature = "std")]
     pub fn local_addr(&self) -> Result<std::net::SocketAddr, std::io::Error> {
         Ok(self.local_addr)
     }

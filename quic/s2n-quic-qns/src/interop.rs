@@ -5,7 +5,7 @@ use crate::Result;
 use core::str::FromStr;
 use std::io;
 
-/// From https://github.com/marten-seemann/quic-interop-runner#test-cases
+/// From <https://github.com/marten-seemann/quic-interop-runner#test-cases>
 #[derive(Clone, Copy, Debug)]
 pub enum Testcase {
     /// Tests that a server sends a Version Negotiation packet in response to an unknown QUIC version number.

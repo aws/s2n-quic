@@ -11,18 +11,11 @@ pub trait Provider: 'static {
     fn start(self) -> Result<Self::Generator, Self::Error>;
 }
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "rand")] {
-        pub use self::rand::Provider as Default;
-    } else {
-        // TODO implement stub that panics
-    }
-}
+pub use self::rand::Provider as Default;
 
 impl_provider_utils!();
 
-#[cfg(feature = "rand-provider")]
-pub mod rand {
+mod rand {
     use core::convert::Infallible;
     use rand::{
         prelude::*,

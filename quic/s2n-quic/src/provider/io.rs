@@ -1,11 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use cfg_if::cfg_if;
-pub use s2n_quic_core::{endpoint::Endpoint, path::Handle as PathHandle};
+//! Provides IO support for an endpoint
+
+use s2n_quic_core::{endpoint::Endpoint, path::Handle as PathHandle};
 use std::io;
 
-/// Provides IO support for an endpoint
 pub trait Provider: 'static {
     type Addr: std::net::ToSocketAddrs;
     type PathHandle: PathHandle;
@@ -17,15 +17,9 @@ pub trait Provider: 'static {
     ) -> Result<Self::Addr, Self::Error>;
 }
 
-cfg_if! {
-    if #[cfg(feature = "tokio-runtime")] {
-        pub mod tokio;
+pub mod tokio;
 
-        pub use self::tokio as default;
-    } else {
-        // TODO add a default
-    }
-}
+pub use self::tokio as default;
 
 pub use default::Provider as Default;
 

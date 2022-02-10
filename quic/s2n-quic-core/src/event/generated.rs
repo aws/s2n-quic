@@ -80,8 +80,15 @@ pub mod api {
     #[non_exhaustive]
     pub enum DuplicatePacketError {
         #[non_exhaustive]
+        #[doc = " The packet number was already received and is a duplicate."]
         Duplicate {},
         #[non_exhaustive]
+        #[doc = " The received packet number was outside the range of tracked packet numbers."]
+        #[doc = ""]
+        #[doc = " This can happen when packets are heavily delayed or reordered. Currently, the maximum"]
+        #[doc = " amount of reordering is limited to 128 packets. For example, if packet number `142`"]
+        #[doc = " is received, the allowed range would be limited to `14-142`. If an endpoint received"]
+        #[doc = " packet `< 14`, it would trigger this event."]
         TooOld {},
     }
     #[derive(Clone, Debug)]
@@ -180,6 +187,7 @@ pub mod api {
         #[non_exhaustive]
         Endpoint {},
         #[non_exhaustive]
+        #[doc = " This maps to an internal connection id, which is a stable identifier across CID changes."]
         Connection { id: u64 },
     }
     #[derive(Clone, Debug)]
@@ -187,8 +195,10 @@ pub mod api {
     #[doc = " Used to disambiguate events that can occur for the local or the remote endpoint."]
     pub enum Location {
         #[non_exhaustive]
+        #[doc = " The Local endpoint"]
         Local {},
         #[non_exhaustive]
+        #[doc = " The Remote endpoint"]
         Remote {},
     }
     #[derive(Clone, Debug)]
@@ -202,28 +212,45 @@ pub mod api {
     #[non_exhaustive]
     pub enum DatagramDropReason {
         #[non_exhaustive]
+        #[doc = " There was an error while attempting to decode the datagram."]
         DecodingFailed {},
         #[non_exhaustive]
+        #[doc = " There was an error while parsing the Retry token."]
         InvalidRetryToken {},
         #[non_exhaustive]
+        #[doc = " The peer specified an unsupported QUIC version."]
         UnsupportedVersion {},
         #[non_exhaustive]
+        #[doc = " The peer sent an invalid Destination Connection Id."]
         InvalidDestinationConnectionId {},
         #[non_exhaustive]
+        #[doc = " The peer sent an invalid Source Connection Id."]
         InvalidSourceConnectionId {},
         #[non_exhaustive]
+        #[doc = " The Destination Connection Id is unknown and does not map to a Connection."]
+        #[doc = ""]
+        #[doc = " Connections are mapped to Destination Connections Ids (DCID) and packets"]
+        #[doc = " in a Datagram are routed to a connection based on the DCID in the first"]
+        #[doc = " packet. If a Connection is not found for the specified DCID then the"]
+        #[doc = " datagram can not be processed and is dropped."]
         UnknownDestinationConnectionId {},
         #[non_exhaustive]
+        #[doc = " The connection attempt was rejected."]
         RejectedConnectionAttempt {},
         #[non_exhaustive]
+        #[doc = " A datagram was received from an unknown server address."]
         UnknownServerAddress {},
         #[non_exhaustive]
+        #[doc = " The peer initiated a connection migration before the handshake was confirmed."]
         ConnectionMigrationDuringHandshake {},
         #[non_exhaustive]
+        #[doc = " The attempted connection migration was rejected."]
         RejectedConnectionMigration {},
         #[non_exhaustive]
+        #[doc = " The maximum number of paths per connection was exceeded."]
         PathLimitExceeded {},
         #[non_exhaustive]
+        #[doc = " The peer initiated a connection migration without supplying enough connection IDs to use."]
         InsufficientConnectionIds {},
     }
     #[derive(Clone, Debug)]
@@ -242,28 +269,45 @@ pub mod api {
     #[non_exhaustive]
     pub enum PacketDropReason<'a> {
         #[non_exhaustive]
+        #[doc = " A connection error occurred and is no longer able to process packets."]
         ConnectionError { path: Path<'a> },
         #[non_exhaustive]
+        #[doc = " The handshake needed to be complete before processing the packet."]
+        #[doc = ""]
+        #[doc = " To ensure the connection stays secure, short packets can only be processed"]
+        #[doc = " once the handshake has completed."]
         HandshakeNotComplete { path: Path<'a> },
         #[non_exhaustive]
+        #[doc = " The packet contained a version which did not match the version negotiated"]
+        #[doc = " during the handshake."]
         VersionMismatch { version: u32, path: Path<'a> },
         #[non_exhaustive]
+        #[doc = " A datagram contained more than one destination connection ID, which is"]
+        #[doc = " not allowed."]
         ConnectionIdMismatch {
             packet_cid: &'a [u8],
             path: Path<'a>,
         },
         #[non_exhaustive]
+        #[doc = " There was a failure when attempting to remove header protection."]
         UnprotectFailed { space: KeySpace, path: Path<'a> },
         #[non_exhaustive]
+        #[doc = " There was a failure when attempting to decrypt the packet."]
         DecryptionFailed {
             path: Path<'a>,
             packet_header: PacketHeader,
         },
         #[non_exhaustive]
+        #[doc = " Packet decoding failed."]
+        #[doc = ""]
+        #[doc = " The payload is decoded one packet at a time. If decoding fails"]
+        #[doc = " then the remaining packets are also discarded."]
         DecodingFailed { path: Path<'a> },
         #[non_exhaustive]
+        #[doc = " The client received a non-empty retry token."]
         NonEmptyRetryToken { path: Path<'a> },
         #[non_exhaustive]
+        #[doc = " A Retry packet was discarded."]
         RetryDiscarded {
             reason: RetryDiscardReason<'a>,
             path: Path<'a>,
@@ -273,12 +317,17 @@ pub mod api {
     #[non_exhaustive]
     pub enum RetryDiscardReason<'a> {
         #[non_exhaustive]
+        #[doc = " Received a Retry packet with SCID field equal to DCID field."]
         ScidEqualsDcid { cid: &'a [u8] },
         #[non_exhaustive]
+        #[doc = " A client only processes at most one Retry packet."]
         RetryAlreadyProcessed {},
         #[non_exhaustive]
+        #[doc = " The client discards Retry packets if a valid Initial packet"]
+        #[doc = " has been received and processed."]
         InitialAlreadyProcessed {},
         #[non_exhaustive]
+        #[doc = " The Retry packet received contained an invalid retry integrity tag"]
         InvalidIntegrityTag {},
     }
     #[derive(Clone, Debug)]
@@ -296,12 +345,16 @@ pub mod api {
     #[doc = " The current state of the ECN controller for the path"]
     pub enum EcnState {
         #[non_exhaustive]
+        #[doc = " ECN capability is being actively tested"]
         Testing {},
         #[non_exhaustive]
+        #[doc = " ECN capability has been tested, but not validated yet"]
         Unknown {},
         #[non_exhaustive]
+        #[doc = " ECN capability testing has failed validation"]
         Failed {},
         #[non_exhaustive]
+        #[doc = " ECN capability has been confirmed"]
         Capable {},
     }
     #[derive(Clone, Debug)]
@@ -309,12 +362,23 @@ pub mod api {
     #[doc = " Events tracking the progress of handshake status"]
     pub enum HandshakeStatus {
         #[non_exhaustive]
+        #[doc = " The handshake has completed."]
         Complete {},
         #[non_exhaustive]
+        #[doc = " The handshake has been confirmed."]
         Confirmed {},
         #[non_exhaustive]
+        #[doc = " A HANDSHAKE_DONE frame was delivered or received."]
+        #[doc = ""]
+        #[doc = " A Client endpoint receives a HANDSHAKE_DONE frame and"]
+        #[doc = " only a Server is allowed to send the HANDSHAKE_DONE"]
+        #[doc = " frame."]
         HandshakeDoneAcked {},
         #[non_exhaustive]
+        #[doc = " A HANDSHAKE_DONE frame was declared lost."]
+        #[doc = ""]
+        #[doc = " The Server is responsible for re-transmitting the"]
+        #[doc = " HANDSHAKE_DONE frame until it is acked by the peer."]
         HandshakeDoneLost {},
     }
     #[derive(Clone, Debug)]
@@ -322,8 +386,10 @@ pub mod api {
     #[doc = " The source that caused a congestion event"]
     pub enum CongestionSource {
         #[non_exhaustive]
+        #[doc = " Explicit Congestion Notification"]
         Ecn {},
         #[non_exhaustive]
+        #[doc = " One or more packets were detected lost"]
         PacketLoss {},
     }
     #[derive(Clone, Debug)]
@@ -810,6 +876,7 @@ pub mod api {
     #[non_exhaustive]
     pub enum PlatformFeatureConfiguration {
         #[non_exhaustive]
+        #[doc = " Emitted when segment offload was configured"]
         Gso {
             #[doc = " The maximum number of segments that can be sent in a single GSO packet"]
             #[doc = ""]
@@ -817,8 +884,10 @@ pub mod api {
             max_segments: usize,
         },
         #[non_exhaustive]
+        #[doc = " Emitted when ECN support is configured"]
         Ecn { enabled: bool },
         #[non_exhaustive]
+        #[doc = " Emitted when the maximum transmission unit is configured"]
         MaxMtu { mtu: u16 },
     }
     impl<'a> IntoEvent<builder::PreferredAddress<'a>>
@@ -1209,612 +1278,608 @@ pub mod api {
             Self::from_raw_os_error(error.errno)
         }
     }
-    #[cfg(feature = "event-tracing")]
-    pub mod tracing {
-        use super::api;
-        #[derive(Clone, Debug)]
-        pub struct Subscriber {
-            client: tracing::Span,
-            server: tracing::Span,
+}
+#[cfg(feature = "event-tracing")]
+pub mod tracing {
+    use super::api;
+    #[doc = r" Emits events with [`tracing`](https://docs.rs/tracing)"]
+    #[derive(Clone, Debug)]
+    pub struct Subscriber {
+        client: tracing::Span,
+        server: tracing::Span,
+    }
+    impl Default for Subscriber {
+        fn default() -> Self {
+            let root =
+                tracing :: span ! (target : "s2n_quic" , tracing :: Level :: DEBUG , "s2n_quic");
+            let client =
+                tracing :: span ! (parent : root . id () , tracing :: Level :: DEBUG , "client");
+            let server =
+                tracing :: span ! (parent : root . id () , tracing :: Level :: DEBUG , "server");
+            Self { client, server }
         }
-        impl Default for Subscriber {
-            fn default() -> Self {
-                let root = tracing :: span ! (target : "s2n_quic" , tracing :: Level :: DEBUG , "s2n_quic");
-                let client = tracing :: span ! (parent : root . id () , tracing :: Level :: DEBUG , "client");
-                let server = tracing :: span ! (parent : root . id () , tracing :: Level :: DEBUG , "server");
-                Self { client, server }
-            }
+    }
+    impl super::Subscriber for Subscriber {
+        type ConnectionContext = tracing::Span;
+        fn create_connection_context(
+            &mut self,
+            meta: &api::ConnectionMeta,
+            _info: &api::ConnectionInfo,
+        ) -> Self::ConnectionContext {
+            let parent = match meta.endpoint_type {
+                api::EndpointType::Client {} => self.client.id(),
+                api::EndpointType::Server {} => self.server.id(),
+            };
+            tracing :: span ! (target : "s2n_quic" , parent : parent , tracing :: Level :: DEBUG , "conn" , id = meta . id)
         }
-        impl super::Subscriber for Subscriber {
-            type ConnectionContext = tracing::Span;
-            fn create_connection_context(
-                &mut self,
-                meta: &api::ConnectionMeta,
-                _info: &api::ConnectionInfo,
-            ) -> Self::ConnectionContext {
-                let parent = match meta.endpoint_type {
-                    api::EndpointType::Client {} => self.client.id(),
-                    api::EndpointType::Server {} => self.server.id(),
-                };
-                tracing :: span ! (target : "s2n_quic" , parent : parent , tracing :: Level :: DEBUG , "conn" , id = meta . id)
-            }
-            #[inline]
-            #[allow(deprecated)]
-            fn on_alpn_information(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::AlpnInformation,
-            ) {
-                let id = context.id();
-                let api::AlpnInformation { chosen_alpn } = event;
-                tracing :: event ! (target : "alpn_information" , parent : id , tracing :: Level :: DEBUG , chosen_alpn = tracing :: field :: debug (chosen_alpn));
-            }
-            #[inline]
-            fn on_application_protocol_information(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::ApplicationProtocolInformation,
-            ) {
-                let id = context.id();
-                let api::ApplicationProtocolInformation {
-                    chosen_application_protocol,
-                } = event;
-                tracing :: event ! (target : "application_protocol_information" , parent : id , tracing :: Level :: DEBUG , chosen_application_protocol = tracing :: field :: debug (chosen_application_protocol));
-            }
-            #[inline]
-            #[allow(deprecated)]
-            fn on_sni_information(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::SniInformation,
-            ) {
-                let id = context.id();
-                let api::SniInformation { chosen_sni } = event;
-                tracing :: event ! (target : "sni_information" , parent : id , tracing :: Level :: DEBUG , chosen_sni = tracing :: field :: debug (chosen_sni));
-            }
-            #[inline]
-            fn on_server_name_information(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::ServerNameInformation,
-            ) {
-                let id = context.id();
-                let api::ServerNameInformation { chosen_server_name } = event;
-                tracing :: event ! (target : "server_name_information" , parent : id , tracing :: Level :: DEBUG , chosen_server_name = tracing :: field :: debug (chosen_server_name));
-            }
-            #[inline]
-            fn on_packet_sent(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::PacketSent,
-            ) {
-                let id = context.id();
-                let api::PacketSent { packet_header } = event;
-                tracing :: event ! (target : "packet_sent" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
-            }
-            #[inline]
-            fn on_packet_received(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::PacketReceived,
-            ) {
-                let id = context.id();
-                let api::PacketReceived { packet_header } = event;
-                tracing :: event ! (target : "packet_received" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
-            }
-            #[inline]
-            fn on_active_path_updated(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::ActivePathUpdated,
-            ) {
-                let id = context.id();
-                let api::ActivePathUpdated { previous, active } = event;
-                tracing :: event ! (target : "active_path_updated" , parent : id , tracing :: Level :: DEBUG , previous = tracing :: field :: debug (previous) , active = tracing :: field :: debug (active));
-            }
-            #[inline]
-            fn on_path_created(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::PathCreated,
-            ) {
-                let id = context.id();
-                let api::PathCreated { active, new } = event;
-                tracing :: event ! (target : "path_created" , parent : id , tracing :: Level :: DEBUG , active = tracing :: field :: debug (active) , new = tracing :: field :: debug (new));
-            }
-            #[inline]
-            fn on_frame_sent(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::FrameSent,
-            ) {
-                let id = context.id();
-                let api::FrameSent {
-                    packet_header,
-                    path_id,
-                    frame,
-                } = event;
-                tracing :: event ! (target : "frame_sent" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path_id = tracing :: field :: debug (path_id) , frame = tracing :: field :: debug (frame));
-            }
-            #[inline]
-            fn on_frame_received(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::FrameReceived,
-            ) {
-                let id = context.id();
-                let api::FrameReceived {
-                    packet_header,
-                    path,
-                    frame,
-                } = event;
-                tracing :: event ! (target : "frame_received" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , frame = tracing :: field :: debug (frame));
-            }
-            #[inline]
-            fn on_packet_lost(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::PacketLost,
-            ) {
-                let id = context.id();
-                let api::PacketLost {
-                    packet_header,
-                    path,
-                    bytes_lost,
-                    is_mtu_probe,
-                } = event;
-                tracing :: event ! (target : "packet_lost" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , bytes_lost = tracing :: field :: debug (bytes_lost) , is_mtu_probe = tracing :: field :: debug (is_mtu_probe));
-            }
-            #[inline]
-            fn on_recovery_metrics(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::RecoveryMetrics,
-            ) {
-                let id = context.id();
-                let api::RecoveryMetrics {
-                    path,
-                    min_rtt,
-                    smoothed_rtt,
-                    latest_rtt,
-                    rtt_variance,
-                    max_ack_delay,
-                    pto_count,
-                    congestion_window,
-                    bytes_in_flight,
-                } = event;
-                tracing :: event ! (target : "recovery_metrics" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , min_rtt = tracing :: field :: debug (min_rtt) , smoothed_rtt = tracing :: field :: debug (smoothed_rtt) , latest_rtt = tracing :: field :: debug (latest_rtt) , rtt_variance = tracing :: field :: debug (rtt_variance) , max_ack_delay = tracing :: field :: debug (max_ack_delay) , pto_count = tracing :: field :: debug (pto_count) , congestion_window = tracing :: field :: debug (congestion_window) , bytes_in_flight = tracing :: field :: debug (bytes_in_flight));
-            }
-            #[inline]
-            fn on_congestion(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::Congestion,
-            ) {
-                let id = context.id();
-                let api::Congestion { path, source } = event;
-                tracing :: event ! (target : "congestion" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , source = tracing :: field :: debug (source));
-            }
-            #[inline]
-            fn on_packet_dropped(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::PacketDropped,
-            ) {
-                let id = context.id();
-                let api::PacketDropped { reason } = event;
-                tracing :: event ! (target : "packet_dropped" , parent : id , tracing :: Level :: DEBUG , reason = tracing :: field :: debug (reason));
-            }
-            #[inline]
-            fn on_key_update(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::KeyUpdate,
-            ) {
-                let id = context.id();
-                let api::KeyUpdate {
-                    key_type,
-                    cipher_suite,
-                } = event;
-                tracing :: event ! (target : "key_update" , parent : id , tracing :: Level :: DEBUG , key_type = tracing :: field :: debug (key_type) , cipher_suite = tracing :: field :: debug (cipher_suite));
-            }
-            #[inline]
-            fn on_key_space_discarded(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::KeySpaceDiscarded,
-            ) {
-                let id = context.id();
-                let api::KeySpaceDiscarded { space } = event;
-                tracing :: event ! (target : "key_space_discarded" , parent : id , tracing :: Level :: DEBUG , space = tracing :: field :: debug (space));
-            }
-            #[inline]
-            fn on_connection_started(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::ConnectionStarted,
-            ) {
-                let id = context.id();
-                let api::ConnectionStarted { path } = event;
-                tracing :: event ! (target : "connection_started" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path));
-            }
-            #[inline]
-            fn on_connection_closed(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::ConnectionClosed,
-            ) {
-                let id = context.id();
-                let api::ConnectionClosed { error } = event;
-                tracing :: event ! (target : "connection_closed" , parent : id , tracing :: Level :: DEBUG , error = tracing :: field :: debug (error));
-            }
-            #[inline]
-            fn on_duplicate_packet(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::DuplicatePacket,
-            ) {
-                let id = context.id();
-                let api::DuplicatePacket {
-                    packet_header,
-                    path,
-                    error,
-                } = event;
-                tracing :: event ! (target : "duplicate_packet" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , error = tracing :: field :: debug (error));
-            }
-            #[inline]
-            fn on_transport_parameters_received(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::TransportParametersReceived,
-            ) {
-                let id = context.id();
-                let api::TransportParametersReceived {
-                    transport_parameters,
-                } = event;
-                tracing :: event ! (target : "transport_parameters_received" , parent : id , tracing :: Level :: DEBUG , transport_parameters = tracing :: field :: debug (transport_parameters));
-            }
-            #[inline]
-            fn on_datagram_sent(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::DatagramSent,
-            ) {
-                let id = context.id();
-                let api::DatagramSent { len, gso_offset } = event;
-                tracing :: event ! (target : "datagram_sent" , parent : id , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , gso_offset = tracing :: field :: debug (gso_offset));
-            }
-            #[inline]
-            fn on_datagram_received(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::DatagramReceived,
-            ) {
-                let id = context.id();
-                let api::DatagramReceived { len } = event;
-                tracing :: event ! (target : "datagram_received" , parent : id , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len));
-            }
-            #[inline]
-            fn on_datagram_dropped(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::DatagramDropped,
-            ) {
-                let id = context.id();
-                let api::DatagramDropped { len, reason } = event;
-                tracing :: event ! (target : "datagram_dropped" , parent : id , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , reason = tracing :: field :: debug (reason));
-            }
-            #[inline]
-            fn on_connection_id_updated(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::ConnectionIdUpdated,
-            ) {
-                let id = context.id();
-                let api::ConnectionIdUpdated {
-                    path_id,
-                    cid_consumer,
-                    previous,
-                    current,
-                } = event;
-                tracing :: event ! (target : "connection_id_updated" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , cid_consumer = tracing :: field :: debug (cid_consumer) , previous = tracing :: field :: debug (previous) , current = tracing :: field :: debug (current));
-            }
-            #[inline]
-            fn on_ecn_state_changed(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::EcnStateChanged,
-            ) {
-                let id = context.id();
-                let api::EcnStateChanged { path, state } = event;
-                tracing :: event ! (target : "ecn_state_changed" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , state = tracing :: field :: debug (state));
-            }
-            #[inline]
-            fn on_connection_migration_denied(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::ConnectionMigrationDenied,
-            ) {
-                let id = context.id();
-                let api::ConnectionMigrationDenied { reason } = event;
-                tracing :: event ! (target : "connection_migration_denied" , parent : id , tracing :: Level :: DEBUG , reason = tracing :: field :: debug (reason));
-            }
-            #[inline]
-            fn on_handshake_status_updated(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::HandshakeStatusUpdated,
-            ) {
-                let id = context.id();
-                let api::HandshakeStatusUpdated { status } = event;
-                tracing :: event ! (target : "handshake_status_updated" , parent : id , tracing :: Level :: DEBUG , status = tracing :: field :: debug (status));
-            }
-            #[inline]
-            fn on_path_challenge_updated(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::PathChallengeUpdated,
-            ) {
-                let id = context.id();
-                let api::PathChallengeUpdated {
-                    path_challenge_status,
-                    path,
-                    challenge_data,
-                } = event;
-                tracing :: event ! (target : "path_challenge_updated" , parent : id , tracing :: Level :: DEBUG , path_challenge_status = tracing :: field :: debug (path_challenge_status) , path = tracing :: field :: debug (path) , challenge_data = tracing :: field :: debug (challenge_data));
-            }
-            #[inline]
-            fn on_tls_client_hello(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::TlsClientHello,
-            ) {
-                let id = context.id();
-                let api::TlsClientHello { payload } = event;
-                tracing :: event ! (target : "tls_client_hello" , parent : id , tracing :: Level :: DEBUG , payload = tracing :: field :: debug (payload));
-            }
-            #[inline]
-            fn on_tls_server_hello(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::TlsServerHello,
-            ) {
-                let id = context.id();
-                let api::TlsServerHello { payload } = event;
-                tracing :: event ! (target : "tls_server_hello" , parent : id , tracing :: Level :: DEBUG , payload = tracing :: field :: debug (payload));
-            }
-            #[inline]
-            fn on_rx_stream_progress(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::RxStreamProgress,
-            ) {
-                let id = context.id();
-                let api::RxStreamProgress { bytes } = event;
-                tracing :: event ! (target : "rx_stream_progress" , parent : id , tracing :: Level :: DEBUG , bytes = tracing :: field :: debug (bytes));
-            }
-            #[inline]
-            fn on_tx_stream_progress(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::TxStreamProgress,
-            ) {
-                let id = context.id();
-                let api::TxStreamProgress { bytes } = event;
-                tracing :: event ! (target : "tx_stream_progress" , parent : id , tracing :: Level :: DEBUG , bytes = tracing :: field :: debug (bytes));
-            }
-            #[inline]
-            fn on_keep_alive_timer_expired(
-                &mut self,
-                context: &mut Self::ConnectionContext,
-                _meta: &api::ConnectionMeta,
-                event: &api::KeepAliveTimerExpired,
-            ) {
-                let id = context.id();
-                let api::KeepAliveTimerExpired { timeout } = event;
-                tracing :: event ! (target : "keep_alive_timer_expired" , parent : id , tracing :: Level :: DEBUG , timeout = tracing :: field :: debug (timeout));
-            }
-            #[inline]
-            fn on_version_information(
-                &mut self,
-                meta: &api::EndpointMeta,
-                event: &api::VersionInformation,
-            ) {
-                let parent = match meta.endpoint_type {
-                    api::EndpointType::Client {} => self.client.id(),
-                    api::EndpointType::Server {} => self.server.id(),
-                };
-                let api::VersionInformation {
-                    server_versions,
-                    client_versions,
-                    chosen_version,
-                } = event;
-                tracing :: event ! (target : "version_information" , parent : parent , tracing :: Level :: DEBUG , server_versions = tracing :: field :: debug (server_versions) , client_versions = tracing :: field :: debug (client_versions) , chosen_version = tracing :: field :: debug (chosen_version));
-            }
-            #[inline]
-            fn on_endpoint_packet_sent(
-                &mut self,
-                meta: &api::EndpointMeta,
-                event: &api::EndpointPacketSent,
-            ) {
-                let parent = match meta.endpoint_type {
-                    api::EndpointType::Client {} => self.client.id(),
-                    api::EndpointType::Server {} => self.server.id(),
-                };
-                let api::EndpointPacketSent { packet_header } = event;
-                tracing :: event ! (target : "endpoint_packet_sent" , parent : parent , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
-            }
-            #[inline]
-            fn on_endpoint_packet_received(
-                &mut self,
-                meta: &api::EndpointMeta,
-                event: &api::EndpointPacketReceived,
-            ) {
-                let parent = match meta.endpoint_type {
-                    api::EndpointType::Client {} => self.client.id(),
-                    api::EndpointType::Server {} => self.server.id(),
-                };
-                let api::EndpointPacketReceived { packet_header } = event;
-                tracing :: event ! (target : "endpoint_packet_received" , parent : parent , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
-            }
-            #[inline]
-            fn on_endpoint_datagram_sent(
-                &mut self,
-                meta: &api::EndpointMeta,
-                event: &api::EndpointDatagramSent,
-            ) {
-                let parent = match meta.endpoint_type {
-                    api::EndpointType::Client {} => self.client.id(),
-                    api::EndpointType::Server {} => self.server.id(),
-                };
-                let api::EndpointDatagramSent { len, gso_offset } = event;
-                tracing :: event ! (target : "endpoint_datagram_sent" , parent : parent , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , gso_offset = tracing :: field :: debug (gso_offset));
-            }
-            #[inline]
-            fn on_endpoint_datagram_received(
-                &mut self,
-                meta: &api::EndpointMeta,
-                event: &api::EndpointDatagramReceived,
-            ) {
-                let parent = match meta.endpoint_type {
-                    api::EndpointType::Client {} => self.client.id(),
-                    api::EndpointType::Server {} => self.server.id(),
-                };
-                let api::EndpointDatagramReceived { len } = event;
-                tracing :: event ! (target : "endpoint_datagram_received" , parent : parent , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len));
-            }
-            #[inline]
-            fn on_endpoint_datagram_dropped(
-                &mut self,
-                meta: &api::EndpointMeta,
-                event: &api::EndpointDatagramDropped,
-            ) {
-                let parent = match meta.endpoint_type {
-                    api::EndpointType::Client {} => self.client.id(),
-                    api::EndpointType::Server {} => self.server.id(),
-                };
-                let api::EndpointDatagramDropped { len, reason } = event;
-                tracing :: event ! (target : "endpoint_datagram_dropped" , parent : parent , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , reason = tracing :: field :: debug (reason));
-            }
-            #[inline]
-            fn on_endpoint_connection_attempt_failed(
-                &mut self,
-                meta: &api::EndpointMeta,
-                event: &api::EndpointConnectionAttemptFailed,
-            ) {
-                let parent = match meta.endpoint_type {
-                    api::EndpointType::Client {} => self.client.id(),
-                    api::EndpointType::Server {} => self.server.id(),
-                };
-                let api::EndpointConnectionAttemptFailed { error } = event;
-                tracing :: event ! (target : "endpoint_connection_attempt_failed" , parent : parent , tracing :: Level :: DEBUG , error = tracing :: field :: debug (error));
-            }
-            #[inline]
-            fn on_platform_tx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTx) {
-                let parent = match meta.endpoint_type {
-                    api::EndpointType::Client {} => self.client.id(),
-                    api::EndpointType::Server {} => self.server.id(),
-                };
-                let api::PlatformTx { count } = event;
-                tracing :: event ! (target : "platform_tx" , parent : parent , tracing :: Level :: DEBUG , count = tracing :: field :: debug (count));
-            }
-            #[inline]
-            fn on_platform_tx_error(
-                &mut self,
-                meta: &api::EndpointMeta,
-                event: &api::PlatformTxError,
-            ) {
-                let parent = match meta.endpoint_type {
-                    api::EndpointType::Client {} => self.client.id(),
-                    api::EndpointType::Server {} => self.server.id(),
-                };
-                let api::PlatformTxError { errno } = event;
-                tracing :: event ! (target : "platform_tx_error" , parent : parent , tracing :: Level :: DEBUG , errno = tracing :: field :: debug (errno));
-            }
-            #[inline]
-            fn on_platform_rx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRx) {
-                let parent = match meta.endpoint_type {
-                    api::EndpointType::Client {} => self.client.id(),
-                    api::EndpointType::Server {} => self.server.id(),
-                };
-                let api::PlatformRx { count } = event;
-                tracing :: event ! (target : "platform_rx" , parent : parent , tracing :: Level :: DEBUG , count = tracing :: field :: debug (count));
-            }
-            #[inline]
-            fn on_platform_rx_error(
-                &mut self,
-                meta: &api::EndpointMeta,
-                event: &api::PlatformRxError,
-            ) {
-                let parent = match meta.endpoint_type {
-                    api::EndpointType::Client {} => self.client.id(),
-                    api::EndpointType::Server {} => self.server.id(),
-                };
-                let api::PlatformRxError { errno } = event;
-                tracing :: event ! (target : "platform_rx_error" , parent : parent , tracing :: Level :: DEBUG , errno = tracing :: field :: debug (errno));
-            }
-            #[inline]
-            fn on_platform_feature_configured(
-                &mut self,
-                meta: &api::EndpointMeta,
-                event: &api::PlatformFeatureConfigured,
-            ) {
-                let parent = match meta.endpoint_type {
-                    api::EndpointType::Client {} => self.client.id(),
-                    api::EndpointType::Server {} => self.server.id(),
-                };
-                let api::PlatformFeatureConfigured { configuration } = event;
-                tracing :: event ! (target : "platform_feature_configured" , parent : parent , tracing :: Level :: DEBUG , configuration = tracing :: field :: debug (configuration));
-            }
-            #[inline]
-            fn on_platform_event_loop_wakeup(
-                &mut self,
-                meta: &api::EndpointMeta,
-                event: &api::PlatformEventLoopWakeup,
-            ) {
-                let parent = match meta.endpoint_type {
-                    api::EndpointType::Client {} => self.client.id(),
-                    api::EndpointType::Server {} => self.server.id(),
-                };
-                let api::PlatformEventLoopWakeup {
-                    timeout_expired,
-                    rx_ready,
-                    tx_ready,
-                } = event;
-                tracing :: event ! (target : "platform_event_loop_wakeup" , parent : parent , tracing :: Level :: DEBUG , timeout_expired = tracing :: field :: debug (timeout_expired) , rx_ready = tracing :: field :: debug (rx_ready) , tx_ready = tracing :: field :: debug (tx_ready));
-            }
+        #[inline]
+        #[allow(deprecated)]
+        fn on_alpn_information(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::AlpnInformation,
+        ) {
+            let id = context.id();
+            let api::AlpnInformation { chosen_alpn } = event;
+            tracing :: event ! (target : "alpn_information" , parent : id , tracing :: Level :: DEBUG , chosen_alpn = tracing :: field :: debug (chosen_alpn));
+        }
+        #[inline]
+        fn on_application_protocol_information(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::ApplicationProtocolInformation,
+        ) {
+            let id = context.id();
+            let api::ApplicationProtocolInformation {
+                chosen_application_protocol,
+            } = event;
+            tracing :: event ! (target : "application_protocol_information" , parent : id , tracing :: Level :: DEBUG , chosen_application_protocol = tracing :: field :: debug (chosen_application_protocol));
+        }
+        #[inline]
+        #[allow(deprecated)]
+        fn on_sni_information(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::SniInformation,
+        ) {
+            let id = context.id();
+            let api::SniInformation { chosen_sni } = event;
+            tracing :: event ! (target : "sni_information" , parent : id , tracing :: Level :: DEBUG , chosen_sni = tracing :: field :: debug (chosen_sni));
+        }
+        #[inline]
+        fn on_server_name_information(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::ServerNameInformation,
+        ) {
+            let id = context.id();
+            let api::ServerNameInformation { chosen_server_name } = event;
+            tracing :: event ! (target : "server_name_information" , parent : id , tracing :: Level :: DEBUG , chosen_server_name = tracing :: field :: debug (chosen_server_name));
+        }
+        #[inline]
+        fn on_packet_sent(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::PacketSent,
+        ) {
+            let id = context.id();
+            let api::PacketSent { packet_header } = event;
+            tracing :: event ! (target : "packet_sent" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
+        }
+        #[inline]
+        fn on_packet_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::PacketReceived,
+        ) {
+            let id = context.id();
+            let api::PacketReceived { packet_header } = event;
+            tracing :: event ! (target : "packet_received" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
+        }
+        #[inline]
+        fn on_active_path_updated(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::ActivePathUpdated,
+        ) {
+            let id = context.id();
+            let api::ActivePathUpdated { previous, active } = event;
+            tracing :: event ! (target : "active_path_updated" , parent : id , tracing :: Level :: DEBUG , previous = tracing :: field :: debug (previous) , active = tracing :: field :: debug (active));
+        }
+        #[inline]
+        fn on_path_created(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::PathCreated,
+        ) {
+            let id = context.id();
+            let api::PathCreated { active, new } = event;
+            tracing :: event ! (target : "path_created" , parent : id , tracing :: Level :: DEBUG , active = tracing :: field :: debug (active) , new = tracing :: field :: debug (new));
+        }
+        #[inline]
+        fn on_frame_sent(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::FrameSent,
+        ) {
+            let id = context.id();
+            let api::FrameSent {
+                packet_header,
+                path_id,
+                frame,
+            } = event;
+            tracing :: event ! (target : "frame_sent" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path_id = tracing :: field :: debug (path_id) , frame = tracing :: field :: debug (frame));
+        }
+        #[inline]
+        fn on_frame_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::FrameReceived,
+        ) {
+            let id = context.id();
+            let api::FrameReceived {
+                packet_header,
+                path,
+                frame,
+            } = event;
+            tracing :: event ! (target : "frame_received" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , frame = tracing :: field :: debug (frame));
+        }
+        #[inline]
+        fn on_packet_lost(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::PacketLost,
+        ) {
+            let id = context.id();
+            let api::PacketLost {
+                packet_header,
+                path,
+                bytes_lost,
+                is_mtu_probe,
+            } = event;
+            tracing :: event ! (target : "packet_lost" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , bytes_lost = tracing :: field :: debug (bytes_lost) , is_mtu_probe = tracing :: field :: debug (is_mtu_probe));
+        }
+        #[inline]
+        fn on_recovery_metrics(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::RecoveryMetrics,
+        ) {
+            let id = context.id();
+            let api::RecoveryMetrics {
+                path,
+                min_rtt,
+                smoothed_rtt,
+                latest_rtt,
+                rtt_variance,
+                max_ack_delay,
+                pto_count,
+                congestion_window,
+                bytes_in_flight,
+            } = event;
+            tracing :: event ! (target : "recovery_metrics" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , min_rtt = tracing :: field :: debug (min_rtt) , smoothed_rtt = tracing :: field :: debug (smoothed_rtt) , latest_rtt = tracing :: field :: debug (latest_rtt) , rtt_variance = tracing :: field :: debug (rtt_variance) , max_ack_delay = tracing :: field :: debug (max_ack_delay) , pto_count = tracing :: field :: debug (pto_count) , congestion_window = tracing :: field :: debug (congestion_window) , bytes_in_flight = tracing :: field :: debug (bytes_in_flight));
+        }
+        #[inline]
+        fn on_congestion(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::Congestion,
+        ) {
+            let id = context.id();
+            let api::Congestion { path, source } = event;
+            tracing :: event ! (target : "congestion" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , source = tracing :: field :: debug (source));
+        }
+        #[inline]
+        fn on_packet_dropped(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::PacketDropped,
+        ) {
+            let id = context.id();
+            let api::PacketDropped { reason } = event;
+            tracing :: event ! (target : "packet_dropped" , parent : id , tracing :: Level :: DEBUG , reason = tracing :: field :: debug (reason));
+        }
+        #[inline]
+        fn on_key_update(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::KeyUpdate,
+        ) {
+            let id = context.id();
+            let api::KeyUpdate {
+                key_type,
+                cipher_suite,
+            } = event;
+            tracing :: event ! (target : "key_update" , parent : id , tracing :: Level :: DEBUG , key_type = tracing :: field :: debug (key_type) , cipher_suite = tracing :: field :: debug (cipher_suite));
+        }
+        #[inline]
+        fn on_key_space_discarded(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::KeySpaceDiscarded,
+        ) {
+            let id = context.id();
+            let api::KeySpaceDiscarded { space } = event;
+            tracing :: event ! (target : "key_space_discarded" , parent : id , tracing :: Level :: DEBUG , space = tracing :: field :: debug (space));
+        }
+        #[inline]
+        fn on_connection_started(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::ConnectionStarted,
+        ) {
+            let id = context.id();
+            let api::ConnectionStarted { path } = event;
+            tracing :: event ! (target : "connection_started" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path));
+        }
+        #[inline]
+        fn on_connection_closed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::ConnectionClosed,
+        ) {
+            let id = context.id();
+            let api::ConnectionClosed { error } = event;
+            tracing :: event ! (target : "connection_closed" , parent : id , tracing :: Level :: DEBUG , error = tracing :: field :: debug (error));
+        }
+        #[inline]
+        fn on_duplicate_packet(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::DuplicatePacket,
+        ) {
+            let id = context.id();
+            let api::DuplicatePacket {
+                packet_header,
+                path,
+                error,
+            } = event;
+            tracing :: event ! (target : "duplicate_packet" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , error = tracing :: field :: debug (error));
+        }
+        #[inline]
+        fn on_transport_parameters_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::TransportParametersReceived,
+        ) {
+            let id = context.id();
+            let api::TransportParametersReceived {
+                transport_parameters,
+            } = event;
+            tracing :: event ! (target : "transport_parameters_received" , parent : id , tracing :: Level :: DEBUG , transport_parameters = tracing :: field :: debug (transport_parameters));
+        }
+        #[inline]
+        fn on_datagram_sent(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::DatagramSent,
+        ) {
+            let id = context.id();
+            let api::DatagramSent { len, gso_offset } = event;
+            tracing :: event ! (target : "datagram_sent" , parent : id , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , gso_offset = tracing :: field :: debug (gso_offset));
+        }
+        #[inline]
+        fn on_datagram_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::DatagramReceived,
+        ) {
+            let id = context.id();
+            let api::DatagramReceived { len } = event;
+            tracing :: event ! (target : "datagram_received" , parent : id , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len));
+        }
+        #[inline]
+        fn on_datagram_dropped(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::DatagramDropped,
+        ) {
+            let id = context.id();
+            let api::DatagramDropped { len, reason } = event;
+            tracing :: event ! (target : "datagram_dropped" , parent : id , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , reason = tracing :: field :: debug (reason));
+        }
+        #[inline]
+        fn on_connection_id_updated(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::ConnectionIdUpdated,
+        ) {
+            let id = context.id();
+            let api::ConnectionIdUpdated {
+                path_id,
+                cid_consumer,
+                previous,
+                current,
+            } = event;
+            tracing :: event ! (target : "connection_id_updated" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , cid_consumer = tracing :: field :: debug (cid_consumer) , previous = tracing :: field :: debug (previous) , current = tracing :: field :: debug (current));
+        }
+        #[inline]
+        fn on_ecn_state_changed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::EcnStateChanged,
+        ) {
+            let id = context.id();
+            let api::EcnStateChanged { path, state } = event;
+            tracing :: event ! (target : "ecn_state_changed" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , state = tracing :: field :: debug (state));
+        }
+        #[inline]
+        fn on_connection_migration_denied(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::ConnectionMigrationDenied,
+        ) {
+            let id = context.id();
+            let api::ConnectionMigrationDenied { reason } = event;
+            tracing :: event ! (target : "connection_migration_denied" , parent : id , tracing :: Level :: DEBUG , reason = tracing :: field :: debug (reason));
+        }
+        #[inline]
+        fn on_handshake_status_updated(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::HandshakeStatusUpdated,
+        ) {
+            let id = context.id();
+            let api::HandshakeStatusUpdated { status } = event;
+            tracing :: event ! (target : "handshake_status_updated" , parent : id , tracing :: Level :: DEBUG , status = tracing :: field :: debug (status));
+        }
+        #[inline]
+        fn on_path_challenge_updated(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::PathChallengeUpdated,
+        ) {
+            let id = context.id();
+            let api::PathChallengeUpdated {
+                path_challenge_status,
+                path,
+                challenge_data,
+            } = event;
+            tracing :: event ! (target : "path_challenge_updated" , parent : id , tracing :: Level :: DEBUG , path_challenge_status = tracing :: field :: debug (path_challenge_status) , path = tracing :: field :: debug (path) , challenge_data = tracing :: field :: debug (challenge_data));
+        }
+        #[inline]
+        fn on_tls_client_hello(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::TlsClientHello,
+        ) {
+            let id = context.id();
+            let api::TlsClientHello { payload } = event;
+            tracing :: event ! (target : "tls_client_hello" , parent : id , tracing :: Level :: DEBUG , payload = tracing :: field :: debug (payload));
+        }
+        #[inline]
+        fn on_tls_server_hello(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::TlsServerHello,
+        ) {
+            let id = context.id();
+            let api::TlsServerHello { payload } = event;
+            tracing :: event ! (target : "tls_server_hello" , parent : id , tracing :: Level :: DEBUG , payload = tracing :: field :: debug (payload));
+        }
+        #[inline]
+        fn on_rx_stream_progress(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::RxStreamProgress,
+        ) {
+            let id = context.id();
+            let api::RxStreamProgress { bytes } = event;
+            tracing :: event ! (target : "rx_stream_progress" , parent : id , tracing :: Level :: DEBUG , bytes = tracing :: field :: debug (bytes));
+        }
+        #[inline]
+        fn on_tx_stream_progress(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::TxStreamProgress,
+        ) {
+            let id = context.id();
+            let api::TxStreamProgress { bytes } = event;
+            tracing :: event ! (target : "tx_stream_progress" , parent : id , tracing :: Level :: DEBUG , bytes = tracing :: field :: debug (bytes));
+        }
+        #[inline]
+        fn on_keep_alive_timer_expired(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::KeepAliveTimerExpired,
+        ) {
+            let id = context.id();
+            let api::KeepAliveTimerExpired { timeout } = event;
+            tracing :: event ! (target : "keep_alive_timer_expired" , parent : id , tracing :: Level :: DEBUG , timeout = tracing :: field :: debug (timeout));
+        }
+        #[inline]
+        fn on_version_information(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::VersionInformation,
+        ) {
+            let parent = match meta.endpoint_type {
+                api::EndpointType::Client {} => self.client.id(),
+                api::EndpointType::Server {} => self.server.id(),
+            };
+            let api::VersionInformation {
+                server_versions,
+                client_versions,
+                chosen_version,
+            } = event;
+            tracing :: event ! (target : "version_information" , parent : parent , tracing :: Level :: DEBUG , server_versions = tracing :: field :: debug (server_versions) , client_versions = tracing :: field :: debug (client_versions) , chosen_version = tracing :: field :: debug (chosen_version));
+        }
+        #[inline]
+        fn on_endpoint_packet_sent(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointPacketSent,
+        ) {
+            let parent = match meta.endpoint_type {
+                api::EndpointType::Client {} => self.client.id(),
+                api::EndpointType::Server {} => self.server.id(),
+            };
+            let api::EndpointPacketSent { packet_header } = event;
+            tracing :: event ! (target : "endpoint_packet_sent" , parent : parent , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
+        }
+        #[inline]
+        fn on_endpoint_packet_received(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointPacketReceived,
+        ) {
+            let parent = match meta.endpoint_type {
+                api::EndpointType::Client {} => self.client.id(),
+                api::EndpointType::Server {} => self.server.id(),
+            };
+            let api::EndpointPacketReceived { packet_header } = event;
+            tracing :: event ! (target : "endpoint_packet_received" , parent : parent , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
+        }
+        #[inline]
+        fn on_endpoint_datagram_sent(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointDatagramSent,
+        ) {
+            let parent = match meta.endpoint_type {
+                api::EndpointType::Client {} => self.client.id(),
+                api::EndpointType::Server {} => self.server.id(),
+            };
+            let api::EndpointDatagramSent { len, gso_offset } = event;
+            tracing :: event ! (target : "endpoint_datagram_sent" , parent : parent , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , gso_offset = tracing :: field :: debug (gso_offset));
+        }
+        #[inline]
+        fn on_endpoint_datagram_received(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointDatagramReceived,
+        ) {
+            let parent = match meta.endpoint_type {
+                api::EndpointType::Client {} => self.client.id(),
+                api::EndpointType::Server {} => self.server.id(),
+            };
+            let api::EndpointDatagramReceived { len } = event;
+            tracing :: event ! (target : "endpoint_datagram_received" , parent : parent , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len));
+        }
+        #[inline]
+        fn on_endpoint_datagram_dropped(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointDatagramDropped,
+        ) {
+            let parent = match meta.endpoint_type {
+                api::EndpointType::Client {} => self.client.id(),
+                api::EndpointType::Server {} => self.server.id(),
+            };
+            let api::EndpointDatagramDropped { len, reason } = event;
+            tracing :: event ! (target : "endpoint_datagram_dropped" , parent : parent , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , reason = tracing :: field :: debug (reason));
+        }
+        #[inline]
+        fn on_endpoint_connection_attempt_failed(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointConnectionAttemptFailed,
+        ) {
+            let parent = match meta.endpoint_type {
+                api::EndpointType::Client {} => self.client.id(),
+                api::EndpointType::Server {} => self.server.id(),
+            };
+            let api::EndpointConnectionAttemptFailed { error } = event;
+            tracing :: event ! (target : "endpoint_connection_attempt_failed" , parent : parent , tracing :: Level :: DEBUG , error = tracing :: field :: debug (error));
+        }
+        #[inline]
+        fn on_platform_tx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTx) {
+            let parent = match meta.endpoint_type {
+                api::EndpointType::Client {} => self.client.id(),
+                api::EndpointType::Server {} => self.server.id(),
+            };
+            let api::PlatformTx { count } = event;
+            tracing :: event ! (target : "platform_tx" , parent : parent , tracing :: Level :: DEBUG , count = tracing :: field :: debug (count));
+        }
+        #[inline]
+        fn on_platform_tx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTxError) {
+            let parent = match meta.endpoint_type {
+                api::EndpointType::Client {} => self.client.id(),
+                api::EndpointType::Server {} => self.server.id(),
+            };
+            let api::PlatformTxError { errno } = event;
+            tracing :: event ! (target : "platform_tx_error" , parent : parent , tracing :: Level :: DEBUG , errno = tracing :: field :: debug (errno));
+        }
+        #[inline]
+        fn on_platform_rx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRx) {
+            let parent = match meta.endpoint_type {
+                api::EndpointType::Client {} => self.client.id(),
+                api::EndpointType::Server {} => self.server.id(),
+            };
+            let api::PlatformRx { count } = event;
+            tracing :: event ! (target : "platform_rx" , parent : parent , tracing :: Level :: DEBUG , count = tracing :: field :: debug (count));
+        }
+        #[inline]
+        fn on_platform_rx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRxError) {
+            let parent = match meta.endpoint_type {
+                api::EndpointType::Client {} => self.client.id(),
+                api::EndpointType::Server {} => self.server.id(),
+            };
+            let api::PlatformRxError { errno } = event;
+            tracing :: event ! (target : "platform_rx_error" , parent : parent , tracing :: Level :: DEBUG , errno = tracing :: field :: debug (errno));
+        }
+        #[inline]
+        fn on_platform_feature_configured(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::PlatformFeatureConfigured,
+        ) {
+            let parent = match meta.endpoint_type {
+                api::EndpointType::Client {} => self.client.id(),
+                api::EndpointType::Server {} => self.server.id(),
+            };
+            let api::PlatformFeatureConfigured { configuration } = event;
+            tracing :: event ! (target : "platform_feature_configured" , parent : parent , tracing :: Level :: DEBUG , configuration = tracing :: field :: debug (configuration));
+        }
+        #[inline]
+        fn on_platform_event_loop_wakeup(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::PlatformEventLoopWakeup,
+        ) {
+            let parent = match meta.endpoint_type {
+                api::EndpointType::Client {} => self.client.id(),
+                api::EndpointType::Server {} => self.server.id(),
+            };
+            let api::PlatformEventLoopWakeup {
+                timeout_expired,
+                rx_ready,
+                tx_ready,
+            } = event;
+            tracing :: event ! (target : "platform_event_loop_wakeup" , parent : parent , tracing :: Level :: DEBUG , timeout_expired = tracing :: field :: debug (timeout_expired) , rx_ready = tracing :: field :: debug (rx_ready) , tx_ready = tracing :: field :: debug (tx_ready));
         }
     }
 }
@@ -2019,7 +2084,14 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub enum DuplicatePacketError {
+        #[doc = " The packet number was already received and is a duplicate."]
         Duplicate,
+        #[doc = " The received packet number was outside the range of tracked packet numbers."]
+        #[doc = ""]
+        #[doc = " This can happen when packets are heavily delayed or reordered. Currently, the maximum"]
+        #[doc = " amount of reordering is limited to 128 packets. For example, if packet number `142`"]
+        #[doc = " is received, the allowed range would be limited to `14-142`. If an endpoint received"]
+        #[doc = " packet `< 14`, it would trigger this event."]
         TooOld,
     }
     impl IntoEvent<api::DuplicatePacketError> for DuplicatePacketError {
@@ -2192,7 +2264,10 @@ pub mod builder {
     #[doc = " An event can occur in the context of an Endpoint or Connection"]
     pub enum Subject {
         Endpoint,
-        Connection { id: u64 },
+        #[doc = " This maps to an internal connection id, which is a stable identifier across CID changes."]
+        Connection {
+            id: u64,
+        },
     }
     impl IntoEvent<api::Subject> for Subject {
         #[inline]
@@ -2209,7 +2284,9 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Used to disambiguate events that can occur for the local or the remote endpoint."]
     pub enum Location {
+        #[doc = " The Local endpoint"]
         Local,
+        #[doc = " The Remote endpoint"]
         Remote,
     }
     impl IntoEvent<api::Location> for Location {
@@ -2239,17 +2316,34 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub enum DatagramDropReason {
+        #[doc = " There was an error while attempting to decode the datagram."]
         DecodingFailed,
+        #[doc = " There was an error while parsing the Retry token."]
         InvalidRetryToken,
+        #[doc = " The peer specified an unsupported QUIC version."]
         UnsupportedVersion,
+        #[doc = " The peer sent an invalid Destination Connection Id."]
         InvalidDestinationConnectionId,
+        #[doc = " The peer sent an invalid Source Connection Id."]
         InvalidSourceConnectionId,
+        #[doc = " The Destination Connection Id is unknown and does not map to a Connection."]
+        #[doc = ""]
+        #[doc = " Connections are mapped to Destination Connections Ids (DCID) and packets"]
+        #[doc = " in a Datagram are routed to a connection based on the DCID in the first"]
+        #[doc = " packet. If a Connection is not found for the specified DCID then the"]
+        #[doc = " datagram can not be processed and is dropped."]
         UnknownDestinationConnectionId,
+        #[doc = " The connection attempt was rejected."]
         RejectedConnectionAttempt,
+        #[doc = " A datagram was received from an unknown server address."]
         UnknownServerAddress,
+        #[doc = " The peer initiated a connection migration before the handshake was confirmed."]
         ConnectionMigrationDuringHandshake,
+        #[doc = " The attempted connection migration was rejected."]
         RejectedConnectionMigration,
+        #[doc = " The maximum number of paths per connection was exceeded."]
         PathLimitExceeded,
+        #[doc = " The peer initiated a connection migration without supplying enough connection IDs to use."]
         InsufficientConnectionIds,
     }
     impl IntoEvent<api::DatagramDropReason> for DatagramDropReason {
@@ -2293,34 +2387,37 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub enum PacketDropReason<'a> {
-        ConnectionError {
-            path: Path<'a>,
-        },
-        HandshakeNotComplete {
-            path: Path<'a>,
-        },
-        VersionMismatch {
-            version: u32,
-            path: Path<'a>,
-        },
+        #[doc = " A connection error occurred and is no longer able to process packets."]
+        ConnectionError { path: Path<'a> },
+        #[doc = " The handshake needed to be complete before processing the packet."]
+        #[doc = ""]
+        #[doc = " To ensure the connection stays secure, short packets can only be processed"]
+        #[doc = " once the handshake has completed."]
+        HandshakeNotComplete { path: Path<'a> },
+        #[doc = " The packet contained a version which did not match the version negotiated"]
+        #[doc = " during the handshake."]
+        VersionMismatch { version: u32, path: Path<'a> },
+        #[doc = " A datagram contained more than one destination connection ID, which is"]
+        #[doc = " not allowed."]
         ConnectionIdMismatch {
             packet_cid: &'a [u8],
             path: Path<'a>,
         },
-        UnprotectFailed {
-            space: KeySpace,
-            path: Path<'a>,
-        },
+        #[doc = " There was a failure when attempting to remove header protection."]
+        UnprotectFailed { space: KeySpace, path: Path<'a> },
+        #[doc = " There was a failure when attempting to decrypt the packet."]
         DecryptionFailed {
             path: Path<'a>,
             packet_header: PacketHeader,
         },
-        DecodingFailed {
-            path: Path<'a>,
-        },
-        NonEmptyRetryToken {
-            path: Path<'a>,
-        },
+        #[doc = " Packet decoding failed."]
+        #[doc = ""]
+        #[doc = " The payload is decoded one packet at a time. If decoding fails"]
+        #[doc = " then the remaining packets are also discarded."]
+        DecodingFailed { path: Path<'a> },
+        #[doc = " The client received a non-empty retry token."]
+        NonEmptyRetryToken { path: Path<'a> },
+        #[doc = " A Retry packet was discarded."]
         RetryDiscarded {
             reason: RetryDiscardReason<'a>,
             path: Path<'a>,
@@ -2371,9 +2468,14 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub enum RetryDiscardReason<'a> {
+        #[doc = " Received a Retry packet with SCID field equal to DCID field."]
         ScidEqualsDcid { cid: &'a [u8] },
+        #[doc = " A client only processes at most one Retry packet."]
         RetryAlreadyProcessed,
+        #[doc = " The client discards Retry packets if a valid Initial packet"]
+        #[doc = " has been received and processed."]
         InitialAlreadyProcessed,
+        #[doc = " The Retry packet received contained an invalid retry integrity tag"]
         InvalidIntegrityTag,
     }
     impl<'a> IntoEvent<api::RetryDiscardReason<'a>> for RetryDiscardReason<'a> {
@@ -2410,9 +2512,13 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " The current state of the ECN controller for the path"]
     pub enum EcnState {
+        #[doc = " ECN capability is being actively tested"]
         Testing,
+        #[doc = " ECN capability has been tested, but not validated yet"]
         Unknown,
+        #[doc = " ECN capability testing has failed validation"]
         Failed,
+        #[doc = " ECN capability has been confirmed"]
         Capable,
     }
     impl IntoEvent<api::EcnState> for EcnState {
@@ -2430,9 +2536,20 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Events tracking the progress of handshake status"]
     pub enum HandshakeStatus {
+        #[doc = " The handshake has completed."]
         Complete,
+        #[doc = " The handshake has been confirmed."]
         Confirmed,
+        #[doc = " A HANDSHAKE_DONE frame was delivered or received."]
+        #[doc = ""]
+        #[doc = " A Client endpoint receives a HANDSHAKE_DONE frame and"]
+        #[doc = " only a Server is allowed to send the HANDSHAKE_DONE"]
+        #[doc = " frame."]
         HandshakeDoneAcked,
+        #[doc = " A HANDSHAKE_DONE frame was declared lost."]
+        #[doc = ""]
+        #[doc = " The Server is responsible for re-transmitting the"]
+        #[doc = " HANDSHAKE_DONE frame until it is acked by the peer."]
         HandshakeDoneLost,
     }
     impl IntoEvent<api::HandshakeStatus> for HandshakeStatus {
@@ -2450,7 +2567,9 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " The source that caused a congestion event"]
     pub enum CongestionSource {
+        #[doc = " Explicit Congestion Notification"]
         Ecn,
+        #[doc = " One or more packets were detected lost"]
         PacketLoss,
     }
     impl IntoEvent<api::CongestionSource> for CongestionSource {
@@ -3273,18 +3392,17 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub enum PlatformFeatureConfiguration {
+        #[doc = " Emitted when segment offload was configured"]
         Gso {
             #[doc = " The maximum number of segments that can be sent in a single GSO packet"]
             #[doc = ""]
             #[doc = " If this value not greater than 1, GSO is disabled."]
             max_segments: usize,
         },
-        Ecn {
-            enabled: bool,
-        },
-        MaxMtu {
-            mtu: u16,
-        },
+        #[doc = " Emitted when ECN support is configured"]
+        Ecn { enabled: bool },
+        #[doc = " Emitted when the maximum transmission unit is configured"]
+        MaxMtu { mtu: u16 },
     }
     impl IntoEvent<api::PlatformFeatureConfiguration> for PlatformFeatureConfiguration {
         #[inline]

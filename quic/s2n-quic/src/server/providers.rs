@@ -26,7 +26,7 @@ impl_providers_state! {
         path_migration: PathMigration,
         sync: Sync,
         tls: Tls,
-        token: Token,
+        address_token: AddressToken,
     }
 
     /// Opaque trait containing all of the configured providers
@@ -46,7 +46,7 @@ impl<
         PathMigration: path_migration::Provider,
         Sync: sync::Provider,
         Tls: tls::Provider,
-        Token: token::Provider,
+        AddressToken: address_token::Provider,
     >
     Providers<
         CongestionController,
@@ -61,7 +61,7 @@ impl<
         PathMigration,
         Sync,
         Tls,
-        Token,
+        AddressToken,
     >
 {
     pub fn start(self) -> Result<Server, StartError> {
@@ -74,7 +74,7 @@ impl<
             endpoint_limits,
             event,
             limits,
-            token,
+            address_token,
             io,
             path_migration,
             sync,
@@ -91,7 +91,7 @@ impl<
         let endpoint_limits = endpoint_limits.start().map_err(StartError::new)?;
         let limits = limits.start().map_err(StartError::new)?;
         let event = event.start().map_err(StartError::new)?;
-        let token = token.start().map_err(StartError::new)?;
+        let address_token = address_token.start().map_err(StartError::new)?;
         let sync = sync.start().map_err(StartError::new)?;
         let path_migration = path_migration.start().map_err(StartError::new)?;
         let tls = tls.start_server().map_err(StartError::new)?;
@@ -119,7 +119,7 @@ impl<
             limits,
             sync,
             tls,
-            token,
+            address_token,
             path_handle: PhantomData,
             path_migration,
         };
@@ -156,7 +156,7 @@ struct EndpointConfig<
     Limits,
     Sync,
     Tls,
-    Token,
+    AddressToken,
 > {
     congestion_controller: CongestionController,
     connection_close_formatter: ConnectionCloseFormatter,
@@ -168,7 +168,7 @@ struct EndpointConfig<
     limits: Limits,
     sync: Sync,
     tls: Tls,
-    token: Token,
+    address_token: AddressToken,
     path_handle: PhantomData<PathHandle>,
     path_migration: PathMigration,
 }
@@ -186,7 +186,7 @@ impl<
         Limits: s2n_quic_core::connection::limits::Limiter,
         Sync,
         Tls: crypto::tls::Endpoint,
-        Token: token::Format,
+        AddressToken: address_token::Format,
     > core::fmt::Debug
     for EndpointConfig<
         CongestionController,
@@ -201,7 +201,7 @@ impl<
         Limits,
         Sync,
         Tls,
-        Token,
+        AddressToken,
     >
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -222,7 +222,7 @@ impl<
         Limits: s2n_quic_core::connection::limits::Limiter,
         Sync: 'static + Send,
         Tls: crypto::tls::Endpoint,
-        Token: token::Format,
+        AddressToken: address_token::Format,
     > endpoint::Config
     for EndpointConfig<
         CongestionController,
@@ -237,7 +237,7 @@ impl<
         Limits,
         Sync,
         Tls,
-        Token,
+        AddressToken,
     >
 {
     type ConnectionIdFormat = ConnectionID;
@@ -252,7 +252,7 @@ impl<
     type EndpointLimits = EndpointLimits;
     type EventSubscriber = Event;
     type TLSEndpoint = Tls;
-    type TokenFormat = Token;
+    type TokenFormat = AddressToken;
     type ConnectionLimits = Limits;
     type Stream = stream::StreamImpl;
     type PathMigrationValidator = PathMigration;
@@ -268,7 +268,7 @@ impl<
             random_generator: &mut self.random,
             tls: &mut self.tls,
             endpoint_limits: &mut self.endpoint_limits,
-            token: &mut self.token,
+            token: &mut self.address_token,
             connection_limits: &mut self.limits,
             event_subscriber: &mut self.event,
             path_migration: &mut self.path_migration,

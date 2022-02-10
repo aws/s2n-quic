@@ -145,7 +145,7 @@ impl endpoint::limits::Limiter for EndpointLimits {
 #[derive(Debug)]
 struct Token;
 
-impl crate::provider::token::Format for Token {
+impl crate::provider::address_token::Format for Token {
     const TOKEN_LEN: usize = 0;
 
     fn generate_new_token(

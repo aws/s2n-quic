@@ -1,13 +1,16 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Allows endpoints to subscribe to connection-level and endpoint-level events
+
+use cfg_if::cfg_if;
 pub use s2n_quic_core::event::{
     api as events,
     api::{ConnectionInfo, ConnectionMeta},
     query, Event, Meta, Subscriber, Timestamp,
 };
 
-/// Provides logging support for an endpoint
+/// Provides event handling support for an endpoint
 pub trait Provider {
     type Subscriber: 'static + Subscriber;
     type Error: 'static + core::fmt::Display;
@@ -15,14 +18,21 @@ pub trait Provider {
     fn start(self) -> Result<Self::Subscriber, Self::Error>;
 }
 
-/// Provides an implementation to disable all logging
+/// Provides an implementation to disable all events
 pub mod disabled;
 
-#[cfg(feature = "tracing-provider")]
+#[cfg(feature = "provider-event-tracing")]
 pub mod tracing;
 
-// Events are disabled by default.
-pub use self::disabled as default;
+cfg_if! {
+    if #[cfg(feature = "provider-event-tracing")] {
+        pub use self::tracing as default;
+    } else {
+        // Events are disabled by default.
+        pub use self::disabled as default;
+    }
+}
+
 pub use default::Provider as Default;
 
 impl<S> Provider for S

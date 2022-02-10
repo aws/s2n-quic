@@ -163,7 +163,6 @@ macro_rules! impl_receive_stream_trait {
             }
         }
 
-        #[cfg(feature = "std")]
         impl futures::io::AsyncRead for $name {
             fn poll_read(
                 mut self: core::pin::Pin<&mut Self>,
@@ -256,7 +255,6 @@ macro_rules! impl_receive_stream_trait {
             }
         }
 
-        #[cfg(all(feature = "std", feature = "tokio"))]
         impl tokio::io::AsyncRead for $name {
             fn poll_read(
                 mut self: core::pin::Pin<&mut Self>,
