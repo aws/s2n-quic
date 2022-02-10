@@ -38,7 +38,7 @@ use s2n_quic_core::{
     endpoint::Location,
     event::{
         self,
-        builder::{RxStreamProgress, TxStreamProgress},
+        builder::{DatagramDropReason, RxStreamProgress, TxStreamProgress},
         supervisor, ConnectionPublisher as _, IntoEvent as _, Subscriber,
     },
     inet::{DatagramInfo, SocketAddress},
@@ -1054,7 +1054,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         path_migration: &mut Config::PathMigrationValidator,
         max_mtu: MaxMtu,
         subscriber: &mut Config::EventSubscriber,
-    ) -> Result<path::Id, connection::Error> {
+    ) -> Result<path::Id, DatagramDropReason> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-9
