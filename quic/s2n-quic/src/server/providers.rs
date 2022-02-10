@@ -131,7 +131,7 @@ impl<
         Ok(Server {
             acceptor,
             // TODO: Return the actual local address
-            local_addr: Default::default(),
+            local_addr: "0.0.0.0:0".parse().unwrap(),
         })
     }
 }
