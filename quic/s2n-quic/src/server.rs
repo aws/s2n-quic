@@ -13,6 +13,7 @@ mod providers;
 
 pub use builder::*;
 pub use providers::*;
+pub use s2n_quic_core::application::ServerName as Name;
 
 /// A QUIC server endpoint, capable of accepting connections
 pub struct Server(Acceptor);
