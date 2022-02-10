@@ -9,6 +9,7 @@ use s2n_quic_transport::{
     endpoint::{self},
     stream,
 };
+use std::net::ToSocketAddrs;
 
 impl_providers_state! {
     #[derive(Debug, Default)]
@@ -126,12 +127,17 @@ impl<
         let (endpoint, acceptor) = endpoint::Endpoint::new_server(endpoint_config);
 
         // Start the IO last
-        io.start(endpoint).map_err(StartError::new)?;
+        let local_addr = io
+            .start(endpoint)
+            .map_err(StartError::new)?
+            .to_socket_addrs()
+            .map_err(StartError::new)?
+            .next()
+            .ok_or_else(|| StartError::new("missing address"))?;
 
         Ok(Server {
             acceptor,
-            // TODO: Return the actual local address
-            local_addr: "0.0.0.0:0".parse().unwrap(),
+            local_addr,
         })
     }
 }

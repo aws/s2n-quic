@@ -8,14 +8,15 @@ use std::io;
 pub use self::tokio::{Builder, Io as Provider};
 
 impl super::Provider for Provider {
+    type Addr = std::net::SocketAddr;
     type PathHandle = tokio::PathHandle;
     type Error = io::Error;
 
     fn start<E: Endpoint<PathHandle = Self::PathHandle>>(
         self,
         endpoint: E,
-    ) -> Result<(), Self::Error> {
-        self.start(endpoint)?;
-        Ok(())
+    ) -> Result<std::net::SocketAddr, Self::Error> {
+        let (_join_handle, local_addr) = self.start(endpoint)?;
+        Ok(local_addr)
     }
 }

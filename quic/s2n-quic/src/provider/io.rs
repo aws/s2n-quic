@@ -7,13 +7,14 @@ use std::io;
 
 /// Provides IO support for an endpoint
 pub trait Provider: 'static {
+    type Addr: std::net::ToSocketAddrs;
     type PathHandle: PathHandle;
     type Error: 'static + core::fmt::Display;
 
     fn start<E: Endpoint<PathHandle = Self::PathHandle>>(
         self,
         endpoint: E,
-    ) -> Result<(), Self::Error>;
+    ) -> Result<Self::Addr, Self::Error>;
 }
 
 cfg_if! {
