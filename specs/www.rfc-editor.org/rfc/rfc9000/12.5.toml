@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#12.5"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-12.5"
 
 # 12.5.  Frames and Number Spaces
 #

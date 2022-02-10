@@ -9,7 +9,7 @@ use crate::{
 };
 use core::{convert::TryFrom, ops};
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#20.2
+//= https://www.rfc-editor.org/rfc/rfc9000#section-20.2
 //# The management of application error codes is left to application
 //# protocols.
 

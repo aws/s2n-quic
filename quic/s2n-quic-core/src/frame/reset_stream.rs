@@ -3,7 +3,7 @@
 
 use crate::varint::VarInt;
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.4
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.4
 //# An endpoint uses a RESET_STREAM frame (type=0x04) to abruptly
 //# terminate the sending part of a stream.
 
@@ -13,7 +13,7 @@ macro_rules! reset_stream_tag {
     };
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.4
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.4
 //# RESET_STREAM Frame {
 //#   Type (i) = 0x04,
 //#   Stream ID (i),
@@ -21,7 +21,7 @@ macro_rules! reset_stream_tag {
 //#   Final Size (i),
 //# }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#19.4
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.4
 //# RESET_STREAM frames contain the following fields:
 //#
 //# Stream ID:  A variable-length integer encoding of the stream ID of

@@ -1,5 +1,5 @@
 [[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#19.7"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-19.7"
 quote = '''
 Clients MUST NOT send NEW_TOKEN frames.
 '''

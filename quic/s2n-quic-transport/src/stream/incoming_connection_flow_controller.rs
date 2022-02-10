@@ -86,7 +86,7 @@ impl IncomingConnectionFlowControllerImpl {
 
     pub fn acquire_window(&mut self, desired: VarInt) -> Result<(), transport::Error> {
         if self.remaining_window() < desired {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.1
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-4.1
             //# A receiver MUST close the connection with an error of type
             //# FLOW_CONTROL_ERROR if the sender violates the advertised connection
             //# or stream data limits; see Section 11 for details on error handling.

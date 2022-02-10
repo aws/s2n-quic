@@ -1,5 +1,5 @@
 [[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.1"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.1"
 quote = '''
 A client MUST
 discard a Retry packet that contains a Source Connection ID field
@@ -10,7 +10,7 @@ tracking-issue = "396"
 feature = "Client Retry" 
 
 [[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.2"
 quote = '''
 A client MUST accept and process at most one Retry packet for each
 connection attempt.
@@ -19,7 +19,7 @@ tracking-issue = "396"
 feature = "Client Retry" 
 
 [[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.2"
 quote = '''
 Clients MUST discard Retry packets that have a Retry Integrity Tag
 that cannot be validated; see Section 5.8 of [QUIC-TLS].
@@ -28,7 +28,7 @@ tracking-issue = "396"
 feature = "Client Retry" 
 
 [[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.2"
 quote = '''
 After the client has received and processed an
 Initial or Retry packet from the server, it MUST discard any

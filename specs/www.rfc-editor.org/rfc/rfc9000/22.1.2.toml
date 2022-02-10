@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#22.1.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-22.1.2"
 
 # 22.1.2.  Selecting Codepoints
 #

@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#2.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-2.2"
 
 [[exception]]
 quote = '''
@@ -11,7 +11,7 @@ in doing it currently.
 '''
 
 [[exception]]
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#2.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-2.2"
 quote = '''
 ; an endpoint MAY treat receipt of different data at
 the same offset within a stream as a connection error of type

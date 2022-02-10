@@ -19,7 +19,7 @@ use core::{
 #[cfg(not(feature = "std"))]
 use num_traits::Float as _;
 
-//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3
+//= https://www.rfc-editor.org/rfc/rfc9002#section-7.3
 //#                 New Path or      +------------+
 //#            persistent congestion |   Slow     |
 //#        (O)---------------------->|   Start    |
@@ -75,7 +75,7 @@ impl State {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.2
+//= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
 //# If the congestion window is reduced immediately, a
 //# single packet can be sent prior to reduction.  This speeds up loss
 //# recovery if the data in the lost packet is retransmitted and is
@@ -97,7 +97,7 @@ struct CongestionAvoidanceTiming {
 }
 
 impl CongestionAvoidanceTiming {
-    //= https://tools.ietf.org/rfc/rfc8312.txt#4.1
+    //= https://www.rfc-editor.org/rfc/rfc8312#section-4.1
     //# t is the elapsed time from the beginning of the current congestion avoidance
     fn t(&self, timestamp: Timestamp) -> Duration {
         timestamp - self.start_time
@@ -109,7 +109,7 @@ impl CongestionAvoidanceTiming {
     /// to avoid counting the app limited time period in W_cubic.
     fn on_window_increase(&mut self, timestamp: Timestamp) {
         if let Some(app_limited_time) = self.app_limited_time.take() {
-            //= https://tools.ietf.org/rfc/rfc8312#5.8
+            //= https://www.rfc-editor.org/rfc/rfc8312#section-5.8
             //# CUBIC does not raise its congestion window size if the flow is
             //# currently limited by the application instead of the congestion
             //# window.  In case of long periods when cwnd has not been updated due
@@ -131,11 +131,11 @@ impl CongestionAvoidanceTiming {
 #[derive(Clone, Debug)]
 pub struct CubicCongestionController {
     cubic: Cubic,
-    //= https://tools.ietf.org/rfc/rfc8312#4.8
+    //= https://www.rfc-editor.org/rfc/rfc8312#section-4.8
     //# CUBIC MUST employ a slow-start algorithm, when the cwnd is no more
     //# than ssthresh.
 
-    //= https://tools.ietf.org/rfc/rfc8312#4.8
+    //= https://www.rfc-editor.org/rfc/rfc8312#section-4.8
     //# Among the slow-start algorithms, CUBIC MAY choose the
     //# standard TCP slow start [RFC5681] in general networks, or the limited
     //# slow start [RFC3742] or hybrid slow start [HR08] for fast and long-
@@ -145,7 +145,7 @@ pub struct CubicCongestionController {
     max_datagram_size: u16,
     congestion_window: f32,
     state: State,
-    //= https://www.rfc-editor.org/rfc/rfc9002.txt#B.2
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-B.2
     //# The sum of the size in bytes of all sent packets
     //# that contain at least one ack-eliciting or PADDING frame and have
     //# not been acknowledged or declared lost.  The size does not include
@@ -246,7 +246,7 @@ impl CongestionController for CubicCongestionController {
         if self.under_utilized {
             self.state.on_app_limited(ack_receive_time);
 
-            //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.8
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-7.8
             //# When bytes in flight is smaller than the congestion window and
             //# sending is not pacing limited, the congestion window is
             //# underutilized.  This can happen due to insufficient application data
@@ -258,7 +258,7 @@ impl CongestionController for CubicCongestionController {
         // Check if this ack causes the controller to exit recovery
         if let State::Recovery(recovery_start_time, _) = self.state {
             if largest_acked_time_sent > recovery_start_time {
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.2
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
                 //# A recovery period ends and the sender enters congestion avoidance
                 //# when a packet sent during the recovery period is acknowledged.
                 self.state = State::congestion_avoidance(ack_receive_time)
@@ -267,7 +267,7 @@ impl CongestionController for CubicCongestionController {
 
         match self.state {
             SlowStart => {
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.1
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.1
                 //# While a sender is in slow start, the congestion window increases by
                 //# the number of bytes acknowledged when each acknowledgment is
                 //# processed.  This results in exponential growth of the congestion
@@ -275,7 +275,7 @@ impl CongestionController for CubicCongestionController {
                 self.congestion_window += sent_bytes as f32;
 
                 if self.congestion_window >= self.slow_start.threshold {
-                    //= https://tools.ietf.org/rfc/rfc8312.txt#4.8
+                    //= https://www.rfc-editor.org/rfc/rfc8312#section-4.8
                     //# In the case when CUBIC runs the hybrid slow start [HR08], it may exit
                     //# the first slow start without incurring any packet loss and thus W_max
                     //# is undefined.  In this special case, CUBIC switches to congestion
@@ -293,11 +293,11 @@ impl CongestionController for CubicCongestionController {
             CongestionAvoidance(ref mut timing) => {
                 timing.on_window_increase(ack_receive_time);
 
-                //= https://tools.ietf.org/rfc/rfc8312.txt#4.1
+                //= https://www.rfc-editor.org/rfc/rfc8312#section-4.1
                 //# t is the elapsed time from the beginning of the current congestion avoidance
                 let t = timing.t(ack_receive_time);
 
-                //= https://tools.ietf.org/rfc/rfc8312.txt#4.1
+                //= https://www.rfc-editor.org/rfc/rfc8312#section-4.1
                 //# RTT is the weighted average RTT
                 // TODO: Linux Kernel Cubic implementation uses min RTT, possibly
                 //      because it is more stable than smoothed_rtt. Other implementations
@@ -325,7 +325,7 @@ impl CongestionController for CubicCongestionController {
         self.bytes_in_flight -= lost_bytes;
         self.on_congestion_event(timestamp);
 
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.6.2
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.6.2
         //# When persistent congestion is declared, the sender's congestion
         //# window MUST be reduced to the minimum congestion window
         //# (kMinimumWindow), similar to a TCP sender's response on an RTO
@@ -346,25 +346,25 @@ impl CongestionController for CubicCongestionController {
 
         // Enter recovery period.
 
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.1
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.1
         //# The sender MUST exit slow start and enter a recovery period when a
         //# packet is lost or when the ECN-CE count reported by its peer
         //# increases.
 
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.2
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
         //# If the congestion window is reduced immediately, a
         //# single packet can be sent prior to reduction.  This speeds up loss
         //# recovery if the data in the lost packet is retransmitted and is
         //# similar to TCP as described in Section 5 of [RFC6675].
         self.state = Recovery(event_time, RequiresTransmission);
 
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.2
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
         //# Implementations MAY reduce the congestion window immediately upon
         //# entering a recovery period or use other mechanisms, such as
         //# Proportional Rate Reduction [PRR], to reduce the congestion window
         //# more gradually.
 
-        //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.2
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
         //# The minimum congestion window is the smallest value the congestion
         //# window can attain in response to loss, an increase in the peer-
         //# reported ECN-CE count, or persistent congestion.
@@ -374,18 +374,18 @@ impl CongestionController for CubicCongestionController {
         self.slow_start.on_congestion_event(self.congestion_window);
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.2
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
     //# If the maximum datagram size changes during the connection, the
     //# initial congestion window SHOULD be recalculated with the new size.
     //# If the maximum datagram size is decreased in order to complete the
     //# handshake, the congestion window SHOULD be set to the new initial
     //# congestion window.
 
-    //= https://tools.ietf.org/rfc/rfc8899.txt#3
+    //= https://www.rfc-editor.org/rfc/rfc8899#section-3
     //# An update to the PLPMTU (or MPS) MUST NOT increase the congestion
     //# window measured in bytes [RFC4821].
 
-    //= https://tools.ietf.org/rfc/rfc8899.txt#3
+    //= https://www.rfc-editor.org/rfc/rfc8899#section-3
     //# A PL that maintains the congestion window in terms of a limit to
     //# the number of outstanding fixed-size packets SHOULD adapt this
     //# limit to compensate for the size of the actual packets.
@@ -404,7 +404,7 @@ impl CongestionController for CubicCongestionController {
         }
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9002.txt#6.4
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.4
     //# When Initial and Handshake packet protection keys are discarded (see
     //# Section 4.9 of [QUIC-TLS]), all packets that were sent with those
     //# keys can no longer be acknowledged because their acknowledgments
@@ -446,7 +446,7 @@ impl CubicCongestionController {
         }
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.2
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
     //# Endpoints SHOULD use an initial congestion
     //# window of ten times the maximum datagram size (max_datagram_size),
     //# while limiting the window to the larger of 14,720 bytes or twice the
@@ -470,21 +470,21 @@ impl CubicCongestionController {
 
         if w_cubic < w_est {
             // TCP-Friendly Region
-            //= https://tools.ietf.org/rfc/rfc8312#4.2
+            //= https://www.rfc-editor.org/rfc/rfc8312#section-4.2
             //# When receiving an ACK in congestion avoidance (cwnd could be greater than
             //# or less than W_max), CUBIC checks whether W_cubic(t) is less than
             //# W_est(t).  If so, CUBIC is in the TCP-friendly region and cwnd SHOULD
             //# be set to W_est(t) at each reception of an ACK.
             self.congestion_window = self.packets_to_bytes(w_est).min(max_cwnd);
         } else {
-            //= https://tools.ietf.org/rfc/rfc8312#4.1
+            //= https://www.rfc-editor.org/rfc/rfc8312#section-4.1
             //# Upon receiving an ACK during congestion avoidance, CUBIC computes the
             //# window increase rate during the next RTT period using Eq. 1.  It sets
             //# W_cubic(t+RTT) as the candidate target value of the congestion
             //# window
 
             // Concave Region
-            //= https://tools.ietf.org/rfc/rfc8312#4.3
+            //= https://www.rfc-editor.org/rfc/rfc8312#section-4.3
             //# When receiving an ACK in congestion avoidance, if CUBIC is not in the
             //# TCP-friendly region and cwnd is less than W_max, then CUBIC is in the
             //# concave region.  In this region, cwnd MUST be incremented by
@@ -492,12 +492,12 @@ impl CubicCongestionController {
             //# W_cubic(t+RTT) is calculated using Eq. 1.
 
             // Convex Region
-            //# https://tools.ietf.org/rfc/rfc8312#4.4
+            //# https://www.rfc-editor.org/rfc/rfc8312#section-4.4
             //# When receiving an ACK in congestion avoidance, if CUBIC is not in the
             //# TCP-friendly region and cwnd is larger than or equal to W_max, then
             //# CUBIC is in the convex region.
 
-            //= https://tools.ietf.org/rfc/rfc8312#4.4
+            //= https://www.rfc-editor.org/rfc/rfc8312#section-4.4
             //# In this region, cwnd MUST be incremented by
             //# (W_cubic(t+RTT) - cwnd)/cwnd for each received ACK, where
             //# W_cubic(t+RTT) is calculated using Eq. 1.
@@ -568,11 +568,11 @@ impl CubicCongestionController {
 /// congestion window in the congestion controller.
 #[derive(Clone, Debug)]
 struct Cubic {
-    //= https://tools.ietf.org/rfc/rfc8312#4.1
+    //= https://www.rfc-editor.org/rfc/rfc8312#section-4.1
     //# W_max is the window size just before the window is
     //# reduced in the last congestion event.
     w_max: f32,
-    //= https://tools.ietf.org/rfc/rfc8312#4.6
+    //= https://www.rfc-editor.org/rfc/rfc8312#section-4.6
     //# a flow remembers the last value of W_max before it
     //# updates W_max for the current congestion event.
     //# Let us call the last value of W_max to be W_last_max.
@@ -582,13 +582,13 @@ struct Cubic {
     max_datagram_size: u16,
 }
 
-//= https://tools.ietf.org/rfc/rfc8312#5.1
+//= https://www.rfc-editor.org/rfc/rfc8312#section-5.1
 //# Based on these observations and our experiments, we find C=0.4
 //# gives a good balance between TCP-friendliness and aggressiveness
 //# of window increase.  Therefore, C SHOULD be set to 0.4.
 const C: f32 = 0.4;
 
-//= https://tools.ietf.org/rfc/rfc8312#4.5
+//= https://www.rfc-editor.org/rfc/rfc8312#section-4.5
 //# Parameter beta_cubic SHOULD be set to 0.7.
 const BETA_CUBIC: f32 = 0.7;
 
@@ -610,7 +610,7 @@ impl Cubic {
         self.k = Duration::ZERO;
     }
 
-    //= https://tools.ietf.org/rfc/rfc8312#4.1
+    //= https://www.rfc-editor.org/rfc/rfc8312#section-4.1
     //# CUBIC uses the following window increase function:
     //#
     //#    W_cubic(t) = C*(t-K)^3 + W_max (Eq. 1)
@@ -630,7 +630,7 @@ impl Cubic {
         C * (t.as_secs_f32() - self.k.as_secs_f32()).powi(3) + self.w_max as f32
     }
 
-    //= https://tools.ietf.org/rfc/rfc8312#4.2
+    //= https://www.rfc-editor.org/rfc/rfc8312#section-4.2
     //# W_est(t) = W_max*beta_cubic +
     //               [3*(1-beta_cubic)/(1+beta_cubic)] * (t/RTT) (Eq. 4)
     #[inline]
@@ -641,7 +641,7 @@ impl Cubic {
         )
     }
 
-    //= https://tools.ietf.org/rfc/rfc8312#4.5
+    //= https://www.rfc-editor.org/rfc/rfc8312#section-4.5
     //# When a packet loss is detected by duplicate ACKs or a network
     //# congestion is detected by ECN-Echo ACKs, CUBIC updates its W_max,
     //# cwnd, and ssthresh as follows.  Parameter beta_cubic SHOULD be set to
@@ -656,12 +656,12 @@ impl Cubic {
     fn multiplicative_decrease(&mut self, cwnd: f32) -> f32 {
         self.w_max = self.bytes_to_packets(cwnd);
 
-        //= https://tools.ietf.org/rfc/rfc8312#4.6
+        //= https://www.rfc-editor.org/rfc/rfc8312#section-4.6
         //# To speed up this bandwidth release by
         //# existing flows, the following mechanism called "fast convergence"
         //# SHOULD be implemented.
 
-        //= https://tools.ietf.org/rfc/rfc8312#4.6
+        //= https://www.rfc-editor.org/rfc/rfc8312#section-4.6
         //# With fast convergence, when a congestion event occurs, before the
         //# window reduction of the congestion window, a flow remembers the last
         //# value of W_max before it updates W_max for the current congestion
@@ -714,7 +714,7 @@ impl Cubic {
         cwnd_start
     }
 
-    //= https://tools.ietf.org/rfc/rfc8312#4.8
+    //= https://www.rfc-editor.org/rfc/rfc8312#section-4.8
     //# In the case when CUBIC runs the hybrid slow start [HR08], it may exit
     //# the first slow start without incurring any packet loss and thus W_max
     //# is undefined.  In this special case, CUBIC switches to congestion
@@ -731,7 +731,7 @@ impl Cubic {
         self.k = Duration::from_secs(0);
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.2
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
     //# The minimum congestion window is the smallest value the congestion
     //# window can attain in response to loss, an increase in the peer-
     //# reported ECN-CE count, or persistent congestion.  The RECOMMENDED

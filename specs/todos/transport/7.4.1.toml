@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#7.4.1"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-7.4.1"
 
 [[TODO]]
 quote = '''

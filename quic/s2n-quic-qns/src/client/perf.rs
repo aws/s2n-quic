@@ -25,7 +25,7 @@ pub struct Perf {
     #[structopt(long)]
     ca: Option<PathBuf>,
 
-    //= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#2.1
+    //= https://tools.ietf.org/id/draft-banks-quic-performance-00#2.1
     //# The ALPN used by the QUIC performance protocol is "perf".
     #[structopt(long, default_value = "perf")]
     application_protocols: Vec<String>,

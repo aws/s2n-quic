@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#19.4"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-19.4"
 
 # 19.4.  RESET_STREAM Frames
 #

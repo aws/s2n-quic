@@ -12,7 +12,7 @@ pub trait RetryKey {
     fn validate(payload: &[u8], tag: IntegrityTag) -> Result<(), CryptoError>;
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9001.txt#5.8
+//= https://www.rfc-editor.org/rfc/rfc9001#section-5.8
 //# The Retry Integrity Tag is a 128-bit field that is computed as the
 //# output of AEAD_AES_128_GCM [AEAD] used with the following inputs:
 //#
@@ -21,7 +21,7 @@ pub trait RetryKey {
 //#
 pub const SECRET_KEY_BYTES: [u8; 16] = hex!("be0c690b9f66575a1d766b54e368c84e");
 
-//= https://www.rfc-editor.org/rfc/rfc9001.txt#5.8
+//= https://www.rfc-editor.org/rfc/rfc9001#section-5.8
 //#   *  The nonce, N, is 96 bits equal to 0x461599d35d632bf2239825bb.
 
 pub const NONCE_BYTES: [u8; 12] = hex!("461599d35d632bf2239825bb");
@@ -38,7 +38,7 @@ pub mod example {
     );
     pub const PACKET_LEN: usize = 36;
 
-    //= https://www.rfc-editor.org/rfc/rfc9001.txt#A.4
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-A.4
     //# This shows a Retry packet that might be sent in response to the
     //# Initial packet in Appendix A.2.  The integrity check includes the
     //# client-chosen connection ID value of 0x8394c8f03e515708, but that
@@ -65,7 +65,7 @@ pub mod example {
     // The Retry Packet should have this as the source connection ID
     pub const SCID: [u8; 8] = hex!("f067a5502a4262b5");
 
-    //= https://www.rfc-editor.org/rfc/rfc9001.txt#A
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-A
     //# These packets use an 8-byte client-chosen Destination Connection ID
     //# of 0x8394c8f03e515708.
 

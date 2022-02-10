@@ -3,7 +3,7 @@
 
 use core::ops::{BitOr, BitOrAssign};
 
-//= https://www.rfc-editor.org/rfc/rfc9002.txt#2
+//= https://www.rfc-editor.org/rfc/rfc9002#section-2
 //# Ack-eliciting packets:  Packets that contain ack-eliciting frames
 //#    elicit an ACK from the receiver within the maximum acknowledgement
 //#    delay and are called ack-eliciting packets.
@@ -54,7 +54,7 @@ pub trait AckElicitable {
     }
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9002.txt#2
+//= https://www.rfc-editor.org/rfc/rfc9002#section-2
 //# Ack-eliciting Frames:  All frames other than ACK, PADDING, and
 //#    CONNECTION_CLOSE are considered ack-eliciting.
 

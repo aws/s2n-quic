@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#19.6"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-19.6"
 
 # 19.6.  CRYPTO Frames
 #

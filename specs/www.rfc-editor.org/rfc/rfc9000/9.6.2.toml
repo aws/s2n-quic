@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#9.6.2"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-9.6.2"
 
 # 9.6.2.  Migration to a Preferred Address
 #

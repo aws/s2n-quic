@@ -196,7 +196,7 @@ impl Model {
 
                 if lost_handshake_done {
                     if let HandshakeStatus::ServerCompleteConfirmed(flag) = &self.subject {
-                        //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.3
+                        //= https://www.rfc-editor.org/rfc/rfc9000#section-13.3
                         //= type=test
                         //# The HANDSHAKE_DONE frame MUST be retransmitted until it is
                         //# acknowledged.

@@ -29,7 +29,7 @@ pub async fn handle_receive_stream(mut stream: ReceiveStream) -> Result<()> {
 pub async fn handle_send_stream(mut stream: SendStream, len: u64) -> Result<()> {
     let mut chunks = vec![Bytes::new(); 64];
 
-    //= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#4.1
+    //= https://tools.ietf.org/id/draft-banks-quic-performance-00#4.1
     //# Since the goal here is to measure the efficiency of the QUIC
     //# implementation and not any application protocol, the performance
     //# application layer should be as light-weight as possible.  To this
@@ -53,7 +53,7 @@ pub async fn handle_send_stream(mut stream: SendStream, len: u64) -> Result<()> 
     Ok(())
 }
 
-//= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#2.3.1
+//= https://tools.ietf.org/id/draft-banks-quic-performance-00#2.3.1
 //# Every stream opened by the client uses the first 8 bytes of the
 //# stream data to encode a 64-bit unsigned integer in network byte order
 //# to indicate the length of data the client wishes the server to

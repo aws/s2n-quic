@@ -121,14 +121,14 @@ impl IpV6Address {
             //# The unicast address 0:0:0:0:0:0:0:1 is called the loopback address.
             [0, 0, 0, 0, 0, 0, 0, 1] => Some(Loopback),
 
-            //= https://www.rfc-editor.org/rfc/rfc6666.html#section-4
+            //= https://www.rfc-editor.org/rfc/rfc6666#section-4
             //# Per this document, IANA has recorded the allocation of the IPv6
             //# address prefix 0100::/64 as a Discard-Only Prefix in the "Internet
             //# Protocol Version 6 Address Space" and added the prefix to the "IANA
             //# IPv6 Special Purpose Address Registry" [IANA-IPV6REG].
             [0x0100, 0, 0, 0, ..] => None,
 
-            //= https://www.rfc-editor.org/rfc/rfc7723.html#section-4.2
+            //= https://www.rfc-editor.org/rfc/rfc7723#section-4.2
             //# +----------------------+-------------------------------------------+
             //# | Attribute            | Value                                     |
             //# +----------------------+-------------------------------------------+
@@ -145,7 +145,7 @@ impl IpV6Address {
             //# +----------------------+-------------------------------------------+
             [0x2001, 0x1, 0, 0, 0, 0, 0, 0x1] => Some(Global),
 
-            //= https://www.rfc-editor.org/rfc/rfc8155.html#section-8.2
+            //= https://www.rfc-editor.org/rfc/rfc8155#section-8.2
             //# +----------------------+-------------------------------------------+
             //# | Attribute            | Value                                     |
             //# +----------------------+-------------------------------------------+

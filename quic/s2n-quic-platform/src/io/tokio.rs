@@ -172,19 +172,19 @@ impl Io {
             convert_addr_to_std(rx_socket.local_addr()?)?,
         );
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-14
         //# UDP datagrams MUST NOT be fragmented at the IP layer.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-14
         //# In IPv4 [IPv4], the Don't Fragment (DF) bit MUST be set if possible, to
         //# prevent fragmentation on the path.
 
-        //= https://tools.ietf.org/rfc/rfc8899.txt#3
+        //= https://www.rfc-editor.org/rfc/rfc8899#section-3
         //# In IPv4, a probe packet MUST be sent with the Don't
         //# Fragment (DF) bit set in the IP header and without network layer
         //# endpoint fragmentation.
 
-        //= https://tools.ietf.org/rfc/rfc8899.txt#4.5
+        //= https://www.rfc-editor.org/rfc/rfc8899#section-4.5
         //# A PL implementing this specification MUST suspend network layer
         //# processing of outgoing packets that enforces a PMTU
         //# [RFC1191][RFC8201] for each flow utilizing DPLPMTUD and instead use

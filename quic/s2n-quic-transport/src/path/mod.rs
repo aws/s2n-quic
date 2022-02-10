@@ -118,7 +118,7 @@ impl<Config: endpoint::Config> Path<Config> {
     ) -> Path<Config> {
         let state = match Config::ENDPOINT_TYPE {
             Type::Server => {
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.4
                 //# If the client IP address has changed, the
                 //# server MUST adhere to the anti-amplification limit; see Section 8.
                 // Start each path in State::AmplificationLimited until it has been validated.
@@ -126,7 +126,7 @@ impl<Config: endpoint::Config> Path<Config> {
                     tx_allowance: Default::default(),
                 }
             }
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1
             //# Clients are only constrained by the congestion controller.
             Type::Client => State::Validated,
         };
@@ -205,13 +205,13 @@ impl<Config: endpoint::Config> Path<Config> {
     pub fn on_bytes_received(&mut self, bytes: usize) -> bool {
         let was_at_amplification_limit = self.at_amplification_limit();
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1
         //# For the purposes of
         //# avoiding amplification prior to address validation, servers MUST
         //# count all of the payload bytes received in datagrams that are
         //# uniquely attributed to a single connection.
         //
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1
         //# Prior to validating the client address, servers MUST NOT send more
         //# than three times as many bytes as the number of bytes they have
         //# received.
@@ -256,7 +256,7 @@ impl<Config: endpoint::Config> Path<Config> {
     /// Only PATH_CHALLENGE and PATH_RESPONSE frames should be transmitted here.
     #[inline]
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2.2
         //# A PATH_RESPONSE frame MUST be sent on the network path where the
         //# PATH_CHALLENGE frame was received.
         if let Some(response_data) = &mut self.response_data {
@@ -264,7 +264,7 @@ impl<Config: endpoint::Config> Path<Config> {
                 data: response_data,
             };
             if context.write_frame(&frame).is_some() {
-                //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2.2
                 //# An endpoint MUST NOT send more than one PATH_RESPONSE frame in
                 //# response to one PATH_CHALLENGE frame; see Section 13.3.
                 self.response_data = None;
@@ -295,7 +295,7 @@ impl<Config: endpoint::Config> Path<Config> {
 
     #[inline]
     pub fn on_path_challenge(&mut self, response: &challenge::Data) {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2.2
         //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
         //# echoing the data contained in the PATH_CHALLENGE frame in a
         //# PATH_RESPONSE frame.
@@ -311,7 +311,7 @@ impl<Config: endpoint::Config> Path<Config> {
 
             return true;
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#9.3
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-9.3
             //= type=TODO
             //# After verifying a new client address, the server SHOULD send new
             //# address validation tokens (Section 8) to the client.
@@ -421,17 +421,17 @@ impl<Config: endpoint::Config> Path<Config> {
         }
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.1
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
     //# The server MUST also limit the number of bytes it sends before
     //# validating the address of the client; see Section 8.
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.2
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-14.2
     //# All QUIC
     //# packets that are not sent in a PMTU probe SHOULD be sized to fit
     //# within the maximum datagram size to avoid the datagram being
     //# fragmented or dropped [RFC8085].
 
-    //= https://tools.ietf.org/rfc/rfc8899.txt#3
+    //= https://www.rfc-editor.org/rfc/rfc8899#section-3
     //# A PL MUST NOT send a datagram (other than a probe
     //# packet) with a size at the PL that is larger than the current
     //# PLPMTU.
@@ -461,21 +461,21 @@ impl<Config: endpoint::Config> Path<Config> {
     #[inline]
     pub fn transmission_constraint(&self) -> transmission::Constraint {
         if self.at_amplification_limit() {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1
             //# Prior to validating the client address, servers MUST NOT send more
             //# than three times as many bytes as the number of bytes they have
             //# received.
             transmission::Constraint::AmplificationLimited
         } else if self.congestion_controller.is_congestion_limited() {
             if self.congestion_controller.requires_fast_retransmission() {
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#7.3.2
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
                 //# If the congestion window is reduced immediately, a
                 //# single packet can be sent prior to reduction.  This speeds up loss
                 //# recovery if the data in the lost packet is retransmitted and is
                 //# similar to TCP as described in Section 5 of [RFC6675].
                 transmission::Constraint::RetransmissionOnly
             } else {
-                //= https://www.rfc-editor.org/rfc/rfc9002.txt#7
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-7
                 //# An endpoint MUST NOT send a packet if it would cause bytes_in_flight
                 //# (see Appendix B.2) to be larger than the congestion window, unless
                 //# the packet is sent on a PTO timer expiration (see Section 6.2) or
@@ -495,7 +495,7 @@ impl<Config: endpoint::Config> Path<Config> {
     ///       TODO: Evaluate if this approach is too conservative
     #[inline]
     pub fn at_amplification_limit(&self) -> bool {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1
         //# Prior to validating the client address, servers MUST NOT send more
         //# than three times as many bytes as the number of bytes they have
         //# received.
@@ -568,7 +568,7 @@ impl<Config: endpoint::Config> transmission::interest::Provider for Path<Config>
         &self,
         query: &mut Q,
     ) -> transmission::interest::Result {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2.2
         //# An endpoint MUST NOT delay transmission of a
         //# packet containing a PATH_RESPONSE frame unless constrained by
         //# congestion control.
@@ -660,7 +660,7 @@ mod tests {
         path.on_transmit(&mut context); // send response data
 
         // Expectation:
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2.2
         //= type=test
         //# An endpoint MUST NOT send more than one PATH_RESPONSE frame in
         //# response to one PATH_CHALLENGE frame; see Section 13.3.
@@ -808,7 +808,7 @@ mod tests {
         assert!(path.response_data.is_some());
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.2
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2.2
     //= type=test
     //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
     //# echoing the data contained in the PATH_CHALLENGE frame in a
@@ -886,20 +886,20 @@ mod tests {
 
     #[test]
     fn amplification_limit_test() {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.4
         //= type=test
         //# If the client IP address has changed, the server MUST
         //# adhere to the anti-amplification limit; see Section 8.
         // This is tested here by verifying a new Path starts in State::AmplificationLimited
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1
         //= type=test
         //# For the purposes of
         //# avoiding amplification prior to address validation, servers MUST
         //# count all of the payload bytes received in datagrams that are
         //# uniquely attributed to a single connection.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.4
         //= type=test
         //# If the client IP address has changed, the server MUST
         //# adhere to the anti-amplification limit; see Section 8.
@@ -960,25 +960,25 @@ mod tests {
 
     #[test]
     fn amplification_limited_mtu_test() {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1
         //= type=test
         //# Prior to validating the client address, servers MUST NOT send more
         //# than three times as many bytes as the number of bytes they have
         //# received.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
         //= type=test
         //# The server MUST also limit the number of bytes it sends before
         //# validating the address of the client; see Section 8.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#14.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-14.2
         //= type=test
         //# All QUIC
         //# packets that are not sent in a PMTU probe SHOULD be sized to fit
         //# within the maximum datagram size to avoid the datagram being
         //# fragmented or dropped [RFC8085].
 
-        //= https://tools.ietf.org/rfc/rfc8899.txt#3
+        //= https://www.rfc-editor.org/rfc/rfc8899#section-3
         //= type=test
         //# A PL MUST NOT send a datagram (other than a probe
         //# packet) with a size at the PL that is larger than the current

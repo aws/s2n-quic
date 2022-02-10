@@ -373,7 +373,7 @@ fn get_algo_type(
             .ok()?;
     }
 
-    //= https://tools.ietf.org/rfc/rfc8446#appendix-B.4
+    //= https://www.rfc-editor.org/rfc/rfc8446#appendix-B.4
     //# This specification defines the following cipher suites for use with
     //# TLS 1.3.
     //#
@@ -397,7 +397,7 @@ fn get_algo_type(
     // NOTE: we don't have CCM support implemented currently
 
     // NOTE: CCM_8 is not allowed by QUIC
-    //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.3
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-5.3
     //# QUIC can use any of the cipher suites defined in [TLS13] with the
     //# exception of TLS_AES_128_CCM_8_SHA256.
 
@@ -412,20 +412,20 @@ fn get_algo_type(
 unsafe fn get_application_params<'a>(
     connection: *mut s2n_connection,
 ) -> Result<tls::ApplicationParameters<'a>, CryptoError> {
-    //= https://www.rfc-editor.org/rfc/rfc9001.txt#8.1
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
     //# Unless
     //# another mechanism is used for agreeing on an application protocol,
     //# endpoints MUST use ALPN for this purpose.
     let application_protocol =
         get_application_protocol(connection).ok_or(CryptoError::NO_APPLICATION_PROTOCOL)?;
 
-    //= https://www.rfc-editor.org/rfc/rfc9001.txt#8.1
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
     //# When using ALPN, endpoints MUST immediately close a connection (see
     //# Section 10.2 of [QUIC-TRANSPORT]) with a no_application_protocol TLS
     //# alert (QUIC error code 0x178; see Section 4.8) if an application
     //# protocol is not negotiated.
 
-    //= https://www.rfc-editor.org/rfc/rfc9001.txt#8.1
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
     //# While [ALPN] only specifies that servers
     //# use this alert, QUIC clients MUST use error 0x178 to terminate a
     //# connection when ALPN negotiation fails.

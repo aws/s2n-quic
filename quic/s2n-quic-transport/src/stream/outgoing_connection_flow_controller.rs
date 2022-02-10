@@ -45,18 +45,18 @@ impl OutgoingConnectionFlowControllerImpl {
         self.available_window -= result;
 
         if result < desired {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.1
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-4.1
             //# A sender SHOULD send a
             //# STREAM_DATA_BLOCKED or DATA_BLOCKED frame to indicate to the receiver
             //# that it has data to write but is blocked by flow control limits.
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.1
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-4.1
             //# To keep the
             //# connection from closing, a sender that is flow control limited SHOULD
             //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
             //# has no ack-eliciting packets in flight.
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#19.12
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-19.12
             //# A sender SHOULD send a DATA_BLOCKED frame (type=0x14) when it wishes
             //# to send data, but is unable to do so due to connection-level flow
             //# control; see Section 4.
@@ -68,7 +68,7 @@ impl OutgoingConnectionFlowControllerImpl {
     }
 
     pub fn on_max_data(&mut self, frame: MaxData) {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.1
         //# A sender MUST ignore any MAX_STREAM_DATA or MAX_DATA frames that do
         //# not increase flow control limits.
         if self.total_available_window >= frame.maximum_data {
@@ -181,7 +181,7 @@ impl OutgoingConnectionFlowController {
 
     /// Queries the component for any outgoing frames that need to get sent
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.1
         //# To keep the
         //# connection from closing, a sender that is flow control limited SHOULD
         //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it

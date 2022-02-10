@@ -1,4 +1,4 @@
-target = "https://www.rfc-editor.org/rfc/rfc9000.txt#13.2.7"
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-13.2.7"
 
 # 13.2.7.  PADDING Frames Consume Congestion Window
 #

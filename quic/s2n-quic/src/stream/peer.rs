@@ -6,7 +6,7 @@ use super::{BidirectionalStream, ReceiveStream};
 /// An enum of all the possible types of QUIC streams that may be opened by a peer.
 ///
 /// The [`PeerStream`] implements the required operations described in the
-/// [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000.html#name-streams)
+/// [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000#name-streams)
 #[derive(Debug)]
 pub enum PeerStream {
     Bidirectional(BidirectionalStream),

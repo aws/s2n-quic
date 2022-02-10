@@ -20,7 +20,7 @@ use s2n_quic_core::{
 pub struct Transmissions<FlowController, Writer> {
     /// Tracking information for all data in transmission
     in_flight: Set,
-    //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.4
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-4.4
     //# Both endpoints MUST maintain flow control state
     //# for the stream in the unterminated direction until that direction
     //# enters a terminal state.
@@ -136,11 +136,11 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
         }
 
         let window_len = {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#2.2
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-2.2
             //# An endpoint MUST NOT send data on any stream without ensuring that it
             //# is within the flow control limits set by its peer.
 
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#4.1
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-4.1
             //# Senders MUST NOT send data in excess of either limit.
             self.flow_controller
                 .acquire_flow_control_window(interval.end_exclusive())

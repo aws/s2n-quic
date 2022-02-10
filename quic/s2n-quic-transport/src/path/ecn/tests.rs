@@ -163,7 +163,7 @@ fn ecn() {
         let mut controller = Controller::default();
         assert!(controller.ecn(transmission_mode, now).using_ecn());
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-13.4.2.2
         //= type=test
         //# Upon successful validation, an endpoint MAY continue to set an ECT
         //# codepoint in subsequent packets it sends, with the expectation that
@@ -178,7 +178,7 @@ fn ecn() {
             panic!("State should be Capable");
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-13.4.2.2
         //= type=test
         //# If validation fails, then the endpoint MUST disable ECN. It stops setting the ECT
         //# codepoint in IP packets that it sends, assuming that either the network path or
@@ -287,7 +287,7 @@ fn validate_already_failed() {
     assert_eq!(ValidationOutcome::Skipped, outcome);
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-13.4.2.1
 //= type=test
 //# If an ACK frame newly acknowledges a packet that the endpoint sent with
 //# either the ECT(0) or ECT(1) codepoint set, ECN validation fails if the
@@ -315,7 +315,7 @@ fn validate_ecn_counts_not_in_ack() {
     assert!(matches!(controller.state, State::Failed(_)));
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-13.4.2.1
 //= type=test
 //# ECN validation also fails if the sum of the increase in ECT(0)
 //# and ECN-CE counts is less than the number of newly acknowledged
@@ -342,7 +342,7 @@ fn validate_ecn_ce_remarking() {
     assert!(matches!(controller.state, State::Failed(_)));
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#13.4.2.1
+//= https://www.rfc-editor.org/rfc/rfc9000#section-13.4.2.1
 //= type=test
 //# ECN validation can fail if the received total count for either ECT(0) or ECT(1)
 //# exceeds the total number of packets sent with each corresponding ECT codepoint.
@@ -437,7 +437,7 @@ fn validate_ecn_decrease() {
     assert!(matches!(controller.state, State::Failed(_)));
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#A.4
+//= https://www.rfc-editor.org/rfc/rfc9000#section-A.4
 //= type=test
 //# From the "unknown" state, successful validation of the ECN counts in an ACK frame
 //# (see Section 13.4.2.1) causes the ECN state for the path to become "capable",
@@ -465,7 +465,7 @@ fn validate_no_marked_packets_acked() {
     assert_eq!(State::Unknown, controller.state);
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9002.txt#8.3
+//= https://www.rfc-editor.org/rfc/rfc9002#section-8.3
 //= type=test
 //# A sender can detect suppression of reports by marking occasional packets that it
 //# sends with an ECN-CE marking. If a packet sent with an ECN-CE marking is not
@@ -497,7 +497,7 @@ fn validate_ce_suppression_remarked_to_not_ect() {
     assert!(matches!(controller.state, State::Failed(_)));
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9002.txt#8.3
+//= https://www.rfc-editor.org/rfc/rfc9002#section-8.3
 //= type=test
 //# A sender can detect suppression of reports by marking occasional packets that it
 //# sends with an ECN-CE marking. If a packet sent with an ECN-CE marking is not

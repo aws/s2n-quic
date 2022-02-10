@@ -24,7 +24,7 @@ use s2n_codec::{
     EncoderValue,
 };
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5
 //# Retry Packet {
 //#   Header Form (1) = 1,
 //#   Fixed Bit (1) = 1,
@@ -39,7 +39,7 @@ use s2n_codec::{
 //#   Retry Integrity Tag (128),
 //# }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5
 //# a Retry packet uses a long packet header with a type value of 0x03.
 macro_rules! retry_tag {
     () => {
@@ -47,11 +47,11 @@ macro_rules! retry_tag {
     };
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5
 //#   Retry Token:  An opaque token that the server can use to validate the
 //#      client's address.
 
-//= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5
+//= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5
 //#   Retry Integrity Tag:  Defined in Section 5.8 ("Retry Packet
 //#      Integrity") of [QUIC-TLS].
 
@@ -65,7 +65,7 @@ pub struct Retry<'a> {
     pub retry_integrity_tag: &'a IntegrityTag,
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9001.txt#5.8
+//= https://www.rfc-editor.org/rfc/rfc9001#section-5.8
 //# Retry Pseudo-Packet {
 //#   ODCID Length (8),
 //#   Original Destination Connection ID (0..160),
@@ -124,7 +124,7 @@ impl<'a> Retry<'a> {
         token_format: &mut T,
         packet_buf: &mut [u8],
     ) -> Option<Range<usize>> {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.1
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.1
         //# This value MUST NOT be equal to the Destination
         //# Connection ID field of the packet sent by the client.
         debug_assert_ne!(
@@ -184,7 +184,7 @@ impl<'a> Retry<'a> {
         let mut buffer = EncoderBuffer::new(buf);
         pseudo_packet.encode(&mut buffer);
 
-        //= https://www.rfc-editor.org/rfc/rfc9001.txt#5.8
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-5.8
         //# Retry packets (see Section 17.2.5 of [QUIC-TRANSPORT]) carry a Retry
         //# Integrity Tag that provides two properties: it allows the discarding
         //# of packets that have accidentally been corrupted by the network, and
@@ -203,12 +203,12 @@ impl<'a> Retry<'a> {
         // back to the client.
 
         Self {
-            //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5
             //# The value in the Unused field is set to an arbitrary value
             //# by the server; a client MUST ignore these bits.
             // The last 4 bits are unused. They are set to 0x0f here to allow easy testing with
             // example packets provided in the RFC.
-            // https://www.rfc-editor.org/rfc/rfc9001.txt#A.2
+            // https://www.rfc-editor.org/rfc/rfc9001#section-A.2
             tag: (retry_tag!() << 4) | 0x0f,
             version: initial_packet.version,
             destination_connection_id: initial_packet.source_connection_id(),
@@ -229,7 +229,7 @@ impl<'a> Retry<'a> {
     ) -> DecoderBufferMutResult<Retry> {
         let mut decoder = HeaderDecoder::new_long(&buffer);
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2
         //# Endpoints that receive a version 1 long header
         //# with a value larger than 20 MUST drop the packet.
         let destination_connection_id = decoder.decode_destination_connection_id(&buffer)?;
@@ -246,7 +246,7 @@ impl<'a> Retry<'a> {
 
         let buffer_len = buffer.len().saturating_sub(retry::INTEGRITY_TAG_LEN);
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.2
         //# A client MUST discard a Retry packet with a zero-length
         //# Retry Token field.
         decoder_invariant!(buffer_len > 0, "Token cannot be empty");
@@ -367,7 +367,7 @@ mod tests {
             _ => panic!("expected retry packet type"),
         };
 
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.1.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.4
         //= type=test
         //# For this design to work,
         //# the token MUST be covered by integrity protection against
@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn test_decode_no_token() {
-        //= https://www.rfc-editor.org/rfc/rfc9000.txt#17.2.5.2
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.2
         //= type=test
         //# A client MUST discard a Retry packet with a zero-length
         //# Retry Token field.
