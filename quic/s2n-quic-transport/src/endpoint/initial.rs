@@ -16,7 +16,7 @@ use core::convert::TryInto;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     crypto::{tls, tls::Endpoint as TLSEndpoint, CryptoSuite, InitialKey},
-    event::{self, supervisor, IntoEvent, Subscriber as _},
+    event::{self, supervisor, ConnectionPublisher, IntoEvent, Subscriber as _},
     inet::{datagram, DatagramInfo},
     packet::initial::ProtectedInitial,
     path::Handle as _,
@@ -290,7 +290,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                         None,
                         endpoint_context.event_subscriber,
                         |publisher, _path| {
-                            use s2n_quic_core::event::ConnectionPublisher;
                             publisher.on_datagram_dropped(event::builder::DatagramDropped {
                                 len: datagram.payload_len as u16,
                                 reason: err,
@@ -360,7 +359,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 None,
                 endpoint_context.event_subscriber,
                 |publisher, _path| {
-                    use s2n_quic_core::event::{builder::ConnectionClosed, ConnectionPublisher};
+                    use s2n_quic_core::event::builder::ConnectionClosed;
                     publisher.on_connection_closed(ConnectionClosed { error });
                 },
             );
