@@ -23,7 +23,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
 
 [target.'cfg(unix)'.dependencies]
-s2n-quic = { path = "../s2n-quic", features = ["tracing-provider", "rustls", "s2n-tls"] }
+s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls", "provider-tls-s2n"] }
 
 [target.'cfg(not(unix))'.dependencies]
-s2n-quic = { path = "../s2n-quic", features = ["tracing-provider", "rustls"] }
+s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls"] }

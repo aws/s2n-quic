@@ -59,47 +59,48 @@ impl ToTokens for Output {
                 #api
 
                 #extra
+            }
 
-                #[cfg(feature = "event-tracing")]
-                pub mod tracing {
-                    use super::api;
+            #[cfg(feature = "event-tracing")]
+            pub mod tracing {
+                use super::api;
 
-                    #[derive(Clone, Debug)]
-                    pub struct Subscriber {
-                        client: tracing::Span,
-                        server: tracing::Span,
+                /// Emits events with [`tracing`](https://docs.rs/tracing)
+                #[derive(Clone, Debug)]
+                pub struct Subscriber {
+                    client: tracing::Span,
+                    server: tracing::Span,
+                }
+
+                impl Default for Subscriber {
+                    fn default() -> Self {
+                        let root = tracing::span!(target: "s2n_quic", tracing::Level::DEBUG, "s2n_quic");
+                        let client = tracing::span!(parent: root.id(), tracing::Level::DEBUG, "client");
+                        let server = tracing::span!(parent: root.id(), tracing::Level::DEBUG, "server");
+
+                        Self {
+                            client,
+                            server,
+                        }
                     }
+                }
 
-                    impl Default for Subscriber {
-                        fn default() -> Self {
-                            let root = tracing::span!(target: "s2n_quic", tracing::Level::DEBUG, "s2n_quic");
-                            let client = tracing::span!(parent: root.id(), tracing::Level::DEBUG, "client");
-                            let server = tracing::span!(parent: root.id(), tracing::Level::DEBUG, "server");
+                impl super::Subscriber for Subscriber {
+                    type ConnectionContext = tracing::Span;
 
-                            Self {
-                                client,
-                                server,
+                    fn create_connection_context(&mut self, meta: &api::ConnectionMeta, _info: &api::ConnectionInfo) -> Self::ConnectionContext {
+                        let parent = match meta.endpoint_type {
+                            api::EndpointType::Client {} => {
+                                self.client.id()
                             }
-                        }
+                            api::EndpointType::Server {} => {
+                                self.server.id()
+                            }
+                        };
+                        tracing::span!(target: "s2n_quic", parent: parent, tracing::Level::DEBUG, "conn", id = meta.id)
                     }
 
-                    impl super::Subscriber for Subscriber {
-                        type ConnectionContext = tracing::Span;
-
-                        fn create_connection_context(&mut self, meta: &api::ConnectionMeta, _info: &api::ConnectionInfo) -> Self::ConnectionContext {
-                            let parent = match meta.endpoint_type {
-                                api::EndpointType::Client {} => {
-                                    self.client.id()
-                                }
-                                api::EndpointType::Server {} => {
-                                    self.server.id()
-                                }
-                            };
-                            tracing::span!(target: "s2n_quic", parent: parent, tracing::Level::DEBUG, "conn", id = meta.id)
-                        }
-
-                        #tracing_subscriber
-                    }
+                    #tracing_subscriber
                 }
             }
 

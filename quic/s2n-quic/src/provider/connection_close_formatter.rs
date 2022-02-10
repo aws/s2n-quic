@@ -14,9 +14,6 @@ pub trait Provider: 'static {
     fn start(self) -> Result<Self::Formatter, Self::Error>;
 }
 
-#[cfg(feature = "connection-close-debug")]
-pub type Default = Development;
-#[cfg(not(feature = "connection-close-debug"))]
 pub type Default = Production;
 
 /// Implement Provider for all implementations of Formatter

@@ -3,7 +3,6 @@ WORKDIR app
 RUN cargo install cargo-chef --version 0.1.23
 COPY Cargo.toml /app
 COPY common /app/common
-COPY tls /app/tls
 COPY quic /app/quic
 RUN cargo chef prepare  --recipe-path recipe.json
 
@@ -23,7 +22,6 @@ RUN set -eux; \
 # copy sources
 COPY Cargo.toml /app
 COPY common /app/common
-COPY tls /app/tls
 COPY quic /app/quic
 
 # Copy over the cached dependencies

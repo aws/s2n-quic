@@ -1,10 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Provides TLS support for an endpoint
+
 use cfg_if::cfg_if;
 use s2n_quic_core::crypto;
 
-/// Provides TLS support for an endpoint
 pub trait Provider {
     type Server: 'static + crypto::tls::Endpoint;
     type Client: 'static + crypto::tls::Endpoint;
@@ -20,13 +21,13 @@ pub trait Provider {
 impl_provider_utils!();
 
 cfg_if! {
-    if #[cfg(feature = "default-tls-provider")] {
+    if #[cfg(feature = "provider-tls-default")] {
         pub mod default {
             pub use super::default_tls::*;
         }
-    } else if #[cfg(feature = "s2n-tls")] {
+    } else if #[cfg(feature = "provider-tls-s2n")] {
         pub use s2n_tls as default;
-    } else if #[cfg(feature = "rustls")] {
+    } else if #[cfg(feature = "provider-tls-rustls")] {
         pub use rustls as default;
     } else {
         pub mod default {
@@ -184,7 +185,7 @@ impl Provider for &str {
     }
 }
 
-#[cfg(feature = "default-tls-provider")]
+#[cfg(feature = "provider-tls-default")]
 mod default_tls {
     pub use s2n_quic_tls_default::*;
 
@@ -230,12 +231,12 @@ mod default_tls {
         }
     }
 }
-#[cfg(not(feature = "default-tls-provider"))]
+#[cfg(not(feature = "provider-tls-default"))]
 mod default_tls {
     // TODO stub out default that fails with error when started
 }
 
-#[cfg(feature = "rustls")]
+#[cfg(feature = "s2n-quic-rustls")]
 pub mod rustls {
     pub use s2n_quic_rustls::*;
 

@@ -120,7 +120,6 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
-        #[cfg(feature = "std")]
         #[inline]
         pub fn local_addr(&self) -> $crate::connection::Result<std::net::SocketAddr> {
             self.0.local_address().map(std::net::SocketAddr::from)
@@ -133,7 +132,6 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
-        #[cfg(feature = "std")]
         #[inline]
         pub fn remote_addr(&self) -> $crate::connection::Result<std::net::SocketAddr> {
             self.0.remote_address().map(std::net::SocketAddr::from)
@@ -147,9 +145,7 @@ macro_rules! impl_handle_api {
         /// // TODO
         /// ```
         #[inline]
-        pub fn server_name(
-            &self,
-        ) -> $crate::connection::Result<Option<$crate::application::ServerName>> {
+        pub fn server_name(&self) -> $crate::connection::Result<Option<$crate::server::Name>> {
             self.0.server_name()
         }
 
@@ -162,7 +158,7 @@ macro_rules! impl_handle_api {
         /// ```
         #[inline]
         #[deprecated(note = "use `server_name` instead")]
-        pub fn sni(&self) -> $crate::connection::Result<Option<$crate::application::ServerName>> {
+        pub fn sni(&self) -> $crate::connection::Result<Option<$crate::server::Name>> {
             self.server_name()
         }
 

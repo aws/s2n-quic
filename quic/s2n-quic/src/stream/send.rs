@@ -320,7 +320,6 @@ macro_rules! impl_send_stream_trait {
             }
         }
 
-        #[cfg(feature = "std")]
         impl futures::io::AsyncWrite for $name {
             fn poll_write(
                 mut self: core::pin::Pin<&mut Self>,
@@ -386,7 +385,6 @@ macro_rules! impl_send_stream_trait {
             }
         }
 
-        #[cfg(all(feature = "std", feature = "tokio"))]
         impl tokio::io::AsyncWrite for $name {
             #[inline]
             fn poll_write(

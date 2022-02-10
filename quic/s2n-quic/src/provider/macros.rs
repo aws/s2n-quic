@@ -3,7 +3,7 @@
 
 macro_rules! impl_provider_utils {
     () => {
-        /// Converts a value into a `Provider`
+        /// Converts a value into a [`Provider`]
         pub trait TryInto {
             type Provider: Provider;
             type Error: 'static + core::fmt::Display;
@@ -18,7 +18,7 @@ macro_rules! impl_provider_utils {
             fn with(self, provider: T) -> Self::Output;
         }
 
-        /// Automatically implement anything that implements `Provider`
+        /// Automatically implement anything that implements [`Provider`]
         impl<T: Provider> TryInto for T {
             type Error = core::convert::Infallible;
             type Provider = T;
