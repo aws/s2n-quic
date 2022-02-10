@@ -4,33 +4,45 @@
 use s2n_quic_transport::stream;
 
 /// A QUIC stream that is only allowed to receive data.
-///
-/// The [`ReceiveStream`] implements the required operations receive described in the
-/// [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000#name-streams)
 #[derive(Debug)]
 pub struct ReceiveStream(stream::ReceiveStream);
 
 macro_rules! impl_receive_stream_api {
     (| $stream:ident, $dispatch:ident | $dispatch_body:expr) => {
-        /// Reads the next chunk of data from the stream.
+        /// Receives a chunk of data from the stream.
         ///
         /// # Examples
         ///
-        /// ```rust
-        /// // TODO
+        /// ```rust,no_run
+        /// # async fn test() -> s2n_quic::stream::Result<()> {
+        /// #   let mut stream: s2n_quic::stream::ReceiveStream = todo!();
+        /// #
+        /// while let Some(chunk) = stream.receive().await? {
+        ///     println!("received: {:?}", chunk);
+        /// }
+        ///
+        /// println!("finished");
+        /// #
+        /// #   Ok(())
+        /// # }
         /// ```
         #[inline]
         pub async fn receive(&mut self) -> $crate::stream::Result<Option<bytes::Bytes>> {
             ::futures::future::poll_fn(|cx| self.poll_receive(cx)).await
         }
 
-        /// Poll for more data received from the remote on this stream.
+        /// Poll for a chunk of data from the stream.
         ///
-        /// # Examples
+        /// # Return value
         ///
-        /// ```rust
-        /// // TODO
-        /// ```
+        /// The function returns:
+        ///
+        /// - `Poll::Pending` if the stream is waiting to receive data from the peer. In this case,
+        ///   the caller should retry receiving after the [`Waker`](core::task::Waker) on the provided
+        ///   [`Context`](core::task::Context) is notified.
+        /// - `Poll::Ready(Ok(Some(chunk)))` if the stream is open and data was available.
+        /// - `Poll::Ready(Ok(None))` if the stream was finished and all of the data was consumed.
+        /// - `Poll::Ready(Err(e))` if the stream encountered a [`stream::Error`](crate::stream::Error).
         #[inline]
         pub fn poll_receive(
             &mut self,
@@ -49,12 +61,40 @@ macro_rules! impl_receive_stream_api {
             $dispatch_body
         }
 
-        /// Reads the next slice of chunked data from the stream.
+        /// Receives a slice of chunks of data from the stream.
+        ///
+        /// The first element in the returned tuple is the number of chunks that were received into
+        /// the provided slice. The second element is a `bool` indicating the `open` status on the
+        /// stream. If `is_open == true`, there is potentially more data to be received.
+        ///
+        /// This can be more efficient than calling [`receive`](Self::receive) for each chunk,
+        /// especially when receiving large amounts of data.
         ///
         /// # Examples
         ///
-        /// ```rust
-        /// // TODO
+        /// ```rust,no_run
+        /// # async fn test() -> s2n_quic::stream::Result<()> {
+        /// #   let mut stream: s2n_quic::stream::ReceiveStream = todo!();
+        /// #
+        /// # use bytes::Bytes;
+        /// #
+        /// loop {
+        ///     let mut chunks = [Bytes::new(), Bytes::new(), Bytes::new()];
+        ///     let (count, is_open) = stream.receive_vectored(&mut chunks).await?;
+        ///
+        ///     for chunk in &chunks[..count] {
+        ///         println!("received: {:?}", chunk);
+        ///     }
+        ///
+        ///     if !is_open {
+        ///         break;
+        ///     }
+        /// }
+        ///
+        /// println!("finished");
+        /// #
+        /// #   Ok(())
+        /// # }
         /// ```
         #[inline]
         pub async fn receive_vectored(
@@ -64,13 +104,21 @@ macro_rules! impl_receive_stream_api {
             ::futures::future::poll_fn(|cx| self.poll_receive_vectored(chunks, cx)).await
         }
 
-        /// Poll for more data received from the remote on this stream.
+        /// Polls for receiving a slice of chunks of data from the stream.
         ///
-        /// # Examples
+        /// # Return value
         ///
-        /// ```rust
-        /// // TODO
-        /// ```
+        /// The function returns:
+        ///
+        /// - `Poll::Pending` if the stream is waiting to receive data from the peer. In this case,
+        ///   the caller should retry receiving after the [`Waker`](core::task::Waker) on the provided
+        ///   [`Context`](core::task::Context) is notified.
+        /// - `Poll::Ready(Ok((count, is_open)))` if the stream received data into the slice,
+        ///   where `count` was the number of chunks received, and `is_open` indicating if the stream is
+        ///   still open. If `is_open == true`, `count` will be at least `1`. If `is_open == false`, future calls to
+        ///   [`poll_receive_vectored`](Self::poll_receive_vectored) will always return
+        ///   `Poll::Ready(Ok((0, false)))`.
+        /// - `Poll::Ready(Err(e))` if the stream encountered a [`stream::Error`](crate::stream::Error).
         #[inline]
         pub fn poll_receive_vectored(
             &mut self,
@@ -90,21 +138,31 @@ macro_rules! impl_receive_stream_api {
             $dispatch_body
         }
 
-        /// Sends a `STOP_SENDING` message to the peer. This requests the peer to
-        /// finish the `Stream` as soon as possible by issuing a `RESET` with the
-        /// provided `error_code`.
+        /// Notifies the peer to stop sending data on the stream.
         ///
-        /// Since this is merely a request to the peer to `RESET` the `Stream`, the
-        /// `Stream` will not immediately be in a `RESET` state after issuing this
-        /// API call.
+        /// This requests the peer to finish the stream as soon as possible
+        /// by issuing a [`reset`](crate::stream::SendStream::reset) with the
+        /// provided [`error_code`](crate::application::Error).
         ///
-        /// If the `Stream` had been previously reset by the peer or if all data had
-        /// already been received the API call will not trigger any action.
+        /// Since this is merely a request for the peer to reset the stream, the
+        /// stream will not immediately be in a reset state after issuing this
+        /// call.
+        ///
+        /// If the stream has already been reset by the peer or if all data has
+        /// been received, the call will not trigger any action.
         ///
         /// # Examples
         ///
-        /// ```rust
-        /// // TODO
+        /// ```rust,no_run
+        /// # async fn test() -> s2n_quic::stream::Result<()> {
+        /// #   let mut connection: s2n_quic::connection::Connection = todo!();
+        /// #
+        /// while let Some(stream) = connection.accept_receive_stream().await? {
+        ///     stream.stop_sending(123u8.into());
+        /// }
+        /// #
+        /// #   Ok(())
+        /// # }
         /// ```
         #[inline]
         pub fn stop_sending(
