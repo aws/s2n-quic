@@ -307,7 +307,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore)] // This test breaks in CI but can't be reproduced locally - https://github.com/awslabs/s2n-quic/issues/867
+    #[cfg_attr(miri, ignore)] // This test breaks in CI but can't be reproduced locally - https://github.com/aws/s2n-quic/issues/867
     fn packet_encoding_test() {
         let mut buffer = [0; MINIMUM_MTU as usize];
 

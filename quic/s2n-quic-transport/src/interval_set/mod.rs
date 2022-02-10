@@ -474,7 +474,7 @@ impl<T: IntervalBound> IntervalSet<T> {
         }
 
         // TODO optimize this to remove the allocation
-        //      https://github.com/awslabs/s2n-quic/issues/746
+        //      https://github.com/aws/s2n-quic/issues/746
         self.intervals = self.intersection_iter(other).collect();
 
         Ok(())

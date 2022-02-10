@@ -1,6 +1,6 @@
 # s2n-quic-rustls
 
-This crate integrates [rustls](https://github.com/rustls/rustls) as a [s2n-quic](https://github.com/awslabs/s2n-quic) TLS provider.
+This crate integrates [rustls](https://github.com/rustls/rustls) as a [s2n-quic](https://github.com/aws/s2n-quic) TLS provider.
 
 ## License
 

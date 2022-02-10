@@ -1,6 +1,6 @@
 # s2n-quic-tls-default
 
-This crate selects the default [s2n-quic](https://github.com/awslabs/s2n-quic) TLS provider based on platform support.
+This crate selects the default [s2n-quic](https://github.com/aws/s2n-quic) TLS provider based on platform support.
 
 ## License
 

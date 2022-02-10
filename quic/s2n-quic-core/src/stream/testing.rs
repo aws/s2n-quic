@@ -203,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore)] // This test breaks in CI but can't be reproduced locally - https://github.com/awslabs/s2n-quic/issues/867
+    #[cfg_attr(miri, ignore)] // This test breaks in CI but can't be reproduced locally - https://github.com/aws/s2n-quic/issues/867
     fn send_receive() {
         let g = (
             (1..(DEFAULT_STREAM_LEN * 16)),

@@ -591,7 +591,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         processed_packet: ProcessedPacket,
     ) -> Result<(), transport::Error>;
 
-    // TODO: Reduce arguments, https://github.com/awslabs/s2n-quic/issues/312
+    // TODO: Reduce arguments, https://github.com/aws/s2n-quic/issues/312
     #[allow(clippy::too_many_arguments)]
     fn handle_cleartext_payload<'a, Pub: event::ConnectionPublisher>(
         &mut self,

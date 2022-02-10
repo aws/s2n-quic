@@ -149,7 +149,7 @@ where
             Secrets::Waiting => {
                 if id == s2n_secret_type_t::CLIENT_EARLY_TRAFFIC_SECRET {
                     // TODO enable with 0rtt
-                    // I couldn't find a good citation but here's the issue: https://github.com/awslabs/s2n-quic/issues/301
+                    // I couldn't find a good citation but here's the issue: https://github.com/aws/s2n-quic/issues/301
                     return Ok(());
                 }
 
