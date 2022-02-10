@@ -383,14 +383,33 @@ impl ReceiveStream {
         Self(stream)
     }
 
-    impl_receive_stream_api!(|stream, dispatch| dispatch!(stream.0));
-
+    /// Returns the stream's identifier
+    ///
+    /// This value is unique to a particular connection. The format follows the same as what is
+    /// defined in the
+    /// [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000.html#name-stream-types-and-identifier).
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # async fn test() -> s2n_quic::stream::Result<()> {
+    /// #   let connection: s2n_quic::connection::Connection = todo!();
+    /// #
+    /// while let Some(stream) = connection.accept_receive_stream().await? {
+    ///     println!("New stream's id: {}", stream.id());
+    /// }
+    /// #
+    /// #   Ok(())
+    /// # }
+    /// ```
     #[inline]
     pub fn id(&self) -> u64 {
         self.0.id().into()
     }
 
     impl_connection_api!(|stream| crate::connection::Handle(stream.0.connection().clone()));
+
+    impl_receive_stream_api!(|stream, dispatch| dispatch!(stream.0));
 }
 
 impl_splittable_stream_trait!(ReceiveStream, |stream| (Some(stream), None));

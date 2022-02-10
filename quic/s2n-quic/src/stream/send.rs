@@ -4,33 +4,42 @@
 use s2n_quic_transport::stream;
 
 /// A QUIC stream that is only allowed to send data.
-///
-/// The [`SendStream`] implements the required send operations described in the
-/// [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000#name-streams)
 #[derive(Debug)]
 pub struct SendStream(stream::SendStream);
 
 macro_rules! impl_send_stream_api {
     (| $stream:ident, $dispatch:ident | $dispatch_body:expr) => {
-        /// Pushes data onto the stream.
+        /// Enqueues a chunk of data for sending it towards the peer.
         ///
         /// # Examples
         ///
-        /// ```rust
-        /// // TODO
+        /// ```rust,no_run
+        /// # async fn test() -> s2n_quic::stream::Result<()> {
+        /// #   let stream: s2n_quic::stream::SendStream = todo!();
+        /// #
+        /// let data = bytes::Bytes::from_static(&[1, 2, 3, 4]);
+        /// stream.send(data).await?;
+        /// #
+        /// #   Ok(())
+        /// # }
         /// ```
         #[inline]
         pub async fn send(&mut self, mut data: bytes::Bytes) -> $crate::stream::Result<()> {
             ::futures::future::poll_fn(|cx| self.poll_send(&mut data, cx)).await
         }
 
-        /// Polls sending a slice of chunked data on the stream
+        /// Enqueues a chunk of data for sending it towards the peer.
         ///
-        /// # Examples
+        /// # Return value
         ///
-        /// ```rust
-        /// // TODO
-        /// ```
+        /// The function returns:
+        ///
+        /// - `Poll::Pending` if the stream's send buffer capacity is currently exhausted. In this case,
+        ///   the caller should retry sending after the [`Waker`](core::task::Waker) on the provided
+        ///   [`Context`](core::task::Context) is notified.
+        /// - `Poll::Ready(Ok(()))` if the data was enqueued for sending. The provided `chunk` will
+        ///   be replaced with an empty [`Bytes`](bytes::Bytes).
+        /// - `Poll::Ready(Err(e))` if the stream encountered a [`stream::Error`](crate::stream::Error).
         #[inline]
         pub fn poll_send(
             &mut self,
@@ -50,12 +59,22 @@ macro_rules! impl_send_stream_api {
             $dispatch_body
         }
 
-        /// Pushes a slice of chunked data onto the stream.
+        /// Enqueues a slice of chunks of data for sending it towards the peer.
         ///
         /// # Examples
         ///
-        /// ```rust
-        /// // TODO
+        /// ```rust,no_run
+        /// # async fn test() -> s2n_quic::stream::Result<()> {
+        /// #   let stream: s2n_quic::stream::SendStream = todo!();
+        /// #
+        /// let mut data1 = bytes::Bytes::from_static(&[1, 2, 3]);
+        /// let mut data2 = bytes::Bytes::from_static(&[4, 5, 6]);
+        /// let mut data3 = bytes::Bytes::from_static(&[7, 8, 9]);
+        /// let chunks = [data1, data2, data3];
+        /// stream.send_vectored(&mut chunks).await?;
+        /// #
+        /// #   Ok(())
+        /// # }
         /// ```
         #[inline]
         pub async fn send_vectored(
@@ -75,13 +94,20 @@ macro_rules! impl_send_stream_api {
             .await
         }
 
-        /// Polls sending a slice of chunked data on the stream
+        /// Polls enqueueing a slice of chunks of data for sending it towards the peer.
         ///
-        /// # Examples
+        /// # Return value
         ///
-        /// ```rust
-        /// // TODO
-        /// ```
+        /// The function returns:
+        ///
+        /// - `Poll::Pending` if the stream's send buffer capacity is currently exhausted. In this case,
+        ///   the caller should retry sending after the [`Waker`](core::task::Waker) on the provided
+        ///   [`Context`](core::task::Context) is notified.
+        /// - `Poll::Ready(Ok(count))` if one or more chunks of data were enqueued for sending. Any of the
+        ///   consumed [`Bytes`](bytes::Bytes) will be replaced with an empty [`Bytes`](bytes::Bytes).
+        ///   If `count` does not equal the total number of chunks, the stream will store the
+        ///   [Waker](core::task::Waker) and notify the task once more capacity is available.
+        /// - `Poll::Ready(Err(e))` if the stream encountered a [`stream::Error`](crate::stream::Error).
         #[inline]
         pub fn poll_send_vectored(
             &mut self,
@@ -101,15 +127,19 @@ macro_rules! impl_send_stream_api {
             $dispatch_body
         }
 
-        /// Polls send availability status of the stream.
+        /// Polls send readiness for the given stream.
         ///
-        /// This method _must_ be called before calling `Self::send_data`.
+        /// This method _must_ be called before calling [`send_data`](Self::send_data).
         ///
-        /// # Examples
+        /// # Return value
         ///
-        /// ```rust
-        /// // TODO
-        /// ```
+        /// The function returns:
+        /// - `Poll::Pending` if the stream's send buffer capacity is currently exhausted. In this case,
+        ///   the caller should retry sending after the [`Waker`](core::task::Waker) on the provided
+        ///   [`Context`](core::task::Context) is notified.
+        /// - `Poll::Ready(Ok(available_bytes))` if the stream is ready to send data, where
+        ///   `available_bytes` is how many bytes the stream can currently accept.
+        /// - `Poll::Ready(Err(e))` if the stream encountered a [`stream::Error`](crate::stream::Error).
         #[inline]
         pub fn poll_send_ready(
             &mut self,
@@ -128,23 +158,25 @@ macro_rules! impl_send_stream_api {
             $dispatch_body
         }
 
-        /// Sends data on the stream.
+        /// Sends data on the stream without blocking the task.
         ///
-        /// `Self::poll_send_ready` _must_ be called before calling this method.
+        /// [`poll_send_ready`](Self::poll_send_ready) _must_ be called before calling this method.
         ///
-        /// # Examples
+        /// # Return value
         ///
-        /// ```rust
-        /// // TODO
-        /// ```
+        /// The function returns:
+        /// - `Ok(())` if the data was enqueued for sending.
+        /// - `Err(SendingBlocked)` if the stream did not have enough capacity to enqueue the
+        ///   `chunk`.
+        /// - `Err(e)` if the stream encountered a [`stream::Error`](crate::stream::Error).
         #[inline]
-        pub fn send_data(&mut self, data: bytes::Bytes) -> $crate::stream::Result<()> {
+        pub fn send_data(&mut self, chunk: bytes::Bytes) -> $crate::stream::Result<()> {
             macro_rules! $dispatch {
                 () => {
                     Err($crate::stream::Error::NonWritable)
                 };
                 ($variant: expr) => {
-                    $variant.send_data(data)
+                    $variant.send_data(chunk)
                 };
             }
 
@@ -152,25 +184,38 @@ macro_rules! impl_send_stream_api {
             $dispatch_body
         }
 
-        /// Flushes the stream and waits for the peer to receive all outstanding data
+        /// Flushes the stream and waits for the peer to receive all outstanding data.
         ///
         /// # Examples
         ///
-        /// ```rust
-        /// // TODO
+        /// ```rust,no_run
+        /// # async fn test() -> s2n_quic::stream::Result<()> {
+        /// #   let stream: s2n_quic::stream::SendStream = todo!();
+        /// #
+        /// let data = bytes::Bytes::from_static(&[1, 2, 3, 4]);
+        /// stream.send(data).await?;
+        /// stream.flush().await?;
+        /// // at this point, the peer has received all of the `data`
+        /// #
+        /// #   Ok(())
+        /// # }
         /// ```
         #[inline]
         pub async fn flush(&mut self) -> $crate::stream::Result<()> {
             ::futures::future::poll_fn(|cx| self.poll_flush(cx)).await
         }
 
-        /// Polls flushing the stream and waits for the peer to receive all outstanding data
+        /// Polls flushing the stream and waits for the peer to receive all outstanding data.
         ///
-        /// # Examples
+        /// # Return value
         ///
-        /// ```rust
-        /// // TODO
-        /// ```
+        /// The function returns:
+        /// - `Poll::Pending` if the stream's send buffer is still being sent. In this case,
+        ///   the caller should retry sending after the [`Waker`](core::task::Waker) on the provided
+        ///   [`Context`](core::task::Context) is notified.
+        /// - `Poll::Ready(Ok(()))` if the send buffer was completely flushed and acknowledged by
+        ///   the peer.
+        /// - `Poll::Ready(Err(e))` if the stream encountered a [`stream::Error`](crate::stream::Error).
         #[inline]
         pub fn poll_flush(
             &mut self,
@@ -189,16 +234,20 @@ macro_rules! impl_send_stream_api {
             $dispatch_body
         }
 
-        /// Finishes and closes the stream.
+        /// Marks the stream as finished.
         ///
         /// This method returns immediately without notifying the caller that all of the outstanding
-        /// data has been received by the peer. An application can use `close` to accomplish this.
+        /// data has been received by the peer. An application wanting to both [`finish`](Self::finish)
+        /// and [`flush`](Self::flush) the outstanding data can use [`close`](Self::close) to accomplish
+        /// this.
         ///
-        /// # Examples
+        /// __NOTE__: This method will be called when the [`stream`](Self) is dropped.
         ///
-        /// ```rust
-        /// // TODO
-        /// ```
+        /// # Return value
+        ///
+        /// The function returns:
+        /// - `Ok(())` if the stream was finished successfully.
+        /// - `Err(e)` if the stream encountered a [`stream::Error`](crate::stream::Error).
         #[inline]
         pub fn finish(&mut self) -> $crate::stream::Result<()> {
             macro_rules! $dispatch {
@@ -214,25 +263,41 @@ macro_rules! impl_send_stream_api {
             $dispatch_body
         }
 
-        /// Finishes the stream and waits for the peer to receive all outstanding data
+        /// Marks the stream as finished and waits for all outstanding data to be acknowledged.
         ///
         /// # Examples
         ///
-        /// ```rust
-        /// // TODO
+        /// ```rust,no_run
+        /// # async fn test() -> s2n_quic::stream::Result<()> {
+        /// #   let stream: s2n_quic::stream::SendStream = todo!();
+        /// #
+        /// let data = bytes::Bytes::from_static(&[1, 2, 3, 4]);
+        /// stream.send(data).await?;
+        /// stream.close().await?;
+        /// // at this point, the peer has received all of the `data` and has acknowledged the
+        /// // stream being finished.
+        /// #
+        /// #   Ok(())
+        /// # }
         /// ```
         #[inline]
         pub async fn close(&mut self) -> $crate::stream::Result<()> {
             ::futures::future::poll_fn(|cx| self.poll_close(cx)).await
         }
 
-        /// Polls finishing the stream and waits for the peer to receive all outstanding data
+        /// Marks the stream as finished and polls for all outstanding data to be acknowledged.
         ///
-        /// # Examples
+        /// This method is equivalent to calling [`finish`](Self::finish) and [`flush`](Self::flush).
         ///
-        /// ```rust
-        /// // TODO
-        /// ```
+        /// # Return value
+        ///
+        /// The function returns:
+        /// - `Poll::Pending` if the stream's send buffer is still being sent. In this case,
+        ///   the caller should retry sending after the [`Waker`](core::task::Waker) on the provided
+        ///   [`Context`](core::task::Context) is notified.
+        /// - `Poll::Ready(Ok(()))` if the send buffer was completely flushed and acknowledged by
+        ///   the peer.
+        /// - `Poll::Ready(Err(e))` if the stream encountered a [`stream::Error`](crate::stream::Error).
         #[inline]
         pub fn poll_close(
             &mut self,
@@ -251,16 +316,18 @@ macro_rules! impl_send_stream_api {
             $dispatch_body
         }
 
-        /// Initiates a `RESET` of the `Stream`
+        /// Closes the stream with an [error code](crate::application::Error).
         ///
-        /// This will trigger sending a `RESET` message to the peer, which will
-        /// contain the given error code.
+        /// After calling this, the stream is closed and will not accept any additional data to be
+        /// sent to the peer. The peer will also be notified of the [error
+        /// code](crate::application::Error).
         ///
-        /// # Examples
+        /// # Return value
         ///
-        /// ```rust
-        /// // TODO
-        /// ```
+        /// The function returns:
+        /// - `Ok(())` if the stream was reset successfully.
+        /// - `Err(e)` if the stream encountered a [`stream::Error`](crate::stream::Error). The
+        ///   stream may have been reset previously, or the connection itself was closed.
         #[inline]
         pub fn reset(
             &mut self,
@@ -456,14 +523,32 @@ impl SendStream {
         Self(stream)
     }
 
-    impl_send_stream_api!(|stream, dispatch| dispatch!(stream.0));
-
+    /// Returns the stream's identifier
+    ///
+    /// This value is unique to a particular connection. The format follows the same as what is
+    /// defined in the
+    /// [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000.html#name-stream-types-and-identifier).
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # async fn test() -> s2n_quic::stream::Result<()> {
+    /// #   let connection: s2n_quic::connection::Connection = todo!();
+    /// #
+    /// let stream = connection.open_send_stream().await?;
+    /// println!("New stream's id: {}", stream.id());
+    /// #
+    /// #   Ok(())
+    /// # }
+    /// ```
     #[inline]
     pub fn id(&self) -> u64 {
         self.0.id().into()
     }
 
     impl_connection_api!(|stream| crate::connection::Handle(stream.0.connection().clone()));
+
+    impl_send_stream_api!(|stream, dispatch| dispatch!(stream.0));
 }
 
 impl_splittable_stream_trait!(SendStream, |stream| (None, Some(stream)));
