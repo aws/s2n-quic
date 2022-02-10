@@ -80,7 +80,7 @@ impl Io {
     pub fn start<E: Endpoint<PathHandle = PathHandle>>(
         self,
         mut endpoint: E,
-    ) -> io::Result<tokio::task::JoinHandle<()>> {
+    ) -> io::Result<(tokio::task::JoinHandle<()>, SocketAddress)> {
         let Builder {
             handle,
             rx_socket,
@@ -298,6 +298,8 @@ impl Io {
             endpoint,
         };
 
+        let local_addr = instance.rx_socket.local_addr()?.into();
+
         let task = handle.spawn(async move {
             if let Err(err) = instance.event_loop().await {
                 let debug = format!("A fatal IO error occurred ({:?}): {}", err.kind(), err);
@@ -311,7 +313,7 @@ impl Io {
 
         drop(guard);
 
-        Ok(task)
+        Ok((task, local_addr))
     }
 }
 
@@ -907,7 +909,13 @@ mod tests {
 
         let endpoint = TestEndpoint::new(addr.into());
 
-        io.start(endpoint)?.await?;
+        let (task, local_addr) = io.start(endpoint)?;
+
+        let local_addr: std::net::SocketAddr = local_addr.into();
+
+        assert_eq!(local_addr, addr);
+
+        task.await?;
 
         Ok(())
     }

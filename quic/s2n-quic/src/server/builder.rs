@@ -314,7 +314,6 @@ impl<Providers: ServerProviders> Builder<Providers> {
     /// # }
     /// ```
     pub fn start(self) -> Result<Server, StartError> {
-        let acceptor = self.0.build().start()?;
-        Ok(Server(acceptor))
+        self.0.build().start()
     }
 }

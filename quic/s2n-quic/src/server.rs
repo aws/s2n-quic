@@ -16,7 +16,10 @@ pub use providers::*;
 pub use s2n_quic_core::application::ServerName as Name;
 
 /// A QUIC server endpoint, capable of accepting connections
-pub struct Server(Acceptor);
+pub struct Server {
+    acceptor: Acceptor,
+    local_addr: s2n_quic_core::inet::SocketAddress,
+}
 
 impl fmt::Debug for Server {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -109,7 +112,7 @@ impl Server {
     /// // TODO
     /// ```
     pub fn poll_accept(&mut self, cx: &mut Context) -> Poll<Option<Connection>> {
-        match self.0.poll_accept(cx) {
+        match self.acceptor.poll_accept(cx) {
             Poll::Ready(Some(connection)) => Poll::Ready(Some(Connection::new(connection))),
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
@@ -136,8 +139,7 @@ impl Server {
     /// # }
     /// ```
     pub fn local_addr(&self) -> Result<std::net::SocketAddr, std::io::Error> {
-        // TODO: Return the actual local address
-        Ok("0.0.0.0:0".parse().unwrap())
+        Ok(self.local_addr.into())
     }
 }
 

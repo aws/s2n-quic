@@ -6,7 +6,7 @@ use core::marker::PhantomData;
 use s2n_quic_core::{connection::id::Generator, crypto, path};
 use s2n_quic_transport::{
     connection,
-    endpoint::{self, handle::Connector},
+    endpoint::{self},
     stream,
 };
 
@@ -54,7 +54,7 @@ impl<
         Tls,
     >
 {
-    pub fn start(self) -> Result<Connector, StartError> {
+    pub fn start(self) -> Result<Client, StartError> {
         let Self {
             congestion_controller,
             connection_close_formatter,
@@ -114,9 +114,12 @@ impl<
         let (endpoint, connector) = endpoint::Endpoint::new_client(endpoint_config);
 
         // Start the IO last
-        io.start(endpoint).map_err(StartError::new)?;
+        let local_addr = io.start(endpoint).map_err(StartError::new)?;
 
-        Ok(connector)
+        Ok(Client {
+            connector,
+            local_addr,
+        })
     }
 }
 

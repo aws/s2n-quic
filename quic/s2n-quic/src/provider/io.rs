@@ -3,7 +3,7 @@
 
 //! Provides IO support for an endpoint
 
-use s2n_quic_core::{endpoint::Endpoint, path::Handle as PathHandle};
+use s2n_quic_core::{endpoint::Endpoint, inet::SocketAddress, path::Handle as PathHandle};
 use std::io;
 
 pub trait Provider: 'static {
@@ -13,7 +13,7 @@ pub trait Provider: 'static {
     fn start<E: Endpoint<PathHandle = Self::PathHandle>>(
         self,
         endpoint: E,
-    ) -> Result<(), Self::Error>;
+    ) -> Result<SocketAddress, Self::Error>;
 }
 
 pub mod tokio;
