@@ -4,9 +4,6 @@
 use super::{BidirectionalStream, ReceiveStream};
 
 /// An enum of all the possible types of QUIC streams that may be opened by a peer.
-///
-/// The [`PeerStream`] implements the required operations described in the
-/// [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000#name-streams)
 #[derive(Debug)]
 pub enum PeerStream {
     Bidirectional(BidirectionalStream),
@@ -14,6 +11,39 @@ pub enum PeerStream {
 }
 
 impl PeerStream {
+    /// Returns the stream's identifier
+    ///
+    /// This value is unique to a particular connection. The format follows the same as what is
+    /// defined in the
+    /// [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000.html#name-stream-types-and-identifier).
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # async fn test() -> s2n_quic::stream::Result<()> {
+    /// #   let connection: s2n_quic::connection::Connection = todo!();
+    /// #
+    /// use s2n_quic::stream::Type;
+    ///
+    /// while let Some(stream) = connection.accept().await? {
+    ///     println!("New stream's id: {}", stream.id());
+    /// }
+    /// #
+    /// #   Ok(())
+    /// # }
+    /// ```
+    pub fn id(&self) -> u64 {
+        match self {
+            Self::Bidirectional(stream) => stream.id(),
+            Self::Receive(stream) => stream.id(),
+        }
+    }
+
+    impl_connection_api!(|stream| match stream {
+        PeerStream::Bidirectional(stream) => stream.connection(),
+        PeerStream::Receive(stream) => stream.connection(),
+    });
+
     impl_receive_stream_api!(|stream, dispatch| match stream {
         PeerStream::Bidirectional(stream) => dispatch!(stream),
         PeerStream::Receive(stream) => dispatch!(stream),
@@ -25,11 +55,6 @@ impl PeerStream {
     });
 
     impl_splittable_stream_api!();
-
-    impl_connection_api!(|stream| match stream {
-        PeerStream::Bidirectional(stream) => stream.connection(),
-        PeerStream::Receive(stream) => stream.connection(),
-    });
 }
 
 impl_receive_stream_trait!(PeerStream, |stream, dispatch| match stream {

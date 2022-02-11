@@ -12,21 +12,54 @@ pub trait SplittableStream {
     ///
     /// # Examples
     ///
-    /// ```rust
-    /// // TODO
+    /// ```rust,no_run
+    /// # use bytes::Bytes;
+    /// # async fn test() -> s2n_quic::stream::Result<()> {
+    /// #   let connection: s2n_quic::connection::Connection = todo!();
+    /// #
+    /// let stream = connection.open_bidirectional_stream().await?;
+    /// let (recv, send) = s2n_quic::stream::SplittableStream::split(stream);
+    /// let mut recv = recv.expect("bidirectional streams have receiving sides");
+    /// let mut send = send.expect("bidirectional streams have sending sides");
+    ///
+    /// tokio::spawn(async move {
+    ///     let _ = send.send(Bytes::from_static(&[1, 2, 3])).await;
+    /// });
+    ///
+    /// while let Some(chunk) = recv.receive().await? {
+    ///     println!("received: {:?}", chunk);
+    /// }
+    /// #
+    /// #   Ok(())
+    /// # }
     /// ```
     fn split(self) -> (Option<ReceiveStream>, Option<SendStream>);
 }
 
 macro_rules! impl_splittable_stream_api {
     () => {
-        /// Splits the stream into [`crate::stream::ReceiveStream`] and [`crate::stream::SendStream`] halves
+        /// Splits the stream into [`ReceiveStream`](crate::stream::ReceiveStream) and
+        /// [`SendStream`](crate::stream::SendStream) halves
         ///
         /// # Examples
         ///
-        /// ```rust
-        /// // TODO
+        /// ```rust,no_run
+        /// # async fn test() -> s2n_quic::stream::Result<()> {
+        /// # let stream: s2n_quic::stream::Stream = todo!();
+        /// #
+        /// let (recv, send) = stream.split();
+        ///
+        /// if let Some(recv) = recv {
+        ///    // the stream has a receive half
+        /// }
+        ///
+        /// if let Some(send) = send {
+        ///    // the stream has a send half
+        /// }
+        /// #   Ok(())
+        /// # }
         /// ```
+        #[inline]
         pub fn split(
             self,
         ) -> (
@@ -41,6 +74,7 @@ macro_rules! impl_splittable_stream_api {
 macro_rules! impl_splittable_stream_trait {
     ($name:ident, | $self:ident | $convert:expr) => {
         impl $crate::stream::SplittableStream for $name {
+            #[inline]
             fn split(
                 self,
             ) -> (
