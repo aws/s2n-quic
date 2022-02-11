@@ -4,7 +4,6 @@
 use crate::{
     event::{api::SocketAddress, IntoEvent},
     inet,
-    time::Duration,
 };
 
 /// Outcome describes how the library should proceed on a connection attempt. The implementor will
@@ -16,14 +15,32 @@ pub enum Outcome {
     /// Allow the connection to continue
     Allow,
 
-    /// Defer the connection by sending a Retry packet after a `delay`
-    Retry { delay: Duration },
+    /// Defer the connection by sending a Retry packet
+    ///
+    /// Use `Outcome::retry()` to construct this variant
+    #[non_exhaustive]
+    Retry,
 
     /// Silently drop the connection attempt
     Drop,
 
-    /// Cleanly close the connection after a `delay`
-    Close { delay: Duration },
+    /// Cleanly close the connection
+    ///
+    /// Use `Outcome::close()` to construct this variant
+    #[non_exhaustive]
+    Close,
+}
+
+impl Outcome {
+    /// Defer the connection by sending a Retry packet
+    pub fn retry() -> Self {
+        Self::Retry
+    }
+
+    /// Cleanly close the connection
+    pub fn close() -> Self {
+        Self::Close
+    }
 }
 
 /// A ConnectionAttempt holds information about the state of endpoint receiving a connect, along
@@ -75,7 +92,7 @@ pub trait Limiter: 'static + Send {
     /// impl Limiter for MyEndpointLimits {
     ///    fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome {
     ///        if info.inflight_handshakes > self.handshake_limit {
-    ///            Outcome::Retry { delay: self.delay }
+    ///            Outcome::retry()
     ///        } else {
     ///            Outcome::Allow
     ///        }

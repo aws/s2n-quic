@@ -348,7 +348,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         match outcome {
             Outcome::Allow => Some(()),
-            Outcome::Retry { delay: _ } => {
+            Outcome::Retry { .. } => {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.2
                 //# A server can also use a Retry packet to defer the state and
                 //# processing costs of connection establishment.  Requiring the server
@@ -376,7 +376,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
                 None
             }
-            Outcome::Close { delay: _ } => {
+            Outcome::Close { .. } => {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.2
                 //= type=TODO
                 //= tracking-issue=270
