@@ -11,6 +11,14 @@ macro_rules! impl_receive_stream_api {
     (| $stream:ident, $dispatch:ident | $dispatch_body:expr) => {
         /// Receives a chunk of data from the stream.
         ///
+        /// # Return value
+        ///
+        /// The function returns:
+        ///
+        /// - `Ok(Some(chunk))` if the stream is open and data was available.
+        /// - `Ok(None)` if the stream was finished and all of the data was consumed.
+        /// - `Err(e)` if the stream encountered a [`stream::Error`](crate::stream::Error).
+        ///
         /// # Examples
         ///
         /// ```rust,no_run
@@ -63,12 +71,19 @@ macro_rules! impl_receive_stream_api {
 
         /// Receives a slice of chunks of data from the stream.
         ///
-        /// The first element in the returned tuple is the number of chunks that were received into
-        /// the provided slice. The second element is a `bool` indicating the `open` status on the
-        /// stream. If `is_open == true`, there is potentially more data to be received.
-        ///
         /// This can be more efficient than calling [`receive`](Self::receive) for each chunk,
         /// especially when receiving large amounts of data.
+        ///
+        /// # Return value
+        ///
+        /// The function returns:
+        ///
+        /// - `Ok((count, is_open))` if the stream received data into the slice,
+        ///   where `count` was the number of chunks received, and `is_open` indicating if the stream is
+        ///   still open. If `is_open == true`, `count` will be at least `1`. If `is_open == false`, future calls to
+        ///   [`receive_vectored`](Self::receive_vectored) will always return
+        ///   `Ok((0, false))`.
+        /// - `Err(e)` if the stream encountered a [`stream::Error`](crate::stream::Error).
         ///
         /// # Examples
         ///
@@ -150,6 +165,13 @@ macro_rules! impl_receive_stream_api {
         ///
         /// If the stream has already been reset by the peer or if all data has
         /// been received, the call will not trigger any action.
+        ///
+        /// # Return value
+        ///
+        /// The function returns:
+        ///
+        /// - `Ok(())` if the stop sending message was enqueued for the peer.
+        /// - `Err(e)` if the stream encountered a [`stream::Error`](crate::stream::Error).
         ///
         /// # Examples
         ///
