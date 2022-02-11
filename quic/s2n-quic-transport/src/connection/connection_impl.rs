@@ -1044,8 +1044,16 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Handles all external wakeups on the [`Connection`].
-    fn on_wakeup(&mut self, _timestamp: Timestamp) -> Result<(), connection::Error> {
+    fn on_wakeup(
+        &mut self,
+        timestamp: Timestamp,
+        subscriber: &mut Config::EventSubscriber,
+    ) -> Result<(), connection::Error> {
+        // reset the queued state first so that new wakeup request are not missed
         self.wakeup_handle.wakeup_handled();
+
+        // check if crypto progress can be made
+        self.update_crypto_state(timestamp, subscriber)?;
 
         // return an error if the application set one
         self.error?;

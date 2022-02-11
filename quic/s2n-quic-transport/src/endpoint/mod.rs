@@ -209,7 +209,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                     }
                 };
 
-                if let Err(error) = conn.on_wakeup(timestamp) {
+                if let Err(error) = conn.on_wakeup(timestamp, endpoint_context.event_subscriber) {
                     conn.close(
                         error,
                         endpoint_context.connection_close_formatter,
