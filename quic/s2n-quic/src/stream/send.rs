@@ -11,6 +11,13 @@ macro_rules! impl_send_stream_api {
     (| $stream:ident, $dispatch:ident | $dispatch_body:expr) => {
         /// Enqueues a chunk of data for sending it towards the peer.
         ///
+        /// # Return value
+        ///
+        /// The function returns:
+        ///
+        /// - `Ok(())` if the data was enqueued for sending.
+        /// - `Err(e)` if the stream encountered a [`stream::Error`](crate::stream::Error).
+        ///
         /// # Examples
         ///
         /// ```rust,no_run
@@ -60,6 +67,14 @@ macro_rules! impl_send_stream_api {
         }
 
         /// Enqueues a slice of chunks of data for sending it towards the peer.
+        ///
+        /// # Return value
+        ///
+        /// The function returns:
+        ///
+        /// - `Ok(())` if all of the chunks of data were enqueued for sending. Each of the
+        ///   consumed [`Bytes`](bytes::Bytes) will be replaced with an empty [`Bytes`](bytes::Bytes).
+        /// - `Err(e)` if the stream encountered a [`stream::Error`](crate::stream::Error).
         ///
         /// # Examples
         ///
@@ -186,6 +201,13 @@ macro_rules! impl_send_stream_api {
 
         /// Flushes the stream and waits for the peer to receive all outstanding data.
         ///
+        /// # Return value
+        ///
+        /// The function returns:
+        /// - `Ok(())` if the send buffer was completely flushed and acknowledged by
+        ///   the peer.
+        /// - `Err(e)` if the stream encountered a [`stream::Error`](crate::stream::Error).
+        ///
         /// # Examples
         ///
         /// ```rust,no_run
@@ -264,6 +286,15 @@ macro_rules! impl_send_stream_api {
         }
 
         /// Marks the stream as finished and waits for all outstanding data to be acknowledged.
+        ///
+        /// This method is equivalent to calling [`finish`](Self::finish) and [`flush`](Self::flush).
+        ///
+        /// # Return value
+        ///
+        /// The function returns:
+        /// - `Ok(())` if the send buffer was completely flushed and acknowledged by
+        ///   the peer.
+        /// - `Err(e)` if the stream encountered a [`stream::Error`](crate::stream::Error).
         ///
         /// # Examples
         ///
