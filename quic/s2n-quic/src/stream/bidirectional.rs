@@ -3,7 +3,7 @@
 
 use s2n_quic_transport::stream::Stream;
 
-/// An QUIC stream that may both send and receive data.
+/// A QUIC stream that may send and receive data.
 #[derive(Debug)]
 pub struct BidirectionalStream(Stream);
 
