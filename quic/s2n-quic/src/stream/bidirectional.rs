@@ -4,9 +4,6 @@
 use s2n_quic_transport::stream::Stream;
 
 /// An QUIC stream that may both send and receive data.
-///
-/// The [`BidirectionalStream`] implements the required send and receive operations described in the
-/// [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000#name-streams)
 #[derive(Debug)]
 pub struct BidirectionalStream(Stream);
 
@@ -15,14 +12,57 @@ impl BidirectionalStream {
         Self(stream)
     }
 
-    impl_receive_stream_api!(|stream, call| call!(stream.0));
-
-    impl_send_stream_api!(|stream, call| call!(stream.0));
-
+    /// Returns the stream's identifier
+    ///
+    /// This value is unique to a particular connection. The format follows the same as what is
+    /// defined in the
+    /// [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000.html#name-stream-types-and-identifier).
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # async fn test() -> s2n_quic::stream::Result<()> {
+    /// #   let connection: s2n_quic::connection::Connection = todo!();
+    /// #
+    /// let stream = connection.open_send_stream().await?;
+    /// println!("New stream's id: {}", stream.id());
+    /// #
+    /// #   Ok(())
+    /// # }
+    /// ```
     pub fn id(&self) -> u64 {
         self.0.id().into()
     }
 
+    impl_connection_api!(|stream| crate::connection::Handle(stream.0.connection().clone()));
+
+    impl_receive_stream_api!(|stream, call| call!(stream.0));
+
+    impl_send_stream_api!(|stream, call| call!(stream.0));
+
+    /// Splits the stream into [`ReceiveStream`] and [`SendStream`] halves
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use bytes::Bytes;
+    /// # async fn test() -> s2n_quic::stream::Result<()> {
+    /// #   let connection: s2n_quic::connection::Connection = todo!();
+    /// #
+    /// let stream = connection.open_bidirectional_stream().await?;
+    /// let (recv, mut send) = stream.split();
+    ///
+    /// tokio::spawn(async move {
+    ///     let _ = send.send(Bytes::from_static(&[1, 2, 3])).await;
+    /// });
+    ///
+    /// while let Some(chunk) = recv.receive().await? {
+    ///     println!("received: {:?}", chunk);
+    /// }
+    /// #
+    /// #   Ok(())
+    /// # }
+    /// ```
     pub fn split(self) -> (crate::stream::ReceiveStream, crate::stream::SendStream) {
         let (recv, send) = self.0.split();
         (
@@ -30,8 +70,6 @@ impl BidirectionalStream {
             crate::stream::SendStream::new(send),
         )
     }
-
-    impl_connection_api!(|stream| crate::connection::Handle(stream.0.connection().clone()));
 }
 
 impl_receive_stream_trait!(BidirectionalStream, |stream, call| call!(stream.0));

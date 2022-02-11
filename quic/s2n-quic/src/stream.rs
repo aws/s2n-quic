@@ -27,9 +27,6 @@ pub use splittable::*;
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 /// An enum of all the possible types of QUIC streams.
-///
-/// The [`Stream`] implements the required operations described in the
-/// [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000#name-streams)
 #[derive(Debug)]
 pub enum Stream {
     Bidirectional(BidirectionalStream),
@@ -38,6 +35,42 @@ pub enum Stream {
 }
 
 impl Stream {
+    /// Returns the stream's identifier
+    ///
+    /// This value is unique to a particular connection. The format follows the same as what is
+    /// defined in the
+    /// [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000.html#name-stream-types-and-identifier).
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # async fn test() -> s2n_quic::stream::Result<()> {
+    /// #   let connection: s2n_quic::connection::Connection = todo!();
+    /// #
+    /// use s2n_quic::stream::Stream;
+    ///
+    /// let stream = connection.open_bidirectional_stream().await?;
+    /// let stream: Stream = stream.into();
+    /// println!("New stream's id: {}", stream.id());
+    /// #
+    /// #   Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    pub fn id(&self) -> u64 {
+        match self {
+            Self::Bidirectional(stream) => stream.id(),
+            Self::Receive(stream) => stream.id(),
+            Self::Send(stream) => stream.id(),
+        }
+    }
+
+    impl_connection_api!(|stream| match stream {
+        Stream::Bidirectional(stream) => stream.connection(),
+        Stream::Receive(stream) => stream.connection(),
+        Stream::Send(stream) => stream.connection(),
+    });
+
     impl_receive_stream_api!(|stream, dispatch| match stream {
         Stream::Bidirectional(stream) => dispatch!(stream),
         Stream::Receive(stream) => dispatch!(stream),
@@ -50,22 +83,7 @@ impl Stream {
         Stream::Send(stream) => dispatch!(stream),
     });
 
-    #[inline]
-    pub fn id(&self) -> u64 {
-        match self {
-            Self::Bidirectional(stream) => stream.id(),
-            Self::Receive(stream) => stream.id(),
-            Self::Send(stream) => stream.id(),
-        }
-    }
-
     impl_splittable_stream_api!();
-
-    impl_connection_api!(|stream| match stream {
-        Stream::Bidirectional(stream) => stream.connection(),
-        Stream::Receive(stream) => stream.connection(),
-        Stream::Send(stream) => stream.connection(),
-    });
 }
 
 impl_receive_stream_trait!(Stream, |stream, dispatch| match stream {
