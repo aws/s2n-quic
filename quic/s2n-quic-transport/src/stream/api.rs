@@ -230,7 +230,7 @@ macro_rules! rx_stream_apis {
         /// Receives a chunk of data from the stream.
         ///
         /// The method will return:
-        /// - `Poll::Ready(Ok(Some(Bytes)))` if the stream is open and data was available
+        /// - `Poll::Ready(Ok(Some(chunk)))` if the stream is open and data was available
         /// - `Poll::Ready(Ok(None))` if the stream was finished and all of the data was consumed
         /// - `Poll::Ready(Err(stream_error))` if the stream could not be read, because the stream
         ///   had previously entered an error state.

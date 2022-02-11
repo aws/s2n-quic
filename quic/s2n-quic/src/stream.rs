@@ -83,3 +83,24 @@ impl_splittable_stream_trait!(Stream, |stream| match stream {
     Stream::Receive(stream) => SplittableStream::split(stream),
     Stream::Send(stream) => SplittableStream::split(stream),
 });
+
+impl From<ReceiveStream> for Stream {
+    #[inline]
+    fn from(stream: ReceiveStream) -> Self {
+        Self::Receive(stream)
+    }
+}
+
+impl From<SendStream> for Stream {
+    #[inline]
+    fn from(stream: SendStream) -> Self {
+        Self::Send(stream)
+    }
+}
+
+impl From<BidirectionalStream> for Stream {
+    #[inline]
+    fn from(stream: BidirectionalStream) -> Self {
+        Self::Bidirectional(stream)
+    }
+}
