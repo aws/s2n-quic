@@ -23,7 +23,7 @@ use crate::{
     transmission::interest::Provider as TransmissionInterestProvider,
     wakeup_queue::{WakeupHandle, WakeupQueue},
 };
-use alloc::collections::VecDeque;
+use alloc::{collections::VecDeque, sync::Arc};
 use bytes::Bytes;
 use core::{
     task::{Context, Poll, Waker},
@@ -369,11 +369,11 @@ fn create_default_initial_flow_control_limits() -> InitialFlowControlLimits {
 
 fn create_wakeup_queue_and_handle() -> (
     WakeupQueue<InternalConnectionId>,
-    WakeupHandle<InternalConnectionId>,
+    Arc<WakeupHandle<InternalConnectionId>>,
 ) {
     let wakeup_queue = WakeupQueue::new();
     let connection_id = InternalConnectionIdGenerator::new().generate_id();
-    let wakeup_handle = wakeup_queue.create_wakeup_handle(connection_id);
+    let wakeup_handle = Arc::new(wakeup_queue.create_wakeup_handle(connection_id));
     (wakeup_queue, wakeup_handle)
 }
 
@@ -537,7 +537,7 @@ fn open_returns_error_after_close() {
 #[test]
 fn returns_finalization_interest_after_last_stream_is_drained() {
     let mut manager = create_stream_manager(endpoint::Type::Server);
-    let (_wakeup_queue, mut wakeup_handle) = create_wakeup_queue_and_handle();
+    let (_wakeup_queue, wakeup_handle) = create_wakeup_queue_and_handle();
 
     assert_eq!(0, manager.active_streams().len());
     let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
@@ -566,7 +566,7 @@ fn returns_finalization_interest_after_last_stream_is_drained() {
     assert!(manager
         .poll_request(
             stream_2,
-            &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
+            &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().reset(error),
             None,
         )
@@ -2670,7 +2670,7 @@ fn forwards_on_reset() {
 
 #[test]
 fn forwards_poll_pop() {
-    let (mut wakeup_queue, mut wakeup_handle) = create_wakeup_queue_and_handle();
+    let (mut wakeup_queue, wakeup_handle) = create_wakeup_queue_and_handle();
     let (waker, _wake_counter) = new_count_waker();
     let mut manager = create_stream_manager(endpoint::Type::Server);
 
@@ -2680,7 +2680,7 @@ fn forwards_poll_pop() {
     assert!(manager
         .poll_request(
             stream_1,
-            &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
+            &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().receive(&mut [Bytes::new()]),
             Some(&ctx),
         )
@@ -2699,7 +2699,7 @@ fn forwards_poll_pop() {
         Err(StreamError::MaxStreamDataSizeExceeded),
         manager.poll_request(
             stream_1,
-            &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
+            &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().receive(&mut [Bytes::new()]),
             Some(&ctx)
         )
@@ -2715,7 +2715,7 @@ fn forwards_poll_pop() {
         Err(StreamError::InvalidStream),
         manager.poll_request(
             invalid_stream_id(endpoint::Type::Server),
-            &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
+            &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().receive(&mut [Bytes::new()]),
             Some(&ctx)
         )
@@ -2724,7 +2724,7 @@ fn forwards_poll_pop() {
 
 #[test]
 fn forwards_stop_sending() {
-    let (mut wakeup_queue, mut wakeup_handle) = create_wakeup_queue_and_handle();
+    let (mut wakeup_queue, wakeup_handle) = create_wakeup_queue_and_handle();
     let mut manager = create_stream_manager(endpoint::Type::Server);
 
     let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
@@ -2733,7 +2733,7 @@ fn forwards_stop_sending() {
     assert!(manager
         .poll_request(
             stream_1,
-            &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
+            &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().stop_sending(error),
             None,
         )
@@ -2752,7 +2752,7 @@ fn forwards_stop_sending() {
         Err(StreamError::MaxStreamDataSizeExceeded),
         manager.poll_request(
             stream_1,
-            &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
+            &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().stop_sending(error),
             None,
         )
@@ -2768,7 +2768,7 @@ fn forwards_stop_sending() {
         Err(StreamError::InvalidStream),
         manager.poll_request(
             invalid_stream_id(endpoint::Type::Server),
-            &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
+            &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().stop_sending(error),
             None,
         )
@@ -2777,7 +2777,7 @@ fn forwards_stop_sending() {
 
 #[test]
 fn forwards_poll_push() {
-    let (mut wakeup_queue, mut wakeup_handle) = create_wakeup_queue_and_handle();
+    let (mut wakeup_queue, wakeup_handle) = create_wakeup_queue_and_handle();
     let (waker, _wake_counter) = new_count_waker();
     let mut manager = create_stream_manager(endpoint::Type::Server);
 
@@ -2788,7 +2788,7 @@ fn forwards_poll_push() {
     assert!(manager
         .poll_request(
             stream_1,
-            &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
+            &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().send(&mut [data.clone()]),
             Some(&ctx)
         )
@@ -2807,7 +2807,7 @@ fn forwards_poll_push() {
         Err(StreamError::MaxStreamDataSizeExceeded),
         manager.poll_request(
             stream_1,
-            &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
+            &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().send(&mut [data.clone()]),
             Some(&ctx)
         )
@@ -2823,7 +2823,7 @@ fn forwards_poll_push() {
         Err(StreamError::InvalidStream),
         manager.poll_request(
             invalid_stream_id(endpoint::Type::Server),
-            &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
+            &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().send(&mut [data]),
             Some(&ctx)
         )
@@ -2832,7 +2832,7 @@ fn forwards_poll_push() {
 
 #[test]
 fn forwards_poll_finish() {
-    let (mut wakeup_queue, mut wakeup_handle) = create_wakeup_queue_and_handle();
+    let (mut wakeup_queue, wakeup_handle) = create_wakeup_queue_and_handle();
     let (waker, _wake_counter) = new_count_waker();
     let mut manager = create_stream_manager(endpoint::Type::Server);
 
@@ -2842,7 +2842,7 @@ fn forwards_poll_finish() {
     assert!(manager
         .poll_request(
             stream_1,
-            &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
+            &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().finish().flush(),
             Some(&ctx)
         )
@@ -2861,7 +2861,7 @@ fn forwards_poll_finish() {
         Err(StreamError::MaxStreamDataSizeExceeded),
         manager.poll_request(
             stream_1,
-            &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
+            &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().finish().flush(),
             Some(&ctx)
         )
@@ -2877,7 +2877,7 @@ fn forwards_poll_finish() {
         Err(StreamError::InvalidStream),
         manager.poll_request(
             invalid_stream_id(endpoint::Type::Server),
-            &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
+            &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().finish().flush(),
             Some(&ctx)
         )
@@ -2886,7 +2886,7 @@ fn forwards_poll_finish() {
 
 #[test]
 fn forwards_reset() {
-    let (mut wakeup_queue, mut wakeup_handle) = create_wakeup_queue_and_handle();
+    let (mut wakeup_queue, wakeup_handle) = create_wakeup_queue_and_handle();
     let mut manager = create_stream_manager(endpoint::Type::Server);
 
     let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
@@ -2895,7 +2895,7 @@ fn forwards_reset() {
     assert!(manager
         .poll_request(
             stream_1,
-            &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
+            &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().reset(error),
             None,
         )
@@ -2914,7 +2914,7 @@ fn forwards_reset() {
         Err(StreamError::MaxStreamDataSizeExceeded),
         manager.poll_request(
             stream_1,
-            &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
+            &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().reset(error),
             None,
         )
@@ -2930,7 +2930,7 @@ fn forwards_reset() {
         Err(StreamError::InvalidStream),
         manager.poll_request(
             invalid_stream_id(endpoint::Type::Server),
-            &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
+            &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().reset(error),
             None,
         )

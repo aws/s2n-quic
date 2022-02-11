@@ -116,7 +116,7 @@ impl<T: Copy> WakeupQueue<T> {
 /// A handle which refers to a wakeup queue. The handles allows to notify the
 /// queue that a wakeup is required, and that after the wakeup the owner of the handle
 /// wants to be notified.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct WakeupHandle<T> {
     /// The queue this handle is referring to
     queue: Arc<Mutex<QueueState<T>>>,
@@ -125,7 +125,7 @@ pub struct WakeupHandle<T> {
     wakeup_handle_id: T,
     /// Whether a wakeup for this handle had already been queued since the last time
     /// the wakeup handler was called
-    wakeup_queued: Arc<AtomicBool>,
+    wakeup_queued: AtomicBool,
 }
 
 impl<T: Copy> WakeupHandle<T> {
@@ -134,7 +134,7 @@ impl<T: Copy> WakeupHandle<T> {
         Self {
             queue,
             wakeup_handle_id,
-            wakeup_queued: Arc::new(AtomicBool::new(false)),
+            wakeup_queued: AtomicBool::new(false),
         }
     }
 
@@ -143,12 +143,11 @@ impl<T: Copy> WakeupHandle<T> {
     /// ignored, since the wakeup will already be pending.
     pub fn wakeup(&self) {
         // Check if a wakeup had been queued earlier
-        if self.wakeup_queued.load(Ordering::SeqCst) {
+        if self.wakeup_queued.swap(true, Ordering::SeqCst) {
             return;
         }
 
         // Enqueue the wakeup request
-        self.wakeup_queued.store(true, Ordering::SeqCst);
         let maybe_waker = {
             let mut guard = self
                 .queue
@@ -167,7 +166,7 @@ impl<T: Copy> WakeupHandle<T> {
     /// Notifies the `WakeupHandle` that a wakeup for this handle had been processed.
     ///
     /// Further calls to [`wakeup`] will be queued again.
-    pub fn wakeup_handled(&mut self) {
+    pub fn wakeup_handled(&self) {
         self.wakeup_queued.store(false, Ordering::SeqCst);
     }
 }
@@ -204,8 +203,8 @@ mod tests {
         let mut queue = WakeupQueue::new();
         let mut pending = VecDeque::new();
 
-        let mut handle1 = queue.create_wakeup_handle(1u32);
-        let mut handle2 = queue.create_wakeup_handle(2u32);
+        let handle1 = queue.create_wakeup_handle(1u32);
+        let handle2 = queue.create_wakeup_handle(2u32);
         assert_eq!(counter, 0);
 
         // Initially no wakeup should be signalled - but the Waker should be stored

@@ -172,7 +172,9 @@ pub struct ConnectionImpl<Config: endpoint::Config> {
     /// Manages all of the different packet spaces and their respective components
     space_manager: PacketSpaceManager<Config>,
     /// Holds the handle for waking up the endpoint from a application call
-    wakeup_handle: WakeupHandle<InternalConnectionId>,
+    wakeup_handle: Arc<WakeupHandle<InternalConnectionId>>,
+    /// A Waker to the connection.
+    waker: Waker,
     event_context: EventContext<Config>,
 }
 
@@ -268,7 +270,6 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         timestamp: Timestamp,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), connection::Error> {
-        let waker = Waker::from(Arc::new(self.wakeup_handle.clone()));
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
         let space_manager = &mut self.space_manager;
 
@@ -277,7 +278,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             &mut self.local_id_registry,
             &mut self.limits,
             timestamp,
-            &waker,
+            &self.waker,
             &mut publisher,
         ) {
             Poll::Ready(res) => res?,
@@ -594,6 +595,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             },
         });
 
+        let wakeup_handle = Arc::from(parameters.wakeup_handle);
+        let waker = Waker::from(wakeup_handle.clone());
         let mut connection = Self {
             local_id_registry: parameters.local_id_registry,
             timers: Default::default(),
@@ -604,7 +607,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             error: Ok(()),
             close_sender: CloseSender::default(),
             space_manager: parameters.space_manager,
-            wakeup_handle: parameters.wakeup_handle,
+            wakeup_handle,
+            waker,
             event_context,
         };
 
@@ -1040,7 +1044,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Handles all external wakeups on the [`Connection`].
-    fn on_wakeup(&mut self) -> Result<(), connection::Error> {
+    fn on_wakeup(&mut self, _timestamp: Timestamp) -> Result<(), connection::Error> {
         self.wakeup_handle.wakeup_handled();
 
         // return an error if the application set one
@@ -1656,7 +1660,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .application_mut()
             .ok_or(connection::Error::Unspecified)?;
 
-        let mut api_context = ConnectionApiCallContext::from_wakeup_handle(&mut self.wakeup_handle);
+        let mut api_context = ConnectionApiCallContext::from_wakeup_handle(&self.wakeup_handle);
 
         space
             .stream_manager

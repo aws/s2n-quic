@@ -5,6 +5,7 @@
 //! within the connection in order to collect data
 
 use crate::{connection::InternalConnectionId, transmission, wakeup_queue::WakeupHandle};
+use alloc::sync::Arc;
 use s2n_codec::encoder::EncoderValue;
 use s2n_quic_core::{
     endpoint,
@@ -88,17 +89,17 @@ pub enum ConnectionOnTransmitError {
 
 /// The context parameter which is passed from all external API calls
 pub struct ConnectionApiCallContext<'a> {
-    wakeup_handle: &'a mut WakeupHandle<InternalConnectionId>,
+    wakeup_handle: &'a Arc<WakeupHandle<InternalConnectionId>>,
 }
 
 impl<'a> ConnectionApiCallContext<'a> {
     /// Creates an [`ConnectionApiCallContext`] from a [`WakeupHandle`]
-    pub fn from_wakeup_handle(wakeup_handle: &'a mut WakeupHandle<InternalConnectionId>) -> Self {
+    pub fn from_wakeup_handle(wakeup_handle: &'a Arc<WakeupHandle<InternalConnectionId>>) -> Self {
         Self { wakeup_handle }
     }
 
     /// Returns a reference to the WakeupHandle
-    pub fn wakeup_handle(&mut self) -> &mut WakeupHandle<InternalConnectionId> {
+    pub fn wakeup_handle(&mut self) -> &Arc<WakeupHandle<InternalConnectionId>> {
         self.wakeup_handle
     }
 }
