@@ -347,7 +347,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         );
 
         match outcome {
-            Outcome::Allow => Some(()),
+            Outcome::Allow { .. } => Some(()),
             Outcome::Retry { .. } => {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.2
                 //# A server can also use a Retry packet to defer the state and
@@ -391,7 +391,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
                 None
             }
-            Outcome::Drop => {
+            Outcome::Drop { .. } => {
                 publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
                     len: payload_len as u16,
                     reason: event::builder::DatagramDropReason::RejectedConnectionAttempt,
@@ -1178,7 +1178,7 @@ pub mod testing {
             &mut self,
             _attempt: &endpoint::limits::ConnectionAttempt,
         ) -> endpoint::limits::Outcome {
-            endpoint::limits::Outcome::Allow
+            endpoint::limits::Outcome::allow()
         }
     }
 }

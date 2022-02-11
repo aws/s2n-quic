@@ -13,6 +13,9 @@ use crate::{
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Outcome {
     /// Allow the connection to continue
+    ///
+    /// Use `Outcome::allow()` to construct this variant
+    #[non_exhaustive]
     Allow,
 
     /// Defer the connection by sending a Retry packet
@@ -22,6 +25,9 @@ pub enum Outcome {
     Retry,
 
     /// Silently drop the connection attempt
+    ///
+    /// Use `Outcome::drop()` to construct this variant
+    #[non_exhaustive]
     Drop,
 
     /// Cleanly close the connection
@@ -32,9 +38,19 @@ pub enum Outcome {
 }
 
 impl Outcome {
+    /// Allow the connection to continue
+    pub fn allow() -> Self {
+        Self::Allow
+    }
+
     /// Defer the connection by sending a Retry packet
     pub fn retry() -> Self {
         Self::Retry
+    }
+
+    /// Silently drop the connection attempt
+    pub fn drop() -> Self {
+        Self::Drop
     }
 
     /// Cleanly close the connection
@@ -94,7 +110,7 @@ pub trait Limiter: 'static + Send {
     ///        if info.inflight_handshakes > self.handshake_limit {
     ///            Outcome::retry()
     ///        } else {
-    ///            Outcome::Allow
+    ///            Outcome::allow()
     ///        }
     ///    }
     /// }

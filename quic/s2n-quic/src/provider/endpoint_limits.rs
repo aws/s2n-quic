@@ -94,7 +94,7 @@ pub mod default {
                 }
             }
 
-            Outcome::Allow
+            Outcome::allow()
         }
     }
 
