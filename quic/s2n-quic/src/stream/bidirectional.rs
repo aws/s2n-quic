@@ -40,7 +40,8 @@ impl BidirectionalStream {
 
     impl_send_stream_api!(|stream, call| call!(stream.0));
 
-    /// Splits the stream into [`ReceiveStream`] and [`SendStream`] halves
+    /// Splits the stream into [`ReceiveStream`](crate::stream::ReceiveStream) and
+    /// [`SendStream`](crate::stream::SendStream) halves.
     ///
     /// # Examples
     ///
