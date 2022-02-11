@@ -70,6 +70,11 @@ impl<T: Copy> QueueState<T> {
 
         core::mem::swap(&mut self.woken_connections, swap_queue);
     }
+
+    #[cfg(any(feature = "testing", test))]
+    fn test_inspect(&self) -> (usize, bool) {
+        (self.woken_connections.len(), self.wakeup_in_progress)
+    }
 }
 
 /// A queue which allows individual components to wakeups to a common blocked thread.
@@ -110,6 +115,11 @@ impl<T: Copy> WakeupQueue<T> {
             .lock()
             .expect("Locking can only fail if locks are poisoned");
         guard.poll_pending_wakeups(swap_queue, context)
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    fn test_state(&self) -> Arc<Mutex<QueueState<T>>> {
+        self.state.clone()
     }
 }
 
@@ -195,6 +205,76 @@ mod tests {
             )*
             value
         }}
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    #[test]
+    fn waker() {
+        // check state len and if pending wakeup
+        macro_rules! check_state {
+            ($state:ident, $len:literal, $wakeup_in_progress:literal) => {{
+                let state = $state
+                    .lock()
+                    .expect("Locking can only fail if locks are poisoned");
+                assert_eq!(state.test_inspect(), ($len, $wakeup_in_progress));
+            }};
+        }
+
+        // check queued wakeups and reset state (wakeup_handled)
+        macro_rules! reset_state {
+            ($state:ident, $len:literal, $handle1:ident, $handle2:ident) => {{
+                let mut state = $state
+                    .lock()
+                    .expect("Locking can only fail if locks are poisoned");
+                let (waker, _counter) = new_count_waker();
+                let mut pending = VecDeque::new();
+                state.poll_pending_wakeups(&mut pending, &Context::from_waker(&waker));
+                assert_eq!(pending.len(), $len);
+
+                $handle1.wakeup_handled();
+                $handle2.wakeup_handled();
+            }};
+        }
+
+        let queue = WakeupQueue::new();
+        let state = queue.test_state();
+        check_state!(state, 0, false);
+
+        let handle1 = Arc::new(queue.create_wakeup_handle(1u32));
+        let handle2 = Arc::new(queue.create_wakeup_handle(2u32));
+        let waker1 = Waker::from(handle1.clone());
+        let waker2 = Waker::from(handle2.clone());
+
+        // wake_by_ref
+        waker1.wake_by_ref();
+        check_state!(state, 1, true);
+        // calling wake on same handle should not queue a wakup
+        waker1.wake_by_ref();
+        check_state!(state, 1, true);
+        waker2.wake_by_ref();
+        check_state!(state, 2, true);
+
+        reset_state!(state, 2, handle1, handle2);
+        check_state!(state, 0, false);
+
+        // clone and call wake
+        waker1.clone().wake();
+        check_state!(state, 1, true);
+        waker2.clone().wake();
+        check_state!(state, 2, true);
+
+        // drop handle
+        drop(waker1.clone());
+        drop(waker2.clone());
+
+        reset_state!(state, 2, handle1, handle2);
+        check_state!(state, 0, false);
+
+        // call wake on original handle
+        waker1.wake();
+        check_state!(state, 1, true);
+        waker2.wake();
+        check_state!(state, 2, true);
     }
 
     #[test]
