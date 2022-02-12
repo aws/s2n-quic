@@ -4,7 +4,6 @@
 use crate::{
     event::{api::SocketAddress, IntoEvent},
     inet,
-    time::Duration,
 };
 
 /// Outcome describes how the library should proceed on a connection attempt. The implementor will
@@ -14,16 +13,50 @@ use crate::{
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Outcome {
     /// Allow the connection to continue
+    ///
+    /// Use `Outcome::allow()` to construct this variant
+    #[non_exhaustive]
     Allow,
 
-    /// Defer the connection by sending a Retry packet after a `delay`
-    Retry { delay: Duration },
+    /// Defer the connection by sending a Retry packet
+    ///
+    /// Use `Outcome::retry()` to construct this variant
+    #[non_exhaustive]
+    Retry,
 
     /// Silently drop the connection attempt
+    ///
+    /// Use `Outcome::drop()` to construct this variant
+    #[non_exhaustive]
     Drop,
 
-    /// Cleanly close the connection after a `delay`
-    Close { delay: Duration },
+    /// Cleanly close the connection
+    ///
+    /// Use `Outcome::close()` to construct this variant
+    #[non_exhaustive]
+    Close,
+}
+
+impl Outcome {
+    /// Allow the connection to continue
+    pub fn allow() -> Self {
+        Self::Allow
+    }
+
+    /// Defer the connection by sending a Retry packet
+    pub fn retry() -> Self {
+        Self::Retry
+    }
+
+    /// Silently drop the connection attempt
+    pub fn drop() -> Self {
+        Self::Drop
+    }
+
+    /// Cleanly close the connection
+    pub fn close() -> Self {
+        Self::Close
+    }
 }
 
 /// A ConnectionAttempt holds information about the state of endpoint receiving a connect, along
@@ -75,9 +108,9 @@ pub trait Limiter: 'static + Send {
     /// impl Limiter for MyEndpointLimits {
     ///    fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome {
     ///        if info.inflight_handshakes > self.handshake_limit {
-    ///            Outcome::Retry { delay: self.delay }
+    ///            Outcome::retry()
     ///        } else {
-    ///            Outcome::Allow
+    ///            Outcome::allow()
     ///        }
     ///    }
     /// }
