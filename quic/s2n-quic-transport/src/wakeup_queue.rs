@@ -1,13 +1,16 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! A queue which allows to wake up a QUIC endpoint which is blocked on packet reception or timers.
-//! This queue is used in case connections inside the endpoint change their readiness state change
-//! their readiness state (e.g. they get ready to write).
+//! A queue which allows to wake up a QUIC endpoint which is blocked on packet
+//! reception or timers. This queue is used in case connections inside the endpoint
+//! change their readiness state (e.g. they get ready to write).
 
 use alloc::{collections::VecDeque, sync::Arc};
-use core::task::{Context, Waker};
-use std::sync::Mutex;
+use core::{
+    sync::atomic::{AtomicBool, Ordering},
+    task::{Context, Waker},
+};
+use std::{sync::Mutex, task::Wake};
 
 /// The shared state of the [`WakeupQueue`].
 #[derive(Debug)]
@@ -42,6 +45,7 @@ impl<T: Copy> QueueState<T> {
     }
 
     /// Polls for queued wakeup events.
+    ///
     /// The method gets passed a queued which is used to store further wakeup events.
     /// It will returns a queue of occurred events.
     /// If no wakeup occurred, the method will store the passed [`Waker`] and notify it as soon as
@@ -66,11 +70,16 @@ impl<T: Copy> QueueState<T> {
 
         core::mem::swap(&mut self.woken_connections, swap_queue);
     }
+
+    #[cfg(any(feature = "testing", test))]
+    fn test_inspect(&self) -> (usize, bool) {
+        (self.woken_connections.len(), self.wakeup_in_progress)
+    }
 }
 
 /// A queue which allows individual components to wakeups to a common blocked thread.
 ///
-/// Multiple components can notify the thread to unblocked and to dequeue handles of components.///
+/// Multiple components can notify the thread to unblocked and to dequeue handles of components.
 /// Each component is identified by a handle of type `T`.
 ///
 /// A single thread is expected to deque the handles of blocked components and to inform those.
@@ -107,6 +116,11 @@ impl<T: Copy> WakeupQueue<T> {
             .expect("Locking can only fail if locks are poisoned");
         guard.poll_pending_wakeups(swap_queue, context)
     }
+
+    #[cfg(any(feature = "testing", test))]
+    fn test_state(&self) -> Arc<Mutex<QueueState<T>>> {
+        self.state.clone()
+    }
 }
 
 /// A handle which refers to a wakeup queue. The handles allows to notify the
@@ -121,7 +135,7 @@ pub struct WakeupHandle<T> {
     wakeup_handle_id: T,
     /// Whether a wakeup for this handle had already been queued since the last time
     /// the wakeup handler was called
-    wakeup_queued: bool,
+    wakeup_queued: AtomicBool,
 }
 
 impl<T: Copy> WakeupHandle<T> {
@@ -130,21 +144,20 @@ impl<T: Copy> WakeupHandle<T> {
         Self {
             queue,
             wakeup_handle_id,
-            wakeup_queued: false,
+            wakeup_queued: AtomicBool::new(false),
         }
     }
 
     /// Notifies the queue to wake up. If a `wakeup()` had been issued for the same
     /// [`WakeupHandle`] without having been handled yet, the new [`wakeup()`] request will be
     /// ignored, since the wakeup will already be pending.
-    pub fn wakeup(&mut self) {
+    pub fn wakeup(&self) {
         // Check if a wakeup had been queued earlier
-        if self.wakeup_queued {
+        if self.wakeup_queued.swap(true, Ordering::SeqCst) {
             return;
         }
 
         // Enqueue the wakeup request
-        self.wakeup_queued = true;
         let maybe_waker = {
             let mut guard = self
                 .queue
@@ -163,8 +176,18 @@ impl<T: Copy> WakeupHandle<T> {
     /// Notifies the `WakeupHandle` that a wakeup for this handle had been processed.
     ///
     /// Further calls to [`wakeup`] will be queued again.
-    pub fn wakeup_handled(&mut self) {
-        self.wakeup_queued = false;
+    pub fn wakeup_handled(&self) {
+        self.wakeup_queued.store(false, Ordering::SeqCst);
+    }
+}
+
+impl<T: Copy> Wake for WakeupHandle<T> {
+    fn wake(self: Arc<Self>) {
+        self.wakeup()
+    }
+
+    fn wake_by_ref(self: &Arc<Self>) {
+        self.wakeup()
     }
 }
 
@@ -184,14 +207,84 @@ mod tests {
         }}
     }
 
+    #[cfg(any(feature = "testing", test))]
+    #[test]
+    fn waker() {
+        // check state len and if pending wakeup
+        macro_rules! check_state {
+            ($state:ident, $len:literal, $wakeup_in_progress:literal) => {{
+                let state = $state
+                    .lock()
+                    .expect("Locking can only fail if locks are poisoned");
+                assert_eq!(state.test_inspect(), ($len, $wakeup_in_progress));
+            }};
+        }
+
+        // check queued wakeups and reset state (wakeup_handled)
+        macro_rules! reset_state {
+            ($state:ident, $len:literal, $handle1:ident, $handle2:ident) => {{
+                let mut state = $state
+                    .lock()
+                    .expect("Locking can only fail if locks are poisoned");
+                let (waker, _counter) = new_count_waker();
+                let mut pending = VecDeque::new();
+                state.poll_pending_wakeups(&mut pending, &Context::from_waker(&waker));
+                assert_eq!(pending.len(), $len);
+
+                $handle1.wakeup_handled();
+                $handle2.wakeup_handled();
+            }};
+        }
+
+        let queue = WakeupQueue::new();
+        let state = queue.test_state();
+        check_state!(state, 0, false);
+
+        let handle1 = Arc::new(queue.create_wakeup_handle(1u32));
+        let handle2 = Arc::new(queue.create_wakeup_handle(2u32));
+        let waker1 = Waker::from(handle1.clone());
+        let waker2 = Waker::from(handle2.clone());
+
+        // wake_by_ref
+        waker1.wake_by_ref();
+        check_state!(state, 1, true);
+        // calling wake on same handle should not queue a wakup
+        waker1.wake_by_ref();
+        check_state!(state, 1, true);
+        waker2.wake_by_ref();
+        check_state!(state, 2, true);
+
+        reset_state!(state, 2, handle1, handle2);
+        check_state!(state, 0, false);
+
+        // clone and call wake
+        waker1.clone().wake();
+        check_state!(state, 1, true);
+        waker2.clone().wake();
+        check_state!(state, 2, true);
+
+        // drop handle
+        drop(waker1.clone());
+        drop(waker2.clone());
+
+        reset_state!(state, 2, handle1, handle2);
+        check_state!(state, 0, false);
+
+        // call wake on original handle
+        waker1.wake();
+        check_state!(state, 1, true);
+        waker2.wake();
+        check_state!(state, 2, true);
+    }
+
     #[test]
     fn queue_wakeups() {
         let (waker, counter) = new_count_waker();
         let mut queue = WakeupQueue::new();
         let mut pending = VecDeque::new();
 
-        let mut handle1 = queue.create_wakeup_handle(1u32);
-        let mut handle2 = queue.create_wakeup_handle(2u32);
+        let handle1 = queue.create_wakeup_handle(1u32);
+        let handle2 = queue.create_wakeup_handle(2u32);
         assert_eq!(counter, 0);
 
         // Initially no wakeup should be signalled - but the Waker should be stored

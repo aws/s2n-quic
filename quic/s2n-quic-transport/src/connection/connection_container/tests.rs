@@ -111,7 +111,11 @@ impl connection::Trait for TestConnection {
         Ok(())
     }
 
-    fn on_wakeup(&mut self, _timestamp: Timestamp) -> Result<(), connection::Error> {
+    fn on_wakeup(
+        &mut self,
+        _timestamp: Timestamp,
+        _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+    ) -> Result<(), connection::Error> {
         Ok(())
     }
 

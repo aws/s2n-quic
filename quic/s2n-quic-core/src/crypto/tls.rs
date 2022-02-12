@@ -3,7 +3,11 @@
 
 use crate::{application::ServerName, crypto::CryptoSuite, transport};
 pub use bytes::{Bytes, BytesMut};
-use core::{convert::TryFrom, fmt::Debug, task::Poll};
+use core::{
+    convert::TryFrom,
+    fmt::Debug,
+    task::{Poll, Waker},
+};
 use s2n_codec::EncoderValue;
 use zerocopy::{AsBytes, FromBytes, Unaligned};
 
@@ -82,6 +86,8 @@ pub trait Context<Crypto: CryptoSuite> {
 
     fn can_send_application(&self) -> bool;
     fn send_application(&mut self, transmission: Bytes);
+
+    fn waker(&self) -> &Waker;
 }
 
 pub trait Endpoint: 'static + Sized + Send {

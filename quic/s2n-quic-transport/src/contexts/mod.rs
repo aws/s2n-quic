@@ -88,17 +88,17 @@ pub enum ConnectionOnTransmitError {
 
 /// The context parameter which is passed from all external API calls
 pub struct ConnectionApiCallContext<'a> {
-    wakeup_handle: &'a mut WakeupHandle<InternalConnectionId>,
+    wakeup_handle: &'a WakeupHandle<InternalConnectionId>,
 }
 
 impl<'a> ConnectionApiCallContext<'a> {
     /// Creates an [`ConnectionApiCallContext`] from a [`WakeupHandle`]
-    pub fn from_wakeup_handle(wakeup_handle: &'a mut WakeupHandle<InternalConnectionId>) -> Self {
+    pub fn from_wakeup_handle(wakeup_handle: &'a WakeupHandle<InternalConnectionId>) -> Self {
         Self { wakeup_handle }
     }
 
     /// Returns a reference to the WakeupHandle
-    pub fn wakeup_handle(&mut self) -> &mut WakeupHandle<InternalConnectionId> {
+    pub fn wakeup_handle(&mut self) -> &WakeupHandle<InternalConnectionId> {
         self.wakeup_handle
     }
 }
