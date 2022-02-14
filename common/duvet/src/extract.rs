@@ -120,17 +120,17 @@ fn extract_section<'a>(section: &'a Section<'a>) -> (&'a Section<'a>, Vec<Featur
     for (lineno, line) in lines.iter().enumerate() {
         if KEY_WORDS_SET.is_match(line) {
             for (key_word, level) in KEY_WORDS.iter() {
-                for occurance in key_word.find_iter(line) {
+                for occurrence in key_word.find_iter(line) {
                     // filter out any matches in quotes - these are definitions in the
                     // document
-                    if occurance.as_str().ends_with('"') {
+                    if occurrence.as_str().ends_with('"') {
                         continue;
                     }
 
                     let mut quote = vec![];
 
-                    let start = find_open(lines, lineno, occurance.start());
-                    let end = find_close(lines, lineno, occurance.end());
+                    let start = find_open(lines, lineno, occurrence.start());
+                    let end = find_close(lines, lineno, occurrence.end());
 
                     #[allow(clippy::needless_range_loop)]
                     for i in start.0..=end.0 {

@@ -60,7 +60,7 @@ pub struct Stream {
     pub data: Data,
     /// A potential error that could happen on the sending side
     pub reset: Option<Error>,
-    /// A potential error that could happen on the receving side
+    /// A potential error that could happen on the receiving side
     pub stop_sending: Option<Error>,
     /// The size of the chunks that should be sent on the stream
     pub send_amount: SendAmount,

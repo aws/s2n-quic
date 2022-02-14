@@ -297,7 +297,7 @@ impl<Config: endpoint::Config> Manager<Config> {
 
     /// Process ACK frame.
     ///
-    /// Update congestion controler, timers and meta data around acked packet ranges.
+    /// Update congestion controller, timers and meta data around acked packet ranges.
     pub fn on_ack_frame<
         A: frame::ack::AckRanges,
         Ctx: Context<Config>,

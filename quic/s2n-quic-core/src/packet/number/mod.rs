@@ -235,7 +235,7 @@ mod tests {
         PacketNumberSpace::Initial.new_packet_number(value)
     }
 
-    /// This implementation tries to closely follow the RFC psuedo code so it's
+    /// This implementation tries to closely follow the RFC pseudo code so it's
     /// easier to ensure it matches.
     #[allow(clippy::blocks_in_if_conditions)]
     fn rfc_decoder(largest_pn: u64, truncated_pn: u64, pn_nbits: usize) -> u64 {

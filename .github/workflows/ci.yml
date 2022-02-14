@@ -540,3 +540,28 @@ jobs:
           name: 'timing / report'
           status: 'success'
           url: "${{ steps.s3.outputs.URL }}"
+
+  typos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - uses: camshaft/install@v1
+        with:
+          crate: typos-cli
+          bins: typos
+
+      - name: Run typos
+        run: |
+          ./scripts/typos --format json | tee /tmp/typos.json | jq -rs '.[] | "::error file=\(.path),line=\(.line_num),col=\(.byte_offset)::\(.typo) should be \"" + (.corrections // [] | join("\" or \"") + "\"")'
+          cat /tmp/typos.json
+          ! grep -q '[^[:space:]]' /tmp/typos.json

@@ -6,7 +6,7 @@
 //! This is intended to be used by frames, like PING and HANDSHAKE_DONE, that don't have any
 //! content other than the frame tag itself. At the cost of a single byte per packet, it will passively
 //! transmit the flag in any outgoing packets until the peer ACKs the frame. This is to increase
-//! the likelyhood the peer receives the flag, even in a high-loss environment.
+//! the likelihood the peer receives the flag, even in a high-loss environment.
 
 use crate::{
     contexts::{OnTransmitError, WriteContext},

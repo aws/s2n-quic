@@ -278,7 +278,7 @@ impl<Config: endpoint::Config> Path<Config> {
     #[inline]
     pub fn failed_validation(&self) -> bool {
         // PATH_CHALLENGE is not used for validating the initial path and is disabled. Check if
-        // the challenge is disabled before excuting the following block since there won't be
+        // the challenge is disabled before executing the following block since there won't be
         // a last_known_validated_path.
         !self.challenge.is_disabled() && !self.is_validated() && !self.is_challenge_pending()
     }
@@ -793,7 +793,7 @@ mod tests {
     }
 
     #[test]
-    fn on_path_challenge_should_set_reponse_data() {
+    fn on_path_challenge_should_set_response_data() {
         // Setup:
         let mut path = testing::helper_path_server();
 
@@ -814,7 +814,7 @@ mod tests {
     //# echoing the data contained in the PATH_CHALLENGE frame in a
     //# PATH_RESPONSE frame.
     #[test]
-    fn on_path_challenge_should_replace_reponse_data() {
+    fn on_path_challenge_should_replace_response_data() {
         // Setup:
         let mut path = testing::helper_path_server();
         let expected_data: [u8; 8] = [0; 8];

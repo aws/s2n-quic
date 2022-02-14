@@ -67,7 +67,7 @@ impl Behavior for Occupied {
 /// Behavior for the Occupied Slice, with optional wiping
 ///
 /// After being successfully consumed an occupied message
-/// should reset its payload_len to MTU. Additionaly, if enabled
+/// should reset its payload_len to MTU. Additionally, if enabled
 /// with the `wipe` feature, the payload will be wiped to prevent
 /// sensitive data from persisting in memory.
 ///
@@ -184,7 +184,7 @@ fn reset<Message: message::Message>(messages: &mut [Message], mtu: usize) {
 fn wipe<Message: message::Message>(messages: &mut [Message], mtu: usize) {
     for message in messages {
         // The payload could potentially contain sensitive data and should
-        // be zeroed out in addition to reseting the state
+        // be zeroed out in addition to resetting the state
         #[cfg(feature = "wipe")]
         zeroize::Zeroize::zeroize(&mut message.payload_mut().iter_mut());
 

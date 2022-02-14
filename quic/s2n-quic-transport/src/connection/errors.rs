@@ -8,7 +8,7 @@ use s2n_quic_core::crypto::CryptoError;
 /// Errors that can occur during packet reception
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum PacketHandlingError {
-    /// A crypto error occured
+    /// A crypto error occurred
     CryptoError(CryptoError),
 }
 

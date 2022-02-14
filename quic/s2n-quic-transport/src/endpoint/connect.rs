@@ -134,7 +134,7 @@ impl Future for Attempt {
                                     self.state =
                                         AttemptState::Connect(err.into_inner(), opener, response);
 
-                                    // yield and wake up the task since the opener mis-reported its ready state
+                                    // yield and wake up the task since the opener misreported its ready state
                                     cx.waker().wake_by_ref();
                                 }
                                 Err(_) => {

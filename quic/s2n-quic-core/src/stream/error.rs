@@ -23,7 +23,7 @@ pub enum StreamError {
     /// Attempting to write data would exceed the stream limit
     ///
     /// This is caused because the maximum possible amount
-    /// of data (2^62-1 bytes) had already been writtten to the
+    /// of data (2^62-1 bytes) had already been written to the
     /// Stream.
     MaxStreamDataSizeExceeded,
     /// The Stream was reset due to a Connection Error

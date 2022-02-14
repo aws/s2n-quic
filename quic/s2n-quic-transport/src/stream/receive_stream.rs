@@ -187,7 +187,7 @@ impl ReceiveStreamFlowController {
         // yet. However even if we knew we sent the MAX_STREAM_DATA frame
         // we wouldn't knew whether the peer actually received it and
         // send their data because of that. Therefore there exists
-        // always some uncertainity around the window. The most
+        // always some uncertainty around the window. The most
         // important part however is that the client can never send
         // us any data outside of a given window - which is still
         // enforced here.
@@ -457,7 +457,7 @@ impl ReceiveStream {
                 if let Some(total_size) = total_size {
                     // If we already have received all the data, there is no point
                     // in transmitting STOP_SENDING anymore.
-                    // Note that this might not hapen in the same frame where we
+                    // Note that this might not happen in the same frame where we
                     // receive the FIN. We might receive the FIN before receiving
                     // outstanding data.
                     if self.receive_buffer.total_received_len() == total_size {

@@ -115,7 +115,7 @@ impl Closer {
                             self.request_sent = true;
                         }
                         Err(err) if err.is_full() => {
-                            // yield and wake up the task since the opener mis-reported its ready state
+                            // yield and wake up the task since the opener misreported its ready state
                             context.waker().wake_by_ref();
                         }
                         Err(_) => {

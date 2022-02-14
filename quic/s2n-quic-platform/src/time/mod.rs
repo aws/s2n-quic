@@ -207,7 +207,7 @@ mod if_testing {
         }
 
         impl MockClock {
-            /// Creats a new clock instance for testing purposes.
+            /// Creates a new clock instance for testing purposes.
             ///
             /// The Clock will default to a default [`Timestamp`], which
             /// represents the lowest possible [`Timestamp`] which can ever be

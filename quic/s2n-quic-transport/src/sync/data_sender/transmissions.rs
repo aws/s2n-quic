@@ -127,7 +127,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
             || interval_len >= Writer::MIN_WRITE_SIZE && capacity < Writer::MIN_WRITE_SIZE
             || !self.in_flight.has_capacity()
         {
-            return Err(OnTransmitError::CoundNotAcquireEnoughSpace);
+            return Err(OnTransmitError::CouldNotAcquireEnoughSpace);
         }
 
         if capacity < interval_len {
@@ -145,14 +145,14 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
             self.flow_controller
                 .acquire_flow_control_window(interval.end_exclusive())
                 .checked_sub(interval.start)
-                .ok_or(OnTransmitError::CoundNotAcquireEnoughSpace)?
+                .ok_or(OnTransmitError::CouldNotAcquireEnoughSpace)?
                 .try_into()
                 .unwrap_or_default()
         };
 
         // ensure the window is non-zero
         if window_len == 0 {
-            return Err(OnTransmitError::CoundNotAcquireEnoughSpace);
+            return Err(OnTransmitError::CouldNotAcquireEnoughSpace);
         }
 
         if window_len < interval_len {
@@ -164,7 +164,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
 
         self.writer
             .write_chunk(interval.start, &mut view, writer_context, context)
-            .map_err(|_| OnTransmitError::CoundNotAcquireEnoughSpace)?;
+            .map_err(|_| OnTransmitError::CouldNotAcquireEnoughSpace)?;
 
         let len = view.len();
         debug_assert_ne!(len, 0u64, "cannot transmit an empty payload");
@@ -204,7 +204,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
 
                 self.writer
                     .write_fin(buffer.total_len(), writer_context, context)
-                    .map_err(|_| OnTransmitError::CoundNotAcquireEnoughSpace)?;
+                    .map_err(|_| OnTransmitError::CouldNotAcquireEnoughSpace)?;
 
                 state.on_transmit(packet_number);
             }

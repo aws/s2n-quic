@@ -133,7 +133,7 @@ impl<
                 self.delivery = DeliveryState::NotRequested;
                 // There is no need to call request_delivery_if_necessary() here:
                 // If the value would have been updated significantly enough the
-                // update would already have been superseeded.
+                // update would already have been superseded.
             }
         }
     }

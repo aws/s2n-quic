@@ -109,7 +109,7 @@ pub trait Endpoint: 'static + Send + Sized {
 
     /// Returns a future which polls for application-space wakeups
     ///
-    /// When successful, the number of wakups is returned.
+    /// When successful, the number of wakeups is returned.
     fn wakeups<'a, C: Clock>(&'a mut self, clock: &'a C) -> Wakeups<'a, Self, C> {
         Wakeups {
             endpoint: self,
@@ -119,7 +119,7 @@ pub trait Endpoint: 'static + Send + Sized {
 
     /// Polls for any application-space wakeups
     ///
-    /// When successful, the number of wakups is returned.
+    /// When successful, the number of wakeups is returned.
     fn poll_wakeups<C: Clock>(
         &mut self,
         cx: &mut Context<'_>,

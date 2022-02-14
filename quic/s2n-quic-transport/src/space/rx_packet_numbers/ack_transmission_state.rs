@@ -88,7 +88,7 @@ impl AckTransmissionState {
         // already been processed.
         //
         // Increment retransmissions for every N packets we are ACKing to increase
-        // the likelyhood of ACK frames being received by the peer.
+        // the likelihood of ACK frames being received by the peer.
         //
         // TODO: 10 was chosen as an initial hunch - we need to do some experiements to improve
         const RANGE_SCALE: usize = 10;

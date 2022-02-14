@@ -1097,7 +1097,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
 // - modify rtt for fist path to detect difference in PTO
 //
 // Expectation 1:
-// - veify PTO of second path > PTO of first path
+// - verify PTO of second path > PTO of first path
 //
 // Setup 2:
 // - call on_transmit for second path to send challenge and arm abandon timer

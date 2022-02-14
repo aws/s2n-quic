@@ -1310,7 +1310,7 @@ fn push_data_after_stream_is_reset_due_to_stop_sending() {
                 test_env.stream.get_stream_interests()
             );
             // The user is already aware about the reset.
-            // Deliverying an ack now should bring us into the final state
+            // Delivering an ack now should bring us into the final state
             test_env.ack_packet(pn(0), ExpectWakeup(Some(false)));
         }
         assert_eq!(

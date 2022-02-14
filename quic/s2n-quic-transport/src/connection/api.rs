@@ -148,7 +148,7 @@ impl Connection {
 
     /// Closes the Connection with the provided error code
     ///
-    /// This will immediatly terminate all outstanding streams.
+    /// This will immediately terminate all outstanding streams.
     #[inline]
     pub fn close(&self, error_code: application::Error) {
         self.api.close_connection(Some(error_code));

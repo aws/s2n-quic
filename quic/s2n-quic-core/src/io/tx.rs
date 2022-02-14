@@ -74,7 +74,7 @@ pub trait Entry {
 
 /// Abstraction over a message to be sent on a socket
 ///
-/// Instead of a concrete struct with eagerly evaluted fields,
+/// Instead of a concrete struct with eagerly evaluated fields,
 /// using trait callbacks ensure messages only need to compute what
 /// the actual transmission queue requires. For example, if the transmission
 /// queue cannot set ECN markings, it will not call the [`Message::ecn`] function.

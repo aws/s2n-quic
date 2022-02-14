@@ -28,7 +28,7 @@ pub(crate) async fn handle_connection(mut connection: Connection, www_dir: Arc<P
                 // spawn a task per stream
                 tokio::spawn(async move {
                     if let Err(err) = handle_stream(stream, www_dir).await {
-                        eprintln!("Stream errror: {:?}", err)
+                        eprintln!("Stream error: {:?}", err)
                     }
                 });
             }

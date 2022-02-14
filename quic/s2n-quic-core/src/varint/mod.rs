@@ -509,7 +509,7 @@ impl core::ops::Add<usize> for VarInt {
     #[track_caller]
     fn add(self, rhs: usize) -> Self {
         if cfg!(debug_assertions) {
-            self.checked_add(VarInt::new(rhs as u64).expect("VarInt overflow occured"))
+            self.checked_add(VarInt::new(rhs as u64).expect("VarInt overflow occurred"))
                 .expect("VarInt overflow occurred")
         } else {
             Self(self.0 + rhs as u64)
@@ -535,7 +535,7 @@ impl core::ops::AddAssign<usize> for VarInt {
     fn add_assign(&mut self, rhs: usize) {
         if cfg!(debug_assertions) {
             *self = self
-                .checked_add(VarInt::new(rhs as u64).expect("VarInt overflow occured"))
+                .checked_add(VarInt::new(rhs as u64).expect("VarInt overflow occurred"))
                 .expect("VarInt overflow occurred")
         } else {
             self.0 += rhs as u64
@@ -604,7 +604,7 @@ impl core::ops::Mul<usize> for VarInt {
     #[track_caller]
     fn mul(self, rhs: usize) -> Self {
         if cfg!(debug_assertions) {
-            self.checked_mul(VarInt::new(rhs as u64).expect("VarInt overflow occured"))
+            self.checked_mul(VarInt::new(rhs as u64).expect("VarInt overflow occurred"))
                 .expect("VarInt overflow occurred")
         } else {
             Self(self.0 * rhs as u64)
@@ -630,7 +630,7 @@ impl core::ops::MulAssign<usize> for VarInt {
     fn mul_assign(&mut self, rhs: usize) {
         if cfg!(debug_assertions) {
             *self = self
-                .checked_mul(VarInt::new(rhs as u64).expect("VarInt overflow occured"))
+                .checked_mul(VarInt::new(rhs as u64).expect("VarInt overflow occurred"))
                 .expect("VarInt overflow occurred")
         } else {
             self.0 *= rhs as u64
