@@ -1,0 +1,21 @@
+[default]
+binary = false
+check-filename = true
+
+[default.extend-identifiers]
+# in crypto/retry.rs there is a false positive on hex values - ignore it here
+0f2496ba = "0f2496ba"
+
+[default.extend-words]
+# ECN Capable Transport
+ect = "ect"
+
+[files]
+extend-exclude = [
+    "*.snap",
+    "*.bin",
+    "*.der",
+    "*.pem",
+    "**/specs/**/*",
+    "common/duvet/www/public/script.js",
+]
