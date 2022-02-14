@@ -312,7 +312,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
             // The path's transmission_interest indicates if a PATH_CHALLENGE or PATH_RESPONSE
             // frame is to be written.
             //
-            // We need to check is_validated because it is possible to recieve a PATH_CHALLENGE on
+            // We need to check is_validated because it is possible to receive a PATH_CHALLENGE on
             // an active path for Off-Path Packet Forwarding prevention. However, we would only
             // like to pad when validating the MTU.
             if !path.is_validated() && path.has_transmission_interest() {

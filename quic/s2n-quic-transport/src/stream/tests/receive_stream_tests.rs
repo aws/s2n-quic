@@ -1023,7 +1023,7 @@ fn resetting_a_stream_errors_if_final_size_exceeds_connection_flow_control_windo
 fn flow_control_window_update_is_only_sent_when_minimum_data_size_is_consumed() {
     let mut test_env = setup_receive_only_test_env();
 
-    let relative_treshold = test_env
+    let relative_threshold = test_env
         .stream
         .receive_stream
         .flow_controller
@@ -1031,16 +1031,16 @@ fn flow_control_window_update_is_only_sent_when_minimum_data_size_is_consumed() 
         / 10;
     // This is the size that the read window needs to go to in order to send
     // an outgoing window update.
-    let absolute_treshold: u64 = Into::<u64>::into(
+    let absolute_threshold: u64 = Into::<u64>::into(
         test_env
             .stream
             .receive_stream
             .flow_controller
             .current_stream_receive_window(),
-    ) + u64::from(relative_treshold);
+    ) + u64::from(relative_threshold);
     // This is the amount of bytes that need to have been received to bring the
     // receive window up to that level
-    let required_for_read_window_update = absolute_treshold
+    let required_for_read_window_update = absolute_threshold
         - u64::from(
             test_env
                 .stream
@@ -1049,7 +1049,7 @@ fn flow_control_window_update_is_only_sent_when_minimum_data_size_is_consumed() 
                 .desired_flow_control_window,
         );
 
-    // Feed up to the treshold
+    // Feed up to the threshold
     test_env.feed_data(
         VarInt::from_u32(0),
         required_for_read_window_update as usize - 1,
@@ -1064,7 +1064,7 @@ fn flow_control_window_update_is_only_sent_when_minimum_data_size_is_consumed() 
         test_env.stream.get_stream_interests()
     );
 
-    let expected_window = absolute_treshold as u64 - 1;
+    let expected_window = absolute_threshold as u64 - 1;
     assert_eq!(
         expected_window,
         Into::<u64>::into(
@@ -1083,7 +1083,7 @@ fn flow_control_window_update_is_only_sent_when_minimum_data_size_is_consumed() 
         test_env.stream.get_stream_interests()
     );
 
-    // Send and consume one more byte to go over the absolute treshold
+    // Send and consume one more byte to go over the absolute threshold
     test_env.feed_data(
         VarInt::from_u32(required_for_read_window_update as u32 - 1),
         1,
@@ -1094,7 +1094,7 @@ fn flow_control_window_update_is_only_sent_when_minimum_data_size_is_consumed() 
     );
     assert_eq!(1, test_env.consume_all_data());
     assert_eq!(
-        absolute_treshold,
+        absolute_threshold,
         Into::<u64>::into(
             test_env
                 .stream
@@ -1114,7 +1114,7 @@ fn flow_control_window_update_is_only_sent_when_minimum_data_size_is_consumed() 
     assert_eq!(
         Frame::MaxStreamData(MaxStreamData {
             stream_id: test_env.stream.stream_id.into(),
-            maximum_stream_data: VarInt::new(absolute_treshold).unwrap(),
+            maximum_stream_data: VarInt::new(absolute_threshold).unwrap(),
         }),
         sent_frame.as_frame()
     );
@@ -1132,18 +1132,18 @@ fn connection_flow_control_window_update_is_only_sent_when_minimum_data_size_is_
     let test_env_config = conn_flow_control_test_env_config();
     let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
-    let relative_treshold = test_env_config.desired_connection_flow_control_window / 10;
+    let relative_threshold = test_env_config.desired_connection_flow_control_window / 10;
     // This is the size that the read window needs to go to in order to send
     // an outgoing window update.
-    let absolute_treshold: u64 =
+    let absolute_threshold: u64 =
         Into::<u64>::into(test_env_config.initial_connection_receive_window_size)
-            + u64::from(relative_treshold);
+            + u64::from(relative_threshold);
     // This is the amount of bytes that need to have been received to bring the
     // receive window up to that level
     let required_for_read_window_update =
-        absolute_treshold - u64::from(test_env_config.desired_connection_flow_control_window);
+        absolute_threshold - u64::from(test_env_config.desired_connection_flow_control_window);
 
-    // Feed up to the treshold
+    // Feed up to the threshold
     test_env.feed_data(
         VarInt::from_u32(0),
         required_for_read_window_update as usize - 1,
@@ -1164,7 +1164,7 @@ fn connection_flow_control_window_update_is_only_sent_when_minimum_data_size_is_
             .get_transmission_interest()
     );
 
-    let expected_window = absolute_treshold as u64 - 1;
+    let expected_window = absolute_threshold as u64 - 1;
     assert_eq!(
         expected_window,
         Into::<u64>::into(
@@ -1198,7 +1198,7 @@ fn connection_flow_control_window_update_is_only_sent_when_minimum_data_size_is_
     );
     assert_eq!(1, test_env.consume_all_data());
     assert_eq!(
-        absolute_treshold,
+        absolute_threshold,
         Into::<u64>::into(
             test_env
                 .rx_connection_flow_controller
@@ -1217,7 +1217,7 @@ fn connection_flow_control_window_update_is_only_sent_when_minimum_data_size_is_
     let mut sent_frame = test_env.sent_frames.pop_front().expect("Frame is written");
     assert_eq!(
         Frame::MaxData(MaxData {
-            maximum_data: VarInt::new(absolute_treshold).unwrap(),
+            maximum_data: VarInt::new(absolute_threshold).unwrap(),
         }),
         sent_frame.as_frame()
     );
@@ -1364,7 +1364,7 @@ fn only_lost_flow_control_update_is_sent_if_retransmission_only() {
 fn if_flow_control_window_is_increased_enough_multiple_frames_are_emitted() {
     let mut test_env = setup_receive_only_test_env();
 
-    let relative_treshold = test_env
+    let relative_threshold = test_env
         .stream
         .receive_stream
         .flow_controller
@@ -1372,16 +1372,16 @@ fn if_flow_control_window_is_increased_enough_multiple_frames_are_emitted() {
         / 10;
     // This is the size that the read window needs to go to in order to send
     // an outgoing window update.
-    let absolute_treshold = Into::<u64>::into(
+    let absolute_threshold = Into::<u64>::into(
         test_env
             .stream
             .receive_stream
             .flow_controller
             .current_stream_receive_window(),
-    ) + relative_treshold as u64;
+    ) + relative_threshold as u64;
     // This is the amount of bytes that need to have been received to bring the
     // receive window up to that level
-    let required_for_read_window_update = absolute_treshold
+    let required_for_read_window_update = absolute_threshold
         - u64::from(
             test_env
                 .stream
@@ -1390,7 +1390,7 @@ fn if_flow_control_window_is_increased_enough_multiple_frames_are_emitted() {
                 .desired_flow_control_window,
         );
 
-    // Feed up to the treshold and drain data
+    // Feed up to the threshold and drain data
     test_env.feed_data(
         VarInt::from_u32(0),
         required_for_read_window_update as usize,
@@ -1410,7 +1410,7 @@ fn if_flow_control_window_is_increased_enough_multiple_frames_are_emitted() {
     assert_eq!(
         Frame::MaxStreamData(MaxStreamData {
             stream_id: test_env.stream.stream_id.into(),
-            maximum_stream_data: VarInt::new(absolute_treshold).unwrap(),
+            maximum_stream_data: VarInt::new(absolute_threshold).unwrap(),
         }),
         sent_frame.as_frame()
     );
@@ -1421,20 +1421,20 @@ fn if_flow_control_window_is_increased_enough_multiple_frames_are_emitted() {
     );
     test_env.assert_write_frames(0);
 
-    // Feed right before next treshold and drain data
+    // Feed right before next threshold and drain data
     test_env.feed_data(
         VarInt::from_u32(required_for_read_window_update as u32),
-        relative_treshold - 1,
+        relative_threshold - 1,
     );
-    assert_eq!(relative_treshold - 1, test_env.consume_all_data());
+    assert_eq!(relative_threshold - 1, test_env.consume_all_data());
     assert_eq!(
         stream_interests(&["ack"]),
         test_env.stream.get_stream_interests()
     );
 
-    // Feed up to the next treshold and drain data
+    // Feed up to the next threshold and drain data
     test_env.feed_data(
-        VarInt::from_u32(required_for_read_window_update as u32 + relative_treshold as u32 - 1),
+        VarInt::from_u32(required_for_read_window_update as u32 + relative_threshold as u32 - 1),
         1,
     );
     assert_eq!(1, test_env.consume_all_data());
@@ -1449,7 +1449,8 @@ fn if_flow_control_window_is_increased_enough_multiple_frames_are_emitted() {
     assert_eq!(
         Frame::MaxStreamData(MaxStreamData {
             stream_id: test_env.stream.stream_id.into(),
-            maximum_stream_data: VarInt::new(absolute_treshold + relative_treshold as u64).unwrap(),
+            maximum_stream_data: VarInt::new(absolute_threshold + relative_threshold as u64)
+                .unwrap(),
         }),
         sent_frame.as_frame()
     );
@@ -1474,18 +1475,18 @@ fn if_connection_flow_control_window_is_increased_enough_multiple_frames_are_emi
     let test_env_config: TestEnvironmentConfig = conn_flow_control_test_env_config();
     let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
-    let relative_treshold = test_env_config.desired_connection_flow_control_window as usize / 10;
+    let relative_threshold = test_env_config.desired_connection_flow_control_window as usize / 10;
     // This is the size that the read window needs to go to in order to send
     // an outgoing window update.
-    let absolute_treshold =
+    let absolute_threshold =
         Into::<u64>::into(test_env_config.initial_connection_receive_window_size)
-            + relative_treshold as u64;
+            + relative_threshold as u64;
     // This is the amount of bytes that need to have been received to bring the
     // receive window up to that level
     let required_for_read_window_update =
-        absolute_treshold - u64::from(test_env_config.desired_connection_flow_control_window);
+        absolute_threshold - u64::from(test_env_config.desired_connection_flow_control_window);
 
-    // Feed up to the treshold and drain data
+    // Feed up to the threshold and drain data
     test_env.feed_data(
         VarInt::from_u32(0),
         required_for_read_window_update as usize,
@@ -1510,7 +1511,7 @@ fn if_connection_flow_control_window_is_increased_enough_multiple_frames_are_emi
     let mut sent_frame = test_env.sent_frames.pop_front().expect("Frame is written");
     assert_eq!(
         Frame::MaxData(MaxData {
-            maximum_data: VarInt::new(absolute_treshold).unwrap(),
+            maximum_data: VarInt::new(absolute_threshold).unwrap(),
         }),
         sent_frame.as_frame()
     );
@@ -1522,18 +1523,18 @@ fn if_connection_flow_control_window_is_increased_enough_multiple_frames_are_emi
     assert!(test_env.rx_connection_flow_controller.is_inflight());
     test_env.assert_write_frames(0);
 
-    // Feed right before next treshold and drain data
+    // Feed right before next threshold and drain data
     test_env.feed_data(
         VarInt::from_u32(required_for_read_window_update as u32),
-        relative_treshold - 1,
+        relative_threshold - 1,
     );
-    assert_eq!(relative_treshold - 1, test_env.consume_all_data());
+    assert_eq!(relative_threshold - 1, test_env.consume_all_data());
     assert!(test_env.rx_connection_flow_controller.is_inflight());
     test_env.assert_write_frames(0);
 
-    // Feed up to the next treshold and drain data
+    // Feed up to the next threshold and drain data
     test_env.feed_data(
-        VarInt::from_u32(required_for_read_window_update as u32 + relative_treshold as u32 - 1),
+        VarInt::from_u32(required_for_read_window_update as u32 + relative_threshold as u32 - 1),
         1,
     );
     assert_eq!(1, test_env.consume_all_data());
@@ -1553,7 +1554,7 @@ fn if_connection_flow_control_window_is_increased_enough_multiple_frames_are_emi
     let mut sent_frame = test_env.sent_frames.pop_front().expect("Frame is written");
     assert_eq!(
         Frame::MaxData(MaxData {
-            maximum_data: VarInt::new(absolute_treshold + relative_treshold as u64).unwrap(),
+            maximum_data: VarInt::new(absolute_threshold + relative_threshold as u64).unwrap(),
         }),
         sent_frame.as_frame()
     );
@@ -1667,7 +1668,7 @@ fn resend_flow_control_update_if_lost() {
         stream_interests(&["ack"]),
         test_env.stream.get_stream_interests()
     );
-    // When acknowleding the new frame we are done
+    // When acknowledging the new frame we are done
     test_env.ack_packet(sent_frame.packet_nr, ExpectWakeup(Some(false)));
     assert_eq!(
         stream_interests(&[]),

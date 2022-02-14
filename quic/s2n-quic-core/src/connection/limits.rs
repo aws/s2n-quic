@@ -31,15 +31,15 @@ const MAX_KEEP_ALIVE_PERIOD_DEFAULT: Duration = Duration::from_secs(30);
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct ConnectionInfo<'a> {
-    pub remote_adddress: SocketAddress<'a>,
+    pub remote_address: SocketAddress<'a>,
 }
 
 impl<'a> ConnectionInfo<'a> {
     #[inline]
     #[doc(hidden)]
-    pub fn new(remote_adddress: &'a inet::SocketAddress) -> Self {
+    pub fn new(remote_address: &'a inet::SocketAddress) -> Self {
         Self {
-            remote_adddress: remote_adddress.into_event(),
+            remote_address: remote_address.into_event(),
         }
     }
 }

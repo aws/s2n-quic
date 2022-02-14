@@ -552,7 +552,7 @@ impl SendStream {
 
         // We do not track whether we transmit a range for the first time or
         // whether it is a retransmit. Therefore we can not decide whether the
-        // oustanding data is lost, or has never been transmitted.
+        // outstanding data is lost, or has never been transmitted.
         // Assuming the client really does not want any data anymore, we will
         // still simply emit a RESET in all cases.
 

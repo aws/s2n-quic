@@ -7,7 +7,7 @@ use bytes::Bytes;
 /// [Server Name Indication](https://en.wikipedia.org/wiki/Server_Name_Indication)
 /// value, encoded as UTF-8.
 ///
-/// ServerName should be a valid UTF-8 string, therfore this struct can only be
+/// ServerName should be a valid UTF-8 string, therefore this struct can only be
 /// constructed from a `&str` or `String`.
 ///
 /// ```rust

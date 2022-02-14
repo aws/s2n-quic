@@ -187,7 +187,7 @@ impl ReceiveStreamFlowController {
         // yet. However even if we knew we sent the MAX_STREAM_DATA frame
         // we wouldn't knew whether the peer actually received it and
         // send their data because of that. Therefore there exists
-        // always some uncertainity around the window. The most
+        // always some uncertainty around the window. The most
         // important part however is that the client can never send
         // us any data outside of a given window - which is still
         // enforced here.

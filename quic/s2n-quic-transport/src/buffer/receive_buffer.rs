@@ -72,7 +72,7 @@ fn align_offset(offset: u64, alignment: usize) -> u64 {
 /// once a contiguous range of bytes at the current position of the stream has
 /// been accumulated.
 ///
-/// `StreamReceiveBuffer` is optmized for minimizing memory allocations and for
+/// `StreamReceiveBuffer` is optimized for minimizing memory allocations and for
 /// offering it's users chunks of sizes that minimize call overhead.
 /// In order to achieve this goal, `StreamReceiveBuffer` will always allocate internal
 /// buffer chunks of a fixed size - which defaults to
@@ -84,7 +84,7 @@ fn align_offset(offset: u64, alignment: usize) -> u64 {
 ///
 /// When users want to consume data from the buffer, the consumable part of the
 /// internal receive buffer is split off and passed back to the caller. Due to
-/// this chunk beeing a view onto a reference-counted internal buffer of type
+/// this chunk being a view onto a reference-counted internal buffer of type
 /// [`BytesMut`] this is also efficient and does not require additional memory
 /// allocation or copy.
 ///
@@ -194,7 +194,7 @@ impl StreamReceiveBuffer {
         b
     }
 
-    /// Tries to merge a buffer on the given Positon to the buffer of it's left side
+    /// Tries to merge a buffer on the given `[SlotPosition]` to the buffer of it's left side
     fn try_merge_buffer_to_left(&mut self, mut slot_pos: SlotPosition) -> SlotPosition {
         if slot_pos.index == 0 || slot_pos.index >= self.slots.len() {
             // No buffer on the left
@@ -216,7 +216,7 @@ impl StreamReceiveBuffer {
         if let SlotState::Received(right_buf) = &mut self.slots[slot_pos.index] {
             let right_aligned_offset = align_offset(slot_pos.offset, self.buffer_size);
             if right_aligned_offset != left_aligned_offset {
-                // We only merge it both aligned offets are the same, which
+                // We only merge it both aligned offsets are the same, which
                 // means both buffers are originating from the same source
                 // buffer.
                 // If this property wouldn't be true, BytesMut::unsplit
@@ -244,7 +244,7 @@ impl StreamReceiveBuffer {
         slot_pos
     }
 
-    /// Tries to merge a buffer on the given positon to the buffer of it's right side
+    /// Tries to merge a buffer on the given position to the buffer of it's right side
     fn try_merge_buffer_to_right(&mut self, slot_pos: SlotPosition) {
         if slot_pos.index + 1 >= self.slots.len() {
             // No buffer on the right side
@@ -265,7 +265,7 @@ impl StreamReceiveBuffer {
         if let SlotState::Received(right_buf) = &mut self.slots[slot_pos.index + 1] {
             let right_aligned_offset = align_offset(right_offset, self.buffer_size);
             if right_aligned_offset != left_aligned_offset {
-                // We only merge it both aligned offets are the same, which
+                // We only merge it both aligned offsets are the same, which
                 // means both buffers are originating from the same source
                 // buffer.
                 // If this property wouldn't be true, BytesMut::unsplit
@@ -290,7 +290,7 @@ impl StreamReceiveBuffer {
     /// Tries to merge the buffer at the given position with adjacent buffers.
     /// `try_left` and `try_right` specify whether trying to merge in those
     /// directions should be attempted or not. We can skip attempting it if we
-    /// know for sure upfront that buffers won't be mergable in this direction.
+    /// know for sure upfront that buffers won't be mergeable in this direction.
     fn try_merge_receive_buffers(
         &mut self,
         mut slot_pos: SlotPosition,
@@ -310,7 +310,7 @@ impl StreamReceiveBuffer {
 
     /// Allocates a new buffer which gets pushed to the end of our slot queue.
     /// The method allows to create Gaps between slots. Therefore an
-    /// `aligned_offset` (which must be a mulitple of `buffer_size`) must be
+    /// `aligned_offset` (which must be a multiple of `buffer_size`) must be
     /// provided.
     fn push_back_buffer_at(&mut self, aligned_offset: u64) {
         // Allocate the buffer before we do any slot

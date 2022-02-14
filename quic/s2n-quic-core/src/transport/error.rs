@@ -352,7 +352,7 @@ impl Error {
 impl Error {
     /// Creates an application-level `Error`
     #[inline]
-    pub const fn applicaton_error(code: VarInt) -> Self {
+    pub const fn application_error(code: VarInt) -> Self {
         // Application errors set `frame_type` to `None`
         Self::new(code)
     }

@@ -76,7 +76,7 @@ pub enum OnTransmitError {
     /// It was not possible to write a frame
     CouldNotWriteFrame,
     /// It was not possible to obtain a large enough space for writing a frame
-    CoundNotAcquireEnoughSpace,
+    CouldNotAcquireEnoughSpace,
 }
 
 /// Enumerates error values for `on_transmit` calls on connections

@@ -49,7 +49,7 @@ impl<T: Copy> QueueState<T> {
     /// The method gets passed a queued which is used to store further wakeup events.
     /// It will returns a queue of occurred events.
     /// If no wakeup occurred, the method will store the passed [`Waker`] and notify it as soon as
-    /// a wakeup occured.
+    /// a wakeup occurred.
     fn poll_pending_wakeups(&mut self, swap_queue: &mut VecDeque<T>, context: &Context) {
         debug_assert!(swap_queue.is_empty());
         self.wakeup_in_progress = false;

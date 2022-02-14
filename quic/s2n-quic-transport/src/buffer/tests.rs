@@ -674,7 +674,7 @@ fn fail_to_push_out_of_bounds_data_with_long_buffer() {
     // reference, due to not wanting to allocate too much memory. This is
     // ok in order to make sure that the overflow check works.
     // fake_data is based on a valid base pointer, in order to give us a
-    // bit more certainity that the test won't fail for other reasons.
+    // bit more certainty that the test won't fail for other reasons.
     let data = [0u8; 32];
     let fake_data = unsafe {
         core::slice::from_raw_parts(&data as *const u8, MAX_VARINT_VALUE as usize - 20 + 1)

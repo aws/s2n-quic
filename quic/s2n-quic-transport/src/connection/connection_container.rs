@@ -435,7 +435,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
                 insert_interest!(waiting_for_timeout, insert);
             }
         } else {
-            // make sure the timeout value reflects the connection's presense in the timeout list
+            // make sure the timeout value reflects the connection's presence in the timeout list
             debug_assert_eq!(
                 interests.timeout.is_some(),
                 node.waiting_for_timeout_link.is_linked()

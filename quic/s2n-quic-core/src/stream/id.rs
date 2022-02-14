@@ -128,7 +128,7 @@ impl StreamId {
             .map(StreamId::from_varint)
     }
 
-    /// Returns whether the client or server initated the Stream
+    /// Returns whether the client or server initiated the Stream
     #[inline]
     pub fn initiator(self) -> endpoint::Type {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-2.1

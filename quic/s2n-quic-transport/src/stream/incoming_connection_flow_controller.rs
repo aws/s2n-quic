@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Manages the per-connecton flow-control window
+//! Manages the per-connection flow-control window
 
 use crate::{
     contexts::{OnTransmitError, WriteContext},
