@@ -7,7 +7,7 @@ use cfg_if::cfg_if;
 pub use s2n_quic_core::event::{
     api as events,
     api::{ConnectionInfo, ConnectionMeta},
-    query, Event, Meta, Subscriber, Timestamp,
+    query, supervisor, Event, Meta, Subscriber, Timestamp,
 };
 
 /// Provides event handling support for an endpoint
