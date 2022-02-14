@@ -546,8 +546,8 @@ impl StreamReceiveBuffer {
                     // The data in the buffer starts at slot_offset. If our
                     // data_offset is higher we need the upfront data, since we don't
                     // need to skip it.
-                    let non_targetted_slot_data: usize = (data_offset - slot_pos.offset) as usize;
-                    let to_skip: usize = stored - non_targetted_slot_data;
+                    let non_targeted_slot_data: usize = (data_offset - slot_pos.offset) as usize;
+                    let to_skip: usize = stored - non_targeted_slot_data;
                     if to_skip > data.len() {
                         return Ok(());
                     } else {

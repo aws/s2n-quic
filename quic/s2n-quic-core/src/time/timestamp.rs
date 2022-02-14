@@ -249,11 +249,11 @@ mod tests {
 
     #[test]
     fn timestamp_math_test() {
-        // Start at a high inital timestamp to let the overflow check work
+        // Start at a high initial timestamp to let the overflow check work
         let initial = Timestamp::from_duration_impl(Duration::from_micros(1));
         timestamp_math(initial);
 
-        // Start at a high inital timestamp to let the overflow check work
+        // Start at a high initial timestamp to let the overflow check work
         let initial = Timestamp::from_duration_impl(Duration::from_micros(1u64 << 63));
         timestamp_math(initial);
     }
