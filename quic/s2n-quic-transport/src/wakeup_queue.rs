@@ -248,7 +248,7 @@ mod tests {
         // wake_by_ref
         waker1.wake_by_ref();
         check_state!(state, 1, true);
-        // calling wake on same handle should not queue a wakup
+        // calling wake on same handle should not queue a wakeup
         waker1.wake_by_ref();
         check_state!(state, 1, true);
         waker2.wake_by_ref();
