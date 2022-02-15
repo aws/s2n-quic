@@ -1,8 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use dos_mitigation::slowloris;
 use s2n_quic::Server;
-use std::error::Error;
+use std::{error::Error, time::Duration};
 
 /// NOTE: this certificate is to be used for demonstration purposes only!
 pub static CERT_PEM: &str = include_str!(concat!(
@@ -17,7 +18,30 @@ pub static KEY_PEM: &str = include_str!(concat!(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    // Limit the duration any handshake attempt may take to 5 seconds
+    // By default, handshakes are limited to 10 seconds.
+    let connection_limits = s2n_quic::provider::limits::Limits::new()
+        .with_max_handshake_duration(Duration::from_secs(5))
+        .expect("connection limits are valid");
+
+    // Limit the number of inflight handshakes to 100.
+    let endpoint_limits = s2n_quic::provider::endpoint_limits::Default::builder()
+        .with_inflight_handshake_limit(100)?
+        .build()?;
+
+    // Build an `s2n_quic::Server`
     let mut server = Server::builder()
+        // Provide the `connection_limits` defined above
+        .with_limits(connection_limits)?
+        // Provide the `endpoint_limits defined above
+        .with_endpoint_limits(endpoint_limits)?
+        // Provide a tuple of the `example::MyConnectionSupervisor` defined in `dos-mitigation/src/lib.rs`
+        // and the default event tracing subscriber. This combination will allow for both the slowloris mitigation
+        // functionality of `MyConnectionSupervisor` as well as event tracing to be utilized.
+        .with_event((
+            slowloris::MyConnectionSupervisor,
+            s2n_quic::provider::event::tracing::Subscriber::default(),
+        ))?
         .with_tls((CERT_PEM, KEY_PEM))?
         .with_io("127.0.0.1:4433")?
         .start()?;
