@@ -290,7 +290,7 @@ where
         let data = core::slice::from_raw_parts_mut(data, len as _);
         match context.on_read(data) {
             0 => {
-                // https://github.com/awslabs/s2n/blob/main/docs/USAGE-GUIDE.md#s2n_connection_set_send_cb
+                // https://github.com/aws/s2n-tls/blob/main/docs/USAGE-GUIDE.md#s2n_connection_set_send_cb
                 // s2n-tls wants us to set the global errno to signal blocked
                 errno::set_errno(errno::Errno(libc::EWOULDBLOCK));
                 -1
