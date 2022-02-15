@@ -1,12 +1,13 @@
 ---
 source: quic/s2n-quic-core/tests/recovery/simulation.rs
+assertion_line: 148
 expression: self
 
 ---
 Simulation {
     name: "Minimum Window",
     description: "Full congestion window utilization after starting from the minimum window",
-    cc: "s2n_quic_core::recovery::cubic::CubicCongestionController",
+    cc: "CubicCongestionController",
     rounds: [
           0: pkts: 2,
           1: pkts: 2,

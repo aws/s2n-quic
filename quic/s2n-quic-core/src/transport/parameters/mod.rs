@@ -1428,7 +1428,7 @@ mod snapshot_tests {
 
             #[cfg(not(miri))] // snapshot tests don't work on miri
             insta::assert_debug_snapshot!(
-                concat!(stringify!($endpoint_params), " default"),
+                concat!(stringify!($endpoint_params), "__default"),
                 default_value
             );
 

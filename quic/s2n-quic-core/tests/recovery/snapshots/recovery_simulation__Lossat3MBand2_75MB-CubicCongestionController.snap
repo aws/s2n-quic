@@ -1,12 +1,13 @@
 ---
 source: quic/s2n-quic-core/tests/recovery/simulation.rs
+assertion_line: 148
 expression: self
 
 ---
 Simulation {
     name: "Loss at 3MB and 2.75MB",
     description: "Loss encountered at ~3MB and ~2.75MB",
-    cc: "s2n_quic_core::recovery::cubic::CubicCongestionController",
+    cc: "CubicCongestionController",
     rounds: [
           0: pkts: 10,
           1: pkts: 20,

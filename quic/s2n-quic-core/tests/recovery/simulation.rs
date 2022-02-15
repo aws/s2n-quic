@@ -17,6 +17,10 @@ use std::{
 
 const CHART_DIMENSIONS: (u32, u32) = (1024, 768);
 
+fn type_name<T>() -> &'static str {
+    core::any::type_name::<T>().split("::").last().unwrap()
+}
+
 // These simulations are too slow for Miri
 #[test]
 #[cfg_attr(miri, ignore)]
@@ -165,7 +169,7 @@ fn slow_start_unlimited<CC: CongestionController>(
     Simulation {
         name: "Slow Start Unlimited",
         description: "Full congestion window utilization with no congestion experienced",
-        cc: core::any::type_name::<CC>(),
+        cc: type_name::<CC>(),
         rounds: simulate_constant_rtt(&mut congestion_controller, &[], None, num_rounds),
     }
 }
@@ -178,7 +182,7 @@ fn loss_at_3mb<CC: CongestionController>(
     Simulation {
         name: "Loss at 3MB",
         description: "Full congestion window utilization with loss encountered at ~3MB",
-        cc: core::any::type_name::<CC>(),
+        cc: type_name::<CC>(),
         rounds: simulate_constant_rtt(&mut congestion_controller, &[3_000_000], None, num_rounds),
     }
 }
@@ -194,7 +198,7 @@ fn app_limited_1mb<CC: CongestionController>(
     Simulation {
         name: "App Limited 1MB",
         description: "App limited to 1MB per round with loss encountered at ~750KB",
-        cc: core::any::type_name::<CC>(),
+        cc: type_name::<CC>(),
         rounds: simulate_constant_rtt(
             &mut congestion_controller,
             &[750_000],
@@ -222,7 +226,7 @@ fn minimum_window<CC: CongestionController>(
     Simulation {
         name: "Minimum Window",
         description: "Full congestion window utilization after starting from the minimum window",
-        cc: core::any::type_name::<CC>(),
+        cc: type_name::<CC>(),
         rounds: simulate_constant_rtt(&mut congestion_controller, &[], None, num_rounds),
     }
 }
@@ -236,7 +240,7 @@ fn loss_at_3mb_and_2_75mb<CC: CongestionController>(
     Simulation {
         name: "Loss at 3MB and 2.75MB",
         description: "Loss encountered at ~3MB and ~2.75MB",
-        cc: core::any::type_name::<CC>(),
+        cc: type_name::<CC>(),
         rounds: simulate_constant_rtt(
             &mut congestion_controller,
             &[3_000_000, 2_750_000],
