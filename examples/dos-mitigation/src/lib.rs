@@ -3,7 +3,7 @@
 
 /// Example mitigation for Slowloris-style Denial of Service attacks. For details on this attack,
 /// see [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000.html#name-slowloris-attacks).
-pub mod example {
+pub mod slowloris {
     use s2n_quic::provider::{
         event,
         event::{events, supervisor, ConnectionMeta, Timestamp},

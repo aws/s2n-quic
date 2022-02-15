@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use dos_mitigation::example;
+use dos_mitigation::slowloris;
 use s2n_quic::Server;
 use std::{error::Error, time::Duration};
 
@@ -36,10 +36,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         // Provide the `endpoint_limits defined above
         .with_endpoint_limits(endpoint_limits)?
         // Provide a tuple of the `example::MyConnectionSupervisor` defined in `dos-mitigation/src/lib.rs`
-        // and the default event tracing subscriber. This combination will allow for both the DDoS mitigation
+        // and the default event tracing subscriber. This combination will allow for both the slowloris mitigation
         // functionality of `MyConnectionSupervisor` as well as event tracing to be utilized.
         .with_event((
-            example::MyConnectionSupervisor,
+            slowloris::MyConnectionSupervisor,
             s2n_quic::provider::event::tracing::Subscriber::default(),
         ))?
         .with_tls((CERT_PEM, KEY_PEM))?
