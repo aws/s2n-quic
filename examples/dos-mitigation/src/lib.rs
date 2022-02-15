@@ -72,7 +72,7 @@ pub mod example {
             meta: &ConnectionMeta,
             context: &supervisor::Context,
         ) -> supervisor::Outcome {
-            if context.connection_count > CONNECTION_COUNT_THRESHOLD {
+            if !context.is_handshaking && context.connection_count > CONNECTION_COUNT_THRESHOLD {
                 let elapsed_time = meta.timestamp.duration_since_start()
                     - conn_context.last_update.duration_since_start();
 
