@@ -442,7 +442,7 @@ impl<Config: endpoint::Config> Path<Config> {
         match self.state {
             State::Validated => requested_size.min(mtu),
 
-            // https://github.com/awslabs/s2n-quic/issues/695
+            // https://github.com/aws/s2n-quic/issues/695
             // Note: while a 3X check if performed, the `limit` value is not used
             // to restrict the MTU. There are two reasons for this:
             // - Expanding to the full MTU allows for MTU validation during connection migration.
@@ -540,7 +540,7 @@ impl<Config: endpoint::Config> Path<Config> {
     // to compare Paths.
     fn eq_by_handle(&self, handle: &Config::PathHandle) -> bool {
         if Config::ENDPOINT_TYPE.is_client() {
-            // TODO: https://github.com/awslabs/s2n-quic/issues/954
+            // TODO: https://github.com/aws/s2n-quic/issues/954
             // Possibly research a strategy to populate the local_address for Client endpoint
             s2n_quic_core::path::Handle::eq(&self.handle.remote_address(), &handle.remote_address())
         } else {

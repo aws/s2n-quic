@@ -18,7 +18,7 @@ use s2n_quic_core::{
 #[derive(Debug)]
 pub struct Dispatch<Path: path::Handle> {
     // TODO: Find a better datastructure capable of handling delays in transmission
-    // https://github.com/awslabs/s2n-quic/issues/280
+    // https://github.com/aws/s2n-quic/issues/280
     transmissions: VecDeque<Transmission<Path>>,
 }
 

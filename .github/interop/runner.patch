@@ -44,13 +44,13 @@ index 3df16da..70ff578 100644
 @@ -1,24 +1,24 @@
  {
 +  "s2n-quic": {
-+    "image": "awslabs/s2n-quic-qns:latest",
-+    "url": "https://github.com/awslabs/s2n-quic",
++    "image": "aws/s2n-quic-qns:latest",
++    "url": "https://github.com/aws/s2n-quic",
 +    "role": "both"
 +  },
 +  "s2n-quic-rustls": {
-+    "image": "awslabs/s2n-quic-qns-rustls:latest",
-+    "url": "https://github.com/awslabs/s2n-quic",
++    "image": "aws/s2n-quic-qns-rustls:latest",
++    "url": "https://github.com/aws/s2n-quic",
 +    "role": "both"
 +  },
    "quic-go": {

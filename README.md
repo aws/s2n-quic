@@ -114,8 +114,8 @@ This project is licensed under the [Apache-2.0 License][license-url].
 [crates-url]: https://crates.io/crates/s2n-quic
 [license-badge]: https://img.shields.io/badge/license-apache-blue.svg
 [license-url]: https://aws.amazon.com/apache-2-0/
-[actions-badge]: https://github.com/awslabs/s2n-quic/workflows/ci/badge.svg
-[actions-url]: https://github.com/awslabs/s2n-quic/actions/workflows/ci.yml?query=branch%3Amain
+[actions-badge]: https://github.com/aws/s2n-quic/workflows/ci/badge.svg
+[actions-url]: https://github.com/aws/s2n-quic/actions/workflows/ci.yml?query=branch%3Amain
 [docs-badge]: https://img.shields.io/docsrs/s2n-quic.svg
 [docs-url]: https://docs.rs/s2n-quic
 [dependencies-badge]: https://img.shields.io/librariesio/release/cargo/s2n-quic.svg

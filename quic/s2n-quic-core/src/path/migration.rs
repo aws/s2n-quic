@@ -58,7 +58,7 @@ impl<'a> From<PacketInfoBuilder<'a>> for PacketInfo<'a> {
     }
 }
 
-// TODO: Add an outcome that allows the connection to be closed/stateless reset https://github.com/awslabs/s2n-quic/issues/317
+// TODO: Add an outcome that allows the connection to be closed/stateless reset https://github.com/aws/s2n-quic/issues/317
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]

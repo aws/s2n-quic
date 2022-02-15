@@ -413,7 +413,7 @@ impl<Payloads: crate::buffer::Buffer> Storage<Payloads> {
     #[inline]
     pub fn disable_gso(&mut self) {
         // TODO recompute message offsets
-        // https://github.com/awslabs/s2n-quic/issues/762
+        // https://github.com/aws/s2n-quic/issues/762
         self.max_gso = 1;
     }
 }

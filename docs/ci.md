@@ -1,6 +1,6 @@
 # s2n-quic Continuous Integration
 
-`s2n-quic` runs many tests on [each pull request](https://github.com/awslabs/s2n-quic/actions/workflows/ci.yml?query=event%3Apull_request) and merge into [main](https://github.com/awslabs/s2n-quic/actions/workflows/ci.yml?query=branch%3Amain). This ensures each change is thoroughly tested.
+`s2n-quic` runs many tests on [each pull request](https://github.com/aws/s2n-quic/actions/workflows/ci.yml?query=event%3Apull_request) and merge into [main](https://github.com/aws/s2n-quic/actions/workflows/ci.yml?query=branch%3Amain). This ensures each change is thoroughly tested.
 
 ## Tests
 

@@ -123,7 +123,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         //# In response to an apparent migration, endpoints MUST validate the
         //# previously active path using a PATH_CHALLENGE frame.
         //
-        // TODO: https://github.com/awslabs/s2n-quic/issues/711
+        // TODO: https://github.com/aws/s2n-quic/issues/711
         // The usage of 'apparent' is vague and its not clear if the previous path should
         // always be validated or only if the new active path is not validated.
         if !self.active_path().is_challenge_pending() {
@@ -360,7 +360,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             idx
         };
 
-        // TODO: Support deletion of old paths: https://github.com/awslabs/s2n-quic/issues/741
+        // TODO: Support deletion of old paths: https://github.com/aws/s2n-quic/issues/741
         // The current path manager implementation does not delete or reuse indices
         // in the path array. This can result in an unbounded number of paths. To prevent
         // this we limit the max number of paths per connection.

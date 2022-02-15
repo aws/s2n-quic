@@ -477,7 +477,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         let len = header.len() as u64;
 
         // TODO make this configurable:
-        //      https://github.com/awslabs/s2n-quic/issues/1001
+        //      https://github.com/aws/s2n-quic/issues/1001
         const MAX_HELLO_SIZE: u64 = 2 << 16;
 
         if len > MAX_HELLO_SIZE {

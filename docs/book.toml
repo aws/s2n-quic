@@ -9,6 +9,6 @@ title = "s2n-quic Guide"
 build-dir = "../target/guide"
 
 [output.html]
-git-repository-url = "https://github.com/awslabs/s2n-quic"
-edit-url-template = "https://github.com/awslabs/s2n-quic/edit/main/docs/{path}"
+git-repository-url = "https://github.com/aws/s2n-quic"
+edit-url-template = "https://github.com/aws/s2n-quic/edit/main/docs/{path}"
 site-url = "/s2n-quic/"

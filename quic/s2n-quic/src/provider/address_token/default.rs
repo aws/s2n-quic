@@ -153,7 +153,7 @@ impl Format {
             self.current_key_rotates_at = now + self.key_rotation_period;
 
             // TODO either clear the duplicate filter here, or implement in the BaseKey logic
-            // https://github.com/awslabs/s2n-quic/issues/173
+            // https://github.com/aws/s2n-quic/issues/173
         }
         self.current_key
     }

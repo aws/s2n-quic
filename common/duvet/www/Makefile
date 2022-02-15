@@ -7,6 +7,6 @@ dev: src/result.test.json
 	@npm start
 
 src/result.test.json:
-	@cd ../../../../ && cargo +nightly run --release --bin cargo-compliance -- report --spec-pattern 'specs/**/*.toml' --source-pattern 'quic/**/*.rs' --workspace --exclude compliance --exclude cargo-compliance --require-tests false --blob-link https://github.com/awslabs/s2n-quic/blob/main/ --issue-link https://github.com/awslabs/s2n-quic/issues/ --json common/compliance/cargo-compliance/www/src/result.test.json --no-cargo
+	@cd ../../../ && cargo run --release --bin duvet -- report --spec-pattern 'specs/**/*.toml' --source-pattern 'quic/**/*.rs' --workspace --exclude duvet --require-tests false --blob-link https://github.com/aws/s2n-quic/blob/main/ --issue-link https://github.com/aws/s2n-quic/issues/ --json common/duvet/www/src/result.test.json --no-cargo
 
 .PHONY: build dev

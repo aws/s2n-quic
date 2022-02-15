@@ -55,7 +55,7 @@ EOT
 LOG_DIR="$OUTPUT_DIR/~logs/$NAME/s2n-quic"
 
 if [ "$BUILD_S2N_QUIC" != false ]; then
-    docker build . -f ./quic/s2n-quic-qns/etc/Dockerfile.build -t awslabs/s2n-quic
+    docker build . -f ./quic/s2n-quic-qns/etc/Dockerfile.build -t aws/s2n-quic
 fi
 
 ROOT_DIR="$ROOT_DIR" \

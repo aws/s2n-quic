@@ -1,6 +1,6 @@
 # s2n-quic-tls
 
-This crate integrates [s2n-tls](https://github.com/aws/s2n-tls) as a [s2n-quic](https://github.com/awslabs/s2n-quic) TLS provider.
+This crate integrates [s2n-tls](https://github.com/aws/s2n-tls) as a [s2n-quic](https://github.com/aws/s2n-quic) TLS provider.
 
 ## License
 

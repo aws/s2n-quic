@@ -306,7 +306,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
         let cipher_suite = key.cipher_suite().into_event();
 
-        // TODO: also store the header_key https://github.com/awslabs/s2n-quic/issues/319
+        // TODO: also store the header_key https://github.com/aws/s2n-quic/issues/319
         *self.zero_rtt_crypto = Some(Box::new(key));
 
         self.publisher.on_key_update(event::builder::KeyUpdate {
@@ -363,7 +363,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         );
 
         // TODO use interning for these values
-        // issue: https://github.com/awslabs/s2n-quic/issues/248
+        // issue: https://github.com/aws/s2n-quic/issues/248
         let server_name = application_parameters.server_name;
         let application_protocol =
             Bytes::copy_from_slice(application_parameters.application_protocol);
