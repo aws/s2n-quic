@@ -30,31 +30,6 @@ impl fmt::Debug for Server {
 }
 
 impl Server {
-    /// Starts listening on the provided socket
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// # use std::error::Error;
-    /// # use s2n_quic::Server;
-    /// #
-    /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// let server = Server::bind("127.0.0.1:443")?;
-    /// #
-    /// #    Ok(())
-    /// # }
-    /// ```
-    pub fn bind<T>(socket: T) -> Result<Server, StartError>
-    where
-        T: io::TryInto,
-    {
-        let server = Self::builder()
-            .with_io(socket)
-            .map_err(StartError::new)?
-            .start()?;
-        Ok(server)
-    }
-
     /// Returns a [`Builder`] which is able to configure the [`Server`] components.
     ///
     /// # Examples
@@ -79,17 +54,20 @@ impl Server {
     /// Accepts a new incoming [`Connection`] from this [`Server`].
     ///
     /// This function will yield once a new QUIC connection is established. When established,
-    /// the corresponding [`Connection`] and the remote peer's address will be returned.
+    /// the corresponding [`Connection`] will be returned.
     ///
     /// # Examples
     ///
     /// ```rust,no_run
-    /// # use std::error::Error;
+    /// # use std::{error::Error, path::Path};
     /// # use s2n_quic::Server;
     /// #
     /// # #[tokio::main]
     /// # async fn main() -> Result<(), Box<dyn Error>> {
-    /// let mut server = Server::bind("127.0.0.1:443")?;
+    /// let mut server = Server::builder()
+    ///     .with_tls((Path::new("./certs/cert.pem"), Path::new("./certs/key.pem")))?
+    ///     .with_io("127.0.0.1:443")?
+    ///     .start()?;
     ///
     /// match server.accept().await {
     ///     Some(connection) => {
@@ -104,13 +82,17 @@ impl Server {
         futures::future::poll_fn(|cx| self.poll_accept(cx)).await
     }
 
-    /// TODO
+    /// Attempts to accept a new incoming [`Connection`] from this [`Server`].
     ///
-    /// # Examples
+    /// # Return value
     ///
-    /// ```rust
-    /// // TODO
-    /// ```
+    /// This function returns:
+    ///
+    /// - `Poll::Pending` if no new connections have been established.
+    /// - `Poll::Ready(Some(connection))` once a new connection has been established.
+    /// This function can be called again to try and accept new connections.
+    /// - `Poll::Ready(None)` the attempt failed because the server has closed. Once
+    /// None is returned, this function should not be called again.
     pub fn poll_accept(&mut self, cx: &mut Context) -> Poll<Option<Connection>> {
         match self.acceptor.poll_accept(cx) {
             Poll::Ready(Some(connection)) => Poll::Ready(Some(Connection::new(connection))),
@@ -127,11 +109,14 @@ impl Server {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// # use std::error::Error;
+    /// # use std::{error::Error, path::Path};
     /// # use s2n_quic::Server;
     /// #
     /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// let server = Server::bind("127.0.0.1:443")?;
+    /// let server = Server::builder()
+    ///     .with_tls((Path::new("./certs/cert.pem"), Path::new("./certs/key.pem")))?
+    ///     .with_io("127.0.0.1:443")?
+    ///     .start()?;
     ///
     /// let local_addr = server.local_addr()?;
     ///
