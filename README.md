@@ -100,7 +100,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 `s2n-quic` will maintain a rolling MSRV (minimum supported rust version) policy of at least 6 months. The current s2n-quic version is not guaranteed to build on Rust versions earlier than the MSRV.
 
-The current MSRV is [1.53.0][msrv-url].
+The current MSRV is [1.54.0][msrv-url].
 
 ## Security
 
@@ -121,4 +121,4 @@ This project is licensed under the [Apache-2.0 License][license-url].
 [dependencies-badge]: https://img.shields.io/librariesio/release/cargo/s2n-quic.svg
 [dependencies-url]: https://crates.io/crates/s2n-quic/dependencies
 [msrv-badge]: https://img.shields.io/badge/MSRV-1.53.0-green
-[msrv-url]: https://blog.rust-lang.org/2021/06/17/Rust-1.53.0.html
+[msrv-url]: https://blog.rust-lang.org/2021/07/29/Rust-1.54.0.html
