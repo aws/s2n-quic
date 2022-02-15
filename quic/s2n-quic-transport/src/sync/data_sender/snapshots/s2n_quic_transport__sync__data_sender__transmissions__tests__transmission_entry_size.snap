@@ -1,5 +1,6 @@
 ---
 source: quic/s2n-quic-transport/src/sync/data_sender/transmissions.rs
+assertion_line: 519
 expression: "size_of::<TransmissionSlabEntry>()"
 
 ---

@@ -171,7 +171,7 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
                 );
 
                 // TODO remove this when s2n-tls fixes its key schedule
-                if !core::any::type_name::<S>().starts_with("s2n_quic_tls") {
+                if !core::any::type_name::<S>().contains("s2n_quic_tls") {
                     assert!(
                         self.server.1.application.crypto.is_some(),
                         "server should have application keys after reading the ClientHello"

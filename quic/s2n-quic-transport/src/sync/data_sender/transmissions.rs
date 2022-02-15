@@ -517,7 +517,7 @@ mod tests {
     #[test]
     fn size_test() {
         assert_debug_snapshot!(
-            "transmission entry size",
+            "transmission_entry_size",
             size_of::<TransmissionSlabEntry>()
         );
         assert_eq!(
