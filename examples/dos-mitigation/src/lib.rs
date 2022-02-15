@@ -72,10 +72,10 @@ pub mod example {
             meta: &ConnectionMeta,
             context: &supervisor::Context,
         ) -> supervisor::Outcome {
-            let elapsed_time = meta.timestamp.duration_since_start()
-                - conn_context.last_update.duration_since_start();
-
             if context.connection_count > CONNECTION_COUNT_THRESHOLD {
+                let elapsed_time = meta.timestamp.duration_since_start()
+                    - conn_context.last_update.duration_since_start();
+
                 // Calculate throughput as bytes per second
                 let throughput =
                     (conn_context.transferred_bytes as f32 / elapsed_time.as_secs_f32()) as usize;
