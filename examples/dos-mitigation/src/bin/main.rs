@@ -5,10 +5,12 @@ use dos_mitigation::example;
 use s2n_quic::Server;
 use std::{error::Error, time::Duration};
 
+/// NOTE: this certificate is to be used for demonstration purposes only!
 pub static CERT_PEM: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../quic/s2n-quic-core/certs/cert.pem"
 ));
+/// NOTE: this certificate is to be used for demonstration purposes only!
 pub static KEY_PEM: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../quic/s2n-quic-core/certs/key.pem"
