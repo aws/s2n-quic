@@ -79,7 +79,7 @@ impl Server {
     /// Accepts a new incoming [`Connection`] from this [`Server`].
     ///
     /// This function will yield once a new QUIC connection is established. When established,
-    /// the corresponding [`Connection`] and the remote peer's address will be returned.
+    /// the corresponding [`Connection`] will be returned.
     ///
     /// # Examples
     ///
@@ -104,12 +104,35 @@ impl Server {
         futures::future::poll_fn(|cx| self.poll_accept(cx)).await
     }
 
-    /// TODO
+    /// Attempts to accept a new incoming [`Connection`] from this [`Server`].
+    ///
+    /// This function returns:
+    ///
+    /// - `Poll::Pending` if no new connections have been established.
+    /// - `Poll::Ready(Some(connection))` once a new connection has been established.
+    /// This function can be called again to try and accept new connections.
+    /// - `Poll::Ready(None)` the attempt failed because the server has closed. Once
+    /// None is returned, this function should not be called again.
     ///
     /// # Examples
     ///
-    /// ```rust
-    /// // TODO
+    /// ```rust,no_run
+    /// # use std::error::Error;
+    /// # use s2n_quic::Server;
+    /// #
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn Error>> {
+    /// let mut server = Server::bind("127.0.0.1:443")?;
+    ///
+    /// let accept_future = futures::future::poll_fn(|cx| server.poll_accept(cx));
+    /// match accept_future.await {
+    ///     Some(connection) => {
+    ///         println!("new connection: {:?}", connection.remote_addr());
+    ///     }
+    ///     None => println!("server closed"),
+    /// }
+    /// #    Ok(())
+    /// # }
     /// ```
     pub fn poll_accept(&mut self, cx: &mut Context) -> Poll<Option<Connection>> {
         match self.acceptor.poll_accept(cx) {
