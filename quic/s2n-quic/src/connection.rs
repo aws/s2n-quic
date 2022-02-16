@@ -32,24 +32,45 @@ impl Connection {
     impl_accept_api!();
     impl_handle_api!(|handle, call| call!(handle));
 
-    /// TODO
+    /// Returns a cloneable handle to the connection
     ///
     /// # Examples
     ///
-    /// ```rust
-    /// // TODO
+    /// ```rust,no_run
+    /// # async fn test() {
+    /// #   let mut connection: s2n_quic::connection::Connection = todo!();
+    /// #
+    /// let handle = connection.handle();
+    /// let another_handle = handle.clone();
+    /// # }
     /// ```
     #[inline]
     pub fn handle(&self) -> Handle {
         Handle(self.0.clone())
     }
 
-    /// TODO
+    /// Splits the connection into a  [`connection::Handle`](crate::connection::Handle) and
+    /// [`connection::StreamAcceptor`](crate::connection::StreamAcceptor) halves
     ///
     /// # Examples
     ///
-    /// ```rust
-    /// // TODO
+    /// ```rust,no_run
+    /// # async fn test() -> s2n_quic::connection::Result<()> {
+    /// #   let mut connection: s2n_quic::connection::Connection = todo!();
+    /// #
+    /// let (mut handle, mut acceptor) = connection.split();
+    /// let mut send = handle.open_send_stream().await?;
+    /// tokio::spawn(async move {
+    ///     let _ = send.send(bytes::Bytes::from_static(&[1, 2, 3])).await;
+    /// });
+    ///
+    /// while let Some(stream) = acceptor.accept().await? {
+    ///     println!("accepted stream {}", stream.id());
+    /// }
+    ///
+    /// #
+    /// #   Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn split(self) -> (Handle, StreamAcceptor) {

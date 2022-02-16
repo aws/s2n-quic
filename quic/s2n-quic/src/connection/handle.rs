@@ -3,12 +3,25 @@
 
 macro_rules! impl_handle_api {
     (| $handle:ident, $dispatch:ident | $dispatch_body:expr) => {
-        /// Opens a new stream with a specific type
+        /// Opens a new [`LocalStream`](`crate::stream::LocalStream`) with a specific type
+        ///
+        /// The method will return
+        ///  - `Ok(stream)` if a stream of the requested type was opened
+        ///  - `Err(stream_error)` if the stream could not be opened due to an error
         ///
         /// # Examples
         ///
-        /// ```rust
-        /// // TODO
+        /// ```rust,no_run
+        /// # async fn test() -> s2n_quic::connection::Result<()> {
+        /// #   use s2n_quic::stream;
+        /// #   let mut handle: s2n_quic::connection::Handle = todo!();
+        /// #
+        /// while let Ok(stream) = handle.open_stream(stream::Type::Bidirectional).await {
+        ///     println!("Stream opened from {:?}", stream.connection().remote_addr());
+        /// }
+        /// #
+        /// #   Ok(())
+        /// # }
         /// ```
         #[inline]
         pub async fn open_stream(
@@ -18,13 +31,12 @@ macro_rules! impl_handle_api {
             futures::future::poll_fn(|cx| self.poll_open_stream(stream_type, cx)).await
         }
 
-        /// Polls opening a stream with a specific type
+        /// Polls opening a [`LocalStream`](`crate::stream::LocalStream`) with a specific type
         ///
-        /// # Examples
-        ///
-        /// ```rust
-        /// // TODO
-        /// ```
+        /// The method will return
+        /// - `Poll::Ready(Ok(stream))` if a stream of the requested type was opened
+        /// - `Poll::Ready(Err(stream_error))` if the stream could not be opened due to an error
+        /// - `Poll::Pending` if the stream has not been opened yet
         #[inline]
         pub fn poll_open_stream(
             &mut self,
@@ -45,12 +57,24 @@ macro_rules! impl_handle_api {
             .into()
         }
 
-        /// Opens a bidirectional stream
+        /// Opens a new [`BidirectionalStream`](`crate::stream::BidirectionalStream`)
+        ///
+        /// The method will return
+        ///  - `Ok(stream)` if a bidirectional stream was opened
+        ///  - `Err(stream_error)` if the stream could not be opened due to an error
         ///
         /// # Examples
         ///
-        /// ```rust
-        /// // TODO
+        /// ```rust,no_run
+        /// # async fn test() -> s2n_quic::connection::Result<()> {
+        /// #   let mut handle: s2n_quic::connection::Handle = todo!();
+        /// #
+        /// while let Ok(mut stream) = handle.open_bidirectional_stream().await {
+        ///     println!("Stream opened from {:?}", stream.connection().remote_addr());
+        /// }
+        /// #
+        /// #   Ok(())
+        /// # }
         /// ```
         #[inline]
         pub async fn open_bidirectional_stream(
@@ -59,13 +83,12 @@ macro_rules! impl_handle_api {
             futures::future::poll_fn(|cx| self.poll_open_bidirectional_stream(cx)).await
         }
 
-        /// Polls opening a bidirectional stream
+        /// Polls opening a [`BidirectionalStream`](`crate::stream::BidirectionalStream`)
         ///
-        /// # Examples
-        ///
-        /// ```rust
-        /// // TODO
-        /// ```
+        /// The method will return
+        /// - `Poll::Ready(Ok(stream))` if a bidirectional stream was opened
+        /// - `Poll::Ready(Err(stream_error))` if the stream could not be opened due to an error
+        /// - `Poll::Pending` if the stream has not been opened yet
         #[inline]
         pub fn poll_open_bidirectional_stream(
             &mut self,
@@ -79,12 +102,19 @@ macro_rules! impl_handle_api {
             Ok(BidirectionalStream::new(stream)).into()
         }
 
-        /// Opens a send stream
+        /// Opens a [`SendStream`](`crate::stream::SendStream`)
         ///
         /// # Examples
         ///
-        /// ```rust
-        /// // TODO
+        /// ```rust,no_run
+        /// # async fn test() -> s2n_quic::connection::Result<()> {
+        /// #   let mut connection: s2n_quic::connection::Handle = todo!();
+        /// #
+        /// let stream = connection.open_send_stream().await?;
+        /// println!("Send stream opened with id: {}", stream.id());
+        /// #
+        /// #   Ok(())
+        /// # }
         /// ```
         #[inline]
         pub async fn open_send_stream(
@@ -93,13 +123,7 @@ macro_rules! impl_handle_api {
             futures::future::poll_fn(|cx| self.poll_open_send_stream(cx)).await
         }
 
-        /// Polls opening a send stream
-        ///
-        /// # Examples
-        ///
-        /// ```rust
-        /// // TODO
-        /// ```
+        /// Polls opening a [`SendStream`](`crate::stream::SendStream`)
         #[inline]
         pub fn poll_open_send_stream(
             &mut self,
@@ -114,98 +138,51 @@ macro_rules! impl_handle_api {
         }
 
         /// Returns the local address that this connection is bound to.
-        ///
-        /// # Examples
-        ///
-        /// ```rust
-        /// // TODO
-        /// ```
         #[inline]
         pub fn local_addr(&self) -> $crate::connection::Result<std::net::SocketAddr> {
             self.0.local_address().map(std::net::SocketAddr::from)
         }
 
         /// Returns the remote address that this connection is connected to.
-        ///
-        /// # Examples
-        ///
-        /// ```rust
-        /// // TODO
-        /// ```
         #[inline]
         pub fn remote_addr(&self) -> $crate::connection::Result<std::net::SocketAddr> {
             self.0.remote_address().map(std::net::SocketAddr::from)
         }
 
-        /// TODO
-        ///
-        /// # Examples
-        ///
-        /// ```rust
-        /// // TODO
-        /// ```
+        /// Returns the negotiated server name the connection is using.
         #[inline]
         pub fn server_name(&self) -> $crate::connection::Result<Option<$crate::server::Name>> {
             self.0.server_name()
         }
 
-        /// TODO
-        ///
-        /// # Examples
-        ///
-        /// ```rust
-        /// // TODO
-        /// ```
         #[inline]
         #[deprecated(note = "use `server_name` instead")]
         pub fn sni(&self) -> $crate::connection::Result<Option<$crate::server::Name>> {
             self.server_name()
         }
 
-        /// TODO
-        ///
-        /// # Examples
-        ///
-        /// ```rust
-        /// // TODO
-        /// ```
+        /// Returns the negotiated application protocol the connection is using
         #[inline]
         pub fn application_protocol(&self) -> $crate::connection::Result<::bytes::Bytes> {
             self.0.application_protocol()
         }
 
-        /// TODO
-        ///
-        /// # Examples
-        ///
-        /// ```rust
-        /// // TODO
-        /// ```
         #[inline]
         #[deprecated(note = "use `application_protocol` instead")]
         pub fn alpn(&self) -> $crate::connection::Result<::bytes::Bytes> {
             self.application_protocol()
         }
 
-        /// Returns the identifier for the [`crate::Connection`]
+        /// Returns the internal identifier for the [`Connection`](`crate::Connection`)
         ///
-        /// # Examples
-        ///
-        /// ```rust
-        /// // TODO
-        /// ```
+        /// Note: This internal identifier is not the same as the connection ID included in packet
+        /// headers as described in [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000.html#name-connection-id)
         #[inline]
         pub fn id(&self) -> u64 {
             self.0.id()
         }
 
-        /// TODO
-        ///
-        /// # Examples
-        ///
-        /// ```rust
-        /// // TODO
-        /// ```
+        /// Sends a Ping frame to the peer
         #[inline]
         pub fn ping(&mut self) -> $crate::connection::Result<()> {
             self.0.ping()
@@ -221,12 +198,21 @@ macro_rules! impl_handle_api {
             self.0.keep_alive(enabled)
         }
 
-        /// TODO
+        /// Closes the Connection with the provided error code
+        ///
+        /// This will immediately terminate all outstanding streams.
         ///
         /// # Examples
         ///
-        /// ```rust
-        /// // TODO
+        /// ```rust,no_run
+        /// # async fn test() -> s2n_quic::connection::Result<()> {
+        /// #   let mut connection: s2n_quic::connection::Handle = todo!();
+        /// #
+        /// const MY_ERROR_CODE:u32 = 99;
+        /// connection.close(MY_ERROR_CODE.into());
+        /// #
+        /// #   Ok(())
+        /// # }
         /// ```
         #[inline]
         pub fn close(&self, error_code: $crate::application::Error) {
