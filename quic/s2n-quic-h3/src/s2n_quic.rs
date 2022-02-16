@@ -45,7 +45,7 @@ impl fmt::Display for ConnectionError {
 
 impl Error for ConnectionError {
     fn is_timeout(&self) -> bool {
-        matches!(self.0, s2n_quic::connection::Error::IdleTimerExpired)
+        matches!(self.0, s2n_quic::connection::Error::IdleTimerExpired { .. })
     }
 
     fn err_code(&self) -> Option<u64> {
@@ -316,16 +316,20 @@ impl Error for ReadError {
     fn is_timeout(&self) -> bool {
         matches!(
             self.0,
-            s2n_quic::stream::Error::ConnectionError(s2n_quic::connection::Error::IdleTimerExpired)
+            s2n_quic::stream::Error::ConnectionError {
+                error: s2n_quic::connection::Error::IdleTimerExpired { .. },
+                ..
+            }
         )
     }
 
     fn err_code(&self) -> Option<u64> {
         match self.0 {
-            s2n_quic::stream::Error::ConnectionError(
-                s2n_quic::connection::Error::Application { error, .. },
-            ) => Some(error.into()),
-            s2n_quic::stream::Error::StreamReset(error) => Some(error.into()),
+            s2n_quic::stream::Error::ConnectionError {
+                error: s2n_quic::connection::Error::Application { error, .. },
+                ..
+            } => Some(error.into()),
+            s2n_quic::stream::Error::StreamReset { error, .. } => Some(error.into()),
             _ => None,
         }
     }
@@ -438,18 +442,22 @@ impl Error for SendStreamError {
     fn is_timeout(&self) -> bool {
         matches!(
             self,
-            Self::Write(s2n_quic::stream::Error::ConnectionError(
-                s2n_quic::connection::Error::IdleTimerExpired,
-            ))
+            Self::Write(s2n_quic::stream::Error::ConnectionError {
+                error: s2n_quic::connection::Error::IdleTimerExpired { .. },
+                ..
+            })
         )
     }
 
     fn err_code(&self) -> Option<u64> {
         match self {
-            Self::Write(s2n_quic::stream::Error::StreamReset(error)) => Some((*error).into()),
-            Self::Write(s2n_quic::stream::Error::ConnectionError(
-                s2n_quic::connection::Error::Application { error, .. },
-            )) => Some((*error).into()),
+            Self::Write(s2n_quic::stream::Error::StreamReset { error, .. }) => {
+                Some((*error).into())
+            }
+            Self::Write(s2n_quic::stream::Error::ConnectionError {
+                error: s2n_quic::connection::Error::Application { error, .. },
+                ..
+            }) => Some((*error).into()),
             _ => None,
         }
     }

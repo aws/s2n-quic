@@ -13,6 +13,10 @@ pub use acceptor::*;
 pub use handle::*;
 pub use s2n_quic_core::connection::Error;
 
+pub mod error {
+    pub use s2n_quic_core::{endpoint::Location, transport::error::Code};
+}
+
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 pub struct Connection(Inner);

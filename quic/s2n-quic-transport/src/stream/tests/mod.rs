@@ -9,6 +9,17 @@ pub use crate::contexts::testing::*;
 mod test_environment;
 pub use test_environment::*;
 
+macro_rules! assert_matches {
+    ($a:expr, $b:pat $(,)?) => {
+        match $a {
+            $b => {}
+            ref value => {
+                panic!("value {:?} did not match {}", value, stringify!($b))
+            }
+        }
+    };
+}
+
 /// Creates a `STREAM_DATA` frame
 pub fn stream_data<Data>(
     stream_id: StreamId,

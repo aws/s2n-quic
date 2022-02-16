@@ -495,13 +495,13 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             // The connection closed without an error
             Some(connection::Error::Closed { .. }) => return Ok(None).into(),
             // Translate application closes to end of stream
-            Some(connection::Error::Transport { error, .. })
-                if error.code == transport::Error::APPLICATION_ERROR.code =>
+            Some(connection::Error::Transport { code, .. })
+                if code == transport::Error::APPLICATION_ERROR.code =>
             {
                 return Ok(None).into()
             }
             // Translate idle timer expiration to end of stream
-            Some(connection::Error::IdleTimerExpired) => return Ok(None).into(),
+            Some(connection::Error::IdleTimerExpired { .. }) => return Ok(None).into(),
             Some(reason) => return Err(reason).into(),
             None => {}
         }
@@ -524,7 +524,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             .inner
             .accept_state
             .next_stream_id(stream_type)
-            .ok_or(connection::Error::StreamIdExhausted)?;
+            .ok_or_else(connection::Error::stream_id_exhausted)?;
 
         if self.inner.streams.contains(next_id_to_accept) {
             *self.inner.accept_state.next_stream_mut(stream_type) =
@@ -567,7 +567,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             .inner
             .next_stream_ids
             .get_mut(local_endpoint_type, stream_type)
-            .ok_or(connection::Error::StreamIdExhausted)?;
+            .ok_or_else(connection::Error::stream_id_exhausted)?;
 
         // Increase the next utilized Stream ID
         *self
@@ -973,7 +973,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     ) -> Result<ops::Response, StreamError> {
         self.perform_api_call(
             stream_id,
-            Err(StreamError::InvalidStream),
+            Err(StreamError::invalid_stream()),
             api_call_context,
             |stream| stream.poll_request(request, context),
         )

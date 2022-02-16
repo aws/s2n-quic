@@ -176,7 +176,7 @@ macro_rules! tx_stream_apis {
 
             match self.tx_request()?.send(&mut [chunk]).poll(None)? {
                 response if response.tx().expect("invalid response").chunks.consumed == 1 => Ok(()),
-                _ => Err(StreamError::SendingBlocked),
+                _ => Err(StreamError::sending_blocked()),
             }
         }
 

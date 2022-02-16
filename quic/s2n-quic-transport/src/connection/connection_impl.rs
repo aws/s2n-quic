@@ -36,7 +36,6 @@ use s2n_quic_core::{
     application::ServerName,
     connection::{id::Generator as _, InitialId, PeerId},
     crypto::{tls, CryptoSuite},
-    endpoint::Location,
     event::{
         self,
         builder::{DatagramDropReason, RxStreamProgress, TxStreamProgress},
@@ -100,11 +99,11 @@ enum ConnectionState {
 impl From<connection::Error> for ConnectionState {
     fn from(error: connection::Error) -> Self {
         match error {
-            connection::Error::IdleTimerExpired => {
+            connection::Error::IdleTimerExpired { .. } => {
                 // If the idle timer expired we directly move into the final state
                 ConnectionState::Finished
             }
-            connection::Error::NoValidPath => {
+            connection::Error::NoValidPath { .. } => {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-9
                 //# When an endpoint has no validated path on which to send packets, it
                 //# MAY discard connection state.
@@ -115,7 +114,7 @@ impl From<connection::Error> for ConnectionState {
                 //# state.
                 ConnectionState::Finished
             }
-            connection::Error::Closed { initiator }
+            connection::Error::Closed { initiator, .. }
             | connection::Error::Transport { initiator, .. }
             | connection::Error::Application { initiator, .. }
                 if initiator.is_local() =>
@@ -134,7 +133,7 @@ impl From<connection::Error> for ConnectionState {
                 //# draining.
                 ConnectionState::Draining
             }
-            connection::Error::StatelessReset => {
+            connection::Error::StatelessReset { .. } => {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3.1
                 //# If the last 16 bytes of the datagram are identical in value to a
                 //# stateless reset token, the endpoint MUST enter the draining period
@@ -495,13 +494,10 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         ) {
             supervisor::Outcome::Continue => {}
             supervisor::Outcome::Close { error_code } => {
-                return Err(connection::error::Error::Application {
-                    error: error_code,
-                    initiator: Location::Local,
-                })
+                return Err(connection::Error::application(error_code))
             }
             supervisor::Outcome::ImmediateClose { reason } => {
-                return Err(connection::Error::ImmediateClose { reason })
+                return Err(connection::Error::immediate_close(reason))
             }
             _ => {
                 unreachable!()
@@ -992,9 +988,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .is_ready()
         {
             debug_assert_eq!(ConnectionState::Handshaking, self.state);
-            return Err(connection::Error::MaxHandshakeDurationExceeded {
-                max_handshake_duration: self.limits.max_handshake_duration(),
-            });
+            return Err(connection::Error::max_handshake_duration_exceeded(
+                self.limits.max_handshake_duration(),
+            ));
         }
 
         if self
@@ -1003,7 +999,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .poll_expiration(timestamp)
             .is_ready()
         {
-            return Err(connection::Error::IdleTimerExpired);
+            return Err(connection::Error::idle_timer_expired());
         }
 
         if self
@@ -1666,7 +1662,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let (space, _) = self
             .space_manager
             .application_mut()
-            .ok_or(connection::Error::Unspecified)?;
+            .ok_or_else(connection::Error::unspecified)?;
 
         let mut api_context = ConnectionApiCallContext::from_wakeup_handle(&self.wakeup_handle);
 
@@ -1685,7 +1681,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let (space, _) = self
             .space_manager
             .application_mut()
-            .ok_or(connection::Error::Unspecified)?;
+            .ok_or_else(connection::Error::unspecified)?;
 
         space.stream_manager.poll_accept(stream_type, context)
     }
@@ -1700,7 +1696,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let (space, _) = self
             .space_manager
             .application_mut()
-            .ok_or(connection::Error::Unspecified)?;
+            .ok_or_else(connection::Error::unspecified)?;
 
         space.stream_manager.poll_open(stream_type, context)
     }
@@ -1711,10 +1707,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         }
 
         if let Some(error) = error {
-            self.error = Err(connection::Error::Application {
-                error,
-                initiator: endpoint::Location::Local,
-            });
+            self.error = Err(connection::Error::application(error));
         } else {
             // give the connection some time to flush all outstanding streams
             self.state = ConnectionState::Flushing;
@@ -1751,7 +1744,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 false,
                 "applications can't interact with the connection until the application space is available"
             );
-            return Err(connection::Error::Unspecified);
+            return Err(connection::Error::unspecified());
         }
 
         Ok(())
@@ -1769,7 +1762,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 false,
                 "applications can't interact with the connection until the application space is available"
             );
-            return Err(connection::Error::Unspecified);
+            return Err(connection::Error::unspecified());
         }
 
         Ok(())
