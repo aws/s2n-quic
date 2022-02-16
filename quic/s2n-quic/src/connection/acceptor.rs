@@ -21,7 +21,7 @@ macro_rules! impl_accept_api {
         /// # async fn test() -> s2n_quic::stream::Result<()> {
         /// #   let mut acceptor: s2n_quic::connection::StreamAcceptor = todo!();
         /// #
-        /// while let Some(stream) = acceptor.accept()?.await {
+        /// while let Some(stream) = acceptor.accept().await? {
         ///     println!("Stream opened from {:?}", stream.connection().remote_addr());
         /// }
         /// #
@@ -194,8 +194,8 @@ impl StreamAcceptor {
     /// # async fn test() -> s2n_quic::stream::Result<()> {
     /// #   let connection: s2n_quic::connection::Connection = todo!();
     /// #
-    /// let (handle, acceptor) = new_conn.split();
-    /// let (bidi, recv) = acceptor.split();
+    /// let (handle, acceptor) = connection.split();
+    /// let (mut bidi, mut recv) = acceptor.split();
     ///
     /// tokio::spawn(async move {
     ///     while let Ok(Some(mut stream)) = bidi.accept_bidirectional_stream().await {

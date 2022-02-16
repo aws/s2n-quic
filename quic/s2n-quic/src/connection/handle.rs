@@ -16,7 +16,7 @@ macro_rules! impl_handle_api {
         /// #   use s2n_quic::stream;
         /// #   let mut handle: s2n_quic::connection::Handle = todo!();
         /// #
-        /// while let Ok(LocalStream::Bidirectional(mut stream)) = handle.open_stream(stream::Type::Bidirectional).await {
+        /// while let Ok(stream) = handle.open_stream(stream::Type::Bidirectional).await {
         ///     println!("Stream opened from {:?}", stream.connection().remote_addr());
         /// }
         /// #
@@ -208,7 +208,8 @@ macro_rules! impl_handle_api {
         /// # async fn test() -> s2n_quic::connection::Result<()> {
         /// #   let mut connection: s2n_quic::connection::Handle = todo!();
         /// #
-        /// connection.close(99.into());
+        /// const MY_ERROR_CODE:u32 = 99;
+        /// connection.close(MY_ERROR_CODE.into());
         /// #
         /// #   Ok(())
         /// # }

@@ -59,12 +59,12 @@ impl Connection {
     /// #   let mut connection: s2n_quic::connection::Connection = todo!();
     /// #
     /// let (mut handle, mut acceptor) = connection.split();
-    /// let send = handle.open_send_stream()?;
+    /// let mut send = handle.open_send_stream().await?;
     /// tokio::spawn(async move {
-    ///     let _ = send.send(Bytes::from_static(&[1, 2, 3])).await;
+    ///     let _ = send.send(bytes::Bytes::from_static(&[1, 2, 3])).await;
     /// });
     ///
-    /// while let Some(stream) = acceptor.accept()? {
+    /// while let Some(stream) = acceptor.accept().await? {
     ///     println!("accepted stream {}", stream.id());
     /// }
     ///
