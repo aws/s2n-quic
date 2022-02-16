@@ -23,6 +23,7 @@ impl_provider_utils!();
 cfg_if! {
     if #[cfg(feature = "provider-tls-default")] {
         pub mod default {
+            //! Provides the recommended implementation of TLS using platform detection
             pub use super::default_tls::*;
         }
     } else if #[cfg(feature = "provider-tls-s2n")] {
@@ -31,6 +32,7 @@ cfg_if! {
         pub use rustls as default;
     } else {
         pub mod default {
+            //! Provides the recommended implementation of TLS using platform detection
             pub use super::default_tls::*;
         }
     }
@@ -238,6 +240,8 @@ mod default_tls {
 
 #[cfg(feature = "s2n-quic-rustls")]
 pub mod rustls {
+    //! Provides the [rustls](https://docs.rs/rustls/) implementation of TLS
+
     pub use s2n_quic_rustls::*;
 
     impl super::Provider for Server {
@@ -271,6 +275,7 @@ pub mod rustls {
 
 #[cfg(feature = "s2n-quic-tls")]
 pub mod s2n_tls {
+    //! Provides the [s2n-tls](https://github.com/aws/s2n-tls) implementation of TLS
     pub use s2n_quic_tls::*;
 
     impl super::Provider for Server {
