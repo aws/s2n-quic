@@ -173,7 +173,10 @@ macro_rules! impl_handle_api {
             self.application_protocol()
         }
 
-        /// Returns the identifier for the [`crate::Connection`]
+        /// Returns the internal identifier for the [`Connection`](`crate::Connection`)
+        ///
+        /// Note: This internal identifier is not the same as the connection ID included in packet
+        /// headers as described in [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000.html#name-connection-id)
         #[inline]
         pub fn id(&self) -> u64 {
             self.0.id()
