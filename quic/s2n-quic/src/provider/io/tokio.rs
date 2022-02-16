@@ -1,6 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Provides an implementation of the [`io::Provider`](crate::provider::io::Provider)
+//! using the [`Tokio runtime`](https://docs.rs/tokio/latest/tokio/runtime/index.html)
+
 use s2n_quic_core::{endpoint::Endpoint, inet::SocketAddress};
 use s2n_quic_platform::io::tokio;
 use std::io;

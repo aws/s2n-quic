@@ -52,6 +52,7 @@ impl ToTokens for Output {
             use super::*;
 
             pub mod api {
+                //! This module contains events that are emitted to the [`Subscriber`](crate::event::Subscriber)
                 use super::*;
 
                 pub use traits::Subscriber;
@@ -63,6 +64,7 @@ impl ToTokens for Output {
 
             #[cfg(feature = "event-tracing")]
             pub mod tracing {
+                //! This module contains event integration with [`tracing`](https://docs.rs/tracing)
                 use super::api;
 
                 /// Emits events with [`tracing`](https://docs.rs/tracing)
@@ -111,6 +113,11 @@ impl ToTokens for Output {
             }
 
             pub mod supervisor {
+                //! This module contains the `supervisor::Outcome` and `supervisor::Context` for use
+                //! when implementing [`Subscriber::supervisor_timeout`](crate::event::Subscriber::supervisor_timeout) and
+                //! [`Subscriber::on_supervisor_timeout`](crate::event::Subscriber::on_supervisor_timeout)
+                //! on a Subscriber.
+
                 use crate::{
                     application,
                     event::{builder::SocketAddress, IntoEvent},
@@ -174,11 +181,17 @@ impl ToTokens for Output {
                 use api::*;
                 use core::fmt;
 
+                /// Provides metadata related to an event
                 pub trait Meta {
+                    /// Returns whether the local endpoint is a Client or Server
                     fn endpoint_type(&self) -> &EndpointType;
 
+                    /// A context from which the event is being emitted
+                    ///
+                    /// An event can occur in the context of an Endpoint or Connection
                     fn subject(&self) -> Subject;
 
+                    /// The time the event occurred
                     fn timestamp(&self) -> &crate::event::Timestamp;
                 }
 
@@ -210,6 +223,7 @@ impl ToTokens for Output {
                     }
                 }
 
+                /// Allows for events to be subscribed to
                 pub trait Subscriber: 'static + Send {
 
                     /// An application provided type associated with each connection.
@@ -302,11 +316,13 @@ impl ToTokens for Output {
                         let _ = event;
                     }
 
+                    /// Used for querying the `Subscriber::ConnectionContext` on a Subscriber
                     #[inline]
                     fn query(context: &Self::ConnectionContext, query: &mut dyn query::Query) -> query::ControlFlow {
                         query.execute(context)
                     }
 
+                    /// Used for querying and mutating the `Subscriber::ConnectionContext` on a Subscriber
                     #[inline]
                     fn query_mut(context: &mut Self::ConnectionContext, query: &mut dyn query::QueryMut) -> query::ControlFlow {
                         query.execute_mut(context)

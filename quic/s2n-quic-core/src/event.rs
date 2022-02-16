@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::connection;
+use crate::{connection, endpoint};
 use core::time::Duration;
 
 mod generated;
@@ -55,7 +55,8 @@ ident_into_event!(
     isize,
     Duration,
     bool,
-    connection::Error
+    connection::Error,
+    endpoint::Location,
 );
 borrowed_into_event!([u8; 4], [u8; 16], [u8], [u32], [&'a [u8]]);
 

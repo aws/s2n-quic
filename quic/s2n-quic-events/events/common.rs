@@ -524,32 +524,7 @@ enum Subject {
     },
 }
 
-/// Used to disambiguate events that can occur for the local or the remote endpoint.
-enum Location {
-    /// The Local endpoint
-    Local,
-    /// The Remote endpoint
-    Remote,
-}
-
-impl IntoEvent<api::Location> for crate::endpoint::Location {
-    fn into_event(self) -> api::Location {
-        match self {
-            Self::Local => api::Location::Local {},
-            Self::Remote => api::Location::Remote {},
-        }
-    }
-}
-
-impl IntoEvent<builder::Location> for crate::endpoint::Location {
-    fn into_event(self) -> builder::Location {
-        match self {
-            Self::Local => builder::Location::Local {},
-            Self::Remote => builder::Location::Remote {},
-        }
-    }
-}
-
+/// An endpoint may be either a Server or a Client
 #[exhaustive]
 enum EndpointType {
     Server,
