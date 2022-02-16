@@ -55,9 +55,6 @@ pub mod stream;
 
 pub mod application {
     pub use s2n_quic_core::application::Error;
-
-    #[deprecated(note = "use `s2n_quic::server::Name` instead")]
-    pub type Sni = crate::server::Name;
 }
 
 pub use client::Client;

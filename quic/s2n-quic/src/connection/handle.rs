@@ -155,22 +155,10 @@ macro_rules! impl_handle_api {
             self.0.server_name()
         }
 
-        #[inline]
-        #[deprecated(note = "use `server_name` instead")]
-        pub fn sni(&self) -> $crate::connection::Result<Option<$crate::server::Name>> {
-            self.server_name()
-        }
-
         /// Returns the negotiated application protocol the connection is using
         #[inline]
         pub fn application_protocol(&self) -> $crate::connection::Result<::bytes::Bytes> {
             self.0.application_protocol()
-        }
-
-        #[inline]
-        #[deprecated(note = "use `application_protocol` instead")]
-        pub fn alpn(&self) -> $crate::connection::Result<::bytes::Bytes> {
-            self.application_protocol()
         }
 
         /// Returns the internal identifier for the [`Connection`](`crate::Connection`)
