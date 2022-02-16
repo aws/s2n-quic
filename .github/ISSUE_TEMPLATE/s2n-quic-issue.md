@@ -9,7 +9,7 @@ assignees: ''
 
 ### Security issue notifications
 
-If you discover a potential security issue in s2n we ask that you notify
+If you discover a potential security issue in s2n-quic we ask that you notify
 AWS Security via our [vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/). Please do **not** create a public github issue.
 
 ### Problem:
