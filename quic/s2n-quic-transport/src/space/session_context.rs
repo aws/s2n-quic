@@ -368,20 +368,12 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         let application_protocol =
             Bytes::copy_from_slice(application_parameters.application_protocol);
 
-        self.publisher
-            .on_alpn_information(event::builder::AlpnInformation {
-                chosen_alpn: &application_protocol,
-            });
         self.publisher.on_application_protocol_information(
             event::builder::ApplicationProtocolInformation {
                 chosen_application_protocol: &application_protocol,
             },
         );
         if let Some(chosen_server_name) = &server_name {
-            self.publisher
-                .on_sni_information(event::builder::SniInformation {
-                    chosen_sni: chosen_server_name,
-                });
             self.publisher
                 .on_server_name_information(event::builder::ServerNameInformation {
                     chosen_server_name,
