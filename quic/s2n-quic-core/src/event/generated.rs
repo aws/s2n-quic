@@ -192,17 +192,6 @@ pub mod api {
         Connection { id: u64 },
     }
     #[derive(Clone, Debug)]
-    #[non_exhaustive]
-    #[doc = " Used to disambiguate events that can occur for the local or the remote endpoint."]
-    pub enum Location {
-        #[non_exhaustive]
-        #[doc = " The Local endpoint"]
-        Local {},
-        #[non_exhaustive]
-        #[doc = " The Remote endpoint"]
-        Remote {},
-    }
-    #[derive(Clone, Debug)]
     #[doc = " An endpoint may be either a Server or a Client"]
     pub enum EndpointType {
         #[non_exhaustive]
@@ -660,7 +649,7 @@ pub mod api {
     pub struct ConnectionIdUpdated<'a> {
         pub path_id: u64,
         #[doc = " The endpoint that updated its connection id"]
-        pub cid_consumer: Location,
+        pub cid_consumer: crate::endpoint::Location,
         pub previous: ConnectionId<'a>,
         pub current: ConnectionId<'a>,
     }
@@ -1215,22 +1204,6 @@ pub mod api {
                 PacketNumberSpace::ApplicationData => PacketHeader::OneRtt {
                     number: packet_number.as_u64(),
                 },
-            }
-        }
-    }
-    impl IntoEvent<api::Location> for crate::endpoint::Location {
-        fn into_event(self) -> api::Location {
-            match self {
-                Self::Local => api::Location::Local {},
-                Self::Remote => api::Location::Remote {},
-            }
-        }
-    }
-    impl IntoEvent<builder::Location> for crate::endpoint::Location {
-        fn into_event(self) -> builder::Location {
-            match self {
-                Self::Local => builder::Location::Local {},
-                Self::Remote => builder::Location::Remote {},
             }
         }
     }
@@ -2281,24 +2254,6 @@ pub mod builder {
                 Self::Connection { id } => Connection {
                     id: id.into_event(),
                 },
-            }
-        }
-    }
-    #[derive(Clone, Debug)]
-    #[doc = " Used to disambiguate events that can occur for the local or the remote endpoint."]
-    pub enum Location {
-        #[doc = " The Local endpoint"]
-        Local,
-        #[doc = " The Remote endpoint"]
-        Remote,
-    }
-    impl IntoEvent<api::Location> for Location {
-        #[inline]
-        fn into_event(self) -> api::Location {
-            use api::Location::*;
-            match self {
-                Self::Local => Local {},
-                Self::Remote => Remote {},
             }
         }
     }

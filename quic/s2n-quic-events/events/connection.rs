@@ -201,8 +201,7 @@ struct DatagramDropped {
 struct ConnectionIdUpdated<'a> {
     path_id: u64,
     /// The endpoint that updated its connection id
-    #[builder(crate::endpoint::Location)]
-    cid_consumer: Location,
+    cid_consumer: crate::endpoint::Location,
     previous: ConnectionId<'a>,
     current: ConnectionId<'a>,
 }

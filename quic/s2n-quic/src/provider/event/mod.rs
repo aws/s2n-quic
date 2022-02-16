@@ -4,10 +4,13 @@
 //! Allows endpoints to subscribe to connection-level and endpoint-level events
 
 use cfg_if::cfg_if;
-pub use s2n_quic_core::event::{
-    api as events,
-    api::{ConnectionInfo, ConnectionMeta, Location},
-    query, supervisor, Event, Meta, Subscriber, Timestamp,
+pub use s2n_quic_core::{
+    endpoint::Location,
+    event::{
+        api as events,
+        api::{ConnectionInfo, ConnectionMeta},
+        query, supervisor, Event, Meta, Subscriber, Timestamp,
+    },
 };
 
 /// Provides event handling support for an endpoint
