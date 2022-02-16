@@ -139,13 +139,13 @@ impl Future for Attempt {
                                 }
                                 Err(_) => {
                                     // The endpoint has closed
-                                    return Err(connection::Error::Unspecified).into();
+                                    return Err(connection::Error::unspecified()).into();
                                 }
                             }
                         }
                         Poll::Ready(Err(_)) => {
                             // The endpoint has closed
-                            return Err(connection::Error::Unspecified).into();
+                            return Err(connection::Error::unspecified()).into();
                         }
                         Poll::Pending => {
                             // reset to the original state
@@ -160,7 +160,7 @@ impl Future for Attempt {
                         Poll::Ready(Ok(res)) => Poll::Ready(res),
                         Poll::Ready(Err(_)) => {
                             // The endpoint has closed
-                            Err(connection::Error::Unspecified).into()
+                            Err(connection::Error::unspecified()).into()
                         }
                         Poll::Pending => {
                             self.state = AttemptState::Waiting(response);

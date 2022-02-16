@@ -58,7 +58,7 @@ macro_rules! impl_receive_stream_api {
         ) -> core::task::Poll<$crate::stream::Result<Option<bytes::Bytes>>> {
             macro_rules! $dispatch {
                 () => {
-                    Err($crate::stream::Error::NonReadable).into()
+                    Err($crate::stream::Error::non_readable()).into()
                 };
                 ($variant: expr) => {
                     $variant.poll_receive(cx)
@@ -142,7 +142,7 @@ macro_rules! impl_receive_stream_api {
         ) -> core::task::Poll<$crate::stream::Result<(usize, bool)>> {
             macro_rules! $dispatch {
                 () => {
-                    Err($crate::stream::Error::NonReadable).into()
+                    Err($crate::stream::Error::non_readable()).into()
                 };
                 ($variant: expr) => {
                     $variant.poll_receive_vectored(chunks, cx)
@@ -193,7 +193,7 @@ macro_rules! impl_receive_stream_api {
         ) -> $crate::stream::Result<()> {
             macro_rules! $dispatch {
                 () => {
-                    Err($crate::stream::Error::NonReadable)
+                    Err($crate::stream::Error::non_readable())
                 };
                 ($variant: expr) => {
                     $variant.stop_sending(error_code)
@@ -211,7 +211,7 @@ macro_rules! impl_receive_stream_api {
         ) -> $crate::stream::Result<s2n_quic_transport::stream::RxRequest> {
             macro_rules! $dispatch {
                 () => {
-                    Err($crate::stream::Error::NonReadable)
+                    Err($crate::stream::Error::non_readable())
                 };
                 ($variant: expr) => {
                     $variant.rx_request()

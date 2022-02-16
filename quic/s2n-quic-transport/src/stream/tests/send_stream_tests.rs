@@ -14,7 +14,7 @@ use s2n_quic_core::{
     connection, endpoint,
     frame::{Frame, MaxData, MaxStreamData, StopSending},
     packet::number::PacketNumber,
-    stream::{ops, StreamError::StreamReset, StreamType},
+    stream::{ops, StreamType},
     transmission,
     varint::{VarInt, MAX_VARINT_VALUE},
 };
@@ -46,9 +46,9 @@ fn remotely_initiated_unidirectional_stream_can_not_be_sent_to() {
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
         let data = Bytes::from_static(b"1");
-        assert_eq!(
-            Poll::Ready(Err(StreamError::SendAfterFinish)),
+        assert_matches!(
             test_env.poll_push(data),
+            Poll::Ready(Err(StreamError::SendAfterFinish { .. })),
         );
     }
 }
@@ -1196,9 +1196,9 @@ fn can_not_write_more_data_than_maximum_stream_size() {
         .flow_controller_mut()
         .set_max_stream_data(max_varint);
 
-    assert_eq!(
-        Poll::Ready(Err(StreamError::MaxStreamDataSizeExceeded)),
-        test_env.poll_push(Bytes::from_static(b"aa"))
+    assert_matches!(
+        test_env.poll_push(Bytes::from_static(b"aa")),
+        Poll::Ready(Err(StreamError::MaxStreamDataSizeExceeded { .. })),
     );
 
     // And this part checks what happens if are exactly at the limit before
@@ -1219,9 +1219,9 @@ fn can_not_write_more_data_than_maximum_stream_size() {
         Poll::Ready(Ok(())),
         test_env.poll_push(Bytes::from_static(b"a"))
     );
-    assert_eq!(
-        Poll::Ready(Err(StreamError::MaxStreamDataSizeExceeded)),
-        test_env.poll_push(Bytes::from_static(b"a"))
+    assert_matches!(
+        test_env.poll_push(Bytes::from_static(b"a")),
+        Poll::Ready(Err(StreamError::MaxStreamDataSizeExceeded { .. })),
     );
 }
 
@@ -1252,9 +1252,9 @@ fn push_data_after_stream_is_reset_locally() {
             );
         }
 
-        assert_eq!(
-            Poll::Ready(Err(StreamError::StreamReset(error_code))),
-            test_env.poll_push(Bytes::from_static(b"1"))
+        assert_matches!(
+            test_env.poll_push(Bytes::from_static(b"1")),
+            Poll::Ready(Err(StreamError::StreamReset { .. })),
         );
     }
 }
@@ -1265,9 +1265,9 @@ fn push_data_after_finish_was_called() {
 
     assert_eq!(Poll::Pending, test_env.poll_finish());
 
-    assert_eq!(
-        Poll::Ready(Err(StreamError::SendAfterFinish)),
-        test_env.poll_push(Bytes::from_static(b"1"))
+    assert_matches!(
+        test_env.poll_push(Bytes::from_static(b"1")),
+        Poll::Ready(Err(StreamError::SendAfterFinish { .. })),
     );
 }
 
@@ -1299,9 +1299,9 @@ fn push_data_after_stream_is_reset_due_to_stop_sending() {
         // Poll two times.
         // The first call checks the branch where the user is not yet aware
         // about the reset.
-        assert_eq!(
-            Poll::Ready(Err(StreamError::StreamReset(error_code))),
-            test_env.poll_push(Bytes::from_static(b"1"))
+        assert_matches!(
+            test_env.poll_push(Bytes::from_static(b"1")),
+            Poll::Ready(Err(StreamError::StreamReset { .. })),
         );
 
         if !*acknowledge_reset_early {
@@ -1320,9 +1320,9 @@ fn push_data_after_stream_is_reset_due_to_stop_sending() {
 
         // The second call checks whether the same result is delivered after the
         // user had been notified.
-        assert_eq!(
-            Poll::Ready(Err(StreamError::StreamReset(error_code))),
-            test_env.poll_push(Bytes::from_static(b"1"))
+        assert_matches!(
+            test_env.poll_push(Bytes::from_static(b"1")),
+            Poll::Ready(Err(StreamError::StreamReset { .. })),
         );
 
         assert_eq!(
@@ -1804,9 +1804,9 @@ fn finish_after_stream_is_reset_locally() {
             );
         }
 
-        assert_eq!(
-            Poll::Ready(Err(StreamError::StreamReset(error_code))),
-            test_env.poll_finish()
+        assert_matches!(
+            test_env.poll_finish(),
+            Poll::Ready(Err(StreamError::StreamReset { .. })),
         );
 
         if !*acknowledge_reset_early {
@@ -1850,9 +1850,9 @@ fn finish_after_stream_is_reset_due_to_stop_sending() {
         // Poll two times.
         // The first call checks the branch where the user is not yet aware
         // about the reset.
-        assert_eq!(
-            Poll::Ready(Err(StreamError::StreamReset(error_code))),
-            test_env.poll_finish()
+        assert_matches!(
+            test_env.poll_finish(),
+            Poll::Ready(Err(StreamError::StreamReset { .. })),
         );
 
         // Now that the user is aware the outstanding acknowledge can finalize
@@ -1872,9 +1872,9 @@ fn finish_after_stream_is_reset_due_to_stop_sending() {
 
         // The second call checks whether the same result is delivered after the
         // user had been notified.
-        assert_eq!(
-            Poll::Ready(Err(StreamError::StreamReset(error_code))),
-            test_env.poll_finish()
+        assert_matches!(
+            test_env.poll_finish(),
+            Poll::Ready(Err(StreamError::StreamReset { .. })),
         );
 
         assert_eq!(
@@ -1909,9 +1909,9 @@ fn stop_sending_while_waiting_for_fin_to_get_acknowledged_leads_to_a_reset() {
         ],
     );
 
-    assert_eq!(
-        Poll::Ready(Err(StreamError::StreamReset(error_code))),
-        test_env.poll_finish()
+    assert_matches!(
+        test_env.poll_finish(),
+        Poll::Ready(Err(StreamError::StreamReset { .. })),
     );
 
     execute_instructions(
@@ -1974,9 +1974,9 @@ fn stop_sending_while_sending_data_leads_to_a_reset() {
             ],
         );
 
-        assert_eq!(
-            Poll::Ready(Err(StreamError::StreamReset(error_code))),
-            test_env.poll_finish()
+        assert_matches!(
+            test_env.poll_finish(),
+            Poll::Ready(Err(StreamError::StreamReset { .. })),
         );
 
         execute_instructions(
@@ -2038,9 +2038,9 @@ fn stop_sending_does_not_cause_an_action_if_stream_is_already_reset() {
             ],
         );
 
-        assert_eq!(
-            Poll::Ready(Err(StreamError::StreamReset(error_code))),
-            test_env.poll_finish()
+        assert_matches!(
+            test_env.poll_finish(),
+            Poll::Ready(Err(StreamError::StreamReset { .. })),
         );
 
         execute_instructions(
@@ -2136,7 +2136,7 @@ fn reset_does_not_cause_an_action_if_stream_is_already_reset() {
                 let mut events = StreamEvents::new();
                 test_env
                     .stream
-                    .on_internal_reset(connection::Error::Unspecified.into(), &mut events);
+                    .on_internal_reset(connection::Error::unspecified().into(), &mut events);
                 assert!(events.write_wake.is_none());
             } else {
                 execute_instructions(&mut test_env, &[Instruction::Reset(reset_error_code, true)]);
@@ -2151,9 +2151,9 @@ fn reset_does_not_cause_an_action_if_stream_is_already_reset() {
             execute_instructions(&mut test_env, &[Instruction::CheckNoTx]);
 
             // Accessing the stream should lead to the original reset error
-            assert_eq!(
-                Poll::Ready(Err(StreamError::StreamReset(error_code))),
-                test_env.poll_finish()
+            assert_matches!(
+                test_env.poll_finish(),
+                Poll::Ready(Err(StreamError::StreamReset { .. })),
             );
         }
     }
@@ -2194,7 +2194,7 @@ fn reset_does_not_cause_an_action_if_stream_is_finished_and_acknowledged() {
                 let mut events = StreamEvents::new();
                 test_env
                     .stream
-                    .on_internal_reset(connection::Error::Unspecified.into(), &mut events);
+                    .on_internal_reset(connection::Error::unspecified().into(), &mut events);
                 assert!(events.write_wake.is_none());
             } else {
                 execute_instructions(&mut test_env, &[Instruction::Reset(reset_error_code, true)]);
@@ -2273,12 +2273,12 @@ fn resetting_the_stream_does_does_trigger_a_reset_frame_and_reset_errors() {
                 2000
             };
 
-            let expected_error = match *reset_reason {
+            match *reset_reason {
                 ResetReason::InternalReset => {
                     let mut events = StreamEvents::new();
                     test_env
                         .stream
-                        .on_internal_reset(connection::Error::Unspecified.into(), &mut events);
+                        .on_internal_reset(connection::Error::unspecified().into(), &mut events);
                     assert!(events.write_wake.is_some());
 
                     // No RESET frame should be transitted due to an internal reset
@@ -2290,7 +2290,13 @@ fn resetting_the_stream_does_does_trigger_a_reset_frame_and_reset_errors() {
                         ],
                     );
 
-                    connection::Error::Unspecified.into()
+                    assert_matches!(
+                        test_env.poll_finish(),
+                        Poll::Ready(Err(StreamError::ConnectionError {
+                            error: connection::Error::Unspecified { .. },
+                            ..
+                        })),
+                    );
                 }
                 ResetReason::ApplicationReset => {
                     // The reset should lead to an outgoing packet
@@ -2308,7 +2314,11 @@ fn resetting_the_stream_does_does_trigger_a_reset_frame_and_reset_errors() {
                         ],
                     );
 
-                    StreamError::StreamReset(reset_error_code)
+                    // Accessing the stream should lead to the reset error
+                    assert_matches!(
+                        test_env.poll_finish(),
+                        Poll::Ready(Err(StreamError::StreamReset { .. })),
+                    );
                 }
                 ResetReason::StopSending => {
                     // Stop sending should lead to an outgoing packet
@@ -2326,12 +2336,13 @@ fn resetting_the_stream_does_does_trigger_a_reset_frame_and_reset_errors() {
                         ],
                     );
 
-                    StreamError::StreamReset(reset_error_code)
+                    // Accessing the stream should lead to the reset error
+                    assert_matches!(
+                        test_env.poll_finish(),
+                        Poll::Ready(Err(StreamError::StreamReset { .. })),
+                    );
                 }
             };
-
-            // Accessing the stream should lead to the reset error
-            assert_eq!(Poll::Ready(Err(expected_error)), test_env.poll_finish());
 
             if *reset_reason != ResetReason::InternalReset {
                 // If the Reset was not caused internally, it needs to get
@@ -2404,12 +2415,12 @@ fn stream_does_not_try_to_acquire_connection_flow_control_credits_after_reset() 
                 );
             }
 
-            let expected_error = match *reset_reason {
+            match *reset_reason {
                 ResetReason::InternalReset => {
                     let mut events = StreamEvents::new();
                     test_env
                         .stream
-                        .on_internal_reset(connection::Error::Unspecified.into(), &mut events);
+                        .on_internal_reset(connection::Error::unspecified().into(), &mut events);
                     assert!(events.write_wake.is_some());
 
                     // No RESET frame should be transitted due to an internal reset
@@ -2420,8 +2431,6 @@ fn stream_does_not_try_to_acquire_connection_flow_control_credits_after_reset() 
                             Instruction::CheckInterests(stream_interests(&[])),
                         ],
                     );
-
-                    connection::Error::Unspecified.into()
                 }
                 ResetReason::ApplicationReset => {
                     // The reset should lead to an outgoing packet
@@ -2438,8 +2447,6 @@ fn stream_does_not_try_to_acquire_connection_flow_control_credits_after_reset() 
                             Instruction::CheckInterests(stream_interests(&["ack"])),
                         ],
                     );
-
-                    StreamError::StreamReset(reset_error_code)
                 }
                 ResetReason::StopSending => {
                     // Stop sending should lead to an outgoing packet
@@ -2456,8 +2463,6 @@ fn stream_does_not_try_to_acquire_connection_flow_control_credits_after_reset() 
                             Instruction::CheckInterests(stream_interests(&["ack"])),
                         ],
                     );
-
-                    StreamError::StreamReset(reset_error_code)
                 }
             };
 
@@ -2490,7 +2495,7 @@ fn stream_does_not_try_to_acquire_connection_flow_control_credits_after_reset() 
             );
 
             // Accessing the stream should lead to the reset error
-            assert_eq!(Poll::Ready(Err(expected_error)), test_env.poll_finish());
+            assert_matches!(test_env.poll_finish(), Poll::Ready(Err(_)));
 
             if *reset_reason != ResetReason::InternalReset {
                 // If the Reset was not caused internally, it needs to get
@@ -2625,12 +2630,12 @@ fn resetting_a_stream_takes_priority() {
                         ],
                     );
 
-                    assert_eq!(
+                    assert_matches!(
                         test_env.run_request(&mut request, with_context),
                         Ok(ops::Response {
                             tx: Some(ops::tx::Response {
-                                status: ops::Status::Reset(StreamReset(error_code)),
-                                ..Default::default()
+                                status: ops::Status::Reset(StreamError::StreamReset { .. }),
+                                ..
                             }),
                             rx: None,
                         }),

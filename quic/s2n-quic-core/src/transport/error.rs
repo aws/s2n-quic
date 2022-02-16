@@ -8,7 +8,7 @@ use crate::{
     frame::ConnectionClose,
     varint::{VarInt, VarIntError},
 };
-use core::{fmt, ops};
+use core::fmt;
 use s2n_codec::DecoderError;
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-20
@@ -18,7 +18,6 @@ use s2n_codec::DecoderError;
 /// Transport Errors are 62-bit unsigned integer values indicating a QUIC transport error
 /// has occurred, as defined in [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000.html#section-20).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub struct Error {
     /// A 62-bit unsigned integer value indicating the error that occurred
     pub code: Code,
@@ -28,6 +27,9 @@ pub struct Error {
     /// Additional information about the error that occurred
     pub reason: &'static str,
 }
+
+#[cfg(feature = "std")]
+impl std::error::Error for Error {}
 
 impl Error {
     /// Creates a new `Error`
@@ -87,7 +89,7 @@ impl fmt::Debug for Error {
 impl<'a> From<Error> for ConnectionClose<'a> {
     fn from(error: Error) -> Self {
         ConnectionClose {
-            error_code: *error.code,
+            error_code: error.code.0,
             frame_type: Some(error.frame_type),
             reason: Some(error.reason.as_bytes()).filter(|reason| !reason.is_empty()),
         }
@@ -98,9 +100,19 @@ impl<'a> From<Error> for ConnectionClose<'a> {
 pub struct Code(VarInt);
 
 impl Code {
-    /// Creates a new `TransportError`
+    #[doc(hidden)]
     pub const fn new(code: VarInt) -> Self {
         Self(code)
+    }
+
+    #[inline]
+    pub fn as_u64(self) -> u64 {
+        self.0.as_u64()
+    }
+
+    #[inline]
+    pub(crate) fn as_varint(self) -> VarInt {
+        self.0
     }
 }
 
@@ -125,20 +137,6 @@ impl fmt::Display for Code {
         } else {
             write!(f, "error({:x?})", self.as_u64())
         }
-    }
-}
-
-impl ops::Deref for Code {
-    type Target = VarInt;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<VarInt> for Code {
-    fn from(value: VarInt) -> Self {
-        Self::new(value)
     }
 }
 

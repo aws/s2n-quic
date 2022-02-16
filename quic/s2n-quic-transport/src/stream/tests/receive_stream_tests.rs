@@ -448,7 +448,7 @@ fn receive_fin_twice_at_different_positions() {
         events = StreamEvents::new();
         test_env
             .stream
-            .on_internal_reset(connection::Error::Unspecified.into(), &mut events);
+            .on_internal_reset(connection::Error::unspecified().into(), &mut events);
         assert_eq!(1, events.waker_count());
 
         test_env.assert_pop_error();
@@ -649,7 +649,7 @@ fn exceed_stream_flow_control_window() {
     events = StreamEvents::new();
     test_env
         .stream
-        .on_internal_reset(connection::Error::Unspecified.into(), &mut events);
+        .on_internal_reset(connection::Error::unspecified().into(), &mut events);
 
     assert_eq!(
         stream_interests(&[]),
@@ -697,7 +697,7 @@ fn exceed_connection_flow_control_window() {
     events = StreamEvents::new();
     test_env
         .stream
-        .on_internal_reset(connection::Error::Unspecified.into(), &mut events);
+        .on_internal_reset(connection::Error::unspecified().into(), &mut events);
 
     assert_eq!(
         stream_interests(&[]),
@@ -2531,18 +2531,16 @@ fn receiving_into_non_empty_buffers_returns_an_error() {
 
     test_env.feed_data(VarInt::from_u8(0), 32);
 
-    assert_eq!(
-        Poll::Ready(Err(StreamError::NonEmptyOutput)),
+    assert_matches!(
         test_env.poll_request(ops::Request::default().receive(&mut [Bytes::from(&[1][..])])),
-        "non-empty buffers should return an error",
+        Poll::Ready(Err(StreamError::NonEmptyOutput { .. })),
     );
 
-    assert_eq!(
-        Poll::Ready(Err(StreamError::NonEmptyOutput)),
+    assert_matches!(
         test_env.poll_request(
             ops::Request::default().receive(&mut [Bytes::new(), Bytes::from(&[1][..])])
         ),
-        "all buffers should be pre-scanned for contents"
+        Poll::Ready(Err(StreamError::NonEmptyOutput { .. })),
     );
 
     assert_eq!(

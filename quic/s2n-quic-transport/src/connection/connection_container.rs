@@ -142,7 +142,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionNode<C, L> {
     ) -> Result<R, E> {
         match self.inner.write(|conn| f(conn)) {
             Ok(res) => res,
-            Err(_) => Err(connection::Error::Unspecified.into()),
+            Err(_) => Err(connection::Error::unspecified().into()),
         }
     }
 
@@ -153,7 +153,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionNode<C, L> {
     ) -> Result<R, E> {
         match self.inner.read(|conn| f(conn)) {
             Ok(res) => res,
-            Err(_) => Err(connection::Error::Unspecified.into()),
+            Err(_) => Err(connection::Error::unspecified().into()),
         }
     }
 
@@ -164,7 +164,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionNode<C, L> {
     ) -> Poll<Result<R, E>> {
         match self.inner.write(|conn| f(conn)) {
             Ok(res) => res,
-            Err(_) => Poll::Ready(Err(connection::Error::Unspecified.into())),
+            Err(_) => Poll::Ready(Err(connection::Error::unspecified().into())),
         }
     }
 }
@@ -668,7 +668,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         while let Ok(Some(request)) = self.connector_receiver.try_next() {
             if request
                 .sender
-                .send(Err(connection::Error::EndpointClosing))
+                .send(Err(connection::Error::endpoint_closing()))
                 .is_err()
             {
                 // the application is no longer waiting so skip
