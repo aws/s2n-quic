@@ -550,6 +550,7 @@ impl IntoEvent<builder::Location> for crate::endpoint::Location {
     }
 }
 
+/// An endpoint may be either a Server or a Client
 #[exhaustive]
 enum EndpointType {
     Server,

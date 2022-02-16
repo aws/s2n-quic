@@ -6,7 +6,7 @@
 use cfg_if::cfg_if;
 pub use s2n_quic_core::event::{
     api as events,
-    api::{ConnectionInfo, ConnectionMeta},
+    api::{ConnectionInfo, ConnectionMeta, Location},
     query, supervisor, Event, Meta, Subscriber, Timestamp,
 };
 
@@ -21,6 +21,7 @@ pub trait Provider {
 /// Provides an implementation to disable all events
 pub mod disabled;
 
+/// This module contains event integration with [`tracing`](https://docs.rs/tracing)
 #[cfg(feature = "provider-event-tracing")]
 pub mod tracing;
 

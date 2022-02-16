@@ -7,6 +7,7 @@
 
 use super::*;
 pub mod api {
+    #![doc = r" This module contains events that are emitted to the [`Subscriber`](crate::event::Subscriber)"]
     use super::*;
     pub use traits::Subscriber;
     #[derive(Clone, Debug)]
@@ -202,6 +203,7 @@ pub mod api {
         Remote {},
     }
     #[derive(Clone, Debug)]
+    #[doc = " An endpoint may be either a Server or a Client"]
     pub enum EndpointType {
         #[non_exhaustive]
         Server {},
@@ -1281,6 +1283,7 @@ pub mod api {
 }
 #[cfg(feature = "event-tracing")]
 pub mod tracing {
+    #![doc = r" This module contains event integration with [`tracing`](https://docs.rs/tracing)"]
     use super::api;
     #[doc = r" Emits events with [`tracing`](https://docs.rs/tracing)"]
     #[derive(Clone, Debug)]
@@ -2300,6 +2303,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " An endpoint may be either a Server or a Client"]
     pub enum EndpointType {
         Server,
         Client,
@@ -3423,6 +3427,10 @@ pub mod builder {
     }
 }
 pub mod supervisor {
+    #![doc = r" This module contains the `supervisor::Outcome` and `supervisor::Context` for use"]
+    #![doc = r" when implementing [`Subscriber::supervisor_timeout`](crate::event::Subscriber::supervisor_timeout) and"]
+    #![doc = r" [`Subscriber::on_supervisor_timeout`](crate::event::Subscriber::on_supervisor_timeout)"]
+    #![doc = r" on a Subscriber."]
     use crate::{
         application,
         event::{builder::SocketAddress, IntoEvent},
@@ -3475,9 +3483,15 @@ mod traits {
     use super::*;
     use api::*;
     use core::fmt;
+    #[doc = r" Provides metadata related to an event"]
     pub trait Meta {
+        #[doc = r" Returns whether the local endpoint is a Client or Server"]
         fn endpoint_type(&self) -> &EndpointType;
+        #[doc = r" A context from which the event is being emitted"]
+        #[doc = r""]
+        #[doc = r" An event can occur in the context of an Endpoint or Connection"]
         fn subject(&self) -> Subject;
+        #[doc = r" The time the event occurred"]
         fn timestamp(&self) -> &crate::event::Timestamp;
     }
     impl Meta for ConnectionMeta {
@@ -3502,6 +3516,7 @@ mod traits {
             &self.timestamp
         }
     }
+    #[doc = r" Allows for events to be subscribed to"]
     pub trait Subscriber: 'static + Send {
         #[doc = r" An application provided type associated with each connection."]
         #[doc = r""]
@@ -4106,6 +4121,7 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = r" Used for querying the `Subscriber::ConnectionContext` on a Subscriber"]
         #[inline]
         fn query(
             context: &Self::ConnectionContext,
@@ -4113,6 +4129,7 @@ mod traits {
         ) -> query::ControlFlow {
             query.execute(context)
         }
+        #[doc = r" Used for querying and mutating the `Subscriber::ConnectionContext` on a Subscriber"]
         #[inline]
         fn query_mut(
             context: &mut Self::ConnectionContext,

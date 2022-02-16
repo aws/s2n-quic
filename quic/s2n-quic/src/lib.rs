@@ -63,3 +63,7 @@ pub mod application {
 pub use client::Client;
 pub use connection::Connection;
 pub use server::Server;
+
+pub mod transport {
+    pub use s2n_quic_core::transport::Error;
+}

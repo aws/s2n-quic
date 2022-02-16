@@ -15,11 +15,17 @@ use s2n_codec::DecoderError;
 //# QUIC transport error codes and application error codes are 62-bit
 //# unsigned integers.
 
+/// Transport Errors are 62-bit unsigned integer values indicating a QUIC transport error
+/// has occurred, as defined in [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000.html#section-20).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub struct Error {
+    /// A 62-bit unsigned integer value indicating the error that occurred
     pub code: Code,
+    /// If this error was caused by a particular QUIC frame, `frame_type` will contain
+    /// the Frame Type as defined in [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000.html#name-frame-types-and-formats).
     pub frame_type: VarInt,
+    /// Additional information about the error that occurred
     pub reason: &'static str,
 }
 
