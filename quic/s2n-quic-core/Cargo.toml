@@ -8,7 +8,7 @@ license = "Apache-2.0"
 [features]
 default = ["alloc", "std"]
 alloc = []
-std = ["alloc", "thiserror"]
+std = ["alloc"]
 testing = ["std", "generator", "s2n-codec/testing", "checked-counters", "insta", "futures-test"]
 generator = ["bolero-generator"]
 checked-counters = []
@@ -24,7 +24,6 @@ insta = { version = ">=1.12", optional = true }
 num-traits = { version = "0.2", default-features = false, features = ["libm"] }
 s2n-codec = { version = "0.1", path = "../../common/s2n-codec", default-features = false }
 subtle = { version = "2", default-features = false }
-thiserror = { version = "1", optional = true }
 tracing = { version = "0.1", default-features = false, optional = true }
 zerocopy = "=0.6.0"
 zerocopy-derive = "=0.3.0"

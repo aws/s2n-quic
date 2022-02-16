@@ -121,7 +121,7 @@ impl Formatter for Production {
         }
 
         // only preserve the error code
-        transport::Error::new(*error.code).into()
+        transport::Error::new(error.code.as_varint()).into()
     }
 
     fn format_application_error(

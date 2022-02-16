@@ -300,7 +300,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                         false,
                         "on_datagram_received should not fail for a newly created connection"
                     );
-                    connection::Error::Unspecified
+                    connection::Error::unspecified()
                 })?;
 
                 connection

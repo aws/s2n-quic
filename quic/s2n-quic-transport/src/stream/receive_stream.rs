@@ -527,7 +527,7 @@ impl ReceiveStream {
         //# error code in any RESET_STREAM frames subsequently received for that
         //# stream.
 
-        let error = StreamError::StreamReset(frame.application_error_code.into());
+        let error = StreamError::stream_reset(frame.application_error_code.into());
         self.init_reset(error, Some(frame.final_size), Some(frame.tag()))?;
 
         // We don't have to send `STOP_SENDING` anymore since the stream was reset by the peer
@@ -695,7 +695,7 @@ impl ReceiveStream {
 
             // Mark the stream as reset. Note that the request doesn't have a flush so there's
             // currently no way to wait for the reset to be acknowledged.
-            response.status = ops::Status::Reset(StreamError::StreamReset(error_code));
+            response.status = ops::Status::Reset(StreamError::stream_reset(error_code));
 
             return Ok(response);
         }
@@ -734,7 +734,7 @@ impl ReceiveStream {
                 // We iterate over all of the chunks to make sure we don't do a partial write and
                 // return an error (which would result in losing data).
                 if chunks.iter().any(|chunk| !chunk.is_empty()) {
-                    return Err(StreamError::NonEmptyOutput);
+                    return Err(StreamError::non_empty_output());
                 }
 
                 while response.chunks.consumed < chunks.len() {

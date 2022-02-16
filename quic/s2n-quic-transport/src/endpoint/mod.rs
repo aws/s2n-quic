@@ -873,7 +873,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         //# and not send any further packets on this connection.
         self.connections.with_connection(internal_id, |conn| {
             conn.close(
-                connection::Error::StatelessReset,
+                connection::Error::stateless_reset(),
                 endpoint_context.connection_close_formatter,
                 close_packet_buffer,
                 timestamp,

@@ -424,7 +424,7 @@ pub mod rx {
                 let should_error = chunks.iter().any(|chunk| !chunk.is_empty());
 
                 if should_error {
-                    assert_eq!(response, Err(&StreamError::NonEmptyOutput));
+                    assert!(matches!(response, Err(StreamError::NonEmptyOutput { .. })));
                     return;
                 }
 

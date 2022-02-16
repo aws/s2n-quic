@@ -55,7 +55,7 @@ macro_rules! impl_send_stream_api {
         ) -> core::task::Poll<$crate::stream::Result<()>> {
             macro_rules! $dispatch {
                 () => {
-                    Err($crate::stream::Error::NonWritable).into()
+                    Err($crate::stream::Error::non_writable()).into()
                 };
                 ($variant: expr) => {
                     $variant.poll_send(chunk, cx)
@@ -131,7 +131,7 @@ macro_rules! impl_send_stream_api {
         ) -> core::task::Poll<$crate::stream::Result<usize>> {
             macro_rules! $dispatch {
                 () => {
-                    Err($crate::stream::Error::NonWritable).into()
+                    Err($crate::stream::Error::non_writable()).into()
                 };
                 ($variant: expr) => {
                     $variant.poll_send_vectored(chunks, cx)
@@ -162,7 +162,7 @@ macro_rules! impl_send_stream_api {
         ) -> core::task::Poll<$crate::stream::Result<usize>> {
             macro_rules! $dispatch {
                 () => {
-                    Err($crate::stream::Error::NonWritable).into()
+                    Err($crate::stream::Error::non_writable()).into()
                 };
                 ($variant: expr) => {
                     $variant.poll_send_ready(cx)
@@ -188,7 +188,7 @@ macro_rules! impl_send_stream_api {
         pub fn send_data(&mut self, chunk: bytes::Bytes) -> $crate::stream::Result<()> {
             macro_rules! $dispatch {
                 () => {
-                    Err($crate::stream::Error::NonWritable)
+                    Err($crate::stream::Error::non_writable())
                 };
                 ($variant: expr) => {
                     $variant.send_data(chunk)
@@ -245,7 +245,7 @@ macro_rules! impl_send_stream_api {
         ) -> core::task::Poll<$crate::stream::Result<()>> {
             macro_rules! $dispatch {
                 () => {
-                    Err($crate::stream::Error::NonWritable).into()
+                    Err($crate::stream::Error::non_writable()).into()
                 };
                 ($variant: expr) => {
                     $variant.poll_flush(cx)
@@ -274,7 +274,7 @@ macro_rules! impl_send_stream_api {
         pub fn finish(&mut self) -> $crate::stream::Result<()> {
             macro_rules! $dispatch {
                 () => {
-                    Err($crate::stream::Error::NonWritable).into()
+                    Err($crate::stream::Error::non_writable()).into()
                 };
                 ($variant: expr) => {
                     $variant.finish()
@@ -336,7 +336,7 @@ macro_rules! impl_send_stream_api {
         ) -> core::task::Poll<$crate::stream::Result<()>> {
             macro_rules! $dispatch {
                 () => {
-                    Err($crate::stream::Error::NonWritable).into()
+                    Err($crate::stream::Error::non_writable()).into()
                 };
                 ($variant: expr) => {
                     $variant.poll_close(cx)
@@ -366,7 +366,7 @@ macro_rules! impl_send_stream_api {
         ) -> $crate::stream::Result<()> {
             macro_rules! $dispatch {
                 () => {
-                    Err($crate::stream::Error::NonWritable)
+                    Err($crate::stream::Error::non_writable())
                 };
                 ($variant: expr) => {
                     $variant.reset(error_code)

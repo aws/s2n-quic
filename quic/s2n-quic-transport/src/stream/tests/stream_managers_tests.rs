@@ -413,7 +413,7 @@ fn try_open(
 
     match manager.poll_open(stream_type, &Context::from_waker(&accept_waker)) {
         Poll::Ready(res) => res,
-        Poll::Pending => Err(connection::Error::Unspecified),
+        Poll::Pending => Err(connection::Error::unspecified()),
     }
 }
 
@@ -515,9 +515,9 @@ fn opens_locally_initiated_streams() {
                 .next_stream_ids
                 .get_mut(local_ep_type, stream_type) = None;
 
-            assert_eq!(
-                Err(connection::Error::StreamIdExhausted),
-                try_open(&mut manager, stream_type)
+            assert_matches!(
+                try_open(&mut manager, stream_type),
+                Err(connection::Error::StreamIdExhausted { .. }),
             );
         }
     }
@@ -527,11 +527,11 @@ fn opens_locally_initiated_streams() {
 fn open_returns_error_after_close() {
     let mut manager = create_stream_manager(endpoint::Type::Server);
 
-    manager.close(connection::Error::Unspecified);
-    assert_eq!(
-        Err(connection::Error::Unspecified),
-        try_open(&mut manager, StreamType::Bidirectional)
-    )
+    manager.close(connection::Error::unspecified());
+    assert!(matches!(
+        try_open(&mut manager, StreamType::Bidirectional),
+        Err(connection::Error::Unspecified { .. })
+    ));
 }
 
 #[test]
@@ -548,10 +548,7 @@ fn returns_finalization_interest_after_last_stream_is_drained() {
 
     let error = ApplicationErrorCode::new(0).unwrap();
 
-    manager.close(connection::Error::Application {
-        error,
-        initiator: endpoint::Location::Local,
-    });
+    manager.close(connection::Error::application(error));
     assert!(manager.finalization_status().is_draining());
 
     // The first stream is immediately interested in finalization and should
@@ -1274,10 +1271,7 @@ fn blocked_on_local_concurrent_stream_limit() {
             .is_pending());
 
         // Close the stream manager and verify the wake counter is incremented
-        manager.close(connection::Error::Application {
-            error: ApplicationErrorCode::new(1).unwrap(),
-            initiator: endpoint::Location::Local,
-        });
+        manager.close(connection::Error::application(1u8.into()));
 
         assert_eq!(wake_counter, 2);
     }
@@ -1414,9 +1408,9 @@ fn accept_returns_remotely_initiated_stream() {
                 // Check Stream ID exhaustion
                 *manager.inner.accept_state.next_stream_mut(stream_type) = None;
 
-                assert_eq!(
-                    Poll::Ready(Err(connection::Error::StreamIdExhausted)),
-                    manager.poll_accept(Some(stream_type), &Context::from_waker(&accept_waker))
+                assert_matches!(
+                    manager.poll_accept(Some(stream_type), &Context::from_waker(&accept_waker)),
+                    Poll::Ready(Err(connection::Error::StreamIdExhausted { .. })),
                 );
             }
         }
@@ -1576,7 +1570,7 @@ fn accept_returns_opened_streams_even_if_stream_manager_was_closed() {
 
                 // Close the StreamManager
                 // This should still allow us to accept Streams
-                manager.close(connection::Error::Unspecified);
+                manager.close(connection::Error::unspecified());
 
                 for n in 0..STREAMS_TO_OPEN {
                     let stream_id = StreamId::nth(*initiator_type, *stream_type, n).unwrap();
@@ -1588,9 +1582,9 @@ fn accept_returns_opened_streams_even_if_stream_manager_was_closed() {
                 }
 
                 // Now the error should be visible
-                assert_eq!(
-                    Poll::Ready(Err(connection::Error::Unspecified)),
-                    manager.poll_accept(Some(*stream_type), &Context::from_waker(&accept_waker))
+                assert_matches!(
+                    manager.poll_accept(Some(*stream_type), &Context::from_waker(&accept_waker)),
+                    Poll::Ready(Err(connection::Error::Unspecified { .. })),
                 );
             }
         }
@@ -1618,14 +1612,14 @@ fn closing_stream_manager_wakes_blocked_accepts() {
 
                 // Close the StreamManager
                 // This should wake up the accept call
-                manager.close(connection::Error::Unspecified);
+                manager.close(connection::Error::unspecified());
                 assert_eq!(accept_wake_counter, 1);
 
                 // Now the error should be visible
-                assert_eq!(
-                    Poll::Ready(Err(connection::Error::Unspecified)),
-                    manager.poll_accept(Some(*stream_type), &Context::from_waker(&accept_waker))
-                );
+                assert!(matches!(
+                    manager.poll_accept(Some(*stream_type), &Context::from_waker(&accept_waker)),
+                    Poll::Ready(Err(connection::Error::Unspecified { .. })),
+                ));
             }
         }
     }
@@ -1652,9 +1646,7 @@ fn closing_stream_manager_without_error_returns_none() {
 
                 // Close the StreamManager
                 // This should wake up the accept call
-                manager.close(connection::Error::Closed {
-                    initiator: endpoint::Location::Local,
-                });
+                manager.close(connection::Error::closed(endpoint::Location::Local));
                 assert_eq!(accept_wake_counter, 1);
 
                 // Now the stream should return None
@@ -2049,10 +2041,7 @@ fn close_is_forwarded_to_all_streams() {
         stream.write_waker_to_return = Some(write_waker);
     });
 
-    manager.close(connection::Error::Application {
-        error: ApplicationErrorCode::new(1).unwrap(),
-        initiator: endpoint::Location::Local,
-    });
+    manager.close(connection::Error::application(1u8.into()));
     assert_eq!([stream_2, stream_4], *manager.active_streams());
     assert_eq!(read_wake_counter, 2);
     assert_eq!(write_wake_counter, 1);
@@ -2689,20 +2678,20 @@ fn forwards_poll_pop() {
     // Check call count and error forwarding
     manager.with_asserted_stream(stream_1, |stream| {
         assert_eq!(stream.poll_pop_count, 1);
-        stream.next_api_error = Some(StreamError::MaxStreamDataSizeExceeded);
+        stream.next_api_error = Some(StreamError::max_stream_data_size_exceeded());
         stream.api_call_requires_transmission = true;
     });
 
     assert!(manager.get_transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
-    assert_eq!(
-        Err(StreamError::MaxStreamDataSizeExceeded),
+    assert_matches!(
         manager.poll_request(
             stream_1,
             &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().receive(&mut [Bytes::new()]),
             Some(&ctx)
-        )
+        ),
+        Err(StreamError::MaxStreamDataSizeExceeded { .. }),
     );
     assert_eq!(
         transmission::Interest::NewData,
@@ -2711,14 +2700,14 @@ fn forwards_poll_pop() {
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID
-    assert_eq!(
-        Err(StreamError::InvalidStream),
+    assert_matches!(
         manager.poll_request(
             invalid_stream_id(endpoint::Type::Server),
             &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().receive(&mut [Bytes::new()]),
             Some(&ctx)
-        )
+        ),
+        Err(StreamError::InvalidStream { .. }),
     );
 }
 
@@ -2742,20 +2731,20 @@ fn forwards_stop_sending() {
     // Check call count and error forwarding
     manager.with_asserted_stream(stream_1, |stream| {
         assert_eq!(stream.stop_sending_count, 1);
-        stream.next_api_error = Some(StreamError::MaxStreamDataSizeExceeded);
+        stream.next_api_error = Some(StreamError::max_stream_data_size_exceeded());
         stream.api_call_requires_transmission = true;
     });
 
     assert!(manager.get_transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
-    assert_eq!(
-        Err(StreamError::MaxStreamDataSizeExceeded),
+    assert_matches!(
         manager.poll_request(
             stream_1,
             &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().stop_sending(error),
             None,
-        )
+        ),
+        Err(StreamError::MaxStreamDataSizeExceeded { .. }),
     );
     assert_eq!(
         transmission::Interest::NewData,
@@ -2764,14 +2753,14 @@ fn forwards_stop_sending() {
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID
-    assert_eq!(
-        Err(StreamError::InvalidStream),
+    assert_matches!(
         manager.poll_request(
             invalid_stream_id(endpoint::Type::Server),
             &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().stop_sending(error),
             None,
-        )
+        ),
+        Err(StreamError::InvalidStream { .. }),
     );
 }
 
@@ -2797,20 +2786,20 @@ fn forwards_poll_push() {
     // Check call count and error forwarding
     manager.with_asserted_stream(stream_1, |stream| {
         assert_eq!(stream.poll_push_count, 1);
-        stream.next_api_error = Some(StreamError::MaxStreamDataSizeExceeded);
+        stream.next_api_error = Some(StreamError::max_stream_data_size_exceeded());
         stream.api_call_requires_transmission = true;
     });
 
     assert!(manager.get_transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
-    assert_eq!(
-        Err(StreamError::MaxStreamDataSizeExceeded),
+    assert_matches!(
         manager.poll_request(
             stream_1,
             &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().send(&mut [data.clone()]),
             Some(&ctx)
-        )
+        ),
+        Err(StreamError::MaxStreamDataSizeExceeded { .. }),
     );
     assert_eq!(
         transmission::Interest::NewData,
@@ -2819,14 +2808,14 @@ fn forwards_poll_push() {
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID
-    assert_eq!(
-        Err(StreamError::InvalidStream),
+    assert_matches!(
         manager.poll_request(
             invalid_stream_id(endpoint::Type::Server),
             &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().send(&mut [data]),
             Some(&ctx)
-        )
+        ),
+        Err(StreamError::InvalidStream { .. }),
     );
 }
 
@@ -2851,20 +2840,20 @@ fn forwards_poll_finish() {
     // Check call count and error forwarding
     manager.with_asserted_stream(stream_1, |stream| {
         assert_eq!(stream.poll_finish_count, 1);
-        stream.next_api_error = Some(StreamError::MaxStreamDataSizeExceeded);
+        stream.next_api_error = Some(StreamError::max_stream_data_size_exceeded());
         stream.api_call_requires_transmission = true;
     });
 
     assert!(manager.get_transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
-    assert_eq!(
-        Err(StreamError::MaxStreamDataSizeExceeded),
+    assert_matches!(
         manager.poll_request(
             stream_1,
             &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().finish().flush(),
             Some(&ctx)
-        )
+        ),
+        Err(StreamError::MaxStreamDataSizeExceeded { .. }),
     );
     assert_eq!(
         transmission::Interest::NewData,
@@ -2873,14 +2862,14 @@ fn forwards_poll_finish() {
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID
-    assert_eq!(
-        Err(StreamError::InvalidStream),
+    assert_matches!(
         manager.poll_request(
             invalid_stream_id(endpoint::Type::Server),
             &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().finish().flush(),
             Some(&ctx)
-        )
+        ),
+        Err(StreamError::InvalidStream { .. }),
     );
 }
 
@@ -2904,20 +2893,20 @@ fn forwards_reset() {
     // Check call count and error forwarding
     manager.with_asserted_stream(stream_1, |stream| {
         assert_eq!(stream.reset_count, 1);
-        stream.next_api_error = Some(StreamError::MaxStreamDataSizeExceeded);
+        stream.next_api_error = Some(StreamError::max_stream_data_size_exceeded());
         stream.api_call_requires_transmission = true;
     });
 
     assert!(manager.get_transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
-    assert_eq!(
-        Err(StreamError::MaxStreamDataSizeExceeded),
+    assert_matches!(
         manager.poll_request(
             stream_1,
             &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().reset(error),
             None,
-        )
+        ),
+        Err(StreamError::MaxStreamDataSizeExceeded { .. }),
     );
     assert_eq!(
         transmission::Interest::NewData,
@@ -2926,14 +2915,14 @@ fn forwards_reset() {
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID
-    assert_eq!(
-        Err(StreamError::InvalidStream),
+    assert_matches!(
         manager.poll_request(
             invalid_stream_id(endpoint::Type::Server),
             &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
             ops::Request::default().reset(error),
             None,
-        )
+        ),
+        Err(StreamError::InvalidStream { .. }),
     );
 }
 

@@ -514,7 +514,10 @@ fn silently_return_when_there_is_no_valid_path() {
 
     // Expectation:
     assert!(!manager[first_path_id].is_challenge_pending());
-    assert_eq!(res.unwrap_err(), connection::Error::NoValidPath);
+    assert!(matches!(
+        res.unwrap_err(),
+        connection::Error::NoValidPath { .. }
+    ));
 }
 
 #[test]

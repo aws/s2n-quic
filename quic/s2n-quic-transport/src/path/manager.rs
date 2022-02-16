@@ -748,7 +748,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     //= https://www.rfc-editor.org/rfc/rfc9000#section-10
                     //# An endpoint MAY discard connection state if it does not have a
                     //# validated path on which it can send packets; see Section 8.2
-                    return Err(connection::Error::NoValidPath);
+                    return Err(connection::Error::no_valid_path());
                 }
             }
         }

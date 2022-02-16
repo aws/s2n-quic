@@ -26,7 +26,7 @@ use s2n_quic_core::{
     ack, application,
     frame::{MaxStreamData, ResetStream, StopSending, StreamDataBlocked},
     packet::number::PacketNumber,
-    stream::{ops, StreamError::StreamReset, StreamId},
+    stream::{ops, StreamId},
     time::{timer, Timestamp},
     transport,
     varint::VarInt,
@@ -564,7 +564,7 @@ impl SendStream {
         //# An endpoint SHOULD copy the error code from the STOP_SENDING frame to
         //# the RESET_STREAM frame it sends, but it can use any application error
         //# code.
-        let error = StreamError::StreamReset(frame.application_error_code.into());
+        let error = StreamError::stream_reset(frame.application_error_code.into());
 
         if self.init_reset(ResetSource::StopSendingFrame, error) == InitResetResult::ResetInitiated
         {
@@ -767,7 +767,7 @@ impl SendStream {
             // reset is a best effort operation so ignore the result
             let _ = self.init_reset(
                 ResetSource::LocalApplication,
-                StreamError::StreamReset(error_code),
+                StreamError::stream_reset(error_code),
             );
 
             // mark the stream as resetting
@@ -783,7 +783,7 @@ impl SendStream {
 
             // Mark the stream as completely reset once it's been acknowledged
             if matches!(self.state, SendStreamState::ResetAcknowledged(_)) {
-                response.status = ops::Status::Reset(StreamReset(error_code));
+                response.status = ops::Status::Reset(StreamError::stream_reset(error_code));
             }
 
             return Ok(response);
@@ -905,7 +905,7 @@ impl SendStream {
     fn validate_push(&self, len: usize) -> Result<(), StreamError> {
         // The user tries to write, even though they previously closed the stream.
         if self.data_sender.state() != data_sender::State::Sending {
-            return Err(StreamError::SendAfterFinish);
+            return Err(StreamError::send_after_finish());
         }
 
         let is_valid = VarInt::try_from(len)
@@ -916,7 +916,7 @@ impl SendStream {
         if is_valid {
             Ok(())
         } else {
-            Err(StreamError::MaxStreamDataSizeExceeded)
+            Err(StreamError::max_stream_data_size_exceeded())
         }
     }
 
@@ -961,7 +961,7 @@ impl SendStream {
         // For an internal reset (which provides no error_code) we do not need
         // to transmit the reset frame
         match (reason.is_internal(), error) {
-            (false, StreamError::StreamReset(error_code)) => {
+            (false, StreamError::StreamReset { error, .. }) => {
                 // When we deliver a RESET frame, we have to transmit the final
                 // size of the stream. This is required to keep the connection
                 // window on both sides in sync.
@@ -971,7 +971,7 @@ impl SendStream {
                 // deliver this value to the peer - even if we have actually
                 // transmitted less data actually.
                 self.reset_sync.request_delivery(OutgoingResetData {
-                    application_error_code: error_code,
+                    application_error_code: error,
                     final_size: self
                         .data_sender
                         .flow_controller()
