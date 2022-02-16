@@ -303,14 +303,14 @@ impl ToTokens for Output {
 
                     /// Called for each event that relates to the endpoint and all connections
                     #[inline]
-                    fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
+                    fn on_event<M: Meta + core::fmt::Debug, E: Event + core::fmt::Debug>(&mut self, meta: &M, event: &E) {
                         let _ = meta;
                         let _ = event;
                     }
 
                     /// Called for each event that relates to a connection
                     #[inline]
-                    fn on_connection_event<E: Event>(&mut self, context: &mut Self::ConnectionContext, meta: &ConnectionMeta, event: &E) {
+                    fn on_connection_event<E: Event + core::fmt::Debug>(&mut self, context: &mut Self::ConnectionContext, meta: &ConnectionMeta, event: &E) {
                         let _ = context;
                         let _ = meta;
                         let _ = event;
@@ -368,13 +368,13 @@ impl ToTokens for Output {
                     #tuple_subscriber
 
                     #[inline]
-                    fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
+                    fn on_event<M: Meta + core::fmt::Debug, E: Event + core::fmt::Debug>(&mut self, meta: &M, event: &E) {
                         self.0.on_event(meta, event);
                         self.1.on_event(meta, event);
                     }
 
                     #[inline]
-                    fn on_connection_event<E: Event>(&mut self, context: &mut Self::ConnectionContext, meta: &ConnectionMeta, event: &E) {
+                    fn on_connection_event<E: Event + core::fmt::Debug>(&mut self, context: &mut Self::ConnectionContext, meta: &ConnectionMeta, event: &E) {
                         self.0.on_connection_event(&mut context.0, meta, event);
                         self.1.on_connection_event(&mut context.1, meta, event);
                     }

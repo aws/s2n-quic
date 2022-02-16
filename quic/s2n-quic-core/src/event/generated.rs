@@ -3956,13 +3956,17 @@ mod traits {
         }
         #[doc = r" Called for each event that relates to the endpoint and all connections"]
         #[inline]
-        fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
+        fn on_event<M: Meta + core::fmt::Debug, E: Event + core::fmt::Debug>(
+            &mut self,
+            meta: &M,
+            event: &E,
+        ) {
             let _ = meta;
             let _ = event;
         }
         #[doc = r" Called for each event that relates to a connection"]
         #[inline]
-        fn on_connection_event<E: Event>(
+        fn on_connection_event<E: Event + core::fmt::Debug>(
             &mut self,
             context: &mut Self::ConnectionContext,
             meta: &ConnectionMeta,
@@ -4452,12 +4456,16 @@ mod traits {
             (self.1).on_platform_event_loop_wakeup(meta, event);
         }
         #[inline]
-        fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
+        fn on_event<M: Meta + core::fmt::Debug, E: Event + core::fmt::Debug>(
+            &mut self,
+            meta: &M,
+            event: &E,
+        ) {
             self.0.on_event(meta, event);
             self.1.on_event(meta, event);
         }
         #[inline]
-        fn on_connection_event<E: Event>(
+        fn on_connection_event<E: Event + core::fmt::Debug>(
             &mut self,
             context: &mut Self::ConnectionContext,
             meta: &ConnectionMeta,

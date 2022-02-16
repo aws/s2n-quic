@@ -74,7 +74,7 @@ impl<'a> IntoEvent<&'a str> for &'a str {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct Timestamp(crate::time::Timestamp);
 
 impl Timestamp {
