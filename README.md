@@ -102,9 +102,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 The current MSRV is [1.53.0][msrv-url].
 
-## Security
+## Security issue notifications
+If you discover a potential security issue in s2n-quic we ask that you notify
+AWS Security via our [vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/). Please do **not** create a public github issue. 
 
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
+If you package or distribute s2n-quic, or use s2n-quic as part of a large multi-user service, you may be eligible for pre-notification of future s2n-quic releases. Please contact s2n-pre-notification@amazon.com.
 
 ## License
 
