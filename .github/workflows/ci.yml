@@ -2,9 +2,9 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
+#  pull_request:
+#    branches:
+#     - main
 
 name: ci
 
@@ -16,7 +16,6 @@ env:
   # Pin the nightly toolchain to prevent breakage.
   # This should be occasionally updated.
   RUST_NIGHTLY_TOOLCHAIN: nightly-2021-11-17
-  CDN: https://dnglbrstg7yg.cloudfront.net
 
 jobs:
   env:
@@ -35,16 +34,6 @@ jobs:
           export RAW_VERSIONS="stable beta $RUST_NIGHTLY_TOOLCHAIN $MSRV"
           export VERSIONS=$(echo $RAW_VERSIONS | jq -scR 'rtrimstr("\n")|split(" ")|.')
           echo "::set-output name=versions::$VERSIONS"
-
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        with:
-          name: 'compliance / report'
-          status: 'pending'
-
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        with:
-          name: 'doc / report'
-          status: 'pending'
 
   rustfmt:
     runs-on: ubuntu-latest
@@ -88,12 +77,12 @@ jobs:
 
       - uses: camshaft/rust-cache@v1
 
+      # TODO convert the json output into GHA annotations
       - name: Run cargo clippy
-        uses: actions-rs/clippy-check@v1.0.7
+        uses: actions-rs/cargo@v1.0.7
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          command: clippy
           args: --all-features --all-targets -- -D warnings
-          name: clippy (${{ matrix.toolchain }}) / report
 
   udeps:
     runs-on: ubuntu-latest
@@ -142,25 +131,10 @@ jobs:
           command: doc
           args: --all-features --no-deps --workspace --exclude duvet --exclude s2n-quic-qns
 
-      - uses: aws-actions/configure-aws-credentials@v1.6.1
+      - uses: actions/upload-artifact@v2
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
-
-      - name: Upload to S3
-        id: s3
-        run: |
-          TARGET="${{ github.sha }}/doc"
-          aws s3 sync target/doc "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/s2n_quic/index.html"
-          echo "::set-output name=URL::$URL"
-
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        with:
-          name: 'doc / report'
-          status: 'success'
-          url: "${{ steps.s3.outputs.URL }}"
+          name: report-doc
+          path: target/doc
 
   test:
     runs-on: ${{ matrix.os }}
@@ -298,25 +272,10 @@ jobs:
       - name: Run duvet
         run: ./scripts/compliance ${{ github.sha }}
 
-      - uses: aws-actions/configure-aws-credentials@v1.6.1
+      - uses: actions/upload-artifact@v2
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
-
-      - name: Upload to S3
-        id: s3
-        run: |
-          TARGET="${{ github.sha }}/compliance.html"
-          aws s3 cp target/compliance/report.html "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET"
-          echo "::set-output name=URL::$URL"
-
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        with:
-          name: 'compliance / report'
-          status: 'success'
-          url: "${{ steps.s3.outputs.URL }}"
+          name: report-compliance
+          path: target/compliance
 
   coverage:
     runs-on: ubuntu-latest
@@ -348,25 +307,10 @@ jobs:
           command: llvm-cov
           args: --html --no-fail-fast --workspace --exclude s2n-quic-qns --exclude s2n-quic-events --exclude cargo-compliance --all-features
 
-      - uses: aws-actions/configure-aws-credentials@v1.6.1
+      - uses: actions/upload-artifact@v2
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
-
-      - name: Upload results
-        id: s3
-        run: |
-          TARGET="${{ github.sha }}/coverage"
-          aws s3 sync target/llvm-cov/html "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/index.html"
-          echo "::set-output name=URL::$URL"
-
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        with:
-          name: 'coverage / report'
-          status: 'success'
-          url: "${{ steps.s3.outputs.URL }}"
+          name: report-coverage
+          path: target/llvm-cov/html
 
   examples:
     runs-on: ubuntu-latest
@@ -413,25 +357,10 @@ jobs:
         run: |
           ./scripts/recovery-sim
 
-      - uses: aws-actions/configure-aws-credentials@v1.6.1
+      - uses: actions/upload-artifact@v2
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
-
-      - name: Upload to S3
-        id: s3
-        run: |
-          TARGET="${{ github.sha }}/recovery-simulations"
-          aws s3 sync target/recovery-sim "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/index.html"
-          echo "::set-output name=URL::$URL"
-
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        with:
-          name: 'recovery-simulations / report'
-          status: 'success'
-          url: "${{ steps.s3.outputs.URL }}"
+          name: report-recovery-sim
+          path: target/recovery-sim
 
   copyright:
     runs-on: ubuntu-latest
@@ -466,8 +395,8 @@ jobs:
 
       - name: Check to make sure the generated events are up-to-date
         run: |
-          # If this fails you need to run `cargo run --bin s2n-quic-events`
-          git diff --exit-code
+          git diff --exit-code || \
+            echo "::error ::Modified events need to be generated with `cargo run --bin s2n-quic-events` and committed"
 
   # ensures there are no unused snapshots
   snapshots:
@@ -497,8 +426,8 @@ jobs:
 
       - name: Check to make sure there are no unused snapshots
         run: |
-          # If this fails, a test that was asserting a snapshot is no longer being executed.
-          git diff --exit-code
+          git diff --exit-code || \
+            echo "::error ::One or more snapshots were not used"
 
   # generates a report of time spent in compilation
   # https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#timings
@@ -521,25 +450,10 @@ jobs:
           cd examples/echo
           cargo build -Z timings --release
 
-      - uses: aws-actions/configure-aws-credentials@v1.6.1
+      - uses: actions/upload-artifact@v2
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
-
-      - name: Upload to S3
-        id: s3
-        run: |
-          TARGET="${{ github.sha }}/timing/index.html"
-          aws s3 cp examples/echo/cargo-timing.html "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET"
-          echo "::set-output name=URL::$URL"
-
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        with:
-          name: 'timing / report'
-          status: 'success'
-          url: "${{ steps.s3.outputs.URL }}"
+          name: report-timing
+          path: examples/echo/cargo-timing.html
 
   typos:
     runs-on: ubuntu-latest

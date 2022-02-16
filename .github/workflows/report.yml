@@ -1,0 +1,53 @@
+name: report
+on:
+  workflow_run:
+    workflows: [ci, qns]
+    types: [completed, requested]
+
+  pull_request:
+    paths:
+      - ".github/workflows/*"
+
+env:
+  CDN: https://dnglbrstg7yg.cloudfront.net
+
+jobs:
+  report:
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-node@v2
+        with:
+          node-version: 16
+
+      - run: npm install adm-zip
+
+      - run: mkdir -p reports
+
+      - uses: actions/github-script@v6
+        env:
+          ACTIONS_RUNTIME_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const script = require('./.github/workflows/report.js')
+            await script({ github, context, core, glob, io, exec })
+
+      - name: List reports
+        run: |
+          tree reports
+
+      - uses: aws-actions/configure-aws-credentials@v1.6.1
+        if: github.event_name == 'workflow_run' && github.action == 'completed'
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-1
+
+      - name: Upload to S3
+        if: github.event_name == 'workflow_run' && github.action == 'completed'
+        run: |
+          TARGET="${{ github.sha }}"
+          aws s3 sync reports "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          URL="$CDN/$TARGET/index.html"

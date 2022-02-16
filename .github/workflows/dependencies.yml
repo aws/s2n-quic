@@ -10,14 +10,14 @@ on:
       - '.github/config/cargo-deny.toml'
       - '.github/workflows/dependencies.yml'
 
-  pull_request:
-    branches:
-      - main
-    paths:
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
-      - '.github/config/cargo-deny.toml'
-      - '.github/workflows/dependencies.yml'
+#  pull_request:
+#    branches:
+#      - main
+#    paths:
+#      - '**/Cargo.toml'
+#      - '**/Cargo.lock'
+#      - '.github/config/cargo-deny.toml'
+#      - '.github/workflows/dependencies.yml'
 
   schedule:
     # run every morning at 10am Pacific Time
@@ -26,6 +26,7 @@ on:
 jobs:
   audit:
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v2
         with:

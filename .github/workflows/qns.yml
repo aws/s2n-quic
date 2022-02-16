@@ -2,9 +2,9 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
+#  pull_request:
+#    branches:
+#      - main
 
 name: qns
 
@@ -20,7 +20,6 @@ env:
   NETWORK_SIMULATOR_REF: sha256:20abe0bed8c0e39e1d8750507b24295f7c978bdd7e05fa6f3a5afed4b76dc191
   IPERF_ENDPOINT_REF: sha256:cb50cc8019d45d9cad5faecbe46a3c21dd5e871949819a5175423755a9045106
   WIRESHARK_VERSION: 3.6.1
-  CDN: https://dnglbrstg7yg.cloudfront.net
   LOG_URL: logs/latest/SERVER_CLIENT/TEST/index.html
   H3_SPEC_VERSION: v0.1.8
   QUINN_REF: d8615d9c2bae9cca78471f8875a15911fd1f443b
@@ -31,16 +30,6 @@ jobs:
     outputs:
       matrix: ${{ steps.implementations.outputs.matrix }}
     steps:
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        with:
-          name: 'interop / report'
-          status: 'pending'
-
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        with:
-          name: 'bench / report'
-          status: 'pending'
-
       - uses: actions/checkout@v2
         with:
           path: s2n-quic
@@ -302,124 +291,15 @@ jobs:
                 $from
           done
 
-      - uses: aws-actions/configure-aws-credentials@v1.6.1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
-
-      - name: Upload to S3
-        id: s3
-        working-directory: quic-interop-runner
-        run: |
-          TARGET="${{ github.sha }}/interop/logs/latest"
-          aws s3 sync results/logs "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-
       - uses: actions/upload-artifact@v2
         with:
-          name: interop-${{ matrix.client }}-client-${{ matrix.server }}-server
-          path: quic-interop-runner/results/result.json
+          name: report-interop-${{ matrix.client }}-client-${{ matrix.server }}-server
+          path: quic-interop-runner/results
 
       - name: Assert no crashes
         working-directory: quic-interop-runner
         run: |
           ! grep -Rq 'The s2n-quic-qns application shut down unexpectedly' results
-
-  interop-report:
-    runs-on: ubuntu-latest
-    needs: [interop]
-    steps:
-      - uses: actions/checkout@v2
-
-      - uses: actions/download-artifact@v2
-        with:
-          path: results/
-
-      - name: Download latest results
-        id: download
-        run: |
-          rm -f result.json
-          INTEROP_BASE_URL="https://interop.seemann.io/logs/"
-          wget ${INTEROP_BASE_URL}latest/result.json || echo '{}' > result.json
-          mv result.json latest.json
-          INTEROP_LOG_URL=${INTEROP_BASE_URL}$(jq --raw-output '.log_dir' latest.json)/SERVER_CLIENT/TEST/
-          echo "::set-output name=INTEROP_LOG_URL::$INTEROP_LOG_URL"
-
-      - name: Get latest successfull interop commit SHA on main branch
-        id: mainsha
-        if: github.event.pull_request
-        run: |
-          curl \
-          --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/qns.yml/runs?branch=main&status=success&per_page=1" \
-          --header "authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-          --header "Accept: application/vnd.github.v3+json" > latest_workflow_run.json
-          MAIN_SHA=$(jq --raw-output '.workflow_runs[0] | .head_sha' latest_workflow_run.json)
-          rm -f latest_workflow_run.json
-          echo "::set-output name=MAIN_SHA::$MAIN_SHA"
-
-      - name: Download latest main interop result
-        if: github.event.pull_request
-        run: |
-          rm -f prev_result.json
-          wget $CDN/${{ steps.mainsha.outputs.MAIN_SHA }}/interop/logs/latest/result.json || echo '{}' > result.json
-          mv result.json prev_result.json
-
-      - name: Generate report for pull request
-        if: github.event.pull_request
-        run: |
-          mkdir -p web/logs/latest
-          MAIN_SHA=${{ steps.mainsha.outputs.MAIN_SHA }}
-          python3 .github/interop/merge.py \
-            --prev_version prev_result.json \
-            --new_version_suffix "pr${{github.event.pull_request.number}}" \
-            --new_version_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/${{github.event.pull_request.number}}" \
-            --new_version_log_url "$LOG_URL" \
-            --prev_version_log_url "$CDN/$MAIN_SHA/interop/$LOG_URL" \
-            --prev_version_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$MAIN_SHA" \
-            --interop_log_url "${{ steps.download.outputs.INTEROP_LOG_URL }}" \
-            latest.json \
-            results/**/result.json > \
-              web/logs/latest/result.json
-
-      - name: Generate report for push to main
-        if: github.event_name == 'push'
-        run: |
-          mkdir -p web/logs/latest
-          python3 .github/interop/merge.py \
-            --new_version_log_url "$LOG_URL" \
-            --new_version_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$GITHUB_SHA" \
-            --interop_log_url "${{ steps.download.outputs.INTEROP_LOG_URL }}" \
-            latest.json \
-            results/**/result.json > \
-              web/logs/latest/result.json
-
-      - uses: aws-actions/configure-aws-credentials@v1.6.1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
-
-      - name: Upload to S3
-        id: s3
-        run: |
-          cp .github/interop/*.html web/
-          cp .github/interop/*.js web/
-          TARGET="${{ github.sha }}/interop"
-          aws s3 sync web "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/index.html"
-          echo "::set-output name=URL::$URL"
-
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        with:
-          name: 'interop / report'
-          status: "success"
-          url: "${{ steps.s3.outputs.URL }}"
-
-      - name: Check for regressions
-        run: |
-          python3 .github/interop/check.py \
-            --required .github/interop/required.json \
-            web/logs/latest/result.json
 
   bench:
     runs-on: ubuntu-latest
@@ -495,25 +375,10 @@ jobs:
         if: github.event_name == 'push'
         run: sudo env "PATH=$PATH" "BUILD_S2N_QUIC=false" ./scripts/benchmark/run-all
 
-      - uses: aws-actions/configure-aws-credentials@v1.6.1
+      - uses: actions/upload-artifact@v2
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
-
-      - name: Upload results
-        id: s3
-        run: |
-          TARGET="${{ github.sha }}/bench"
-          aws s3 sync target/benchmark/results "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/index.html"
-          echo "::set-output name=URL::$URL"
-
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        with:
-          name: 'bench / report'
-          status: 'success'
-          url: "${{ steps.s3.outputs.URL }}"
+          name: report-bench
+          path: target/benchmark/results
 
       - name: Assert no crashes
         run: |
@@ -678,47 +543,6 @@ jobs:
 
       - uses: actions/upload-artifact@v2
         with:
-          name: perf-${{ matrix.tls }}
+          name: report-perf-${{ matrix.tls }}
           path: target/perf/results
-
-  perf-report:
-    runs-on: ubuntu-latest
-    needs: [perf]
-    steps:
-      - uses: actions/checkout@v2
-
-      - uses: actions/download-artifact@v2
-        with:
-          name: perf-rustls
-          path: ./perf-results/rustls
-
-      - uses: actions/download-artifact@v2
-        with:
-          name: perf-s2n-tls
-          path: ./perf-results/s2n-tls
-
-      - name: Generate report
-        run: |
-          cd perf-results
-          tree -H "." -T "Performance Results" --noreport --charset utf-8 > index.html
-
-      - uses: aws-actions/configure-aws-credentials@v1.6.1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
-
-      - name: Upload results
-        id: s3
-        run: |
-          TARGET="${{ github.sha }}/perf"
-          aws s3 sync perf-results "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/index.html"
-          echo "::set-output name=URL::$URL"
-
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        with:
-          name: 'perf / report'
-          status: 'success'
-          url: "${{ steps.s3.outputs.URL }}"
 
