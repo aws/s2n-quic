@@ -3363,7 +3363,7 @@ mod traits {
     use api::*;
     use core::fmt;
     #[doc = r" Provides metadata related to an event"]
-    pub trait Meta {
+    pub trait Meta: fmt::Debug {
         #[doc = r" Returns whether the local endpoint is a Client or Server"]
         fn endpoint_type(&self) -> &EndpointType;
         #[doc = r" A context from which the event is being emitted"]
@@ -3956,17 +3956,13 @@ mod traits {
         }
         #[doc = r" Called for each event that relates to the endpoint and all connections"]
         #[inline]
-        fn on_event<M: Meta + core::fmt::Debug, E: Event + core::fmt::Debug>(
-            &mut self,
-            meta: &M,
-            event: &E,
-        ) {
+        fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
             let _ = meta;
             let _ = event;
         }
         #[doc = r" Called for each event that relates to a connection"]
         #[inline]
-        fn on_connection_event<E: Event + core::fmt::Debug>(
+        fn on_connection_event<E: Event>(
             &mut self,
             context: &mut Self::ConnectionContext,
             meta: &ConnectionMeta,
@@ -4456,16 +4452,12 @@ mod traits {
             (self.1).on_platform_event_loop_wakeup(meta, event);
         }
         #[inline]
-        fn on_event<M: Meta + core::fmt::Debug, E: Event + core::fmt::Debug>(
-            &mut self,
-            meta: &M,
-            event: &E,
-        ) {
+        fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
             self.0.on_event(meta, event);
             self.1.on_event(meta, event);
         }
         #[inline]
-        fn on_connection_event<E: Event + core::fmt::Debug>(
+        fn on_connection_event<E: Event>(
             &mut self,
             context: &mut Self::ConnectionContext,
             meta: &ConnectionMeta,

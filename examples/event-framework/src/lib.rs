@@ -17,6 +17,7 @@ pub mod print_event {
     impl event::Subscriber for MyPrintSubscriber {
         type ConnectionContext = ();
 
+        /// Initialize the Connection Context.
         fn create_connection_context(
             &mut self,
             meta: &ConnectionMeta,
@@ -74,8 +75,7 @@ pub mod query_event {
     impl event::Subscriber for MyQuerySubscriber {
         type ConnectionContext = MyQueryContext;
 
-        /// Initialize the Connection Context that is passed to the `supervisor_timeout` and
-        /// `on_supervisor_timeout` methods, as well as each connection-related event.
+        /// Initialize the Connection Context.
         fn create_connection_context(
             &mut self,
             _meta: &events::ConnectionMeta,
@@ -87,6 +87,7 @@ pub mod query_event {
             }
         }
 
+        /// This event fires for every outgoing packet that is transmitted.
         fn on_packet_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -107,6 +108,7 @@ pub mod query_event {
     }
 
     impl Drop for MyQueryContext {
+        // Execute some operations on the context before the Connection is dropped.
         fn drop(&mut self) {
             println!("{:?}", self);
         }

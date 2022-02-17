@@ -3,7 +3,6 @@
 
 use event_framework::{print_event, query_event};
 use s2n_quic::Server;
-use s2n_quic_core::event::query;
 use std::error::Error;
 
 /// NOTE: this certificate is to be used for demonstration purposes only!
@@ -21,9 +20,6 @@ pub static KEY_PEM: &str = include_str!(concat!(
 async fn main() -> Result<(), Box<dyn Error>> {
     // It's possible to compose different Subscribers, each of which is responsible
     // for a different task.
-    //
-    // See the docs on `query_event_context` and `query_event_context_mut` for a
-    // detailed explanation on how a query is executed on composed subscribers.
     //
     // Note: subscriber is implemented for `(A, B)` and therefore requires the nested tuple
     let composed_event_subscriber = (
@@ -58,6 +54,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     while let Some(mut connection) = server.accept().await {
         // Change packet count behavior after processing some number of connections.
         //
+        // Note: The context type, `&query_event::MyQueryContext`, provided in the query must
+        // match the context on one of the subscribers. See the docs on `query_event_context_mut`
+        // for a detailed explanation on how a query is executed on composed subscribers.
+        //
         // The application can mutably access the connection context and modify data on
         // the context itself.
         if connection_count > 5 {
@@ -68,26 +68,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
             connection_count += 1;
         }
 
-        // Query the packet overhead ratio and print it.
+        // Query the packet sent count and print it.
+        //
+        // Note: The context type, `&query_event::MyQueryContext`, provided in the query must
+        // match the context on one of the subscribers. See the docs on `query_event_context`
+        // for a detailed explanation on how a query is executed on composed subscribers.
         //
         // The application can immutably access the connection context and read data from it.
-        let outcome: Result<(), query::Error> =
-            connection.query_event_context(|context: &query_event::MyQueryContext| {
-                println!(
-                    "{:?} data packets have been processed",
-                    context.packet_sent_count
-                )
-            });
-        match outcome {
-            Ok(_) => {}                                     // the query was successful
-            Err(query::Error::ConnectionLockPoisoned) => {} // The connection is unusable so do nothing.
-            Err(query::Error::ContextTypeMismatch) => {
-                // The context type (&query_event::MyQueryContext) provided in the query failed to
-                // match any of the subscribers.
-                panic!("Make sure the query matches the context on the subscriber");
-            }
-            Err(_) => {}
-        }
+        connection.query_event_context(|context: &query_event::MyQueryContext| {
+            println!(
+                "{:?} data packets have been processed",
+                context.packet_sent_count
+            )
+        })?;
 
         // spawn a new task for the connection
         tokio::spawn(async move {

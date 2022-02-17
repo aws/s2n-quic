@@ -6,7 +6,6 @@ edition = "2018"
 
 [dependencies]
 s2n-quic = { version = "1", path = "../../quic/s2n-quic", features = ["provider-event-tracing"] }
-s2n-quic-core = { version = "0.1", path = "../../quic/s2n-quic-core"}
 tokio = { version = "1", features = ["full"] }
 
 [workspace]
