@@ -1,7 +1,15 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! An implementation of the IETF QUIC protocol
+//! An implementation of the [IETF QUIC protocol](https://quicwg.org/), featuring:
+//! * a simple, easy-to-use API. See [an example](https://github.com/aws/s2n-quic/blob/main/examples/echo/src/bin/quic_echo_server.rs) of an s2n-quic echo server built with just a few API calls
+//! * high configurability using [providers](https://docs.rs/s2n-quic/provider/index.html) for granular control of functionality
+//! * extensive automated testing, including fuzz testing, integration testing, unit testing, snapshot testing, efficiency testing, performance benchmarking, interopability testing and [more](https://github.com/aws/s2n-quic/blob/main/docs/ci.md)
+//! * integration with [s2n-tls](https://github.com/aws/s2n-tls), AWS's simple, small, fast and secure TLS implementation, as well as [rustls](https://crates.io/crates/rustls)
+//! * thorough [compliance coverage tracking](https://github.com/aws/s2n-quic/blob/main/docs/ci.md#compliance) of normative language in relevant standards
+//! * and much more, including [CUBIC congestion controller](https://www.rfc-editor.org/rfc/rfc8312.html) support, [packet pacing](https://www.rfc-editor.org/rfc/rfc9002.html#name-pacing), [Generic Segmentation Offload](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads.html#generic-segmentation-offload) support, [Path MTU discovery](https://www.rfc-editor.org/rfc/rfc8899.html), and unique [connection identifiers](https://www.rfc-editor.org/rfc/rfc9000.html#name-connection-id) detached from the address
+//!
+//! See the [installation instructions](https://github.com/aws/s2n-quic#installation) and [examples](https://github.com/aws/s2n-quic/tree/main/examples) to get started with `s2n-quic`.
 //!
 //! ## Feature flags
 //!
