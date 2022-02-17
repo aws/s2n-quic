@@ -104,7 +104,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 ```
 
-### Minimum Supported Rust Version (MSRV)
+## Minimum Supported Rust Version (MSRV)
 
 `s2n-quic` will maintain a rolling MSRV (minimum supported rust version) policy of at least 6 months. The current s2n-quic version is not guaranteed to build on Rust versions earlier than the MSRV.
 
