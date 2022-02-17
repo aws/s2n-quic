@@ -65,14 +65,6 @@ impl Builder {
         Ok(self)
     }
 
-    #[deprecated(note = "use `with_application_protocols` instead")]
-    pub fn with_alpn_protocols<P: IntoIterator<Item = I>, I: AsRef<[u8]>>(
-        self,
-        protocols: P,
-    ) -> Result<Self, Error> {
-        self.with_application_protocols(protocols)
-    }
-
     pub fn with_certificate<C: IntoCertificate>(mut self, certificate: C) -> Result<Self, Error> {
         let certificate = certificate.into_certificate()?;
         let certificate = certificate
