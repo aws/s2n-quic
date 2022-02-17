@@ -1,6 +1,14 @@
 # s2n-quic
 
-`s2n-quic` is a Rust implementation of the [IETF QUIC protocol](https://quicwg.org/).
+`s2n-quic` is a Rust implementation of the [IETF QUIC protocol](https://quicwg.org/), featuring:
+* a simple, easy-to-use API. See [an example](https://github.com/aws/s2n-quic/blob/main/examples/echo/src/bin/quic_echo_server.rs) of an s2n-quic echo server built with just a few API calls
+* high configurability using [providers](https://docs.rs/s2n-quic/provider/index.html) for granular control of functionality
+* extensive automated testing, including fuzz testing, integration testing, unit testing, snapshot testing, efficiency testing, performance benchmarking, interopability testing and [more](https://github.com/aws/s2n-quic/blob/main/docs/ci.md)
+* integration with [s2n-tls](https://github.com/aws/s2n-tls), AWS's simple, small, fast and secure TLS implementation, as well as [rustls](https://crates.io/crates/rustls)
+* thorough [compliance coverage tracking](https://github.com/aws/s2n-quic/blob/main/docs/ci.md#compliance) of normative language in relevant standards
+* and much more, including [CUBIC congestion controller](https://www.rfc-editor.org/rfc/rfc8312.html) support, [packet pacing](https://www.rfc-editor.org/rfc/rfc9002.html#name-pacing), [Generic Segmentation Offload](https://lwn.net/Articles/188489/) support, [Path MTU discovery](https://www.rfc-editor.org/rfc/rfc8899.html), and unique [connection identifiers](https://www.rfc-editor.org/rfc/rfc9000.html#name-connection-id) detached from the address
+
+See the [API documentation](https://docs.rs/s2n-quic) and [examples](https://github.com/aws/s2n-quic/tree/main/examples) to get started with `s2n-quic`.
 
 [![Crates.io][crates-badge]][crates-url]
 [![docs.rs][docs-badge]][docs-url]
