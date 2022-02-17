@@ -45,7 +45,7 @@ pub mod slowloris {
         ) -> Self::ConnectionContext {
             MyConnectionContext {
                 transferred_bytes: 0,
-                last_update: meta.timestamp.clone(),
+                last_update: meta.timestamp,
             }
         }
 
@@ -89,7 +89,7 @@ pub mod slowloris {
             }
 
             // Update the `last_update` timestamp and reset transferred bytes
-            conn_context.last_update = meta.timestamp.clone();
+            conn_context.last_update = meta.timestamp;
             conn_context.transferred_bytes = 0;
 
             // Allow the connection to continue

@@ -25,6 +25,7 @@ pub mod print_event {
             println!("{:?} {:?}", meta, info);
         }
 
+        /// This event fires for all events.
         fn on_event<M: event::Meta + core::fmt::Debug, E: event::Event + core::fmt::Debug>(
             &mut self,
             meta: &M,
@@ -35,6 +36,9 @@ pub mod print_event {
             }
         }
 
+        /// This event fires only for connection-level events. Excluded are events which
+        /// happen prior to connection creation, e.g. `on_version_information`,
+        /// `on_endpoint_datagram_drop`.
         fn on_connection_event<E: event::Event + core::fmt::Debug>(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -51,34 +55,17 @@ pub mod print_event {
 /// Example of a query subscriber which can be used to store event information; which
 /// can then be queried from the application.
 pub mod query_event {
-    use std::time::Duration;
-
     use s2n_quic::provider::{
         event,
         event::{events, ConnectionMeta},
     };
 
-    #[derive(Debug, Clone, Default, Copy)]
+    #[derive(Debug, Clone)]
     pub struct MyQueryContext {
-        // Record how many non application packets are received
-        pub non_data_packet_count: usize,
-        // Record how many application data packets are received
-        pub data_packet_count: usize,
-        // The ratio of packets used to initialize a connection vs packets used
-        // for transmitting data.
-        pub overhead_ratio: f64,
-        // Last time the overhead was updated
-        pub overhead_updated: Duration,
-    }
-
-    impl MyQueryContext {
-        // Reset the packet count and ratio.
-        pub fn reset(&mut self) {
-            *self = MyQueryContext {
-                overhead_updated: self.overhead_updated,
-                ..Default::default()
-            };
-        }
+        // Record how many data packets are received
+        pub packet_sent_count: usize,
+        // Flag to control the packet counter behavior
+        pub count_non_data_packets: bool,
     }
 
     #[derive(Default)]
@@ -94,43 +81,34 @@ pub mod query_event {
             _meta: &events::ConnectionMeta,
             _info: &events::ConnectionInfo,
         ) -> Self::ConnectionContext {
-            MyQueryContext::default()
+            MyQueryContext {
+                packet_sent_count: 0,
+                count_non_data_packets: true,
+            }
         }
 
         fn on_packet_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
+            _meta: &ConnectionMeta,
             event: &events::PacketSent,
         ) {
             match event.packet_header {
                 events::PacketHeader::ZeroRtt { .. } | events::PacketHeader::OneRtt { .. } => {
-                    context.data_packet_count += 1;
-                    // we update the ratio here to avoid dividing by 0
-                    context.overhead_updated = meta.timestamp.duration_since_start();
-                    context.overhead_ratio =
-                        context.non_data_packet_count as f64 / context.data_packet_count as f64;
+                    context.packet_sent_count += 1;
                 }
-                _ => context.non_data_packet_count += 1,
+                _ => {
+                    if context.count_non_data_packets {
+                        context.packet_sent_count += 1;
+                    }
+                }
             }
         }
+    }
 
-        fn on_packet_received(
-            &mut self,
-            context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &events::PacketReceived,
-        ) {
-            match event.packet_header {
-                events::PacketHeader::ZeroRtt { .. } | events::PacketHeader::OneRtt { .. } => {
-                    context.data_packet_count += 1;
-                    // we update the ratio here to avoid dividing by 0
-                    context.overhead_updated = meta.timestamp.duration_since_start();
-                    context.overhead_ratio =
-                        context.non_data_packet_count as f64 / context.data_packet_count as f64;
-                }
-                _ => context.non_data_packet_count += 1,
-            }
+    impl Drop for MyQueryContext {
+        fn drop(&mut self) {
+            println!("{:?}", self);
         }
     }
 }

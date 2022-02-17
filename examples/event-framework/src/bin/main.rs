@@ -19,7 +19,7 @@ pub static KEY_PEM: &str = include_str!(concat!(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // Its possible to compose different Subscribers, each of which is responsible
+    // It's possible to compose different Subscribers, each of which is responsible
     // for a different task.
     //
     // See the docs on `query_event_context` and `query_event_context_mut` for a
@@ -54,15 +54,28 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with_io("127.0.0.1:4433")?
         .start()?;
 
+    let mut connection_count = 0;
     while let Some(mut connection) = server.accept().await {
+        // Change packet count behavior after processing some number of connections.
+        //
+        // The application can mutably access the connection context and modify data on
+        // the context itself.
+        if connection_count > 5 {
+            connection.query_event_context_mut(|context: &mut query_event::MyQueryContext| {
+                context.count_non_data_packets = false;
+            })?;
+        } else {
+            connection_count += 1;
+        }
+
         // Query the packet overhead ratio and print it.
         //
         // The application can immutably access the connection context and read data from it.
         let outcome: Result<(), query::Error> =
             connection.query_event_context(|context: &query_event::MyQueryContext| {
                 println!(
-                    "the current overhead_ratio at: {:?} is: {}",
-                    context.overhead_updated, context.overhead_ratio
+                    "{:?} data packets have been processed",
+                    context.packet_sent_count
                 )
             });
         match outcome {
@@ -75,17 +88,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
             Err(_) => {}
         }
-
-        // Reset the packet overhead ratio once it falls below some value.
-        //
-        // The application can mutably access the connection context and modify data on
-        // the context itself.
-        connection.query_event_context_mut(|context: &mut query_event::MyQueryContext| {
-            if context.overhead_ratio < 0.1 {
-                context.reset();
-                println!("resetting the context at: {:?}", context.overhead_updated)
-            }
-        })?;
 
         // spawn a new task for the connection
         tokio::spawn(async move {
