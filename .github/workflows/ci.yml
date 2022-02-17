@@ -36,16 +36,6 @@ jobs:
           export VERSIONS=$(echo $RAW_VERSIONS | jq -scR 'rtrimstr("\n")|split(" ")|.')
           echo "::set-output name=versions::$VERSIONS"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        with:
-          name: 'compliance / report'
-          status: 'pending'
-
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        with:
-          name: 'doc / report'
-          status: 'pending'
-
   rustfmt:
     runs-on: ubuntu-latest
     steps:
@@ -88,12 +78,12 @@ jobs:
 
       - uses: camshaft/rust-cache@v1
 
+      # TODO translate json reports to in-action warnings
       - name: Run cargo clippy
-        uses: actions-rs/clippy-check@v1.0.7
+        uses: actions-rs/cargo@v1.0.3
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          command: clippy
           args: --all-features --all-targets -- -D warnings
-          name: clippy (${{ matrix.toolchain }}) / report
 
   udeps:
     runs-on: ubuntu-latest
@@ -118,7 +108,7 @@ jobs:
       - name: Run cargo udeps
         run: cargo udeps --workspace --all-targets
         env:
-          RUSTC_WRAPPER: ''
+          RUSTC_WRAPPER: ""
 
   doc:
     runs-on: ubuntu-latest
@@ -143,12 +133,14 @@ jobs:
           args: --all-features --no-deps --workspace --exclude duvet --exclude s2n-quic-qns
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload to S3
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         id: s3
         run: |
           TARGET="${{ github.sha }}/doc"
@@ -157,9 +149,10 @@ jobs:
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.2
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         with:
-          name: 'doc / report'
-          status: 'success'
+          name: "doc / report"
+          status: "success"
           url: "${{ steps.s3.outputs.URL }}"
 
   test:
@@ -299,12 +292,14 @@ jobs:
         run: ./scripts/compliance ${{ github.sha }}
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload to S3
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         id: s3
         run: |
           TARGET="${{ github.sha }}/compliance.html"
@@ -313,9 +308,10 @@ jobs:
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.2
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         with:
-          name: 'compliance / report'
-          status: 'success'
+          name: "compliance / report"
+          status: "success"
           url: "${{ steps.s3.outputs.URL }}"
 
   coverage:
@@ -349,12 +345,14 @@ jobs:
           args: --html --no-fail-fast --workspace --exclude s2n-quic-qns --exclude s2n-quic-events --exclude cargo-compliance --all-features
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload results
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         id: s3
         run: |
           TARGET="${{ github.sha }}/coverage"
@@ -363,16 +361,22 @@ jobs:
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.2
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         with:
-          name: 'coverage / report'
-          status: 'success'
+          name: "coverage / report"
+          status: "success"
           url: "${{ steps.s3.outputs.URL }}"
 
   examples:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        example: [examples/echo, examples/rustls-provider, examples/dos-mitigation, examples/event-framework]
+        example:
+          - examples/echo
+          - examples/rustls-provider
+          - examples/dos-mitigation
+          - examples/event-framework
+
     steps:
       - uses: actions/checkout@v2
         with:
@@ -414,12 +418,14 @@ jobs:
           ./scripts/recovery-sim
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload to S3
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         id: s3
         run: |
           TARGET="${{ github.sha }}/recovery-simulations"
@@ -428,9 +434,10 @@ jobs:
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.2
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         with:
-          name: 'recovery-simulations / report'
-          status: 'success'
+          name: "recovery-simulations / report"
+          status: "success"
           url: "${{ steps.s3.outputs.URL }}"
 
   copyright:
@@ -522,12 +529,14 @@ jobs:
           cargo build -Z timings --release
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload to S3
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         id: s3
         run: |
           TARGET="${{ github.sha }}/timing/index.html"
@@ -536,9 +545,10 @@ jobs:
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.2
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         with:
-          name: 'timing / report'
-          status: 'success'
+          name: "timing / report"
+          status: "success"
           url: "${{ steps.s3.outputs.URL }}"
 
   typos:
