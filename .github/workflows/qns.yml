@@ -31,16 +31,6 @@ jobs:
     outputs:
       matrix: ${{ steps.implementations.outputs.matrix }}
     steps:
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        with:
-          name: 'interop / report'
-          status: 'pending'
-
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        with:
-          name: 'bench / report'
-          status: 'pending'
-
       - uses: actions/checkout@v2
         with:
           path: s2n-quic
@@ -303,12 +293,14 @@ jobs:
           done
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload to S3
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         id: s3
         working-directory: quic-interop-runner
         run: |
@@ -347,7 +339,7 @@ jobs:
 
       - name: Get latest successfull interop commit SHA on main branch
         id: mainsha
-        if: github.event.pull_request
+        if: github.event.pull_request && github.repository.name == github.pull_request.head.repo.full_name
         run: |
           curl \
           --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/qns.yml/runs?branch=main&status=success&per_page=1" \
@@ -358,14 +350,14 @@ jobs:
           echo "::set-output name=MAIN_SHA::$MAIN_SHA"
 
       - name: Download latest main interop result
-        if: github.event.pull_request
+        if: github.event.pull_request && github.repository.name == github.pull_request.head.repo.full_name
         run: |
           rm -f prev_result.json
           wget $CDN/${{ steps.mainsha.outputs.MAIN_SHA }}/interop/logs/latest/result.json || echo '{}' > result.json
           mv result.json prev_result.json
 
       - name: Generate report for pull request
-        if: github.event.pull_request
+        if: github.event.pull_request && github.repository.name == github.pull_request.head.repo.full_name
         run: |
           mkdir -p web/logs/latest
           MAIN_SHA=${{ steps.mainsha.outputs.MAIN_SHA }}
@@ -394,12 +386,14 @@ jobs:
               web/logs/latest/result.json
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload to S3
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         id: s3
         run: |
           cp .github/interop/*.html web/
@@ -410,8 +404,9 @@ jobs:
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.2
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         with:
-          name: 'interop / report'
+          name: "interop / report"
           status: "success"
           url: "${{ steps.s3.outputs.URL }}"
 
@@ -496,12 +491,14 @@ jobs:
         run: sudo env "PATH=$PATH" "BUILD_S2N_QUIC=false" ./scripts/benchmark/run-all
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload results
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         id: s3
         run: |
           TARGET="${{ github.sha }}/bench"
@@ -510,9 +507,10 @@ jobs:
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.2
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         with:
-          name: 'bench / report'
-          status: 'success'
+          name: "bench / report"
+          status: "success"
           url: "${{ steps.s3.outputs.URL }}"
 
       - name: Assert no crashes
@@ -602,7 +600,6 @@ jobs:
             --skip "MUST send TRANSPORT_PARAMETER_ERROR if ack_delay_exponen > 20 [Transport 7.4 and 18.2]" \
             --skip "MUST send TRANSPORT_PARAMETER_ERROR if max_ack_delay >= 2^14 [Transport 7.4 and 18.2]" \
             --skip "MUST send no_application_protocol TLS alert if no application protocols are supported [TLS 8.1]" \
-
 
   perf:
     runs-on: ubuntu-latest
@@ -703,12 +700,14 @@ jobs:
           tree -H "." -T "Performance Results" --noreport --charset utf-8 > index.html
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload results
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         id: s3
         run: |
           TARGET="${{ github.sha }}/perf"
@@ -717,8 +716,8 @@ jobs:
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.2
+        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
         with:
-          name: 'perf / report'
-          status: 'success'
+          name: "perf / report"
+          status: "success"
           url: "${{ steps.s3.outputs.URL }}"
-
