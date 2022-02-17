@@ -182,7 +182,7 @@ impl ToTokens for Output {
                 use core::fmt;
 
                 /// Provides metadata related to an event
-                pub trait Meta {
+                pub trait Meta: fmt::Debug {
                     /// Returns whether the local endpoint is a Client or Server
                     fn endpoint_type(&self) -> &EndpointType;
 

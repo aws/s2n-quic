@@ -372,7 +372,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        example: [examples/echo, examples/rustls-provider, examples/dos-mitigation]
+        example: [examples/echo, examples/rustls-provider, examples/dos-mitigation, examples/event-framework]
     steps:
       - uses: actions/checkout@v2
         with:

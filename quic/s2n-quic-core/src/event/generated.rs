@@ -3363,7 +3363,7 @@ mod traits {
     use api::*;
     use core::fmt;
     #[doc = r" Provides metadata related to an event"]
-    pub trait Meta {
+    pub trait Meta: fmt::Debug {
         #[doc = r" Returns whether the local endpoint is a Client or Server"]
         fn endpoint_type(&self) -> &EndpointType;
         #[doc = r" A context from which the event is being emitted"]
