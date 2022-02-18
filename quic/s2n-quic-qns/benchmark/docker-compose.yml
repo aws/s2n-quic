@@ -58,7 +58,7 @@ services:
         ipv6_address: fd00:cafe:cafe:100::100
 
   server-main:
-    image: ghcr.io/aws/s2n-quic/s2n-quic-qns:main
+    image: public.ecr.aws/y1p7y6w8/s2n-quic-qns:main
     container_name: server-main
     hostname: server
     stdin_open: true
