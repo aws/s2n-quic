@@ -7,8 +7,13 @@ mkdir -p target/compliance
 BLOB=${1:-main}
 
 # ensure the tool is built
-test -f target/release/duvet || \
-  cargo build --bin duvet --release
+if [ ! -f target/release/duvet ]; then
+  mkdir -p target/release
+  cd common/duvet
+  cargo build --release
+  cp target/release/duvet ../../target/release/duvet
+  cd ../..
+fi
 
 ./target/release/duvet \
   report \

@@ -1,6 +1,5 @@
 [workspace]
 members = [
-    "common/duvet",
     "common/s2n-*",
     "quic/s2n-*",
 ]

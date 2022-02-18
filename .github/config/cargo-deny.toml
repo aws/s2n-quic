@@ -11,6 +11,7 @@ ignore = [
 multiple-versions = "deny"
 
 skip-tree = [
+    { name = "docdiff" }, # docdiff is a private crate
     { name = "duvet" }, # duvet is a private crate
     { name = "criterion" }, # criterion is always going to be just a test dependency
     { name = "s2n-quic-integration" }, # s2n-quic-integration is a private crate
@@ -27,7 +28,9 @@ unknown-git = "deny"
 unlicensed = "deny"
 allow-osi-fsf-free = "neither"
 copyleft = "deny"
-confidence-threshold = 0.90
+confidence-threshold = 0.9
+# ignore licenses for private crates
+private = { ignore = true }
 allow = [
     "Apache-2.0",
     "BSD-2-Clause",
