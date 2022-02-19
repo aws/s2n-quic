@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+if ! command -v mdbook &> /dev/null; then
+    cargo install mdbook
+fi
+
+eval mdbook build docs/ $@
