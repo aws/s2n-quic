@@ -145,8 +145,10 @@ impl Controller {
     }
 
     pub fn max_streams(&mut self, up_to: u64, cx: &mut Context) {
-        self.window_offset = up_to;
-        self.blocked.unblock(cx)
+        self.window_offset = self.window_offset.max(up_to);
+        if self.capacity() > 0 {
+            self.blocked.unblock(cx)
+        }
     }
 
     pub fn capacity(&self) -> u64 {

@@ -19,7 +19,7 @@ use buffer::{ReadBuffer, WriteBuffer};
 use frame::Frame;
 use stream::{ReceiveStream, SendStream, Stream};
 
-const DEFUALT_STREAM_WINDOW: u64 = 256000;
+const DEFAULT_STREAM_WINDOW: u64 = 256000;
 const DEFAULT_MAX_STREAMS: u64 = 100;
 
 #[derive(Clone, Debug)]
@@ -34,9 +34,9 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            stream_window: DEFUALT_STREAM_WINDOW,
+            stream_window: DEFAULT_STREAM_WINDOW,
             max_streams: DEFAULT_MAX_STREAMS,
-            max_stream_data_thresh: DEFUALT_STREAM_WINDOW / 2,
+            max_stream_data_thresh: DEFAULT_STREAM_WINDOW / 2,
             max_stream_frame_len: (1 << 15),
             max_write_queue_len: 250,
         }
@@ -63,7 +63,7 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
     pub fn new(inner: Pin<Box<T>>, config: Config) -> Self {
         let mut write_buf = WriteBuffer::default();
 
-        if config.stream_window != DEFUALT_STREAM_WINDOW {
+        if config.stream_window != DEFAULT_STREAM_WINDOW {
             write_buf.push(Frame::InitialMaxStreamData {
                 up_to: config.stream_window,
             });
@@ -84,7 +84,7 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
             streams: [Default::default(), Default::default()],
             max_stream_data: Default::default(),
             pending_accept: Default::default(),
-            peer_initial_max_stream_data: DEFUALT_STREAM_WINDOW,
+            peer_initial_max_stream_data: DEFAULT_STREAM_WINDOW,
             config,
         }
     }
@@ -438,4 +438,177 @@ impl Blocked {
             cx.waker().wake_by_ref();
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        scenario::Scenario,
+        testing, timer,
+        trace::{self, MemoryLogger},
+        units::*,
+        Driver,
+    };
+    use insta::assert_display_snapshot;
+    use std::collections::HashSet;
+
+    macro_rules! test {
+        ($name:ident, $config:expr, $builder:expr) => {
+            #[tokio::test]
+            async fn $name() -> std::io::Result<()> {
+                let scenario = Scenario::build(|scenario| {
+                    let server = scenario.create_server();
+
+                    scenario.create_client(|client| {
+                        client.connect_to(server, $builder);
+                    });
+                });
+                let traces = &scenario.traces;
+
+                let (client, server) = testing::Connection::pair(10000);
+
+                let mut client = {
+                    let scenario = &scenario.clients[0].connections[0];
+                    let conn = Box::pin(client);
+                    let conn = super::Connection::new(conn, $config);
+                    Driver::new(scenario, conn)
+                };
+                let mut client_trace = (trace::Tracker::default(), MemoryLogger::new(0, traces));
+                let mut client_checkpoints = HashSet::new();
+                let mut client_timer = timer::Testing::default();
+
+                let mut server = {
+                    let scenario = &scenario.servers[0].connections[0];
+                    let conn = Box::pin(server);
+                    let conn = super::Connection::new(conn, $config);
+                    Driver::new(scenario, conn)
+                };
+                let mut server_trace = (trace::Tracker::default(), MemoryLogger::new(1, traces));
+                let mut server_checkpoints = HashSet::new();
+                let mut server_timer = timer::Testing::default();
+
+                futures::future::poll_fn(|cx| {
+                    let c = client.poll(
+                        &mut client_trace,
+                        &mut client_checkpoints,
+                        &mut client_timer,
+                        cx,
+                    );
+                    let s = server.poll(
+                        &mut server_trace,
+                        &mut server_checkpoints,
+                        &mut server_timer,
+                        cx,
+                    );
+
+                    match (c, s) {
+                        (Poll::Ready(Err(e)), _) => Err(e).into(),
+                        (_, Poll::Ready(Err(e))) => Err(e).into(),
+                        (c, s) => {
+                            let client_had_changes = client_trace.0.reset();
+                            let server_had_changes = server_trace.0.reset();
+
+                            // wait until both sides settle before advancing the time
+                            if client_had_changes || server_had_changes {
+                                cx.waker().wake_by_ref();
+                                return Poll::Pending;
+                            }
+
+                            client_timer.advance_pair(&mut server_timer);
+
+                            ready!(c)?;
+                            ready!(s)?;
+                            Ok(()).into()
+                        }
+                    }
+                })
+                .await
+                .unwrap();
+
+                assert_display_snapshot!(
+                    concat!(stringify!($name), "__client"),
+                    (client_trace.1).as_str().unwrap()
+                );
+                assert_display_snapshot!(
+                    concat!(stringify!($name), "__server"),
+                    (server_trace.1).as_str().unwrap()
+                );
+
+                Ok(())
+            }
+        };
+    }
+
+    test!(single_stream, Config::default(), |conn| {
+        conn.open_send_stream(
+            |local| {
+                local.send(1.kilobytes());
+            },
+            |remote| {
+                remote.receive(1.kilobytes());
+            },
+        );
+    });
+
+    test!(single_slow_stream, Config::default(), |conn| {
+        conn.open_send_stream(
+            |local| {
+                local.set_send_rate(100.bytes() / 50.millis());
+                local.send(1.kilobytes());
+            },
+            |remote| {
+                remote.receive(1.kilobytes());
+            },
+        );
+    });
+
+    test!(multiple_streams, Config::default(), |conn| {
+        conn.scope(|scope| {
+            for _ in 0..3 {
+                scope.spawn(|conn| {
+                    conn.open_send_stream(
+                        |local| {
+                            local.set_send_rate(100.bytes() / 50.millis());
+                            local.send(1.kilobytes());
+                        },
+                        |remote| {
+                            remote.receive(1.kilobytes());
+                        },
+                    );
+                });
+            }
+        });
+    });
+
+    test!(checkpoint, Config::default(), |conn| {
+        let (park, unpark) = conn.checkpoint();
+        conn.scope(|scope| {
+            scope.spawn(|conn| {
+                conn.open_send_stream(
+                    |local| {
+                        local.set_send_rate(100.bytes() / 50.millis());
+                        local.send(1.kilobytes());
+                        local.unpark(unpark);
+                        local.send(1.kilobytes());
+                    },
+                    |remote| {
+                        remote.receive(2.kilobytes());
+                    },
+                );
+            });
+            scope.spawn(|conn| {
+                conn.open_send_stream(
+                    |local| {
+                        local.park(park);
+                        local.set_send_rate(100.bytes() / 50.millis());
+                        local.send(1.kilobytes());
+                    },
+                    |remote| {
+                        remote.receive(1.kilobytes());
+                    },
+                );
+            });
+        });
+    });
 }

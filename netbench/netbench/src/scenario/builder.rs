@@ -4,7 +4,8 @@
 macro_rules! sleep {
     () => {
         pub fn sleep(&mut self, amount: core::time::Duration) -> &mut Self {
-            self.ops.push(ConnectionOperation::Sleep { amount });
+            self.ops
+                .push(crate::operation::Connection::Sleep { amount });
             self
         }
     };
@@ -14,7 +15,8 @@ macro_rules! trace {
     () => {
         pub fn trace(&mut self, name: &str) -> &mut Self {
             let trace_id = self.state.trace(name);
-            self.ops.push(ConnectionOperation::Trace { trace_id });
+            self.ops
+                .push(crate::operation::Connection::Trace { trace_id });
             self
         }
     };

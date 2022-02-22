@@ -38,7 +38,7 @@ macro_rules! sync {
                 crate::scenario::builder::checkpoint::Park,
             >,
         ) -> &mut Self {
-            self.ops.push(crate::operation::ConnectionOperation::Park {
+            self.ops.push(crate::operation::Connection::Park {
                 checkpoint: checkpoint.id,
             });
             self
@@ -52,10 +52,9 @@ macro_rules! sync {
                 crate::scenario::builder::checkpoint::Unpark,
             >,
         ) -> &mut Self {
-            self.ops
-                .push(crate::operation::ConnectionOperation::Unpark {
-                    checkpoint: checkpoint.id,
-                });
+            self.ops.push(crate::operation::Connection::Unpark {
+                checkpoint: checkpoint.id,
+            });
             self
         }
     };

@@ -1,62 +1,56 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    units::{Byte, Rate},
-    Result,
-};
+use crate::units::{Byte, Rate};
 use core::{
-    future::Future,
-    pin::Pin,
     task::{Context, Poll},
     time::Duration,
 };
 use futures::ready;
-use tokio::time::{sleep_until, Instant, Sleep};
+pub use s2n_quic_core::time::{
+    timer::{self, Provider, Query, Result},
+    Timestamp,
+};
 
 #[derive(Debug, Default)]
 pub struct Timer {
-    sleep: Option<Pin<Box<Sleep>>>,
-    is_armed: bool,
+    sleep: s2n_quic_core::time::Timer,
     window: Byte,
 }
 
+impl timer::Provider for Timer {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.sleep.timers(query)
+    }
+}
+
 impl Timer {
-    pub fn poll(&mut self, cx: &mut Context) -> Poll<()> {
-        if !self.is_armed {
-            return Poll::Ready(());
-        }
-
-        if let Some(timer) = self.sleep.as_mut() {
-            ready!(timer.as_mut().poll(cx));
-            self.is_armed = false;
-        }
-
-        Poll::Ready(())
-    }
-
-    pub fn sleep(&mut self, duration: Duration) {
-        let deadline = Instant::now() + duration;
-        if let Some(timer) = self.sleep.as_mut() {
-            Sleep::reset(timer.as_mut(), deadline);
+    pub fn poll(&mut self, now: Timestamp) -> Poll<()> {
+        if !self.sleep.is_armed() {
+            Poll::Ready(())
         } else {
-            self.sleep = Some(Box::pin(sleep_until(deadline)));
+            self.sleep.poll_expiration(now)
         }
-        self.is_armed = true;
     }
 
-    pub fn transfer<F: FnMut(Byte, &mut Context) -> Poll<Result<u64>>>(
+    pub fn sleep(&mut self, now: Timestamp, duration: Duration) {
+        self.sleep.set(now + duration);
+    }
+
+    pub fn transfer<F: FnMut(Byte, &mut Context) -> Poll<crate::Result<u64>>>(
         &mut self,
         remaining: &mut Byte,
         rate: &Option<Rate>,
+        now: Timestamp,
         cx: &mut Context,
         mut f: F,
-    ) -> Poll<Result<()>> {
+    ) -> Poll<crate::Result<()>> {
         loop {
             let amount = if let Some(Rate { bytes, period }) = rate.as_ref() {
-                if self.poll(cx).is_ready() {
+                if self.poll(now).is_ready() {
                     self.window = *bytes.min(remaining);
-                    self.sleep(*period);
+                    self.sleep(now, *period);
                 }
 
                 if self.window == Byte::default() {

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "snake_case")]
-pub enum ConnectionOperation {
+pub enum Connection {
     /// Pause for the specified duration before processing the next op
     Sleep {
         #[serde(with = "duration_format", rename = "amount_ms")]
@@ -45,14 +45,12 @@ pub enum ConnectionOperation {
     /// Emit a trace event
     Trace { trace_id: u64 },
     /// Perform operations concurrently
-    Scope {
-        threads: Vec<Vec<ConnectionOperation>>,
-    },
+    Scope { threads: Vec<Vec<Connection>> },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "snake_case")]
-pub enum ClientOperation {
+pub enum Client {
     /// Pause for the specified duration before processing the next op
     Sleep {
         #[serde(with = "duration_format", rename = "timeout_ms")]
@@ -71,12 +69,12 @@ pub enum ClientOperation {
     /// Emit a trace event
     Trace { trace_id: u64 },
     /// Perform operations concurrently
-    Scope { threads: Vec<Vec<ClientOperation>> },
+    Scope { threads: Vec<Vec<Client>> },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "snake_case")]
-pub enum RouterOperation {
+pub enum Router {
     /// Pause for the specified duration before processing the next op
     Sleep {
         #[serde(with = "duration_format", rename = "amount_ms")]

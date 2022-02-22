@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{connection::Owner, units::Rates, Checkpoints, Connection, Result, Trace};
+use crate::{connection::Owner, units::Rates, Checkpoints, Connection, Result, Timer, Trace};
 use core::task::{Context, Poll};
 use futures::ready;
 
@@ -37,37 +37,46 @@ impl<'a, C: Connection> Driver<'a, C> {
         }
     }
 
-    pub async fn run<T: Trace, Ch: Checkpoints>(
+    pub async fn run<T: Trace, Ch: Checkpoints, Ti: Timer>(
         mut self,
         trace: &mut T,
         checkpoints: &mut Ch,
+        timer: &mut Ti,
     ) -> Result<C> {
-        futures::future::poll_fn(|cx| self.poll(trace, checkpoints, cx)).await?;
+        futures::future::poll_fn(|cx| self.poll(trace, checkpoints, timer, cx)).await?;
         Ok(self.connection)
     }
 
-    pub fn poll<T: Trace, Ch: Checkpoints>(
+    pub fn poll<T: Trace, Ch: Checkpoints, Ti: Timer>(
         &mut self,
         trace: &mut T,
         checkpoints: &mut Ch,
+        timer: &mut Ti,
         cx: &mut Context,
     ) -> Poll<Result<()>> {
         if self.is_finished {
             return self.connection.poll_finish(cx);
         }
 
+        let now = timer.now();
+
         let mut poll_accept = false;
         let mut all_ready = true;
 
-        trace.enter(0, 0);
+        if let Some(target) = timer::Provider::next_expiration(&self) {
+            all_ready |= timer.poll(target, cx).is_ready();
+        };
+
+        trace.enter(now, 0, 0);
         let result = self.local_thread.poll(
             &mut self.connection,
             trace,
             checkpoints,
             &mut self.local_rates,
+            now,
             cx,
         );
-        trace.exit();
+        trace.exit(now);
 
         match result {
             Poll::Ready(Ok(_)) => {}
@@ -83,15 +92,16 @@ impl<'a, C: Connection> Driver<'a, C> {
                 continue;
             }
 
-            trace.enter(1, idx);
+            trace.enter(now, 1, idx);
             let result = thread.poll(
                 &mut self.connection,
                 trace,
                 checkpoints,
                 &mut self.peer_rates,
+                now,
                 cx,
             );
-            trace.exit();
+            trace.exit(now);
 
             match result {
                 Poll::Ready(Ok(_)) => {}
@@ -103,7 +113,7 @@ impl<'a, C: Connection> Driver<'a, C> {
         if poll_accept {
             match self.connection.poll_accept_stream(cx) {
                 Poll::Ready(Ok(Some(id))) => {
-                    trace.accept(id);
+                    trace.accept(now, id);
                     if let Some((accepted, _)) = self.peer_streams.get_mut(id as usize) {
                         *accepted = Poll::Ready(());
                         cx.waker().wake_by_ref();
@@ -124,5 +134,15 @@ impl<'a, C: Connection> Driver<'a, C> {
             ready!(self.connection.poll_progress(cx))?;
             Poll::Pending
         }
+    }
+}
+
+impl<'a, C: Connection> timer::Provider for Driver<'a, C> {
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.local_thread.timers(query)?;
+        for (_, thread) in self.peer_streams.iter() {
+            thread.timers(query)?;
+        }
+        Ok(())
     }
 }

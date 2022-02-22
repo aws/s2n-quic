@@ -1,10 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::timer::Timer;
+use super::timer::{self, Timer, Timestamp};
 use crate::{
     connection::Owner,
-    operation::ConnectionOperation,
+    operation as op,
     units::{Byte, Rate, Rates},
     Checkpoints, Connection, Result, Trace,
 };
@@ -13,7 +13,7 @@ use futures::ready;
 
 #[derive(Debug)]
 pub struct Thread<'a> {
-    ops: &'a [ConnectionOperation],
+    ops: &'a [op::Connection],
     index: usize,
     op: Option<Op<'a>>,
     timer: Timer,
@@ -21,7 +21,7 @@ pub struct Thread<'a> {
 }
 
 impl<'a> Thread<'a> {
-    pub fn new(ops: &'a [ConnectionOperation], owner: Owner) -> Self {
+    pub fn new(ops: &'a [op::Connection], owner: Owner) -> Self {
         Self {
             ops,
             index: 0,
@@ -37,91 +37,92 @@ impl<'a> Thread<'a> {
         trace: &mut T,
         checkpoints: &mut Ch,
         rates: &mut Rates,
+        now: Timestamp,
         cx: &mut Context,
     ) -> Poll<Result<()>> {
         loop {
             while self.op.is_none() {
                 if let Some(op) = self.ops.get(self.index) {
                     self.index += 1;
-                    self.on_op(op, trace, checkpoints, rates, cx);
+                    self.on_op(op, trace, checkpoints, rates, now, cx);
                 } else {
                     // we are all done processing the operations
                     return Poll::Ready(Ok(()));
                 }
             }
 
-            ready!(self.poll_op(conn, trace, checkpoints, rates, cx))?;
+            ready!(self.poll_op(conn, trace, checkpoints, rates, now, cx))?;
             self.op = None;
         }
     }
 
     fn on_op<T: Trace, Ch: Checkpoints>(
         &mut self,
-        op: &'a ConnectionOperation,
+        op: &'a op::Connection,
         trace: &mut T,
         checkpoints: &mut Ch,
         rates: &mut Rates,
+        now: Timestamp,
         cx: &mut Context,
     ) {
-        trace.exec(op);
+        trace.exec(now, op);
+        use op::Connection::*;
         match op {
-            ConnectionOperation::Sleep { amount } => {
-                self.timer.sleep(*amount);
+            Sleep { amount } => {
+                self.timer.sleep(now, *amount);
                 self.op = Some(Op::Sleep);
             }
-            ConnectionOperation::OpenBidirectionalStream { stream_id } => {
+            OpenBidirectionalStream { stream_id } => {
                 self.op = Some(Op::OpenBidirectionalStream { id: *stream_id });
             }
-            ConnectionOperation::OpenSendStream { stream_id } => {
+            OpenSendStream { stream_id } => {
                 self.op = Some(Op::OpenSendStream { id: *stream_id });
             }
-            ConnectionOperation::Send { stream_id, bytes } => {
+            Send { stream_id, bytes } => {
                 self.op = Some(Op::Send {
                     id: *stream_id,
                     remaining: *bytes,
                     rate: rates.send.get(stream_id).cloned(),
                 });
             }
-            ConnectionOperation::SendFinish { stream_id } => {
+            SendFinish { stream_id } => {
                 self.op = Some(Op::SendFinish { id: *stream_id });
             }
-            ConnectionOperation::SendRate { stream_id, rate } => {
+            SendRate { stream_id, rate } => {
                 rates.send.insert(*stream_id, *rate);
             }
-            ConnectionOperation::Receive { stream_id, bytes } => {
+            Receive { stream_id, bytes } => {
                 self.op = Some(Op::Receive {
                     id: *stream_id,
                     remaining: *bytes,
                     rate: rates.receive.get(stream_id).cloned(),
                 });
             }
-            ConnectionOperation::ReceiveAll { stream_id } => {
+            ReceiveAll { stream_id } => {
                 self.op = Some(Op::ReceiveAll {
                     id: *stream_id,
                     rate: rates.receive.get(stream_id).cloned(),
                 });
             }
-            ConnectionOperation::ReceiveFinish { stream_id } => {
+            ReceiveFinish { stream_id } => {
                 self.op = Some(Op::ReceiveFinish { id: *stream_id });
             }
-            ConnectionOperation::ReceiveRate { stream_id, rate } => {
+            ReceiveRate { stream_id, rate } => {
                 rates.receive.insert(*stream_id, *rate);
             }
-            ConnectionOperation::Trace { trace_id } => {
-                trace.trace(*trace_id);
+            Trace { trace_id } => {
+                trace.trace(now, *trace_id);
             }
-            ConnectionOperation::Park { checkpoint } => {
+            Park { checkpoint } => {
                 self.op = Some(Op::Wait {
                     checkpoint: *checkpoint,
                 });
             }
-            ConnectionOperation::Unpark { checkpoint } => {
+            Unpark { checkpoint } => {
                 // notify the checkpoint that it can make progress
-                checkpoints.unpark(*checkpoint);
-                // re-poll the operations since we may be unblocking another task
-                cx.waker().wake_by_ref();
+                checkpoints.unpark(*checkpoint, cx);
             }
-            ConnectionOperation::Scope { threads } => {
+            Scope { threads } => {
                 if !threads.is_empty() {
                     let threads = threads
                         .iter()
@@ -139,12 +140,13 @@ impl<'a> Thread<'a> {
         trace: &mut T,
         checkpoints: &mut Ch,
         rates: &mut Rates,
+        now: Timestamp,
         cx: &mut Context,
     ) -> Poll<Result<()>> {
         let owner = self.owner;
         match self.op.as_mut().unwrap() {
             Op::Sleep => {
-                ready!(self.timer.poll(cx));
+                ready!(self.timer.poll(now));
                 Poll::Ready(Ok(()))
             }
             Op::OpenBidirectionalStream { id } => conn.poll_open_bidirectional_stream(*id, cx),
@@ -153,9 +155,9 @@ impl<'a> Thread<'a> {
                 id,
                 remaining,
                 rate,
-            } => self.timer.transfer(remaining, rate, cx, |bytes, cx| {
+            } => self.timer.transfer(remaining, rate, now, cx, |bytes, cx| {
                 let amount = ready!(conn.poll_send(owner, *id, *bytes, cx))?;
-                trace.send(*id, amount);
+                trace.send(now, *id, amount);
                 Ok(amount).into()
             }),
             Op::SendFinish { id } => conn.poll_send_finish(owner, *id, cx),
@@ -163,18 +165,19 @@ impl<'a> Thread<'a> {
                 id,
                 remaining,
                 rate,
-            } => self.timer.transfer(remaining, rate, cx, |bytes, cx| {
+            } => self.timer.transfer(remaining, rate, now, cx, |bytes, cx| {
                 let amount = ready!(conn.poll_receive(owner, *id, *bytes, cx))?;
-                trace.receive(*id, amount);
+                trace.receive(now, *id, amount);
                 Ok(amount).into()
             }),
             Op::ReceiveAll { id, rate } => {
                 let mut remaining = Byte::MAX;
-                self.timer.transfer(&mut remaining, rate, cx, |bytes, cx| {
-                    let amount = ready!(conn.poll_receive(owner, *id, *bytes, cx))?;
-                    trace.receive(*id, amount);
-                    Ok(amount).into()
-                })
+                self.timer
+                    .transfer(&mut remaining, rate, now, cx, |bytes, cx| {
+                        let amount = ready!(conn.poll_receive(owner, *id, *bytes, cx))?;
+                        trace.receive(now, *id, amount);
+                        Ok(amount).into()
+                    })
             }
             Op::ReceiveFinish { id } => conn.poll_receive_finish(owner, *id, cx),
             Op::Wait { checkpoint } => {
@@ -185,9 +188,9 @@ impl<'a> Thread<'a> {
                 let mut all_ready = true;
                 let op_idx = self.index;
                 for (idx, thread) in threads.iter_mut().enumerate() {
-                    trace.enter(op_idx, idx);
-                    let result = thread.poll(conn, trace, checkpoints, rates, cx);
-                    trace.exit();
+                    trace.enter(now, op_idx, idx);
+                    let result = thread.poll(conn, trace, checkpoints, rates, now, cx);
+                    trace.exit(now);
                     match result {
                         Poll::Ready(Ok(_)) => {}
                         Poll::Ready(Err(err)) => return Err(err).into(),
@@ -201,6 +204,19 @@ impl<'a> Thread<'a> {
                 }
             }
         }
+    }
+}
+
+impl timer::Provider for Thread<'_> {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.timer.timers(query)?;
+        if let Some(Op::Scope { threads }) = &self.op {
+            for thread in threads {
+                thread.timers(query)?;
+            }
+        }
+        Ok(())
     }
 }
 

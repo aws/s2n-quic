@@ -3,7 +3,7 @@
 
 use super::connection;
 use crate::{
-    operation::ConnectionOperation,
+    operation as op,
     units::{Byte, Rate},
 };
 use core::marker::PhantomData;
@@ -11,7 +11,7 @@ use core::marker::PhantomData;
 macro_rules! send_stream {
     () => {
         pub fn send(&mut self, bytes: Byte) -> &mut Self {
-            self.ops.push(ConnectionOperation::Send {
+            self.ops.push(crate::operation::Connection::Send {
                 stream_id: self.id,
                 bytes,
             });
@@ -19,7 +19,7 @@ macro_rules! send_stream {
         }
 
         pub fn set_send_rate(&mut self, rate: Rate) -> &mut Self {
-            self.ops.push(ConnectionOperation::SendRate {
+            self.ops.push(crate::operation::Connection::SendRate {
                 stream_id: self.id,
                 rate,
             });
@@ -31,7 +31,7 @@ macro_rules! send_stream {
 macro_rules! receive_stream {
     () => {
         pub fn receive(&mut self, bytes: Byte) -> &mut Self {
-            self.ops.push(ConnectionOperation::Receive {
+            self.ops.push(crate::operation::Connection::Receive {
                 stream_id: self.id,
                 bytes,
             });
@@ -39,7 +39,7 @@ macro_rules! receive_stream {
         }
 
         pub fn set_receive_rate(&mut self, rate: Rate) -> &mut Self {
-            self.ops.push(ConnectionOperation::ReceiveRate {
+            self.ops.push(crate::operation::Connection::ReceiveRate {
                 stream_id: self.id,
                 rate,
             });
@@ -48,7 +48,7 @@ macro_rules! receive_stream {
 
         pub fn receive_all(&mut self) -> &mut Self {
             self.ops
-                .push(ConnectionOperation::ReceiveAll { stream_id: self.id });
+                .push(crate::operation::Connection::ReceiveAll { stream_id: self.id });
             self
         }
     };
@@ -56,7 +56,7 @@ macro_rules! receive_stream {
 
 pub struct Stream<Endpoint, Location> {
     id: u64,
-    ops: Vec<ConnectionOperation>,
+    ops: Vec<op::Connection>,
     state: connection::State,
     endpoint: PhantomData<Endpoint>,
     location: PhantomData<Location>,
@@ -92,18 +92,18 @@ impl<Endpoint, Location> Stream<Endpoint, Location> {
         send(&mut send_stream);
         receive(&mut receive_stream);
         let threads = vec![send_stream.ops, receive_stream.ops];
-        self.ops.push(ConnectionOperation::Scope { threads });
+        self.ops.push(op::Connection::Scope { threads });
         self
     }
 
-    pub(crate) fn finish(self) -> Vec<ConnectionOperation> {
+    pub(crate) fn finish(self) -> Vec<op::Connection> {
         self.ops
     }
 }
 
 pub struct SendStream<Endpoint, Location> {
     id: u64,
-    ops: Vec<ConnectionOperation>,
+    ops: Vec<op::Connection>,
     state: connection::State,
     endpoint: PhantomData<Endpoint>,
     location: PhantomData<Location>,
@@ -125,14 +125,14 @@ impl<Endpoint, Location> SendStream<Endpoint, Location> {
         }
     }
 
-    pub(crate) fn finish(self) -> Vec<ConnectionOperation> {
+    pub(crate) fn finish(self) -> Vec<op::Connection> {
         self.ops
     }
 }
 
 pub struct ReceiveStream<Endpoint, Location> {
     id: u64,
-    ops: Vec<ConnectionOperation>,
+    ops: Vec<op::Connection>,
     state: connection::State,
     endpoint: PhantomData<Endpoint>,
     location: PhantomData<Location>,
@@ -154,7 +154,7 @@ impl<Endpoint, Location> ReceiveStream<Endpoint, Location> {
         }
     }
 
-    pub(crate) fn finish(self) -> Vec<ConnectionOperation> {
+    pub(crate) fn finish(self) -> Vec<op::Connection> {
         self.ops
     }
 }

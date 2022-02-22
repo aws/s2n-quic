@@ -6,14 +6,14 @@ use super::{
     connection::{self, Connect, Connection},
     Local,
 };
-use crate::scenario::ClientOperation;
+use crate::operation as op;
 use core::marker::PhantomData;
 
 #[derive(Debug)]
 pub struct Builder {
     id: u64,
     state: super::State,
-    ops: Vec<ClientOperation>,
+    ops: Vec<op::Client>,
 }
 
 impl Builder {
@@ -56,7 +56,7 @@ impl Builder {
         self.state.checkpoint()
     }
 
-    pub(crate) fn finish(self) -> Vec<ClientOperation> {
+    pub(crate) fn finish(self) -> Vec<op::Client> {
         self.ops
     }
 }

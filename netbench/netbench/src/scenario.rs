@@ -1,10 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    operation::{ClientOperation, ConnectionOperation, RouterOperation},
-    Result,
-};
+use crate::{operation as op, Result};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path};
 
@@ -44,7 +41,7 @@ impl Scenario {
 pub struct Client {
     #[serde(skip_serializing_if = "String::is_empty", default)]
     pub name: String,
-    pub scenario: Vec<ClientOperation>,
+    pub scenario: Vec<op::Client>,
     pub connections: Vec<Connection>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub configuration: BTreeMap<String, String>,
@@ -62,16 +59,16 @@ pub struct Server {
 #[derive(Clone, Debug, Deserialize, Serialize, Hash)]
 pub struct Connection {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    pub ops: Vec<ConnectionOperation>,
+    pub ops: Vec<op::Connection>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    pub peer_streams: Vec<Vec<ConnectionOperation>>,
+    pub peer_streams: Vec<Vec<op::Connection>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Hash)]
 pub struct Router {
     #[serde(skip_serializing_if = "String::is_empty", default)]
     pub name: String,
-    pub scenario: Vec<RouterOperation>,
+    pub scenario: Vec<op::Router>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub configuration: BTreeMap<String, String>,
 }

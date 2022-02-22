@@ -7,12 +7,12 @@ use super::{
     stream::{ReceiveStream, SendStream, Stream},
     Client, Endpoint, Local, Remote, Scope, Server,
 };
-use crate::operation::{ClientOperation, ConnectionOperation};
+use crate::operation as op;
 use core::marker::PhantomData;
 
 #[derive(Clone, Debug, Default)]
 pub struct State {
-    peer_streams: RefVec<Vec<ConnectionOperation>>,
+    peer_streams: RefVec<Vec<op::Connection>>,
     stream: IdPool,
     scenario: super::State,
 }
@@ -36,7 +36,7 @@ impl core::ops::Deref for State {
 
 #[derive(Debug)]
 pub struct Builder<Endpoint> {
-    ops: Vec<ConnectionOperation>,
+    ops: Vec<op::Connection>,
     state: State,
     endpoint: PhantomData<Endpoint>,
 }
@@ -75,7 +75,7 @@ impl<E: Endpoint> Builder<E> {
             // only a single thread was spawned, which is the same as not spawning it
             self.ops.extend(threads.into_iter().flatten());
         } else {
-            self.ops.push(ConnectionOperation::Scope { threads });
+            self.ops.push(op::Connection::Scope { threads });
         }
 
         self
@@ -108,7 +108,7 @@ impl<E: Endpoint> Builder<E> {
         remote(&mut remote_stream);
 
         self.ops
-            .push(ConnectionOperation::OpenBidirectionalStream { stream_id: id });
+            .push(op::Connection::OpenBidirectionalStream { stream_id: id });
         self.ops.extend(local_stream.finish());
 
         debug_assert_eq!(id, self.state.peer_streams.len() as u64);
@@ -133,7 +133,7 @@ impl<E: Endpoint> Builder<E> {
         remote(&mut remote_stream);
 
         self.ops
-            .push(ConnectionOperation::OpenSendStream { stream_id: id });
+            .push(op::Connection::OpenSendStream { stream_id: id });
         self.ops.extend(local_stream.finish());
 
         debug_assert_eq!(id, self.state.peer_streams.len() as u64);
@@ -148,7 +148,7 @@ impl<E: Endpoint> Builder<E> {
         crate::scenario::Connection { ops, peer_streams }
     }
 
-    pub(crate) fn finish_scope(self) -> Vec<ConnectionOperation> {
+    pub(crate) fn finish_scope(self) -> Vec<op::Connection> {
         self.ops
     }
 }
@@ -162,11 +162,11 @@ pub struct Connection<Endpoint> {
 }
 
 pub trait Connect<Endpoint> {
-    fn connect_to(&self, handle: &Connection<Endpoint>) -> ClientOperation;
+    fn connect_to(&self, handle: &Connection<Endpoint>) -> op::Client;
 }
 
 impl Connect<Client> for Connection<Server> {
-    fn connect_to(&self, handle: &Connection<Client>) -> ClientOperation {
+    fn connect_to(&self, handle: &Connection<Client>) -> op::Client {
         let server_id = self.endpoint_id;
         let server = &mut self.state.servers.borrow_mut()[server_id as usize];
         let server_connection_id = server.connections.len() as u64;
@@ -182,7 +182,7 @@ impl Connect<Client> for Connection<Server> {
             peer_streams: self.template.peer_streams.clone(),
         });
 
-        ClientOperation::Connect {
+        op::Client::Connect {
             server_id,
             router_id: None,
             server_connection_id,
@@ -192,7 +192,7 @@ impl Connect<Client> for Connection<Server> {
 }
 
 impl Connect<Client> for Server {
-    fn connect_to(&self, handle: &Connection<Client>) -> ClientOperation {
+    fn connect_to(&self, handle: &Connection<Client>) -> op::Client {
         self.with(|_| {
             // empty instructions
         })

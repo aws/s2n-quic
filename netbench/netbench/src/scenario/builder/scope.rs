@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{connection, Endpoint};
-use crate::operation::ConnectionOperation;
+use crate::operation as op;
 use core::marker::PhantomData;
 
 pub struct Scope<Endpoint> {
     state: connection::State,
-    threads: Vec<Vec<ConnectionOperation>>,
+    threads: Vec<Vec<op::Connection>>,
     endpoint: PhantomData<Endpoint>,
 }
 
@@ -27,7 +27,7 @@ impl<E: Endpoint> Scope<E> {
         self
     }
 
-    pub(crate) fn finish(self) -> Vec<Vec<ConnectionOperation>> {
+    pub(crate) fn finish(self) -> Vec<Vec<op::Connection>> {
         self.threads
     }
 }
