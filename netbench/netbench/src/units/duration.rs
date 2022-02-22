@@ -13,9 +13,12 @@ pub trait DurationExt {
     }
 }
 
-impl DurationExt for i32 {
+impl DurationExt for f32 {
     fn millis(&self) -> Duration {
-        Duration::from_millis(*self as _)
+        Duration::from_secs_f32(*self / 1000.0)
+    }
+    fn seconds(&self) -> Duration {
+        Duration::from_secs_f32(*self)
     }
 }
 
@@ -42,5 +45,25 @@ pub(crate) mod duration_format {
     {
         let millis = u64::deserialize(deserializer)?;
         Ok(Duration::from_millis(millis))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use insta::assert_debug_snapshot;
+
+    #[test]
+    fn ext_test() {
+        assert_debug_snapshot!([
+            42.millis(),
+            42.seconds(),
+            42.minutes(),
+            42.minutes() + 42.seconds(),
+            4.2.millis(),
+            4.2.seconds(),
+            4.2.minutes(),
+            4.2.minutes() + 4.2.seconds(),
+        ]);
     }
 }

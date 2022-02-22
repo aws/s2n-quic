@@ -1,7 +1,6 @@
 [workspace]
 members = [
-    "common/s2n-*",
-    "quic/s2n-*",
+    "netbench*",
 ]
 resolver = "2"
 

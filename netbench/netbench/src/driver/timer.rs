@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::units::{Byte, Rate};
+use crate::units::{Byte, ByteExt, Rate};
 use core::{
     task::{Context, Poll},
     time::Duration,
@@ -57,20 +57,20 @@ impl Timer {
                     return Poll::Pending;
                 }
 
-                let amount = ready!(f(self.window, cx))?;
+                let amount = ready!(f(self.window, cx))?.bytes();
 
                 self.window -= amount;
 
                 amount
             } else {
-                ready!(f(*remaining, cx))?
+                ready!(f(*remaining, cx))?.bytes()
             };
 
             // if the transfer returned 0 bytes that means it's done
-            if amount == 0 {
+            if amount == 0.bytes() {
                 *remaining = Byte::default();
             } else {
-                *remaining -= amount;
+                *remaining -= amount.bytes();
             }
 
             if *remaining == Byte::default() {

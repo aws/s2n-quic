@@ -17,3 +17,18 @@ pub(crate) struct Rates {
     pub send: HashMap<u64, Rate>,
     pub receive: HashMap<u64, Rate>,
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::units::*;
+    use insta::assert_debug_snapshot;
+
+    #[test]
+    fn ext_test() {
+        assert_debug_snapshot!([
+            42.bytes() / 42.millis(),
+            42.mebibytes() / 42.seconds(),
+            42.gigabytes() / 42.minutes()
+        ]);
+    }
+}

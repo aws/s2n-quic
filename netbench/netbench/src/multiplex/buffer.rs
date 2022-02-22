@@ -12,6 +12,8 @@ use futures::ready;
 use std::{collections::VecDeque, io::IoSlice};
 use tokio::io::ReadBuf;
 
+const CHUNK_CAPACITY: usize = 4096;
+
 #[derive(Debug, Default)]
 pub struct ReadBuffer {
     len: usize,
@@ -26,12 +28,10 @@ impl ReadBuffer {
     ) -> Poll<Result<()>> {
         let capacity = self.tail.capacity();
 
-        const CAPACITY: usize = 2 << 12;
-
         if capacity == 0 {
-            self.tail.reserve(CAPACITY);
+            self.tail.reserve(CHUNK_CAPACITY);
         } else if capacity < 32 {
-            let tail = core::mem::replace(&mut self.tail, BytesMut::with_capacity(CAPACITY));
+            let tail = core::mem::replace(&mut self.tail, BytesMut::with_capacity(CHUNK_CAPACITY));
             self.head.push_back(tail);
         }
 
@@ -146,12 +146,10 @@ impl WriteBuffer {
     pub fn push(&mut self, frame: Frame) {
         let capacity = self.unfilled.capacity();
 
-        const CAPACITY: usize = 4096;
-
         if capacity == 0 {
-            self.unfilled.reserve(CAPACITY);
+            self.unfilled.reserve(CHUNK_CAPACITY);
         } else if capacity < 32 {
-            self.unfilled = BytesMut::with_capacity(CAPACITY);
+            self.unfilled = BytesMut::with_capacity(CHUNK_CAPACITY);
         }
 
         frame.write_header(&mut self.unfilled);
