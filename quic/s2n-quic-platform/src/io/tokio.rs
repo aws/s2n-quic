@@ -7,7 +7,6 @@ use core::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
-    time::Duration,
 };
 use futures::future::{Fuse, FutureExt};
 use pin_project::pin_project;
@@ -16,37 +15,15 @@ use s2n_quic_core::{
     event::{self, EndpointPublisher as _},
     inet::{self, SocketAddress},
     path::MaxMtu,
-    time::{self, Clock as ClockTrait},
+    time::Clock as ClockTrait,
 };
 use std::{convert::TryInto, io, io::ErrorKind};
-use tokio::{net::UdpSocket, runtime::Handle, time::Instant};
+use tokio::{net::UdpSocket, runtime::Handle};
 
 pub type PathHandle = socket::Handle;
 
-#[derive(Debug)]
-struct Clock(Instant);
-
-impl Default for Clock {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Clock {
-    pub fn new() -> Self {
-        Self(Instant::now())
-    }
-}
-
-impl ClockTrait for Clock {
-    fn get_time(&self) -> time::Timestamp {
-        let duration = self.0.elapsed();
-        unsafe {
-            // Safety: time duration is only derived from a single `Instant`
-            time::Timestamp::from_duration(duration)
-        }
-    }
-}
+mod clock;
+use clock::Clock;
 
 impl crate::socket::std::Socket for UdpSocket {
     type Error = io::Error;
@@ -513,12 +490,7 @@ impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
             }
         }
 
-        /// Even if there is no progress to be made, wake up the task at least once a second
-        const DEFAULT_TIMEOUT: Duration = Duration::from_secs(1);
-
-        let mut prev_time = Instant::now() + DEFAULT_TIMEOUT;
-        let sleep = tokio::time::sleep_until(prev_time);
-        tokio::pin!(sleep);
+        let mut timer = clock.timer();
 
         loop {
             // Poll for readability if we have free slots available
@@ -545,11 +517,11 @@ impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
             // pin the wakeups future so we don't have to move it into the Select future.
             tokio::pin!(wakeups);
 
-            let select = Select::new(rx_task, tx_task, &mut wakeups, &mut sleep);
+            let select = Select::new(rx_task, tx_task, &mut wakeups, &mut timer);
 
             let mut reset_clock = false;
 
-            if let Ok((rx_result, tx_result, timeout_result)) = select.await {
+            if let Ok((rx_result, tx_result, timeout_expired, application_wakeup)) = select.await {
                 let subscriber = endpoint.subscriber();
                 let mut publisher = event::EndpointPublisherSubscriber::new(
                     event::builder::EndpointMeta {
@@ -561,9 +533,10 @@ impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
                 );
 
                 publisher.on_platform_event_loop_wakeup(event::builder::PlatformEventLoopWakeup {
-                    timeout_expired: timeout_result,
+                    timeout_expired,
                     rx_ready: rx_result.is_some(),
                     tx_ready: tx_result.is_some(),
+                    application_wakeup,
                 });
 
                 if let Some(guard) = tx_result {
@@ -573,7 +546,7 @@ impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
                 }
 
                 // if the timer expired ensure it is reset to the default timeout
-                if timeout_result {
+                if timeout_expired {
                     reset_clock = true;
                 }
 
@@ -591,24 +564,9 @@ impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
             endpoint.transmit(&mut tx.tx_queue(), &clock);
 
             if let Some(delay) = endpoint.timeout() {
-                let delay = unsafe {
-                    // Safety: the same clock epoch is being used
-                    delay.as_duration()
-                };
-
-                // floor the delay to milliseconds to reduce timer churn
-                let delay = Duration::from_millis(delay.as_millis() as u64);
-
-                // add the delay to the clock's epoch
-                let next_time = clock.0 + delay;
-
-                // if the clock has changed let the sleep future know
-                if next_time != prev_time {
-                    sleep.as_mut().reset(next_time);
-                    prev_time = next_time;
-                }
+                timer.reset(delay);
             } else if reset_clock {
-                sleep.as_mut().reset(Instant::now() + DEFAULT_TIMEOUT);
+                timer.cancel();
             }
         }
     }
@@ -659,7 +617,7 @@ where
     }
 }
 
-type SelectResult<Rx, Tx> = Result<(Option<Rx>, Option<Tx>, bool), CloseError>;
+type SelectResult<Rx, Tx> = Result<(Option<Rx>, Option<Tx>, bool, bool), CloseError>;
 
 impl<Rx, Tx, Wakeup, Sleep> Future for Select<Rx, Tx, Wakeup, Sleep>
 where
@@ -674,9 +632,11 @@ where
         let this = self.project();
 
         let mut should_wake = false;
+        let mut application_wakeup = false;
 
         if let Poll::Ready(wakeup) = this.wakeup.poll(cx) {
             should_wake = true;
+            application_wakeup = true;
             if let Err(err) = wakeup {
                 return Poll::Ready(Err(err));
             }
@@ -704,7 +664,12 @@ where
             return Poll::Pending;
         }
 
-        Poll::Ready(Ok((this.rx_out.take(), this.tx_out.take(), timeout_result)))
+        Poll::Ready(Ok((
+            this.rx_out.take(),
+            this.tx_out.take(),
+            timeout_result,
+            application_wakeup,
+        )))
     }
 }
 
@@ -766,7 +731,7 @@ mod tests {
             tx,
         },
         path::Handle as _,
-        time::{Clock, Timestamp},
+        time::{Clock, Duration, Timestamp},
     };
     use std::collections::BTreeMap;
 

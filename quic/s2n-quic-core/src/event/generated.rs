@@ -837,6 +837,7 @@ pub mod api {
         pub timeout_expired: bool,
         pub rx_ready: bool,
         pub tx_ready: bool,
+        pub application_wakeup: bool,
     }
     impl Event for PlatformEventLoopWakeup {
         const NAME: &'static str = "platform:event_loop_wakeup";
@@ -1808,8 +1809,9 @@ pub mod tracing {
                 timeout_expired,
                 rx_ready,
                 tx_ready,
+                application_wakeup,
             } = event;
-            tracing :: event ! (target : "platform_event_loop_wakeup" , parent : parent , tracing :: Level :: DEBUG , timeout_expired = tracing :: field :: debug (timeout_expired) , rx_ready = tracing :: field :: debug (rx_ready) , tx_ready = tracing :: field :: debug (tx_ready));
+            tracing :: event ! (target : "platform_event_loop_wakeup" , parent : parent , tracing :: Level :: DEBUG , timeout_expired = tracing :: field :: debug (timeout_expired) , rx_ready = tracing :: field :: debug (rx_ready) , tx_ready = tracing :: field :: debug (tx_ready) , application_wakeup = tracing :: field :: debug (application_wakeup));
         }
     }
 }
@@ -3257,6 +3259,7 @@ pub mod builder {
         pub timeout_expired: bool,
         pub rx_ready: bool,
         pub tx_ready: bool,
+        pub application_wakeup: bool,
     }
     impl IntoEvent<api::PlatformEventLoopWakeup> for PlatformEventLoopWakeup {
         #[inline]
@@ -3265,11 +3268,13 @@ pub mod builder {
                 timeout_expired,
                 rx_ready,
                 tx_ready,
+                application_wakeup,
             } = self;
             api::PlatformEventLoopWakeup {
                 timeout_expired: timeout_expired.into_event(),
                 rx_ready: rx_ready.into_event(),
                 tx_ready: tx_ready.into_event(),
+                application_wakeup: application_wakeup.into_event(),
             }
         }
     }
