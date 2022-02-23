@@ -34,6 +34,10 @@ impl Timer {
         }
     }
 
+    pub fn cancel(&mut self) {
+        self.sleep.cancel();
+    }
+
     pub fn sleep(&mut self, now: Timestamp, duration: Duration) {
         self.sleep.set(now + duration);
     }

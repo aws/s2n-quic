@@ -10,6 +10,7 @@ use std::{
 use tokio::io::{AsyncRead, AsyncWrite};
 
 /// Simple testing connection with a single bidirectional stream
+#[derive(Debug)]
 pub struct Connection {
     local: Arc<Mutex<Stream>>,
     peer: Arc<Mutex<Stream>>,

@@ -29,6 +29,8 @@ pub struct Config {
     pub max_stream_data_thresh: u64,
     pub max_stream_frame_len: u32,
     pub max_write_queue_len: usize,
+    pub peer_max_streams: u64,
+    pub peer_max_stream_data: u64,
 }
 
 impl Default for Config {
@@ -39,10 +41,13 @@ impl Default for Config {
             max_stream_data_thresh: DEFAULT_STREAM_WINDOW / 2,
             max_stream_frame_len: (1 << 15),
             max_write_queue_len: 250,
+            peer_max_streams: DEFAULT_MAX_STREAMS,
+            peer_max_stream_data: DEFAULT_STREAM_WINDOW,
         }
     }
 }
 
+#[derive(Debug)]
 pub struct Connection<T: AsyncRead + AsyncWrite> {
     inner: Pin<Box<T>>,
     rx_open: bool,
@@ -51,11 +56,10 @@ pub struct Connection<T: AsyncRead + AsyncWrite> {
     read_buf: ReadBuffer,
     decoder: frame::Decoder,
     write_buf: WriteBuffer,
-    stream_controllers: [stream::Controller; 2],
+    stream_controller: stream::Controller,
     streams: [HashMap<u64, Stream>; 2],
     max_stream_data: HashSet<(Owner, u64)>,
     pending_accept: VecDeque<u64>,
-    peer_initial_max_stream_data: u64,
     config: Config,
 }
 
@@ -69,6 +73,12 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
             });
         }
 
+        if config.max_streams != DEFAULT_MAX_STREAMS {
+            write_buf.push(Frame::MaxStreams {
+                up_to: config.max_streams,
+            });
+        }
+
         Self {
             inner,
             rx_open: true,
@@ -77,14 +87,10 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
             read_buf: Default::default(),
             decoder: Default::default(),
             write_buf,
-            stream_controllers: [
-                stream::Controller::new(config.max_streams),
-                stream::Controller::new(100),
-            ],
+            stream_controller: stream::Controller::new(config.max_streams, config.peer_max_streams),
             streams: [Default::default(), Default::default()],
             max_stream_data: Default::default(),
             pending_accept: Default::default(),
-            peer_initial_max_stream_data: DEFAULT_STREAM_WINDOW,
             config,
         }
     }
@@ -162,6 +168,29 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
         }
     }
 
+    fn fill_read_buffer(&mut self, cx: &mut Context) -> Poll<Result<bool>> {
+        // only read from the socket if it's open and we don't have a pending frame
+        if !(self.rx_open && self.frame.is_none()) {
+            return Ok(true).into();
+        }
+
+        let rx_open = &mut self.rx_open;
+        let inner = self.inner.as_mut();
+
+        ready!(self.read_buf.read(|buf| {
+            ready!(inner.poll_read(cx, buf))?;
+
+            // the socket returned a 0 write
+            if buf.filled().is_empty() {
+                *rx_open = false;
+            }
+
+            Ok(()).into()
+        }))?;
+
+        Ok(false).into()
+    }
+
     fn dispatch_frame(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         use frame::Frame::*;
 
@@ -173,7 +202,7 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
                     tx: None,
                 };
                 if bidirectional {
-                    stream.tx = Some(SendStream::new(self.peer_initial_max_stream_data));
+                    stream.tx = Some(SendStream::new(self.config.peer_max_stream_data));
                 };
                 self.streams[Owner::Remote].insert(id, stream);
                 self.pending_accept.push_back(id);
@@ -189,7 +218,7 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
                     .and_then(|stream| stream.rx.as_mut())
                 {
                     let len = data.len() as u64;
-                    let len = rx.buffer(len, cx)?;
+                    let len = rx.buffer(len)?;
                     data.advance(len as _);
 
                     if !data.is_empty() {
@@ -199,14 +228,14 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
                 }
             }
             Some(MaxStreams { up_to }) => {
-                self.stream_controllers[Owner::Remote].max_streams(up_to, cx);
+                self.stream_controller.max_streams(up_to);
             }
             Some(MaxStreamData { id, owner, up_to }) => {
                 if let Some(tx) = self.streams[owner]
                     .get_mut(&id)
                     .and_then(|stream| stream.tx.as_mut())
                 {
-                    tx.max_data(up_to, cx);
+                    tx.max_data(up_to);
                 }
             }
             Some(StreamFinish { id, owner }) => {
@@ -216,11 +245,11 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
                     .rx
                     .as_mut()
                 {
-                    rx.finish(cx);
+                    rx.finish();
                 }
             }
             Some(InitialMaxStreamData { up_to }) => {
-                self.peer_initial_max_stream_data = up_to;
+                self.config.peer_max_stream_data = up_to;
             }
             None => return Poll::Pending,
         }
@@ -230,8 +259,8 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
 }
 
 impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
-    fn poll_open_bidirectional_stream(&mut self, id: u64, _cx: &mut Context) -> Poll<Result<()>> {
-        ready!(self.stream_controllers[Owner::Local].open());
+    fn poll_open_bidirectional_stream(&mut self, id: u64, cx: &mut Context) -> Poll<Result<()>> {
+        ready!(self.stream_controller.open(cx));
 
         self.write_buf.push(Frame::StreamOpen {
             id,
@@ -240,15 +269,15 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
 
         let stream = Stream {
             rx: Some(ReceiveStream::new(self.config.stream_window)),
-            tx: Some(SendStream::new(self.peer_initial_max_stream_data)),
+            tx: Some(SendStream::new(self.config.peer_max_stream_data)),
         };
         self.streams[Owner::Local].insert(id, stream);
 
         Ok(()).into()
     }
 
-    fn poll_open_send_stream(&mut self, id: u64, _cx: &mut Context) -> Poll<Result<()>> {
-        ready!(self.stream_controllers[Owner::Local].open());
+    fn poll_open_send_stream(&mut self, id: u64, cx: &mut Context) -> Poll<Result<()>> {
+        ready!(self.stream_controller.open(cx));
 
         self.write_buf.push(Frame::StreamOpen {
             id,
@@ -257,7 +286,7 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
 
         let stream = Stream {
             rx: None,
-            tx: Some(SendStream::new(self.peer_initial_max_stream_data)),
+            tx: Some(SendStream::new(self.config.peer_max_stream_data)),
         };
         self.streams[Owner::Local].insert(id, stream);
 
@@ -281,7 +310,7 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
         owner: Owner,
         id: u64,
         bytes: u64,
-        _cx: &mut Context,
+        cx: &mut Context,
     ) -> Poll<Result<u64>> {
         if !self.write_buf.request_push(self.config.max_write_queue_len) {
             return Poll::Pending;
@@ -296,7 +325,7 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
 
         let allowed_bytes = bytes.min(self.config.max_stream_frame_len as _);
 
-        if let Some(data) = stream.send(allowed_bytes) {
+        if let Some(data) = stream.send(allowed_bytes, cx) {
             let len = data.len() as u64;
             self.write_buf.push(frame::Frame::StreamData {
                 id,
@@ -314,7 +343,7 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
         owner: Owner,
         id: u64,
         bytes: u64,
-        _cx: &mut Context,
+        cx: &mut Context,
     ) -> Poll<Result<u64>> {
         let stream = self.streams[owner]
             .get_mut(&id)
@@ -323,7 +352,7 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
             .as_mut()
             .ok_or("missing rx stream")?;
 
-        let len = ready!(stream.receive(bytes))?;
+        let len = ready!(stream.receive(bytes, cx))?;
 
         if stream.receive_window() < self.config.stream_window / 2 {
             self.max_stream_data.insert((owner, id));
@@ -347,23 +376,25 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
 
             if stream.rx.is_none() {
                 entry.remove();
+                self.stream_controller.close();
             }
         }
 
         Ok(()).into()
     }
 
-    fn poll_receive_finish(
-        &mut self,
-        owner: Owner,
-        id: u64,
-        _cx: &mut Context,
-    ) -> Poll<Result<()>> {
+    fn poll_receive_finish(&mut self, owner: Owner, id: u64, cx: &mut Context) -> Poll<Result<()>> {
         if let Entry::Occupied(mut entry) = self.streams[owner].entry(id) {
             let stream = entry.get_mut();
+
+            if let Some(rx) = stream.rx.as_mut() {
+                ready!(rx.poll_finish(cx));
+            }
             stream.rx = None;
+
             if stream.tx.is_none() {
                 entry.remove();
+                self.stream_controller.close();
             }
         }
 
@@ -372,6 +403,10 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
 
     fn poll_progress(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         loop {
+            if let Some(up_to) = self.stream_controller.transmit() {
+                self.write_buf.push_priority(Frame::MaxStreams { up_to });
+            }
+
             for (owner, id) in self.max_stream_data.drain() {
                 let stream = self.streams[owner]
                     .get_mut(&id)
@@ -388,54 +423,42 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
             }
 
             self.flush_write_buffer(cx)?;
-
             self.flush_read_buffer(cx)?;
-
-            // only read from the socket if it's open and we don't have a pending frame
-            if !(self.rx_open && self.frame.is_none()) {
+            if ready!(self.fill_read_buffer(cx))? {
                 return Ok(()).into();
             }
-
-            let rx_open = &mut self.rx_open;
-            let inner = self.inner.as_mut();
-
-            ready!(self.read_buf.read(|buf| {
-                ready!(inner.poll_read(cx, buf))?;
-
-                // the socket returned a 0 write
-                if buf.filled().is_empty() {
-                    *rx_open = false;
-                }
-
-                Ok(()).into()
-            }))?;
         }
     }
 
     fn poll_finish(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        self.flush_write_buffer(cx)?;
+        loop {
+            self.flush_write_buffer(cx)?;
+            self.flush_read_buffer(cx)?;
 
-        if !self.write_buf.is_empty() {
-            return Poll::Pending;
+            if !self.write_buf.is_empty() {
+                return Poll::Pending;
+            }
+
+            ready!(self.inner.as_mut().poll_shutdown(cx))?;
+
+            if ready!(self.fill_read_buffer(cx))? {
+                return Ok(()).into();
+            }
         }
-
-        ready!(self.inner.as_mut().poll_flush(cx))?;
-        Ok(()).into()
     }
 }
 
 #[derive(Debug, Default)]
-struct Blocked(bool);
+struct Blocked(Option<core::task::Waker>);
 
 impl Blocked {
-    pub fn block(&mut self) {
-        self.0 = true;
+    pub fn block(&mut self, cx: &mut Context) {
+        self.0 = Some(cx.waker().clone());
     }
 
-    pub fn unblock(&mut self, cx: &mut Context) {
-        if self.0 {
-            self.0 = false;
-            cx.waker().wake_by_ref();
+    pub fn unblock(&mut self) {
+        if let Some(waker) = self.0.take() {
+            waker.wake();
         }
     }
 }
@@ -443,20 +466,15 @@ impl Blocked {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        scenario::Scenario,
-        testing, timer,
-        trace::{self, MemoryLogger},
-        units::*,
-        Driver,
-    };
+    use crate::{scenario::Scenario, testing, timer, trace::MemoryLogger, units::*, Driver};
+    use futures_test::task::new_count_waker;
     use insta::assert_display_snapshot;
     use std::collections::HashSet;
 
     macro_rules! test {
         ($name:ident, $config:expr, $builder:expr) => {
-            #[tokio::test]
-            async fn $name() -> std::io::Result<()> {
+            #[test]
+            fn $name() -> crate::Result<()> {
                 let scenario = Scenario::build(|scenario| {
                     let server = scenario.create_server();
 
@@ -474,7 +492,7 @@ mod tests {
                     let conn = super::Connection::new(conn, $config);
                     Driver::new(scenario, conn)
                 };
-                let mut client_trace = (trace::Tracker::default(), MemoryLogger::new(0, traces));
+                let mut client_trace = MemoryLogger::new(0, traces);
                 let mut client_checkpoints = HashSet::new();
                 let mut client_timer = timer::Testing::default();
 
@@ -484,55 +502,60 @@ mod tests {
                     let conn = super::Connection::new(conn, $config);
                     Driver::new(scenario, conn)
                 };
-                let mut server_trace = (trace::Tracker::default(), MemoryLogger::new(1, traces));
+                let mut server_trace = MemoryLogger::new(1, traces);
                 let mut server_checkpoints = HashSet::new();
                 let mut server_timer = timer::Testing::default();
 
-                futures::future::poll_fn(|cx| {
+                let (waker, count) = new_count_waker();
+                let mut prev_count = 0;
+                let mut cx = core::task::Context::from_waker(&waker);
+
+                loop {
                     let c = client.poll(
                         &mut client_trace,
                         &mut client_checkpoints,
                         &mut client_timer,
-                        cx,
+                        &mut cx,
                     );
                     let s = server.poll(
                         &mut server_trace,
                         &mut server_checkpoints,
                         &mut server_timer,
-                        cx,
+                        &mut cx,
                     );
 
                     match (c, s) {
-                        (Poll::Ready(Err(e)), _) => Err(e).into(),
-                        (_, Poll::Ready(Err(e))) => Err(e).into(),
-                        (c, s) => {
-                            let client_had_changes = client_trace.0.reset();
-                            let server_had_changes = server_trace.0.reset();
-
-                            // wait until both sides settle before advancing the time
-                            if client_had_changes || server_had_changes {
-                                cx.waker().wake_by_ref();
-                                return Poll::Pending;
+                        (Poll::Ready(Ok(())), Poll::Ready(Ok(()))) => break,
+                        (Poll::Ready(Err(e)), _) => return Err(e.into()),
+                        (_, Poll::Ready(Err(e))) => return Err(e.into()),
+                        _ => {
+                            let current_count = count.get();
+                            if current_count > prev_count {
+                                prev_count = current_count;
+                                continue;
                             }
 
-                            client_timer.advance_pair(&mut server_timer);
-
-                            ready!(c)?;
-                            ready!(s)?;
-                            Ok(()).into()
+                            if client_timer.advance_pair(&mut server_timer).is_none() {
+                                eprintln!("the timer did not advance!");
+                                eprintln!("server trace:");
+                                eprintln!("{}", server_trace.as_str().unwrap());
+                                eprintln!("{:#?}", server);
+                                eprintln!("client trace:");
+                                eprintln!("{}", client_trace.as_str().unwrap());
+                                eprintln!("{:#?}", client);
+                                panic!("test is deadlocked");
+                            }
                         }
                     }
-                })
-                .await
-                .unwrap();
+                }
 
                 assert_display_snapshot!(
                     concat!(stringify!($name), "__client"),
-                    (client_trace.1).as_str().unwrap()
+                    client_trace.as_str().unwrap()
                 );
                 assert_display_snapshot!(
                     concat!(stringify!($name), "__server"),
-                    (server_trace.1).as_str().unwrap()
+                    server_trace.as_str().unwrap()
                 );
 
                 Ok(())
@@ -562,6 +585,51 @@ mod tests {
             },
         );
     });
+
+    test!(
+        low_stream_window,
+        Config {
+            stream_window: 50,
+            ..Config::default()
+        },
+        |conn| {
+            conn.open_send_stream(
+                |local| {
+                    local.set_send_rate(100.bytes() / 50.millis());
+                    local.send(1.kilobytes());
+                },
+                |remote| {
+                    remote.receive(1.kilobytes());
+                },
+            );
+        }
+    );
+
+    test!(
+        low_max_streams,
+        Config {
+            max_streams: 2,
+            peer_max_streams: 2,
+            ..Config::default()
+        },
+        |conn| {
+            conn.scope(|scope| {
+                for _ in 0..4 {
+                    scope.spawn(|conn| {
+                        conn.open_send_stream(
+                            |local| {
+                                local.set_send_rate(500.bytes() / 50.millis());
+                                local.send(1.kilobytes());
+                            },
+                            |remote| {
+                                remote.receive(1.kilobytes());
+                            },
+                        );
+                    });
+                }
+            });
+        }
+    );
 
     test!(multiple_streams, Config::default(), |conn| {
         conn.scope(|scope| {

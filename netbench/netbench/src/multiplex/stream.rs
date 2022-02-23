@@ -33,7 +33,7 @@ impl ReceiveStream {
         }
     }
 
-    pub fn buffer(&mut self, len: u64, cx: &mut Context) -> Result<u64> {
+    pub fn buffer(&mut self, len: u64) -> Result<u64> {
         if self.is_finished {
             return Err("stream is already finished".into());
         }
@@ -46,19 +46,19 @@ impl ReceiveStream {
 
         self.buffered_offset += len;
 
-        self.blocked.unblock(cx);
+        self.blocked.unblock();
 
         Ok(len)
     }
 
-    pub fn receive(&mut self, len: u64) -> Poll<Result<u64>> {
+    pub fn receive(&mut self, len: u64, cx: &mut Context) -> Poll<Result<u64>> {
         let len = (self.buffered_offset - self.received_offset).min(len);
 
         if len == 0 {
             return if self.is_finished {
                 Ok(0).into()
             } else {
-                self.blocked.block();
+                self.blocked.block(cx);
                 Poll::Pending
             };
         }
@@ -68,9 +68,9 @@ impl ReceiveStream {
         Ok(len).into()
     }
 
-    pub fn finish(&mut self, cx: &mut Context) {
+    pub fn finish(&mut self) {
         self.is_finished = true;
-        self.blocked.unblock(cx);
+        self.blocked.unblock();
     }
 
     pub fn receive_window(&self) -> u64 {
@@ -80,6 +80,15 @@ impl ReceiveStream {
     pub fn credit(&mut self, credits: u64) -> u64 {
         self.window_offset += credits;
         self.window_offset
+    }
+
+    pub fn poll_finish(&mut self, cx: &mut Context) -> Poll<()> {
+        if self.is_finished {
+            Poll::Ready(())
+        } else {
+            self.blocked.block(cx);
+            Poll::Pending
+        }
     }
 }
 
@@ -99,17 +108,17 @@ impl SendStream {
         }
     }
 
-    pub fn max_data(&mut self, max_data: u64, cx: &mut Context) {
+    pub fn max_data(&mut self, max_data: u64) {
         self.max_data = max_data.max(self.max_data);
-        self.blocked.unblock(cx)
+        self.blocked.unblock()
     }
 
-    pub fn send(&mut self, len: u64) -> Option<Bytes> {
+    pub fn send(&mut self, len: u64, cx: &mut Context) -> Option<Bytes> {
         let window = self.max_data - self.data.offset();
         let len = len.min(window) as usize;
 
         if len == 0 {
-            self.blocked.block();
+            self.blocked.block(cx);
             return None;
         }
 
@@ -120,22 +129,26 @@ impl SendStream {
 #[derive(Debug, Default)]
 pub struct Controller {
     open_offset: u64,
-    window_offset: u64,
+    peer_window_offset: u64,
+    local_window_offset: u64,
+    transmitted_window_offset: u64,
     blocked: Blocked,
 }
 
 impl Controller {
-    pub fn new(window_offset: u64) -> Self {
+    pub fn new(local_window: u64, peer_window: u64) -> Self {
         Self {
             open_offset: 0,
-            window_offset,
+            peer_window_offset: local_window,
+            local_window_offset: peer_window,
+            transmitted_window_offset: local_window.min(peer_window),
             blocked: Default::default(),
         }
     }
 
-    pub fn open(&mut self) -> Poll<()> {
+    pub fn open(&mut self, cx: &mut Context) -> Poll<()> {
         if self.capacity() == 0 {
-            self.blocked.block();
+            self.blocked.block(cx);
             return Poll::Pending;
         }
 
@@ -144,14 +157,30 @@ impl Controller {
         Poll::Ready(())
     }
 
-    pub fn max_streams(&mut self, up_to: u64, cx: &mut Context) {
-        self.window_offset = self.window_offset.max(up_to);
+    pub fn close(&mut self) {
+        self.local_window_offset += 1;
         if self.capacity() > 0 {
-            self.blocked.unblock(cx)
+            self.blocked.unblock();
+        }
+    }
+
+    pub fn transmit(&mut self) -> Option<u64> {
+        if self.local_window_offset != self.transmitted_window_offset {
+            self.transmitted_window_offset = self.local_window_offset;
+            Some(self.local_window_offset)
+        } else {
+            None
+        }
+    }
+
+    pub fn max_streams(&mut self, up_to: u64) {
+        self.peer_window_offset = up_to;
+        if self.capacity() > 0 {
+            self.blocked.unblock()
         }
     }
 
     pub fn capacity(&self) -> u64 {
-        self.window_offset - self.open_offset
+        self.local_window_offset.min(self.peer_window_offset) - self.open_offset
     }
 }

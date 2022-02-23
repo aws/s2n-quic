@@ -10,6 +10,7 @@ mod timer;
 
 use thread::Thread;
 
+#[derive(Debug)]
 pub struct Driver<'a, C: Connection> {
     pub connection: C,
     local_thread: Thread<'a>,

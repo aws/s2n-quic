@@ -35,10 +35,22 @@ pub trait Trace {
     }
 
     #[inline(always)]
+    fn send_finish(&mut self, now: Timestamp, stream_id: u64) {
+        let _ = now;
+        let _ = stream_id;
+    }
+
+    #[inline(always)]
     fn receive(&mut self, now: Timestamp, stream_id: u64, len: u64) {
         let _ = now;
         let _ = stream_id;
         let _ = len;
+    }
+
+    #[inline(always)]
+    fn receive_finish(&mut self, now: Timestamp, stream_id: u64) {
+        let _ = now;
+        let _ = stream_id;
     }
 
     #[inline(always)]
@@ -48,7 +60,19 @@ pub trait Trace {
     }
 
     #[inline(always)]
+    fn open(&mut self, now: Timestamp, stream_id: u64) {
+        let _ = now;
+        let _ = stream_id;
+    }
+
+    #[inline(always)]
     fn trace(&mut self, now: Timestamp, id: u64) {
+        let _ = now;
+        let _ = id;
+    }
+
+    #[inline(always)]
+    fn unpark(&mut self, now: Timestamp, id: u64) {
         let _ = now;
         let _ = id;
     }
@@ -80,9 +104,21 @@ impl<A: Trace, B: Trace> Trace for (A, B) {
     }
 
     #[inline(always)]
+    fn send_finish(&mut self, now: Timestamp, stream_id: u64) {
+        self.0.send_finish(now, stream_id);
+        self.1.send_finish(now, stream_id);
+    }
+
+    #[inline(always)]
     fn receive(&mut self, now: Timestamp, stream_id: u64, len: u64) {
         self.0.receive(now, stream_id, len);
         self.1.receive(now, stream_id, len);
+    }
+
+    #[inline(always)]
+    fn receive_finish(&mut self, now: Timestamp, stream_id: u64) {
+        self.0.receive_finish(now, stream_id);
+        self.1.receive_finish(now, stream_id);
     }
 
     #[inline(always)]
@@ -92,9 +128,21 @@ impl<A: Trace, B: Trace> Trace for (A, B) {
     }
 
     #[inline(always)]
+    fn open(&mut self, now: Timestamp, stream_id: u64) {
+        self.0.open(now, stream_id);
+        self.1.open(now, stream_id)
+    }
+
+    #[inline(always)]
     fn trace(&mut self, now: Timestamp, id: u64) {
         self.0.trace(now, id);
         self.1.trace(now, id)
+    }
+
+    #[inline]
+    fn unpark(&mut self, now: Timestamp, id: u64) {
+        self.0.unpark(now, id);
+        self.1.unpark(now, id);
     }
 }
 
@@ -212,13 +260,28 @@ impl<O: Output> Trace for Logger<'_, O> {
     }
 
     #[inline(always)]
+    fn send_finish(&mut self, now: Timestamp, stream_id: u64) {
+        self.log(now, format_args!("send finish: stream={}", stream_id));
+    }
+
+    #[inline(always)]
     fn receive(&mut self, now: Timestamp, stream_id: u64, len: u64) {
         self.log(now, format_args!("recv: stream={}, len={}", stream_id, len));
     }
 
     #[inline(always)]
+    fn receive_finish(&mut self, now: Timestamp, stream_id: u64) {
+        self.log(now, format_args!("recv finish: stream={}", stream_id));
+    }
+
+    #[inline(always)]
     fn accept(&mut self, now: Timestamp, stream_id: u64) {
         self.log(now, format_args!("accept: stream={}", stream_id));
+    }
+
+    #[inline(always)]
+    fn open(&mut self, now: Timestamp, stream_id: u64) {
+        self.log(now, format_args!("open: stream={}", stream_id));
     }
 
     #[inline(always)]
@@ -228,6 +291,11 @@ impl<O: Output> Trace for Logger<'_, O> {
         } else {
             self.log(now, format_args!("trace: id={}", id));
         }
+    }
+
+    #[inline(always)]
+    fn unpark(&mut self, now: Timestamp, id: u64) {
+        self.log(now, format_args!("unpark: {}", id));
     }
 }
 
@@ -277,42 +345,5 @@ pub struct ReporterHandle(Arc<AtomicBool>);
 impl Drop for ReporterHandle {
     fn drop(&mut self) {
         self.0.store(true, Ordering::Relaxed);
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct Tracker {
-    pub had_traces: bool,
-}
-
-impl Tracker {
-    pub fn reset(&mut self) -> bool {
-        core::mem::replace(&mut self.had_traces, false)
-    }
-}
-
-impl Trace for Tracker {
-    fn exec(&mut self, _now: Timestamp, _op: &op::Connection) {
-        self.had_traces = true;
-    }
-
-    fn enter(&mut self, _now: Timestamp, _scope: usize, _thread: usize) {}
-
-    fn exit(&mut self, _now: Timestamp) {}
-
-    fn send(&mut self, _now: Timestamp, _stream_id: u64, _len: u64) {
-        self.had_traces = true;
-    }
-
-    fn receive(&mut self, _now: Timestamp, _stream_id: u64, _len: u64) {
-        self.had_traces = true;
-    }
-
-    fn accept(&mut self, _now: Timestamp, _stream_id: u64) {
-        self.had_traces = true;
-    }
-
-    fn trace(&mut self, _now: Timestamp, _id: u64) {
-        self.had_traces = true;
     }
 }

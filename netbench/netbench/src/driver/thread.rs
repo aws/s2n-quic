@@ -147,42 +147,58 @@ impl<'a> Thread<'a> {
         match self.op.as_mut().unwrap() {
             Op::Sleep => {
                 ready!(self.timer.poll(now));
-                Poll::Ready(Ok(()))
             }
-            Op::OpenBidirectionalStream { id } => conn.poll_open_bidirectional_stream(*id, cx),
-            Op::OpenSendStream { id } => conn.poll_open_send_stream(*id, cx),
+            Op::OpenBidirectionalStream { id } => {
+                ready!(conn.poll_open_bidirectional_stream(*id, cx))?;
+                trace.open(now, *id);
+            }
+            Op::OpenSendStream { id } => {
+                ready!(conn.poll_open_send_stream(*id, cx))?;
+                trace.open(now, *id);
+            }
             Op::Send {
                 id,
                 remaining,
                 rate,
-            } => self.timer.transfer(remaining, rate, now, cx, |bytes, cx| {
-                let amount = ready!(conn.poll_send(owner, *id, *bytes, cx))?;
-                trace.send(now, *id, amount);
-                Ok(amount).into()
-            }),
-            Op::SendFinish { id } => conn.poll_send_finish(owner, *id, cx),
+            } => {
+                return self.timer.transfer(remaining, rate, now, cx, |bytes, cx| {
+                    let amount = ready!(conn.poll_send(owner, *id, *bytes, cx))?;
+                    trace.send(now, *id, amount);
+                    Ok(amount).into()
+                })
+            }
+            Op::SendFinish { id } => {
+                ready!(conn.poll_send_finish(owner, *id, cx))?;
+                trace.send_finish(now, *id);
+            }
             Op::Receive {
                 id,
                 remaining,
                 rate,
-            } => self.timer.transfer(remaining, rate, now, cx, |bytes, cx| {
-                let amount = ready!(conn.poll_receive(owner, *id, *bytes, cx))?;
-                trace.receive(now, *id, amount);
-                Ok(amount).into()
-            }),
+            } => {
+                return self.timer.transfer(remaining, rate, now, cx, |bytes, cx| {
+                    let amount = ready!(conn.poll_receive(owner, *id, *bytes, cx))?;
+                    trace.receive(now, *id, amount);
+                    Ok(amount).into()
+                })
+            }
             Op::ReceiveAll { id, rate } => {
                 let mut remaining = Byte::MAX;
-                self.timer
+                return self
+                    .timer
                     .transfer(&mut remaining, rate, now, cx, |bytes, cx| {
                         let amount = ready!(conn.poll_receive(owner, *id, *bytes, cx))?;
                         trace.receive(now, *id, amount);
                         Ok(amount).into()
-                    })
+                    });
             }
-            Op::ReceiveFinish { id } => conn.poll_receive_finish(owner, *id, cx),
+            Op::ReceiveFinish { id } => {
+                ready!(conn.poll_receive_finish(owner, *id, cx))?;
+                trace.receive_finish(now, *id);
+            }
             Op::Wait { checkpoint } => {
                 ready!(checkpoints.park(*checkpoint));
-                Ok(()).into()
+                trace.unpark(now, *checkpoint);
             }
             Op::Scope { threads } => {
                 let mut all_ready = true;
@@ -197,13 +213,15 @@ impl<'a> Thread<'a> {
                         Poll::Pending => all_ready = false,
                     }
                 }
-                if all_ready {
-                    Poll::Ready(Ok(()))
-                } else {
-                    Poll::Pending
+                if !all_ready {
+                    return Poll::Pending;
                 }
             }
         }
+
+        // clear the timer for the next operation
+        self.timer.cancel();
+        Ok(()).into()
     }
 }
 

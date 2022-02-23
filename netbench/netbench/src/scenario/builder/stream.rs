@@ -96,7 +96,10 @@ impl<Endpoint, Location> Stream<Endpoint, Location> {
         self
     }
 
-    pub(crate) fn finish(self) -> Vec<op::Connection> {
+    pub(crate) fn finish(mut self) -> Vec<op::Connection> {
+        let stream_id = self.id;
+        self.ops.push(op::Connection::SendFinish { stream_id });
+        self.ops.push(op::Connection::ReceiveFinish { stream_id });
         self.ops
     }
 }
@@ -125,7 +128,9 @@ impl<Endpoint, Location> SendStream<Endpoint, Location> {
         }
     }
 
-    pub(crate) fn finish(self) -> Vec<op::Connection> {
+    pub(crate) fn finish(mut self) -> Vec<op::Connection> {
+        let stream_id = self.id;
+        self.ops.push(op::Connection::SendFinish { stream_id });
         self.ops
     }
 }
@@ -154,7 +159,9 @@ impl<Endpoint, Location> ReceiveStream<Endpoint, Location> {
         }
     }
 
-    pub(crate) fn finish(self) -> Vec<op::Connection> {
+    pub(crate) fn finish(mut self) -> Vec<op::Connection> {
+        let stream_id = self.id;
+        self.ops.push(op::Connection::ReceiveFinish { stream_id });
         self.ops
     }
 }

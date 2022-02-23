@@ -30,7 +30,7 @@ impl Default for Testing {
 }
 
 impl Testing {
-    pub fn advance_pair(&mut self, other: &mut Self) {
+    pub fn advance_pair(&mut self, other: &mut Self) -> Option<Timestamp> {
         let target = self.target.map(|target| {
             if let Some(other) = other.target {
                 target.min(other)
@@ -42,6 +42,9 @@ impl Testing {
         if let Some(target) = target {
             self.set(target);
             other.set(target);
+            Some(self.now)
+        } else {
+            None
         }
     }
 
