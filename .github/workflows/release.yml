@@ -30,7 +30,7 @@ jobs:
       - name: Compute tags
         id: tags
         run: |
-          DOCKER_IMAGE=public.ecr.aws/y1p7y6w8/s2n-quic-qns
+          DOCKER_IMAGE=public.ecr.aws/s2n/s2n-quic-qns
           VERSION=main
           if [[ $GITHUB_REF == refs/tags/* ]]; then
             VERSION=${GITHUB_REF#refs/tags/v}
