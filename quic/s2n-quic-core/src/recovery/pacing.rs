@@ -36,6 +36,10 @@ const SLOW_START_N: Fraction = Fraction(2, 1); // 2/1 = 2.00
 // TODO: Determine an appropriate value for this that balances improvements to 2nd packet loss and delay
 const INITIAL_INTERVAL: Duration = Duration::from_millis(0);
 
+/// low RTT networks should not be using pacing since it'll take longer to wake up from
+/// a timer than it would to deliver a packet
+const MINIMUM_PACING_RTT: Duration = Duration::from_millis(2);
+
 /// A packet pacer that returns departure times that evenly distribute bursts of packets over time
 #[derive(Clone, Debug, Default)]
 pub struct Pacer {
@@ -57,9 +61,8 @@ impl Pacer {
         max_datagram_size: u16,
         slow_start: bool,
     ) {
-        // low RTT networks should not using pacing since it'll take longer to wake up from
-        // a timer than it would deliver a packet
-        if rtt_estimator.smoothed_rtt() < Duration::from_millis(2) {
+        if rtt_estimator.smoothed_rtt() < MINIMUM_PACING_RTT {
+            self.next_packet_departure_time = None;
             return;
         }
 
