@@ -62,7 +62,6 @@ impl Pacer {
         slow_start: bool,
     ) {
         if rtt_estimator.smoothed_rtt() < MINIMUM_PACING_RTT {
-            self.next_packet_departure_time = None;
             return;
         }
 
