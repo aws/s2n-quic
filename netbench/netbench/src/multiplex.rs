@@ -168,10 +168,15 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
         }
     }
 
-    fn fill_read_buffer(&mut self, cx: &mut Context) -> Poll<Result<bool>> {
-        // only read from the socket if it's open and we don't have a pending frame
-        if !(self.rx_open && self.frame.is_none()) {
-            return Ok(true).into();
+    fn fill_read_buffer(&mut self, cx: &mut Context) -> Poll<Result<()>> {
+        // don't fill the buffer if we have a pending frame
+        if self.frame.is_some() {
+            return Poll::Pending;
+        }
+
+        // the socket is closed
+        if !self.rx_open {
+            return Ok(()).into();
         }
 
         let rx_open = &mut self.rx_open;
@@ -188,7 +193,7 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
             Ok(()).into()
         }))?;
 
-        Ok(false).into()
+        Ok(()).into()
     }
 
     fn dispatch_frame(&mut self, cx: &mut Context) -> Poll<Result<()>> {
@@ -424,24 +429,36 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
 
             self.flush_write_buffer(cx)?;
             self.flush_read_buffer(cx)?;
-            if ready!(self.fill_read_buffer(cx))? {
+            ready!(self.fill_read_buffer(cx))?;
+
+            // the connection is done
+            if !self.rx_open && self.frame.is_none() {
                 return Ok(()).into();
             }
         }
     }
 
     fn poll_finish(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        loop {
+        if self.tx_open {
             self.flush_write_buffer(cx)?;
-            self.flush_read_buffer(cx)?;
 
+            // wait to shutdown the socket until we have written everything
             if !self.write_buf.is_empty() {
                 return Poll::Pending;
             }
 
+            // notify the peer we're not writing anything anymore
             ready!(self.inner.as_mut().poll_shutdown(cx))?;
+            self.tx_open = false;
+        }
 
-            if ready!(self.fill_read_buffer(cx))? {
+        loop {
+            // work to read all of the remaining data
+            self.flush_read_buffer(cx)?;
+            ready!(self.fill_read_buffer(cx))?;
+
+            // the connection is done
+            if !self.rx_open && self.frame.is_none() {
                 return Ok(()).into();
             }
         }
@@ -510,15 +527,19 @@ mod tests {
                 let mut prev_count = 0;
                 let mut cx = core::task::Context::from_waker(&waker);
 
+                // let mut io_logger = crate::trace::StdioLogger::new(0, traces);
+
                 loop {
                     let c = client.poll(
                         &mut client_trace,
+                        // &mut io_logger,
                         &mut client_checkpoints,
                         &mut client_timer,
                         &mut cx,
                     );
                     let s = server.poll(
                         &mut server_trace,
+                        // &mut io_logger,
                         &mut server_checkpoints,
                         &mut server_timer,
                         &mut cx,
@@ -574,13 +595,25 @@ mod tests {
         );
     });
 
-    test!(single_slow_stream, Config::default(), |conn| {
+    test!(single_slow_send_stream, Config::default(), |conn| {
         conn.open_send_stream(
             |local| {
                 local.set_send_rate(100.bytes() / 50.millis());
                 local.send(1.kilobytes());
             },
             |remote| {
+                remote.receive(1.kilobytes());
+            },
+        );
+    });
+
+    test!(single_slow_recv_stream, Config::default(), |conn| {
+        conn.open_send_stream(
+            |local| {
+                local.send(1.kilobytes());
+            },
+            |remote| {
+                remote.set_receive_rate(100.bytes() / 50.millis());
                 remote.receive(1.kilobytes());
             },
         );

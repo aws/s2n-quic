@@ -31,13 +31,11 @@ impl Default for Testing {
 
 impl Testing {
     pub fn advance_pair(&mut self, other: &mut Self) -> Option<Timestamp> {
-        let target = self.target.map(|target| {
-            if let Some(other) = other.target {
-                target.min(other)
-            } else {
-                target
-            }
-        });
+        let target = match (self.target, other.target) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, None) => a,
+            (None, b) => b,
+        };
 
         if let Some(target) = target {
             self.set(target);

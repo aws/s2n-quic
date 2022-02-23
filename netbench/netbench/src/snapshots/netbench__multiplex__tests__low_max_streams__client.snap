@@ -1,6 +1,6 @@
 ---
 source: netbench/src/multiplex.rs
-assertion_line: 598
+assertion_line: 641
 expression: client_trace.as_str().unwrap()
 
 ---
