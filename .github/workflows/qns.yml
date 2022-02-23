@@ -460,7 +460,7 @@ jobs:
 
       - name: Pull s2n-quic-qns:main
         if: github.event.pull_request
-        run: docker pull public.ecr.aws/y1p7y6w8/s2n-quic-qns:main
+        run: docker pull public.ecr.aws/s2n/s2n-quic-qns:main
 
       - uses: actions/download-artifact@v2
         with:
