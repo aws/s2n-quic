@@ -488,6 +488,76 @@ mod tests {
     use insta::assert_display_snapshot;
     use std::collections::HashSet;
 
+    fn test(config: Config, scenario: &Scenario) -> (MemoryLogger, MemoryLogger) {
+        let traces = &scenario.traces;
+
+        let (client, server) = testing::Connection::pair(10000);
+
+        let mut client = {
+            let scenario = &scenario.clients[0].connections[0];
+            let conn = Box::pin(client);
+            let conn = super::Connection::new(conn, config.clone());
+            Driver::new(scenario, conn)
+        };
+        let mut client_trace = MemoryLogger::new(0, traces);
+        let mut client_checkpoints = HashSet::new();
+        let mut client_timer = timer::Testing::default();
+
+        let mut server = {
+            let scenario = &scenario.servers[0].connections[0];
+            let conn = Box::pin(server);
+            let conn = super::Connection::new(conn, config);
+            Driver::new(scenario, conn)
+        };
+        let mut server_trace = MemoryLogger::new(1, traces);
+        let mut server_checkpoints = HashSet::new();
+        let mut server_timer = timer::Testing::default();
+
+        let (waker, count) = new_count_waker();
+        let mut prev_count = 0;
+        let mut cx = core::task::Context::from_waker(&waker);
+
+        loop {
+            let c = client.poll(
+                &mut client_trace,
+                &mut client_checkpoints,
+                &mut client_timer,
+                &mut cx,
+            );
+            let s = server.poll(
+                &mut server_trace,
+                &mut server_checkpoints,
+                &mut server_timer,
+                &mut cx,
+            );
+
+            match (c, s) {
+                (Poll::Ready(Ok(())), Poll::Ready(Ok(()))) => break,
+                (Poll::Ready(Err(e)), _) | (_, Poll::Ready(Err(e))) => panic!("{}", e),
+                _ => {
+                    let current_count = count.get();
+                    if current_count > prev_count {
+                        prev_count = current_count;
+                        continue;
+                    }
+
+                    if client_timer.advance_pair(&mut server_timer).is_none() {
+                        eprintln!("the timer did not advance!");
+                        eprintln!("server trace:");
+                        eprintln!("{}", server_trace.as_str().unwrap());
+                        eprintln!("{:#?}", server);
+                        eprintln!("client trace:");
+                        eprintln!("{}", client_trace.as_str().unwrap());
+                        eprintln!("{:#?}", client);
+                        panic!("test is deadlocked");
+                    }
+                }
+            }
+        }
+
+        (client_trace, server_trace)
+    }
+
     macro_rules! test {
         ($name:ident, $config:expr, $builder:expr) => {
             #[test]
@@ -499,76 +569,8 @@ mod tests {
                         client.connect_to(server, $builder);
                     });
                 });
-                let traces = &scenario.traces;
 
-                let (client, server) = testing::Connection::pair(10000);
-
-                let mut client = {
-                    let scenario = &scenario.clients[0].connections[0];
-                    let conn = Box::pin(client);
-                    let conn = super::Connection::new(conn, $config);
-                    Driver::new(scenario, conn)
-                };
-                let mut client_trace = MemoryLogger::new(0, traces);
-                let mut client_checkpoints = HashSet::new();
-                let mut client_timer = timer::Testing::default();
-
-                let mut server = {
-                    let scenario = &scenario.servers[0].connections[0];
-                    let conn = Box::pin(server);
-                    let conn = super::Connection::new(conn, $config);
-                    Driver::new(scenario, conn)
-                };
-                let mut server_trace = MemoryLogger::new(1, traces);
-                let mut server_checkpoints = HashSet::new();
-                let mut server_timer = timer::Testing::default();
-
-                let (waker, count) = new_count_waker();
-                let mut prev_count = 0;
-                let mut cx = core::task::Context::from_waker(&waker);
-
-                // let mut io_logger = crate::trace::StdioLogger::new(0, traces);
-
-                loop {
-                    let c = client.poll(
-                        &mut client_trace,
-                        // &mut io_logger,
-                        &mut client_checkpoints,
-                        &mut client_timer,
-                        &mut cx,
-                    );
-                    let s = server.poll(
-                        &mut server_trace,
-                        // &mut io_logger,
-                        &mut server_checkpoints,
-                        &mut server_timer,
-                        &mut cx,
-                    );
-
-                    match (c, s) {
-                        (Poll::Ready(Ok(())), Poll::Ready(Ok(()))) => break,
-                        (Poll::Ready(Err(e)), _) => return Err(e.into()),
-                        (_, Poll::Ready(Err(e))) => return Err(e.into()),
-                        _ => {
-                            let current_count = count.get();
-                            if current_count > prev_count {
-                                prev_count = current_count;
-                                continue;
-                            }
-
-                            if client_timer.advance_pair(&mut server_timer).is_none() {
-                                eprintln!("the timer did not advance!");
-                                eprintln!("server trace:");
-                                eprintln!("{}", server_trace.as_str().unwrap());
-                                eprintln!("{:#?}", server);
-                                eprintln!("client trace:");
-                                eprintln!("{}", client_trace.as_str().unwrap());
-                                eprintln!("{:#?}", client);
-                                panic!("test is deadlocked");
-                            }
-                        }
-                    }
-                }
+                let (client_trace, server_trace) = test($config, &scenario);
 
                 assert_display_snapshot!(
                     concat!(stringify!($name), "__client"),
