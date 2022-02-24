@@ -12,6 +12,8 @@ default = ["s2n-quic"]
 bytes = "1"
 enum-primitive-derive = "0.2"
 futures = "0.3"
+humansize = "1"
+humantime = "2"
 num-traits = "0.2"
 s2n-quic-core = { version = "0.1", path = "../../quic/s2n-quic-core", features = ["testing"] }
 s2n-quic = { version = "1", path = "../../quic/s2n-quic", optional = true }

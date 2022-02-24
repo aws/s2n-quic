@@ -1,0 +1,11 @@
+[package]
+name = "netbench-scenarios"
+version = "0.1.0"
+authors = ["AWS s2n"]
+edition = "2018"
+license = "Apache-2.0"
+
+[dependencies]
+clap = "2"
+humantime = "2"
+netbench = { path = "../netbench" }

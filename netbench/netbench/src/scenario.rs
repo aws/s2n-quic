@@ -35,6 +35,11 @@ impl Scenario {
         let scenario = serde_json::from_reader(&mut file)?;
         Ok(scenario)
     }
+
+    pub fn write<W: std::io::Write>(&self, out: &mut W) -> std::io::Result<()> {
+        serde_json::to_writer_pretty(out, self)?;
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Hash)]
