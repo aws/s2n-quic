@@ -137,6 +137,8 @@ pub struct Controller {
 
 impl Controller {
     pub fn new(local_window: u64, peer_window: u64) -> Self {
+        let local_window = local_window.max(1);
+        let peer_window = peer_window.max(1);
         Self {
             open_offset: 0,
             peer_window_offset: local_window,
@@ -165,7 +167,8 @@ impl Controller {
     }
 
     pub fn transmit(&mut self) -> Option<u64> {
-        if self.local_window_offset != self.transmitted_window_offset {
+        // send a max streams if we are using more than half capacity
+        if self.local_window_offset >= self.transmitted_window_offset * 2 {
             self.transmitted_window_offset = self.local_window_offset;
             Some(self.local_window_offset)
         } else {

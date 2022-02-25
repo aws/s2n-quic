@@ -1,7 +1,7 @@
 ---
 source: netbench/src/multiplex.rs
-assertion_line: 560
-expression: (client_trace.1).as_str().unwrap()
+assertion_line: 598
+expression: client_trace.as_str().unwrap()
 
 ---
 0:00:00.000001: 0:0.0:exec: OpenSendStream { stream_id: 0 }

@@ -168,10 +168,15 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
         }
     }
 
-    fn fill_read_buffer(&mut self, cx: &mut Context) -> Poll<Result<bool>> {
-        // only read from the socket if it's open and we don't have a pending frame
-        if !(self.rx_open && self.frame.is_none()) {
-            return Ok(true).into();
+    fn fill_read_buffer(&mut self, cx: &mut Context) -> Poll<Result<()>> {
+        // don't fill the buffer if we have a pending frame
+        if self.frame.is_some() {
+            return Poll::Pending;
+        }
+
+        // the socket is closed
+        if !self.rx_open {
+            return Ok(()).into();
         }
 
         let rx_open = &mut self.rx_open;
@@ -188,7 +193,7 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
             Ok(()).into()
         }))?;
 
-        Ok(false).into()
+        Ok(()).into()
     }
 
     fn dispatch_frame(&mut self, cx: &mut Context) -> Poll<Result<()>> {
@@ -424,24 +429,36 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
 
             self.flush_write_buffer(cx)?;
             self.flush_read_buffer(cx)?;
-            if ready!(self.fill_read_buffer(cx))? {
+            ready!(self.fill_read_buffer(cx))?;
+
+            // the connection is done
+            if !self.rx_open && self.frame.is_none() {
                 return Ok(()).into();
             }
         }
     }
 
     fn poll_finish(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        loop {
+        if self.tx_open {
             self.flush_write_buffer(cx)?;
-            self.flush_read_buffer(cx)?;
 
+            // wait to shutdown the socket until we have written everything
             if !self.write_buf.is_empty() {
                 return Poll::Pending;
             }
 
+            // notify the peer we're not writing anything anymore
             ready!(self.inner.as_mut().poll_shutdown(cx))?;
+            self.tx_open = false;
+        }
 
-            if ready!(self.fill_read_buffer(cx))? {
+        loop {
+            // work to read all of the remaining data
+            self.flush_read_buffer(cx)?;
+            ready!(self.fill_read_buffer(cx))?;
+
+            // the connection is done
+            if !self.rx_open && self.frame.is_none() {
                 return Ok(()).into();
             }
         }
@@ -471,6 +488,76 @@ mod tests {
     use insta::assert_display_snapshot;
     use std::collections::HashSet;
 
+    fn test(config: Config, scenario: &Scenario) -> (MemoryLogger, MemoryLogger) {
+        let traces = &scenario.traces;
+
+        let (client, server) = testing::Connection::pair(10000);
+
+        let mut client = {
+            let scenario = &scenario.clients[0].connections[0];
+            let conn = Box::pin(client);
+            let conn = super::Connection::new(conn, config.clone());
+            Driver::new(scenario, conn)
+        };
+        let mut client_trace = MemoryLogger::new(0, traces);
+        let mut client_checkpoints = HashSet::new();
+        let mut client_timer = timer::Testing::default();
+
+        let mut server = {
+            let scenario = &scenario.servers[0].connections[0];
+            let conn = Box::pin(server);
+            let conn = super::Connection::new(conn, config);
+            Driver::new(scenario, conn)
+        };
+        let mut server_trace = MemoryLogger::new(1, traces);
+        let mut server_checkpoints = HashSet::new();
+        let mut server_timer = timer::Testing::default();
+
+        let (waker, count) = new_count_waker();
+        let mut prev_count = 0;
+        let mut cx = core::task::Context::from_waker(&waker);
+
+        loop {
+            let c = client.poll(
+                &mut client_trace,
+                &mut client_checkpoints,
+                &mut client_timer,
+                &mut cx,
+            );
+            let s = server.poll(
+                &mut server_trace,
+                &mut server_checkpoints,
+                &mut server_timer,
+                &mut cx,
+            );
+
+            match (c, s) {
+                (Poll::Ready(Ok(())), Poll::Ready(Ok(()))) => break,
+                (Poll::Ready(Err(e)), _) | (_, Poll::Ready(Err(e))) => panic!("{}", e),
+                _ => {
+                    let current_count = count.get();
+                    if current_count > prev_count {
+                        prev_count = current_count;
+                        continue;
+                    }
+
+                    if client_timer.advance_pair(&mut server_timer).is_none() {
+                        eprintln!("the timer did not advance!");
+                        eprintln!("server trace:");
+                        eprintln!("{}", server_trace.as_str().unwrap());
+                        eprintln!("{:#?}", server);
+                        eprintln!("client trace:");
+                        eprintln!("{}", client_trace.as_str().unwrap());
+                        eprintln!("{:#?}", client);
+                        panic!("test is deadlocked");
+                    }
+                }
+            }
+        }
+
+        (client_trace, server_trace)
+    }
+
     macro_rules! test {
         ($name:ident, $config:expr, $builder:expr) => {
             #[test]
@@ -482,72 +569,8 @@ mod tests {
                         client.connect_to(server, $builder);
                     });
                 });
-                let traces = &scenario.traces;
 
-                let (client, server) = testing::Connection::pair(10000);
-
-                let mut client = {
-                    let scenario = &scenario.clients[0].connections[0];
-                    let conn = Box::pin(client);
-                    let conn = super::Connection::new(conn, $config);
-                    Driver::new(scenario, conn)
-                };
-                let mut client_trace = MemoryLogger::new(0, traces);
-                let mut client_checkpoints = HashSet::new();
-                let mut client_timer = timer::Testing::default();
-
-                let mut server = {
-                    let scenario = &scenario.servers[0].connections[0];
-                    let conn = Box::pin(server);
-                    let conn = super::Connection::new(conn, $config);
-                    Driver::new(scenario, conn)
-                };
-                let mut server_trace = MemoryLogger::new(1, traces);
-                let mut server_checkpoints = HashSet::new();
-                let mut server_timer = timer::Testing::default();
-
-                let (waker, count) = new_count_waker();
-                let mut prev_count = 0;
-                let mut cx = core::task::Context::from_waker(&waker);
-
-                loop {
-                    let c = client.poll(
-                        &mut client_trace,
-                        &mut client_checkpoints,
-                        &mut client_timer,
-                        &mut cx,
-                    );
-                    let s = server.poll(
-                        &mut server_trace,
-                        &mut server_checkpoints,
-                        &mut server_timer,
-                        &mut cx,
-                    );
-
-                    match (c, s) {
-                        (Poll::Ready(Ok(())), Poll::Ready(Ok(()))) => break,
-                        (Poll::Ready(Err(e)), _) => return Err(e.into()),
-                        (_, Poll::Ready(Err(e))) => return Err(e.into()),
-                        _ => {
-                            let current_count = count.get();
-                            if current_count > prev_count {
-                                prev_count = current_count;
-                                continue;
-                            }
-
-                            if client_timer.advance_pair(&mut server_timer).is_none() {
-                                eprintln!("the timer did not advance!");
-                                eprintln!("server trace:");
-                                eprintln!("{}", server_trace.as_str().unwrap());
-                                eprintln!("{:#?}", server);
-                                eprintln!("client trace:");
-                                eprintln!("{}", client_trace.as_str().unwrap());
-                                eprintln!("{:#?}", client);
-                                panic!("test is deadlocked");
-                            }
-                        }
-                    }
-                }
+                let (client_trace, server_trace) = test($config, &scenario);
 
                 assert_display_snapshot!(
                     concat!(stringify!($name), "__client"),
@@ -574,13 +597,25 @@ mod tests {
         );
     });
 
-    test!(single_slow_stream, Config::default(), |conn| {
+    test!(single_slow_send_stream, Config::default(), |conn| {
         conn.open_send_stream(
             |local| {
                 local.set_send_rate(100.bytes() / 50.millis());
                 local.send(1.kilobytes());
             },
             |remote| {
+                remote.receive(1.kilobytes());
+            },
+        );
+    });
+
+    test!(single_slow_recv_stream, Config::default(), |conn| {
+        conn.open_send_stream(
+            |local| {
+                local.send(1.kilobytes());
+            },
+            |remote| {
+                remote.set_receive_rate(100.bytes() / 50.millis());
                 remote.receive(1.kilobytes());
             },
         );

@@ -64,10 +64,6 @@ impl<'a, C: Connection> Driver<'a, C> {
         let mut poll_accept = false;
         let mut all_ready = true;
 
-        if let Some(target) = timer::Provider::next_expiration(&self) {
-            all_ready |= timer.poll(target, cx).is_ready();
-        };
-
         trace.enter(now, 0, 0);
         let result = self.local_thread.poll(
             &mut self.connection,
@@ -127,6 +123,10 @@ impl<'a, C: Connection> Driver<'a, C> {
                 Poll::Pending => all_ready = false,
             }
         }
+
+        if let Some(target) = timer::Provider::next_expiration(&self) {
+            all_ready |= timer.poll(target, cx).is_ready();
+        };
 
         if all_ready {
             self.is_finished = true;

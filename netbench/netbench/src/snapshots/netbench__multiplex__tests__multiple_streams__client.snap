@@ -1,7 +1,7 @@
 ---
 source: netbench/src/multiplex.rs
-assertion_line: 617
-expression: (client_trace.1).as_str().unwrap()
+assertion_line: 667
+expression: client_trace.as_str().unwrap()
 
 ---
 0:00:00.000001: 0:0.0:exec: Scope { threads: [[OpenSendStream { stream_id: 0 }, SendRate { stream_id: 0, rate: Rate { bytes: Byte(100), period: 50ms } }, Send { stream_id: 0, bytes: Byte(1000) }, SendFinish { stream_id: 0 }], [OpenSendStream { stream_id: 1 }, SendRate { stream_id: 1, rate: Rate { bytes: Byte(100), period: 50ms } }, Send { stream_id: 1, bytes: Byte(1000) }, SendFinish { stream_id: 1 }], [OpenSendStream { stream_id: 2 }, SendRate { stream_id: 2, rate: Rate { bytes: Byte(100), period: 50ms } }, Send { stream_id: 2, bytes: Byte(1000) }, SendFinish { stream_id: 2 }]] }
