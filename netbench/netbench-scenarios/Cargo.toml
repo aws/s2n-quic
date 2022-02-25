@@ -6,6 +6,6 @@ edition = "2018"
 license = "Apache-2.0"
 
 [dependencies]
-clap = "2"
+clap = { version = "2", features = ["color", "suggestions"] }
 humantime = "2"
 netbench = { path = "../netbench" }

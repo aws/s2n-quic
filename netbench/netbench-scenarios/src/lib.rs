@@ -16,12 +16,14 @@ pub trait Configs {
 
 #[doc(hidden)]
 pub fn main<C: Configs>() -> Result<()> {
-    let app = App::new("netbench scenarios").arg(
-        Arg::with_name("out_dir")
-            .value_name("OUT_DIR")
-            .default_value("target/netbench")
-            .takes_value(true),
-    );
+    let app = App::new("netbench scenarios")
+        .after_help(LONG_ABOUT.trim())
+        .arg(
+            Arg::with_name("out_dir")
+                .value_name("OUT_DIR")
+                .default_value("target/netbench")
+                .takes_value(true),
+        );
 
     let map = C::registry();
     let args = map.clap_args().collect::<Vec<_>>();
@@ -48,6 +50,33 @@ pub fn main<C: Configs>() -> Result<()> {
 
     Ok(())
 }
+
+const LONG_ABOUT: &'static str = r#"
+FORMATS:
+    BYTES
+        42b         ->    42 bits
+        42          ->    42 bytes
+        42B         ->    42 bytes
+        42K         ->    42000 bytes
+        42Kb        ->    42000 bits
+        42KB        ->    42000 bytes
+        42KiB       ->    43008 bytes
+
+    COUNT
+        42          ->    42 units
+
+    RATE
+        42bps       ->    42 bits per second
+        42Mbps      ->    42 megabits per second
+        42MBps      ->    42 megabytes per second
+        42MiBps     ->    42 mebibytes per second
+        42MB/50ms   ->    42 megabytes per 50 milliseconds
+
+    TIME
+        42ms         ->    42 milliseconds
+        42s          ->    42 seconds
+        1s42ms       ->    1 second + 42 milliseconds
+"#;
 
 #[macro_export]
 macro_rules! scenarios {

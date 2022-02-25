@@ -52,6 +52,31 @@ OPTIONS:
 ARGS:
     <OUT_DIR>
              [default: target/netbench]
+
+FORMATS:
+    BYTES
+        42b         ->    42 bits
+        42          ->    42 bytes
+        42B         ->    42 bytes
+        42K         ->    42000 bytes
+        42Kb        ->    42000 bits
+        42KB        ->    42000 bytes
+        42KiB       ->    43008 bytes
+
+    COUNT
+        42          ->    42 units
+
+    RATE
+        42bps       ->    42 bits per second
+        42Mbps      ->    42 megabits per second
+        42MBps      ->    42 megabytes per second
+        42MiBps     ->    42 mebibytes per second
+        42MB/50ms   ->    42 megabytes per 50 milliseconds
+
+    TIME
+        42ms         ->    42 milliseconds
+        42s          ->    42 seconds
+        1s42ms       ->    1 second + 42 milliseconds
 ```
 
 Moving forward, we can add any useful scenarios to this list.
@@ -105,7 +130,7 @@ pub fn scenario(config: Config) -> Scenario {
 }
 ```
 
-The can then run their scenario generator:
+They can then run their scenario generator:
 
 ```shell
 $ cargo run -- --help
