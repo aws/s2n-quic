@@ -1,7 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::units::{duration_format, Byte, Duration};
+use crate::units::{duration_format, Byte, Duration, DurationExt};
+use core::fmt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -10,6 +11,37 @@ pub struct Rate {
     pub bytes: Byte,
     #[serde(with = "duration_format", rename = "period_ms")]
     pub period: Duration,
+}
+
+impl fmt::Display for Rate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.period == 1.seconds() {
+            return write!(f, "{}ps", self.bytes);
+        }
+        write!(f, "{}/{:?}", self.bytes, self.period)
+    }
+}
+
+impl core::str::FromStr for Rate {
+    type Err = crate::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some(bytes) = s.strip_suffix("ps") {
+            return Ok(Self {
+                bytes: bytes.parse()?,
+                period: 1.seconds(),
+            });
+        }
+
+        if let Some((bytes, period)) = s.split_once('/') {
+            Ok(Self {
+                bytes: bytes.trim().parse()?,
+                period: *humantime::Duration::from_str(period.trim())?,
+            })
+        } else {
+            Err(format!("invalid rate: {}", s).into())
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -29,6 +61,21 @@ mod tests {
             42.bytes() / 42.millis(),
             42.mebibytes() / 42.seconds(),
             42.gigabytes() / 42.minutes()
+        ]);
+    }
+
+    fn p(s: &str) -> crate::Result<Rate> {
+        s.parse()
+    }
+
+    #[test]
+    fn parse_test() {
+        assert_debug_snapshot!([
+            p("42bps"),
+            p("42Bps"),
+            p("42KBps"),
+            p("42Kb / 50ms"),
+            p("42Mb/5ms"),
         ]);
     }
 }
