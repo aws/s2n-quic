@@ -242,6 +242,7 @@ impl connection::Trait for TestConnection {
     fn poll_open_stream(
         &mut self,
         _stream_type: stream::StreamType,
+        _token: &mut connection::OpenToken,
         _context: &Context,
     ) -> Poll<Result<stream::StreamId, connection::Error>> {
         todo!()

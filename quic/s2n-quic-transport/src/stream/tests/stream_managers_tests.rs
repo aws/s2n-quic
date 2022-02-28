@@ -6,7 +6,7 @@
 use super::*;
 use crate::{
     connection::{
-        finalization::Provider, InternalConnectionId, InternalConnectionIdGenerator,
+        self, finalization::Provider, InternalConnectionId, InternalConnectionIdGenerator,
         Limits as ConnectionLimits,
     },
     contexts::{ConnectionApiCallContext, OnTransmitError, WriteContext},
@@ -33,7 +33,6 @@ use futures_test::task::new_count_waker;
 use s2n_quic_core::{
     ack::Set as AckSet,
     application::Error as ApplicationErrorCode,
-    connection,
     frame::{
         stream::StreamRef, DataBlocked, Frame, MaxData, MaxStreamData, MaxStreams, ResetStream,
         StopSending, Stream as StreamFrame, StreamDataBlocked, StreamsBlocked,
@@ -410,8 +409,9 @@ fn try_open(
     stream_type: StreamType,
 ) -> Result<StreamId, connection::Error> {
     let (accept_waker, _accept_wake_counter) = new_count_waker();
+    let mut token = connection::OpenToken::new();
 
-    match manager.poll_open(stream_type, &Context::from_waker(&accept_waker)) {
+    match manager.poll_open(stream_type, &mut token, &Context::from_waker(&accept_waker)) {
         Poll::Ready(res) => res,
         Poll::Pending => Err(connection::Error::unspecified()),
     }
@@ -673,8 +673,9 @@ fn max_streams_replenishes_stream_control_capacity() {
         }
 
         let (waker, _counter) = new_count_waker();
+        let mut token = connection::OpenToken::new();
         assert!(manager
-            .poll_open(stream_type, &Context::from_waker(&waker))
+            .poll_open(stream_type, &mut token, &Context::from_waker(&waker))
             .is_pending());
 
         for additional_streams in &[VarInt::from_u8(0), VarInt::from_u8(1), VarInt::from_u8(10)] {
@@ -693,7 +694,7 @@ fn max_streams_replenishes_stream_control_capacity() {
         }
 
         assert!(manager
-            .poll_open(stream_type, &Context::from_waker(&waker))
+            .poll_open(stream_type, &mut token, &Context::from_waker(&waker))
             .is_ready());
     }
 }
@@ -802,12 +803,13 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
 
     for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
         let (waker, _) = new_count_waker();
+        let mut token = connection::OpenToken::new();
 
         let mut opened_streams = VarInt::from_u8(0);
 
         // Open streams until blocked
         while manager
-            .poll_open(stream_type, &Context::from_waker(&waker))
+            .poll_open(stream_type, &mut token, &Context::from_waker(&waker))
             .is_ready()
         {
             opened_streams += 1;
@@ -900,7 +902,7 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
 
         // Open streams until blocked
         while manager
-            .poll_open(stream_type, &Context::from_waker(&waker))
+            .poll_open(stream_type, &mut token, &Context::from_waker(&waker))
             .is_ready()
         {
             opened_streams += 1;
@@ -931,12 +933,13 @@ fn streams_blocked_period() {
     for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
         let block_func = |manager: &mut AbstractStreamManager<MockStream>| {
             let (waker, _) = new_count_waker();
+            let mut token = connection::OpenToken::new();
 
             let mut opened_streams = VarInt::from_u8(0);
 
             // Open streams until blocked
             while manager
-                .poll_open(stream_type, &Context::from_waker(&waker))
+                .poll_open(stream_type, &mut token, &Context::from_waker(&waker))
                 .is_ready()
             {
                 opened_streams += 1;
@@ -1235,10 +1238,11 @@ fn blocked_on_local_concurrent_stream_limit() {
         assert!(available_outgoing_stream_capacity < VarInt::from_u32(100_000));
 
         let (waker, wake_counter) = new_count_waker();
+        let mut token = connection::OpenToken::new();
 
         for _i in 0..*available_outgoing_stream_capacity {
             assert!(manager
-                .poll_open(stream_type, &Context::from_waker(&waker))
+                .poll_open(stream_type, &mut token, &Context::from_waker(&waker))
                 .is_ready());
         }
 
@@ -1246,7 +1250,7 @@ fn blocked_on_local_concurrent_stream_limit() {
 
         // Cannot open any more streams
         assert!(manager
-            .poll_open(stream_type, &Context::from_waker(&waker))
+            .poll_open(stream_type, &mut token, &Context::from_waker(&waker))
             .is_pending());
 
         // No STREAMS_BLOCKED frame should be transmitted since we are blocked on the local
@@ -1263,11 +1267,11 @@ fn blocked_on_local_concurrent_stream_limit() {
 
         // One more stream can be opened
         assert!(manager
-            .poll_open(stream_type, &Context::from_waker(&waker))
+            .poll_open(stream_type, &mut token, &Context::from_waker(&waker))
             .is_ready());
         assert_eq!(wake_counter, 1);
         assert!(manager
-            .poll_open(stream_type, &Context::from_waker(&waker))
+            .poll_open(stream_type, &mut token, &Context::from_waker(&waker))
             .is_pending());
 
         // Close the stream manager and verify the wake counter is incremented

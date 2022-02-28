@@ -22,6 +22,7 @@ mod errors;
 pub(crate) mod finalization;
 mod internal_connection_id;
 pub(crate) mod local_id_registry;
+pub(crate) mod open_token;
 pub(crate) mod peer_id_registry;
 pub(crate) mod transmission;
 
@@ -39,6 +40,7 @@ pub(crate) use transmission::{ConnectionTransmission, ConnectionTransmissionCont
 pub use api::Connection;
 pub use connection_impl::ConnectionImpl as Implementation;
 pub use connection_trait::Lock;
+pub use open_token::Pair as OpenToken;
 /// re-export core
 pub use s2n_quic_core::connection::*;
 

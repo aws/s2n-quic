@@ -4,7 +4,7 @@
 //! Defines the public QUIC connection API
 
 use crate::{
-    connection::{self, ConnectionApi},
+    connection::{self, ConnectionApi, OpenToken},
     stream::{ops, Stream, StreamError, StreamId},
 };
 use bytes::Bytes;
@@ -29,6 +29,11 @@ pub struct Connection {
     /// generic parameters and allows applications to interact with connections in a
     /// straightforward manner.
     pub(super) api: ConnectionApi,
+
+    /// The open token associated with each connection handle.
+    ///
+    /// This is used to correctly track `poll_open_stream` requests.
+    open_token: OpenToken,
 }
 
 impl fmt::Debug for Connection {
@@ -90,6 +95,8 @@ impl Clone for Connection {
             .fetch_add(1, Ordering::Relaxed);
         Self {
             api: self.api.clone(),
+            // don't clone the open token - each instance should have its own token
+            open_token: OpenToken::new(),
         }
     }
 }
@@ -104,7 +111,10 @@ impl Connection {
         // https://github.com/rust-lang/rust/blob/e012a191d768adeda1ee36a99ef8b92d51920154/library/alloc/src/sync.rs#L1329
         api.application_handle_count()
             .fetch_add(1, Ordering::Relaxed);
-        Self { api }
+        Self {
+            api,
+            open_token: OpenToken::new(),
+        }
     }
 
     /// Accepts an incoming [`Stream`]
@@ -133,7 +143,8 @@ impl Connection {
         stream_type: StreamType,
         context: &Context,
     ) -> Poll<Result<Stream, connection::Error>> {
-        self.api.poll_open_stream(&self.api, stream_type, context)
+        self.api
+            .poll_open_stream(&self.api, stream_type, &mut self.open_token, context)
     }
 
     #[inline]

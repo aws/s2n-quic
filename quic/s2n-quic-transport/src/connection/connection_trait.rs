@@ -374,6 +374,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     fn poll_open_stream(
         &mut self,
         stream_type: stream::StreamType,
+        open_token: &mut connection::OpenToken,
         context: &Context,
     ) -> Poll<Result<stream::StreamId, connection::Error>>;
 

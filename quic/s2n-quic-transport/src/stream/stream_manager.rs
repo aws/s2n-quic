@@ -539,6 +539,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     pub fn poll_open(
         &mut self,
         stream_type: StreamType,
+        open_token: &mut connection::OpenToken,
         context: &Context,
     ) -> Poll<Result<StreamId, connection::Error>> {
         // If StreamManager was closed, return the error
@@ -555,7 +556,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         if self
             .inner
             .stream_controller
-            .poll_local_open_stream(stream_type, context)
+            .poll_local_open_stream(stream_type, open_token, context)
             .is_pending()
         {
             return Poll::Pending;
