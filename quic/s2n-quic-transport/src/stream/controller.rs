@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    connection,
+    connection::{self, open_token},
     contexts::OnTransmitError,
     sync::{IncrementalValueSync, PeriodicSync, ValueToFrameWriter},
     transmission,
@@ -104,18 +104,18 @@ impl Controller {
     pub fn poll_local_open_stream(
         &mut self,
         stream_type: StreamType,
-        open_token: &mut connection::OpenToken,
+        open_tokens: &mut connection::OpenToken,
         context: &Context,
     ) -> Poll<()> {
         match stream_type {
             StreamType::Bidirectional => self
                 .bidi_controller
                 .outgoing
-                .poll_open_stream(open_token, context),
+                .poll_open_stream(&mut open_tokens.bidirectional, context),
             StreamType::Unidirectional => self
                 .uni_controller
                 .outgoing
-                .poll_open_stream(open_token, context),
+                .poll_open_stream(&mut open_tokens.unidirectional, context),
         }
     }
 
@@ -326,9 +326,9 @@ struct OutgoingController {
     opened_streams: VarInt,
     closed_streams: VarInt,
     /// Keeps track of all of the issued open tokens
-    token_counter: connection::OpenToken,
+    token_counter: open_token::Counter,
     /// Keeps track of all of the expired open tokens
-    expired_token: connection::OpenToken,
+    expired_token: open_token::Token,
 }
 
 impl OutgoingController {
@@ -343,8 +343,8 @@ impl OutgoingController {
             streams_blocked_sync: PeriodicSync::new(),
             opened_streams: VarInt::from_u8(0),
             closed_streams: VarInt::from_u8(0),
-            token_counter: connection::OpenToken::counter(),
-            expired_token: connection::OpenToken::new(),
+            token_counter: open_token::Counter::new(),
+            expired_token: open_token::Token::new(),
         }
     }
 
@@ -368,7 +368,7 @@ impl OutgoingController {
 
     fn poll_open_stream(
         &mut self,
-        open_token: &mut connection::OpenToken,
+        open_token: &mut open_token::Token,
         context: &Context,
     ) -> Poll<()> {
         if self.available_stream_capacity() < VarInt::from_u32(1) {
@@ -402,7 +402,7 @@ impl OutgoingController {
         }
 
         // reset the open token since they're no longer blocked
-        *open_token = connection::OpenToken::new();
+        open_token.clear();
 
         Poll::Ready(())
     }
