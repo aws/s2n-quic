@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    connection,
     contexts::OnTransmitError,
     sync::{IncrementalValueSync, PeriodicSync, ValueToFrameWriter},
     transmission,
@@ -103,11 +104,18 @@ impl Controller {
     pub fn poll_local_open_stream(
         &mut self,
         stream_type: StreamType,
+        open_token: &mut connection::OpenToken,
         context: &Context,
     ) -> Poll<()> {
         match stream_type {
-            StreamType::Bidirectional => self.bidi_controller.outgoing.poll_open_stream(context),
-            StreamType::Unidirectional => self.uni_controller.outgoing.poll_open_stream(context),
+            StreamType::Bidirectional => self
+                .bidi_controller
+                .outgoing
+                .poll_open_stream(open_token, context),
+            StreamType::Unidirectional => self
+                .uni_controller
+                .outgoing
+                .poll_open_stream(open_token, context),
         }
     }
 
@@ -317,6 +325,10 @@ struct OutgoingController {
     streams_blocked_sync: PeriodicSync<VarInt, StreamsBlockedToFrameWriter>,
     opened_streams: VarInt,
     closed_streams: VarInt,
+    /// Keeps track of all of the issued open tokens
+    token_counter: connection::OpenToken,
+    /// Keeps track of all of the expired open tokens
+    expired_token: connection::OpenToken,
 }
 
 impl OutgoingController {
@@ -331,6 +343,8 @@ impl OutgoingController {
             streams_blocked_sync: PeriodicSync::new(),
             opened_streams: VarInt::from_u8(0),
             closed_streams: VarInt::from_u8(0),
+            token_counter: connection::OpenToken::counter(),
+            expired_token: connection::OpenToken::new(),
         }
     }
 
@@ -352,10 +366,24 @@ impl OutgoingController {
         self.wake_unblocked();
     }
 
-    fn poll_open_stream(&mut self, context: &Context) -> Poll<()> {
+    fn poll_open_stream(
+        &mut self,
+        open_token: &mut connection::OpenToken,
+        context: &Context,
+    ) -> Poll<()> {
         if self.available_stream_capacity() < VarInt::from_u32(1) {
-            // Store a waker that can be woken when we get more credit
-            self.wakers.push(context.waker().clone());
+            if let Some(index) = open_token.index(&self.expired_token) {
+                let prev = &self.wakers[index];
+                // update the waker if it's changed
+                if !prev.will_wake(context.waker()) {
+                    self.wakers[index] = context.waker().clone();
+                }
+            } else {
+                // Store a waker that can be woken when we get more credit
+                self.wakers.push(context.waker().clone());
+                // give them a waker to remember their position in the list
+                *open_token = self.token_counter.next();
+            }
 
             //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
             //# An endpoint that is unable to open a new stream due to the peer's
@@ -372,6 +400,10 @@ impl OutgoingController {
 
             return Poll::Pending;
         }
+
+        // reset the open token since they're no longer blocked
+        *open_token = connection::OpenToken::new();
+
         Poll::Ready(())
     }
 
@@ -421,6 +453,9 @@ impl OutgoingController {
         self.wakers
             .drain(..unblocked_wakers_count)
             .for_each(|waker| waker.wake());
+
+        // keep track of the number of tokens that have expired
+        self.expired_token.expire(unblocked_wakers_count);
     }
 
     /// Returns the number of streams currently open

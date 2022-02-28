@@ -1689,6 +1689,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     fn poll_open_stream(
         &mut self,
         stream_type: stream::StreamType,
+        open_token: &mut connection::OpenToken,
         context: &Context,
     ) -> Poll<Result<stream::StreamId, connection::Error>> {
         self.error?;
@@ -1698,7 +1699,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .application_mut()
             .ok_or_else(connection::Error::unspecified)?;
 
-        space.stream_manager.poll_open(stream_type, context)
+        space
+            .stream_manager
+            .poll_open(stream_type, open_token, context)
     }
 
     fn application_close(&mut self, error: Option<application::Error>) {

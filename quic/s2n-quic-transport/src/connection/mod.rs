@@ -36,7 +36,7 @@ pub(crate) use local_id_registry::LocalIdRegistry;
 pub(crate) use peer_id_registry::PeerIdRegistry;
 pub(crate) use transmission::{ConnectionTransmission, ConnectionTransmissionContext};
 
-pub use api::Connection;
+pub use api::{Connection, OpenToken};
 pub use connection_impl::ConnectionImpl as Implementation;
 pub use connection_trait::Lock;
 /// re-export core

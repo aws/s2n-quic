@@ -48,6 +48,7 @@ pub(crate) trait ConnectionApiProvider: Sync + Send {
         &self,
         arc_self: &Arc<dyn ConnectionApiProvider>,
         stream_type: StreamType,
+        open_token: &mut connection::OpenToken,
         context: &Context,
     ) -> Poll<Result<Stream, connection::Error>>;
 

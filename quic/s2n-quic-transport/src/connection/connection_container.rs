@@ -246,9 +246,11 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
         &self,
         arc_self: &ConnectionApi,
         stream_type: stream::StreamType,
+        open_token: &mut connection::OpenToken,
         context: &Context,
     ) -> Poll<Result<stream::Stream, connection::Error>> {
-        let response = self.api_poll_call(|conn| conn.poll_open_stream(stream_type, context));
+        let response =
+            self.api_poll_call(|conn| conn.poll_open_stream(stream_type, open_token, context));
 
         match response {
             Poll::Pending => Poll::Pending,
