@@ -31,7 +31,7 @@ pub struct Connection {
     /// straightforward manner.
     pub(super) api: ConnectionApi,
 
-    /// The open token associated with this each connection handle.
+    /// The open token associated with each connection handle.
     ///
     /// This is used to correctly track `poll_open_stream` requests.
     open_token: OpenToken,
