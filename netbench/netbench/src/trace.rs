@@ -1,8 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{operation as op, timer::Timestamp};
-use core::{fmt, time::Duration};
+use crate::{operation as op, timer::Timestamp, units::*};
+use core::fmt;
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
@@ -300,16 +300,16 @@ impl<O: Output> Trace for Logger<'_, O> {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct Throughput<Counter> {
+pub struct Throughput<Counter = Arc<AtomicU64>> {
     rx: Counter,
     tx: Counter,
 }
 
-impl Throughput<Arc<AtomicU64>> {
-    pub fn take(&self) -> Throughput<u64> {
+impl Throughput {
+    pub fn take(&self) -> Throughput<Byte> {
         Throughput {
-            rx: self.rx.swap(0, Ordering::Relaxed),
-            tx: self.tx.swap(0, Ordering::Relaxed),
+            rx: self.rx.swap(0, Ordering::Relaxed).bytes(),
+            tx: self.tx.swap(0, Ordering::Relaxed).bytes(),
         }
     }
 
@@ -321,7 +321,7 @@ impl Throughput<Arc<AtomicU64>> {
             while !r_handle.0.fetch_or(false, Ordering::Relaxed) {
                 tokio::time::sleep(freq).await;
                 let v = values.take();
-                eprintln!("{:?}", v);
+                eprintln!("{}", v / freq);
             }
         });
 
@@ -329,7 +329,24 @@ impl Throughput<Arc<AtomicU64>> {
     }
 }
 
-impl Trace for Throughput<Arc<AtomicU64>> {
+impl core::ops::Div<Duration> for Throughput<Byte> {
+    type Output = Throughput<Rate>;
+
+    fn div(self, duration: Duration) -> Throughput<Rate> {
+        Throughput {
+            rx: self.rx / duration,
+            tx: self.tx / duration,
+        }
+    }
+}
+
+impl fmt::Display for Throughput<Rate> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "throughput: rx={}, tx={}", self.rx, self.tx)
+    }
+}
+
+impl Trace for Throughput {
     fn send(&mut self, _now: Timestamp, _stream_id: u64, len: u64) {
         self.tx.fetch_add(len, Ordering::Relaxed);
     }
