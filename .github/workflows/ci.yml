@@ -130,7 +130,7 @@ jobs:
         uses: actions-rs/cargo@v1.0.3
         with:
           command: doc
-          args: --all-features --no-deps --workspace --exclude duvet --exclude s2n-quic-qns
+          args: --all-features --no-deps --workspace --exclude s2n-quic-qns
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
         if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
@@ -208,7 +208,7 @@ jobs:
         include:
           - os: windows-latest
             # s2n-tls doesn't currently build on windows
-            exclude: --workspace --exclude s2n-tls-sys --exclude s2n-tls --exclude s2n-quic-tls
+            exclude: --workspace --exclude s2n-quic-tls
           - rust: stable
             os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
@@ -392,7 +392,7 @@ jobs:
         uses: actions-rs/cargo@v1.0.3
         with:
           command: llvm-cov
-          args: --html --no-fail-fast --workspace --exclude s2n-quic-qns --exclude s2n-quic-events --exclude cargo-compliance --all-features
+          args: --html --no-fail-fast --workspace --exclude s2n-quic-qns --exclude s2n-quic-events --all-features
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
         if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
