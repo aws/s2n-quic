@@ -342,7 +342,7 @@ impl core::ops::Div<Duration> for Throughput<Byte> {
 
 impl fmt::Display for Throughput<Rate> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "throughtput: rx={}, tx={}", self.rx, self.tx)
+        write!(f, "throughput: rx={}, tx={}", self.rx, self.tx)
     }
 }
 
