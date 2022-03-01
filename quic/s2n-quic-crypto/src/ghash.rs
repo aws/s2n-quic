@@ -16,7 +16,7 @@ pub const KEY_LEN: usize = 16;
 pub trait Constructor {
     type GHash: GHash;
 
-    fn new(&self, key: [u8; KEY_LEN]) -> Self::GHash;
+    fn create(&self, key: [u8; KEY_LEN]) -> Self::GHash;
 }
 
 pub trait GHash {
