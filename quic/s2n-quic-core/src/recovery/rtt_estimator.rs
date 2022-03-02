@@ -25,11 +25,14 @@ pub const K_GRANULARITY: Duration = Duration::from_millis(1);
 //# declaring an RTO after two TLPs.
 const K_PERSISTENT_CONGESTION_THRESHOLD: u32 = 3;
 
+// The duration of time over which the minimum RTT is valid for
+const MIN_RTT_FILTER_LEN: Duration = Duration::from_secs(10);
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct RttEstimator {
     /// Latest RTT sample
     latest_rtt: Duration,
-    /// The minimum value observed over the lifetime of the connection
+    /// The minimum value observed over the `MIN_RTT_FILTER_LEN`
     min_rtt: Duration,
     /// An exponentially-weighted moving average
     smoothed_rtt: Duration,
@@ -41,6 +44,8 @@ pub struct RttEstimator {
     max_ack_delay: Duration,
     /// The time that the first RTT sample was obtained
     first_rtt_sample: Option<Timestamp>,
+    /// The time at which the current min_rtt sample was obtained
+    min_rtt_timestamp: Option<Timestamp>,
 }
 
 impl RttEstimator {
@@ -66,6 +71,7 @@ impl RttEstimator {
             rttvar,
             max_ack_delay,
             first_rtt_sample: None,
+            min_rtt_timestamp: None,
         }
     }
 
@@ -162,6 +168,7 @@ impl RttEstimator {
             //= https://www.rfc-editor.org/rfc/rfc9002#section-5.2
             //# min_rtt MUST be set to the latest_rtt on the first RTT sample.
             self.min_rtt = self.latest_rtt;
+            self.min_rtt_timestamp = Some(timestamp);
             //= https://www.rfc-editor.org/rfc/rfc9002#section-5.3
             //# On the first RTT sample after initialization, smoothed_rtt and rttvar
             //# are set as follows:
@@ -176,7 +183,25 @@ impl RttEstimator {
         //= https://www.rfc-editor.org/rfc/rfc9002#section-5.2
         //# min_rtt MUST be set to the lesser of min_rtt and latest_rtt
         //# (Section 5.1) on all other samples.
-        self.min_rtt = min(self.min_rtt, self.latest_rtt);
+
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-5.2
+        //# Endpoints MAY reestablish the min_rtt at other times in the
+        //# connection, such as when traffic volume is low and an acknowledgment
+        //# is received with a low acknowledgment delay.
+
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-5.2
+        //# Implementations SHOULD
+        //# NOT refresh the min_rtt value too often, since the actual minimum RTT
+        //# of the path is not frequently observable.
+        let min_rtt_expired = timestamp
+            > self
+                .min_rtt_timestamp
+                .expect("min_rtt_timestamp is initialized on the first rtt sample")
+                + MIN_RTT_FILTER_LEN;
+        if self.latest_rtt < self.min_rtt || min_rtt_expired {
+            self.min_rtt = self.latest_rtt;
+            self.min_rtt_timestamp = Some(timestamp);
+        }
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-5.3
         //# when adjusting an RTT sample using peer-reported
