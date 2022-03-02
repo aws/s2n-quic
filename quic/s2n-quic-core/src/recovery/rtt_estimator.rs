@@ -25,7 +25,10 @@ pub const K_GRANULARITY: Duration = Duration::from_millis(1);
 //# declaring an RTO after two TLPs.
 const K_PERSISTENT_CONGESTION_THRESHOLD: u32 = 3;
 
-// The duration of time over which the minimum RTT is valid for
+// The duration of time over which the minimum RTT is valid for. This value is specified
+// by BBR, but is used generally to ensure the min_rtt value remains fresh.
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-01#section-4.5.3.2
+//# The length of the BBR.min_rtt min filter window is MinRTTFilterLen = 10 secs.
 const MIN_RTT_FILTER_LEN: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -306,7 +309,9 @@ mod test {
     use crate::{
         packet::number::PacketNumberSpace,
         path::INITIAL_PTO_BACKOFF,
-        recovery::{RttEstimator, DEFAULT_INITIAL_RTT, K_GRANULARITY},
+        recovery::{
+            rtt_estimator::MIN_RTT_FILTER_LEN, RttEstimator, DEFAULT_INITIAL_RTT, K_GRANULARITY,
+        },
         time::{Clock, Duration, NoopClock},
     };
 
@@ -503,6 +508,7 @@ mod test {
         rtt_estimator.min_rtt = Duration::from_millis(500);
         rtt_estimator.smoothed_rtt = Duration::from_millis(700);
         rtt_estimator.first_rtt_sample = Some(now);
+        rtt_estimator.min_rtt_timestamp = Some(now);
 
         let rtt_sample = Duration::from_millis(600);
         let prev_smoothed_rtt = rtt_estimator.smoothed_rtt;
@@ -536,6 +542,7 @@ mod test {
         rtt_estimator.min_rtt = Duration::from_millis(500);
         rtt_estimator.smoothed_rtt = smoothed_rtt;
         rtt_estimator.first_rtt_sample = Some(now);
+        rtt_estimator.min_rtt_timestamp = Some(now);
 
         let rtt_sample = Duration::from_millis(600);
 
@@ -628,7 +635,7 @@ mod test {
     fn set_min_rtt_to_latest_sample_after_persistent_congestion() {
         let mut rtt_estimator = RttEstimator::new(Duration::from_millis(10));
         let now = NoopClock.get_time();
-        let mut rtt_sample = Duration::from_millis(500);
+        let mut rtt_sample = Duration::from_millis(200);
         rtt_estimator.update_rtt(
             Duration::from_millis(10),
             rtt_sample,
@@ -639,7 +646,7 @@ mod test {
 
         assert_eq!(rtt_estimator.min_rtt(), rtt_sample);
 
-        rtt_sample = Duration::from_millis(200);
+        rtt_sample = Duration::from_millis(500);
 
         rtt_estimator.on_persistent_congestion();
 
@@ -657,6 +664,35 @@ mod test {
         //# persistent congestion is established.
         assert_eq!(rtt_estimator.min_rtt(), rtt_sample);
         assert_eq!(rtt_estimator.smoothed_rtt(), rtt_sample);
+    }
+
+    #[test]
+    fn set_min_rtt_to_latest_sample_after_min_rtt_expiration() {
+        let mut rtt_estimator = RttEstimator::new(Duration::from_millis(10));
+        let now = NoopClock.get_time();
+        let mut rtt_sample = Duration::from_millis(200);
+        rtt_estimator.update_rtt(
+            Duration::from_millis(10),
+            rtt_sample,
+            now,
+            true,
+            PacketNumberSpace::Initial,
+        );
+
+        assert_eq!(rtt_estimator.min_rtt(), rtt_sample);
+
+        rtt_sample = Duration::from_millis(500);
+
+        let now = now + MIN_RTT_FILTER_LEN + Duration::from_millis(1);
+        rtt_estimator.update_rtt(
+            Duration::from_millis(10),
+            rtt_sample,
+            now,
+            true,
+            PacketNumberSpace::Initial,
+        );
+
+        assert_eq!(rtt_estimator.min_rtt(), rtt_sample);
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
