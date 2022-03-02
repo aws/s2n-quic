@@ -393,6 +393,31 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         })
     }
 
+    pub fn close<Pub: event::ConnectionPublisher>(
+        &mut self,
+        error: connection::Error,
+        path: &mut path::Path<Config>,
+        path_id: path::Id,
+        publisher: &mut Pub,
+    ) {
+        self.session_info = None;
+        self.retry_cid = None;
+        self.discard_initial(path, path_id, publisher);
+        self.discard_handshake(path, path_id, publisher);
+        self.discard_zero_rtt_crypto();
+
+        // Don't discard the application space until the application has read the error
+        if let Some((application, _handshake_status)) = self.application_mut() {
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2
+            //# A CONNECTION_CLOSE frame
+            //# causes all streams to immediately become closed; open streams can be
+            //# assumed to be implicitly reset.
+
+            // Close all streams with the derived error
+            application.stream_manager.close(error);
+        }
+    }
+
     pub fn on_retry_packet(&mut self, retry_source_connection_id: PeerId) {
         debug_assert!(Config::ENDPOINT_TYPE.is_client());
         self.retry_cid = Some(Box::new(retry_source_connection_id));
