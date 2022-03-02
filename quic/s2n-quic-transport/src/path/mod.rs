@@ -88,7 +88,7 @@ impl<Config: endpoint::Config> Clone for Path<Config> {
             handle: self.handle,
             peer_connection_id: self.peer_connection_id,
             local_connection_id: self.local_connection_id,
-            rtt_estimator: self.rtt_estimator,
+            rtt_estimator: self.rtt_estimator.clone(),
             congestion_controller: self.congestion_controller.clone(),
             pto_backoff: self.pto_backoff,
             state: self.state,

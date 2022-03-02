@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{packet::number::PacketNumberSpace, time::Timestamp};
+use crate::{
+    packet::number::PacketNumberSpace,
+    time::{Timer, Timestamp},
+};
 use core::{
     cmp::{max, min},
     time::Duration,
@@ -31,7 +34,7 @@ const K_PERSISTENT_CONGESTION_THRESHOLD: u32 = 3;
 //# The length of the BBR.min_rtt min filter window is MinRTTFilterLen = 10 secs.
 const MIN_RTT_FILTER_LEN: Duration = Duration::from_secs(10);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RttEstimator {
     /// Latest RTT sample
     latest_rtt: Duration,
@@ -47,8 +50,8 @@ pub struct RttEstimator {
     max_ack_delay: Duration,
     /// The time that the first RTT sample was obtained
     first_rtt_sample: Option<Timestamp>,
-    /// The time at which the current min_rtt sample was obtained
-    min_rtt_timestamp: Option<Timestamp>,
+    /// A timer for refreshing the min_rtt sample
+    min_rtt_timer: Timer,
 }
 
 impl RttEstimator {
@@ -74,7 +77,7 @@ impl RttEstimator {
             rttvar,
             max_ack_delay,
             first_rtt_sample: None,
-            min_rtt_timestamp: None,
+            min_rtt_timer: Timer::default(),
         }
     }
 
@@ -171,7 +174,7 @@ impl RttEstimator {
             //= https://www.rfc-editor.org/rfc/rfc9002#section-5.2
             //# min_rtt MUST be set to the latest_rtt on the first RTT sample.
             self.min_rtt = self.latest_rtt;
-            self.min_rtt_timestamp = Some(timestamp);
+            self.min_rtt_timer.set(timestamp + MIN_RTT_FILTER_LEN);
             //= https://www.rfc-editor.org/rfc/rfc9002#section-5.3
             //# On the first RTT sample after initialization, smoothed_rtt and rttvar
             //# are set as follows:
@@ -196,14 +199,9 @@ impl RttEstimator {
         //# Implementations SHOULD
         //# NOT refresh the min_rtt value too often, since the actual minimum RTT
         //# of the path is not frequently observable.
-        let min_rtt_expired = timestamp
-            > self
-                .min_rtt_timestamp
-                .expect("min_rtt_timestamp is initialized on the first rtt sample")
-                + MIN_RTT_FILTER_LEN;
-        if self.latest_rtt < self.min_rtt || min_rtt_expired {
+        if self.latest_rtt < self.min_rtt || self.min_rtt_timer.is_expired(timestamp) {
             self.min_rtt = self.latest_rtt;
-            self.min_rtt_timestamp = Some(timestamp);
+            self.min_rtt_timer.set(timestamp + MIN_RTT_FILTER_LEN);
         }
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-5.3
@@ -508,7 +506,7 @@ mod test {
         rtt_estimator.min_rtt = Duration::from_millis(500);
         rtt_estimator.smoothed_rtt = Duration::from_millis(700);
         rtt_estimator.first_rtt_sample = Some(now);
-        rtt_estimator.min_rtt_timestamp = Some(now);
+        rtt_estimator.min_rtt_timer.set(now + MIN_RTT_FILTER_LEN);
 
         let rtt_sample = Duration::from_millis(600);
         let prev_smoothed_rtt = rtt_estimator.smoothed_rtt;
@@ -542,7 +540,7 @@ mod test {
         rtt_estimator.min_rtt = Duration::from_millis(500);
         rtt_estimator.smoothed_rtt = smoothed_rtt;
         rtt_estimator.first_rtt_sample = Some(now);
-        rtt_estimator.min_rtt_timestamp = Some(now);
+        rtt_estimator.min_rtt_timer.set(now + MIN_RTT_FILTER_LEN);
 
         let rtt_sample = Duration::from_millis(600);
 

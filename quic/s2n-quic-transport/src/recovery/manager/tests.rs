@@ -446,7 +446,7 @@ fn on_ack_frame() {
         Default::default(),
         connection::PeerId::TEST_ID,
         connection::LocalId::TEST_ID,
-        context.path().rtt_estimator,
+        context.path().rtt_estimator.clone(),
         MockCongestionController::default(),
         false,
         DEFAULT_MAX_MTU,
