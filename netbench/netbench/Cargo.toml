@@ -9,15 +9,18 @@ license = "Apache-2.0"
 default = ["s2n-quic"]
 
 [dependencies]
+base64 = "0.13"
 bytes = "1"
 enum-primitive-derive = "0.2"
 futures = "0.3"
 humansize = "1"
 humantime = "2"
 num-traits = "0.2"
+openssl = "0.10"
+rcgen = "0.9"
 s2n-quic-core = { version = "0.1", path = "../../quic/s2n-quic-core", features = ["testing"] }
 s2n-quic = { version = "1", path = "../../quic/s2n-quic", optional = true }
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 sha2 = "0.10"
 tokio = { version = "1", features = ["net", "time"] }

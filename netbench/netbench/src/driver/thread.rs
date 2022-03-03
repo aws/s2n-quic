@@ -114,6 +114,7 @@ impl<'a> Thread<'a> {
                 trace.trace(now, *trace_id);
             }
             Park { checkpoint } => {
+                trace.park(now, *checkpoint);
                 self.op = Some(Op::Wait {
                     checkpoint: *checkpoint,
                 });

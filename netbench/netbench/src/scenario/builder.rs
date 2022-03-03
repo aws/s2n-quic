@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::sync::Arc;
+
 macro_rules! sleep {
     () => {
         pub fn sleep(&mut self, amount: core::time::Duration) -> &mut Self {
@@ -25,6 +27,7 @@ macro_rules! trace {
 #[macro_use]
 pub mod checkpoint;
 
+pub mod certificate;
 pub mod client;
 pub mod connection;
 pub mod scope;
@@ -52,8 +55,23 @@ impl Builder {
         }
     }
 
+    pub fn create_ca(&mut self) -> certificate::Authority {
+        self.create_ca_with(|_| {})
+    }
+
+    pub fn create_ca_with<F: FnOnce(&mut certificate::AuthorityBuilder)>(
+        &mut self,
+        f: F,
+    ) -> certificate::Authority {
+        self.state.create_ca_with(f)
+    }
+
     pub fn create_server(&mut self) -> Server {
-        Server::new(self.state.clone())
+        self.create_server_with(|_| {})
+    }
+
+    pub fn create_server_with<F: FnOnce(&mut server::Builder)>(&mut self, f: F) -> Server {
+        Server::new(self.state.clone(), f)
     }
 
     pub fn create_client<F: FnOnce(&mut client::Builder)>(&mut self, f: F) {
@@ -62,6 +80,7 @@ impl Builder {
             scenario: vec![],
             connections: vec![],
             configuration: Default::default(),
+            certificate_authorities: vec![],
         }) as u64;
 
         let mut builder = client::Builder::new(id, self.state.clone());
@@ -71,11 +90,27 @@ impl Builder {
     }
 
     pub(super) fn finish(self) -> super::Scenario {
-        let clients = self.state.clients.take();
-        let servers = self.state.servers.take();
+        let clients = self
+            .state
+            .clients
+            .take()
+            .into_iter()
+            .map(|mut client| {
+                client.certificate_authorities.sort_unstable();
+                Arc::new(client)
+            })
+            .collect();
+        let servers = self
+            .state
+            .servers
+            .take()
+            .into_iter()
+            .map(Arc::new)
+            .collect();
         let mut traces = self.state.trace.take().into_iter().collect::<Vec<_>>();
         traces.sort_by(|(_, a), (_, b)| a.cmp(b));
-        let traces = traces.into_iter().map(|(value, _)| value).collect();
+        let traces = Arc::new(traces.into_iter().map(|(value, _)| value).collect());
+        let certificates = self.state.certificates.take();
 
         let mut scenario = super::Scenario {
             id: Default::default(),
@@ -84,11 +119,15 @@ impl Builder {
             // TODO implement router builder
             routers: vec![],
             traces,
+            certificates: vec![],
         };
 
         let mut hash = crate::scenario::Id::hasher();
         core::hash::Hash::hash(&scenario, &mut hash);
+        core::hash::Hash::hash(&certificates, &mut hash);
         scenario.id = hash.finish();
+
+        scenario.certificates = certificate::Certificate::build_all(certificates, &scenario.id);
 
         scenario
     }

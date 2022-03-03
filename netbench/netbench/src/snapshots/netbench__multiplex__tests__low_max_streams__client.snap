@@ -1,40 +1,23 @@
 ---
-source: netbench/src/multiplex.rs
-assertion_line: 641
+source: netbench/netbench/src/multiplex.rs
+assertion_line: 643
 expression: client_trace.as_str().unwrap()
 
 ---
-0:00:00.000001: 0:0.0:exec: Scope { threads: [[OpenSendStream { stream_id: 0 }, SendRate { stream_id: 0, rate: Rate { bytes: Byte(500), period: 50ms } }, Send { stream_id: 0, bytes: Byte(1000) }, SendFinish { stream_id: 0 }], [OpenSendStream { stream_id: 1 }, SendRate { stream_id: 1, rate: Rate { bytes: Byte(500), period: 50ms } }, Send { stream_id: 1, bytes: Byte(1000) }, SendFinish { stream_id: 1 }], [OpenSendStream { stream_id: 2 }, SendRate { stream_id: 2, rate: Rate { bytes: Byte(500), period: 50ms } }, Send { stream_id: 2, bytes: Byte(1000) }, SendFinish { stream_id: 2 }], [OpenSendStream { stream_id: 3 }, SendRate { stream_id: 3, rate: Rate { bytes: Byte(500), period: 50ms } }, Send { stream_id: 3, bytes: Byte(1000) }, SendFinish { stream_id: 3 }]] }
-0:00:00.000001: 0:0.0:1.0:exec: OpenSendStream { stream_id: 0 }
-0:00:00.000001: 0:0.0:1.0:open: stream=0
-0:00:00.000001: 0:0.0:1.0:exec: SendRate { stream_id: 0, rate: Rate { bytes: Byte(500), period: 50ms } }
-0:00:00.000001: 0:0.0:1.0:exec: Send { stream_id: 0, bytes: Byte(1000) }
-0:00:00.000001: 0:0.0:1.0:send: stream=0, len=500
-0:00:00.000001: 0:0.0:1.1:exec: OpenSendStream { stream_id: 1 }
-0:00:00.000001: 0:0.0:1.1:open: stream=1
-0:00:00.000001: 0:0.0:1.1:exec: SendRate { stream_id: 1, rate: Rate { bytes: Byte(500), period: 50ms } }
-0:00:00.000001: 0:0.0:1.1:exec: Send { stream_id: 1, bytes: Byte(1000) }
-0:00:00.000001: 0:0.0:1.1:send: stream=1, len=500
-0:00:00.000001: 0:0.0:1.2:exec: OpenSendStream { stream_id: 2 }
-0:00:00.000001: 0:0.0:1.3:exec: OpenSendStream { stream_id: 3 }
-0:00:00.050001: 0:0.0:1.0:send: stream=0, len=500
-0:00:00.050001: 0:0.0:1.0:exec: SendFinish { stream_id: 0 }
-0:00:00.050001: 0:0.0:1.0:send finish: stream=0
-0:00:00.050001: 0:0.0:1.1:send: stream=1, len=500
-0:00:00.050001: 0:0.0:1.1:exec: SendFinish { stream_id: 1 }
-0:00:00.050001: 0:0.0:1.1:send finish: stream=1
-0:00:00.050001: 0:0.0:1.2:open: stream=2
-0:00:00.050001: 0:0.0:1.2:exec: SendRate { stream_id: 2, rate: Rate { bytes: Byte(500), period: 50ms } }
-0:00:00.050001: 0:0.0:1.2:exec: Send { stream_id: 2, bytes: Byte(1000) }
-0:00:00.050001: 0:0.0:1.2:send: stream=2, len=500
-0:00:00.050001: 0:0.0:1.3:open: stream=3
-0:00:00.050001: 0:0.0:1.3:exec: SendRate { stream_id: 3, rate: Rate { bytes: Byte(500), period: 50ms } }
-0:00:00.050001: 0:0.0:1.3:exec: Send { stream_id: 3, bytes: Byte(1000) }
-0:00:00.050001: 0:0.0:1.3:send: stream=3, len=500
-0:00:00.100001: 0:0.0:1.2:send: stream=2, len=500
-0:00:00.100001: 0:0.0:1.2:exec: SendFinish { stream_id: 2 }
-0:00:00.100001: 0:0.0:1.2:send finish: stream=2
-0:00:00.100001: 0:0.0:1.3:send: stream=3, len=500
-0:00:00.100001: 0:0.0:1.3:exec: SendFinish { stream_id: 3 }
-0:00:00.100001: 0:0.0:1.3:send finish: stream=3
+0:00:00.000001 [0] open[0]
+0:00:00.000001 [0] send[0]=500
+0:00:00.000001 [0] open[1]
+0:00:00.000001 [0] send[1]=500
+0:00:00.050001 [0] send[0]=500
+0:00:00.050001 [0] sfin[0]
+0:00:00.050001 [0] send[1]=500
+0:00:00.050001 [0] sfin[1]
+0:00:00.050001 [0] open[2]
+0:00:00.050001 [0] send[2]=500
+0:00:00.050001 [0] open[3]
+0:00:00.050001 [0] send[3]=500
+0:00:00.100001 [0] send[2]=500
+0:00:00.100001 [0] sfin[2]
+0:00:00.100001 [0] send[3]=500
+0:00:00.100001 [0] sfin[3]
 

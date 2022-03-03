@@ -12,6 +12,8 @@ fn scenario<F: FnOnce(&mut Builder)>(f: F) -> Scenario {
     // hash traversal order was changed somewhere between 1.53 and 1.58 so
     // we won't compare the id for now
     scenario.id = Default::default();
+    // cert keys are not deterministic
+    scenario.certificates.clear();
     scenario
 }
 
@@ -129,6 +131,60 @@ scenario_test!(linked_streams, |scenario| {
                             peer.receive(1.megabytes());
                         },
                     );
+                },
+            );
+        });
+    });
+});
+
+scenario_test!(custom_cert, |scenario| {
+    let ca = scenario.create_ca();
+
+    let server = scenario.create_server_with(|server| {
+        server.set_cert(ca.key_pair());
+    });
+
+    scenario.create_client(|client| {
+        client.connect_to(server, |conn| {
+            conn.open_send_stream(
+                |local| {
+                    local.set_send_rate(1024.bytes() / 50.millis());
+                    local.send(1.megabytes());
+                },
+                |peer| {
+                    peer.set_receive_rate(1024.bytes() / 50.millis());
+                    peer.receive(1.megabytes());
+                },
+            );
+        });
+    });
+});
+
+scenario_test!(long_chain_cert, |scenario| {
+    let ca = scenario.create_ca_with(|ca| {
+        ca.ecdsa();
+    });
+
+    let server = scenario.create_server_with(|server| {
+        let key = ca.key_pair_with(|key| {
+            key.push_ia();
+            key.push_ia_with(|ia| {
+                ia.ed25519();
+            });
+        });
+        server.set_cert(key);
+    });
+
+    scenario.create_client(|client| {
+        client.connect_to(server, |conn| {
+            conn.open_send_stream(
+                |local| {
+                    local.set_send_rate(1024.bytes() / 50.millis());
+                    local.send(1.megabytes());
+                },
+                |peer| {
+                    peer.set_receive_rate(1024.bytes() / 50.millis());
+                    peer.receive(1.megabytes());
                 },
             );
         });

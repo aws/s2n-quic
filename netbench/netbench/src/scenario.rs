@@ -3,7 +3,7 @@
 
 use crate::{operation as op, Result};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, path::Path};
+use std::{collections::BTreeMap, path::Path, sync::Arc};
 
 pub mod builder;
 mod id;
@@ -14,12 +14,14 @@ pub use id::Id;
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Hash)]
 pub struct Scenario {
     pub id: Id,
-    pub clients: Vec<Client>,
-    pub servers: Vec<Server>,
+    pub clients: Vec<Arc<Client>>,
+    pub servers: Vec<Arc<Server>>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    pub routers: Vec<Router>,
+    pub routers: Vec<Arc<Router>>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    pub traces: Vec<String>,
+    pub traces: Arc<Vec<String>>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub certificates: Vec<Arc<Certificate>>,
 }
 
 impl Scenario {
@@ -37,7 +39,7 @@ impl Scenario {
     }
 
     pub fn write<W: std::io::Write>(&self, out: &mut W) -> std::io::Result<()> {
-        serde_json::to_writer_pretty(out, self)?;
+        serde_json::to_writer(out, self)?;
         Ok(())
     }
 }
@@ -47,18 +49,32 @@ pub struct Client {
     #[serde(skip_serializing_if = "String::is_empty", default)]
     pub name: String,
     pub scenario: Vec<op::Client>,
-    pub connections: Vec<Connection>,
+    pub connections: Vec<Arc<Connection>>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub configuration: BTreeMap<String, String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub certificate_authorities: Vec<u64>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Hash)]
 pub struct Server {
     #[serde(skip_serializing_if = "String::is_empty", default)]
     pub name: String,
-    pub connections: Vec<Connection>,
+    pub connections: Vec<Arc<Connection>>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub configuration: BTreeMap<String, String>,
+    pub private_key: u64,
+    pub certificate: u64,
+    pub certificate_authority: u64,
+}
+
+impl Server {
+    pub fn on_server_name(&self, server_name: &str) -> Result<&Arc<Connection>> {
+        let (conn_idx, _) = server_name.split_once('.').ok_or("invalid hostname")?;
+        let conn_idx: usize = conn_idx.parse()?;
+        let conn = self.connections.get(conn_idx).ok_or("invalid connection")?;
+        Ok(conn)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Hash)]
@@ -76,4 +92,42 @@ pub struct Router {
     pub scenario: Vec<op::Router>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub configuration: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Hash)]
+pub struct Certificate {
+    #[serde(skip_serializing_if = "String::is_empty", default)]
+    pub pem: String,
+
+    #[serde(skip_serializing_if = "Vec::is_empty", with = "pkcs12_format", default)]
+    pub pkcs12: Vec<u8>,
+}
+
+pub(crate) mod pkcs12_format {
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(bytes: &Vec<u8>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            let out = base64::encode(bytes);
+            serializer.serialize_str(&out)
+        } else {
+            serializer.serialize_bytes(bytes)
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            let out = base64::decode(&s).map_err(serde::de::Error::custom)?;
+            Ok(out)
+        } else {
+            Vec::deserialize(deserializer)
+        }
+    }
 }

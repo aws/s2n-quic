@@ -72,6 +72,12 @@ pub trait Trace {
     }
 
     #[inline(always)]
+    fn park(&mut self, now: Timestamp, id: u64) {
+        let _ = now;
+        let _ = id;
+    }
+
+    #[inline(always)]
     fn unpark(&mut self, now: Timestamp, id: u64) {
         let _ = now;
         let _ = id;
@@ -140,6 +146,12 @@ impl<A: Trace, B: Trace> Trace for (A, B) {
     }
 
     #[inline]
+    fn park(&mut self, now: Timestamp, id: u64) {
+        self.0.park(now, id);
+        self.1.park(now, id);
+    }
+
+    #[inline]
     fn unpark(&mut self, now: Timestamp, id: u64) {
         self.0.unpark(now, id);
         self.1.unpark(now, id);
@@ -157,6 +169,7 @@ pub struct Logger<'a, O: Output> {
     traces: &'a [String],
     scope: Vec<(usize, usize)>,
     output: O,
+    verbose: bool,
 }
 
 pub type MemoryLogger<'a> = Logger<'a, std::io::Cursor<Vec<u8>>>;
@@ -169,19 +182,26 @@ impl<'a, O: Output> Logger<'a, O> {
             traces,
             scope: vec![],
             output: O::new(),
+            verbose: false,
         }
     }
 
     fn log(&mut self, now: Timestamp, v: impl fmt::Display) {
         let id = self.id;
         let scope = &self.scope;
+        let verbose = self.verbose;
         let _ = self.output.write(|out| {
             use std::io::Write;
-            write!(out, "{}: ", now)?;
-            write!(out, "{}:", id)?;
-            for (scope, thread) in scope.iter() {
-                write!(out, "{}.{}:", scope, thread)?;
+            write!(out, "{} ", now)?;
+
+            write!(out, "[{}", id)?;
+            if verbose {
+                for (scope, thread) in scope.iter() {
+                    write!(out, ":{}.{}", scope, thread)?;
+                }
             }
+            write!(out, "] ")?;
+
             writeln!(out, "{}", v)?;
             Ok(())
         });
@@ -241,7 +261,9 @@ impl Output for std::io::Cursor<Vec<u8>> {
 impl<O: Output> Trace for Logger<'_, O> {
     #[inline(always)]
     fn exec(&mut self, now: Timestamp, op: &op::Connection) {
-        self.log(now, format_args!("exec: {:?}", op));
+        if self.verbose {
+            self.log(now, format_args!("exec: {:?}", op));
+        }
     }
 
     #[inline(always)]
@@ -256,46 +278,51 @@ impl<O: Output> Trace for Logger<'_, O> {
 
     #[inline(always)]
     fn send(&mut self, now: Timestamp, stream_id: u64, len: u64) {
-        self.log(now, format_args!("send: stream={}, len={}", stream_id, len));
+        self.log(now, format_args!("send[{}]={}", stream_id, len));
     }
 
     #[inline(always)]
     fn send_finish(&mut self, now: Timestamp, stream_id: u64) {
-        self.log(now, format_args!("send finish: stream={}", stream_id));
+        self.log(now, format_args!("sfin[{}]", stream_id));
     }
 
     #[inline(always)]
     fn receive(&mut self, now: Timestamp, stream_id: u64, len: u64) {
-        self.log(now, format_args!("recv: stream={}, len={}", stream_id, len));
+        self.log(now, format_args!("recv[{}]={}", stream_id, len));
     }
 
     #[inline(always)]
     fn receive_finish(&mut self, now: Timestamp, stream_id: u64) {
-        self.log(now, format_args!("recv finish: stream={}", stream_id));
+        self.log(now, format_args!("rfin[{}]", stream_id));
     }
 
     #[inline(always)]
     fn accept(&mut self, now: Timestamp, stream_id: u64) {
-        self.log(now, format_args!("accept: stream={}", stream_id));
+        self.log(now, format_args!("acpt[{}]", stream_id));
     }
 
     #[inline(always)]
     fn open(&mut self, now: Timestamp, stream_id: u64) {
-        self.log(now, format_args!("open: stream={}", stream_id));
+        self.log(now, format_args!("open[{}]", stream_id));
     }
 
     #[inline(always)]
     fn trace(&mut self, now: Timestamp, id: u64) {
         if let Some(msg) = self.traces.get(id as usize) {
-            self.log(now, format_args!("trace: {}", msg));
+            self.log(now, format_args!("trce[{}]={}", id, msg));
         } else {
-            self.log(now, format_args!("trace: id={}", id));
+            self.log(now, format_args!("trce[{}]", id));
         }
     }
 
     #[inline(always)]
+    fn park(&mut self, now: Timestamp, id: u64) {
+        self.log(now, format_args!("park[{}]", id));
+    }
+
+    #[inline(always)]
     fn unpark(&mut self, now: Timestamp, id: u64) {
-        self.log(now, format_args!("unpark: {}", id));
+        self.log(now, format_args!("uprk[{}]", id));
     }
 }
 
@@ -342,7 +369,7 @@ impl core::ops::Div<Duration> for Throughput<Byte> {
 
 impl fmt::Display for Throughput<Rate> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "throughput: rx={}, tx={}", self.rx, self.tx)
+        write!(f, "throughput: rx={} tx={}", self.rx, self.tx)
     }
 }
 

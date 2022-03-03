@@ -2,23 +2,26 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
+    certificate::{self, KeyPair},
     checkpoint::{Checkpoint, Park, Unpark},
     connection,
 };
 use crate::scenario::{Client, Server};
 use core::fmt;
 use std::{
-    cell::{RefCell, RefMut},
+    cell::{Cell, RefCell, RefMut},
     collections::HashMap,
     rc::Rc,
 };
 
 #[derive(Clone, Debug, Default)]
 pub struct State {
-    pub checkpoint: IdPool,
-    pub servers: RefVec<Server>,
-    pub clients: RefVec<Client>,
-    pub trace: RefMap<String, u64>,
+    pub(crate) checkpoint: IdPool,
+    pub(crate) servers: RefVec<Server>,
+    pub(crate) clients: RefVec<Client>,
+    pub(crate) trace: RefMap<String, u64>,
+    pub(crate) certificates: RefVec<certificate::Certificate>,
+    default_key_pair: Rc<Cell<Option<KeyPair>>>,
 }
 
 impl State {
@@ -46,6 +49,28 @@ impl State {
         let id = map.len() as u64;
         map.insert(name.to_string(), id);
         id
+    }
+
+    pub fn create_ca(&self) -> certificate::Authority {
+        self.create_ca_with(|_| {})
+    }
+
+    pub fn create_ca_with<F: FnOnce(&mut certificate::AuthorityBuilder)>(
+        &self,
+        f: F,
+    ) -> certificate::Authority {
+        certificate::Authority::new(self.clone(), f)
+    }
+
+    pub fn default_key_pair(&self) -> KeyPair {
+        if let Some(key) = self.default_key_pair.get() {
+            key
+        } else {
+            let ca = self.create_ca();
+            let pair = ca.key_pair();
+            self.default_key_pair.set(Some(pair));
+            pair
+        }
     }
 }
 
@@ -84,10 +109,6 @@ impl<Key: core::hash::Hash + Eq, Value> RefMap<Key, Value> {
 
     pub fn take(&self) -> HashMap<Key, Value> {
         core::mem::take(&mut self.0.borrow_mut())
-    }
-
-    pub fn borrow_mut(&self) -> RefMut<HashMap<Key, Value>> {
-        self.0.borrow_mut()
     }
 }
 
