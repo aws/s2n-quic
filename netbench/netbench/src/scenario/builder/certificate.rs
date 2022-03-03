@@ -1,8 +1,11 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::scenario;
 use rcgen::SignatureAlgorithm;
 use std::{collections::HashMap, sync::Arc};
 
-static DEFAULT_ALG: &rcgen::SignatureAlgorithm = &rcgen::PKCS_ECDSA_P256_SHA256;
+static DEFAULT_ALG: &SignatureAlgorithm = &rcgen::PKCS_ECDSA_P256_SHA256;
 
 #[derive(Clone, Debug, Hash)]
 pub(crate) enum Certificate {
@@ -19,37 +22,46 @@ pub(crate) enum Certificate {
 }
 
 fn create_ca(domain: &str, name: String, alg: &'static SignatureAlgorithm) -> rcgen::Certificate {
-    let mut params = rcgen::CertificateParams::new(vec![domain.to_string()]);
+    use rcgen::{
+        BasicConstraints, Certificate, CertificateParams, DistinguishedName, DnType, IsCa,
+        KeyUsagePurpose,
+    };
+
+    let mut params = CertificateParams::new(vec![domain.to_string()]);
     params.alg = alg;
-    params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
-    params.distinguished_name = rcgen::DistinguishedName::new();
-    params
-        .distinguished_name
-        .push(rcgen::DnType::CountryName, "US");
-    params
-        .distinguished_name
-        .push(rcgen::DnType::CommonName, name);
-    params
-        .key_usages
-        .push(rcgen::KeyUsagePurpose::DigitalSignature);
-    params.key_usages.push(rcgen::KeyUsagePurpose::KeyCertSign);
-    params.key_usages.push(rcgen::KeyUsagePurpose::CrlSign);
-    rcgen::Certificate::from_params(params).unwrap()
+    params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+    params.distinguished_name = DistinguishedName::new();
+    params.distinguished_name.push(DnType::CountryName, "US");
+    params.distinguished_name.push(DnType::CommonName, name);
+    params.key_usages = vec![
+        KeyUsagePurpose::DigitalSignature,
+        KeyUsagePurpose::KeyCertSign,
+        KeyUsagePurpose::CrlSign,
+    ];
+    Certificate::from_params(params).unwrap()
 }
 
-fn create_cert(domain: &str, alg: &'static SignatureAlgorithm) -> rcgen::Certificate {
-    let mut params = rcgen::CertificateParams::new(vec![domain.to_string()]);
+fn create_cert(domain: &str, name: String, alg: &'static SignatureAlgorithm) -> rcgen::Certificate {
+    use rcgen::{
+        Certificate, CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose,
+        KeyUsagePurpose,
+    };
+
+    let mut params = CertificateParams::new(vec![domain.to_string()]);
     params.alg = alg;
     params.use_authority_key_identifier_extension = true;
+    params.distinguished_name = DistinguishedName::new();
+    params.distinguished_name.push(DnType::CountryName, "US");
+    params.distinguished_name.push(DnType::CommonName, name);
     params.key_usages = vec![
-        rcgen::KeyUsagePurpose::DigitalSignature,
-        rcgen::KeyUsagePurpose::KeyEncipherment,
+        KeyUsagePurpose::DigitalSignature,
+        KeyUsagePurpose::KeyEncipherment,
     ];
     params.extended_key_usages = vec![
-        rcgen::ExtendedKeyUsagePurpose::ServerAuth,
-        rcgen::ExtendedKeyUsagePurpose::ClientAuth,
+        ExtendedKeyUsagePurpose::ServerAuth,
+        ExtendedKeyUsagePurpose::ClientAuth,
     ];
-    rcgen::Certificate::from_params(params).unwrap()
+    Certificate::from_params(params).unwrap()
 }
 
 impl Certificate {
@@ -87,21 +99,21 @@ impl Certificate {
                         });
                     }
 
-                    // create a reverse chain of authorites that need to sign this cert
+                    // create a reverse chain of authorities that need to sign this cert
                     let ca = cas.get(&authority).unwrap();
-                    let authorites = intermediates
+                    let authorities = intermediates
                         .iter()
                         .enumerate()
                         .rev()
                         .map(|(idx, alg)| ias.get(&(authority, idx, alg)).unwrap())
                         .chain(Some(ca));
 
-                    let cert = create_cert(&domain, alg);
+                    let cert = create_cert(&domain, format!("netbench Leaf {}", cert_idx), alg);
                     let mut chain = String::new();
                     let private_key = cert.serialize_private_key_pem();
 
                     let mut current_cert = &cert;
-                    for authority in authorites {
+                    for authority in authorities {
                         let public = current_cert.serialize_pem_with_signer(authority).unwrap();
                         chain.push_str(&public);
                         current_cert = authority;
