@@ -14,8 +14,8 @@ bytes = { version = "1", default-features = false }
 dhat = { version = "0.2", optional = true }
 futures = "0.3"
 http = "0.2"
-s2n-quic-core = { version = "0.1.1", path = "../s2n-quic-core", features = ["testing"] }
-s2n-quic-h3 = { version = "0.1.0", path = "../s2n-quic-h3" }
+s2n-quic-core = { version = "=0.1.1", path = "../s2n-quic-core", features = ["testing"] }
+s2n-quic-h3 = { version = "=0.1.0", path = "../s2n-quic-h3" }
 structopt = "0.3"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
@@ -23,7 +23,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
 
 [target.'cfg(unix)'.dependencies]
-s2n-quic = { version = "1.0.0", path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls", "provider-tls-s2n"] }
+s2n-quic = { version = "=1.0.0", path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls", "provider-tls-s2n"] }
 
 [target.'cfg(not(unix))'.dependencies]
-s2n-quic = { version = "1.0.0", path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls"] }
+s2n-quic = { version = "=1.0.0", path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls"] }

@@ -16,9 +16,9 @@ bolero-generator = "0.6"
 bytes = { version = "1", default-features = false }
 futures = "0.3"
 lazy_static = "1"
-s2n-quic = { version = "1.0.0", path = "../s2n-quic" }
-s2n-quic-core = { version = "0.1.1", path = "../s2n-quic-core", features = ["std", "testing"] }
-s2n-quic-platform = { version = "0.1.0", path = "../s2n-quic-platform" }
+s2n-quic = { version = "=1.0.0", path = "../s2n-quic" }
+s2n-quic-core = { version = "=0.1.1", path = "../s2n-quic-core", features = ["std", "testing"] }
+s2n-quic-platform = { version = "=0.1.0", path = "../s2n-quic-platform" }
 tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies]
