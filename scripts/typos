@@ -4,4 +4,30 @@ if ! command -v typos &> /dev/null; then
     cargo install typos-cli
 fi
 
+if [ "$1" == "gha" ]; then
+  mkdir -p target
+  typos -c .github/config/typos.toml --format json > target/typos.json || true
+
+  cat target/typos.json | \
+    jq -rs '.[] | "\(.path)#\(.line_num): \(.typo) should be "
+    + (.corrections // [] | join("\" or \""))'
+
+  suggestion='```suggestion\\n'
+  ticks='\\n```'
+  cat target/typos.json | \
+    jq -rs '.[] | "\(.path) \(.line_num) \(.typo) \(.corrections // [] | join("\" \""))"' | \
+    while IFS=' ' read -r -a line; do
+      file="${line[0]}"
+      line_num="${line[1]}"
+      typo="${line[2]}"
+      correction="${line[3]}"
+      prefix="::error file=$file,line=$line_num::"
+      awk "NR==$line_num{sub(/$typo/,\"$correction\"); print \"$prefix$suggestion\"\$0\"$ticks\"}" $file
+    done
+
+  # ensure the file is empty
+  ! grep -q '[^[:space:]]' target/typos.json
+  exit
+fi
+
 eval typos -c .github/config/typos.toml $@
