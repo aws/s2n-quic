@@ -517,56 +517,48 @@ impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
             // pin the wakeups future so we don't have to move it into the Select future.
             tokio::pin!(wakeups);
 
-            let select = Select::new(rx_task, tx_task, &mut wakeups, &mut timer);
+            let (rx_result, tx_result, timeout_expired, application_wakeup) =
+                if let Ok(res) = Select::new(rx_task, tx_task, &mut wakeups, &mut timer).await {
+                    res
+                } else {
+                    // The endpoint has shut down
+                    return Ok(());
+                };
 
-            let mut reset_clock = false;
+            let subscriber = endpoint.subscriber();
+            let mut publisher = event::EndpointPublisherSubscriber::new(
+                event::builder::EndpointMeta {
+                    endpoint_type: E::ENDPOINT_TYPE,
+                    timestamp: clock.get_time(),
+                },
+                None,
+                subscriber,
+            );
 
-            if let Ok((rx_result, tx_result, timeout_expired, application_wakeup)) = select.await {
-                let subscriber = endpoint.subscriber();
-                let mut publisher = event::EndpointPublisherSubscriber::new(
-                    event::builder::EndpointMeta {
-                        endpoint_type: E::ENDPOINT_TYPE,
-                        timestamp: clock.get_time(),
-                    },
-                    None,
-                    subscriber,
-                );
+            publisher.on_platform_event_loop_wakeup(event::builder::PlatformEventLoopWakeup {
+                timeout_expired,
+                rx_ready: rx_result.is_some(),
+                tx_ready: tx_result.is_some(),
+                application_wakeup,
+            });
 
-                publisher.on_platform_event_loop_wakeup(event::builder::PlatformEventLoopWakeup {
-                    timeout_expired,
-                    rx_ready: rx_result.is_some(),
-                    tx_ready: tx_result.is_some(),
-                    application_wakeup,
-                });
-
-                if let Some(guard) = tx_result {
-                    if let Ok(result) = guard?.try_io(|socket| tx.tx(socket, &mut publisher)) {
-                        result?;
-                    }
+            if let Some(guard) = tx_result {
+                if let Ok(result) = guard?.try_io(|socket| tx.tx(socket, &mut publisher)) {
+                    result?;
                 }
+            }
 
-                // if the timer expired ensure it is reset to the default timeout
-                if timeout_expired {
-                    reset_clock = true;
+            if let Some(guard) = rx_result {
+                if let Ok(result) = guard?.try_io(|socket| rx.rx(socket, &mut publisher)) {
+                    result?;
                 }
-
-                if let Some(guard) = rx_result {
-                    if let Ok(result) = guard?.try_io(|socket| rx.rx(socket, &mut publisher)) {
-                        result?;
-                    }
-                    endpoint.receive(&mut rx.rx_queue(), &clock);
-                }
-            } else {
-                // The endpoint has shut down
-                return Ok(());
+                endpoint.receive(&mut rx.rx_queue(), &clock);
             }
 
             endpoint.transmit(&mut tx.tx_queue(), &clock);
 
             if let Some(delay) = endpoint.timeout() {
-                timer.reset(delay);
-            } else if reset_clock {
-                timer.cancel();
+                timer.update(delay);
             }
         }
     }

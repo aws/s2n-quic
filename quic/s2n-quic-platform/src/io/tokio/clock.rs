@@ -10,8 +10,6 @@ use core::{
 use s2n_quic_core::time::{self, Clock as ClockTrait, Timestamp};
 use tokio::time::{sleep_until, Instant, Sleep};
 
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(1);
-
 #[derive(Clone, Debug)]
 pub struct Clock(Instant);
 
@@ -50,7 +48,11 @@ pub struct Timer {
 
 impl Timer {
     fn new(clock: Clock) -> Self {
-        let target = clock.0 + DEFAULT_TIMEOUT;
+        /// We can't create a timer without first arming it to something, so just set it to 1s in
+        /// the future.
+        const INITIAL_TIMEOUT: Duration = Duration::from_secs(1);
+
+        let target = clock.0 + INITIAL_TIMEOUT;
         let sleep = Box::pin(sleep_until(target));
         Self {
             clock,
@@ -59,7 +61,8 @@ impl Timer {
         }
     }
 
-    pub fn reset(&mut self, timestamp: Timestamp) {
+    /// Modifies the target expiration timestamp for the timer
+    pub fn update(&mut self, timestamp: Timestamp) {
         let delay = unsafe {
             // Safety: the same clock epoch is being used
             timestamp.as_duration()
@@ -79,20 +82,24 @@ impl Timer {
         self.sleep.as_mut().reset(next_time);
         self.target = Some(next_time);
     }
-
-    pub fn cancel(&mut self) {
-        self.target = None;
-    }
 }
 
 impl Future for Timer {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // Only poll the inner timer if we have a target set
         if self.target.is_none() {
             return Poll::Pending;
         }
 
-        self.sleep.as_mut().poll(cx)
+        let res = self.sleep.as_mut().poll(cx);
+
+        if res.is_ready() {
+            // clear the target after it fires, otherwise we'll endlessly wake up the task
+            self.target = None;
+        }
+
+        res
     }
 }
