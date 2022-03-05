@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use core::task::{Context, Poll};
-pub use s2n_quic_core::time::Timestamp;
+pub use s2n_quic_core::time::{
+    timer::{Provider, Query, Result},
+    Timestamp,
+};
 
 pub trait Timer {
     fn now(&self) -> Timestamp;

@@ -518,13 +518,13 @@ mod tests {
         let mut cx = core::task::Context::from_waker(&waker);
 
         loop {
-            let c = client.poll(
+            let c = client.poll_with_timer(
                 &mut client_trace,
                 &mut client_checkpoints,
                 &mut client_timer,
                 &mut cx,
             );
-            let s = server.poll(
+            let s = server.poll_with_timer(
                 &mut server_trace,
                 &mut server_checkpoints,
                 &mut server_timer,

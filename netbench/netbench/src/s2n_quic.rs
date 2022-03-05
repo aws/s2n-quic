@@ -1,9 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{connection::Owner, helper::IdPrefixReader, Result};
+use crate::{connection::Owner, helper::IdPrefixReader, scenario, Result};
 use bytes::Bytes;
 use core::{
+    future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -13,7 +14,67 @@ use s2n_quic::{
     stream::{LocalStream, PeerStream, SplittableStream},
 };
 use s2n_quic_core::stream::testing::Data;
-use std::collections::{hash_map::Entry, HashMap};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    sync::Arc,
+};
+
+fn stream_error(err: s2n_quic::stream::Error) -> Result<()> {
+    if let s2n_quic::stream::Error::StreamReset { error, .. } = err {
+        if *error == 0 {
+            return Ok(());
+        }
+    }
+
+    if let s2n_quic::stream::Error::ConnectionError { error, .. } = err {
+        return conn_error(error);
+    }
+
+    Err(err.into())
+}
+
+fn conn_error(err: s2n_quic::connection::Error) -> Result<()> {
+    if let s2n_quic::connection::Error::Application { error, .. } = err {
+        if *error == 0 {
+            return Ok(());
+        }
+    }
+
+    Err(err.into())
+}
+
+impl<'a> crate::client::Client<'a> for s2n_quic::Client {
+    type Connect = Connect<'a>;
+    type Connection = crate::Driver<'a, Connection>;
+
+    fn connect(
+        &mut self,
+        addr: std::net::SocketAddr,
+        server_name: &str,
+        _server_conn_id: u64,
+        scenario: &'a Arc<scenario::Connection>,
+    ) -> Self::Connect {
+        let connect = s2n_quic::client::Connect::new(addr).with_server_name(server_name);
+        let attempt = s2n_quic::Client::connect(self, connect);
+        Connect { attempt, scenario }
+    }
+}
+
+pub struct Connect<'a> {
+    attempt: s2n_quic::client::ConnectionAttempt,
+    scenario: &'a scenario::Connection,
+}
+
+impl<'a> Future for Connect<'a> {
+    type Output = Result<crate::Driver<'a, Connection>>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let conn = ready!(Pin::new(&mut self.attempt).poll(cx))?;
+        let conn = Connection::new(conn);
+        let conn = crate::Driver::new(self.scenario, conn);
+        Ok(conn).into()
+    }
+}
 
 pub struct Connection {
     conn: s2n_quic::Connection,
@@ -63,7 +124,7 @@ impl Connection {
                 }
                 Poll::Ready(Err(err)) => {
                     entry.remove();
-                    Poll::Ready(Err(err.into()))
+                    Poll::Ready(stream_error(err))
                 }
                 Poll::Pending => Poll::Pending,
             };
@@ -79,7 +140,7 @@ impl Connection {
                 self.streams[Owner::Local].insert(id, stream);
                 Poll::Ready(Ok(()))
             }
-            Poll::Ready(Err(err)) => Poll::Ready(Err(err.into())),
+            Poll::Ready(Err(err)) => Poll::Ready(stream_error(err)),
             Poll::Pending => {
                 self.opened_streams.insert(id, (prefix, stream));
                 Poll::Pending
@@ -159,7 +220,7 @@ impl super::Connection for Connection {
         if let Entry::Occupied(mut entry) = self.streams[owner].entry(id) {
             let stream = entry.get_mut();
             if let Some(stream) = stream.tx.as_mut() {
-                stream.inner.finish()?;
+                stream.inner.finish().or_else(stream_error)?;
             }
 
             if stream.rx.is_none() {
@@ -264,7 +325,7 @@ impl ReceiveStream {
             return Ok(0).into();
         }
 
-        if self.buffered <= bytes {
+        while self.buffered <= bytes && self.is_open {
             let mut chunks = chunks!();
 
             if let Poll::Ready(res) = self.inner.poll_receive_vectored(&mut chunks, cx) {
@@ -274,6 +335,8 @@ impl ReceiveStream {
                 for chunk in &chunks[..count] {
                     self.buffered += chunk.len() as u64;
                 }
+            } else {
+                break;
             }
         }
 
@@ -305,16 +368,44 @@ impl SendStream {
         }
     }
 
-    fn poll_send(&mut self, bytes: u64, cx: &mut Context) -> Poll<Result<u64>> {
-        let mut chunks = chunks!();
+    fn poll_send(&mut self, mut bytes: u64, cx: &mut Context) -> Poll<Result<u64>> {
+        if bytes == 0 {
+            return Ok(0).into();
+        }
 
-        let count = self.data.clone().send(bytes as usize, &mut chunks).unwrap();
-        let initial_len: u64 = chunks.iter().map(|chunk| chunk.len() as u64).sum();
+        let mut len = 0;
+        let mut data = self.data;
 
-        let count = ready!(self.inner.poll_send_vectored(&mut chunks[..count], cx))?;
-        let remaining_len: u64 = chunks[count..].iter().map(|chunk| chunk.len() as u64).sum();
+        while bytes > 0 {
+            let mut chunks = chunks!();
 
-        let len = initial_len - remaining_len;
+            let count = data.send(bytes as usize, &mut chunks).unwrap();
+            let initial_len: u64 = chunks.iter().map(|chunk| chunk.len() as u64).sum();
+
+            let count = if let Poll::Ready(count) =
+                self.inner.poll_send_vectored(&mut chunks[..count], cx)?
+            {
+                count
+            } else {
+                break;
+            };
+
+            if count == chunks.len() {
+                len += initial_len;
+                bytes -= initial_len;
+                continue;
+            }
+
+            let remaining_len: u64 = chunks[count..].iter().map(|chunk| chunk.len() as u64).sum();
+
+            len += initial_len - remaining_len;
+
+            break;
+        }
+
+        if len == 0 {
+            return Poll::Pending;
+        }
 
         self.data.seek_forward(len as usize);
 
