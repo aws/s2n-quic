@@ -205,7 +205,7 @@ impl<'a> Thread<'a> {
                 let mut all_ready = true;
                 let op_idx = self.index;
                 for (idx, thread) in threads.iter_mut().enumerate() {
-                    trace.enter(now, op_idx, idx);
+                    trace.enter(now, op_idx as _, idx);
                     let result = thread.poll(conn, trace, checkpoints, rates, now, cx);
                     trace.exit(now);
                     match result {

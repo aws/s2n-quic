@@ -47,7 +47,7 @@ fn create_cert(domain: &str, name: String, alg: &'static SignatureAlgorithm) -> 
         KeyUsagePurpose,
     };
 
-    let mut params = CertificateParams::new(vec![domain.to_string()]);
+    let mut params = CertificateParams::new(vec![domain.to_string(), format!("*.{}", domain)]);
     params.alg = alg;
     params.use_authority_key_identifier_extension = true;
     params.distinguished_name = DistinguishedName::new();
@@ -73,7 +73,7 @@ impl Certificate {
         let mut ias = HashMap::new();
         let mut out = vec![];
 
-        let domain = format!("*.{}", id);
+        let domain = format!("{}.net", id);
         for (cert_idx, cert) in certs.into_iter().enumerate() {
             match cert {
                 Self::Authority { alg } => {
