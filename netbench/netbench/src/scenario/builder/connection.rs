@@ -9,6 +9,7 @@ use super::{
 };
 use crate::operation as op;
 use core::marker::PhantomData;
+use std::sync::Arc;
 
 #[derive(Clone, Debug, Default)]
 pub struct State {
@@ -170,17 +171,29 @@ impl Connect<Client> for Connection<Server> {
         let server_id = self.endpoint_id;
         let server = &mut self.state.servers.borrow_mut()[server_id as usize];
         let server_connection_id = server.connections.len() as u64;
-        server.connections.push(crate::scenario::Connection {
-            ops: self.template.ops.clone(),
-            peer_streams: handle.template.peer_streams.clone(),
-        });
+        server
+            .connections
+            .push(Arc::new(crate::scenario::Connection {
+                ops: self.template.ops.clone(),
+                peer_streams: handle.template.peer_streams.clone(),
+            }));
+        let certificate_authority = server.certificate_authority;
 
         let client = &mut self.state.clients.borrow_mut()[handle.endpoint_id as usize];
         let client_connection_id = client.connections.len() as u64;
-        client.connections.push(crate::scenario::Connection {
-            ops: handle.template.ops.clone(),
-            peer_streams: self.template.peer_streams.clone(),
-        });
+        client
+            .connections
+            .push(Arc::new(crate::scenario::Connection {
+                ops: handle.template.ops.clone(),
+                peer_streams: self.template.peer_streams.clone(),
+            }));
+
+        if !client
+            .certificate_authorities
+            .contains(&certificate_authority)
+        {
+            client.certificate_authorities.push(certificate_authority);
+        }
 
         op::Client::Connect {
             server_id,

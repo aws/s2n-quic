@@ -499,7 +499,7 @@ mod tests {
             let conn = super::Connection::new(conn, config.clone());
             Driver::new(scenario, conn)
         };
-        let mut client_trace = MemoryLogger::new(0, traces);
+        let mut client_trace = MemoryLogger::new(0, traces.clone());
         let mut client_checkpoints = HashSet::new();
         let mut client_timer = timer::Testing::default();
 
@@ -509,7 +509,7 @@ mod tests {
             let conn = super::Connection::new(conn, config);
             Driver::new(scenario, conn)
         };
-        let mut server_trace = MemoryLogger::new(1, traces);
+        let mut server_trace = MemoryLogger::new(1, traces.clone());
         let mut server_checkpoints = HashSet::new();
         let mut server_timer = timer::Testing::default();
 

@@ -16,7 +16,13 @@ pub trait Trace {
     }
 
     #[inline(always)]
-    fn enter(&mut self, now: Timestamp, scope: usize, thread: usize) {
+    fn exec_client(&mut self, now: Timestamp, op: &op::Client) {
+        let _ = now;
+        let _ = op;
+    }
+
+    #[inline(always)]
+    fn enter(&mut self, now: Timestamp, scope: u64, thread: usize) {
         let _ = now;
         let _ = scope;
         let _ = thread;
@@ -72,9 +78,22 @@ pub trait Trace {
     }
 
     #[inline(always)]
+    fn park(&mut self, now: Timestamp, id: u64) {
+        let _ = now;
+        let _ = id;
+    }
+
+    #[inline(always)]
     fn unpark(&mut self, now: Timestamp, id: u64) {
         let _ = now;
         let _ = id;
+    }
+
+    #[inline(always)]
+    fn connect(&mut self, now: Timestamp, connection_id: u64, time: Duration) {
+        let _ = now;
+        let _ = connection_id;
+        let _ = time;
     }
 }
 
@@ -86,7 +105,13 @@ impl<A: Trace, B: Trace> Trace for (A, B) {
     }
 
     #[inline(always)]
-    fn enter(&mut self, now: Timestamp, scope: usize, thread: usize) {
+    fn exec_client(&mut self, now: Timestamp, op: &op::Client) {
+        self.0.exec_client(now, op);
+        self.1.exec_client(now, op);
+    }
+
+    #[inline(always)]
+    fn enter(&mut self, now: Timestamp, scope: u64, thread: usize) {
         self.0.enter(now, scope, thread);
         self.1.enter(now, scope, thread);
     }
@@ -140,9 +165,121 @@ impl<A: Trace, B: Trace> Trace for (A, B) {
     }
 
     #[inline]
+    fn park(&mut self, now: Timestamp, id: u64) {
+        self.0.park(now, id);
+        self.1.park(now, id);
+    }
+
+    #[inline]
     fn unpark(&mut self, now: Timestamp, id: u64) {
         self.0.unpark(now, id);
         self.1.unpark(now, id);
+    }
+
+    #[inline(always)]
+    fn connect(&mut self, now: Timestamp, connection_id: u64, time: Duration) {
+        self.0.connect(now, connection_id, time);
+        self.1.connect(now, connection_id, time);
+    }
+}
+
+impl<T: Trace> Trace for Option<T> {
+    #[inline(always)]
+    fn exec(&mut self, now: Timestamp, op: &op::Connection) {
+        if let Some(t) = self.as_mut() {
+            t.exec(now, op);
+        }
+    }
+
+    #[inline(always)]
+    fn exec_client(&mut self, now: Timestamp, op: &op::Client) {
+        if let Some(t) = self.as_mut() {
+            t.exec_client(now, op);
+        }
+    }
+
+    #[inline(always)]
+    fn enter(&mut self, now: Timestamp, scope: u64, thread: usize) {
+        if let Some(t) = self.as_mut() {
+            t.enter(now, scope, thread);
+        }
+    }
+
+    #[inline(always)]
+    fn exit(&mut self, now: Timestamp) {
+        if let Some(t) = self.as_mut() {
+            t.exit(now);
+        }
+    }
+
+    #[inline(always)]
+    fn send(&mut self, now: Timestamp, stream_id: u64, len: u64) {
+        if let Some(t) = self.as_mut() {
+            t.send(now, stream_id, len);
+        }
+    }
+
+    #[inline(always)]
+    fn send_finish(&mut self, now: Timestamp, stream_id: u64) {
+        if let Some(t) = self.as_mut() {
+            t.send_finish(now, stream_id);
+        }
+    }
+
+    #[inline(always)]
+    fn receive(&mut self, now: Timestamp, stream_id: u64, len: u64) {
+        if let Some(t) = self.as_mut() {
+            t.receive(now, stream_id, len);
+        }
+    }
+
+    #[inline(always)]
+    fn receive_finish(&mut self, now: Timestamp, stream_id: u64) {
+        if let Some(t) = self.as_mut() {
+            t.receive_finish(now, stream_id);
+        }
+    }
+
+    #[inline(always)]
+    fn accept(&mut self, now: Timestamp, stream_id: u64) {
+        if let Some(t) = self.as_mut() {
+            t.accept(now, stream_id);
+        }
+    }
+
+    #[inline(always)]
+    fn open(&mut self, now: Timestamp, stream_id: u64) {
+        if let Some(t) = self.as_mut() {
+            t.open(now, stream_id);
+        }
+    }
+
+    #[inline(always)]
+    fn trace(&mut self, now: Timestamp, id: u64) {
+        if let Some(t) = self.as_mut() {
+            t.trace(now, id);
+        }
+    }
+
+    #[inline]
+    fn park(&mut self, now: Timestamp, id: u64) {
+        if let Some(t) = self.as_mut() {
+            t.park(now, id);
+        }
+    }
+
+    #[inline]
+    fn unpark(&mut self, now: Timestamp, id: u64) {
+        if let Some(t) = self.as_mut() {
+            t.unpark(now, id);
+        }
+    }
+
+    #[inline]
+    fn connect(&mut self, now: Timestamp, connection_id: u64, time: Duration) {
+        if let Some(t) = self.as_mut() {
+            t.connect(now, connection_id, time);
+        }
     }
 }
 
@@ -151,46 +288,53 @@ pub struct Disabled(());
 
 impl Trace for Disabled {}
 
-#[derive(Clone, Debug)]
-pub struct Logger<'a, O: Output> {
+#[derive(Debug)]
+pub struct Logger<O: Output> {
     id: u64,
-    traces: &'a [String],
-    scope: Vec<(usize, usize)>,
+    traces: Arc<Vec<String>>,
+    scope: Vec<(u64, usize)>,
     output: O,
+    verbose: bool,
 }
 
-pub type MemoryLogger<'a> = Logger<'a, std::io::Cursor<Vec<u8>>>;
-pub type StdioLogger<'a> = Logger<'a, std::io::BufWriter<std::io::Stdout>>;
+pub type MemoryLogger = Logger<std::io::Cursor<Vec<u8>>>;
+pub type StdioLogger = Logger<std::io::BufWriter<std::io::Stdout>>;
 
-impl<'a, O: Output> Logger<'a, O> {
-    pub fn new(id: u64, traces: &'a [String]) -> Self {
+impl<O: Output> Logger<O> {
+    pub fn new(id: u64, traces: Arc<Vec<String>>) -> Self {
         Self {
             id,
             traces,
             scope: vec![],
             output: O::new(),
+            verbose: false,
         }
     }
 
+    pub fn verbose(&mut self, enabled: bool) {
+        self.verbose = enabled;
+    }
+
     fn log(&mut self, now: Timestamp, v: impl fmt::Display) {
-        let id = self.id;
-        let scope = &self.scope;
-        let _ = self.output.write(|out| {
-            use std::io::Write;
-            write!(out, "{}: ", now)?;
-            write!(out, "{}:", id)?;
-            for (scope, thread) in scope.iter() {
-                write!(out, "{}.{}:", scope, thread)?;
-            }
-            writeln!(out, "{}", v)?;
-            Ok(())
-        });
+        self.output.log(self.id, &self.scope, self.verbose, now, v)
     }
 }
 
-impl<'a> Logger<'a, std::io::Cursor<Vec<u8>>> {
+impl MemoryLogger {
     pub fn as_str(&self) -> Option<&str> {
         core::str::from_utf8(self.output.get_ref()).ok()
+    }
+}
+
+impl Clone for StdioLogger {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            traces: self.traces.clone(),
+            scope: vec![],
+            output: Output::new(),
+            verbose: self.verbose,
+        }
     }
 }
 
@@ -198,10 +342,36 @@ pub trait Output {
     type Io: std::io::Write;
 
     fn new() -> Self;
+
     fn write<F: FnOnce(&mut Self::Io) -> std::io::Result<()>>(
         &mut self,
         f: F,
     ) -> std::io::Result<()>;
+
+    fn log(
+        &mut self,
+        id: u64,
+        scope: &[(u64, usize)],
+        verbose: bool,
+        now: Timestamp,
+        v: impl fmt::Display,
+    ) {
+        let _ = self.write(|out| {
+            use std::io::Write;
+            write!(out, "{} ", now)?;
+
+            write!(out, "[{}", id)?;
+            if verbose {
+                for (scope, thread) in scope.iter() {
+                    write!(out, ":{}.{}", scope, thread)?;
+                }
+            }
+            write!(out, "] ")?;
+
+            writeln!(out, "{}", v)?;
+            Ok(())
+        });
+    }
 }
 
 impl Output for std::io::BufWriter<std::io::Stdout> {
@@ -238,14 +408,23 @@ impl Output for std::io::Cursor<Vec<u8>> {
     }
 }
 
-impl<O: Output> Trace for Logger<'_, O> {
+impl<O: Output> Trace for Logger<O> {
     #[inline(always)]
     fn exec(&mut self, now: Timestamp, op: &op::Connection) {
-        self.log(now, format_args!("exec: {:?}", op));
+        if self.verbose {
+            self.log(now, format_args!("exec: {:?}", op));
+        }
     }
 
     #[inline(always)]
-    fn enter(&mut self, _now: Timestamp, scope: usize, thread: usize) {
+    fn exec_client(&mut self, now: Timestamp, op: &op::Client) {
+        if self.verbose {
+            self.log(now, format_args!("exec: {:?}", op));
+        }
+    }
+
+    #[inline(always)]
+    fn enter(&mut self, _now: Timestamp, scope: u64, thread: usize) {
         self.scope.push((scope, thread));
     }
 
@@ -256,111 +435,136 @@ impl<O: Output> Trace for Logger<'_, O> {
 
     #[inline(always)]
     fn send(&mut self, now: Timestamp, stream_id: u64, len: u64) {
-        self.log(now, format_args!("send: stream={}, len={}", stream_id, len));
+        self.log(now, format_args!("send[{}]={}", stream_id, len));
     }
 
     #[inline(always)]
     fn send_finish(&mut self, now: Timestamp, stream_id: u64) {
-        self.log(now, format_args!("send finish: stream={}", stream_id));
+        self.log(now, format_args!("sfin[{}]", stream_id));
     }
 
     #[inline(always)]
     fn receive(&mut self, now: Timestamp, stream_id: u64, len: u64) {
-        self.log(now, format_args!("recv: stream={}, len={}", stream_id, len));
+        self.log(now, format_args!("recv[{}]={}", stream_id, len));
     }
 
     #[inline(always)]
     fn receive_finish(&mut self, now: Timestamp, stream_id: u64) {
-        self.log(now, format_args!("recv finish: stream={}", stream_id));
+        self.log(now, format_args!("rfin[{}]", stream_id));
     }
 
     #[inline(always)]
     fn accept(&mut self, now: Timestamp, stream_id: u64) {
-        self.log(now, format_args!("accept: stream={}", stream_id));
+        self.log(now, format_args!("acpt[{}]", stream_id));
     }
 
     #[inline(always)]
     fn open(&mut self, now: Timestamp, stream_id: u64) {
-        self.log(now, format_args!("open: stream={}", stream_id));
+        self.log(now, format_args!("open[{}]", stream_id));
     }
 
     #[inline(always)]
     fn trace(&mut self, now: Timestamp, id: u64) {
-        if let Some(msg) = self.traces.get(id as usize) {
-            self.log(now, format_args!("trace: {}", msg));
+        if let Some(msg) = self.traces.get(id as usize).filter(|_| self.verbose) {
+            let id = self.id;
+            let scope = &self.scope;
+            let verbose = self.verbose;
+            self.output.log(
+                id,
+                scope,
+                verbose,
+                now,
+                format_args!("trce[{}]={}", id, msg),
+            );
         } else {
-            self.log(now, format_args!("trace: id={}", id));
+            self.log(now, format_args!("trce[{}]", id));
         }
     }
 
     #[inline(always)]
+    fn park(&mut self, now: Timestamp, id: u64) {
+        self.log(now, format_args!("park[{}]", id));
+    }
+
+    #[inline(always)]
     fn unpark(&mut self, now: Timestamp, id: u64) {
-        self.log(now, format_args!("unpark: {}", id));
+        self.log(now, format_args!("uprk[{}]", id));
+    }
+
+    fn connect(&mut self, now: Timestamp, connection_id: u64, time: Duration) {
+        self.log(
+            now,
+            format_args!("conn[{}]={:?}us", connection_id, time.as_micros()),
+        );
     }
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct Throughput<Counter = Arc<AtomicU64>> {
+pub struct Throughput(Arc<ThroughputInner>);
+
+impl Throughput {
+    pub fn reporter(&self, freq: Duration) {
+        let handle = self.clone();
+        tokio::spawn(async move {
+            while !handle.0.is_open.fetch_or(false, Ordering::Relaxed) {
+                tokio::time::sleep(freq).await;
+                let v = handle.0.results.take();
+                eprintln!("{}", v / freq);
+            }
+        });
+    }
+}
+
+#[derive(Debug, Default)]
+struct ThroughputInner {
+    results: ThroughputResults,
+    is_open: Arc<AtomicBool>,
+}
+
+impl Trace for Throughput {
+    fn send(&mut self, _now: Timestamp, _stream_id: u64, len: u64) {
+        self.0.results.tx.fetch_add(len, Ordering::Relaxed);
+    }
+
+    fn receive(&mut self, _now: Timestamp, _stream_id: u64, len: u64) {
+        self.0.results.rx.fetch_add(len, Ordering::Relaxed);
+    }
+}
+
+impl Drop for ThroughputInner {
+    fn drop(&mut self) {
+        self.is_open.store(false, Ordering::Relaxed);
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ThroughputResults<Counter = Arc<AtomicU64>> {
     rx: Counter,
     tx: Counter,
 }
 
-impl Throughput {
-    pub fn take(&self) -> Throughput<Byte> {
-        Throughput {
+impl ThroughputResults {
+    pub fn take(&self) -> ThroughputResults<Byte> {
+        ThroughputResults {
             rx: self.rx.swap(0, Ordering::Relaxed).bytes(),
             tx: self.tx.swap(0, Ordering::Relaxed).bytes(),
         }
     }
-
-    pub fn reporter(&self, freq: Duration) -> ReporterHandle {
-        let handle = ReporterHandle::default();
-        let values = self.clone();
-        let r_handle = handle.clone();
-        tokio::spawn(async move {
-            while !r_handle.0.fetch_or(false, Ordering::Relaxed) {
-                tokio::time::sleep(freq).await;
-                let v = values.take();
-                eprintln!("{}", v / freq);
-            }
-        });
-
-        handle
-    }
 }
 
-impl core::ops::Div<Duration> for Throughput<Byte> {
-    type Output = Throughput<Rate>;
+impl core::ops::Div<Duration> for ThroughputResults<Byte> {
+    type Output = ThroughputResults<Rate>;
 
-    fn div(self, duration: Duration) -> Throughput<Rate> {
-        Throughput {
+    fn div(self, duration: Duration) -> ThroughputResults<Rate> {
+        ThroughputResults {
             rx: self.rx / duration,
             tx: self.tx / duration,
         }
     }
 }
 
-impl fmt::Display for Throughput<Rate> {
+impl fmt::Display for ThroughputResults<Rate> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "throughput: rx={}, tx={}", self.rx, self.tx)
-    }
-}
-
-impl Trace for Throughput {
-    fn send(&mut self, _now: Timestamp, _stream_id: u64, len: u64) {
-        self.tx.fetch_add(len, Ordering::Relaxed);
-    }
-
-    fn receive(&mut self, _now: Timestamp, _stream_id: u64, len: u64) {
-        self.rx.fetch_add(len, Ordering::Relaxed);
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct ReporterHandle(Arc<AtomicBool>);
-
-impl Drop for ReporterHandle {
-    fn drop(&mut self) {
-        self.0.store(true, Ordering::Relaxed);
+        write!(f, "throughput: rx={} tx={}", self.rx, self.tx)
     }
 }
