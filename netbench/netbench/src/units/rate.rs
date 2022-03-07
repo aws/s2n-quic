@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::units::{duration_format, Byte, Duration, DurationExt};
+use crate::units::{duration_format, Byte, ByteExt, Duration, DurationExt};
 use core::fmt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -18,6 +18,15 @@ impl fmt::Display for Rate {
         if self.period == 1.seconds() {
             return write!(f, "{}ps", self.bytes);
         }
+
+        // force the period to be in seconds
+        if f.alternate() {
+            let factor = 1.0 / self.period.as_secs_f64();
+            let bytes = (*self.bytes as f64 * factor) as u64;
+            let bytes = bytes.bytes();
+            return write!(f, "{}ps", bytes);
+        }
+
         write!(f, "{}/{:?}", self.bytes, self.period)
     }
 }

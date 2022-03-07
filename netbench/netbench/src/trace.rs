@@ -506,12 +506,27 @@ impl Throughput {
     pub fn reporter(&self, freq: Duration) {
         let handle = self.clone();
         tokio::spawn(async move {
+            let start = tokio::time::Instant::now();
+            let mut prev = start;
             while !handle.0.is_open.fetch_or(false, Ordering::Relaxed) {
                 tokio::time::sleep(freq).await;
-                let v = handle.0.results.take();
-                eprintln!("{}", v / freq);
+                prev = handle.report(start, prev);
             }
+            handle.report(start, prev);
         });
+    }
+
+    fn report(
+        &self,
+        start: tokio::time::Instant,
+        prev: tokio::time::Instant,
+    ) -> tokio::time::Instant {
+        let now = tokio::time::Instant::now();
+        let elapsed = now - prev;
+        let ts = unsafe { Timestamp::from_duration(now - start) };
+        let v = self.0.results.take();
+        eprintln!("{} {}", ts, v / elapsed);
+        now
     }
 }
 
@@ -565,6 +580,6 @@ impl core::ops::Div<Duration> for ThroughputResults<Byte> {
 
 impl fmt::Display for ThroughputResults<Rate> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "throughput: rx={} tx={}", self.rx, self.tx)
+        write!(f, "throughput: rx={:#} tx={:#}", self.rx, self.tx)
     }
 }
