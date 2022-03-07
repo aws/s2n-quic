@@ -51,7 +51,7 @@ pub fn main<C: Configs>() -> Result<()> {
     Ok(())
 }
 
-const LONG_ABOUT: &'static str = r#"
+const LONG_ABOUT: &str = r#"
 FORMATS:
     BYTES
         42b         ->    42 bits

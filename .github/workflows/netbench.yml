@@ -156,13 +156,15 @@ jobs:
       - name: Prepare artifact
         run: |
           chmod +x ./netbench-driver*
-          export SCENARIO=scenarios/${{ matrix.scenario }}
 
       # TODO use netbench-cli instead when it's available
       - name: Run server
         run: |
+          export SCENARIO=scenarios/${{ matrix.scenario }}
           ./netbench-driver-${{ matrix.driver }}-server &
 
       - name: Run client
         run: |
+          export SCENARIO=scenarios/${{ matrix.scenario }}
+          export SERVER_0=localhost:4433
           ./netbench-driver-${{ matrix.driver }}-client
