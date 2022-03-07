@@ -2,13 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use netbench::{scenario, Result, Timer};
-use s2n_quic::{
-    provider::{
-        io,
-        tls::default::certificate::{IntoCertificate, IntoPrivateKey},
-    },
-    Connection,
-};
+use s2n_quic::{provider::io, Connection};
 use std::{collections::HashSet, sync::Arc};
 use structopt::StructOpt;
 use tokio::spawn;
@@ -70,8 +64,8 @@ impl Server {
 
     fn server(&self) -> Result<s2n_quic::Server> {
         let (certificate, private_key) = self.opts.certificate();
-        let certificate = certificate.pem.as_str().into_certificate()?;
-        let private_key = private_key.pem.as_str().into_private_key()?;
+        let certificate = certificate.pem.as_str();
+        let private_key = private_key.pem.as_str();
 
         let tls = s2n_quic::provider::tls::default::Server::builder()
             .with_certificate(certificate, private_key)?

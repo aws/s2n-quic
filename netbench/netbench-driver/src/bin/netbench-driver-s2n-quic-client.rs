@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use netbench::Result;
-use s2n_quic::provider::{io, tls::default::certificate::IntoCertificate};
+use s2n_quic::provider::io;
 use std::collections::HashSet;
 use structopt::StructOpt;
 
