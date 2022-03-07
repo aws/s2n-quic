@@ -121,7 +121,7 @@ jobs:
         id: scenarios
         run: |
           ./netbench/target/release/netbench-scenarios \
-            --request-response.response_size=8GiB
+            --request_response.response_size=8GiB
 
           SCENARIOS=$(find target/netbench -type f -exec basename -s .json {} \; | jq -Rcs 'rtrimstr("\n") | split("\n")')
           echo "::set-output name=scenarios::$SCENARIOS"
