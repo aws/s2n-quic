@@ -56,6 +56,7 @@ impl<'a, C: Client<'a>> Thread<'a, C> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn on_op<T: Trace, Ch: Checkpoints>(
         &mut self,
         client: &mut C,

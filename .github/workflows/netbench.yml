@@ -121,7 +121,7 @@ jobs:
         id: scenarios
         run: |
           ./netbench/target/release/netbench-scenarios
-          SCENARIOS=$(ls target/netbench | xargs basename -s .json | jq -Rs 'rtrimstr("\n") | split("\n")')
+          SCENARIOS=$(find target/netbench -type f -exec basename -s .json {} \; | jq -Rcs 'rtrimstr("\n") | split("\n")')
           echo "::set-output name=scenarios::$SCENARIOS"
 
       - name: Prepare artifact
