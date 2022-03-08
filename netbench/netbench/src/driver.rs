@@ -6,7 +6,7 @@ use core::task::{Context, Poll};
 use futures::ready;
 
 mod thread;
-mod timer;
+pub(crate) mod timer;
 
 use thread::Thread;
 
@@ -44,22 +44,38 @@ impl<'a, C: Connection> Driver<'a, C> {
         checkpoints: &mut Ch,
         timer: &mut Ti,
     ) -> Result<C> {
-        futures::future::poll_fn(|cx| self.poll(trace, checkpoints, timer, cx)).await?;
+        futures::future::poll_fn(|cx| self.poll_with_timer(trace, checkpoints, timer, cx)).await?;
         Ok(self.connection)
     }
 
-    pub fn poll<T: Trace, Ch: Checkpoints, Ti: Timer>(
+    pub fn poll_with_timer<T: Trace, Ch: Checkpoints, Ti: Timer>(
         &mut self,
         trace: &mut T,
         checkpoints: &mut Ch,
         timer: &mut Ti,
         cx: &mut Context,
     ) -> Poll<Result<()>> {
+        let now = timer.now();
+        let res = self.poll(trace, checkpoints, now, cx);
+
+        if let Some(target) = timer::Provider::next_expiration(&self) {
+            // update the timer with the next expiration
+            let _ = timer.poll(target, cx);
+        };
+
+        res
+    }
+
+    pub fn poll<T: Trace, Ch: Checkpoints>(
+        &mut self,
+        trace: &mut T,
+        checkpoints: &mut Ch,
+        now: timer::Timestamp,
+        cx: &mut Context,
+    ) -> Poll<Result<()>> {
         if self.is_finished {
             return self.connection.poll_finish(cx);
         }
-
-        let now = timer.now();
 
         let mut poll_accept = false;
         let mut all_ready = true;
@@ -124,9 +140,7 @@ impl<'a, C: Connection> Driver<'a, C> {
             }
         }
 
-        if let Some(target) = timer::Provider::next_expiration(&self) {
-            all_ready |= timer.poll(target, cx).is_ready();
-        };
+        all_ready &= !timer::Provider::is_armed(&self);
 
         if all_ready {
             self.is_finished = true;
@@ -135,6 +149,22 @@ impl<'a, C: Connection> Driver<'a, C> {
             ready!(self.connection.poll_progress(cx))?;
             Poll::Pending
         }
+    }
+}
+
+impl<'a, C: Connection> crate::client::Connection for Driver<'a, C> {
+    fn poll<T, Ch>(
+        &mut self,
+        trace: &mut T,
+        checkpoints: &mut Ch,
+        now: timer::Timestamp,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<()>>
+    where
+        T: Trace,
+        Ch: Checkpoints,
+    {
+        Self::poll(self, trace, checkpoints, now, cx)
     }
 }
 

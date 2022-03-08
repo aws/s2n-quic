@@ -18,7 +18,7 @@ pub(crate) enum Certificate {
         intermediates: Vec<&'static SignatureAlgorithm>,
     },
     // Placeholder for a public cert
-    Certificate,
+    Public,
 }
 
 fn create_ca(domain: &str, name: String, alg: &'static SignatureAlgorithm) -> rcgen::Certificate {
@@ -139,7 +139,7 @@ impl Certificate {
                         pkcs12: vec![],
                     }));
                 }
-                Self::Certificate => {
+                Self::Public => {
                     // noop - handled by private key
                 }
             }
@@ -190,7 +190,7 @@ impl Authority {
             authority,
             intermediates,
         }) as u64;
-        let certificate = self.state.certificates.push(Certificate::Certificate) as u64;
+        let certificate = self.state.certificates.push(Certificate::Public) as u64;
 
         KeyPair {
             private_key,

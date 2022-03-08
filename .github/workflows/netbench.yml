@@ -1,0 +1,172 @@
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+name: netbench
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+  RUST_BACKTRACE: 1
+  # Pin the nightly toolchain to prevent breakage.
+  # This should be occasionally updated.
+  RUST_NIGHTLY_TOOLCHAIN: nightly-2021-11-17
+  CDN: https://dnglbrstg7yg.cloudfront.net
+
+jobs:
+  rustfmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
+          profile: minimal
+          override: true
+          components: rustfmt
+
+      - name: Run cargo fmt
+        uses: actions-rs/cargo@v1.0.3
+        with:
+          command: fmt
+          args: --manifest-path netbench/Cargo.toml --all -- --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [stable, beta]
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          profile: minimal
+          override: true
+          components: clippy
+
+      - uses: camshaft/rust-cache@v1
+
+      # TODO translate json reports to in-action warnings
+      - name: Run cargo clippy
+        uses: actions-rs/cargo@v1.0.3
+        with:
+          command: clippy
+          args: --manifest-path netbench/Cargo.toml --all-features --all-targets -- -D warnings
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          lfs: true
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: stable
+          override: true
+
+      - uses: camshaft/rust-cache@v1
+
+      - name: Restore fuzz corpus
+        shell: bash
+        run: |
+          find . -name 'corpus.tar.gz' -exec dirname {} ';' | xargs -L 1 bash -c 'cd "$0" && rm -rf corpus && tar xf corpus.tar.gz'
+
+      - name: Run cargo build
+        uses: actions-rs/cargo@v1.0.3
+        with:
+          command: build
+          args: --manifest-path netbench/Cargo.toml --tests
+
+      - name: Run cargo test
+        uses: actions-rs/cargo@v1.0.3
+        with:
+          command: test
+          args: --manifest-path netbench/Cargo.toml
+
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      scenarios: ${{ steps.scenarios.outputs.scenarios }}
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: stable
+          override: true
+
+      - uses: camshaft/rust-cache@v1
+
+      - name: Run cargo build
+        uses: actions-rs/cargo@v1.0.3
+        with:
+          command: build
+          args: --manifest-path netbench/Cargo.toml --release
+
+      - name: Generate scenarios
+        id: scenarios
+        run: |
+          ./netbench/target/release/netbench-scenarios \
+            --request_response.response_size=8GiB
+
+          SCENARIOS=$(find target/netbench -type f -exec basename -s .json {} \; | jq -Rcs 'rtrimstr("\n") | split("\n")')
+          echo "::set-output name=scenarios::$SCENARIOS"
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p artifact
+          cp -r target/netbench artifact/scenarios
+          cp netbench/target/release/netbench-driver* artifact
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: netbench
+          path: artifact
+
+  run:
+    runs-on: ubuntu-latest
+    needs: [build]
+    strategy:
+      fail-fast: false
+      matrix:
+        driver:
+          - s2n-quic
+          - native-tls
+          - tcp
+        scenario: ${{ fromJson(needs.build.outputs.scenarios) }}
+    env:
+      SCENARIO: scenarios/${{ matrix.scenario }}.json
+
+    steps:
+      - uses: actions/download-artifact@v2
+        with:
+          name: netbench
+          path: .
+
+      - name: Prepare artifact
+        run: |
+          chmod +x ./netbench-driver*
+
+      # TODO use netbench-cli instead when it's available
+      - name: Run server
+        run: |
+          ./netbench-driver-${{ matrix.driver }}-server &
+
+      - name: Run client
+        run: |
+          export SERVER_0=localhost:4433
+          ./netbench-driver-${{ matrix.driver }}-client

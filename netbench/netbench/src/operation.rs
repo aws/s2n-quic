@@ -64,8 +64,10 @@ pub enum Client {
         server_connection_id: u64,
         client_connection_id: u64,
     },
-    /// Synchronizes two checkpoints across different threads
-    Sync { checkpoint: u64 },
+    /// Parks the current thread and waits for the checkpoint to be unparked
+    Park { checkpoint: u64 },
+    /// Notifies the parked checkpoint that it can continue
+    Unpark { checkpoint: u64 },
     /// Emit a trace event
     Trace { trace_id: u64 },
     /// Perform operations concurrently

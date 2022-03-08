@@ -5,6 +5,7 @@ pub type Result<T, E = Error> = core::result::Result<T, E>;
 pub type Error = Box<dyn std::error::Error>;
 
 mod checkpoints;
+pub mod client;
 mod connection;
 mod driver;
 #[cfg(any(test, feature = "testing"))]
@@ -21,6 +22,7 @@ pub mod trace;
 pub mod units;
 
 pub use checkpoints::Checkpoints;
+pub use client::Driver as Client;
 pub use connection::Connection;
 pub use driver::Driver;
 pub use timer::Timer;
