@@ -84,9 +84,9 @@ pub trait Provider {
     /// Returns `true` if there are any timers armed
     #[inline]
     fn is_armed(&self) -> bool {
-        let mut is_armed = false;
+        let mut is_armed = IsArmed::default();
         let _ = self.timers(&mut is_armed);
-        is_armed
+        is_armed.0
     }
 
     /// Counts the number of armed timers in the provider
@@ -182,11 +182,15 @@ impl Query for ArmedCount {
     }
 }
 
-impl Query for bool {
+/// Returns `true` if any of the timers are armed
+#[derive(Debug, Default)]
+pub struct IsArmed(pub bool);
+
+impl Query for IsArmed {
     #[inline]
     fn on_timer(&mut self, timer: &Timer) -> Result {
         if timer.is_armed() {
-            *self = true;
+            self.0 = true;
             return Err(QueryBreak);
         }
         Ok(())
