@@ -216,9 +216,8 @@ where
                             // Safety: conn needs to outlive params
                             get_application_params(conn)?
                         };
-                        self.context.on_one_rtt_keys(key, header_key, params)?;
 
-                        self.state.tx_phase.transition();
+                        self.context.on_one_rtt_keys(key, header_key, params)?;
                     }
                 }
 
@@ -324,6 +323,18 @@ pub struct State {
     rx_phase: HandshakePhase,
     tx_phase: HandshakePhase,
     secrets: Secrets,
+}
+
+impl State {
+    /// Complete the handshake
+    pub fn on_handshake_complete(&mut self) {
+        debug_assert_eq!(self.tx_phase, HandshakePhase::Handshake);
+        debug_assert_eq!(self.rx_phase, HandshakePhase::Handshake);
+        self.tx_phase.transition();
+        self.rx_phase.transition();
+        debug_assert_eq!(self.tx_phase, HandshakePhase::Application);
+        debug_assert_eq!(self.rx_phase, HandshakePhase::Application);
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]

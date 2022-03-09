@@ -151,7 +151,6 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
         eprintln!("1/2 RTT");
 
         self.check_progress();
-
         Ok(())
     }
 
@@ -170,13 +169,10 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
                     "server should have handshake keys after reading the ClientHello"
                 );
 
-                // TODO remove this when s2n-tls fixes its key schedule
-                if !core::any::type_name::<S>().contains("s2n_quic_tls") {
-                    assert!(
-                        self.server.1.application.crypto.is_some(),
-                        "server should have application keys after reading the ClientHello"
-                    );
-                }
+                assert!(
+                    self.server.1.application.crypto.is_some(),
+                    "server should have application keys after reading the ClientHello"
+                );
 
                 assert!(!self.server.1.handshake_complete);
                 assert!(!self.client.1.handshake_complete);
@@ -196,12 +192,6 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
                 );
             }
             4 => {
-                // TODO remove this when s2n-tls fixes its key schedule
-                assert!(
-                    self.server.1.application.crypto.is_some(),
-                    "server should have application keys after reading the ClientHello"
-                );
-
                 assert!(
                     self.server.1.handshake_complete,
                     "server should finish after reading the ClientFinished"

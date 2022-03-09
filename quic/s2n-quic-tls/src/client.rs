@@ -126,7 +126,7 @@ impl tls::Endpoint for Client {
             let mut session = Session::new(endpoint::Type::Client, config, params).unwrap();
             session
                 .connection
-                .set_server_name(server_name.as_bytes())
+                .set_server_name(&server_name)
                 .expect("invalid sni value");
             session
         })

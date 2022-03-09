@@ -536,33 +536,7 @@ jobs:
           chmod +x h3spec
           chmod +x s2n-quic-qns-debug
 
-      - name: Run test (s2n-tls)
-        # the skipped tests here require modifications to the TLS library
-        # TODO remove the skips once these are fixed
-        #      https://github.com/aws/s2n-quic/issues/858
-        #      https://github.com/aws/s2n-quic/issues/859
-        if: ${{ matrix.tls == 's2n-tls' }}
-        run: |
-          ./s2n-quic-qns-debug interop server --port 4433 --tls ${{ matrix.tls }} &
-          # wait for the server to boot
-          sleep 3
-          ./h3spec localhost 4433 \
-            ` h3spec appends the KeyUpdate message to the end of the valid Handshake data. `\
-            ` s2n-quic considers the handshake "done" before it receives the bad message,  `\
-            ` and instead fails because the bad message is considered leftover data. See:  `\
-            ` https://github.com/aws/s2n-quic/blob/bb74c8e98adf12d805d26987fad02ffe45df97a7/quic/s2n-quic-transport/src/space/crypto_stream.rs#L64-L73 `\
-            --skip "MUST send unexpected_message TLS alert if KeyUpdate in Handshake is received [TLS 6]" \
-            \
-            ` s2n-quic chooses to ignore CRYPTO frames in application data. See:           `\
-            ` https://github.com/aws/s2n-quic/blob/bb74c8e98adf12d805d26987fad02ffe45df97a7/quic/s2n-quic-transport/src/space/application.rs#L625-L630 `\
-            --skip "MUST send unexpected_message TLS alert if KeyUpdate in 1-RTT is received [TLS 6]" \
-            \
-            ` The quic_transport_parameters are part of the ClientHello.                   `\
-            ` s2n-quic currently does not respond to malformed ClientHellos. See:          `\
-            ` https://github.com/aws/s2n-quic/blob/bb74c8e98adf12d805d26987fad02ffe45df97a7/quic/s2n-quic-transport/src/endpoint/mod.rs#L725 `\
-            --skip "MUST send missing_extension TLS alert if the quic_transport_parameters extension does not included [TLS 8.2]"
-
-      - name: Run test (rustls)
+      - name: Run test (${{ matrix.tls }})
         # the skipped tests here require modifications to the TLS library
         # TODO remove the skips once these are fixed
         #      https://github.com/aws/s2n-quic/issues/858
