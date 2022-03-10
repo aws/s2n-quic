@@ -8,6 +8,7 @@ use crate::{
     sync::{DeliveryState, InFlightDelivery, InflightPacketInfo, ValueToFrameWriter},
     transmission,
 };
+use core::task::Poll;
 use s2n_quic_core::{ack, stream::StreamId};
 
 /// Synchronizes a value of type `T` exactly once towards the remote peer.
@@ -38,13 +39,6 @@ impl<T: Copy + Clone + Eq + PartialEq, S: ValueToFrameWriter<T>> OnceSync<T, S> 
         Self::default()
     }
 
-    /// Returns `true` if the payload had been delivered to the peer and had
-    /// been acknowledged by the peer.
-    #[inline]
-    pub fn is_delivered(&self) -> bool {
-        self.delivery.is_delivered()
-    }
-
     /// Returns `true` if the delivery is current in progress.
     /// A packet has been sent, but no acknowledgement has been retrieved so far.
     #[inline]
@@ -72,14 +66,17 @@ impl<T: Copy + Clone + Eq + PartialEq, S: ValueToFrameWriter<T>> OnceSync<T, S> 
     }
 
     /// This method gets called when a packet delivery got acknowledged
-    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) -> Poll<()> {
         // If the packet containing the frame gets acknowledged, mark the delivery as
         // succeeded.
         if let DeliveryState::InFlight(in_flight) = self.delivery {
             if ack_set.contains(in_flight.packet.packet_nr) {
                 self.delivery = DeliveryState::Delivered(in_flight.value);
+                return Poll::Ready(());
             }
         }
+
+        Poll::Pending
     }
 
     /// This method gets called when a packet loss is reported

@@ -88,13 +88,6 @@ impl<T> DeliveryState<T> {
         matches!(self, Self::InFlight(_))
     }
 
-    /// Returns `true` if the payload had been delivered to the peer and had
-    /// been acknowledged by the peer.
-    #[inline]
-    pub fn is_delivered(&self) -> bool {
-        matches!(self, Self::Delivered(_))
-    }
-
     /// Tries to transmit the delivery with the given transmission constraint
     #[inline]
     pub fn try_transmit(&self, constraint: transmission::Constraint) -> Option<&T> {

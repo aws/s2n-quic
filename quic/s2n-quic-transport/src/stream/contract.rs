@@ -402,7 +402,10 @@ pub mod rx {
 
             if self.stop_sending.is_some() {
                 let response = response.expect("stop_sending should never fail");
-                assert!(response.is_reset(), "stop_sending should reset the stream");
+                assert!(
+                    response.is_reset() || response.is_finished(),
+                    "stop_sending should reset or finish the stream"
+                );
 
                 assert_eq!(
                     response.bytes,
