@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use netbench::{multiplex, scenario, Result};
+use netbench_driver::Allocator;
 use std::{collections::HashSet, future::Future, net::SocketAddr, pin::Pin, sync::Arc};
 use structopt::StructOpt;
 use tokio::{io::AsyncWriteExt, net::TcpStream};
@@ -9,6 +10,9 @@ use tokio_native_tls::{
     native_tls::{Certificate, TlsConnector},
     TlsStream,
 };
+
+#[global_allocator]
+static ALLOCATOR: Allocator = Allocator::new();
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -48,7 +52,11 @@ impl Client {
 
         let config = multiplex::Config::default();
 
-        Ok(ClientImpl { config, connector })
+        Ok(ClientImpl {
+            config,
+            connector,
+            id: 0,
+        })
     }
 }
 
@@ -58,6 +66,15 @@ type Connection<'a> = netbench::Driver<'a, multiplex::Connection<TlsStream<TcpSt
 struct ClientImpl {
     config: multiplex::Config,
     connector: Arc<tokio_native_tls::TlsConnector>,
+    id: u64,
+}
+
+impl ClientImpl {
+    fn id(&mut self) -> u64 {
+        let id = self.id;
+        self.id = id + 1;
+        id
+    }
 }
 
 impl<'a> netbench::client::Client<'a> for ClientImpl {
@@ -71,6 +88,7 @@ impl<'a> netbench::client::Client<'a> for ClientImpl {
         server_conn_id: u64,
         scenario: &'a Arc<scenario::Connection>,
     ) -> Self::Connect {
+        let id = self.id();
         let config = self.config.clone();
         let connector = self.connector.clone();
         let server_name = server_name.to_string();
@@ -84,7 +102,7 @@ impl<'a> netbench::client::Client<'a> for ClientImpl {
             conn.write_u64(server_conn_id).await?;
 
             let conn = Box::pin(conn);
-            let conn = multiplex::Connection::new(conn, config);
+            let conn = multiplex::Connection::new(id, conn, config);
             let conn: Connection = netbench::Driver::new(scenario, conn);
 
             Result::Ok(conn)

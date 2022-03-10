@@ -1,11 +1,15 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use netbench::{scenario, Result, Timer};
+use netbench::{scenario, Result};
+use netbench_driver::Allocator;
 use s2n_quic::{provider::io, Connection};
 use std::{collections::HashSet, sync::Arc};
 use structopt::StructOpt;
 use tokio::spawn;
+
+#[global_allocator]
+static ALLOCATOR: Allocator = Allocator::new();
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -45,7 +49,6 @@ impl Server {
             scenario: Arc<scenario::Server>,
             mut trace: impl netbench::Trace,
         ) -> Result<()> {
-            let conn_id = connection.id();
             let server_name = connection.server_name()?.ok_or("missing server name")?;
             let scenario = scenario.on_server_name(&server_name)?;
             let conn =
@@ -54,9 +57,7 @@ impl Server {
             let mut checkpoints = HashSet::new();
             let mut timer = netbench::timer::Tokio::default();
 
-            trace.enter(timer.now(), conn_id, 0);
             conn.run(&mut trace, &mut checkpoints, &mut timer).await?;
-            trace.exit(timer.now());
 
             Ok(())
         }

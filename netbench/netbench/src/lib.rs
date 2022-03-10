@@ -17,6 +17,7 @@ pub mod operation;
 #[cfg(feature = "s2n-quic")]
 pub mod s2n_quic;
 pub mod scenario;
+pub mod stats;
 pub mod timer;
 pub mod trace;
 pub mod units;

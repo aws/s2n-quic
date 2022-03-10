@@ -150,6 +150,10 @@ impl Connection {
 }
 
 impl super::Connection for Connection {
+    fn id(&self) -> u64 {
+        self.conn.id()
+    }
+
     fn poll_open_bidirectional_stream(&mut self, id: u64, cx: &mut Context) -> Poll<Result<()>> {
         self.open_local_stream(id, |conn, cx| conn.poll_open_bidirectional_stream(cx), cx)
     }
@@ -219,7 +223,7 @@ impl super::Connection for Connection {
     fn poll_send_finish(&mut self, owner: Owner, id: u64, _cx: &mut Context) -> Poll<Result<()>> {
         if let Entry::Occupied(mut entry) = self.streams[owner].entry(id) {
             let stream = entry.get_mut();
-            if let Some(stream) = stream.tx.as_mut() {
+            if let Some(mut stream) = stream.tx.take() {
                 stream.inner.finish().or_else(stream_error)?;
             }
 

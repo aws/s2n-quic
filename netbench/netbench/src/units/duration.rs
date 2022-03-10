@@ -3,6 +3,10 @@
 
 pub use core::time::Duration;
 
+pub fn parse_duration(s: &str) -> crate::Result<Duration> {
+    Ok(humantime::parse_duration(s)?)
+}
+
 pub trait DurationExt {
     fn millis(&self) -> Duration;
     fn seconds(&self) -> Duration {

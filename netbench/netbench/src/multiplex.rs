@@ -49,6 +49,7 @@ impl Default for Config {
 
 #[derive(Debug)]
 pub struct Connection<T: AsyncRead + AsyncWrite> {
+    id: u64,
     inner: Pin<Box<T>>,
     rx_open: bool,
     tx_open: bool,
@@ -64,7 +65,7 @@ pub struct Connection<T: AsyncRead + AsyncWrite> {
 }
 
 impl<T: AsyncRead + AsyncWrite> Connection<T> {
-    pub fn new(inner: Pin<Box<T>>, config: Config) -> Self {
+    pub fn new(id: u64, inner: Pin<Box<T>>, config: Config) -> Self {
         let mut write_buf = WriteBuffer::default();
 
         if config.stream_window != DEFAULT_STREAM_WINDOW {
@@ -80,6 +81,7 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
         }
 
         Self {
+            id,
             inner,
             rx_open: true,
             tx_open: true,
@@ -264,6 +266,10 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
 }
 
 impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
+    fn id(&self) -> u64 {
+        self.id
+    }
+
     fn poll_open_bidirectional_stream(&mut self, id: u64, cx: &mut Context) -> Poll<Result<()>> {
         ready!(self.stream_controller.open(cx));
 
@@ -413,18 +419,14 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
             }
 
             for (owner, id) in self.max_stream_data.drain() {
-                let stream = self.streams[owner]
-                    .get_mut(&id)
-                    .unwrap()
-                    .rx
-                    .as_mut()
-                    .unwrap();
-                let up_to = stream.credit(self.config.stream_window);
-                self.write_buf.push_priority(Frame::MaxStreamData {
-                    id,
-                    owner: !owner,
-                    up_to,
-                });
+                if let Some(stream) = self.streams[owner].get_mut(&id).and_then(|s| s.rx.as_mut()) {
+                    let up_to = stream.credit(self.config.stream_window);
+                    self.write_buf.push_priority(Frame::MaxStreamData {
+                        id,
+                        owner: !owner,
+                        up_to,
+                    });
+                }
             }
 
             self.flush_write_buffer(cx)?;
@@ -496,20 +498,20 @@ mod tests {
         let mut client = {
             let scenario = &scenario.clients[0].connections[0];
             let conn = Box::pin(client);
-            let conn = super::Connection::new(conn, config.clone());
+            let conn = super::Connection::new(0, conn, config.clone());
             Driver::new(scenario, conn)
         };
-        let mut client_trace = MemoryLogger::new(0, traces.clone());
+        let mut client_trace = MemoryLogger::new(traces.clone());
         let mut client_checkpoints = HashSet::new();
         let mut client_timer = timer::Testing::default();
 
         let mut server = {
             let scenario = &scenario.servers[0].connections[0];
             let conn = Box::pin(server);
-            let conn = super::Connection::new(conn, config);
+            let conn = super::Connection::new(1, conn, config);
             Driver::new(scenario, conn)
         };
-        let mut server_trace = MemoryLogger::new(1, traces.clone());
+        let mut server_trace = MemoryLogger::new(traces.clone());
         let mut server_checkpoints = HashSet::new();
         let mut server_timer = timer::Testing::default();
 

@@ -1,0 +1,107 @@
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+BEGIN {
+  printf("cpid=%d\n", cpid);
+}
+
+usdt:__BIN__:netbench__send
+/pid==cpid/
+{
+  @s[arg0,arg1]=stats(arg2);
+}
+
+usdt:__BIN__:netbench__receive
+/pid==cpid/
+{
+  @r[arg0,arg1]=stats(arg2);
+}
+
+usdt:__BIN__:netbench__alloc
+/pid==cpid/
+{
+  @a=stats(arg0);
+}
+
+usdt:__BIN__:netbench__realloc
+/pid==cpid/
+{
+  @R=stats(arg1);
+}
+
+usdt:__BIN__:netbench__dealloc
+/pid==cpid/
+{
+  @d=stats(arg0);
+}
+
+uprobe:__LIBC__:malloc
+/pid==cpid/
+{
+  @a=stats(arg0);
+}
+
+uprobe:__LIBC__:realloc
+/pid==cpid/
+{
+  @R=stats(arg1);
+}
+
+hardware:cycles
+/pid==cpid/
+{
+  @c=count();
+}
+
+hardware:instructions
+/pid==cpid/
+{
+  @i=count();
+}
+
+hardware:branches
+/pid==cpid/
+{
+  @b=count();
+}
+
+software:context-switches
+/pid==cpid/
+{
+  @C=count();
+}
+
+tracepoint:raw_syscalls:sys_enter
+/pid==cpid/
+{
+  @S=count();
+}
+
+i:ms:__INTERVAL_MS__ {
+  @=count();
+  print(@);
+  print(@c);
+  print(@i);
+  print(@b);
+  print(@C);
+  print(@S);
+
+  print(@a);
+  clear(@a);
+
+  print(@R);
+  clear(@R);
+
+  print(@d);
+  clear(@d);
+
+  print(@s);
+  clear(@s);
+
+  print(@r);
+  clear(@r);
+
+  print("===");
+}

@@ -21,6 +21,7 @@ pub struct Thread<'a> {
 }
 
 impl<'a> Thread<'a> {
+    #[inline]
     pub fn new(ops: &'a [op::Connection], owner: Owner) -> Self {
         Self {
             ops,
@@ -31,6 +32,7 @@ impl<'a> Thread<'a> {
         }
     }
 
+    #[inline]
     pub(crate) fn poll<C: Connection, T: Trace, Ch: Checkpoints>(
         &mut self,
         conn: &mut C,
@@ -56,6 +58,7 @@ impl<'a> Thread<'a> {
         }
     }
 
+    #[inline]
     fn on_op<T: Trace, Ch: Checkpoints>(
         &mut self,
         op: &'a op::Connection,
@@ -135,6 +138,7 @@ impl<'a> Thread<'a> {
         }
     }
 
+    #[inline]
     fn poll_op<C: Connection, T: Trace, Ch: Checkpoints>(
         &mut self,
         conn: &mut C,
