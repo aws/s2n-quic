@@ -115,7 +115,7 @@ impl MissingData {
             self.start = frame_end;
         }
 
-        // update the end if this is the last frame or if it contains the current the end
+        // update the end if this is the last frame or if it contains the current end
         if frame.is_fin || frame_range.contains(&self.end) {
             self.end = self.end.min(frame_start);
         }
