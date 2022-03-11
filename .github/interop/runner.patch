@@ -38,33 +38,10 @@ index 7541cae..ba1b4da 100644
        - VERSION=$VERSION
      depends_on:
 diff --git a/implementations.json b/implementations.json
-index 3df16da..70ff578 100644
+index 5a88ee2..df511e3 100644
 --- a/implementations.json
 +++ b/implementations.json
-@@ -1,24 +1,24 @@
- {
-+  "s2n-quic": {
-+    "image": "aws/s2n-quic-qns:latest",
-+    "url": "https://github.com/aws/s2n-quic",
-+    "role": "both"
-+  },
-+  "s2n-quic-rustls": {
-+    "image": "aws/s2n-quic-qns-rustls:latest",
-+    "url": "https://github.com/aws/s2n-quic",
-+    "role": "both"
-+  },
-   "quic-go": {
-     "image": "martenseemann/quic-go-interop:latest",
-     "url": "https://github.com/lucas-clemente/quic-go",
-     "role": "both"
-   },
--  "quicly": {
--    "image": "h2oserver/quicly-interop-runner:latest",
--    "url": "https://github.com/h2o/quicly",
--    "role": "both"
--  },
-   "ngtcp2": {
-     "image": "ghcr.io/ngtcp2/ngtcp2-interop:latest",
+@@ -9,11 +9,6 @@
      "url": "https://github.com/ngtcp2/ngtcp2",
      "role": "both"
    },
@@ -76,6 +53,21 @@ index 3df16da..70ff578 100644
    "mvfst": {
      "image": "lnicco/mvfst-qns:latest",
      "url": "https://github.com/facebookincubator/mvfst",
+@@ -79,8 +74,13 @@
+     "url": "https://github.com/quinn-rs/quinn",
+     "role": "both"
+   },
++  "s2n-quic-rustls": {
++    "image": "aws/s2n-quic-qns-rustls:latest",
++    "url": "https://github.com/aws/s2n-quic",
++    "role": "both"
++  },
+   "s2n-quic": {
+-    "image": "public.ecr.aws/s2n/s2n-quic-qns:latest",
++    "image": "aws/s2n-quic-qns:latest",
+     "url": "https://github.com/aws/s2n-quic",
+     "role": "both"
+   }
 diff --git a/interop.py b/interop.py
 index 4dea51d..d84bdac 100644
 --- a/interop.py
@@ -152,7 +144,7 @@ index c2d6d1f..844bbd5 100644
  print("\nPulling the iperf endpoint...")
  os.system("docker pull martenseemann/quic-interop-iperf-endpoint")
 diff --git a/testcases.py b/testcases.py
-index 1d81d25..99394cc 100644
+index 2741a0d..a8d1e14 100644
 --- a/testcases.py
 +++ b/testcases.py
 @@ -90,6 +90,10 @@ class TestCase(abc.ABC):
@@ -240,6 +232,15 @@ index 1d81d25..99394cc 100644
      @staticmethod
      def abbreviation():
          return "G"
+@@ -1455,7 +1435,7 @@ class MeasurementGoodput(Measurement):
+ 
+     @staticmethod
+     def repetitions() -> int:
+-        return 5
++        return 1
+ 
+     def get_paths(self):
+         self._files = [self._generate_random_file(self.FILESIZE)]
 @@ -1528,8 +1508,8 @@ TESTCASES = [
      TestCaseChaCha20,
      TestCaseMultiplexing,
