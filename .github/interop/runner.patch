@@ -161,6 +161,16 @@ index c2d6d1f..844bbd5 100644
  
  print("\nPulling the iperf endpoint...")
  os.system("docker pull martenseemann/quic-interop-iperf-endpoint")
+diff --git a/run.py b/run.py
+index fbd9515..aa8d6ed 100755
+--- a/run.py
++++ b/run.py
+@@ -136,4 +136,4 @@ def main():
+ 
+ 
+ if __name__ == "__main__":
+-    sys.exit(main())
++    main()
 diff --git a/testcases.py b/testcases.py
 index 2741a0d..a8d1e14 100644
 --- a/testcases.py

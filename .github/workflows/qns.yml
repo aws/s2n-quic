@@ -260,7 +260,7 @@ jobs:
         run: |
           # enable IPv6 support
           sudo modprobe ip6table_filter
-          python3 run.py --client ${{ matrix.client }} --server ${{ matrix.server }} --json results/result.json --debug --log-dir results/logs || true
+          python3 run.py --client ${{ matrix.client }} --server ${{ matrix.server }} --json results/result.json --debug --log-dir results/logs
           mkdir -p results/logs
 
       - name: Prepare artifacts
