@@ -31,4 +31,4 @@ s2n-quic = { version = "=1.0.0", path = "../s2n-quic", features = ["provider-eve
 
 # we don't use openssl-sys directly; it's just here to pin and vendor in dev
 [package.metadata.cargo-udeps.ignore]
-development = [ "openssl-sys" ]
+normal = [ "openssl-sys" ]
