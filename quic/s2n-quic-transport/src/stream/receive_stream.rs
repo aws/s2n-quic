@@ -15,7 +15,7 @@ use crate::{
 };
 use core::{
     convert::TryFrom,
-    task::{Context, Waker},
+    task::{Context, Poll, Waker},
 };
 use s2n_quic_core::{
     ack, application,
@@ -61,7 +61,7 @@ use s2n_quic_core::{
 
 /// Enumerates the possible states of the receiving side of a stream.
 /// These states are equivalent to the ones in the QUIC transport specification.
-#[derive(PartialEq, Debug, Copy, Clone)]
+#[derive(PartialEq, Debug, Clone)]
 pub(super) enum ReceiveStreamState {
     /// The stream is still receiving data from the remote peer. This state
     /// coverst the `Recv`, `Size Known` and `Data Recvd` state from the QUIC
@@ -73,9 +73,60 @@ pub(super) enum ReceiveStreamState {
     /// All data had been received from the peer and consumed by the user.
     /// This is the terminal state.
     DataRead,
+    /// The application has requested the peer to STOP_SENDING and the stream is currently
+    /// waiting for an ACK for the STOP_SENDING frame.
+    Stopping {
+        error: StreamError,
+        missing_data: MissingData,
+    },
     /// The connection was reset. The flag indicates whether the reset status
     /// had already been observed by the user.
     Reset(StreamError),
+}
+
+/// Keeps track of any missing data in the `Stopping` state
+#[derive(PartialEq, Debug, Clone)]
+pub(super) struct MissingData {
+    start: u64,
+    end: u64,
+}
+
+impl MissingData {
+    fn new(start: u64) -> Self {
+        Self {
+            start,
+            end: u64::MAX,
+        }
+    }
+
+    fn on_data(&mut self, frame: &StreamRef) -> Poll<()> {
+        // We could track if we have any pending gaps and continue to send STOP_SENDING but
+        // that would require keeping the receive buffer around, which isn't really useful
+        // since the application has already closed the stream.
+        //
+        // Instead, we just use a simple range
+
+        let frame_start = *frame.offset;
+        let frame_end = *(frame.offset + frame.data.len());
+        let frame_range = frame_start..frame_end;
+
+        // update the start if it overlaps the offset of the frame
+        if frame_range.contains(&self.start) {
+            self.start = frame_end;
+        }
+
+        // update the end if this is the last frame or if it contains the current end
+        if frame.is_fin || frame_range.contains(&self.end) {
+            self.end = self.end.min(frame_start);
+        }
+
+        // return if we've received everything
+        if self.start >= self.end {
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
+    }
 }
 
 /// Writes the `MAX_STREAM_DATA` frames based on the streams flow control window.
@@ -347,6 +398,15 @@ impl ReceiveStream {
                 // into the end-of-stream signal. We could add these checks, but
                 // the main outcome would be to send connection errors.
             }
+            ReceiveStreamState::Stopping {
+                ref mut missing_data,
+                ..
+            } => {
+                if missing_data.on_data(frame).is_ready() {
+                    self.stop_sending_sync.stop_sync();
+                    self.final_state_observed = true;
+                }
+            }
             ReceiveStreamState::DataRead => {
                 // We also ignore the data in this case. We could validate whether
                 // it actually fitted into previously announced window, but
@@ -558,6 +618,11 @@ impl ReceiveStream {
         // data had been already received.
         match self.state {
             ReceiveStreamState::Reset(_) | ReceiveStreamState::DataRead => return Ok(()),
+            ReceiveStreamState::Stopping { .. } => {
+                // Prefer the error from the peer instead of the STOP_SENDING error.
+                self.state = ReceiveStreamState::Reset(error);
+                return Ok(());
+            }
             ReceiveStreamState::Receiving(Some(total_size)) => {
                 if let Some(actual_size) = actual_size {
                     // If the stream size which is indicated through the reset
@@ -629,7 +694,8 @@ impl ReceiveStream {
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.flow_controller.read_window_sync.on_packet_ack(ack_set);
 
-        self.stop_sending_sync.on_packet_ack(ack_set);
+        // finalize the stream if the peer has ACKed the STOP_SENDING frame
+        self.final_state_observed |= self.stop_sending_sync.on_packet_ack(ack_set).is_ready();
     }
 
     /// This method gets called when a packet loss is reported
@@ -670,6 +736,8 @@ impl ReceiveStream {
         let mut response = ops::rx::Response::default();
 
         if let Some(error_code) = request.stop_sending {
+            let error = StreamError::stream_reset(error_code);
+
             match self.state {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-3.3
                 //# A receiver MAY send a STOP_SENDING frame in any state where it has
@@ -679,12 +747,41 @@ impl ReceiveStream {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-3.5
                 //# STOP_SENDING SHOULD only be sent for a stream that has not been reset
                 //# by the peer.
-                ReceiveStreamState::Reset(_) => (),
+                ReceiveStreamState::Reset(error) | ReceiveStreamState::Stopping { error, .. } => {
+                    response.status = ops::Status::Reset(error);
+                    return Ok(response);
+                }
+                // If we've already read everything, transition to the final state
+                ReceiveStreamState::DataRead => {
+                    self.state = ReceiveStreamState::DataRead;
+                    self.final_state_observed = true;
+                    response.status = ops::Status::Finished;
+                    return Ok(response);
+                }
+                // If we've already buffered everything, transition to the final state
+                ReceiveStreamState::Receiving(Some(total_size))
+                    if self.receive_buffer.total_received_len() == total_size =>
+                {
+                    self.state = ReceiveStreamState::DataRead;
+                    self.final_state_observed = true;
+                    response.status = ops::Status::Finished;
+                    return Ok(response);
+                }
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-3.5
                 //# If the stream is in the "Recv" or "Size Known" states, the transport
                 //# SHOULD signal this by sending a STOP_SENDING frame to prompt closure
                 //# of the stream in the opposite direction.
-                _ => self.stop_sending_sync.request_delivery(error_code),
+                _ => {
+                    self.stop_sending_sync.request_delivery(error_code);
+
+                    let received_len = self.receive_buffer.total_received_len();
+                    let missing_data = MissingData::new(received_len);
+                    // transition to the Stopping state so we can start shutting down
+                    self.state = ReceiveStreamState::Stopping {
+                        error,
+                        missing_data,
+                    };
+                }
             }
 
             self.read_waiter = None;
@@ -693,9 +790,12 @@ impl ReceiveStream {
             // space which had been allocated but not used
             self.receive_buffer.reset();
 
+            // we don't need any more flow control
+            self.flow_controller.release_outstanding_window();
+
             // Mark the stream as reset. Note that the request doesn't have a flush so there's
             // currently no way to wait for the reset to be acknowledged.
-            response.status = ops::Status::Reset(StreamError::stream_reset(error_code));
+            response.status = ops::Status::Reset(error);
 
             return Ok(response);
         }
@@ -704,7 +804,7 @@ impl ReceiveStream {
         // allowed to read (not reset).
 
         let total_size = match self.state {
-            ReceiveStreamState::Reset(error) => {
+            ReceiveStreamState::Reset(error) | ReceiveStreamState::Stopping { error, .. } => {
                 // The reset is now known to have been read by the client.
                 self.final_state_observed = true;
                 self.read_waiter = None;

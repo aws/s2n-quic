@@ -626,10 +626,8 @@ impl SendStream {
             }
         }
 
-        self.reset_sync.on_packet_ack(ack_set);
-
         if let SendStreamState::ResetSent(error_code) = self.state {
-            if self.reset_sync.is_delivered() {
+            if self.reset_sync.on_packet_ack(ack_set).is_ready() {
                 // A reset had been acknowledged. Enter the terminal state.
                 self.state = SendStreamState::ResetAcknowledged(error_code);
 

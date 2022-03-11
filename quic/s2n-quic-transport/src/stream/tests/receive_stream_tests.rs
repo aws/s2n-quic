@@ -1812,9 +1812,9 @@ fn stop_sending_will_trigger_a_stop_sending_frame() {
             let mut events = StreamEvents::new();
             test_env.stream.on_packet_ack(&packet_nr, &mut events);
 
-            // Nothing new to write
+            // Nothing new to write; the stream should be finished
             assert_eq!(
-                stream_interests(&[]),
+                stream_interests(&["fin"]),
                 test_env.stream.get_stream_interests()
             );
             test_env.assert_write_frames(0);
@@ -1868,8 +1868,10 @@ fn do_not_retransmit_stop_sending_if_requested_twice() {
                 test_env
                     .stream
                     .on_packet_ack(&sent_frame.packet_nr, &mut events);
+
+                // Finalize the stream after ACKing the STOP_SENDING frame
                 assert_eq!(
-                    stream_interests(&[]),
+                    stream_interests(&["fin"]),
                     test_env.stream.get_stream_interests()
                 );
             }
@@ -1881,7 +1883,7 @@ fn do_not_retransmit_stop_sending_if_requested_twice() {
             // Nothing new to write
             if *ack_packet {
                 assert_eq!(
-                    stream_interests(&[]),
+                    stream_interests(&["fin"]),
                     test_env.stream.get_stream_interests()
                 );
             } else {
@@ -1977,7 +1979,7 @@ fn stop_sending_is_ignored_if_stream_has_already_received_all_data() {
         .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
         .is_ok());
     assert_eq!(
-        stream_interests(&[]),
+        stream_interests(&["fin"]),
         test_env.stream.get_stream_interests()
     );
 
@@ -2037,14 +2039,14 @@ fn stop_sending_can_be_sent_if_size_is_known_but_data_is_still_missing() {
 
             // Now we should not require stop sending anymore
             assert_eq!(
-                stream_interests(&[]),
+                stream_interests(&["fin"]),
                 test_env.stream.get_stream_interests()
             );
         }
 
         test_env.ack_packet(sent_frame.packet_nr, ExpectWakeup(Some(false)));
         assert_eq!(
-            stream_interests(&[]),
+            stream_interests(&["fin"]),
             test_env.stream.get_stream_interests()
         );
 
@@ -2079,7 +2081,7 @@ fn stop_sending_is_aborted_if_stream_receives_all_data() {
         .is_ok());
 
     assert_eq!(
-        stream_interests(&[]),
+        stream_interests(&["fin"]),
         test_env.stream.get_stream_interests()
     );
     test_env.assert_write_frames(0);
@@ -2127,7 +2129,7 @@ fn stop_sending_is_aborted_if_stream_receives_all_data_with_data_after_fin() {
         .is_ok());
 
     assert_eq!(
-        stream_interests(&[]),
+        stream_interests(&["fin"]),
         test_env.stream.get_stream_interests()
     );
     test_env.assert_write_frames(0);
@@ -2164,7 +2166,10 @@ fn stop_sending_is_ignored_if_stream_has_received_or_consumed_all_data() {
         assert!(test_env
             .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
             .is_ok());
-        assert_eq!(expected_interests, test_env.stream.get_stream_interests());
+        assert_eq!(
+            stream_interests(&["fin"]),
+            test_env.stream.get_stream_interests()
+        );
 
         test_env.assert_write_frames(0);
     }
@@ -2238,7 +2243,7 @@ fn stop_sending_frames_are_retransmitted_on_loss() {
     // Acknowledge the second packet and we are done
     test_env.ack_packet(packet_nr_2, ExpectWakeup(Some(false)));
     assert_eq!(
-        stream_interests(&[]),
+        stream_interests(&["fin"]),
         test_env.stream.get_stream_interests()
     );
     test_env.assert_write_frames(0);
