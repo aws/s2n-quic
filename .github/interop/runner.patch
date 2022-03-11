@@ -69,7 +69,7 @@ index 5a88ee2..df511e3 100644
      "role": "both"
    }
 diff --git a/interop.py b/interop.py
-index 4dea51d..d84bdac 100644
+index 4dea51d..3239567 100644
 --- a/interop.py
 +++ b/interop.py
 @@ -124,6 +124,7 @@ class InteropRunner:
@@ -96,7 +96,25 @@ index 4dea51d..d84bdac 100644
              "WWW=" + testcase.www_dir() + " "
              "DOWNLOADS=" + testcase.download_dir() + " "
              "SERVER_LOGS=" + server_log_dir.name + " "
-@@ -474,23 +477,26 @@ class InteropRunner:
+@@ -456,9 +459,14 @@ class InteropRunner:
+         logging.debug(values)
+         res = MeasurementResult()
+         res.result = TestResult.SUCCEEDED
+-        res.details = "{:.0f} (± {:.0f}) {}".format(
+-            statistics.mean(values), statistics.stdev(values), test.unit()
+-        )
++        if len(values) == 1:
++            res.details = "{:.0f} {}".format(
++                values[0], test.unit()
++            )
++        else:
++            res.details = "{:.0f} (± {:.0f}) {}".format(
++                statistics.mean(values), statistics.stdev(values), test.unit()
++            )
+         return res
+ 
+     def run(self):
+@@ -474,23 +482,26 @@ class InteropRunner:
                      client,
                      self._implementations[client]["image"],
                  )
