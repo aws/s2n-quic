@@ -3,6 +3,7 @@
 
 use crate::{procinfo::Proc, Result};
 use netbench::stats::{Initialize, Print, Stat, Stats, StreamId};
+use serde_json::json;
 use std::{
     collections::HashMap,
     io,
@@ -203,15 +204,18 @@ pub fn try_run(args: &crate::Args) -> Result<Option<()>> {
     let interval = args.interval;
     let scenario = &args.scenario;
 
-    let mut program = PROGRAM
-        .replace("__BIN__", driver)
-        .replace("__INTERVAL_MS__", &interval.as_millis().to_string());
-
-    if let Some(libc) = libc_location(driver)? {
-        program = program.replace("__LIBC__", &libc);
-    } else {
-        program = program.replace("__LIBC__", driver);
-    }
+    let program = {
+        let template = handlebars::Handlebars::new();
+        template.render_template(
+            PROGRAM,
+            &json!({
+                "bin": &driver,
+                "interval_ms": interval.as_millis() as u64,
+                "libc": libc_location(driver)?.unwrap_or_else(|| driver.to_string()),
+                "hardware": detect_hardware_events()?
+            }),
+        )?
+    };
 
     command
         .arg("-c")
@@ -279,4 +283,15 @@ fn libc_location(cmd: &str) -> Result<Option<String>> {
     }
 
     Ok(None)
+}
+
+fn detect_hardware_events() -> Result<bool> {
+    let out = Command::new("perf").arg("list").arg("hw").output()?;
+    let out = core::str::from_utf8(&out.stdout)?;
+
+    if out.contains("cycles") && out.contains("branches") && out.contains("instructions") {
+        return Ok(true);
+    }
+
+    Ok(false)
 }

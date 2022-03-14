@@ -7,48 +7,49 @@ BEGIN {
   printf("cpid=%d\n", cpid);
 }
 
-usdt:__BIN__:netbench__send
+usdt:{{bin}}:netbench__send
 /pid==cpid/
 {
   @s[arg0,arg1]=stats(arg2);
 }
 
-usdt:__BIN__:netbench__receive
+usdt:{{bin}}:netbench__receive
 /pid==cpid/
 {
   @r[arg0,arg1]=stats(arg2);
 }
 
-usdt:__BIN__:netbench__alloc
+usdt:{{bin}}:netbench__alloc
 /pid==cpid/
 {
   @a=stats(arg0);
 }
 
-usdt:__BIN__:netbench__realloc
+usdt:{{bin}}:netbench__realloc
 /pid==cpid/
 {
   @R=stats(arg1);
 }
 
-usdt:__BIN__:netbench__dealloc
+usdt:{{bin}}:netbench__dealloc
 /pid==cpid/
 {
   @d=stats(arg0);
 }
 
-uprobe:__LIBC__:malloc
+uprobe:{{libc}}:malloc
 /pid==cpid/
 {
   @a=stats(arg0);
 }
 
-uprobe:__LIBC__:realloc
+uprobe:{{libc}}:realloc
 /pid==cpid/
 {
   @R=stats(arg1);
 }
 
+{{#if hardware}}
 hardware:cycles
 /pid==cpid/
 {
@@ -66,8 +67,9 @@ hardware:branches
 {
   @b=count();
 }
+{{/if}}
 
-software:context-switches
+software:cs
 /pid==cpid/
 {
   @C=count();
@@ -79,12 +81,14 @@ tracepoint:raw_syscalls:sys_enter
   @S=count();
 }
 
-i:ms:__INTERVAL_MS__ {
+i:ms:{{interval_ms}} {
   @=count();
   print(@);
+{{#if hardware}}
   print(@c);
   print(@i);
   print(@b);
+{{/if}}
   print(@C);
   print(@S);
 
