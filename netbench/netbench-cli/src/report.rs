@@ -5,12 +5,18 @@ use crate::Result;
 use netbench::stats::{Initialize, Stats};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{collections::HashMap, io::BufRead, path::PathBuf};
+use std::{
+    collections::{BTreeSet, HashMap},
+    io::BufRead,
+    path::PathBuf,
+};
 use structopt::StructOpt;
 
-#[derive(StructOpt)]
+#[derive(Debug, Default, StructOpt)]
 pub struct Report {
-    inputs: Vec<PathBuf>,
+    pub inputs: Vec<PathBuf>,
+    #[structopt(short, long)]
+    pub output: Option<PathBuf>,
 }
 
 impl Report {
@@ -19,6 +25,7 @@ impl Report {
         let mut stream_table = vec![];
         let mut signals = vec![];
         let mut names = vec![];
+        let mut scenario_names = BTreeSet::new();
 
         // expose an option to select the view
         signals.push(json!({
@@ -52,18 +59,21 @@ impl Report {
                 driver, scenario, ..
             } = serde_json::from_str(&first)?;
 
-            let cmd = driver
+            let name = driver
                 .split('/')
                 .last()
                 .unwrap()
-                .trim_start_matches("netbench-driver-");
-            let scenario = scenario
+                .trim_start_matches("netbench-driver-")
+                .to_string();
+
+            let scenario_name = scenario
                 .split('/')
                 .last()
                 .unwrap()
                 .trim_end_matches(".json");
 
-            let name = format!("{} {}", cmd, scenario);
+            scenario_names.insert(scenario_name.to_string());
+
             pids.push(format!("!indata('data$hidden', 'name', {:?})", name));
             names.push(name);
 
@@ -231,7 +241,15 @@ impl Report {
 
         let root = output.as_object_mut().unwrap();
 
-        root.insert("title".to_string(), names.join(" vs ").into());
+        root.insert(
+            "title".to_string(),
+            scenario_names
+                .iter()
+                .map(|v| v.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+                .into(),
+        );
 
         root.get_mut("signals")
             .unwrap()
@@ -265,7 +283,15 @@ impl Report {
             }),
         );
 
-        serde_json::to_writer_pretty(std::io::stdout(), &output)?;
+        if let Some(out_path) = self.output.as_ref() {
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let mut out_file = std::fs::File::create(out_path)?;
+            serde_json::to_writer_pretty(&mut out_file, &output)?;
+        } else {
+            serde_json::to_writer_pretty(std::io::stdout(), &output)?;
+        }
 
         Ok(())
     }
