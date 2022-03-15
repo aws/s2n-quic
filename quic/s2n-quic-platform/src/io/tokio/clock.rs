@@ -41,8 +41,11 @@ impl ClockTrait for Clock {
 
 #[derive(Debug)]
 pub struct Timer {
+    /// A reference to the current clock
     clock: Clock,
+    /// The `Instant` at which the timer should expire
     target: Option<Instant>,
+    /// The handle to the timer entry in the tokio runtime
     sleep: Pin<Box<Sleep>>,
 }
 
@@ -74,6 +77,7 @@ impl Timer {
         // add the delay to the clock's epoch
         let next_time = self.clock.0 + delay;
 
+        // If the target hasn't changed then don't do anything
         if Some(next_time) == self.target {
             return;
         }
