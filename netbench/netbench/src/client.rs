@@ -32,6 +32,8 @@ pub trait Client<'a> {
 }
 
 pub trait Connection: crate::driver::timer::Provider {
+    fn id(&self) -> u64;
+
     fn poll<T: Trace, Ch: Checkpoints>(
         &mut self,
         trace: &mut T,

@@ -30,6 +30,9 @@ config!({
 
     /// The rate at which the server receives data
     let server_receive_rate: Option<Rate> = None;
+
+    /// The number of bytes that must be received before the next request
+    let response_unblock: Byte = 0.bytes();
 });
 
 pub fn scenario(config: Config) -> Scenario {
@@ -43,9 +46,22 @@ pub fn scenario(config: Config) -> Scenario {
         server_send_rate,
         server_receive_rate,
         response_delay,
+        response_unblock,
     } = config;
+    let response_unblock = response_unblock.min(response_size);
 
-    let request = |conn: &mut builder::connection::Builder<builder::Client>| {
+    type Checkpoint = Option<
+        builder::checkpoint::Checkpoint<builder::Client, builder::Local, builder::checkpoint::Park>,
+    >;
+
+    let request = |conn: &mut builder::connection::Builder<builder::Client>,
+                   checkpoint: &mut Checkpoint| {
+        let (park, unpark) = conn.checkpoint();
+
+        if let Some(park) = checkpoint.take() {
+            conn.park(park);
+        }
+
         conn.open_bidirectional_stream(
             |local| {
                 if let Some(rate) = client_send_rate {
@@ -55,7 +71,14 @@ pub fn scenario(config: Config) -> Scenario {
                     local.set_receive_rate(rate);
                 }
                 local.send(request_size);
-                local.receive(response_size);
+
+                if *response_unblock > 0 {
+                    local.receive(response_unblock);
+                    local.unpark(unpark);
+                    local.receive(response_size - response_unblock);
+                } else {
+                    local.receive(response_size);
+                }
             },
             |remote| {
                 if let Some(rate) = server_send_rate {
@@ -73,6 +96,10 @@ pub fn scenario(config: Config) -> Scenario {
                 remote.send(response_size);
             },
         );
+
+        if *response_unblock > 0 {
+            *checkpoint = Some(park)
+        }
     };
 
     Scenario::build(|scenario| {
@@ -82,13 +109,16 @@ pub fn scenario(config: Config) -> Scenario {
             client.connect_to(server, |conn| {
                 if parallel {
                     conn.scope(|scope| {
+                        let mut prev_checkpoint = None;
                         for _ in 0..count {
-                            scope.spawn(request);
+                            scope.spawn(|conn| {
+                                request(conn, &mut prev_checkpoint);
+                            });
                         }
                     });
                 } else {
                     for _ in 0..count {
-                        request(conn);
+                        request(conn, &mut None);
                     }
                 }
             });

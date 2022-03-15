@@ -4,11 +4,14 @@ version = "0.1.0"
 authors = ["AWS s2n"]
 edition = "2018"
 license = "Apache-2.0"
+publish = false
 
 [dependencies]
 bytes = "1"
 futures = "0.3"
+mimalloc = "0.1"
 netbench = { version = "0.1", path = "../netbench" }
+probe = "0.3"
 s2n-quic = { version = "1", path = "../../quic/s2n-quic", features = ["provider-tls-s2n"] }
 s2n-quic-core = { version = "0.1", path = "../../quic/s2n-quic-core", features = ["testing"] }
 structopt = "0.3"

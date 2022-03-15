@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use netbench::Result;
+use netbench_driver::Allocator;
 use s2n_quic::provider::io;
 use std::collections::HashSet;
 use structopt::StructOpt;
+
+#[global_allocator]
+static ALLOCATOR: Allocator = Allocator::new();
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), String> {

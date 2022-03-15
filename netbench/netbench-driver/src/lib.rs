@@ -8,6 +8,11 @@ use netbench::{
 use std::{net::IpAddr, ops::Deref, path::Path, str::FromStr, sync::Arc, time::Duration};
 use structopt::StructOpt;
 
+mod alloc;
+pub use alloc::Allocator;
+
+const TRACE_VALUES: &[&str] = &["disabled", "throughput", "stdio"];
+
 #[derive(Debug, StructOpt)]
 pub struct Server {
     #[structopt(short, long, default_value = "::")]
@@ -22,7 +27,7 @@ pub struct Server {
     #[structopt(long, default_value = "0", env = "SERVER_ID")]
     pub server_id: usize,
 
-    #[structopt(long, default_value = "throughput", possible_values = &["throughput","stdio"])]
+    #[structopt(long, default_value = "throughput", possible_values = TRACE_VALUES, env = "TRACE")]
     pub trace: Vec<String>,
 
     #[structopt(long, short = "V")]
@@ -46,25 +51,8 @@ impl Server {
         (cert, private_key)
     }
 
-    pub fn trace(&self) -> (Option<trace::Throughput>, Option<trace::StdioLogger>) {
-        let throughput = if self.trace.iter().any(|v| v == "throughput") {
-            let trace = trace::Throughput::default();
-            trace.reporter(Duration::from_secs(1));
-            Some(trace)
-        } else {
-            None
-        };
-
-        let stdio = if self.trace.iter().any(|v| v == "stdio") {
-            let id = self.server_id as u64;
-            let mut trace = trace::StdioLogger::new(id, self.scenario.traces.clone());
-            trace.verbose(self.verbose);
-            Some(trace)
-        } else {
-            None
-        };
-
-        (throughput, stdio)
+    pub fn trace(&self) -> impl trace::Trace + Clone {
+        traces(&self.trace[..], self.verbose, &self.scenario.traces)
     }
 }
 
@@ -79,7 +67,7 @@ pub struct Client {
     #[structopt(long, default_value = "0", env = "CLIENT_ID")]
     pub client_id: usize,
 
-    #[structopt(long, default_value = "throughput", possible_values = &["throughput","stdio"])]
+    #[structopt(long, default_value = "throughput", possible_values = TRACE_VALUES, env = "TRACE")]
     pub trace: Vec<String>,
 
     #[structopt(long, short = "V")]
@@ -110,25 +98,8 @@ impl Client {
         AddressMap::new(&self.scenario, id, &mut Resolver).await
     }
 
-    pub fn trace(&self) -> (Option<trace::Throughput>, Option<trace::StdioLogger>) {
-        let throughput = if self.trace.iter().any(|v| v == "throughput") {
-            let trace = trace::Throughput::default();
-            trace.reporter(Duration::from_secs(1));
-            Some(trace)
-        } else {
-            None
-        };
-
-        let stdio = if self.trace.iter().any(|v| v == "stdio") {
-            let id = self.client_id as u64;
-            let mut trace = trace::StdioLogger::new(id, self.scenario.traces.clone());
-            trace.verbose(self.verbose);
-            Some(trace)
-        } else {
-            None
-        };
-
-        (throughput, stdio)
+    pub fn trace(&self) -> impl trace::Trace + Clone {
+        traces(&self.trace[..], self.verbose, &self.scenario.traces)
     }
 }
 
@@ -170,4 +141,28 @@ impl Deref for Scenario {
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
+}
+
+fn traces(trace: &[String], verbose: bool, traces: &Arc<Vec<String>>) -> impl trace::Trace + Clone {
+    let enabled = !trace.iter().any(|v| v == "disabled");
+
+    let throughput = if enabled && trace.iter().any(|v| v == "throughput") {
+        let trace = trace::Throughput::default();
+        trace.reporter(Duration::from_secs(1));
+        Some(trace)
+    } else {
+        None
+    };
+
+    let stdio = if enabled && trace.iter().any(|v| v == "stdio") {
+        let mut trace = trace::StdioLogger::new(traces.clone());
+        trace.verbose(verbose);
+        Some(trace)
+    } else {
+        None
+    };
+
+    let usdt = trace::Usdt::default();
+
+    (usdt, (throughput, stdio))
 }

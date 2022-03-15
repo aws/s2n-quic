@@ -5,6 +5,7 @@ use crate::Result;
 use core::task::{Context, Poll};
 
 pub trait Connection {
+    fn id(&self) -> u64;
     fn poll_open_bidirectional_stream(&mut self, id: u64, cx: &mut Context) -> Poll<Result<()>>;
     fn poll_open_send_stream(&mut self, id: u64, cx: &mut Context) -> Poll<Result<()>>;
     fn poll_accept_stream(&mut self, cx: &mut Context) -> Poll<Result<Option<u64>>>;

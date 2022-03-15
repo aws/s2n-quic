@@ -1,7 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use netbench::{multiplex, scenario, Result, Timer};
+use netbench::{multiplex, scenario, Result};
+use netbench_driver::Allocator;
 use std::{collections::HashSet, sync::Arc};
 use structopt::StructOpt;
 use tokio::{
@@ -10,6 +11,9 @@ use tokio::{
     spawn,
 };
 use tokio_native_tls::native_tls::{Identity, TlsAcceptor};
+
+#[global_allocator]
+static ALLOCATOR: Allocator = Allocator::new();
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -73,15 +77,13 @@ impl Server {
 
             let conn = netbench::Driver::new(
                 scenario,
-                netbench::multiplex::Connection::new(connection, config),
+                netbench::multiplex::Connection::new(conn_id, connection, config),
             );
 
             let mut checkpoints = HashSet::new();
             let mut timer = netbench::timer::Tokio::default();
 
-            trace.enter(timer.now(), conn_id, 0);
             conn.run(&mut trace, &mut checkpoints, &mut timer).await?;
-            trace.exit(timer.now());
 
             Ok(())
         }
