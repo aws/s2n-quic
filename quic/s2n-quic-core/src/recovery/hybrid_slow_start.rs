@@ -18,7 +18,7 @@ pub struct HybridSlowStart {
     max_datagram_size: u16,
     rtt_round_end_time: Option<Timestamp>,
     use_hystart: bool,
-    pub(super)ss_growth_divisor: f32,
+    pub(super) ss_growth_divisor: f32,
     css_count: usize,
     cssbaseline: Duration,
     cssthreshold: f32,
@@ -53,7 +53,7 @@ impl HybridSlowStart {
             threshold: f32::MAX,
             max_datagram_size,
             rtt_round_end_time: None,
-            use_hystart: use_hystart,
+            use_hystart,
             ss_growth_divisor: 1.0,
             css_count: 0,
             cssbaseline: Duration::from_millis(0),
@@ -114,38 +114,38 @@ impl HybridSlowStart {
             (self.sample_count, self.last_min_rtt, self.cur_min_rtt)
         {
             if congestion_window >= self.cssthreshold {
-               self.css_count += 1;
-               if cur_min_rtt < self.cssbaseline {
-                  // resume slow start
-                  self.cssthreshold = self.threshold;
-                  self.ss_growth_divisor = 1.0;
-                  self.css_count = 0;
-               }
-               if self.css_count >= CSS_ROUNDS {
-                  self.threshold = congestion_window;
-                  self.cssthreshold = f32::MAX;
-                  self.ss_growth_divisor = 1.0;
-               }
+                self.css_count += 1;
+                if cur_min_rtt < self.cssbaseline {
+                    // resume slow start
+                    self.cssthreshold = self.threshold;
+                    self.ss_growth_divisor = 1.0;
+                    self.css_count = 0;
+                }
+                if self.css_count >= CSS_ROUNDS {
+                    self.threshold = congestion_window;
+                    self.cssthreshold = f32::MAX;
+                    self.ss_growth_divisor = 1.0;
+                }
             } else {
-               let threshold = last_min_rtt / THRESHOLD_DIVIDEND;
-               // Clamp n to the min and max thresholds
-               let threshold = threshold.min(MAX_DELAY_THRESHOLD).max(MIN_DELAY_THRESHOLD);
-               let delay_increase_is_over_threshold = cur_min_rtt >= last_min_rtt + threshold;
-               let congestion_window_is_above_minimum = congestion_window >= self.low_ssthresh();
+                let threshold = last_min_rtt / THRESHOLD_DIVIDEND;
+                // Clamp n to the min and max thresholds
+                let threshold = threshold.min(MAX_DELAY_THRESHOLD).max(MIN_DELAY_THRESHOLD);
+                let delay_increase_is_over_threshold = cur_min_rtt >= last_min_rtt + threshold;
+                let congestion_window_is_above_minimum = congestion_window >= self.low_ssthresh();
 
-               if self.use_hystart {
-                  // if delay is beyond threshold, go into css phase
-                  if delay_increase_is_over_threshold {
-                     self.cssthreshold = congestion_window;
-                     self.cssbaseline = cur_min_rtt;
-                     self.ss_growth_divisor = 4.0;
-                     self.css_count = 0;
-                  }
-               } else {
-                  if delay_increase_is_over_threshold && congestion_window_is_above_minimum {
-                      self.threshold = congestion_window;
-                  }
-               }
+                if self.use_hystart {
+                    // if delay is beyond threshold, go into css phase
+                    if delay_increase_is_over_threshold {
+                        self.cssthreshold = congestion_window;
+                        self.cssbaseline = cur_min_rtt;
+                        self.ss_growth_divisor = 4.0;
+                        self.css_count = 0;
+                    }
+                } else {
+                    if delay_increase_is_over_threshold && congestion_window_is_above_minimum {
+                        self.threshold = congestion_window;
+                    }
+                }
             }
         }
     }

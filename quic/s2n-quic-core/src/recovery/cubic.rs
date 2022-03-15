@@ -761,9 +761,9 @@ impl congestion_controller::Endpoint for Endpoint {
         &mut self,
         path_info: congestion_controller::PathInfo,
     ) -> Self::CongestionController {
-        let use_hystart : bool = match env::var(USE_HYSTART) {
-           Ok(_val) => true,
-           Err(_e) => false,
+        let use_hystart: bool = match env::var(USE_HYSTART) {
+            Ok(_val) => true,
+            Err(_e) => false,
         };
 
         CubicCongestionController::new(path_info.max_datagram_size, use_hystart)
