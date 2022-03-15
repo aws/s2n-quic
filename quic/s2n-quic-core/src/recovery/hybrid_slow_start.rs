@@ -17,6 +17,11 @@ pub struct HybridSlowStart {
     pub(super) threshold: f32,
     max_datagram_size: u16,
     rtt_round_end_time: Option<Timestamp>,
+    use_hystart: bool,
+    pub(super)ss_growth_divisor: f32,
+    css_count: usize,
+    cssbaseline: Duration,
+    cssthreshold: f32,
 }
 
 /// Minimum slow start threshold in multiples of the max_datagram_size.
@@ -31,11 +36,13 @@ const MIN_DELAY_THRESHOLD: Duration = Duration::from_millis(4);
 const MAX_DELAY_THRESHOLD: Duration = Duration::from_millis(16);
 /// Factor for dividing the RTT to determine the threshold. Defined in tcp_cubic.c (not a constant)
 const THRESHOLD_DIVIDEND: u32 = 8;
+/// MAX RTT counts to perform convervative slow start defined in draft-ietf-tcpm-hystartplusplus-04
+const CSS_ROUNDS: usize = 5;
 
 impl HybridSlowStart {
     /// Constructs a new `HybridSlowStart`. `max_datagram_size` is used for determining
     /// the minimum slow start threshold.
-    pub fn new(max_datagram_size: u16) -> Self {
+    pub fn new(max_datagram_size: u16, use_hystart: bool) -> Self {
         Self {
             sample_count: 0,
             last_min_rtt: None,
@@ -46,6 +53,11 @@ impl HybridSlowStart {
             threshold: f32::MAX,
             max_datagram_size,
             rtt_round_end_time: None,
+            use_hystart: use_hystart,
+            ss_growth_divisor: 1.0,
+            css_count: 0,
+            cssbaseline: Duration::from_millis(0),
+            cssthreshold: f32::MAX,
         }
     }
 
@@ -63,6 +75,13 @@ impl HybridSlowStart {
     ) {
         if congestion_window >= self.threshold {
             // We are already out of slow start so nothing to do
+            return;
+        } else if self.use_hystart && self.threshold < f32::MAX {
+            // self.threshold has some values, which means we already performed hystart++ once.
+            // Fallback to nomal slow start as suggested in the hystart draft
+            //   "An implementation SHOULD use HyStart++ only for the initial slow start
+            //    and fall back to using traditional slow start for the remainder of the
+            //    connection lifetime." (Section 4.3 draft-ietf-tcpm-hystartplusplus-04)
             return;
         }
 
@@ -94,14 +113,39 @@ impl HybridSlowStart {
         if let (N_SAMPLING, Some(last_min_rtt), Some(cur_min_rtt)) =
             (self.sample_count, self.last_min_rtt, self.cur_min_rtt)
         {
-            let threshold = last_min_rtt / THRESHOLD_DIVIDEND;
-            // Clamp n to the min and max thresholds
-            let threshold = threshold.min(MAX_DELAY_THRESHOLD).max(MIN_DELAY_THRESHOLD);
-            let delay_increase_is_over_threshold = cur_min_rtt >= last_min_rtt + threshold;
-            let congestion_window_is_above_minimum = congestion_window >= self.low_ssthresh();
+            if congestion_window >= self.cssthreshold {
+               self.css_count += 1;
+               if cur_min_rtt < self.cssbaseline {
+                  // resume slow start
+                  self.cssthreshold = self.threshold;
+                  self.ss_growth_divisor = 1.0;
+                  self.css_count = 0;
+               }
+               if self.css_count >= CSS_ROUNDS {
+                  self.threshold = congestion_window;
+                  self.cssthreshold = f32::MAX;
+                  self.ss_growth_divisor = 1.0;
+               }
+            } else {
+               let threshold = last_min_rtt / THRESHOLD_DIVIDEND;
+               // Clamp n to the min and max thresholds
+               let threshold = threshold.min(MAX_DELAY_THRESHOLD).max(MIN_DELAY_THRESHOLD);
+               let delay_increase_is_over_threshold = cur_min_rtt >= last_min_rtt + threshold;
+               let congestion_window_is_above_minimum = congestion_window >= self.low_ssthresh();
 
-            if delay_increase_is_over_threshold && congestion_window_is_above_minimum {
-                self.threshold = congestion_window;
+               if self.use_hystart {
+                  // if delay is beyond threshold, go into css phase
+                  if delay_increase_is_over_threshold {
+                     self.cssthreshold = congestion_window;
+                     self.cssbaseline = cur_min_rtt;
+                     self.ss_growth_divisor = 4.0;
+                     self.css_count = 0;
+                  }
+               } else {
+                  if delay_increase_is_over_threshold && congestion_window_is_above_minimum {
+                      self.threshold = congestion_window;
+                  }
+               }
             }
         }
     }
@@ -112,6 +156,8 @@ impl HybridSlowStart {
     /// early enough to avoid further congestion.
     pub fn on_congestion_event(&mut self, ssthresh: f32) {
         self.threshold = self.threshold.min(ssthresh).max(self.low_ssthresh());
+        self.ss_growth_divisor = 1.0;
+        self.cssthreshold = f32::MAX;
     }
 
     fn low_ssthresh(&self) -> f32 {
