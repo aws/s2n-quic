@@ -24,7 +24,7 @@ hex-literal = "0.3"
 # used for event snapshot testing - needs an internal API so we require a minimum version
 insta = { version = ">=1.12", optional = true }
 num-traits = { version = "0.2", default-features = false, features = ["libm"] }
-s2n-codec = { version = "0.1", path = "../../common/s2n-codec", default-features = false }
+s2n-codec = { version = "=0.1.0", path = "../../common/s2n-codec", default-features = false }
 subtle = { version = "2", default-features = false }
 tracing = { version = "0.1", default-features = false, optional = true }
 zerocopy = "=0.6.0"
@@ -38,7 +38,7 @@ insta = "1"
 futures-test = "0.3"
 ip_network = "0.4"
 plotters = { version = "0.3", default-features = false, features = ["svg_backend", "line_series"] }
-s2n-codec = { version = "0.1", path = "../../common/s2n-codec", features = ["testing"] }
+s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
 
 [[test]]
 name = "crypto"
