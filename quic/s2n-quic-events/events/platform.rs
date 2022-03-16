@@ -74,4 +74,5 @@ struct PlatformEventLoopWakeup {
     timeout_expired: bool,
     rx_ready: bool,
     tx_ready: bool,
+    application_wakeup: bool,
 }

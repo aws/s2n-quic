@@ -1,8 +1,7 @@
 ---
-source: common/docdiff/src/main.rs
-assertion_line: 58
+source: src/main.rs
+assertion_line: 61
 expression: dump
-input_file: quic/s2n-quic/src/lib.rs
 
 ---
 trait impl core::convert::TryFrom<s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::PlainMessage> for s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::Message associates type:
@@ -4205,6 +4204,9 @@ struct s2n_quic::provider::event::events::PathCreated exports constant:
   pub const NAME: &'static str
 
 struct s2n_quic::provider::event::events::PlatformEventLoopWakeup is non-exhaustive
+
+struct s2n_quic::provider::event::events::PlatformEventLoopWakeup exports field:
+  application_wakeup: bool
 
 struct s2n_quic::provider::event::events::PlatformEventLoopWakeup implements trait:
   impl core::clone::Clone for s2n_quic::provider::event::events::PlatformEventLoopWakeup
