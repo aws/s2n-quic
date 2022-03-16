@@ -12,7 +12,7 @@ exclude = ["corpus.tar.gz"]
 [dependencies]
 hex-literal = "0.3"
 lazy_static = { version = "1", default-features = false }
-s2n-codec = { version = "0.1.0", path = "../../common/s2n-codec", default-features = false }
+s2n-codec = { version = "=0.1.0", path = "../../common/s2n-codec", default-features = false }
 s2n-quic-core = { version = "=0.1.2", path = "../s2n-quic-core", default-features = false }
 ring = { version = "0.16", default-features = false }
 zeroize = { version = "1", default-features = false }
