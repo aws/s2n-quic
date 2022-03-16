@@ -138,6 +138,6 @@ impl tls::Endpoint for Server {
     }
 
     fn max_tag_length(&self) -> usize {
-        s2n_quic_ring::MAX_TAG_LEN
+        s2n_quic_crypto::MAX_TAG_LEN
     }
 }

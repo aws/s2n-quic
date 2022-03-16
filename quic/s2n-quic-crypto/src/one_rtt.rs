@@ -1,20 +1,30 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic_core::crypto::{OneRttHeaderKey, OneRttKey};
+use s2n_quic_core::crypto;
 
-header_key!(RingOneRttHeaderKey);
-negotiated_crypto!(RingOneRttKey, RingOneRttHeaderKey);
+header_key!(OneRttHeaderKey);
+negotiated_crypto!(OneRttKey, OneRttHeaderKey);
 
-impl OneRttKey for RingOneRttKey {
+impl crypto::OneRttKey for OneRttKey {
     #[inline]
     #[must_use]
     fn derive_next_key(&self) -> Self {
         Self(self.0.update())
     }
+
+    #[inline]
+    fn update_sealer_pmtu(&mut self, pmtu: u16) {
+        self.0.sealer.update_pmtu(pmtu)
+    }
+
+    #[inline]
+    fn update_opener_pmtu(&mut self, pmtu: u16) {
+        self.0.opener.update_pmtu(pmtu)
+    }
 }
 
-impl OneRttHeaderKey for RingOneRttHeaderKey {}
+impl crypto::OneRttHeaderKey for OneRttHeaderKey {}
 
 #[cfg(test)]
 mod tests {

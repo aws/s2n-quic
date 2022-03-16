@@ -533,6 +533,11 @@ impl<Config: endpoint::Config> Path<Config> {
         }
     }
 
+    #[inline]
+    pub fn max_mtu(&self) -> MaxMtu {
+        self.mtu_controller.max_mtu()
+    }
+
     // Compare a Path based on its PathHandle.
     //
     // Currently the local_address on the Client connection is unknown and set to

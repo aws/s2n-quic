@@ -13,6 +13,7 @@ use crate::{
     time::{timer, Timer, Timestamp},
     transport,
 };
+use core::ops;
 use s2n_codec::EncoderBuffer;
 
 pub struct KeySet<K> {
@@ -31,11 +32,13 @@ pub struct KeySet<K> {
     generation: u16,
 
     /// Set of keys for the current and next phase
-    crypto: [limited::Key<K>; 2],
+    crypto: KeyArray<K>,
+
+    limits: limited::Limits,
 }
 
 impl<K: OneRttKey> KeySet<K> {
-    pub fn new(crypto: K) -> Self {
+    pub fn new(crypto: K, limits: limited::Limits) -> Self {
         //= https://www.rfc-editor.org/rfc/rfc9001#section-6
         //# The Key Phase bit is initially set to 0 for the
         //# first set of 1-RTT packets and toggled to signal each subsequent key
@@ -63,7 +66,8 @@ impl<K: OneRttKey> KeySet<K> {
             packet_decryption_failures: 0,
             aead_integrity_limit,
             generation: 0,
-            crypto: [active_key, next_key],
+            crypto: KeyArray([active_key, next_key]),
+            limits,
         }
     }
 
@@ -89,7 +93,7 @@ impl<K: OneRttKey> KeySet<K> {
 
         let next_key = self.active_key().derive_next_key();
         let next_phase = KeyPhase::next_phase(self.key_phase);
-        self.crypto[next_phase as usize] = limited::Key::new(next_key);
+        self.crypto[next_phase] = limited::Key::new(next_key);
     }
 
     /// Set the timer to derive a new key after timestamp
@@ -136,7 +140,13 @@ impl<K: OneRttKey> KeySet<K> {
             }
         }
 
-        match packet.decrypt(self.key_for_phase(phase_to_use.into()).key()) {
+        let key = &mut self.crypto[phase_to_use.into()];
+
+        let result = packet.decrypt(key.key());
+
+        key.on_packet_decryption(&self.limits);
+
+        match result {
             Ok(packet) => {
                 let generation = if packet_phase != self.key_phase() {
                     //= https://www.rfc-editor.org/rfc/rfc9001#section-6.2
@@ -204,7 +214,7 @@ impl<K: OneRttKey> KeySet<K> {
         //# Endpoints MUST initiate a key update
         //# before sending more protected packets than the confidentiality limit
         //# for the selected AEAD permits.
-        if self.active_key().needs_update() {
+        if self.active_key().needs_update(&self.limits) {
             return KeyPhase::next_phase(self.key_phase());
         }
 
@@ -225,7 +235,7 @@ impl<K: OneRttKey> KeySet<K> {
             -> Result<(ProtectedPayload<'a>, EncoderBuffer<'a>), PacketEncodingError<'a>>,
     {
         let phase = self.encryption_phase();
-        if self.key_for_phase(phase).expired() {
+        if self.crypto[phase].expired() {
             //= https://www.rfc-editor.org/rfc/rfc9001#section-6.6
             //# If the total number of encrypted packets with the same key
             //# exceeds the confidentiality limit for the selected AEAD, the endpoint
@@ -239,12 +249,12 @@ impl<K: OneRttKey> KeySet<K> {
             return Err(PacketEncodingError::AeadLimitReached(buffer));
         }
 
-        let r = f(buffer, self.key_for_phase(phase).key(), phase)?;
+        let r = f(buffer, self.crypto[phase].key(), phase)?;
 
         //= https://www.rfc-editor.org/rfc/rfc9001#section-6.6
         //# Endpoints MUST count the number of encrypted packets for each set of
         //# keys.
-        self.key_for_phase_mut(phase).on_packet_encryption();
+        self.crypto[phase].on_packet_encryption(&self.limits);
 
         Ok(r)
     }
@@ -267,19 +277,11 @@ impl<K: OneRttKey> KeySet<K> {
     }
 
     pub fn active_key(&self) -> &limited::Key<K> {
-        self.key_for_phase(self.key_phase)
+        &self.crypto[self.key_phase]
     }
 
     pub fn active_key_mut(&mut self) -> &mut limited::Key<K> {
-        self.key_for_phase_mut(self.key_phase)
-    }
-
-    fn key_for_phase(&self, key_phase: KeyPhase) -> &limited::Key<K> {
-        &self.crypto[(key_phase as u8) as usize]
-    }
-
-    fn key_for_phase_mut(&mut self, key_phase: KeyPhase) -> &mut limited::Key<K> {
-        &mut self.crypto[(key_phase as u8) as usize]
+        &mut self.crypto[self.key_phase]
     }
 
     fn decryption_error_count(&self) -> u64 {
@@ -287,7 +289,7 @@ impl<K: OneRttKey> KeySet<K> {
     }
 
     pub fn cipher_suite(&self) -> crate::crypto::tls::CipherSuite {
-        self.crypto[0].key().cipher_suite()
+        self.crypto.0[0].key().cipher_suite()
     }
 }
 
@@ -296,6 +298,24 @@ impl<K> timer::Provider for KeySet<K> {
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
         self.key_derivation_timer.timers(query)?;
         Ok(())
+    }
+}
+
+struct KeyArray<K>([limited::Key<K>; 2]);
+
+impl<K> ops::Index<KeyPhase> for KeyArray<K> {
+    type Output = limited::Key<K>;
+
+    #[inline]
+    fn index(&self, key_phase: KeyPhase) -> &Self::Output {
+        &self.0[(key_phase as u8) as usize]
+    }
+}
+
+impl<K> ops::IndexMut<KeyPhase> for KeyArray<K> {
+    #[inline]
+    fn index_mut(&mut self, key_phase: KeyPhase) -> &mut Self::Output {
+        &mut self.0[(key_phase as u8) as usize]
     }
 }
 
@@ -323,7 +343,7 @@ mod tests {
     fn test_key_derivation_timer() {
         let mut clock = Clock::default();
         let now = clock.get_time();
-        let mut keyset = KeySet::new(TestKey::default());
+        let mut keyset = KeySet::new(TestKey::default(), Default::default());
         keyset.rotate_phase();
 
         keyset.set_derivation_timer(now + Duration::from_millis(10));
@@ -335,7 +355,7 @@ mod tests {
         //# An endpoint SHOULD
         //# retain old keys for some time after unprotecting a packet sent using
         //# the new keys.
-        assert_eq!(keyset.key_for_phase(KeyPhase::Zero).key().derivations, 0);
+        assert_eq!(keyset.crypto[KeyPhase::Zero].key().derivations, 0);
 
         clock.inc_by(Duration::from_millis(8));
         keyset.on_timeout(clock.get_time());
@@ -344,7 +364,7 @@ mod tests {
         //= type=test
         //# After this period, old read keys and their corresponding secrets
         //# SHOULD be discarded.
-        assert_eq!(keyset.key_for_phase(KeyPhase::Zero).key().derivations, 2);
+        assert_eq!(keyset.crypto[KeyPhase::Zero].key().derivations, 2);
     }
 
     #[test]
@@ -354,15 +374,15 @@ mod tests {
         //# For this reason, endpoints MUST be able to retain two sets of packet
         //# protection keys for receiving packets: the current and the next.
 
-        let keyset = KeySet::new(TestKey::default());
+        let keyset = KeySet::new(TestKey::default(), Default::default());
 
-        assert_eq!(keyset.key_for_phase(KeyPhase::Zero).key().derivations, 0);
-        assert_eq!(keyset.key_for_phase(KeyPhase::One).key().derivations, 1);
+        assert_eq!(keyset.crypto[KeyPhase::Zero].key().derivations, 0);
+        assert_eq!(keyset.crypto[KeyPhase::One].key().derivations, 1);
     }
 
     #[test]
     fn test_phase_rotation() {
-        let mut keyset = KeySet::new(TestKey::default());
+        let mut keyset = KeySet::new(TestKey::default(), Default::default());
 
         assert_eq!(keyset.active_key().key().derivations, 0);
         keyset.rotate_phase();
@@ -371,7 +391,7 @@ mod tests {
 
     #[test]
     fn test_key_derivation() {
-        let mut keyset = KeySet::new(TestKey::default());
+        let mut keyset = KeySet::new(TestKey::default(), Default::default());
 
         keyset.rotate_phase();
         keyset.derive_and_store_next_key();
@@ -391,7 +411,7 @@ mod tests {
             fail_on_decrypt: true,
             ..Default::default()
         };
-        let mut keyset = KeySet::new(key);
+        let mut keyset = KeySet::new(key, Default::default());
         let mut data = [0; 128];
         let remote_address = SocketAddress::default();
         let connection_info = ConnectionInfo::new(&remote_address);
@@ -433,7 +453,7 @@ mod tests {
             fail_on_decrypt: true,
             ..Default::default()
         };
-        let mut keyset = KeySet::new(key);
+        let mut keyset = KeySet::new(key, Default::default());
         let mut data = [0; 128];
         let remote_address = SocketAddress::default();
         let connection_info = ConnectionInfo::new(&remote_address);
@@ -471,7 +491,7 @@ mod tests {
     #[test]
     fn test_encrypted_packet_count_increased() {
         let key = TestKey::default();
-        let mut keyset = KeySet::new(key);
+        let mut keyset = KeySet::new(key, Default::default());
         let mut encoder_bytes = [0; 512];
         let buffer = EncoderBuffer::new(&mut encoder_bytes);
         let mut decoder_bytes = [0; 512];
@@ -494,7 +514,7 @@ mod tests {
             confidentiality_limit: 10000,
             ..Default::default()
         };
-        let mut keyset = KeySet::new(key);
+        let mut keyset = KeySet::new(key, Default::default());
         let mut encoder_bytes = [0; 512];
         let buffer = EncoderBuffer::new(&mut encoder_bytes);
         let mut decoder_bytes = [0; 512];
@@ -502,7 +522,7 @@ mod tests {
         // The first encryption should use the expected keyphase, and put us into the
         // KEY_UPDATE_WINDOW.
         assert_eq!(keyset.active_key().encrypted_packets(), 0);
-        assert!(!keyset.active_key().needs_update());
+        assert!(!keyset.active_key().needs_update(&keyset.limits));
         assert!(keyset
             .encrypt_packet(buffer, |buffer, _key, _phase| {
                 let payload = ProtectedPayload::new(0, &mut decoder_bytes);
@@ -519,7 +539,7 @@ mod tests {
 
         // Subsequent encryptions should be in the next phase and our key should need an update.
         assert_eq!(keyset.encryption_phase(), KeyPhase::One);
-        assert!(keyset.active_key().needs_update());
+        assert!(keyset.active_key().needs_update(&keyset.limits));
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9001#section-6.6
@@ -534,7 +554,7 @@ mod tests {
             confidentiality_limit: limit,
             ..Default::default()
         };
-        let mut keyset = KeySet::new(key);
+        let mut keyset = KeySet::new(key, Default::default());
         let mut encoder_bytes = [0; 512];
 
         // The KeySet chooses the appropriate key phase. Trying to encrypt one more than the limit
@@ -559,13 +579,10 @@ mod tests {
         // The key in KeyPhase::Zero will have encrypted a single packet.
         // Each additional request will be within the KEY_UPDATE_WINDOW, so the next key phase is
         // used.
-        assert_eq!(keyset.key_for_phase(KeyPhase::Zero).encrypted_packets(), 1);
+        assert_eq!(keyset.crypto[KeyPhase::Zero].encrypted_packets(), 1);
 
         // The next key phase should have limit encryptions
-        assert_eq!(
-            keyset.key_for_phase(KeyPhase::One).encrypted_packets(),
-            limit
-        );
+        assert_eq!(keyset.crypto[KeyPhase::One].encrypted_packets(), limit);
 
         // The final encryption should push us over the AEAD limit and we should fail.
         let buffer = EncoderBuffer::new(&mut encoder_bytes);

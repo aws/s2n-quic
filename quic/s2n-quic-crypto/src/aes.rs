@@ -63,6 +63,7 @@ pub trait KeyRound {
     fn decrypt_finish<B: BatchMut<Block = Self::Block>>(&self, block: &mut B);
 }
 
+#[cfg(any(test, feature = "testing"))]
 pub const BLOCK_LEN: usize = 16;
 
 pub mod aes128 {
@@ -73,6 +74,7 @@ pub mod aes128 {
     // mov	\$9,$bits			# 10 rounds for 128-bit key
     pub const ROUNDS: usize = 10;
 
+    #[derive(zeroize::Zeroize)]
     pub struct Key<T>(pub T);
 
     impl<Blk, T> Encrypt for Key<T>
@@ -194,6 +196,7 @@ pub mod aes256 {
     // mov	\$13,$bits			# 14 rounds for 256
     pub const ROUNDS: usize = 14;
 
+    #[derive(zeroize::Zeroize)]
     pub struct Key<T>(pub T);
 
     impl<Blk, T> Encrypt for Key<T>

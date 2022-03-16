@@ -6,6 +6,7 @@ use crate::{
     block::{x86::M128iExt, Batch, Block, Zeroed},
     ghash::KEY_LEN,
 };
+use zeroize::Zeroize;
 
 mod algo;
 pub mod hkey;
@@ -14,9 +15,11 @@ pub mod precomputed;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 
+#[derive(Zeroize)]
 pub struct GHash(hkey::H);
 
 impl GHash {
+    #[allow(dead_code)] // this is currently used in testing only
     #[inline(always)]
     pub fn new(key: [u8; KEY_LEN]) -> Self {
         use hkey::HKey;

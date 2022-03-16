@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use core::fmt;
-use ring::aead;
+use ring::{aead, hkdf};
 use s2n_quic_core::crypto::{self, HeaderProtectionMask};
 
 pub struct HeaderKey(pub(crate) aead::quic::HeaderProtectionKey);
@@ -30,6 +30,24 @@ impl crypto::HeaderKey for HeaderKey {
 }
 
 impl HeaderKey {
+    pub fn new<const KEY_LEN: usize>(
+        secret: &hkdf::Prk,
+        label: &[u8],
+        alg: &'static aead::quic::Algorithm,
+    ) -> Self {
+        let mut bytes = zeroize::Zeroizing::new([0u8; KEY_LEN]);
+
+        secret
+            .expand(&[label], alg)
+            .expect("label size verified")
+            .fill(bytes.as_mut())
+            .expect("fill size verified");
+
+        let key = aead::quic::HeaderProtectionKey::new(alg, bytes.as_ref())
+            .expect("header secret length already checked");
+        Self(key)
+    }
+
     #[inline]
     fn header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
         self.0
@@ -41,6 +59,12 @@ impl HeaderKey {
 impl fmt::Debug for HeaderKey {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("HeaderKey").finish()
+    }
+}
+
+impl From<aead::quic::HeaderProtectionKey> for HeaderKey {
+    fn from(key: aead::quic::HeaderProtectionKey) -> Self {
+        Self(key)
     }
 }
 
@@ -102,6 +126,12 @@ macro_rules! header_key {
             #[inline]
             fn sealing_sample_len(&self) -> usize {
                 self.0.sealing_sample_len()
+            }
+        }
+
+        impl From<crate::header_key::HeaderKeyPair> for $name {
+            fn from(key: crate::header_key::HeaderKeyPair) -> Self {
+                Self(key)
             }
         }
     };

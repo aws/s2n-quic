@@ -17,10 +17,11 @@ use crate::{
 };
 use bytes::Bytes;
 use core::{convert::TryInto, fmt, marker::PhantomData};
+use once_cell::sync::OnceCell;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     application::ServerName,
-    crypto::{application::KeySet, tls, CryptoSuite},
+    crypto::{application::KeySet, limited, tls, CryptoSuite},
     event::{self, ConnectionPublisher as _, IntoEvent},
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
@@ -34,6 +35,7 @@ use s2n_quic_core::{
         number::{PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow},
         short::{CleartextShort, ProtectedShort, Short, SpinBit},
     },
+    path::MaxMtu,
     time::{timer, Timestamp},
     transport,
 };
@@ -101,8 +103,9 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         keep_alive: KeepAlive,
         server_name: Option<ServerName>,
         application_protocol: Bytes,
+        max_mtu: MaxMtu,
     ) -> Self {
-        let key_set = KeySet::new(key);
+        let key_set = KeySet::new(key, Self::key_limits(max_mtu));
 
         Self {
             tx_packet_numbers: TxPacketNumbers::new(PacketNumberSpace::ApplicationData, now),
@@ -522,6 +525,37 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
         decrypted.map(|x| x.0)
     }
+
+    fn key_limits(max_mtu: MaxMtu) -> limited::Limits {
+        let mut limits = limited::Limits::default();
+
+        limits.max_mtu = max_mtu;
+
+        // AEAD optimizations are currently in the testing phase so make them opt-in at runtime
+        limits.sealer_optimization_threshold = {
+            static THRESHOLD: OnceCell<u64> = OnceCell::new();
+
+            *THRESHOLD.get_or_init(|| {
+                std::env::var("S2N_UNSTABLE_CRYPTO_OPT_TX")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(u64::MAX)
+            })
+        };
+
+        limits.opener_optimization_threshold = {
+            static THRESHOLD: OnceCell<u64> = OnceCell::new();
+
+            *THRESHOLD.get_or_init(|| {
+                std::env::var("S2N_UNSTABLE_CRYPTO_OPT_RX")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(u64::MAX)
+            })
+        };
+
+        limits
+    }
 }
 
 impl<Config: endpoint::Config> timer::Provider for ApplicationSpace<Config> {
@@ -895,6 +929,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         self.processed_packet_numbers
             .insert(processed_packet.packet_number)
             .expect("packet number was already checked");
+
         Ok(())
     }
 }

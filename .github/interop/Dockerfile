@@ -31,3 +31,7 @@ ENV RUST_BACKTRACE=1
 
 ARG tls
 ENV TLS="${tls}"
+
+# enable unstable features for testing
+ENV S2N_UNSTABLE_CRYPTO_OPT_TX=100
+ENV S2N_UNSTABLE_CRYPTO_OPT_RX=100

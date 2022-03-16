@@ -7,12 +7,12 @@ use ring::{
     hkdf,
     hkdf::KeyType,
 };
-use s2n_quic_core::crypto::{initial::InitialKey, key::Key, CryptoError, HeaderKey};
-use s2n_quic_ring::{
-    handshake::{RingHandshakeHeaderKey, RingHandshakeKey},
-    initial::{RingInitialHeaderKey, RingInitialKey},
-    one_rtt::{RingOneRttHeaderKey, RingOneRttKey},
-    zero_rtt::{RingZeroRttHeaderKey, RingZeroRttKey},
+use s2n_quic_core::crypto::{initial::InitialKey as _, key::Key, CryptoError, HeaderKey};
+use s2n_quic_crypto::{
+    handshake::{HandshakeHeaderKey, HandshakeKey},
+    initial::{InitialHeaderKey, InitialKey},
+    one_rtt::{OneRttHeaderKey, OneRttKey},
+    zero_rtt::{ZeroRttHeaderKey, ZeroRttKey},
     Algorithm, Prk, SecretPair,
 };
 
@@ -248,19 +248,19 @@ fn test_round_trip<K: Key, H: HeaderKey>(
 #[derive(Debug)]
 enum CryptoTest {
     Initial {
-        server_keys: (RingInitialKey, RingInitialHeaderKey),
-        client_keys: (RingInitialKey, RingInitialHeaderKey),
+        server_keys: (InitialKey, InitialHeaderKey),
+        client_keys: (InitialKey, InitialHeaderKey),
     },
     Handshake {
-        server_keys: (RingHandshakeKey, RingHandshakeHeaderKey),
-        client_keys: (RingHandshakeKey, RingHandshakeHeaderKey),
+        server_keys: (HandshakeKey, HandshakeHeaderKey),
+        client_keys: (HandshakeKey, HandshakeHeaderKey),
     },
     OneRtt {
-        server_keys: (RingOneRttKey, RingOneRttHeaderKey),
-        client_keys: (RingOneRttKey, RingOneRttHeaderKey),
+        server_keys: (OneRttKey, OneRttHeaderKey),
+        client_keys: (OneRttKey, OneRttHeaderKey),
     },
     ZeroRtt {
-        keys: (RingZeroRttKey, RingZeroRttHeaderKey),
+        keys: (ZeroRttKey, ZeroRttHeaderKey),
     },
 }
 
@@ -275,8 +275,8 @@ fn gen_crypto() -> impl ValueGenerator<Output = CryptoTest> {
 
 fn gen_initial() -> impl ValueGenerator<Output = CryptoTest> {
     gen_dcid().map(|dcid| {
-        let server_keys = RingInitialKey::new_server(&dcid);
-        let client_keys = RingInitialKey::new_client(&dcid);
+        let server_keys = InitialKey::new_server(&dcid);
+        let client_keys = InitialKey::new_client(&dcid);
         CryptoTest::Initial {
             server_keys,
             client_keys,
@@ -290,8 +290,8 @@ fn gen_dcid() -> impl ValueGenerator<Output = Vec<u8>> {
 
 fn gen_handshake() -> impl ValueGenerator<Output = CryptoTest> {
     gen_negotiated_secrets().map(|(algo, secrets)| {
-        let server_keys = RingHandshakeKey::new_server(algo, secrets.clone()).unwrap();
-        let client_keys = RingHandshakeKey::new_client(algo, secrets).unwrap();
+        let server_keys = HandshakeKey::new_server(algo, secrets.clone()).unwrap();
+        let client_keys = HandshakeKey::new_client(algo, secrets).unwrap();
         CryptoTest::Handshake {
             server_keys,
             client_keys,
@@ -301,8 +301,8 @@ fn gen_handshake() -> impl ValueGenerator<Output = CryptoTest> {
 
 fn gen_one_rtt() -> impl ValueGenerator<Output = CryptoTest> {
     gen_negotiated_secrets().map(|(algo, secrets)| {
-        let server_keys = RingOneRttKey::new_server(algo, secrets.clone()).unwrap();
-        let client_keys = RingOneRttKey::new_client(algo, secrets).unwrap();
+        let server_keys = OneRttKey::new_server(algo, secrets.clone()).unwrap();
+        let client_keys = OneRttKey::new_client(algo, secrets).unwrap();
         CryptoTest::OneRtt {
             server_keys,
             client_keys,
@@ -312,7 +312,7 @@ fn gen_one_rtt() -> impl ValueGenerator<Output = CryptoTest> {
 
 fn gen_zero_rtt() -> impl ValueGenerator<Output = CryptoTest> {
     gen_secret(hkdf::HKDF_SHA256).map(|secret| {
-        let keys = RingZeroRttKey::new(secret);
+        let keys = ZeroRttKey::new(secret);
         CryptoTest::ZeroRtt { keys }
     })
 }

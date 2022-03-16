@@ -4,8 +4,9 @@
 use core::convert::TryInto;
 use ring::aead;
 use s2n_quic_core::crypto::{
+    self,
     retry::{IntegrityTag, NONCE_BYTES, SECRET_KEY_BYTES},
-    CryptoError, RetryKey,
+    CryptoError,
 };
 
 lazy_static::lazy_static! {
@@ -16,9 +17,9 @@ lazy_static::lazy_static! {
 }
 
 #[derive(Debug)]
-pub struct RingRetryKey;
+pub struct RetryKey;
 
-impl RetryKey for RingRetryKey {
+impl crypto::RetryKey for RetryKey {
     fn generate_tag(pseudo_packet: &[u8]) -> IntegrityTag {
         let nonce = aead::Nonce::assume_unique_for_key(NONCE_BYTES);
         let tag = SECRET_KEY
@@ -31,7 +32,7 @@ impl RetryKey for RingRetryKey {
     }
 
     fn validate(pseudo_packet: &[u8], tag: IntegrityTag) -> Result<(), CryptoError> {
-        let expected = RingRetryKey::generate_tag(pseudo_packet);
+        let expected = Self::generate_tag(pseudo_packet);
 
         ring::constant_time::verify_slices_are_equal(&expected, &tag)
             .map_err(|_| CryptoError::DECRYPT_ERROR)
@@ -46,7 +47,7 @@ mod tests {
     use s2n_quic_core::{
         connection,
         connection::id::ConnectionInfo,
-        crypto::retry,
+        crypto::{retry, RetryKey as _},
         inet, packet,
         packet::number::{PacketNumberSpace, TruncatedPacketNumber},
         random, token,
@@ -57,12 +58,11 @@ mod tests {
     fn test_tag_validation() {
         let invalid_tag: [u8; 16] = hex!("00112233445566778899aabbccddeeff");
 
-        assert!(RingRetryKey::validate(
-            &retry::example::PSEUDO_PACKET,
-            retry::example::EXPECTED_TAG
-        )
-        .is_ok());
-        assert!(RingRetryKey::validate(&retry::example::PSEUDO_PACKET, invalid_tag).is_err());
+        assert!(
+            RetryKey::validate(&retry::example::PSEUDO_PACKET, retry::example::EXPECTED_TAG)
+                .is_ok()
+        );
+        assert!(RetryKey::validate(&retry::example::PSEUDO_PACKET, invalid_tag).is_err());
     }
 
     fn pn(space: PacketNumberSpace) -> TruncatedPacketNumber {
@@ -101,7 +101,7 @@ mod tests {
             }
         {
             let local_conn_id = connection::LocalId::try_from_bytes(&retry::example::SCID).unwrap();
-            if let Some(range) = packet::retry::Retry::encode_packet::<_, RingRetryKey, _>(
+            if let Some(range) = packet::retry::Retry::encode_packet::<_, RetryKey, _>(
                 &remote_address,
                 &packet,
                 &local_conn_id,
@@ -151,7 +151,7 @@ mod tests {
             //# Connection ID field of the packet sent by the client.
             let local_conn_id =
                 connection::LocalId::try_from_bytes(&retry::example::ODCID).unwrap();
-            assert!(packet::retry::Retry::encode_packet::<_, RingRetryKey, _>(
+            assert!(packet::retry::Retry::encode_packet::<_, RetryKey, _>(
                 &remote_address,
                 &packet,
                 &local_conn_id,

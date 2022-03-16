@@ -10,7 +10,6 @@ pub mod x86;
 pub mod testing;
 
 pub const TAG_LEN: usize = 16;
-pub const BLOCK_LEN: usize = 16;
 pub const KEY_LEN: usize = 16;
 
 pub trait Constructor {

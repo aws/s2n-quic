@@ -381,6 +381,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         };
 
         let cipher_suite = key.cipher_suite().into_event();
+        let max_mtu = self.path_manager.max_mtu();
         *self.application = Some(Box::new(ApplicationSpace::new(
             key,
             header_key,
@@ -390,6 +391,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             keep_alive,
             server_name,
             application_protocol,
+            max_mtu,
         )));
         self.publisher.on_key_update(event::builder::KeyUpdate {
             key_type: event::builder::KeyType::OneRtt { generation: 0 },

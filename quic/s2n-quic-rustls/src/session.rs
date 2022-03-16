@@ -157,13 +157,13 @@ impl Session {
 impl crypto::CryptoSuite for Session {
     type HandshakeKey = PacketKeys;
     type HandshakeHeaderKey = HeaderProtectionKeys;
-    type InitialKey = s2n_quic_ring::initial::RingInitialKey;
-    type InitialHeaderKey = s2n_quic_ring::initial::RingInitialHeaderKey;
+    type InitialKey = s2n_quic_crypto::initial::InitialKey;
+    type InitialHeaderKey = s2n_quic_crypto::initial::InitialHeaderKey;
     type OneRttKey = OneRttKey;
     type OneRttHeaderKey = HeaderProtectionKeys;
     type ZeroRttKey = PacketKey;
     type ZeroRttHeaderKey = HeaderProtectionKey;
-    type RetryKey = s2n_quic_ring::retry::RingRetryKey;
+    type RetryKey = s2n_quic_crypto::retry::RetryKey;
 }
 
 impl tls::Session for Session {

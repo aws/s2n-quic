@@ -24,6 +24,9 @@ env:
   LOG_URL: logs/latest/SERVER_CLIENT/TEST/index.html
   H3_SPEC_VERSION: v0.1.8
   QUINN_REF: d8615d9c2bae9cca78471f8875a15911fd1f443b
+  # enable unstable features for testing
+  S2N_UNSTABLE_CRYPTO_OPT_TX: 100
+  S2N_UNSTABLE_CRYPTO_OPT_RX: 100
 
 jobs:
   env:
