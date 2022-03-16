@@ -517,13 +517,17 @@ impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
             // pin the wakeups future so we don't have to move it into the Select future.
             tokio::pin!(wakeups);
 
-            let (rx_result, tx_result, timeout_expired, application_wakeup) =
-                if let Ok(res) = Select::new(rx_task, tx_task, &mut wakeups, &mut timer).await {
-                    res
-                } else {
-                    // The endpoint has shut down
-                    return Ok(());
-                };
+            let SelectOutcome {
+                rx_result,
+                tx_result,
+                timeout_expired,
+                application_wakeup,
+            } = if let Ok(res) = Select::new(rx_task, tx_task, &mut wakeups, &mut timer).await {
+                res
+            } else {
+                // The endpoint has shut down
+                return Ok(());
+            };
 
             let subscriber = endpoint.subscriber();
             let mut publisher = event::EndpointPublisherSubscriber::new(
@@ -609,7 +613,14 @@ where
     }
 }
 
-type SelectResult<Rx, Tx> = Result<(Option<Rx>, Option<Tx>, bool, bool), CloseError>;
+struct SelectOutcome<Rx, Tx> {
+    rx_result: Option<Rx>,
+    tx_result: Option<Tx>,
+    timeout_expired: bool,
+    application_wakeup: bool,
+}
+
+type SelectResult<Rx, Tx> = Result<SelectOutcome<Rx, Tx>, CloseError>;
 
 impl<Rx, Tx, Wakeup, Sleep> Future for Select<Rx, Tx, Wakeup, Sleep>
 where
@@ -644,10 +655,10 @@ where
             *this.tx_out = Some(v);
         }
 
-        let mut timeout_result = false;
+        let mut timeout_expired = false;
 
         if this.sleep.poll(cx).is_ready() {
-            timeout_result = true;
+            timeout_expired = true;
             should_wake = true;
         }
 
@@ -656,12 +667,12 @@ where
             return Poll::Pending;
         }
 
-        Poll::Ready(Ok((
-            this.rx_out.take(),
-            this.tx_out.take(),
-            timeout_result,
+        Poll::Ready(Ok(SelectOutcome {
+            rx_result: this.rx_out.take(),
+            tx_result: this.tx_out.take(),
+            timeout_expired,
             application_wakeup,
-        )))
+        }))
     }
 }
 
