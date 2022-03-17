@@ -18,10 +18,6 @@ use core::{
 };
 #[cfg(not(feature = "std"))]
 use num_traits::Float as _;
-use std::env;
-
-// environment variable for using hystart++
-const USE_HYSTART: &str = "USE_HYSTART";
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3
 //#                 New Path or      +------------+
@@ -276,7 +272,7 @@ impl CongestionController for CubicCongestionController {
                 //# the number of bytes acknowledged when each acknowledgment is
                 //# processed.  This results in exponential growth of the congestion
                 //# window.
-                self.congestion_window += sent_bytes as f32;
+                self.congestion_window += (sent_bytes as f32) / self.slow_start.ss_growth_divisor;
 
                 if self.congestion_window >= self.slow_start.threshold {
                     //= https://www.rfc-editor.org/rfc/rfc8312#section-4.8
@@ -436,10 +432,10 @@ impl CongestionController for CubicCongestionController {
 }
 
 impl CubicCongestionController {
-    pub fn new(max_datagram_size: u16, use_hystart: bool) -> Self {
+    pub fn new(max_datagram_size: u16) -> Self {
         Self {
             cubic: Cubic::new(max_datagram_size),
-            slow_start: HybridSlowStart::new(max_datagram_size, use_hystart),
+            slow_start: HybridSlowStart::new(max_datagram_size),
             pacer: Pacer::default(),
             max_datagram_size,
             congestion_window: CubicCongestionController::initial_window(max_datagram_size) as f32,
@@ -761,12 +757,7 @@ impl congestion_controller::Endpoint for Endpoint {
         &mut self,
         path_info: congestion_controller::PathInfo,
     ) -> Self::CongestionController {
-        let use_hystart: bool = match env::var(USE_HYSTART) {
-            Ok(_val) => true,
-            Err(_e) => false,
-        };
-
-        CubicCongestionController::new(path_info.max_datagram_size, use_hystart)
+        CubicCongestionController::new(path_info.max_datagram_size)
     }
 }
 
