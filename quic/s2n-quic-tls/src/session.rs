@@ -86,8 +86,9 @@ impl tls::Session for Session {
 
         match result {
             Poll::Ready(Ok(())) => {
-                // only emit handshake done once
+                // s2n-tls has indicated that the handshake is complete
                 if !self.handshake_complete {
+                    self.state.on_handshake_complete();
                     context.on_handshake_complete()?;
                     self.handshake_complete = true;
                 }

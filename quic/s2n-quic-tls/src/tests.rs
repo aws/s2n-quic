@@ -24,6 +24,22 @@ fn s2n_server() -> server::Server {
         .unwrap()
 }
 
+fn rustls_server() -> s2n_quic_rustls::server::Server {
+    s2n_quic_rustls::server::Builder::default()
+        .with_certificate(CERT_PEM, KEY_PEM)
+        .unwrap()
+        .build()
+        .unwrap()
+}
+
+fn rustls_client() -> s2n_quic_rustls::client::Client {
+    s2n_quic_rustls::client::Builder::default()
+        .with_certificate(CERT_PEM)
+        .unwrap()
+        .build()
+        .unwrap()
+}
+
 #[test]
 #[cfg_attr(miri, ignore)]
 fn s2n_client_s2n_server_test() {
@@ -36,11 +52,7 @@ fn s2n_client_s2n_server_test() {
 #[test]
 #[cfg_attr(miri, ignore)]
 fn rustls_client_s2n_server_test() {
-    let mut client_endpoint = s2n_quic_rustls::client::Builder::default()
-        .with_certificate(CERT_PEM)
-        .unwrap()
-        .build()
-        .unwrap();
+    let mut client_endpoint = rustls_client();
     let mut server_endpoint = s2n_server();
 
     run(&mut server_endpoint, &mut client_endpoint);
@@ -50,11 +62,7 @@ fn rustls_client_s2n_server_test() {
 #[cfg_attr(miri, ignore)]
 fn s2n_client_rustls_server_test() {
     let mut client_endpoint = s2n_client();
-    let mut server_endpoint = s2n_quic_rustls::server::Builder::default()
-        .with_certificate(CERT_PEM, KEY_PEM)
-        .unwrap()
-        .build()
-        .unwrap();
+    let mut server_endpoint = rustls_server();
 
     run(&mut server_endpoint, &mut client_endpoint);
 }
