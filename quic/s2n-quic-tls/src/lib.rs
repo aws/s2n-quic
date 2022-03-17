@@ -18,5 +18,10 @@ pub mod server;
 pub use client::Client;
 pub use server::Server;
 
+// Re-export the `ClientHelloHandler` and `Connection` to make it easier for users
+// to consume. This depends on experimental behavior in s2n-tls.
+#[cfg(all(feature = "unstable_s2n_quic_tls_client_hello", s2n_quic_unstable))]
+pub use s2n_tls::raw::{config::ClientHelloHandler, connection::Connection};
+
 #[cfg(test)]
 mod tests;

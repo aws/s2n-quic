@@ -127,7 +127,7 @@ impl tls::Endpoint for Client {
             session
                 .connection
                 .set_server_name(&server_name)
-                .expect("invalid sni value");
+                .expect("invalid server name value");
             session
         })
     }

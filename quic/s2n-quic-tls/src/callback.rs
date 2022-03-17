@@ -66,6 +66,8 @@ where
             .set_receive_callback(Some(Self::recv_cb))
             .unwrap();
         connection.set_receive_context(context).unwrap();
+        // A Waker is provided for use with the client hello callback.
+        connection.set_waker(Some(self.context.waker())).unwrap();
     }
 
     /// Removes all of the callback and context pointers from the connection
@@ -107,6 +109,7 @@ where
             connection
                 .set_receive_context(core::ptr::null_mut())
                 .unwrap();
+            connection.set_waker(None).unwrap();
 
             // Flush the send buffer before returning to the connection
             self.flush();

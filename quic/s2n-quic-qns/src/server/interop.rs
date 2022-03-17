@@ -8,6 +8,8 @@ use crate::{
     tls::TlsProviders,
     Result,
 };
+#[cfg(unix)]
+use s2n_quic::provider::tls::s2n_tls;
 use s2n_quic::{
     provider::{
         endpoint_limits,
@@ -114,16 +116,7 @@ impl Interop {
             TlsProviders::S2N => {
                 // The server builder defaults to a chain because this allows certs to just work, whether
                 // the PEM contains a single cert or a chain
-                let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
-                    .with_certificate(
-                        tls::s2n::ca(self.certificate.as_ref())?,
-                        tls::s2n::private_key(self.private_key.as_ref())?,
-                    )?
-                    .with_application_protocols(
-                        self.application_protocols.iter().map(String::as_bytes),
-                    )?
-                    .with_key_logging()?
-                    .build()?;
+                let tls = self.build_s2n_tls_server()?;
 
                 server.with_tls(tls)?.start().unwrap()
             }
@@ -148,6 +141,29 @@ impl Interop {
         eprintln!("Server listening on port {}", self.port);
 
         Ok(server)
+    }
+
+    #[cfg(unix)]
+    fn build_s2n_tls_server(&self) -> Result<s2n_tls::Server> {
+        let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
+            .with_certificate(
+                tls::s2n::ca(self.certificate.as_ref())?,
+                tls::s2n::private_key(self.private_key.as_ref())?,
+            )?
+            .with_application_protocols(self.application_protocols.iter().map(String::as_bytes))?
+            .with_key_logging()?;
+
+        cfg_if::cfg_if! {
+            if #[cfg(all(
+                s2n_quic_unstable,
+                feature = "unstable_s2n_quic_tls_client_hello"
+            ))] {
+                use super::unstable::MyClientHelloHandler;
+                let tls = tls.with_client_hello_handler(MyClientHelloHandler {})?;
+            }
+        }
+
+        Ok(tls.build()?)
     }
 }
 

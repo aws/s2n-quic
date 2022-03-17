@@ -28,6 +28,11 @@ provider-tls-default = ["s2n-quic-tls-default"]
 provider-tls-rustls = ["s2n-quic-rustls"]
 provider-tls-s2n = ["s2n-quic-tls"]
 
+# List of unstable features. Add new unstable features to the check in s2n-quic/src/lib.rs
+#
+# This depends on experimental behavior in s2n-tls.
+unstable_s2n_quic_tls_client_hello = ["s2n-quic-tls/unstable_s2n_quic_tls_client_hello"]
+
 [dependencies]
 bytes = { version = "1", default-features = false }
 cfg-if = "1"
@@ -54,3 +59,4 @@ bolero = { version = "0.6" }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
 s2n-quic-platform = { path = "../s2n-quic-platform", features = ["testing"] }
 tokio = { version = "1", features = ["full"] }
+
