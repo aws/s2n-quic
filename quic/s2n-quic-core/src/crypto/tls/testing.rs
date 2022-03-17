@@ -166,12 +166,12 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
             2 => {
                 assert!(
                     self.server.1.handshake.crypto.is_some(),
-                    "server should have handshake keys after reading the ClientHello"
+                    "server should have handshake keys after sending the ServerHello"
                 );
 
                 assert!(
                     self.server.1.application.crypto.is_some(),
-                    "server should have application keys after reading the ClientHello"
+                    "server should have application keys after sending a ServerFinished"
                 );
 
                 assert!(!self.server.1.handshake_complete);
@@ -184,7 +184,7 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
                 );
                 assert!(
                     self.client.1.application.crypto.is_some(),
-                    "client should have application keys after reading the ServerHello"
+                    "client should have application keys after reading the ServerFinished"
                 );
                 assert!(
                     self.client.1.handshake_complete,
