@@ -24,10 +24,6 @@
     "quiche": [
       "client"
     ],
-    "s2n-quic": [
-      "client",
-      "server"
-    ],
     "xquic": []
   },
   "handshake": {
@@ -52,10 +48,6 @@
     ],
     "quiche": [
       "client"
-    ],
-    "s2n-quic": [
-      "client",
-      "server"
     ],
     "xquic": []
   },
@@ -84,10 +76,6 @@
     "quiche": [
       "client"
     ],
-    "s2n-quic": [
-      "client",
-      "server"
-    ],
     "xquic": []
   },
   "longrtt": {
@@ -112,10 +100,6 @@
     ],
     "quiche": [
       "client"
-    ],
-    "s2n-quic": [
-      "client",
-      "server"
     ],
     "xquic": []
   },
@@ -163,10 +147,6 @@
     "quiche": [
       "client"
     ],
-    "s2n-quic": [
-      "client",
-      "server"
-    ],
     "xquic": []
   },
   "retry": {
@@ -194,10 +174,6 @@
     "quiche": [
       "client"
     ],
-    "s2n-quic": [
-      "client",
-      "server"
-    ],
     "xquic": []
   },
   "blackhole": {
@@ -224,10 +200,6 @@
     ],
     "quiche": [
       "client"
-    ],
-    "s2n-quic": [
-      "client",
-      "server"
     ],
     "xquic": []
   },
@@ -269,10 +241,6 @@
     ],
     "quic-go": [],
     "quiche": [],
-    "s2n-quic": [
-      "client",
-      "server"
-    ],
     "xquic": []
   },
   "amplificationlimit": {
@@ -292,10 +260,6 @@
       "client"
     ],
     "quiche": [],
-    "s2n-quic": [
-      "client",
-      "server"
-    ],
     "xquic": []
   },
   "handshakeloss": {
@@ -333,10 +297,6 @@
     ],
     "quiche": [
       "client"
-    ],
-    "s2n-quic": [
-      "client",
-      "server"
     ],
     "xquic": []
   },
@@ -378,10 +338,6 @@
     "quiche": [
       "client"
     ],
-    "s2n-quic": [
-      "client",
-      "server"
-    ],
     "xquic": []
   },
   "rebind-addr": {
@@ -395,10 +351,6 @@
     "picoquic": [],
     "quic-go": [],
     "quiche": [],
-    "s2n-quic": [
-      "client",
-      "server"
-    ],
     "xquic": []
   },
   "rebind-port": {
@@ -412,10 +364,6 @@
     "picoquic": [],
     "quic-go": [],
     "quiche": [],
-    "s2n-quic": [
-      "client",
-      "server"
-    ],
     "xquic": []
   },
   "connectionmigration": {
