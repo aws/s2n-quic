@@ -412,7 +412,8 @@ pub fn consume_new_id_should_return_id() {
 
     assert!(reg
         .state
-        .borrow_mut()
+        .lock()
+        .unwrap()
         .stateless_reset_map
         .remove(&TEST_TOKEN_2)
         .is_none());
@@ -421,7 +422,8 @@ pub fn consume_new_id_should_return_id() {
     // this is an indirect way to test that we inserted a reset token when we consumed id_2
     assert!(reg
         .state
-        .borrow_mut()
+        .lock()
+        .unwrap()
         .stateless_reset_map
         .remove(&TEST_TOKEN_2)
         .is_some());

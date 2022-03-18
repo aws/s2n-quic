@@ -22,7 +22,7 @@ const CRASH_ERROR_MESSAGE: &str = "The s2n-quic-qns application shut down unexpe
 #[global_allocator]
 static ALLOCATOR: dhat::DhatAlloc = dhat::DhatAlloc;
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main()]
 async fn main() {
     // setup heap profiling if enabled
     #[cfg(feature = "dhat")]

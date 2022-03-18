@@ -9,8 +9,7 @@ use crate::{
     contexts::WriteContext,
     transmission,
 };
-use alloc::rc::Rc;
-use core::{cell::RefCell, convert::TryInto};
+use core::convert::TryInto;
 use s2n_quic_core::{
     ack, connection, frame,
     packet::number::PacketNumber,
@@ -18,6 +17,7 @@ use s2n_quic_core::{
     time::{timer, Duration, Timer, Timestamp},
 };
 use smallvec::SmallVec;
+use std::sync::{Arc, Mutex};
 
 /// The amount of ConnectionIds we can register without dynamic memory allocation
 const NR_STATIC_REGISTRABLE_IDS: usize = 5;
@@ -68,7 +68,7 @@ pub struct LocalIdRegistry {
     /// The internal connection ID for this registration
     internal_id: InternalConnectionId,
     /// The shared state between mapper and registration
-    state: Rc<RefCell<ConnectionIdMapperState>>,
+    state: Arc<Mutex<ConnectionIdMapperState>>,
     /// The connection IDs which are currently registered at the ConnectionIdMapper
     registered_ids: SmallVec<[LocalIdInfo; NR_STATIC_REGISTRABLE_IDS]>,
     /// The sequence number to use the next time a new connection ID is registered
@@ -205,7 +205,10 @@ impl LocalIdRegistrationError {
 
 impl Drop for LocalIdRegistry {
     fn drop(&mut self) {
-        let mut guard = self.state.borrow_mut();
+        let mut guard = self
+            .state
+            .lock()
+            .expect("should succeed unless the lock is poisoned");
 
         // Unregister all previously registered IDs
         for id_info in &self.registered_ids {
@@ -221,7 +224,7 @@ impl LocalIdRegistry {
     /// Constructs a new `LocalIdRegistry` and registers the provided `handshake_connection_id`
     pub(crate) fn new(
         internal_id: InternalConnectionId,
-        state: Rc<RefCell<ConnectionIdMapperState>>,
+        state: Arc<Mutex<ConnectionIdMapperState>>,
         handshake_connection_id: &connection::LocalId,
         handshake_connection_id_expiration_time: Option<Timestamp>,
         stateless_reset_token: stateless_reset::Token,
@@ -300,7 +303,8 @@ impl LocalIdRegistry {
         // Try to insert into the global map
         if self
             .state
-            .borrow_mut()
+            .lock()
+            .expect("should succeed unless the lock is poisoned")
             .local_id_map
             .try_insert(id, self.internal_id)
             .is_ok()
@@ -335,7 +339,10 @@ impl LocalIdRegistry {
     /// Unregisters connection IDs that have expired
     fn unregister_expired_ids(&mut self, timestamp: Timestamp) {
         {
-            let mut mapper_state = self.state.borrow_mut();
+            let mut mapper_state = self
+                .state
+                .lock()
+                .expect("should succeed unless the lock is poisoned");
 
             self.registered_ids.retain(|id_info| {
                 if id_info.is_expired(timestamp) {
