@@ -1,6 +1,6 @@
 # netbench
 
-A efficiency, performance, and correctness analysis tool for transport protocols.
+An efficiency, performance, and correctness analysis tool for transport protocols.
 
 ## Why does this exist?
 
