@@ -156,7 +156,7 @@ impl Interop {
         cfg_if::cfg_if! {
             if #[cfg(all(
                 s2n_quic_unstable,
-                feature = "unstable_s2n_quic_tls_client_hello"
+                feature = "unstable_client_hello"
             ))] {
                 use super::unstable::MyClientHelloHandler;
                 let tls = tls.with_client_hello_handler(MyClientHelloHandler {})?;

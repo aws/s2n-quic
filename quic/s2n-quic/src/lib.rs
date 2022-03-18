@@ -57,7 +57,7 @@
 //! rustc when compiling. This is easiest done using the RUSTFLAGS env variable:
 //! `RUSTFLAGS=\"--cfg s2n_quic_unstable\"`.
 //!
-//! ### `unstable_s2n_quic_tls_client_hello`
+//! ### `unstable_client_hello`
 //!
 //! Enables the `ClientHelloHandler` trait, which can be used to set the client_hello callback on
 //! s2n-tls provider.
@@ -86,10 +86,12 @@ pub use server::Server;
     all(
         // disable check for internal CI use only
         not(s2n_internal_ci),
+        // disable check for test
+        not(test),
         all(
             not(s2n_quic_unstable),
             // Add new unstable features to the list below
-            any(feature = "unstable_s2n_quic_tls_client_hello")
+            any(feature = "unstable_client_hello")
         )
     )
 )]

@@ -10,7 +10,7 @@ license = "Apache-2.0"
 exclude = ["corpus.tar.gz"]
 
 [features]
-unstable_s2n_quic_tls_client_hello = []
+unstable_client_hello = []
 
 [dependencies]
 bytes = { version = "1", default-features = false }

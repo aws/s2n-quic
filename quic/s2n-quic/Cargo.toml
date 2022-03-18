@@ -31,7 +31,7 @@ provider-tls-s2n = ["s2n-quic-tls"]
 # List of unstable features. Add new unstable features to the check in s2n-quic/src/lib.rs
 #
 # This depends on experimental behavior in s2n-tls.
-unstable_s2n_quic_tls_client_hello = ["s2n-quic-tls/unstable_s2n_quic_tls_client_hello"]
+unstable_client_hello = ["s2n-quic-tls/unstable_client_hello"]
 
 [dependencies]
 bytes = { version = "1", default-features = false }

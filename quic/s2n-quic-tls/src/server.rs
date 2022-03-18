@@ -9,7 +9,7 @@ use crate::{
 };
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls, endpoint};
-#[cfg(feature = "unstable_s2n_quic_tls_client_hello")]
+#[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
 use s2n_tls::raw::config::ClientHelloHandler;
 use s2n_tls::raw::{
     config::{self, Config},
@@ -64,7 +64,7 @@ impl Default for Builder {
 }
 
 impl Builder {
-    #[cfg(all(feature = "unstable_s2n_quic_tls_client_hello", s2n_quic_unstable))]
+    #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
     pub fn with_client_hello_handler<T: 'static + ClientHelloHandler>(
         self,
         _handler: T,
