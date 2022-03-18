@@ -1,9 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Since this crate doesn't actually export anything at the moment, don't emit warnings for dead code
-#![cfg_attr(not(test), allow(dead_code))]
-
 /// Asserts that a boolean expression is true at runtime, only if debug_assertions are enabled.
 ///
 /// Otherwise, the compiler is told to assume that the expression is always true and can perform
@@ -22,12 +19,54 @@ macro_rules! unsafe_assert {
     };
 }
 
+#[macro_use]
+mod negotiated;
+#[macro_use]
+mod header_key;
+
+mod aead;
 mod aes;
 mod aesgcm;
 mod arch;
 mod block;
+mod cipher_suite;
 mod ctr;
 mod ghash;
+mod iv;
+
+#[doc(hidden)]
+pub use ring::{
+    self,
+    aead::{Algorithm, MAX_TAG_LEN},
+    hkdf::Prk,
+};
+
+#[derive(Clone)]
+pub struct SecretPair {
+    pub server: Prk,
+    pub client: Prk,
+}
+
+pub mod handshake;
+pub mod initial;
+pub mod one_rtt;
+pub mod retry;
+pub mod zero_rtt;
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Suite;
+
+impl s2n_quic_core::crypto::CryptoSuite for Suite {
+    type HandshakeKey = handshake::HandshakeKey;
+    type HandshakeHeaderKey = handshake::HandshakeHeaderKey;
+    type InitialKey = initial::InitialKey;
+    type InitialHeaderKey = initial::InitialHeaderKey;
+    type OneRttKey = one_rtt::OneRttKey;
+    type OneRttHeaderKey = one_rtt::OneRttHeaderKey;
+    type ZeroRttKey = zero_rtt::ZeroRttKey;
+    type ZeroRttHeaderKey = zero_rtt::ZeroRttHeaderKey;
+    type RetryKey = retry::RetryKey;
+}
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;

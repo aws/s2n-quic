@@ -1,9 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::ghash::{
-    testing::{GHash, Implementation},
-    BLOCK_LEN,
+use crate::{
+    block::LEN as BLOCK_LEN,
+    ghash::testing::{GHash, Implementation},
 };
 use core::convert::TryInto;
 use ghash::{

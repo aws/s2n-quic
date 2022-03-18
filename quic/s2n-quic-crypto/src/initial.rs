@@ -5,18 +5,19 @@ use crate::{cipher_suite::TLS_AES_128_GCM_SHA256 as CipherSuite, header_key::Hea
 use ring::hkdf;
 use s2n_quic_core::{
     crypto::{
+        self,
         label::{CLIENT_IN, SERVER_IN},
-        CryptoError, InitialHeaderKey, InitialKey, Key, INITIAL_SALT,
+        CryptoError, Key, INITIAL_SALT,
     },
     endpoint,
 };
 
-header_key!(RingInitialHeaderKey);
+header_key!(InitialHeaderKey);
 
-impl InitialHeaderKey for RingInitialHeaderKey {}
+impl crypto::InitialHeaderKey for InitialHeaderKey {}
 
 #[derive(Debug)]
-pub struct RingInitialKey {
+pub struct InitialKey {
     sealer: CipherSuite,
     opener: CipherSuite,
 }
@@ -26,8 +27,8 @@ lazy_static::lazy_static! {
     static ref INITIAL_SIGNING_KEY: hkdf::Salt = hkdf::Salt::new(hkdf::HKDF_SHA256, &INITIAL_SALT);
 }
 
-impl RingInitialKey {
-    fn new(endpoint: endpoint::Type, connection_id: &[u8]) -> (Self, RingInitialHeaderKey) {
+impl InitialKey {
+    fn new(endpoint: endpoint::Type, connection_id: &[u8]) -> (Self, InitialHeaderKey) {
         let initial_secret = INITIAL_SIGNING_KEY.extract(connection_id);
         let digest = INITIAL_SIGNING_KEY.algorithm();
 
@@ -58,7 +59,7 @@ impl RingInitialKey {
             sealer: key_sealer,
             opener: key_opener,
         };
-        let header_key = RingInitialHeaderKey(HeaderKeyPair {
+        let header_key = InitialHeaderKey(HeaderKeyPair {
             sealer: header_sealer,
             opener: header_opener,
         });
@@ -67,8 +68,8 @@ impl RingInitialKey {
     }
 }
 
-impl InitialKey for RingInitialKey {
-    type HeaderKey = RingInitialHeaderKey;
+impl crypto::InitialKey for InitialKey {
+    type HeaderKey = InitialHeaderKey;
 
     fn new_server(connection_id: &[u8]) -> (Self, Self::HeaderKey) {
         Self::new(endpoint::Type::Server, connection_id)
@@ -79,7 +80,7 @@ impl InitialKey for RingInitialKey {
     }
 }
 
-impl Key for RingInitialKey {
+impl Key for InitialKey {
     #[inline]
     fn decrypt(
         &self,
@@ -127,9 +128,13 @@ mod tests {
     use s2n_codec::{DecoderBufferMut, EncoderBuffer};
     use s2n_quic_core::{
         connection::id::ConnectionInfo,
-        crypto::initial::{
-            EXAMPLE_CLIENT_INITIAL_PAYLOAD, EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET, EXAMPLE_DCID,
-            EXAMPLE_SERVER_INITIAL_PAYLOAD, EXAMPLE_SERVER_INITIAL_PROTECTED_PACKET,
+        crypto::{
+            initial::{
+                EXAMPLE_CLIENT_INITIAL_PAYLOAD, EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET,
+                EXAMPLE_DCID, EXAMPLE_SERVER_INITIAL_PAYLOAD,
+                EXAMPLE_SERVER_INITIAL_PROTECTED_PACKET,
+            },
+            InitialKey as _,
         },
         inet::SocketAddress,
         packet::{encoding::PacketEncoder, initial::CleartextInitial, ProtectedPacket},
@@ -138,8 +143,8 @@ mod tests {
     #[test]
     fn rfc_example_server_test() {
         test_round_trip(
-            &RingInitialKey::new_client(&EXAMPLE_DCID),
-            &RingInitialKey::new_server(&EXAMPLE_DCID),
+            &InitialKey::new_client(&EXAMPLE_DCID),
+            &InitialKey::new_server(&EXAMPLE_DCID),
             &EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET,
             &EXAMPLE_CLIENT_INITIAL_PAYLOAD,
         );
@@ -148,16 +153,16 @@ mod tests {
     #[test]
     fn rfc_example_client_test() {
         test_round_trip(
-            &RingInitialKey::new_server(&EXAMPLE_DCID),
-            &RingInitialKey::new_client(&EXAMPLE_DCID),
+            &InitialKey::new_server(&EXAMPLE_DCID),
+            &InitialKey::new_client(&EXAMPLE_DCID),
             &EXAMPLE_SERVER_INITIAL_PROTECTED_PACKET,
             &EXAMPLE_SERVER_INITIAL_PAYLOAD,
         );
     }
 
     fn test_round_trip(
-        sealer: &(RingInitialKey, RingInitialHeaderKey),
-        opener: &(RingInitialKey, RingInitialHeaderKey),
+        sealer: &(InitialKey, InitialHeaderKey),
+        opener: &(InitialKey, InitialHeaderKey),
         protected_packet: &[u8],
         cleartext_payload: &[u8],
     ) {
@@ -207,8 +212,8 @@ mod tests {
     }
 
     fn decrypt<F: FnOnce(CleartextInitial) -> O, O>(
-        opener_key: &RingInitialKey,
-        opener_header_key: &RingInitialHeaderKey,
+        opener_key: &InitialKey,
+        opener_header_key: &InitialHeaderKey,
         mut protected_packet: Vec<u8>,
         cleartext_payload: &[u8],
         on_decrypt: F,

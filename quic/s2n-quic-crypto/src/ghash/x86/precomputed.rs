@@ -10,6 +10,7 @@ use crate::{
         KEY_LEN,
     },
 };
+use zeroize::{DefaultIsZeroes, Zeroize};
 
 impl<P: Powers> ghash::GHash for P {
     type Block = __m128i;
@@ -49,7 +50,6 @@ pub struct Allocated<H: HKey> {
 }
 
 impl<H: HKey> Allocated<H> {
-    #[allow(dead_code)] // TODO wire this up to the s2n-quic-core crypto traits
     #[inline(always)]
     pub fn new(key: [u8; KEY_LEN], blocks: usize) -> Self {
         // initialize the powers (H^1, H^2, H^3, etc)
@@ -87,11 +87,20 @@ impl<H: HKey> Powers for Allocated<H> {
     }
 }
 
+impl<H: HKey + DefaultIsZeroes> Zeroize for Allocated<H> {
+    #[inline]
+    fn zeroize(&mut self) {
+        // deref to a slice to we can take advantage of the bulk zeroization
+        (&mut self.state[..]).zeroize()
+    }
+}
+
 pub struct Array<H: HKey, const N: usize> {
     state: [H; N],
 }
 
 impl<H: HKey, const N: usize> Array<H, N> {
+    #[allow(dead_code)] // This is currently used in testing only
     #[inline(always)]
     pub fn new(key: [u8; KEY_LEN]) -> Self {
         // initialize the powers (H^1, H^2, H^3, etc)
@@ -127,7 +136,15 @@ impl<H: HKey, const N: usize> Powers for Array<H, N> {
     }
 }
 
-#[derive(Clone, Copy)]
+impl<H: HKey + DefaultIsZeroes, const N: usize> Zeroize for Array<H, N> {
+    #[inline]
+    fn zeroize(&mut self) {
+        // deref to a slice to we can take advantage of the bulk zeroization
+        (&mut self.state[..]).zeroize()
+    }
+}
+
+#[derive(Clone, Copy, Zeroize)]
 pub struct State {
     hi: __m128i,
     mid: __m128i,

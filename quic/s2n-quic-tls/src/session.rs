@@ -8,7 +8,7 @@ use s2n_quic_core::{
     crypto::{tls, CryptoError, CryptoSuite},
     endpoint, transport,
 };
-use s2n_quic_ring::RingCryptoSuite;
+use s2n_quic_crypto::Suite;
 use s2n_tls::raw::{
     config::Config,
     connection::Connection,
@@ -49,15 +49,15 @@ impl Session {
 }
 
 impl CryptoSuite for Session {
-    type HandshakeKey = <RingCryptoSuite as CryptoSuite>::HandshakeKey;
-    type HandshakeHeaderKey = <RingCryptoSuite as CryptoSuite>::HandshakeHeaderKey;
-    type InitialKey = <RingCryptoSuite as CryptoSuite>::InitialKey;
-    type InitialHeaderKey = <RingCryptoSuite as CryptoSuite>::InitialHeaderKey;
-    type OneRttKey = <RingCryptoSuite as CryptoSuite>::OneRttKey;
-    type OneRttHeaderKey = <RingCryptoSuite as CryptoSuite>::OneRttHeaderKey;
-    type ZeroRttKey = <RingCryptoSuite as CryptoSuite>::ZeroRttKey;
-    type ZeroRttHeaderKey = <RingCryptoSuite as CryptoSuite>::ZeroRttHeaderKey;
-    type RetryKey = <RingCryptoSuite as CryptoSuite>::RetryKey;
+    type HandshakeKey = <Suite as CryptoSuite>::HandshakeKey;
+    type HandshakeHeaderKey = <Suite as CryptoSuite>::HandshakeHeaderKey;
+    type InitialKey = <Suite as CryptoSuite>::InitialKey;
+    type InitialHeaderKey = <Suite as CryptoSuite>::InitialHeaderKey;
+    type OneRttKey = <Suite as CryptoSuite>::OneRttKey;
+    type OneRttHeaderKey = <Suite as CryptoSuite>::OneRttHeaderKey;
+    type ZeroRttKey = <Suite as CryptoSuite>::ZeroRttKey;
+    type ZeroRttHeaderKey = <Suite as CryptoSuite>::ZeroRttHeaderKey;
+    type RetryKey = <Suite as CryptoSuite>::RetryKey;
 }
 
 impl tls::Session for Session {

@@ -2,26 +2,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{cipher_suite::TLS_AES_128_GCM_SHA256 as CipherSuite, header_key::HeaderKey};
-use s2n_quic_core::crypto::{
-    self, CryptoError, HeaderProtectionMask, Key, ZeroRttHeaderKey, ZeroRttKey,
-};
+use s2n_quic_core::crypto::{self, CryptoError, HeaderProtectionMask, Key};
 
 #[derive(Debug)]
-pub struct RingZeroRttKey(CipherSuite);
+pub struct ZeroRttKey(CipherSuite);
 
-impl RingZeroRttKey {
+impl ZeroRttKey {
     /// Create a ZeroRTT cipher suite with a given secret
-    pub fn new(secret: crate::Prk) -> (Self, RingZeroRttHeaderKey) {
+    pub fn new(secret: crate::Prk) -> (Self, ZeroRttHeaderKey) {
         let (key, header_key) = CipherSuite::new(secret);
         let key = Self(key);
-        let header_key = RingZeroRttHeaderKey(header_key);
+        let header_key = ZeroRttHeaderKey(header_key);
         (key, header_key)
     }
 }
 
-impl ZeroRttKey for RingZeroRttKey {}
+impl crypto::ZeroRttKey for ZeroRttKey {}
 
-impl Key for RingZeroRttKey {
+impl Key for ZeroRttKey {
     fn decrypt(
         &self,
         packet_number: u64,
@@ -59,9 +57,9 @@ impl Key for RingZeroRttKey {
 }
 
 #[derive(Debug)]
-pub struct RingZeroRttHeaderKey(HeaderKey);
+pub struct ZeroRttHeaderKey(HeaderKey);
 
-impl crypto::HeaderKey for RingZeroRttHeaderKey {
+impl crypto::HeaderKey for ZeroRttHeaderKey {
     fn opening_header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
         self.0.opening_header_protection_mask(sample)
     }
@@ -79,4 +77,4 @@ impl crypto::HeaderKey for RingZeroRttHeaderKey {
     }
 }
 
-impl ZeroRttHeaderKey for RingZeroRttHeaderKey {}
+impl crypto::ZeroRttHeaderKey for ZeroRttHeaderKey {}

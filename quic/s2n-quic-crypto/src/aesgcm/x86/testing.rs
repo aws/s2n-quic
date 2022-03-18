@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    aead::{self, Aead},
     aes::Encrypt,
-    aesgcm::{generic::AesGcm, AesGcm as _, Error, NONCE_LEN, TAG_LEN},
+    aesgcm::{generic::AesGcm, NONCE_LEN, TAG_LEN},
     arch::*,
     block::{Block, Zeroed as _},
     ctr::x86::Ctr,
@@ -22,7 +23,7 @@ macro_rules! impl_target_features {
                 aad: &[u8],
                 input: &mut [u8],
                 tag: &mut [u8; TAG_LEN],
-            ) {
+            ) -> aead::Result {
                 self.0.encrypt(nonce, aad, input, tag)
             }
 
@@ -34,19 +35,22 @@ macro_rules! impl_target_features {
                 aad: &[u8],
                 input: &mut [u8],
                 tag: &[u8; TAG_LEN],
-            ) -> Result<(), Error> {
+            ) -> aead::Result {
                 self.0.decrypt(nonce, aad, input, tag)
             }
         }
 
-        impl crate::aesgcm::AesGcm for $name {
+        impl aead::Aead for $name {
+            type Nonce = [u8; NONCE_LEN];
+            type Tag = [u8; TAG_LEN];
+
             fn encrypt(
                 &self,
                 nonce: &[u8; NONCE_LEN],
                 aad: &[u8],
                 input: &mut [u8],
                 tag: &mut [u8; TAG_LEN],
-            ) {
+            ) -> aead::Result {
                 unsafe {
                     debug_assert!(Avx2::is_supported());
                     Self::encrypt(self, nonce, aad, input, tag)
@@ -59,7 +63,7 @@ macro_rules! impl_target_features {
                 aad: &[u8],
                 input: &mut [u8],
                 tag: &[u8; TAG_LEN],
-            ) -> Result<(), Error> {
+            ) -> Result<(), aead::Error> {
                 unsafe {
                     debug_assert!(Avx2::is_supported());
                     Self::decrypt(self, nonce, aad, input, tag)

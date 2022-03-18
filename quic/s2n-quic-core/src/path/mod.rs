@@ -188,7 +188,7 @@ impl Handle for Tuple {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MaxMtu(NonZeroU16);
 
 impl Default for MaxMtu {

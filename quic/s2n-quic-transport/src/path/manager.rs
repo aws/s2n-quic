@@ -788,6 +788,21 @@ impl<Config: endpoint::Config> Manager<Config> {
             .min()
             .unwrap_or(transmission::Constraint::None)
     }
+
+    /// Returns the maximum size the UDP payload can reach for any probe packet.
+    #[inline]
+    pub fn max_mtu(&self) -> MaxMtu {
+        let value = self.active_path().max_mtu();
+
+        // This value is the same for each path so just return the active value
+        if cfg!(debug_assertions) {
+            for path in self.paths.iter() {
+                assert_eq!(value, path.max_mtu());
+            }
+        }
+
+        value
+    }
 }
 
 impl<Config: endpoint::Config> timer::Provider for Manager<Config> {

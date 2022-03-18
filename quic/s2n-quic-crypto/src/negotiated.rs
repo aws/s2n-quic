@@ -12,8 +12,8 @@ use s2n_quic_core::{
 
 #[derive(Debug)]
 pub struct KeyPair {
-    sealer: CipherSuite,
-    opener: CipherSuite,
+    pub(crate) sealer: CipherSuite,
+    pub(crate) opener: CipherSuite,
 }
 
 impl KeyPair {
@@ -124,7 +124,7 @@ macro_rules! negotiated_crypto {
                     crate::negotiated::KeyPair::new(endpoint, algorithm, secrets)?;
 
                 let key = Self(key);
-                let header_key = $header_key(header_key);
+                let header_key = $header_key::from(header_key);
                 Some((key, header_key))
             }
 

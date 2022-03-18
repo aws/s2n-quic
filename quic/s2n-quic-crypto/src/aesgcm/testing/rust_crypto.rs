@@ -1,26 +1,30 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::aesgcm::{
-    testing::{AesGcm, NONCE_LEN},
-    Error, TAG_LEN,
+use crate::{
+    aead,
+    aesgcm::{testing::NONCE_LEN, TAG_LEN},
 };
 use aes_gcm::{AeadInPlace, Aes128Gcm, Aes256Gcm, NewAead};
 
 macro_rules! impl_aes {
     ($name:ident, $lower:ident) => {
-        impl AesGcm for $name {
+        impl aead::Aead for $name {
+            type Nonce = [u8; NONCE_LEN];
+            type Tag = [u8; TAG_LEN];
+
             fn encrypt(
                 &self,
                 nonce: &[u8; NONCE_LEN],
                 aad: &[u8],
                 input: &mut [u8],
                 tag_buf: &mut [u8; TAG_LEN],
-            ) {
+            ) -> aead::Result {
                 let tag = self
                     .encrypt_in_place_detached(nonce.into(), aad, input)
-                    .unwrap();
+                    .map_err(|_| aead::Error::INTERNAL_ERROR)?;
                 tag_buf.copy_from_slice(&tag);
+                Ok(())
             }
 
             fn decrypt(
@@ -29,9 +33,9 @@ macro_rules! impl_aes {
                 aad: &[u8],
                 input: &mut [u8],
                 tag: &[u8; TAG_LEN],
-            ) -> Result<(), Error> {
+            ) -> aead::Result {
                 self.decrypt_in_place_detached(nonce.into(), aad, input, tag.into())
-                    .map_err(|_| Error)?;
+                    .map_err(|_| aead::Error::DECRYPT_ERROR)?;
                 Ok(())
             }
         }

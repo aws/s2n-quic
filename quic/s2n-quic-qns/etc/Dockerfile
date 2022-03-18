@@ -15,3 +15,7 @@ RUN set -eux; \
 
 # help with debugging
 ENV RUST_BACKTRACE=1
+
+# enable unstable crypto optimizations for testing
+ENV S2N_UNSTABLE_CRYPTO_OPT_TX=100
+ENV S2N_UNSTABLE_CRYPTO_OPT_RX=100
