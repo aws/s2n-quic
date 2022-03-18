@@ -272,7 +272,7 @@ impl CongestionController for CubicCongestionController {
                 //# the number of bytes acknowledged when each acknowledgment is
                 //# processed.  This results in exponential growth of the congestion
                 //# window.
-                self.congestion_window += (sent_bytes as f32) / self.slow_start.ss_growth_divisor;
+                self.congestion_window += self.slow_start.cwnd_increment(sent_bytes);
 
                 if self.congestion_window >= self.slow_start.threshold {
                     //= https://www.rfc-editor.org/rfc/rfc8312#section-4.8

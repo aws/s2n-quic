@@ -18,7 +18,7 @@ pub struct HybridSlowStart {
     max_datagram_size: u16,
     rtt_round_end_time: Option<Timestamp>,
     use_hystart_plus_plus: bool,
-    pub(super) ss_growth_divisor: f32,
+    ss_growth_divisor: f32,
     css_count: usize,
     css_baseline_min_rtt: Duration,
     css_threshold: f32,
@@ -28,7 +28,8 @@ pub struct HybridSlowStart {
 /// Defined as "hystart_low_window" in tcp_cubic.c
 const LOW_SSTHRESH: u16 = 16;
 /// Factor for dividing the RTT to determine the threshold. Defined in tcp_cubic.c (not a constant)
-/// The same value is used in https://www.ietf.org/archive/id/draft-ietf-tcpm-hystartplusplus-04.html#name-algorithm-details
+//= https://tools.ietf.org/id/draft-ietf-tcpm-hystartplusplus-04.txt#section-4.2
+//#   o  RttThresh = clamp(MIN_RTT_THRESH, lastRoundMinRTT / 8, MAX_RTT_THRESH)
 const THRESHOLD_DIVIDEND: u32 = 8;
 
 //= https://tools.ietf.org/id/draft-ietf-tcpm-hystartplusplus-04.txt#section-4.3
@@ -57,6 +58,7 @@ const CSS_GROWTH_DIVISOR: f32 = 4.0;
 /// Maximum rounds for CSS phase
 const CSS_ROUNDS: usize = 5;
 /// environment variable for using hystart++
+#[cfg(feature = "std")]
 const USE_HYSTART_PLUS_PLUS: &str = "S2N_UNSTABLE_USE_HYSTART_PP";
 
 impl HybridSlowStart {
@@ -73,7 +75,10 @@ impl HybridSlowStart {
             threshold: f32::MAX,
             max_datagram_size,
             rtt_round_end_time: None,
+            #[cfg(feature = "std")]
             use_hystart_plus_plus: std::env::var(USE_HYSTART_PLUS_PLUS).is_ok(),
+            #[cfg(not(feature = "std"))]
+            use_hystart_plus_plus: false,
             ss_growth_divisor: 1.0,
             css_count: 0,
             css_baseline_min_rtt: Duration::ZERO,
@@ -166,6 +171,12 @@ impl HybridSlowStart {
                 }
             }
         }
+    }
+
+    /// return cwnd increment during slow start phase
+    /// should be called from on_packet_ack
+    pub fn cwnd_increment(&self, sent_bytes: usize) -> f32 {
+        (sent_bytes as f32) / self.ss_growth_divisor
     }
 
     /// Called when a congestion event is experienced. Sets the
@@ -518,6 +529,9 @@ mod test {
             Duration::from_millis(130),
         );
 
+        let cwnd_increment = slow_start.cwnd_increment(1000);
+
+        assert_delta!(cwnd_increment, 250.0, 0.001);
         assert_eq!(slow_start.last_min_rtt, Some(Duration::from_millis(126)));
         assert_eq!(slow_start.css_baseline_min_rtt, Duration::from_millis(126));
         assert_eq!(slow_start.cur_min_rtt, Some(Duration::from_millis(130)));
