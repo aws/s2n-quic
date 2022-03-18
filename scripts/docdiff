@@ -11,5 +11,5 @@ if [ ! -f target/release/docdiff ]; then
   cd ../..
 fi
 
-# dont diff unstable apis
+# disable unstable use warning since we dont want to docdiff unstable apis
 RUSTFLAGS="--cfg s2n_internal_ci" RUSTDOCFLAGS="--cfg s2n_internal_ci" ./target/debug/docdiff s2n-quic

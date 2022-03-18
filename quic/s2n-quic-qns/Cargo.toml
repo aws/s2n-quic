@@ -6,7 +6,6 @@ authors = ["AWS s2n"]
 edition = "2018"
 license = "Apache-2.0"
 publish = false
-resolver = "2"
 
 [features]
 default = []
@@ -38,5 +37,5 @@ normal = [ "openssl-sys" ]
 
 # Use unstable s2n-quic features
 [target.'cfg(s2n_quic_unstable)'.dependencies]
-s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls", "provider-tls-s2n", "unstable_s2n_quic_tls_client_hello"] }
+s2n-quic = { path = "../s2n-quic", features = ["unstable_s2n_quic_tls_client_hello"] }
 

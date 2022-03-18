@@ -1,10 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::{
-    task::{Context, Poll},
-    time::Duration,
-};
+use core::task::Poll;
 use s2n_quic::provider::tls::s2n_tls::{ClientHelloHandler, Connection};
 use tokio::time::Sleep;
 
