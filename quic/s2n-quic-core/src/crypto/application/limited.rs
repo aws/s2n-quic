@@ -19,9 +19,13 @@ pub struct Key<K> {
 #[derive(Copy, Clone, Debug)]
 #[non_exhaustive]
 pub struct Limits {
+    /// The number of packets before the limit at which a key update will be scheduled
     pub key_update_window: u64,
+    /// The number of packets at which the sealer key will be optimized
     pub sealer_optimization_threshold: u64,
+    /// The number of packets at which the opener key will be optimized
     pub opener_optimization_threshold: u64,
+    /// The maximum MTU the connection will ever encrypt/decrypt
     pub max_mtu: MaxMtu,
 }
 
