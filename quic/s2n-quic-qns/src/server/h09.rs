@@ -133,6 +133,11 @@ fn parse_h09_request(chunks: &[Bytes], path: &mut String, is_open: bool) -> Resu
             Some(b'/') => path.push('/'),
             Some(b'-') => path.push('-'),
             Some(b'\n' | b'\r') => return Ok(true),
+            // https://www.w3.org/Protocols/HTTP/AsImplemented.html
+            // > The document address will consist of a single word (ie no spaces).
+            // > If any further words are found on the request line, they MUST either be ignored,
+            // > or else treated according to the full HTTP spec.
+            Some(b' ') => return Ok(true),
             Some(c) => return Err(format!("invalid request {}", c as char).into()),
             None => return Ok(!is_open),
         }
