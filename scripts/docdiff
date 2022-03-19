@@ -6,10 +6,10 @@ set -e
 if [ ! -f target/release/docdiff ]; then
   mkdir -p target/release
   cd common/docdiff
-  cargo build --release
+  RUSTFLAGS="--cfg s2n_internal_ci" RUSTDOCFLAGS="--cfg s2n_internal_ci" cargo build --release
   cp target/release/docdiff ../../target/release/docdiff
   cd ../..
 fi
 
 # disable unstable use warning since we dont want to docdiff unstable apis
-RUSTFLAGS="--cfg s2n_internal_ci" RUSTDOCFLAGS="--cfg s2n_internal_ci" ./target/release/docdiff s2n-quic
+./target/release/docdiff s2n-quic
