@@ -13,7 +13,7 @@ testing = ["testing-oracles"]
 testing-oracles = ["aes", "aes-gcm", "ghash"]
 
 [dependencies]
-aes = { version = "0.7", optional = true }
+aes = { version = "0.8", optional = true }
 aes-gcm = { version = "0.9", optional = true }
 cfg-if = "1"
 lazy_static = "1"
@@ -24,7 +24,7 @@ s2n-quic-core = { path = "../s2n-quic-core", default-features = false, version =
 zeroize = { version = "1", default-features = false, features = ["zeroize_derive"] }
 
 [dev-dependencies]
-aes = "0.7"
+aes = "0.8"
 aes-gcm = "0.9"
 bolero = "0.6"
 ctr = "0.8"
