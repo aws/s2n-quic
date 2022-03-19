@@ -14,6 +14,7 @@ mod session;
 pub mod certificate;
 pub mod client;
 pub mod server;
+pub mod verify_host;
 
 pub use client::Client;
 pub use server::Server;
