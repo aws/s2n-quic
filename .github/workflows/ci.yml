@@ -194,17 +194,9 @@ jobs:
           path: target/release/docdiff
           key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('common/docdiff/**') }}
 
-      - name: Build docdiff
-        working-directory: common/docdiff
-        run: |
-          if [ ! -f ../../target/release/docdiff ]; then
-            mkdir -p ../../target/release
-            cargo build --release
-            cp target/release/docdiff ../../target/release/docdiff
-          fi
-
       - name: Run docdiff
-        run: ./target/release/docdiff s2n-quic
+        run: ./scripts/docdiff
+
 
   test:
     runs-on: ${{ matrix.os }}

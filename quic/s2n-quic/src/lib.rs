@@ -84,9 +84,9 @@ pub use server::Server;
 // Require `--cfg s2n_quic_unstable` is set when using unstable features
 #[cfg(
     all(
-        // disable check for internal CI use only
+        // disable warning for CI
         not(s2n_internal_ci),
-        // disable check for test
+        // disable warning for test
         not(test),
         all(
             not(s2n_quic_unstable),
