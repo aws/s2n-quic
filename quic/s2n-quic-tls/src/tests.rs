@@ -69,7 +69,7 @@ fn s2n_client_with_client_auth() -> client::Client {
 
 fn s2n_client_with_untrusted_client_auth() -> client::Client {
     client::Builder::default()
-        .with_clear_trust_store()
+        .with_empty_trust_store()
         .unwrap()
         .with_certificate(CERT_PEM)
         .unwrap()
@@ -89,7 +89,7 @@ fn s2n_server() -> server::Server {
 
 fn s2n_server_with_client_auth() -> server::Server {
     server::Builder::default()
-        .with_clear_trust_store()
+        .with_empty_trust_store()
         .unwrap()
         .with_client_authentication()
         .unwrap()
@@ -105,7 +105,7 @@ fn s2n_server_with_client_auth() -> server::Server {
 
 fn s2n_server_with_client_auth_verifier_rejects_client_certs() -> server::Server {
     server::Builder::default()
-        .with_clear_trust_store()
+        .with_empty_trust_store()
         .unwrap()
         .with_client_authentication()
         .unwrap()
