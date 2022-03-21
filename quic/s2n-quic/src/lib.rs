@@ -50,18 +50,6 @@
 //!
 //! **NOTE**: this will override the platform detection and always use [`s2n-tls`][s2n-tls] by default.
 //!
-//! ## Unstable features
-//!
-//! These features enable **unstable** features. Unstable features are subject to change without
-//! notice. To enable these features, the `--cfg s2n_quic_unstable` option must be passed to
-//! rustc when compiling. This is easiest done using the RUSTFLAGS env variable:
-//! `RUSTFLAGS=\"--cfg s2n_quic_unstable\"`.
-//!
-//! ### `unstable_client_hello`
-//!
-//! Enables the `ClientHelloHandler` trait, which can be used to set the client_hello callback on
-//! s2n-tls provider.
-//!
 //! [s2n-tls]: https://github.com/aws/s2n-tls
 //! [rustls]: https://github.com/rustls/rustls
 
