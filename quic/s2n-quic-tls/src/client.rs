@@ -90,7 +90,7 @@ impl Builder {
     /// Note that call ordering matters. The caller should call this
     /// method before making any calls to `with_trust_client_certificate_signed_by()`.
     /// Calling this method after a method that modifies the trust store will clear it.
-    pub fn with_clear_trust_store(mut self) -> Result<Self, Error> {
+    pub fn with_empty_trust_store(mut self) -> Result<Self, Error> {
         self.config.wipe_trust_store()?;
         Ok(self)
     }
