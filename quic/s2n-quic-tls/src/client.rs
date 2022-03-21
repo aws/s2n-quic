@@ -81,6 +81,8 @@ impl Builder {
         Ok(self)
     }
 
+    /// Clears the default trust store for this client
+    ///
     /// By default, the trust store is initialized with common
     /// trust store locations for the host operating system.
     /// By invoking this method, the trust store will be cleared.
