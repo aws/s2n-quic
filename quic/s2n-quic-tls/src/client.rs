@@ -93,8 +93,9 @@ impl Builder {
         Ok(self)
     }
 
-    /// Add the cert and key to the key store. This must be set when the remote
-    /// end of the connection requires client authentication (mutual tls).
+    /// Add the cert and key to the key store. 
+    ///
+    /// This must be set when the server requires client authentication (mutual TLS).
     /// The client will offer the certificate to the server when it is requested
     /// as part of the TLS handshake.
     pub fn with_client_identity<C: IntoCertificate, PK: IntoPrivateKey>(
