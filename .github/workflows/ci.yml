@@ -66,9 +66,6 @@ jobs:
       fail-fast: false
       matrix:
         toolchain: [stable, beta]
-    env:
-      RUSTFLAGS: "--cfg s2n_quic_unstable"
-      RUSTDOCFLAGS: "--cfg s2n_quic_unstable"
     steps:
       - uses: actions/checkout@v2
         with:
@@ -118,9 +115,6 @@ jobs:
 
   doc:
     runs-on: ubuntu-latest
-    env:
-      RUSTFLAGS: "--cfg s2n_quic_unstable"
-      RUSTDOCFLAGS: "--cfg s2n_quic_unstable"
     steps:
       - uses: actions/checkout@v2
         with:
@@ -194,9 +188,17 @@ jobs:
           path: target/release/docdiff
           key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('common/docdiff/**') }}
 
+      - name: Build docdiff
+        working-directory: common/docdiff
+        run: |
+          if [ ! -f ../../target/release/docdiff ]; then
+            mkdir -p ../../target/release
+            cargo build --release
+            cp target/release/docdiff ../../target/release/docdiff
+          fi
+
       - name: Run docdiff
         run: ./scripts/docdiff
-
 
   test:
     runs-on: ${{ matrix.os }}
@@ -303,24 +305,6 @@ jobs:
       - name: Run cargo build
         run: ./scripts/test_no_std ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
-  unstable:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          submodules: true
-
-      - uses: actions-rs/toolchain@v1.0.7
-        id: toolchain
-        with:
-          toolchain: ${{ needs.env.outputs.msrv }}
-
-      - uses: camshaft/rust-cache@v1
-
-      - name: Test s2n_quic --cfg unstable
-        run: ./scripts/test_unstable
-
-
   compliance:
     runs-on: ubuntu-latest
     steps:
@@ -385,9 +369,6 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
-    env:
-      RUSTFLAGS: "--cfg s2n_quic_unstable"
-      RUSTDOCFLAGS: "--cfg s2n_quic_unstable"
     steps:
       - uses: actions/checkout@v2
         with:

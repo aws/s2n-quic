@@ -10,5 +10,5 @@
 set -e
 
 cargo +nightly fmt --all -- --check
-RUSTFLAGS="--cfg s2n_quic_unstable" RUSTDOCFLAGS="--cfg s2n_quic_unstable" cargo +stable clippy --all-features --all-targets -- -D warnings
+cargo +stable clippy --all-features --all-targets -- -D warnings
 cargo test

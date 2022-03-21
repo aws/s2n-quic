@@ -1,0 +1,2 @@
+[build]
+rustflags=['--cfg', 's2n_internal_dev']

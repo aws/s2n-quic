@@ -84,15 +84,21 @@ pub use server::Server;
 // Require `--cfg s2n_quic_unstable` is set when using unstable features
 #[cfg(
     all(
-        // disable warning for CI
-        not(s2n_internal_ci),
-        // disable warning for test
-        not(test),
-        all(
-            not(s2n_quic_unstable),
-            // Add new unstable features to the list below
-            any(feature = "unstable_client_hello")
-        )
+        any(
+            feature = "unstable_client_hello"
+        ),
+        // any unstable features requires at least one of the following conditions
+        not(any(
+            // we're running tests
+            test,
+            doctest,
+            // we're compiling docs for docs.rs
+            docsrs,
+            // we're developing s2n-quic
+            s2n_internal_dev,
+            // the application has explicitly opted into unstable features
+            s2n_quic_unstable,
+        ))
     )
 )]
 std::compile_error!("Application must be built with RUSTFLAGS=\"--cfg s2n_quic_unstable\" to use unstable features.");
