@@ -9,9 +9,11 @@ use crate::{
     },
     endpoint, transport,
 };
+use alloc::sync::Arc;
 use bytes::Bytes;
 use core::{
     fmt,
+    sync::atomic::{AtomicBool, Ordering},
     task::{Poll, Waker},
 };
 use futures_test::task::new_count_waker;
@@ -135,7 +137,10 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
     }
 
     /// Continues progress of the handshake
-    pub fn poll(&mut self) -> Result<(), transport::Error> {
+    pub fn poll(
+        &mut self,
+        client_hello_cb_done: Option<Arc<AtomicBool>>,
+    ) -> Result<(), transport::Error> {
         match self.client.0.poll(&mut self.client.1) {
             Poll::Ready(res) => res?,
             Poll::Pending => (),
@@ -149,12 +154,26 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
         self.iterations += 1;
 
         eprintln!("1/2 RTT");
+        self.check_progress(client_hello_cb_done);
 
-        self.check_progress();
         Ok(())
     }
 
-    fn check_progress(&self) {
+    fn check_progress(&mut self, client_hello_cb_done: Option<Arc<AtomicBool>>) {
+        if let Some(client_hello_cb_done) = client_hello_cb_done {
+            // The 2nd iteration is when the server receives and processes the ClientHello. If
+            // the client_hello callback is not done, then the server is not done processing the
+            // client hello and can't make progress. So return early and wait for the
+            // client_hello callback to complete first.
+            if !client_hello_cb_done.load(Ordering::SeqCst) {
+                // reset the iteration and wait for client hello callback to complete
+                if self.iterations == 2 {
+                    self.iterations -= 1;
+                    return;
+                }
+            };
+        }
+
         match self.iterations {
             0 => unreachable!("check_progress is called after a single iteration"),
             1 => {
