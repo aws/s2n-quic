@@ -84,6 +84,7 @@ pub use server::Server;
 // Require `--cfg s2n_quic_unstable` is set when using unstable features
 #[cfg(
     all(
+        // add new unstable features to this list
         any(
             feature = "unstable_client_hello"
         ),

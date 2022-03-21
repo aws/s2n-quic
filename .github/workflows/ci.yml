@@ -198,7 +198,7 @@ jobs:
           fi
 
       - name: Run docdiff
-        run: ./scripts/docdiff
+        run: ./target/release/docdiff s2n-quic
 
   test:
     runs-on: ${{ matrix.os }}
