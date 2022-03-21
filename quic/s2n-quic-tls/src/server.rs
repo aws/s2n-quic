@@ -9,6 +9,8 @@ use crate::{
 };
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls, endpoint};
+#[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
+use s2n_tls::raw::config::ClientHelloHandler;
 use s2n_tls::raw::{
     config::{self, Config},
     error::Error,
@@ -62,6 +64,17 @@ impl Default for Builder {
 }
 
 impl Builder {
+    #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
+    pub fn with_client_hello_handler<T: 'static + ClientHelloHandler>(
+        self,
+        _handler: T,
+    ) -> Result<Self, Error> {
+        unimplemented!();
+        // TODO undo once this is implemented.
+        // self.config.set_client_hello_handler(handler)?;
+        // Ok(self)
+    }
+
     pub fn with_application_protocols<P: IntoIterator<Item = I>, I: AsRef<[u8]>>(
         mut self,
         protocols: P,
