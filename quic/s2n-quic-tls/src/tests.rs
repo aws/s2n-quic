@@ -10,10 +10,7 @@ use s2n_quic_core::{
     },
     transport,
 };
-use s2n_tls::raw::{
-    config::{RejectAllClientCertificatesHandler, VerifyClientCertificateHandler},
-    error::Error,
-};
+use s2n_tls::raw::{config::VerifyClientCertificateHandler, error::Error};
 
 pub struct VerifyHostNameClientCertVerifier {
     host_name: String,
@@ -30,6 +27,14 @@ impl VerifyHostNameClientCertVerifier {
         VerifyHostNameClientCertVerifier {
             host_name: host_name.to_string(),
         }
+    }
+}
+
+#[derive(Default)]
+pub struct RejectAllClientCertificatesHandler {}
+impl VerifyClientCertificateHandler for RejectAllClientCertificatesHandler {
+    fn verify_host_name(&self, _host_name: &str) -> bool {
+        false
     }
 }
 
