@@ -6,12 +6,11 @@ use crate::{
     keylog::KeyLogHandle,
     params::Params,
     session::Session,
-    verify_host::{VerifyHostContext, VerifyHostContextHandle, VerifyHostContextWrapper},
 };
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls, endpoint};
 use s2n_tls::raw::{
-    config::{self, Config},
+    config::{self, Config, VerifyClientCertificateHandler},
     error::Error,
     ffi::s2n_cert_auth_type,
     security,
@@ -23,8 +22,6 @@ pub struct Server {
     #[allow(dead_code)] // we need to hold on to the handle to ensure it is cleaned up correctly
     keylog: Option<KeyLogHandle>,
     params: Params,
-    #[allow(dead_code)] // we need to hold on to the handle to ensure it is cleaned up correctly
-    verify_host_context: Option<VerifyHostContextHandle>,
 }
 
 impl Server {
@@ -44,7 +41,6 @@ impl Default for Server {
 pub struct Builder {
     config: config::Builder,
     keylog: Option<KeyLogHandle>,
-    verify_host_context: Option<VerifyHostContextHandle>,
 }
 
 impl Default for Builder {
@@ -62,7 +58,6 @@ impl Default for Builder {
         Self {
             config,
             keylog: None,
-            verify_host_context: None,
         }
     }
 }
@@ -109,6 +104,8 @@ impl Builder {
         Ok(self)
     }
 
+    /// Clears the default trust store for this client.
+    ///
     /// By default, the trust store is initialized with common
     /// trust store locations for the host operating system.
     /// By invoking this method, the trust store will be cleared.
@@ -121,29 +118,20 @@ impl Builder {
         Ok(self)
     }
 
+    /// Configures this server instance to require client authentication (mutual TLS).
     pub fn with_client_authentication(mut self) -> Result<Self, Error> {
         self.config
             .set_client_auth_type(s2n_cert_auth_type::REQUIRED)?;
         Ok(self)
     }
 
-    /// # Safety:
-    /// The verify_host_context is passed to the callback as a raw mutable pointer. No thread
-    /// safety is maintained on this pointer and it is the responsibility of the callback passed in
-    /// to enforce mutual exclusion on the memory pointed to by the context handle.
-    pub fn with_verify_host_callback(
+    /// Set the application level certificate verification handler which will be invoked on this
+    /// server instance when a client certificate is presented during the mutual TLS handshake.
+    pub fn with_verify_client_certificate_handler<T: 'static + VerifyClientCertificateHandler>(
         mut self,
-        context: Box<dyn VerifyHostContext>,
+        handler: T,
     ) -> Result<Self, Error> {
-        self.verify_host_context = Some(VerifyHostContextWrapper::new(context));
-        if let Some(verify_host_context) = self.verify_host_context.as_ref() {
-            unsafe {
-                self.config.set_verify_host_callback(
-                    Some(VerifyHostContextWrapper::verify_host_callback),
-                    Arc::as_ptr(verify_host_context) as *mut _,
-                )?;
-            }
-        }
+        self.config.set_verify_host_handler(handler)?;
         Ok(self)
     }
 
@@ -172,7 +160,6 @@ impl Builder {
             config: self.config.build()?,
             keylog: self.keylog,
             params: Default::default(),
-            verify_host_context: self.verify_host_context,
         })
     }
 }

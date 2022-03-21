@@ -95,7 +95,7 @@ impl Builder {
         Ok(self)
     }
 
-    /// Add the cert and key to the key store. 
+    /// Add the cert and key to the key store.
     ///
     /// This must be set when the server requires client authentication (mutual TLS).
     /// The client will offer the certificate to the server when it is requested
