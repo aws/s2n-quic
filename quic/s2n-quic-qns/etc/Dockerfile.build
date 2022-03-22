@@ -41,7 +41,9 @@ RUN set -eux; \
   fi; \
   rm -rf target
 
-FROM martenseemann/quic-network-simulator-endpoint:latest
+# This quic-network-simulator-endpoint has an linux/arm64 image
+# to support running on ARM hardware (Apple M1, for example)
+FROM wesleyrosenblum/quic-network-simulator-endpoint:latest
 
 ENV RUST_BACKTRACE="1"
 
