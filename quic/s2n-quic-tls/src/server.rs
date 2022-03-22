@@ -9,6 +9,8 @@ use crate::{
 };
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls, endpoint};
+#[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
+use s2n_tls::raw::config::ClientHelloHandler;
 use s2n_tls::raw::{
     config::{self, Config, VerifyClientCertificateHandler},
     error::Error,
@@ -63,6 +65,17 @@ impl Default for Builder {
 }
 
 impl Builder {
+    #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
+    pub fn with_client_hello_handler<T: 'static + ClientHelloHandler>(
+        self,
+        _handler: T,
+    ) -> Result<Self, Error> {
+        unimplemented!();
+        // TODO undo once this is implemented.
+        // self.config.set_client_hello_handler(handler)?;
+        // Ok(self)
+    }
+
     pub fn with_application_protocols<P: IntoIterator<Item = I>, I: AsRef<[u8]>>(
         mut self,
         protocols: P,
@@ -91,7 +104,7 @@ impl Builder {
         Ok(self)
     }
 
-    pub fn with_trust_client_certificate_signed_by<C: IntoCertificate>(
+    pub fn with_trusted_certificate<C: IntoCertificate>(
         mut self,
         certificate: C,
     ) -> Result<Self, Error> {
@@ -111,7 +124,7 @@ impl Builder {
     /// By invoking this method, the trust store will be cleared.
     ///
     /// Note that call ordering matters. The caller should call this
-    /// method before making any calls to `with_trust_client_certificate_signed_by()`.
+    /// method before making any calls to `with_trusted_certificate()`.
     /// Calling this method after a method that modifies the trust store will clear it.
     pub fn with_empty_trust_store(mut self) -> Result<Self, Error> {
         self.config.wipe_trust_store()?;

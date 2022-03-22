@@ -78,7 +78,7 @@ fn s2n_server_with_client_auth() -> Result<server::Server, Error> {
             "qlaws.qlaws",
         ))?
         .with_certificate(CERT_PEM, KEY_PEM)?
-        .with_trust_client_certificate_signed_by(CERT_PEM)?
+        .with_trusted_certificate(CERT_PEM)?
         .build()
 }
 
@@ -88,7 +88,7 @@ fn s2n_server_with_client_auth_verifier_rejects_client_certs() -> Result<server:
         .with_client_authentication()?
         .with_verify_client_certificate_handler(RejectAllClientCertificatesHandler::default())?
         .with_certificate(CERT_PEM, KEY_PEM)?
-        .with_trust_client_certificate_signed_by(CERT_PEM)?
+        .with_trusted_certificate(CERT_PEM)?
         .build()
 }
 
