@@ -88,11 +88,23 @@ impl Session {
         })
     }
 
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
+    //# Unless
+    //# another mechanism is used for agreeing on an application protocol,
+    //# endpoints MUST use ALPN for this purpose.
+    //
+    //= https://www.rfc-editor.org/rfc/rfc7301#section-3.1
+    //# Client                                              Server
+    //#
+    //#    ClientHello                     -------->       ServerHello
+    //#      (ALPN extension &                               (ALPN extension &
+    //#       list of protocols)                              selected protocol)
+    //#                                                    [ChangeCipherSpec]
+    //#                                    <--------       Finished
+    //#    [ChangeCipherSpec]
+    //#    Finished                        -------->
+    //#    Application Data                <------->       Application Data
     fn application_protocol(&self) -> Result<&[u8], transport::Error> {
-        //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
-        //# Unless
-        //# another mechanism is used for agreeing on an application protocol,
-        //# endpoints MUST use ALPN for this purpose.
         let application_protocol = self.connection.alpn_protocol().ok_or_else(||
             //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
             //# When using ALPN, endpoints MUST immediately close a connection (see

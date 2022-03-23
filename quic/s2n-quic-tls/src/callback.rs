@@ -473,6 +473,18 @@ unsafe fn get_server_name(connection: *mut s2n_connection) -> Option<ServerName>
 //# Unless
 //# another mechanism is used for agreeing on an application protocol,
 //# endpoints MUST use ALPN for this purpose.
+//
+//= https://www.rfc-editor.org/rfc/rfc7301#section-3.1
+//# Client                                              Server
+//#
+//#    ClientHello                     -------->       ServerHello
+//#      (ALPN extension &                               (ALPN extension &
+//#       list of protocols)                              selected protocol)
+//#                                                    [ChangeCipherSpec]
+//#                                    <--------       Finished
+//#    [ChangeCipherSpec]
+//#    Finished                        -------->
+//#    Application Data                <------->       Application Data
 unsafe fn get_application_protocol<'a>(
     connection: *mut s2n_connection,
 ) -> Result<&'a [u8], CryptoError> {
