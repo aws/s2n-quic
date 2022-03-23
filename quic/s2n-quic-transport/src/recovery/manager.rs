@@ -197,6 +197,14 @@ impl<Config: endpoint::Config> Manager<Config> {
             0
         };
 
+        let packets_in_flight = !self.sent_packets.is_empty();
+        let application_limited = false; // TODO: determine if application limited
+        context.path_mut().bw_estimator.on_packet_sent(
+            packets_in_flight,
+            application_limited,
+            time_sent,
+        );
+
         self.sent_packets.insert(
             packet_number,
             SentPacketInfo::new(
@@ -206,6 +214,8 @@ impl<Config: endpoint::Config> Manager<Config> {
                 outcome.ack_elicitation,
                 context.path_id(),
                 ecn,
+                &context.path().bw_estimator,
+                context.path().congestion_controller.bytes_in_flight(),
             ),
         );
 
@@ -434,6 +444,17 @@ impl<Config: endpoint::Config> Manager<Config> {
                 );
                 path.ecn_controller
                     .on_packet_ack(acked_packet_info.time_sent, acked_packet_info.ecn);
+                path.bw_estimator.on_packet_ack(
+                    acked_packet_info.delivered_bytes,
+                    acked_packet_info.delivered_time,
+                    acked_packet_info.lost_bytes,
+                    acked_packet_info.time_sent,
+                    acked_packet_info.first_sent_time,
+                    acked_packet_info.is_app_limited,
+                    acked_packet_info.bytes_in_flight,
+                    acked_packet_info.sent_bytes as usize,
+                    datagram.timestamp,
+                );
             }
 
             if let Some((start, end)) = newly_acked_range {
@@ -833,6 +854,8 @@ impl<Config: endpoint::Config> Manager<Config> {
                     .on_packet_discarded(sent_info.sent_bytes as usize);
                 is_mtu_probe = true;
             } else if sent_info.sent_bytes > 0 {
+                path.bw_estimator
+                    .on_packet_loss(sent_info.sent_bytes as usize);
                 path.congestion_controller.on_packets_lost(
                     sent_info.sent_bytes as u32,
                     persistent_congestion,

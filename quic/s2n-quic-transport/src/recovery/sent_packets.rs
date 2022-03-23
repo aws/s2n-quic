@@ -5,7 +5,7 @@ use crate::path;
 use core::convert::TryInto;
 use s2n_quic_core::{
     frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification,
-    packet::number::Map as PacketNumberMap, time::Timestamp,
+    packet::number::Map as PacketNumberMap, recovery::BandwidthEstimator, time::Timestamp,
 };
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-A.1
@@ -29,9 +29,22 @@ pub struct SentPacketInfo {
     pub path_id: path::Id,
     /// The ECN marker (if any) sent on the datagram that contained this packet
     pub ecn: ExplicitCongestionNotification,
+    /// The amount of data in bytes delivered on the connection up to the point this packet was sent
+    pub delivered_bytes: u64,
+    /// The time a packet was last acknowledged at the point this packet was sent
+    pub delivered_time: Timestamp,
+    /// The amount of data in bytes lost on the connection up to the point this packet was sent
+    pub lost_bytes: u64,
+    /// The time of the first send in a flight of data
+    pub first_sent_time: Timestamp,
+    /// True if the connection was application-limited at the time this packet was sent
+    pub is_app_limited: bool,
+    /// The volume of data that was estimated to be in flight at the time of the transmission of this packet
+    pub bytes_in_flight: u32,
 }
 
 impl SentPacketInfo {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         congestion_controlled: bool,
         sent_bytes: usize,
@@ -39,6 +52,8 @@ impl SentPacketInfo {
         ack_elicitation: AckElicitation,
         path_id: path::Id,
         ecn: ExplicitCongestionNotification,
+        bw_estimator: &BandwidthEstimator,
+        bytes_in_flight: u32,
     ) -> Self {
         debug_assert_eq!(
             sent_bytes > 0,
@@ -55,6 +70,16 @@ impl SentPacketInfo {
             ack_elicitation,
             path_id,
             ecn,
+            delivered_bytes: bw_estimator.delivered_bytes(),
+            delivered_time: bw_estimator
+                .delivered_time()
+                .expect("bw_estimator must be initialized when a packet is first sent"),
+            lost_bytes: bw_estimator.lost_bytes(),
+            first_sent_time: bw_estimator
+                .first_sent_time()
+                .expect("bw_estimator must be initialized when a packet is first sent"),
+            is_app_limited: bw_estimator.app_limited_timestamp().is_some(),
+            bytes_in_flight,
         }
     }
 }
@@ -64,11 +89,15 @@ mod test {
     use crate::{path, recovery::SentPacketInfo};
     use s2n_quic_core::{
         frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification,
+        recovery::BandwidthEstimator,
     };
 
     #[test]
     #[should_panic]
     fn too_large_packet() {
+        let mut bw_estimator = BandwidthEstimator::default();
+        bw_estimator.on_packet_sent(false, false, s2n_quic_platform::time::now());
+
         SentPacketInfo::new(
             true,
             u16::max_value() as usize + 1,
@@ -76,11 +105,14 @@ mod test {
             AckElicitation::Eliciting,
             path::Id::new(0),
             ExplicitCongestionNotification::default(),
+            &bw_estimator,
+            0,
         );
     }
 
     #[test]
     fn sent_packet_info_size_test() {
+        eprintln!("{}", core::mem::size_of::<SentPacketInfo>());
         insta::assert_debug_snapshot!(
             stringify!(sent_packet_info_size_test),
             core::mem::size_of::<SentPacketInfo>()
