@@ -25,7 +25,7 @@ impl Bandwidth {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub struct RateSample {
     /// Whether this rate sample should be considered application limited
     ///
@@ -62,39 +62,34 @@ impl RateSample {
 
 /// Bandwidth estimator as defined in https://datatracker.ietf.org/doc/draft-cheng-iccrg-delivery-rate-estimation/
 /// and https://datatracker.ietf.org/doc/draft-cardwell-iccrg-bbr-congestion-control/.
+#[derive(Clone, Debug, Default)]
 pub struct BandwidthEstimator {
     delivered: u64,
-    delivered_time: Timestamp,
+    delivered_time: Option<Timestamp>,
     lost: u64,
-    first_sent_time: Timestamp,
+    first_sent_time: Option<Timestamp>,
     rate_sample: RateSample,
     app_limited: Option<NonZeroU64>,
 }
 
 impl BandwidthEstimator {
-    pub fn new(now: Timestamp) -> Self {
-        Self {
-            delivered: 0,
-            delivered_time: now,
-            lost: 0,
-            first_sent_time: now,
-            rate_sample: RateSample::default(),
-            app_limited: None,
-        }
-    }
-
     /// Called when a packet is transmitted with no packets
     /// currently in flight
+    #[inline]
     pub fn on_resume_after_idle(&mut self, now: Timestamp) {
-        self.first_sent_time = now;
-        self.delivered_time = now;
+        self.first_sent_time = Some(now);
+        self.delivered_time = Some(now);
     }
 
+    /// Called for each newly acknowledged packet
+    #[inline]
     pub fn on_packet_ack(&mut self, acked_bytes: u64, now: Timestamp) {
         self.delivered += acked_bytes;
-        self.delivered_time = now;
+        self.delivered_time = Some(now);
     }
 
+    /// Called when a packet is declared lost
+    #[inline]
     pub fn on_packet_loss(&mut self, lost_bytes: u64) {
         self.lost += lost_bytes;
     }
@@ -122,7 +117,7 @@ impl BandwidthEstimator {
         self.rate_sample.prior_delivered = delivered;
         self.rate_sample.prior_lost = lost_bytes;
         self.rate_sample.is_app_limited = app_limited;
-        self.first_sent_time = time_sent;
+        self.first_sent_time = Some(time_sent);
 
         /* Clear app-limited field if bubble is ACKed and gone. */
         if self.app_limited.map_or(false, |app_limited_amt| {
@@ -132,7 +127,10 @@ impl BandwidthEstimator {
         }
 
         let send_elapsed = time_sent - first_sent_time;
-        let ack_elapsed = self.delivered_time - delivered_time;
+        let ack_elapsed = self
+            .delivered_time
+            .expect("delivered_time is populated by an ack before update_rate_sample is called")
+            - delivered_time;
         /* Use the longer of the send_elapsed and ack_elapsed */
         self.rate_sample.interval = max(send_elapsed, ack_elapsed);
 
