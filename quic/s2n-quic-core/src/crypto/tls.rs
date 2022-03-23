@@ -53,6 +53,12 @@ pub trait Context<Crypto: CryptoSuite> {
         application_parameters: ApplicationParameters,
     ) -> Result<(), transport::Error>;
 
+    /// Server Name Indication was parsed
+    fn on_server_name(
+        &mut self,
+        server_name: Option<crate::application::ServerName>,
+    ) -> Result<(), transport::Error>;
+
     //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.1
     //# The TLS handshake is considered complete when the
     //# TLS stack has reported that the handshake is complete.  This happens

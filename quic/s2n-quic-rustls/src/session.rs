@@ -257,6 +257,7 @@ impl tls::Session for Session {
                             let (key, header_key) = OneRttKey::new(keys, next, cipher_suite);
                             let application_parameters = self.application_parameters()?;
 
+                            context.on_server_name(self.server_name())?;
                             context.on_one_rtt_keys(key, header_key, application_parameters)?;
 
                             // Transition the tx_phase to Application

@@ -323,7 +323,6 @@ impl<C: CryptoSuite> Context<C> {
 
     fn on_application_params(&mut self, params: tls::ApplicationParameters) {
         self.application_protocol = Some(Bytes::copy_from_slice(params.application_protocol));
-        self.server_name = params.server_name.map(|sni| sni.into_bytes());
         self.transport_parameters = Some(Bytes::copy_from_slice(params.transport_parameters));
     }
 
@@ -504,6 +503,19 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
         self.application.crypto = Some((key, header_key));
         self.on_application_params(params);
 
+        Ok(())
+    }
+
+    fn on_server_name(
+        &mut self,
+        server_name: Option<crate::application::ServerName>,
+    ) -> Result<(), transport::Error> {
+        assert!(
+            self.application.crypto.is_none(),
+            "1-rtt keys emitted before server name parsing"
+        );
+        self.log("server name");
+        self.server_name = server_name.map(|sni| sni.into_bytes());
         Ok(())
     }
 

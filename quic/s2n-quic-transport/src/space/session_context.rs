@@ -15,6 +15,7 @@ use core::{ops::Not, task::Waker};
 use s2n_codec::{DecoderBuffer, DecoderValue};
 use s2n_quic_core::{
     ack,
+    application::ServerName,
     connection::{InitialId, PeerId},
     crypto::{tls, CryptoSuite, Key},
     ct::ConstantTimeEq,
@@ -373,12 +374,6 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 chosen_application_protocol: &application_protocol,
             },
         );
-        if let Some(chosen_server_name) = &server_name {
-            self.publisher
-                .on_server_name_information(event::builder::ServerNameInformation {
-                    chosen_server_name,
-                });
-        };
 
         let cipher_suite = key.cipher_suite().into_event();
         let max_mtu = self.path_manager.max_mtu();
@@ -397,6 +392,17 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             key_type: event::builder::KeyType::OneRtt { generation: 0 },
             cipher_suite,
         });
+
+        Ok(())
+    }
+
+    fn on_server_name(&mut self, server_name: Option<ServerName>) -> Result<(), transport::Error> {
+        if let Some(server_name) = server_name {
+            self.publisher
+                .on_server_name_information(event::builder::ServerNameInformation {
+                    chosen_server_name: &server_name,
+                });
+        }
 
         Ok(())
     }

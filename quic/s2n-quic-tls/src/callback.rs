@@ -215,6 +215,8 @@ where
                             OneRttKey::new(self.endpoint, aead_algo, pair).expect("invalid cipher");
 
                         let params = unsafe {
+                            self.context.on_server_name(get_server_name(conn))?;
+
                             // Safety: conn needs to outlive params
                             get_application_params(conn)?
                         };
