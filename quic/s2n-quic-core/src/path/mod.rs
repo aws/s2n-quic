@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::inet::{SocketAddress, SocketAddressV4, SocketAddressV6};
+use crate::{
+    event,
+    inet::{SocketAddress, SocketAddressV4, SocketAddressV6},
+};
 use core::{
     convert::{TryFrom, TryInto},
     fmt,
@@ -44,6 +47,34 @@ const MIN_ALLOWED_MAX_MTU: u16 = MINIMUM_MTU + UDP_HEADER_LEN + IP_MIN_HEADER_LE
 
 // Initial PTO backoff multiplier is 1 indicating no additional increase to the backoff.
 pub const INITIAL_PTO_BACKOFF: u32 = 1;
+
+/// Internal Id of a path in the manager
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
+pub struct Id(pub u8);
+
+impl Id {
+    pub fn new(id: u8) -> Self {
+        Self(id)
+    }
+
+    pub fn as_u8(&self) -> u8 {
+        self.0
+    }
+}
+
+impl event::IntoEvent<u64> for Id {
+    #[inline]
+    fn into_event(self) -> u64 {
+        self.0 as u64
+    }
+}
+
+#[cfg(any(test, feature = "testing"))]
+impl Id {
+    pub fn test_id() -> Self {
+        Id::new(0)
+    }
+}
 
 /// An interface for an object that represents a unique path between two endpoints
 pub trait Handle: 'static + Copy + Send + fmt::Debug {

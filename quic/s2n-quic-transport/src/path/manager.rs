@@ -19,7 +19,7 @@ use s2n_quic_core::{
     packet::number::PacketNumberSpace,
     path::{
         migration::{self, Validator as _},
-        Handle as _, MaxMtu,
+        Handle as _, Id, MaxMtu,
     },
     random::Generator as _,
     recovery::{
@@ -867,20 +867,6 @@ impl<Config: endpoint::Config> transmission::interest::Provider for Manager<Conf
     }
 }
 
-/// Internal Id of a path in the manager
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
-pub struct Id(u8);
-
-impl Id {
-    pub fn new(id: u8) -> Self {
-        Self(id)
-    }
-
-    pub fn as_u8(&self) -> u8 {
-        self.0
-    }
-}
-
 impl<Config: endpoint::Config> core::ops::Index<Id> for Manager<Config> {
     type Output = Path<Config>;
 
@@ -894,13 +880,6 @@ impl<Config: endpoint::Config> core::ops::IndexMut<Id> for Manager<Config> {
     #[inline]
     fn index_mut(&mut self, id: Id) -> &mut Self::Output {
         &mut self.paths[id.0 as usize]
-    }
-}
-
-impl event::IntoEvent<u64> for Id {
-    #[inline]
-    fn into_event(self) -> u64 {
-        self.0 as u64
     }
 }
 

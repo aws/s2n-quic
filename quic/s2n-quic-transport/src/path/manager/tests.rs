@@ -1804,9 +1804,3 @@ pub struct Helper {
     pub second_path_id: Id,
     pub manager: ServerManager,
 }
-
-impl Id {
-    pub fn test_id() -> Self {
-        Id::new(0)
-    }
-}
