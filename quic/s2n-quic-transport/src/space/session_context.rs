@@ -47,6 +47,7 @@ pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPu
     pub local_id_registry: &'a mut connection::LocalIdRegistry,
     pub limits: &'a mut Limits,
     pub server_name: &'a mut Option<ServerName>,
+    pub application_protocol: &'a mut Bytes,
     pub waker: &'a Waker,
     pub publisher: &'a mut Pub,
 }
@@ -364,17 +365,6 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             self.limits.max_keep_alive_period(),
         );
 
-        // TODO use interning for these values
-        // issue: https://github.com/aws/s2n-quic/issues/248
-        let application_protocol =
-            Bytes::copy_from_slice(application_parameters.application_protocol);
-
-        self.publisher.on_application_protocol_information(
-            event::builder::ApplicationProtocolInformation {
-                chosen_application_protocol: &application_protocol,
-            },
-        );
-
         let cipher_suite = key.cipher_suite().into_event();
         let max_mtu = self.path_manager.max_mtu();
         *self.application = Some(Box::new(ApplicationSpace::new(
@@ -384,7 +374,6 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             stream_manager,
             ack_manager,
             keep_alive,
-            application_protocol,
             max_mtu,
         )));
         self.publisher.on_key_update(event::builder::KeyUpdate {
@@ -401,6 +390,24 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 chosen_server_name: &server_name,
             });
         *self.server_name = Some(server_name);
+
+        Ok(())
+    }
+
+    fn on_application_protocol(
+        &mut self,
+        application_protocol: &[u8],
+    ) -> Result<(), transport::Error> {
+        // TODO use interning for these values
+        // issue: https://github.com/aws/s2n-quic/issues/248
+        let application_protocol = Bytes::copy_from_slice(application_protocol);
+
+        self.publisher.on_application_protocol_information(
+            event::builder::ApplicationProtocolInformation {
+                chosen_application_protocol: &application_protocol,
+            },
+        );
+        *self.application_protocol = application_protocol;
 
         Ok(())
     }

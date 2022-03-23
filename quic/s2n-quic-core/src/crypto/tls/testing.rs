@@ -289,10 +289,10 @@ impl<C: CryptoSuite> Context<C> {
         other.assert_done();
 
         // TODO fix sni bug in s2n-quic-rustls
-        //assert_eq!(
-        //    self.sni, other.sni,
-        //    "sni is not consistent between endpoints"
-        //);
+        // assert_eq!(
+        //     self.server_name, other.server_name,
+        //     "sni is not consistent between endpoints"
+        // );
         assert_eq!(
             self.application_protocol, other.application_protocol,
             "application_protocol is not consistent between endpoints"
@@ -322,7 +322,6 @@ impl<C: CryptoSuite> Context<C> {
     }
 
     fn on_application_params(&mut self, params: tls::ApplicationParameters) {
-        self.application_protocol = Some(Bytes::copy_from_slice(params.application_protocol));
         self.transport_parameters = Some(Bytes::copy_from_slice(params.transport_parameters));
     }
 
@@ -516,6 +515,16 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
         );
         self.log("server name");
         self.server_name = Some(server_name.into_bytes());
+        Ok(())
+    }
+
+    fn on_application_protocol(
+        &mut self,
+        application_protocol: &[u8],
+    ) -> Result<(), transport::Error> {
+        self.log("application protocol");
+        let application_protocol = Bytes::copy_from_slice(application_protocol);
+        self.application_protocol = Some(application_protocol);
         Ok(())
     }
 

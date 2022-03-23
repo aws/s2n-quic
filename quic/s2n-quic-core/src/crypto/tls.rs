@@ -17,8 +17,6 @@ pub mod testing;
 /// Holds all application parameters which are exchanged within the TLS handshake.
 #[derive(Debug)]
 pub struct ApplicationParameters<'a> {
-    /// The negotiated Application Layer Protocol
-    pub application_protocol: &'a [u8],
     /// Encoded transport parameters
     pub transport_parameters: &'a [u8],
 }
@@ -54,6 +52,11 @@ pub trait Context<Crypto: CryptoSuite> {
     fn on_server_name(
         &mut self,
         server_name: crate::application::ServerName,
+    ) -> Result<(), transport::Error>;
+
+    fn on_application_protocol(
+        &mut self,
+        application_protocol: &[u8],
     ) -> Result<(), transport::Error>;
 
     //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.1

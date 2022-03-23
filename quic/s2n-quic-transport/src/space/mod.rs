@@ -66,6 +66,14 @@ pub struct PacketSpaceManager<Config: endpoint::Config> {
     handshake_status: HandshakeStatus,
     /// Server Name Indication
     pub server_name: Option<ServerName>,
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-7
+    //# Endpoints MUST explicitly negotiate an application protocol.
+
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
+    //# Unless
+    //# another mechanism is used for agreeing on an application protocol,
+    //# endpoints MUST use ALPN for this purpose.
+    pub application_protocol: Bytes,
 }
 
 impl<Config: endpoint::Config> fmt::Debug for PacketSpaceManager<Config> {
@@ -159,6 +167,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
             zero_rtt_crypto: None,
             handshake_status: HandshakeStatus::default(),
             server_name: None,
+            application_protocol: Bytes::from_static(&[]),
         }
     }
 
@@ -208,6 +217,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 local_id_registry,
                 limits,
                 server_name: &mut self.server_name,
+                application_protocol: &mut self.application_protocol,
                 waker,
                 publisher,
             };

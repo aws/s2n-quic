@@ -207,7 +207,12 @@ where
                             if let Some(server_name) = get_server_name(conn) {
                                 self.context.on_server_name(server_name)?;
                             }
+                            if self.endpoint == endpoint::Type::Server {
+                                let application_protocol = get_application_protocol(conn)?;
+                                self.context.on_application_protocol(application_protocol)?;
+                            };
                         }
+
                         let (key, header_key) = HandshakeKey::new(self.endpoint, aead_algo, pair)
                             .expect("invalid cipher");
 
@@ -219,6 +224,12 @@ where
                     _ => {
                         let (key, header_key) =
                             OneRttKey::new(self.endpoint, aead_algo, pair).expect("invalid cipher");
+                        unsafe {
+                            if self.endpoint == endpoint::Type::Client {
+                                let application_protocol = get_application_protocol(conn)?;
+                                self.context.on_application_protocol(application_protocol)?;
+                            };
+                        }
 
                         let params = unsafe {
                             // Safety: conn needs to outlive params
@@ -432,13 +443,6 @@ unsafe fn get_application_params<'a>(
     connection: *mut s2n_connection,
 ) -> Result<tls::ApplicationParameters<'a>, CryptoError> {
     //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
-    //# Unless
-    //# another mechanism is used for agreeing on an application protocol,
-    //# endpoints MUST use ALPN for this purpose.
-    let application_protocol =
-        get_application_protocol(connection).ok_or(CryptoError::NO_APPLICATION_PROTOCOL)?;
-
-    //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
     //# When using ALPN, endpoints MUST immediately close a connection (see
     //# Section 10.2 of [QUIC-TRANSPORT]) with a no_application_protocol TLS
     //# alert (QUIC error code 0x178; see Section 4.8) if an application
@@ -452,7 +456,6 @@ unsafe fn get_application_params<'a>(
         get_transport_parameters(connection).ok_or(CryptoError::MISSING_EXTENSION)?;
 
     Ok(tls::ApplicationParameters {
-        application_protocol,
         transport_parameters,
     })
 }
@@ -466,11 +469,16 @@ unsafe fn get_server_name(connection: *mut s2n_connection) -> Option<ServerName>
     Some(string.into())
 }
 
-unsafe fn get_application_protocol<'a>(connection: *mut s2n_connection) -> Option<&'a [u8]> {
-    let ptr = s2n_get_application_protocol(connection)
-        .into_result()
-        .ok()?;
-    get_cstr_slice(ptr)
+//= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
+//# Unless
+//# another mechanism is used for agreeing on an application protocol,
+//# endpoints MUST use ALPN for this purpose.
+unsafe fn get_application_protocol<'a>(
+    connection: *mut s2n_connection,
+) -> Result<&'a [u8], CryptoError> {
+    let ptr = s2n_get_application_protocol(connection).into_result().ok();
+    ptr.and_then(|ptr| get_cstr_slice(ptr))
+        .ok_or(CryptoError::MISSING_EXTENSION)
 }
 
 unsafe fn get_transport_parameters<'a>(connection: *mut s2n_connection) -> Option<&'a [u8]> {

@@ -72,6 +72,23 @@ impl Session {
     }
 
     fn application_parameters(&self) -> Result<tls::ApplicationParameters, transport::Error> {
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-8.2
+        //# endpoints that
+        //# receive ClientHello or EncryptedExtensions messages without the
+        //# quic_transport_parameters extension MUST close the connection with an
+        //# error of type 0x16d (equivalent to a fatal TLS missing_extension
+        //# alert, see Section 4.8).
+        let transport_parameters =
+            self.connection.quic_transport_parameters().ok_or_else(|| {
+                CryptoError::MISSING_EXTENSION.with_reason("Missing QUIC transport parameters")
+            })?;
+
+        Ok(tls::ApplicationParameters {
+            transport_parameters,
+        })
+    }
+
+    fn application_protocol(&self) -> Result<&[u8], transport::Error> {
         //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
         //# Unless
         //# another mechanism is used for agreeing on an application protocol,
@@ -88,22 +105,7 @@ impl Session {
             //# use this alert, QUIC clients MUST use error 0x178 to terminate a
             //# connection when ALPN negotiation fails.
             CryptoError::NO_APPLICATION_PROTOCOL.with_reason("Missing ALPN protocol"))?;
-
-        //= https://www.rfc-editor.org/rfc/rfc9001#section-8.2
-        //# endpoints that
-        //# receive ClientHello or EncryptedExtensions messages without the
-        //# quic_transport_parameters extension MUST close the connection with an
-        //# error of type 0x16d (equivalent to a fatal TLS missing_extension
-        //# alert, see Section 4.8).
-        let transport_parameters =
-            self.connection.quic_transport_parameters().ok_or_else(|| {
-                CryptoError::MISSING_EXTENSION.with_reason("Missing QUIC transport parameters")
-            })?;
-
-        Ok(tls::ApplicationParameters {
-            application_protocol,
-            transport_parameters,
-        })
+        Ok(application_protocol)
     }
 
     fn server_name(&self) -> Option<ServerName> {
@@ -247,6 +249,11 @@ impl tls::Session for Session {
                             if let Some(server_name) = self.server_name() {
                                 context.on_server_name(server_name)?;
                             }
+                            if let Connection::Server(_) = &self.connection {
+                                let application_protocol = self.application_protocol()?;
+                                context.on_application_protocol(application_protocol)?;
+                            };
+
                             context.on_handshake_keys(key, header_key)?;
 
                             // Transition both phases to Handshake
@@ -255,6 +262,11 @@ impl tls::Session for Session {
                         }
                         quic::KeyChange::OneRtt { keys, next } => {
                             let (key, header_key) = OneRttKey::new(keys, next, cipher_suite);
+
+                            if let Connection::Client(_) = &self.connection {
+                                let application_protocol = self.application_protocol()?;
+                                context.on_application_protocol(application_protocol)?;
+                            };
                             let application_parameters = self.application_parameters()?;
 
                             context.on_one_rtt_keys(key, header_key, application_parameters)?;
