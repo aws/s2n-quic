@@ -244,6 +244,9 @@ impl tls::Session for Session {
                         quic::KeyChange::Handshake { keys } => {
                             let (key, header_key) = PacketKeys::new(keys, cipher_suite);
 
+                            if let Some(server_name) = self.server_name() {
+                                context.on_server_name(server_name)?;
+                            }
                             context.on_handshake_keys(key, header_key)?;
 
                             // Transition both phases to Handshake
@@ -254,7 +257,6 @@ impl tls::Session for Session {
                             let (key, header_key) = OneRttKey::new(keys, next, cipher_suite);
                             let application_parameters = self.application_parameters()?;
 
-                            context.on_server_name(self.server_name())?;
                             context.on_one_rtt_keys(key, header_key, application_parameters)?;
 
                             // Transition the tx_phase to Application

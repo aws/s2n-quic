@@ -53,7 +53,7 @@ pub trait Context<Crypto: CryptoSuite> {
 
     fn on_server_name(
         &mut self,
-        server_name: Option<crate::application::ServerName>,
+        server_name: crate::application::ServerName,
     ) -> Result<(), transport::Error>;
 
     //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.1

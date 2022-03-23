@@ -395,16 +395,12 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         Ok(())
     }
 
-    fn on_server_name(&mut self, server_name: Option<ServerName>) -> Result<(), transport::Error> {
-        // TODO use interning for these values
-        // issue: https://github.com/aws/s2n-quic/issues/248
-        if let Some(server_name) = &server_name {
-            self.publisher
-                .on_server_name_information(event::builder::ServerNameInformation {
-                    chosen_server_name: server_name,
-                });
-        }
-        *self.server_name = server_name;
+    fn on_server_name(&mut self, server_name: ServerName) -> Result<(), transport::Error> {
+        self.publisher
+            .on_server_name_information(event::builder::ServerNameInformation {
+                chosen_server_name: &server_name,
+            });
+        *self.server_name = Some(server_name);
 
         Ok(())
     }

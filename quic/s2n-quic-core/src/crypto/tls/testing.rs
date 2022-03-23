@@ -508,15 +508,14 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
 
     fn on_server_name(
         &mut self,
-        server_name: Option<crate::application::ServerName>,
+        server_name: crate::application::ServerName,
     ) -> Result<(), transport::Error> {
         assert!(
-            self.application.crypto.is_none(),
-            "1-rtt keys emitted before server name parsing"
+            self.handshake.crypto.is_none(),
+            "handshake keys emitted before server name was parsed"
         );
         self.log("server name");
-        self.server_name = server_name.map(|sni| sni.into_bytes());
-
+        self.server_name = Some(server_name.into_bytes());
         Ok(())
     }
 

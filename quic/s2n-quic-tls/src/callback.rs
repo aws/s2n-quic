@@ -203,8 +203,14 @@ where
 
                 match self.state.tx_phase {
                     HandshakePhase::Initial => {
+                        unsafe {
+                            if let Some(server_name) = get_server_name(conn) {
+                                self.context.on_server_name(server_name)?;
+                            }
+                        }
                         let (key, header_key) = HandshakeKey::new(self.endpoint, aead_algo, pair)
                             .expect("invalid cipher");
+
                         self.context.on_handshake_keys(key, header_key)?;
 
                         self.state.tx_phase.transition();
@@ -215,8 +221,6 @@ where
                             OneRttKey::new(self.endpoint, aead_algo, pair).expect("invalid cipher");
 
                         let params = unsafe {
-                            self.context.on_server_name(get_server_name(conn))?;
-
                             // Safety: conn needs to outlive params
                             get_application_params(conn)?
                         };
