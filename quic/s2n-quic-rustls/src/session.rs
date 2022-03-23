@@ -100,11 +100,8 @@ impl Session {
                 CryptoError::MISSING_EXTENSION.with_reason("Missing QUIC transport parameters")
             })?;
 
-        let server_name = self.server_name();
-
         Ok(tls::ApplicationParameters {
             application_protocol,
-            server_name,
             transport_parameters,
         })
     }

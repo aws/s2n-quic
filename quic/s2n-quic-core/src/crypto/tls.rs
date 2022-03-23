@@ -19,8 +19,6 @@ pub mod testing;
 pub struct ApplicationParameters<'a> {
     /// The negotiated Application Layer Protocol
     pub application_protocol: &'a [u8],
-    /// Server Name Indication
-    pub server_name: Option<crate::application::ServerName>,
     /// Encoded transport parameters
     pub transport_parameters: &'a [u8],
 }
@@ -53,7 +51,6 @@ pub trait Context<Crypto: CryptoSuite> {
         application_parameters: ApplicationParameters,
     ) -> Result<(), transport::Error>;
 
-    /// Server Name Indication was parsed
     fn on_server_name(
         &mut self,
         server_name: Option<crate::application::ServerName>,

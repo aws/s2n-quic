@@ -1717,8 +1717,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     fn server_name(&self) -> Option<ServerName> {
-        // TODO move SNI to connection
-        self.space_manager.application()?.server_name.clone()
+        self.space_manager.server_name.clone()
     }
 
     fn application_protocol(&self) -> Bytes {

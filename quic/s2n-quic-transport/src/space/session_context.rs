@@ -46,6 +46,7 @@ pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPu
     pub handshake_status: &'a mut HandshakeStatus,
     pub local_id_registry: &'a mut connection::LocalIdRegistry,
     pub limits: &'a mut Limits,
+    pub server_name: &'a mut Option<ServerName>,
     pub waker: &'a Waker,
     pub publisher: &'a mut Pub,
 }
@@ -365,7 +366,6 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
         // TODO use interning for these values
         // issue: https://github.com/aws/s2n-quic/issues/248
-        let server_name = application_parameters.server_name;
         let application_protocol =
             Bytes::copy_from_slice(application_parameters.application_protocol);
 
@@ -384,7 +384,6 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             stream_manager,
             ack_manager,
             keep_alive,
-            server_name,
             application_protocol,
             max_mtu,
         )));
@@ -397,12 +396,15 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
     }
 
     fn on_server_name(&mut self, server_name: Option<ServerName>) -> Result<(), transport::Error> {
-        if let Some(server_name) = server_name {
+        // TODO use interning for these values
+        // issue: https://github.com/aws/s2n-quic/issues/248
+        if let Some(server_name) = &server_name {
             self.publisher
                 .on_server_name_information(event::builder::ServerNameInformation {
-                    chosen_server_name: &server_name,
+                    chosen_server_name: server_name,
                 });
         }
+        *self.server_name = server_name;
 
         Ok(())
     }

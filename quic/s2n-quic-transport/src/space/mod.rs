@@ -16,6 +16,7 @@ use core::{
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     ack,
+    application::ServerName,
     connection::{limits::Limits, InitialId, PeerId},
     crypto::{tls, tls::Session, CryptoSuite, Key},
     event::{self, IntoEvent},
@@ -63,6 +64,8 @@ pub struct PacketSpaceManager<Config: endpoint::Config> {
     zero_rtt_crypto:
         Option<Box<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRttKey>>,
     handshake_status: HandshakeStatus,
+    /// Server Name Indication
+    pub server_name: Option<ServerName>,
 }
 
 impl<Config: endpoint::Config> fmt::Debug for PacketSpaceManager<Config> {
@@ -155,6 +158,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
             application: None,
             zero_rtt_crypto: None,
             handshake_status: HandshakeStatus::default(),
+            server_name: None,
         }
     }
 
@@ -203,6 +207,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 handshake_status: &mut self.handshake_status,
                 local_id_registry,
                 limits,
+                server_name: &mut self.server_name,
                 waker,
                 publisher,
             };

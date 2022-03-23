@@ -516,6 +516,7 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
         );
         self.log("server name");
         self.server_name = server_name.map(|sni| sni.into_bytes());
+
         Ok(())
     }
 

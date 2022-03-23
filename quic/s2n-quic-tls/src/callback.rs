@@ -447,11 +447,8 @@ unsafe fn get_application_params<'a>(
     let transport_parameters =
         get_transport_parameters(connection).ok_or(CryptoError::MISSING_EXTENSION)?;
 
-    let server_name = get_server_name(connection);
-
     Ok(tls::ApplicationParameters {
         application_protocol,
-        server_name,
         transport_parameters,
     })
 }
