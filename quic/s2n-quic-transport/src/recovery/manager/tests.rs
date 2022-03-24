@@ -442,7 +442,7 @@ fn on_ack_frame() {
     assert_eq!(2, context.on_rtt_update_count);
 
     // Ack packet 10, but with a path that is not peer validated
-    context.path_manager[path::Id::new(0)] = Path::new(
+    context.path_manager[unsafe { path::Id::new(0) }] = Path::new(
         Default::default(),
         connection::PeerId::TEST_ID,
         connection::LocalId::TEST_ID,
@@ -2287,7 +2287,7 @@ fn update_pto_timer() {
     assert!(!manager.pto.timer.is_armed());
 
     // Reset the path back to not peer validated
-    context.path_manager[path::Id::new(0)] = Path::new(
+    context.path_manager[unsafe { path::Id::new(0) }] = Path::new(
         Default::default(),
         connection::PeerId::TEST_ID,
         connection::LocalId::TEST_ID,
@@ -2509,7 +2509,7 @@ fn on_timeout() {
             1,
             now,
             AckElicitation::Eliciting,
-            path::Id::new(0),
+            unsafe { path::Id::new(0) },
             ecn,
         ),
     );
@@ -2893,8 +2893,8 @@ fn helper_generate_multi_path_manager(
     let second_addr = SocketAddress::from(second_addr);
     let second_addr = RemoteAddress::from(second_addr);
 
-    let first_path_id = path::Id::new(0);
-    let second_path_id = path::Id::new(1);
+    let first_path_id = unsafe { path::Id::new(0) };
+    let second_path_id = unsafe { path::Id::new(1) };
 
     // confirm we have one path
     let mut path_manager =

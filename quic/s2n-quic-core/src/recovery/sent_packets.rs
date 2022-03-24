@@ -78,7 +78,7 @@ mod test {
             u16::MAX as usize + 1,
             NoopClock.get_time(),
             AckElicitation::Eliciting,
-            path::Id::new(0),
+            unsafe { path::Id::new(0) },
             ExplicitCongestionNotification::default(),
         );
     }

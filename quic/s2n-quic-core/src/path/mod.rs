@@ -50,10 +50,14 @@ pub const INITIAL_PTO_BACKOFF: u32 = 1;
 
 /// Internal Id of a path in the manager
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
-pub struct Id(pub u8);
+pub struct Id(u8);
 
 impl Id {
-    pub fn new(id: u8) -> Self {
+    /// Create a new path::Id
+    ///
+    /// # Safety
+    /// This should only be used by the path::Manager
+    pub unsafe fn new(id: u8) -> Self {
         Self(id)
     }
 
@@ -72,7 +76,7 @@ impl event::IntoEvent<u64> for Id {
 #[cfg(any(test, feature = "testing"))]
 impl Id {
     pub fn test_id() -> Self {
-        Id::new(0)
+        unsafe { Id::new(0) }
     }
 }
 
