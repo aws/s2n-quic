@@ -42,8 +42,8 @@ pub struct BandwidthEstimator {
     delivered_time: Option<Timestamp>,
     lost_bytes: u64,
     first_sent_time: Option<Timestamp>,
-    rate_sample: RateSample,
     app_limited_timestamp: Option<Timestamp>,
+    rate_sample: RateSample,
 }
 
 impl BandwidthEstimator {
