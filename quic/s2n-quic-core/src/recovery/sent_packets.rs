@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification,
-    packet::number::Map as PacketNumberMap, path, time::Timestamp,
+    frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification, path,
+    time::Timestamp,
 };
 use core::convert::TryInto;
 
@@ -11,7 +11,8 @@ use core::convert::TryInto;
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-A.1.1
 
-pub type SentPackets = PacketNumberMap<SentPacketInfo>;
+#[cfg(feature = "alloc")]
+pub type SentPackets = crate::packet::number::Map<SentPacketInfo>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
