@@ -13,7 +13,7 @@ exclude = ["corpus.tar.gz"]
 unstable_client_hello = []
 
 [dependencies]
-bytes = { version = "1", default-features = false }
+bytes = "1"
 errno = "0.2"
 libc = "0.2"
 

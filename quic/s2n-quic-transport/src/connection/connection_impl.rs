@@ -1721,7 +1721,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     fn application_protocol(&self) -> Bytes {
-        // TODO move ALPN to connection
         self.space_manager.application_protocol.clone()
     }
 

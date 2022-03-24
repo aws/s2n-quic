@@ -7,7 +7,7 @@ use crate::{
         header_crypto::{LONG_HEADER_MASK, SHORT_HEADER_MASK},
         tls, CryptoSuite, HeaderKey, Key,
     },
-    transport,
+    endpoint, transport,
 };
 use bytes::Bytes;
 use core::{
@@ -113,12 +113,12 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
         use crate::crypto::InitialKey;
 
         let server = server_endpoint.new_server_session(&TEST_SERVER_TRANSPORT_PARAMS);
-        let mut server_context = Context::default();
+        let mut server_context = Context::new(endpoint::Type::Server);
         server_context.initial.crypto = Some(S::InitialKey::new_server(server_name.as_bytes()));
 
         let client =
             client_endpoint.new_client_session(&TEST_CLIENT_TRANSPORT_PARAMS, server_name.clone());
-        let mut client_context = Context::default();
+        let mut client_context = Context::new(endpoint::Type::Client);
         client_context.initial.crypto = Some(C::InitialKey::new_client(server_name.as_bytes()));
 
         Self {
@@ -240,24 +240,8 @@ pub struct Context<C: CryptoSuite> {
     pub server_name: Option<Bytes>,
     pub application_protocol: Option<Bytes>,
     pub transport_parameters: Option<Bytes>,
+    endpoint: endpoint::Type,
     waker: Waker,
-}
-
-impl<C: CryptoSuite> Default for Context<C> {
-    fn default() -> Self {
-        let (waker, _wake_counter) = new_count_waker();
-        Self {
-            initial: Space::default(),
-            handshake: Space::default(),
-            application: Space::default(),
-            zero_rtt_crypto: None,
-            handshake_complete: false,
-            server_name: None,
-            application_protocol: None,
-            transport_parameters: None,
-            waker,
-        }
-    }
 }
 
 impl<C: CryptoSuite> fmt::Debug for Context<C> {
@@ -276,6 +260,22 @@ impl<C: CryptoSuite> fmt::Debug for Context<C> {
 }
 
 impl<C: CryptoSuite> Context<C> {
+    fn new(endpoint: endpoint::Type) -> Self {
+        let (waker, _wake_counter) = new_count_waker();
+        Self {
+            initial: Space::default(),
+            handshake: Space::default(),
+            application: Space::default(),
+            zero_rtt_crypto: None,
+            handshake_complete: false,
+            server_name: None,
+            application_protocol: None,
+            transport_parameters: None,
+            endpoint,
+            waker,
+        }
+    }
+
     /// Transfers incoming and outgoing buffers between two contexts
     pub fn transfer<O: CryptoSuite>(&mut self, other: &mut Context<O>) {
         self.initial.transfer(&mut other.initial);
@@ -326,7 +326,12 @@ impl<C: CryptoSuite> Context<C> {
     }
 
     fn log(&self, event: &str) {
-        eprintln!("{}: {}", core::any::type_name::<C>(), event);
+        eprintln!(
+            "{:?}: {}: {}",
+            self.endpoint,
+            core::any::type_name::<C>(),
+            event,
+        );
     }
 }
 
@@ -520,10 +525,10 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
 
     fn on_application_protocol(
         &mut self,
-        application_protocol: &[u8],
+        application_protocol: Bytes,
     ) -> Result<(), transport::Error> {
         self.log("application protocol");
-        let application_protocol = Bytes::copy_from_slice(application_protocol);
+        let application_protocol = application_protocol;
         self.application_protocol = Some(application_protocol);
         Ok(())
     }

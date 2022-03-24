@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use core::{ffi::c_void, marker::PhantomData};
 use s2n_quic_core::{
     application::ServerName,
@@ -208,7 +208,10 @@ where
                                 self.context.on_server_name(server_name)?;
                             }
                             if self.endpoint == endpoint::Type::Server {
-                                let application_protocol = get_application_protocol(conn)?;
+                                // TODO use interning for these values
+                                // issue: https://github.com/aws/s2n-quic/issues/248
+                                let application_protocol =
+                                    Bytes::copy_from_slice(get_application_protocol(conn)?);
                                 self.context.on_application_protocol(application_protocol)?;
                             };
                         }
@@ -217,19 +220,36 @@ where
                             .expect("invalid cipher");
 
                         self.context.on_handshake_keys(key, header_key)?;
+                        // TODO: https://github.com/aws/s2n-quic/pull/1238/files#r833764775
+                        // Due the way `self::poll()` works, combined with how our unit tests are
+                        // structured (core::tls::testing::Pair::poll() polls client and then
+                        // server once), the client only sees the alpn value in the second
+                        // iteration. The fix would involve calling only 'receive' on the client
+                        // and processing the server_hello.
+                        //
+                        // if self.endpoint == endpoint::Type::Client {
+                        //     // TODO use interning for these values
+                        //     // issue: https://github.com/aws/s2n-quic/issues/248
+                        //     let application_protocol =
+                        //         Bytes::copy_from_slice(get_application_protocol(conn)?);
+                        //     self.context.on_application_protocol(application_protocol)?;
+                        // };
 
                         self.state.tx_phase.transition();
                         self.state.rx_phase.transition();
                     }
                     _ => {
-                        let (key, header_key) =
-                            OneRttKey::new(self.endpoint, aead_algo, pair).expect("invalid cipher");
                         unsafe {
                             if self.endpoint == endpoint::Type::Client {
-                                let application_protocol = get_application_protocol(conn)?;
+                                // TODO use interning for these values
+                                // issue: https://github.com/aws/s2n-quic/issues/248
+                                let application_protocol =
+                                    Bytes::copy_from_slice(get_application_protocol(conn)?);
                                 self.context.on_application_protocol(application_protocol)?;
                             };
                         }
+                        let (key, header_key) =
+                            OneRttKey::new(self.endpoint, aead_algo, pair).expect("invalid cipher");
 
                         let params = unsafe {
                             // Safety: conn needs to outlive params

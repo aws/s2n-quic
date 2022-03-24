@@ -167,7 +167,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
             zero_rtt_crypto: None,
             handshake_status: HandshakeStatus::default(),
             server_name: None,
-            application_protocol: Bytes::from_static(&[]),
+            application_protocol: Bytes::new(),
         }
     }
 

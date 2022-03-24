@@ -4,6 +4,7 @@
 use crate::cipher_suite::{
     HeaderProtectionKey, HeaderProtectionKeys, OneRttKey, PacketKey, PacketKeys,
 };
+use bytes::Bytes;
 use core::{fmt, fmt::Debug, task::Poll};
 use rustls::{
     quic::{self, QuicExt},
@@ -262,23 +263,43 @@ impl tls::Session for Session {
                                 context.on_server_name(server_name)?;
                             }
                             if let Connection::Server(_) = &self.connection {
-                                let application_protocol = self.application_protocol()?;
+                                // TODO use interning for these values
+                                // issue: https://github.com/aws/s2n-quic/issues/248
+                                let application_protocol =
+                                    Bytes::copy_from_slice(self.application_protocol()?);
                                 context.on_application_protocol(application_protocol)?;
                             };
 
                             context.on_handshake_keys(key, header_key)?;
+                            // TODO: https://github.com/aws/s2n-quic/pull/1238/files#r833764775
+                            // Due the way `self::poll()` works, combined with how our unit tests are
+                            // structured (core::tls::testing::Pair::poll() polls client and then
+                            // server once), the client only sees the alpn value in the second
+                            // iteration. The fix would involve calling only 'receive' on the client
+                            // and processing the server_hello.
+                            //
+                            // if let Connection::Client(_) = &self.connection {
+                            //     // TODO use interning for these values
+                            //     // issue: https://github.com/aws/s2n-quic/issues/248
+                            //     let application_protocol =
+                            //         Bytes::copy_from_slice(self.application_protocol()?);
+                            //     context.on_application_protocol(application_protocol)?;
+                            // };
 
                             // Transition both phases to Handshake
                             self.tx_phase.transition();
                             self.rx_phase.transition();
                         }
                         quic::KeyChange::OneRtt { keys, next } => {
-                            let (key, header_key) = OneRttKey::new(keys, next, cipher_suite);
-
                             if let Connection::Client(_) = &self.connection {
-                                let application_protocol = self.application_protocol()?;
+                                // TODO use interning for these values
+                                // issue: https://github.com/aws/s2n-quic/issues/248
+                                let application_protocol =
+                                    Bytes::copy_from_slice(self.application_protocol()?);
                                 context.on_application_protocol(application_protocol)?;
                             };
+                            let (key, header_key) = OneRttKey::new(keys, next, cipher_suite);
+
                             let application_parameters = self.application_parameters()?;
 
                             context.on_one_rtt_keys(key, header_key, application_parameters)?;

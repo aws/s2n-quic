@@ -396,12 +396,8 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
     fn on_application_protocol(
         &mut self,
-        application_protocol: &[u8],
+        application_protocol: Bytes,
     ) -> Result<(), transport::Error> {
-        // TODO use interning for these values
-        // issue: https://github.com/aws/s2n-quic/issues/248
-        let application_protocol = Bytes::copy_from_slice(application_protocol);
-
         self.publisher.on_application_protocol_information(
             event::builder::ApplicationProtocolInformation {
                 chosen_application_protocol: &application_protocol,

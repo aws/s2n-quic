@@ -56,7 +56,7 @@ pub trait Context<Crypto: CryptoSuite> {
 
     fn on_application_protocol(
         &mut self,
-        application_protocol: &[u8],
+        application_protocol: Bytes,
     ) -> Result<(), transport::Error>;
 
     //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.1
