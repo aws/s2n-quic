@@ -42,3 +42,34 @@ fn on_packet_sent_app_limited() {
     bw_estimator.on_packet_sent(false, true, now);
     assert_eq!(Some(now), bw_estimator.app_limited_timestamp());
 }
+
+#[test]
+fn on_packet_loss() {
+    let mut bw_estimator = BandwidthEstimator::default();
+
+    assert_eq!(0, bw_estimator.lost_bytes());
+    assert_eq!(0, bw_estimator.rate_sample.newly_lost);
+    assert_eq!(0, bw_estimator.rate_sample.lost);
+
+    bw_estimator.on_packet_loss(500);
+
+    assert_eq!(500, bw_estimator.lost_bytes());
+    assert_eq!(500, bw_estimator.rate_sample.newly_lost);
+    assert_eq!(500, bw_estimator.rate_sample.lost);
+
+    bw_estimator.on_packet_loss(250);
+
+    assert_eq!(750, bw_estimator.lost_bytes());
+    assert_eq!(750, bw_estimator.rate_sample.newly_lost);
+    assert_eq!(750, bw_estimator.rate_sample.lost);
+
+    // Simulate a new ACK arriving, this would reset newly_lost and set prior_lost
+    bw_estimator.rate_sample.newly_lost = 0;
+    bw_estimator.rate_sample.prior_lost = 750;
+
+    bw_estimator.on_packet_loss(250);
+
+    assert_eq!(1000, bw_estimator.lost_bytes());
+    assert_eq!(250, bw_estimator.rate_sample.newly_lost);
+    assert_eq!(250, bw_estimator.rate_sample.lost);
+}
