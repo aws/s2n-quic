@@ -5,6 +5,7 @@ pub use bw_estimator::*;
 pub use congestion_controller::CongestionController;
 pub use cubic::CubicCongestionController;
 pub use rtt_estimator::*;
+pub use sent_packets::*;
 
 mod bw_estimator;
 pub mod congestion_controller;
@@ -12,6 +13,7 @@ pub mod cubic;
 mod hybrid_slow_start;
 mod pacing;
 mod rtt_estimator;
+mod sent_packets;
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-7.7
 //# Senders SHOULD limit bursts to the initial congestion window; see

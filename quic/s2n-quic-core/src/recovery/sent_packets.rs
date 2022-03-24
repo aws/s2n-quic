@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::path;
+use crate::{
+    frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification, path,
+    time::Timestamp,
+};
 use core::convert::TryInto;
 use s2n_quic_core::{
     frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification,
@@ -12,9 +15,11 @@ use s2n_quic_core::{
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-A.1.1
 
-pub type SentPackets = PacketNumberMap<SentPacketInfo>;
+#[cfg(feature = "alloc")]
+pub type SentPackets = crate::packet::number::Map<SentPacketInfo>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct SentPacketInfo {
     /// Indicates whether the packet counts towards bytes in flight
     pub congestion_controlled: bool,
@@ -86,10 +91,13 @@ impl SentPacketInfo {
 
 #[cfg(test)]
 mod test {
-    use crate::{path, recovery::SentPacketInfo};
-    use s2n_quic_core::{
-        frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification,
+    use crate::{
+        frame::ack_elicitation::AckElicitation,
+        inet::ExplicitCongestionNotification,
+        path,
         recovery::BandwidthEstimator,
+        recovery::SentPacketInfo,
+        time::{Clock, NoopClock},
     };
 
     #[test]
@@ -100,10 +108,10 @@ mod test {
 
         SentPacketInfo::new(
             true,
-            u16::max_value() as usize + 1,
-            s2n_quic_platform::time::now(),
+            u16::MAX as usize + 1,
+            NoopClock.get_time(),
             AckElicitation::Eliciting,
-            path::Id::new(0),
+            unsafe { path::Id::new(0) },
             ExplicitCongestionNotification::default(),
             &bw_estimator,
             0,
@@ -111,6 +119,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // snapshot tests don't work on miri
     fn sent_packet_info_size_test() {
         insta::assert_debug_snapshot!(
             stringify!(sent_packet_info_size_test),
