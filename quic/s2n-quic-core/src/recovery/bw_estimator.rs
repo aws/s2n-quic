@@ -4,7 +4,51 @@
 use crate::{recovery::SentPacketInfo, time::Timestamp};
 use core::{cmp::max, time::Duration};
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default)]
+/// Bandwidth-related data tracked for each path
+pub struct BandwidthState {
+    //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#2.2
+    //# The amount of data delivered MAY be tracked in units of either octets or packets.
+    delivered_bytes: u64,
+    delivered_time: Option<Timestamp>,
+    lost_bytes: u64,
+    first_sent_time: Option<Timestamp>,
+    app_limited_timestamp: Option<Timestamp>,
+}
+
+impl BandwidthState {
+    /// The total amount of data in bytes delivered so far over the lifetime of the path, not including
+    /// non-congestion-controlled packets such as pure ACK packets.
+    pub fn delivered_bytes(&self) -> u64 {
+        self.delivered_bytes
+    }
+
+    /// The timestamp when delivered_bytes was last updated, or the time the first packet was
+    /// sent if no packet was in flight yet.
+    pub fn delivered_time(&self) -> Option<Timestamp> {
+        self.delivered_time
+    }
+
+    /// The total amount of data in bytes declared lost so far over the lifetime of the path, not including
+    /// non-congestion-controlled packets such as pure ACK packets.
+    pub fn lost_bytes(&self) -> u64 {
+        self.lost_bytes
+    }
+
+    /// If packets are in flight, then this holds the send time of the packet that was most recently
+    /// marked as delivered. Else, if the connection was recently idle, then this holds the send
+    /// time of the first packet sent after resuming from idle.
+    pub fn first_sent_time(&self) -> Option<Timestamp> {
+        self.first_sent_time
+    }
+
+    /// The time sent of the last transmitted packet marked as application-limited
+    pub fn app_limited_timestamp(&self) -> Option<Timestamp> {
+        self.app_limited_timestamp
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
 pub struct RateSample {
     /// Whether this rate sample should be considered application limited
     ///
@@ -36,45 +80,19 @@ pub struct RateSample {
 /// and [BBR Congestion Control](https://datatracker.ietf.org/doc/draft-cardwell-iccrg-bbr-congestion-control/).
 #[derive(Clone, Debug, Default)]
 pub struct BandwidthEstimator {
-    //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#2.2
-    //# The amount of data delivered MAY be tracked in units of either octets or packets.
-    delivered_bytes: u64,
-    delivered_time: Option<Timestamp>,
-    lost_bytes: u64,
-    first_sent_time: Option<Timestamp>,
-    app_limited_timestamp: Option<Timestamp>,
+    state: BandwidthState,
     rate_sample: RateSample,
 }
 
 impl BandwidthEstimator {
-    /// The total amount of data in bytes delivered so far over the lifetime of the path, not including
-    /// non-congestion-controlled packets such as pure ACK packets.
-    pub fn delivered_bytes(&self) -> u64 {
-        self.delivered_bytes
+    /// Gets the current bandwidth::State
+    pub fn state(&self) -> BandwidthState {
+        self.state
     }
 
-    /// The timestamp when delivered_bytes was last updated, or the time the first packet was
-    /// sent if no packet was in flight yet.
-    pub fn delivered_time(&self) -> Option<Timestamp> {
-        self.delivered_time
-    }
-
-    /// The total amount of data in bytes declared lost so far over the lifetime of the path, not including
-    /// non-congestion-controlled packets such as pure ACK packets.
-    pub fn lost_bytes(&self) -> u64 {
-        self.lost_bytes
-    }
-
-    /// If packets are in flight, then this holds the send time of the packet that was most recently
-    /// marked as delivered. Else, if the connection was recently idle, then this holds the send
-    /// time of the first packet sent after resuming from idle.
-    pub fn first_sent_time(&self) -> Option<Timestamp> {
-        self.first_sent_time
-    }
-
-    /// The time sent of the last transmitted packet marked as application-limited
-    pub fn app_limited_timestamp(&self) -> Option<Timestamp> {
-        self.app_limited_timestamp
+    /// Gets the latest bandwidth:RateSample
+    pub fn rate_sample(&self) -> RateSample {
+        self.rate_sample
     }
 
     /// Called when a packet is transmitted
@@ -89,13 +107,16 @@ impl BandwidthEstimator {
         //# at the current time, since we know that any ACKs after now indicate that the network
         //# was able to deliver those packets completely in the sampling interval between now
         //# and the next ACK.
-        if !packets_in_flight || self.first_sent_time.is_none() || self.delivered_time.is_none() {
-            self.first_sent_time = Some(now);
-            self.delivered_time = Some(now);
+        if !packets_in_flight
+            || self.state.first_sent_time.is_none()
+            || self.state.delivered_time.is_none()
+        {
+            self.state.first_sent_time = Some(now);
+            self.state.delivered_time = Some(now);
         }
 
         if application_limited {
-            self.app_limited_timestamp = Some(now);
+            self.state.app_limited_timestamp = Some(now);
         }
     }
 
@@ -106,6 +127,7 @@ impl BandwidthEstimator {
     /// Called for each newly acknowledged packet
     pub fn on_packet_ack(&mut self, packet: &SentPacketInfo, now: Timestamp) {
         if self
+            .state
             .delivered_time
             .map_or(true, |delivered_time| now > delivered_time)
         {
@@ -114,8 +136,8 @@ impl BandwidthEstimator {
             self.rate_sample.newly_lost_bytes = 0;
         }
 
-        self.delivered_bytes += packet.sent_bytes as u64;
-        self.delivered_time = Some(now);
+        self.state.delivered_bytes += packet.sent_bytes as u64;
+        self.state.delivered_time = Some(now);
         self.rate_sample.newly_acked_bytes += packet.sent_bytes as u64;
 
         //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#3.3
@@ -130,7 +152,7 @@ impl BandwidthEstimator {
             self.rate_sample.prior_lost_bytes = packet.lost_bytes;
             self.rate_sample.is_app_limited = packet.is_app_limited;
             self.rate_sample.bytes_in_flight = packet.bytes_in_flight;
-            self.first_sent_time = Some(packet.time_sent);
+            self.state.first_sent_time = Some(packet.time_sent);
 
             let send_elapsed = packet.time_sent - packet.first_sent_time;
             let ack_elapsed = now - packet.delivered_time;
@@ -143,6 +165,7 @@ impl BandwidthEstimator {
             self.rate_sample.interval = max(send_elapsed, ack_elapsed);
 
             let sent_after_app_limited = self
+                .state
                 .app_limited_timestamp
                 .map_or(false, |app_limited_timestamp| {
                     packet.time_sent > app_limited_timestamp
@@ -150,20 +173,20 @@ impl BandwidthEstimator {
             if sent_after_app_limited {
                 // The connection is no longer app limited if packets that were sent after the time
                 // the connection was app limited have been acknowledged.
-                self.app_limited_timestamp = None;
+                self.state.app_limited_timestamp = None;
             }
         }
 
         self.rate_sample.delivered_bytes =
-            self.delivered_bytes - self.rate_sample.prior_delivered_bytes;
+            self.state.delivered_bytes - self.rate_sample.prior_delivered_bytes;
     }
 
     /// Called when a packet is declared lost
     #[inline]
     pub fn on_packet_loss(&mut self, lost_bytes: usize) {
-        self.lost_bytes += lost_bytes as u64;
+        self.state.lost_bytes += lost_bytes as u64;
         self.rate_sample.newly_lost_bytes += lost_bytes as u64;
-        self.rate_sample.lost_bytes = self.lost_bytes - self.rate_sample.prior_lost_bytes;
+        self.rate_sample.lost_bytes = self.state.lost_bytes - self.rate_sample.prior_lost_bytes;
     }
 }
 

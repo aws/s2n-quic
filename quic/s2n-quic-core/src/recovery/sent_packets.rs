@@ -3,7 +3,7 @@
 
 use crate::{
     frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification, path,
-    recovery::BandwidthEstimator, time::Timestamp,
+    recovery::BandwidthState, time::Timestamp,
 };
 use core::convert::TryInto;
 
@@ -53,7 +53,7 @@ impl SentPacketInfo {
         ack_elicitation: AckElicitation,
         path_id: path::Id,
         ecn: ExplicitCongestionNotification,
-        bw_estimator: &BandwidthEstimator,
+        bandwidth_state: BandwidthState,
         bytes_in_flight: u32,
     ) -> Self {
         debug_assert_eq!(
@@ -71,15 +71,15 @@ impl SentPacketInfo {
             ack_elicitation,
             path_id,
             ecn,
-            delivered_bytes: bw_estimator.delivered_bytes(),
-            delivered_time: bw_estimator
+            delivered_bytes: bandwidth_state.delivered_bytes(),
+            delivered_time: bandwidth_state
                 .delivered_time()
-                .expect("bw_estimator must be initialized when a packet is first sent"),
-            lost_bytes: bw_estimator.lost_bytes(),
-            first_sent_time: bw_estimator
+                .expect("bandwidth_state must be initialized when a packet is first sent"),
+            lost_bytes: bandwidth_state.lost_bytes(),
+            first_sent_time: bandwidth_state
                 .first_sent_time()
-                .expect("bw_estimator must be initialized when a packet is first sent"),
-            is_app_limited: bw_estimator.app_limited_timestamp().is_some(),
+                .expect("bandwidth_state must be initialized when a packet is first sent"),
+            is_app_limited: bandwidth_state.app_limited_timestamp().is_some(),
             bytes_in_flight,
         }
     }
@@ -108,7 +108,7 @@ mod test {
             AckElicitation::Eliciting,
             unsafe { path::Id::new(0) },
             ExplicitCongestionNotification::default(),
-            &bw_estimator,
+            bw_estimator.state(),
             0,
         );
     }

@@ -214,7 +214,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 outcome.ack_elicitation,
                 context.path_id(),
                 ecn,
-                &context.path().bw_estimator,
+                context.path().bw_estimator.state(),
                 context.path().congestion_controller.bytes_in_flight(),
             ),
         );
