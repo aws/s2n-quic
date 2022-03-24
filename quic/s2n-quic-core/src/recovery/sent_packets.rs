@@ -14,6 +14,7 @@ use core::convert::TryInto;
 pub type SentPackets = PacketNumberMap<SentPacketInfo>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct SentPacketInfo {
     /// Indicates whether the packet counts towards bytes in flight
     pub congestion_controlled: bool,
