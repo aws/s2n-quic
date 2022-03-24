@@ -665,6 +665,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
             use s2n_quic_core::packet::interceptor::{Interceptor, Packet};
 
             packet_interceptor.intercept_rx_packet(
+                publisher.subject(),
                 Packet {
                     number: packet_number,
                     timestamp: datagram.timestamp,

@@ -114,9 +114,14 @@ impl<'a, 'sub, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
             }
 
             {
-                // allow the packet_interceptor provider to do its thing
-                use s2n_quic_core::packet::interceptor::{Interceptor, Packet};
+                use s2n_quic_core::{
+                    event::ConnectionPublisher,
+                    packet::interceptor::{Interceptor, Packet},
+                };
+
+                // allow the packet interceptor provider to do its thing
                 self.packet_interceptor.intercept_tx_packet(
+                    self.publisher.subject(),
                     Packet {
                         number: self.packet_number,
                         timestamp: self.timestamp,
