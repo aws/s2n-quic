@@ -4,61 +4,32 @@
 use crate::{recovery::SentPacketInfo, time::Timestamp};
 use core::{cmp::max, time::Duration};
 
-#[derive(Default)]
-pub struct Bandwidth {
-    #[allow(dead_code)] // TODO: Remove when incorporated into BBR
-    bits_per_second: u64,
-}
-
-impl Bandwidth {
-    pub const ZERO: Bandwidth = Bandwidth { bits_per_second: 0 };
-
-    pub fn new(bytes: u64, interval: Duration) -> Self {
-        const MICRO_BITS_PER_BYTE: u64 = 8 * 1000000;
-
-        if interval.is_zero() {
-            Bandwidth::ZERO
-        } else {
-            Self {
-                bits_per_second: (bytes * MICRO_BITS_PER_BYTE / interval.as_micros() as u64),
-            }
-        }
-    }
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct RateSample {
     /// Whether this rate sample should be considered application limited
     ///
     /// True if the connection was application limited at the time the most recently acknowledged
     /// packet was sent.
-    is_app_limited: bool,
+    pub is_app_limited: bool,
     /// The length of the sampling interval
-    interval: Duration,
+    pub interval: Duration,
     /// The amount of data in bytes marked as delivered over the sampling interval
-    delivered: u64,
+    pub delivered_bytes: u64,
     /// A snapshot of the total data in bytes delivered over the lifetime of the connection
     /// at the time the most recently acknowledged packet was sent
-    prior_delivered: u64,
+    pub prior_delivered_bytes: u64,
     /// The number of bytes of data acknowledged in the latest ACK frame
-    newly_acked: u64,
+    pub newly_acked_bytes: u64,
     /// The number of bytes of data declared lost upon receipt of the latest ACK frame
-    newly_lost: u64,
+    pub newly_lost_bytes: u64,
     /// The number of bytes that was estimated to be in flight at the time of the transmission of
     /// the packet that has just been ACKed
-    bytes_in_flight: u32,
+    pub bytes_in_flight: u32,
     /// The amount of data in bytes marked as lost over the sampling interval
-    lost: u64,
+    pub lost_bytes: u64,
     /// A snapshot of the total data in bytes lost over the lifetime of the connection
     /// at the time the most recently acknowledged packet was sent
-    prior_lost: u64,
-}
-
-impl RateSample {
-    /// The delivery rate sample
-    pub fn delivery_rate(&self) -> Bandwidth {
-        Bandwidth::new(self.delivered, self.interval)
-    }
+    pub prior_lost_bytes: u64,
 }
 
 /// Bandwidth estimator as defined in [Delivery Rate Estimation](https://datatracker.ietf.org/doc/draft-cheng-iccrg-delivery-rate-estimation/)
@@ -139,22 +110,24 @@ impl BandwidthEstimator {
             .map_or(true, |delivered_time| now > delivered_time)
         {
             // This is the first ack from a new ACK frame, reset newly acked and lost
-            self.rate_sample.newly_acked = 0;
-            self.rate_sample.newly_lost = 0;
+            self.rate_sample.newly_acked_bytes = 0;
+            self.rate_sample.newly_lost_bytes = 0;
         }
 
         self.delivered_bytes += packet.sent_bytes as u64;
         self.delivered_time = Some(now);
-        self.rate_sample.newly_acked += packet.sent_bytes as u64;
+        self.rate_sample.newly_acked_bytes += packet.sent_bytes as u64;
 
         //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#3.3
         //# UpdateRateSample() is invoked multiple times when a stretched ACK acknowledges
         //# multiple data packets. In this case we use the information from the most recently
         //# sent packet, i.e., the packet with the highest "P.delivered" value.
-        if packet.delivered_bytes > self.rate_sample.prior_delivered {
+        if self.rate_sample.prior_delivered_bytes == 0
+            || packet.delivered_bytes > self.rate_sample.prior_delivered_bytes
+        {
             // Update info using the newest packet
-            self.rate_sample.prior_delivered = packet.delivered_bytes;
-            self.rate_sample.prior_lost = packet.lost_bytes;
+            self.rate_sample.prior_delivered_bytes = packet.delivered_bytes;
+            self.rate_sample.prior_lost_bytes = packet.lost_bytes;
             self.rate_sample.is_app_limited = packet.is_app_limited;
             self.rate_sample.bytes_in_flight = packet.bytes_in_flight;
             self.first_sent_time = Some(packet.time_sent);
@@ -181,15 +154,16 @@ impl BandwidthEstimator {
             }
         }
 
-        self.rate_sample.delivered = self.delivered_bytes - self.rate_sample.prior_delivered;
+        self.rate_sample.delivered_bytes =
+            self.delivered_bytes - self.rate_sample.prior_delivered_bytes;
     }
 
     /// Called when a packet is declared lost
     #[inline]
     pub fn on_packet_loss(&mut self, lost_bytes: usize) {
         self.lost_bytes += lost_bytes as u64;
-        self.rate_sample.newly_lost += lost_bytes as u64;
-        self.rate_sample.lost = self.lost_bytes - self.rate_sample.prior_lost;
+        self.rate_sample.newly_lost_bytes += lost_bytes as u64;
+        self.rate_sample.lost_bytes = self.lost_bytes - self.rate_sample.prior_lost_bytes;
     }
 }
 
