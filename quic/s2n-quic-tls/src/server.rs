@@ -138,7 +138,7 @@ impl tls::Endpoint for Server {
     fn new_server_session<Params: EncoderValue>(&mut self, params: &Params) -> Self::Session {
         let config = self.config.clone();
         self.params.with(params, |params| {
-            Session::new(endpoint::Type::Server, config, params).unwrap()
+            Session::new(endpoint::Type::Server, config, params, None).unwrap()
         })
     }
 

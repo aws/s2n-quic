@@ -331,23 +331,6 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 .with_reason("application keys initialized more than once"));
         }
 
-        if self.application_protocol.is_empty() {
-            //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
-            //# When using ALPN, endpoints MUST immediately close a connection (see
-            //# Section 10.2 of [QUIC-TRANSPORT]) with a no_application_protocol TLS
-            //# alert (QUIC error code 0x178; see Section 4.8) if an application
-            //# protocol is not negotiated.
-
-            //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
-            //# While [ALPN] only specifies that servers
-            //# use this alert, QUIC clients MUST use error 0x178 to terminate a
-            //# connection when ALPN negotiation fails.
-            let err = crypto::CryptoError::NO_APPLICATION_PROTOCOL
-                .with_reason("Missing ALPN protocol")
-                .into();
-            return Err(err);
-        }
-
         if Config::ENDPOINT_TYPE.is_client() {
             //= https://www.rfc-editor.org/rfc/rfc9001#section-4.9.3
             //# Therefore, a client SHOULD discard 0-RTT keys as soon as it installs
@@ -431,6 +414,23 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         // finished
         if let Some(space) = self.handshake.as_mut() {
             space.crypto_stream.finish()?;
+        }
+
+        if self.application_protocol.is_empty() {
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
+            //# When using ALPN, endpoints MUST immediately close a connection (see
+            //# Section 10.2 of [QUIC-TRANSPORT]) with a no_application_protocol TLS
+            //# alert (QUIC error code 0x178; see Section 4.8) if an application
+            //# protocol is not negotiated.
+
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
+            //# While [ALPN] only specifies that servers
+            //# use this alert, QUIC clients MUST use error 0x178 to terminate a
+            //# connection when ALPN negotiation fails.
+            let err = crypto::CryptoError::NO_APPLICATION_PROTOCOL
+                .with_reason("Missing ALPN protocol")
+                .into();
+            return Err(err);
         }
 
         self.handshake_status

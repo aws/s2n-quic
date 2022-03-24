@@ -31,6 +31,7 @@ pub struct Callback<'a, T, C> {
     pub err: Option<transport::Error>,
     pub send_buffer: &'a mut BytesMut,
     pub emitted_server_name: &'a mut bool,
+    pub server_name: &'a Option<ServerName>,
 }
 
 impl<'a, T, C> Callback<'a, T, C>
@@ -113,8 +114,18 @@ where
             connection.set_waker(None).unwrap();
 
             // Flush the send buffer before returning to the connection
-            // FIXME here
-            self.flush(None);
+            self.flush();
+            // attempt to emit server name after making progress and prior to error handling
+            if !*self.emitted_server_name {
+                if let Some(server_name) = self.server_name.clone().or_else(|| {
+                    connection
+                        .server_name()
+                        .map(|server_name| server_name.into())
+                }) {
+                    self.context.on_server_name(server_name)?;
+                    *self.emitted_server_name = true;
+                }
+            }
 
             if let Some(err) = self.err {
                 return Err(err);
@@ -201,20 +212,10 @@ where
                 };
 
                 // Flush the send buffer before transitioning to the next phase
-                self.flush(Some(conn));
+                self.flush();
 
                 match self.state.tx_phase {
                     HandshakePhase::Initial => {
-                        unsafe {
-                            if self.endpoint == endpoint::Type::Server {
-                                // TODO use interning for these values
-                                // issue: https://github.com/aws/s2n-quic/issues/248
-                                let application_protocol =
-                                    Bytes::copy_from_slice(get_application_protocol(conn)?);
-                                self.context.on_application_protocol(application_protocol)?;
-                            };
-                        }
-
                         let (key, header_key) = HandshakeKey::new(self.endpoint, aead_algo, pair)
                             .expect("invalid cipher");
 
@@ -223,20 +224,20 @@ where
                         self.state.rx_phase.transition();
                     }
                     _ => {
-                        unsafe {
-                            if self.endpoint == endpoint::Type::Client {
-                                // TODO use interning for these values
-                                // issue: https://github.com/aws/s2n-quic/issues/248
-                                let application_protocol =
-                                    Bytes::copy_from_slice(get_application_protocol(conn)?);
-                                self.context.on_application_protocol(application_protocol)?;
-                            };
-                        }
                         let (key, header_key) =
                             OneRttKey::new(self.endpoint, aead_algo, pair).expect("invalid cipher");
 
                         let params = unsafe {
                             // Safety: conn needs to outlive params
+                            //
+                            // TODO use interning for these values
+                            // issue: https://github.com/aws/s2n-quic/issues/248
+                            //
+                            // Move this event to where `on_server_name` is emitted once we expose
+                            // the functionality in s2n_tls bindings
+                            let application_protocol =
+                                Bytes::copy_from_slice(get_application_protocol(conn)?);
+                            self.context.on_application_protocol(application_protocol)?;
                             get_application_params(conn)?
                         };
 
@@ -268,7 +269,7 @@ where
 
         if remaining_capacity < data.len() {
             // Flush the send buffer before reallocating it
-            self.flush(None);
+            self.flush();
 
             // ensure we only do one allocation for this write
             let len = SEND_BUFFER_CAPACITY.max(data.len());
@@ -290,7 +291,7 @@ where
     }
 
     /// Flushes the send buffer into the current TX space
-    fn flush(&mut self, conn: Option<*mut s2n_connection>) {
+    fn flush(&mut self) {
         if !self.send_buffer.is_empty() {
             let chunk = self.send_buffer.split().freeze();
 
@@ -298,17 +299,6 @@ where
                 HandshakePhase::Initial => self.context.send_initial(chunk),
                 HandshakePhase::Handshake => self.context.send_handshake(chunk),
                 HandshakePhase::Application => self.context.send_application(chunk),
-            }
-        }
-
-        // attempt to emit server name after making progress
-        if !*self.emitted_server_name {
-            if let Some(conn) = conn {
-                let server_name = unsafe { get_server_name(conn) };
-                if let Some(server_name) = server_name {
-                    self.context.on_server_name(server_name).unwrap();
-                    *self.emitted_server_name = true;
-                }
             }
         }
     }
@@ -473,15 +463,6 @@ unsafe fn get_application_params<'a>(
     Ok(tls::ApplicationParameters {
         transport_parameters,
     })
-}
-
-unsafe fn get_server_name(connection: *mut s2n_connection) -> Option<ServerName> {
-    let ptr = s2n_get_server_name(connection).into_result().ok()?;
-    let data = get_cstr_slice(ptr)?;
-
-    // validate sni is a valid UTF-8 string
-    let string = core::str::from_utf8(data).ok()?;
-    Some(string.into())
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1

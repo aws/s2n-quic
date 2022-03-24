@@ -215,8 +215,14 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
             TEST_CLIENT_TRANSPORT_PARAMS,
             "server did not receive the client transport parameters"
         );
-        // TODO fix sni bug in s2n-quic-rustls
-        // assert_eq!(self.client.1.server_name.as_ref().expect("missing SNI on client"), &self.server_name[..]);
+        assert_eq!(
+            self.client
+                .1
+                .server_name
+                .as_ref()
+                .expect("missing SNI on client"),
+            &self.server_name[..]
+        );
         assert_eq!(
             self.server
                 .1
@@ -514,10 +520,6 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
         &mut self,
         server_name: crate::application::ServerName,
     ) -> Result<(), transport::Error> {
-        assert!(
-            self.handshake.crypto.is_none(),
-            "handshake keys emitted before server name was parsed"
-        );
         self.log("server name");
         self.server_name = Some(server_name.into_bytes());
         Ok(())
@@ -537,6 +539,10 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
         assert!(
             !self.handshake_complete,
             "handshake complete called multiple times"
+        );
+        assert!(
+            !self.application_protocol.as_ref().unwrap().is_empty(),
+            "application_protocol is empty at handshake complete"
         );
         self.handshake_complete = true;
         self.log("handshake complete");

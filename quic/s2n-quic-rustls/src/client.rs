@@ -60,18 +60,18 @@ impl tls::Endpoint for Client {
         //# Endpoints MUST send the quic_transport_parameters extension;
         let transport_parameters = encode_transport_parameters(transport_parameters);
 
-        let server_name =
+        let rustls_server_name =
             rustls::ServerName::try_from(server_name.as_ref()).expect("invalid server name");
 
         let session = rustls::ClientConnection::new_quic(
             self.config.clone(),
             crate::QUIC_VERSION,
-            server_name,
+            rustls_server_name,
             transport_parameters,
         )
         .expect("could not create rustls client session");
 
-        Session::new(session.into())
+        Session::new(session.into(), Some(server_name))
     }
 
     fn max_tag_length(&self) -> usize {

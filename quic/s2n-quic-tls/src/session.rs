@@ -5,6 +5,7 @@ use crate::callback::{self, Callback};
 use bytes::BytesMut;
 use core::{marker::PhantomData, task::Poll};
 use s2n_quic_core::{
+    application::ServerName,
     crypto::{tls, CryptoError, CryptoSuite},
     endpoint, transport,
 };
@@ -24,10 +25,17 @@ pub struct Session {
     handshake_complete: bool,
     send_buffer: BytesMut,
     emitted_server_name: bool,
+    // This is only set for the client to avoid an extra allocation
+    server_name: Option<ServerName>,
 }
 
 impl Session {
-    pub fn new(endpoint: endpoint::Type, config: Config, params: &[u8]) -> Result<Self, Error> {
+    pub fn new(
+        endpoint: endpoint::Type,
+        config: Config,
+        params: &[u8],
+        server_name: Option<ServerName>,
+    ) -> Result<Self, Error> {
         let mut connection = Connection::new(match endpoint {
             endpoint::Type::Server => s2n_mode::SERVER,
             endpoint::Type::Client => s2n_mode::CLIENT,
@@ -39,6 +47,12 @@ impl Session {
         // QUIC handles sending alerts, so no need to apply TLS blinding
         connection.set_blinding(s2n_blinding::SELF_SERVICE_BLINDING)?;
 
+        if let Some(server_name) = server_name.as_ref() {
+            connection
+                .set_server_name(server_name)
+                .expect("invalid server name value");
+        }
+
         Ok(Self {
             endpoint,
             connection,
@@ -46,6 +60,7 @@ impl Session {
             handshake_complete: false,
             send_buffer: BytesMut::new(),
             emitted_server_name: false,
+            server_name,
         })
     }
 }
@@ -75,6 +90,7 @@ impl tls::Session for Session {
             err: None,
             send_buffer: &mut self.send_buffer,
             emitted_server_name: &mut self.emitted_server_name,
+            server_name: &self.server_name,
         };
 
         unsafe {

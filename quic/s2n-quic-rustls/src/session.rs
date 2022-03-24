@@ -24,6 +24,7 @@ pub struct Session {
     emitted_handshake_complete: bool,
     emitted_server_name: bool,
     emitted_application_protocol: bool,
+    server_name: Option<ServerName>,
 }
 
 impl fmt::Debug for Session {
@@ -36,7 +37,7 @@ impl fmt::Debug for Session {
 }
 
 impl Session {
-    pub fn new(connection: Connection) -> Self {
+    pub fn new(connection: Connection, server_name: Option<ServerName>) -> Self {
         Self {
             connection,
             rx_phase: Default::default(),
@@ -45,6 +46,7 @@ impl Session {
             emitted_handshake_complete: false,
             emitted_server_name: false,
             emitted_application_protocol: false,
+            server_name,
         }
     }
 
@@ -115,8 +117,7 @@ impl Session {
 
     fn server_name(&self) -> Option<ServerName> {
         match &self.connection {
-            // TODO return the original value
-            Connection::Client(_) => None,
+            Connection::Client(_) => self.server_name.clone(),
             Connection::Server(server) => {
                 server.sni_hostname().map(|server_name| server_name.into())
             }
@@ -141,6 +142,10 @@ impl Session {
         context: &mut C,
     ) -> Poll<Result<(), transport::Error>> {
         if self.tx_phase == HandshakePhase::Application && !self.connection.is_handshaking() {
+            // attempt to emit server_name and application_protocol events prior to completing the
+            // handshake
+            self.emit_events(context)?;
+
             // the handshake is complete!
             if !self.emitted_handshake_complete {
                 self.rx_phase.transition();
@@ -156,28 +161,13 @@ impl Session {
             Poll::Pending
         }
     }
-}
 
-impl crypto::CryptoSuite for Session {
-    type HandshakeKey = PacketKeys;
-    type HandshakeHeaderKey = HeaderProtectionKeys;
-    type InitialKey = s2n_quic_crypto::initial::InitialKey;
-    type InitialHeaderKey = s2n_quic_crypto::initial::InitialHeaderKey;
-    type OneRttKey = OneRttKey;
-    type OneRttHeaderKey = HeaderProtectionKeys;
-    type ZeroRttKey = PacketKey;
-    type ZeroRttHeaderKey = HeaderProtectionKey;
-    type RetryKey = s2n_quic_crypto::retry::RetryKey;
-}
-
-impl tls::Session for Session {
-    fn poll<C: tls::Context<Self>>(
+    fn poll_impl<C: tls::Context<Self>>(
         &mut self,
         context: &mut C,
     ) -> Poll<Result<(), transport::Error>> {
         // Tracks if we have attempted to receive data at least once
         let mut has_tried_receive = false;
-
         loop {
             let crypto_data = match self.rx_phase {
                 HandshakePhase::Initial => context.receive_initial(None),
@@ -187,23 +177,7 @@ impl tls::Session for Session {
 
             // receive anything in the incoming buffer
             if let Some(crypto_data) = crypto_data {
-                let receive = self.receive(&crypto_data);
-                if !self.emitted_server_name {
-                    if let Some(server_name) = self.server_name() {
-                        context.on_server_name(server_name)?;
-                        self.emitted_server_name = true;
-                    }
-                }
-                if !self.emitted_application_protocol {
-                    if let Some(application_protocol) = self.application_protocol() {
-                        let application_protocol = Bytes::copy_from_slice(application_protocol);
-                        context.on_application_protocol(application_protocol)?;
-                        self.emitted_application_protocol = true;
-                    }
-                }
-                // attempt to emit server_name and application_protocol events prior to possibly
-                // returning with an error
-                receive?
+                self.receive(&crypto_data)?
             } else if has_tried_receive {
                 return self.poll_complete_handshake(context);
                 // If there's nothing to receive then we're done for now
@@ -288,6 +262,52 @@ impl tls::Session for Session {
                 }
             }
         }
+    }
+
+    fn emit_events<C: tls::Context<Self>>(
+        &mut self,
+        context: &mut C,
+    ) -> Result<(), transport::Error> {
+        if !self.emitted_server_name {
+            if let Some(server_name) = self.server_name() {
+                context.on_server_name(server_name)?;
+                self.emitted_server_name = true;
+            }
+        }
+        if !self.emitted_application_protocol {
+            if let Some(application_protocol) = self.application_protocol() {
+                let application_protocol = Bytes::copy_from_slice(application_protocol);
+                context.on_application_protocol(application_protocol)?;
+                self.emitted_application_protocol = true;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl crypto::CryptoSuite for Session {
+    type HandshakeKey = PacketKeys;
+    type HandshakeHeaderKey = HeaderProtectionKeys;
+    type InitialKey = s2n_quic_crypto::initial::InitialKey;
+    type InitialHeaderKey = s2n_quic_crypto::initial::InitialHeaderKey;
+    type OneRttKey = OneRttKey;
+    type OneRttHeaderKey = HeaderProtectionKeys;
+    type ZeroRttKey = PacketKey;
+    type ZeroRttHeaderKey = HeaderProtectionKey;
+    type RetryKey = s2n_quic_crypto::retry::RetryKey;
+}
+
+impl tls::Session for Session {
+    fn poll<C: tls::Context<Self>>(
+        &mut self,
+        context: &mut C,
+    ) -> Poll<Result<(), transport::Error>> {
+        let result = self.poll_impl(context);
+        // attempt to emit server_name and application_protocol events prior to possibly
+        // returning with an error
+        self.emit_events(context)?;
+        result
     }
 }
 
