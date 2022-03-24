@@ -444,17 +444,8 @@ impl<Config: endpoint::Config> Manager<Config> {
                 );
                 path.ecn_controller
                     .on_packet_ack(acked_packet_info.time_sent, acked_packet_info.ecn);
-                path.bw_estimator.on_packet_ack(
-                    acked_packet_info.delivered_bytes,
-                    acked_packet_info.delivered_time,
-                    acked_packet_info.lost_bytes,
-                    acked_packet_info.time_sent,
-                    acked_packet_info.first_sent_time,
-                    acked_packet_info.is_app_limited,
-                    acked_packet_info.bytes_in_flight,
-                    acked_packet_info.sent_bytes as usize,
-                    datagram.timestamp,
-                );
+                path.bw_estimator
+                    .on_packet_ack(&acked_packet_info, datagram.timestamp);
             }
 
             if let Some((start, end)) = newly_acked_range {

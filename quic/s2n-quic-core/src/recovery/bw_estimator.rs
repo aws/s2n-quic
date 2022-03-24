@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::time::Timestamp;
+use crate::{recovery::SentPacketInfo, time::Timestamp};
 use core::{cmp::max, time::Duration};
 
 #[derive(Default)]
@@ -133,18 +133,7 @@ impl BandwidthEstimator {
     //# rate sample based on a snapshot of connection delivery information from the time
     //# at which the packet was last transmitted.
     /// Called for each newly acknowledged packet
-    pub fn on_packet_ack(
-        &mut self,
-        delivered: u64,
-        delivered_time: Timestamp,
-        lost_bytes: u64,
-        time_sent: Timestamp,
-        first_sent_time: Timestamp,
-        app_limited: bool,
-        bytes_in_flight: u32,
-        sent_bytes: usize,
-        now: Timestamp,
-    ) {
+    pub fn on_packet_ack(&mut self, packet: &SentPacketInfo, now: Timestamp) {
         if self
             .delivered_time
             .map_or(true, |delivered_time| now > delivered_time)
@@ -154,24 +143,24 @@ impl BandwidthEstimator {
             self.rate_sample.newly_lost = 0;
         }
 
-        self.delivered_bytes += sent_bytes as u64;
+        self.delivered_bytes += packet.sent_bytes as u64;
         self.delivered_time = Some(now);
-        self.rate_sample.newly_acked += sent_bytes as u64;
+        self.rate_sample.newly_acked += packet.sent_bytes as u64;
 
         //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#3.3
         //# UpdateRateSample() is invoked multiple times when a stretched ACK acknowledges
         //# multiple data packets. In this case we use the information from the most recently
         //# sent packet, i.e., the packet with the highest "P.delivered" value.
-        if delivered > self.rate_sample.prior_delivered {
+        if packet.delivered_bytes > self.rate_sample.prior_delivered {
             // Update info using the newest packet
-            self.rate_sample.prior_delivered = delivered;
-            self.rate_sample.prior_lost = lost_bytes;
-            self.rate_sample.is_app_limited = app_limited;
-            self.rate_sample.bytes_in_flight = bytes_in_flight;
-            self.first_sent_time = Some(time_sent);
+            self.rate_sample.prior_delivered = packet.delivered_bytes;
+            self.rate_sample.prior_lost = packet.lost_bytes;
+            self.rate_sample.is_app_limited = packet.is_app_limited;
+            self.rate_sample.bytes_in_flight = packet.bytes_in_flight;
+            self.first_sent_time = Some(packet.time_sent);
 
-            let send_elapsed = time_sent - first_sent_time;
-            let ack_elapsed = now - delivered_time;
+            let send_elapsed = packet.time_sent - packet.first_sent_time;
+            let ack_elapsed = now - packet.delivered_time;
 
             //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#2.2.4
             //# Since it is physically impossible to have data delivered faster than it is sent
@@ -183,7 +172,7 @@ impl BandwidthEstimator {
             let sent_after_app_limited = self
                 .app_limited_timestamp
                 .map_or(false, |app_limited_timestamp| {
-                    time_sent > app_limited_timestamp
+                    packet.time_sent > app_limited_timestamp
                 });
             if sent_after_app_limited {
                 // The connection is no longer app limited if packets that were sent after the time
