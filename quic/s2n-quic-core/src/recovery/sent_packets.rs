@@ -3,13 +3,9 @@
 
 use crate::{
     frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification, path,
-    time::Timestamp,
+    recovery::BandwidthEstimator, time::Timestamp,
 };
 use core::convert::TryInto;
-use s2n_quic_core::{
-    frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification,
-    packet::number::Map as PacketNumberMap, recovery::BandwidthEstimator, time::Timestamp,
-};
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-A.1
 
@@ -95,8 +91,7 @@ mod test {
         frame::ack_elicitation::AckElicitation,
         inet::ExplicitCongestionNotification,
         path,
-        recovery::BandwidthEstimator,
-        recovery::SentPacketInfo,
+        recovery::{BandwidthEstimator, SentPacketInfo},
         time::{Clock, NoopClock},
     };
 
@@ -104,7 +99,7 @@ mod test {
     #[should_panic]
     fn too_large_packet() {
         let mut bw_estimator = BandwidthEstimator::default();
-        bw_estimator.on_packet_sent(false, false, s2n_quic_platform::time::now());
+        bw_estimator.on_packet_sent(false, false, NoopClock.get_time());
 
         SentPacketInfo::new(
             true,

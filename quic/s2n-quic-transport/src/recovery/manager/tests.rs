@@ -24,7 +24,7 @@ use s2n_quic_core::{
         congestion_controller::testing::mock::{
             CongestionController as MockCongestionController, Endpoint,
         },
-        DEFAULT_INITIAL_RTT,
+        BandwidthEstimator, DEFAULT_INITIAL_RTT,
     },
     time::{timer::Provider as _, Clock, NoopClock},
     varint::VarInt,
@@ -1654,11 +1654,12 @@ fn remove_lost_packets_persistent_congestion_path_aware() {
         .is_some());
 
     now += Duration::from_secs(10);
-    let bw_estimator = BandwidthEstimator::default();
+    let mut bw_estimator = BandwidthEstimator::default();
+    bw_estimator.on_packet_sent(false, false, now);
     let sent_packets_to_remove = vec![
         (
             space.new_packet_number(VarInt::from_u8(9)),
-            SentPacketInfo::new (
+            SentPacketInfo::new(
                 true,
                 1,
                 now,
@@ -1666,6 +1667,7 @@ fn remove_lost_packets_persistent_congestion_path_aware() {
                 first_path_id,
                 ecn,
                 &bw_estimator,
+                0,
             ),
         ),
         (
@@ -1675,9 +1677,10 @@ fn remove_lost_packets_persistent_congestion_path_aware() {
                 1,
                 now,
                 AckElicitation::Eliciting,
-                ecn,
                 second_path_id,
+                ecn,
                 &bw_estimator,
+                0,
             ),
         ),
     ];
@@ -2519,7 +2522,8 @@ fn on_timeout() {
     //# When a PTO timer expires, the PTO backoff MUST be increased,
     //# resulting in the PTO period being set to twice its current value.
     expected_pto_backoff *= 2;
-    let bw_estimator = BandwidthEstimator::default();
+    let mut bw_estimator = BandwidthEstimator::default();
+    bw_estimator.on_packet_sent(false, false, now);
     manager.sent_packets.insert(
         space.new_packet_number(VarInt::from_u8(1)),
         SentPacketInfo::new(
@@ -2530,6 +2534,7 @@ fn on_timeout() {
             unsafe { path::Id::new(0) },
             ecn,
             &bw_estimator,
+            0,
         ),
     );
     manager.pto.timer.set(now - Duration::from_secs(5));
