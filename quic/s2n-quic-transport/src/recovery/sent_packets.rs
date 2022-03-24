@@ -112,7 +112,6 @@ mod test {
 
     #[test]
     fn sent_packet_info_size_test() {
-        eprintln!("{}", core::mem::size_of::<SentPacketInfo>());
         insta::assert_debug_snapshot!(
             stringify!(sent_packet_info_size_test),
             core::mem::size_of::<SentPacketInfo>()
