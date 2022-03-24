@@ -8,7 +8,7 @@ use crate::{
     contexts::WriteContext,
     endpoint,
     endpoint::Type,
-    recovery::{congestion_controller, BandwidthEstimator, CongestionController, RttEstimator},
+    recovery::{bandwidth, congestion_controller, CongestionController, RttEstimator},
     transmission::{self, Mode},
 };
 use s2n_quic_core::{
@@ -51,7 +51,7 @@ pub struct Path<Config: endpoint::Config> {
     /// The path owns the roundtrip between peers
     pub rtt_estimator: RttEstimator,
     /// The bandwidth estimator for the path
-    pub bw_estimator: BandwidthEstimator,
+    pub bw_estimator: bandwidth::Estimator,
     /// The congestion controller for the path
     pub congestion_controller: <Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController,
     /// Probe timeout backoff multiplier
@@ -139,7 +139,7 @@ impl<Config: endpoint::Config> Path<Config> {
             peer_connection_id,
             local_connection_id,
             rtt_estimator,
-            bw_estimator: BandwidthEstimator::default(),
+            bw_estimator: bandwidth::Estimator::default(),
             congestion_controller,
             pto_backoff: INITIAL_PTO_BACKOFF,
             state,

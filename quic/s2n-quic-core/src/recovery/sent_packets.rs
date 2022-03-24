@@ -3,7 +3,7 @@
 
 use crate::{
     frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification, path,
-    recovery::BandwidthState, time::Timestamp,
+    recovery::bandwidth, time::Timestamp,
 };
 use core::convert::TryInto;
 
@@ -53,7 +53,7 @@ impl SentPacketInfo {
         ack_elicitation: AckElicitation,
         path_id: path::Id,
         ecn: ExplicitCongestionNotification,
-        bandwidth_state: BandwidthState,
+        bandwidth_state: bandwidth::State,
         bytes_in_flight: u32,
     ) -> Self {
         debug_assert_eq!(
@@ -91,14 +91,14 @@ mod test {
         frame::ack_elicitation::AckElicitation,
         inet::ExplicitCongestionNotification,
         path,
-        recovery::{BandwidthEstimator, SentPacketInfo},
+        recovery::{bandwidth, SentPacketInfo},
         time::{Clock, NoopClock},
     };
 
     #[test]
     #[should_panic]
     fn too_large_packet() {
-        let mut bw_estimator = BandwidthEstimator::default();
+        let mut bw_estimator = bandwidth::Estimator::default();
         bw_estimator.on_packet_sent(false, false, NoopClock.get_time());
 
         SentPacketInfo::new(

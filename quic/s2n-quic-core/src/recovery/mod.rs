@@ -1,13 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-pub use bw_estimator::*;
 pub use congestion_controller::CongestionController;
 pub use cubic::CubicCongestionController;
 pub use rtt_estimator::*;
 pub use sent_packets::*;
 
-mod bw_estimator;
+pub mod bandwidth;
 pub mod congestion_controller;
 pub mod cubic;
 mod hybrid_slow_start;

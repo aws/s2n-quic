@@ -11,7 +11,7 @@ use crate::{
 
 #[test]
 fn on_packet_sent_timestamp_initialization() {
-    let mut bw_estimator = BandwidthEstimator::default();
+    let mut bw_estimator = Estimator::default();
 
     let now = NoopClock.get_time();
 
@@ -37,7 +37,7 @@ fn on_packet_sent_timestamp_initialization() {
 
 #[test]
 fn on_packet_sent_app_limited() {
-    let mut bw_estimator = BandwidthEstimator::default();
+    let mut bw_estimator = Estimator::default();
 
     let now = NoopClock.get_time();
 
@@ -50,7 +50,7 @@ fn on_packet_sent_app_limited() {
 
 #[test]
 fn on_packet_ack_resets_newly_acked_and_lost_on_new_ack() {
-    let mut bw_estimator = BandwidthEstimator::default();
+    let mut bw_estimator = Estimator::default();
     let now = NoopClock.get_time();
     bw_estimator.on_packet_sent(false, false, now);
 
@@ -95,7 +95,7 @@ fn on_packet_ack_resets_newly_acked_and_lost_on_new_ack() {
 
 #[test]
 fn on_packet_ack_clears_app_limited_timestamp() {
-    let mut bw_estimator = BandwidthEstimator::default();
+    let mut bw_estimator = Estimator::default();
     let t0 = NoopClock.get_time();
     let t1 = t0 + Duration::from_secs(1);
     // A packet is sent while application limited
@@ -142,7 +142,7 @@ fn on_packet_ack_clears_app_limited_timestamp() {
 
 #[test]
 fn on_packet_ack_rate_sample() {
-    let mut bw_estimator = BandwidthEstimator::default();
+    let mut bw_estimator = Estimator::default();
     let t0 = NoopClock.get_time() + Duration::from_secs(60);
     bw_estimator.on_packet_sent(false, false, t0);
 
@@ -275,7 +275,7 @@ fn on_packet_ack_rate_sample() {
 //# by capping the delivery rate sample to be no higher than the send rate.
 #[test]
 fn on_packet_ack_implausible_ack_rate() {
-    let mut bw_estimator = BandwidthEstimator::default();
+    let mut bw_estimator = Estimator::default();
     let t0 = NoopClock.get_time();
     bw_estimator.on_packet_sent(false, false, t0);
     bw_estimator.state.delivered_time = Some(t0 + Duration::from_secs(4));
@@ -308,7 +308,7 @@ fn on_packet_ack_implausible_ack_rate() {
 
 #[test]
 fn on_packet_loss() {
-    let mut bw_estimator = BandwidthEstimator::default();
+    let mut bw_estimator = Estimator::default();
 
     assert_eq!(0, bw_estimator.state.lost_bytes());
     assert_eq!(0, bw_estimator.rate_sample.newly_lost_bytes);

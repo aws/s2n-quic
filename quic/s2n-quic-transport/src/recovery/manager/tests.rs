@@ -21,10 +21,11 @@ use s2n_quic_core::{
     path::{migration, RemoteAddress, DEFAULT_MAX_MTU, INITIAL_PTO_BACKOFF},
     random,
     recovery::{
+        bandwidth,
         congestion_controller::testing::mock::{
             CongestionController as MockCongestionController, Endpoint,
         },
-        BandwidthEstimator, DEFAULT_INITIAL_RTT,
+        DEFAULT_INITIAL_RTT,
     },
     time::{timer::Provider as _, Clock, NoopClock},
     varint::VarInt,
@@ -1654,7 +1655,7 @@ fn remove_lost_packets_persistent_congestion_path_aware() {
         .is_some());
 
     now += Duration::from_secs(10);
-    let mut bw_estimator = BandwidthEstimator::default();
+    let mut bw_estimator = bandwidth::Estimator::default();
     bw_estimator.on_packet_sent(false, false, now);
     let sent_packets_to_remove = vec![
         (
@@ -1666,7 +1667,7 @@ fn remove_lost_packets_persistent_congestion_path_aware() {
                 AckElicitation::Eliciting,
                 first_path_id,
                 ecn,
-                &bw_estimator,
+                bw_estimator.state(),
                 0,
             ),
         ),
@@ -1679,7 +1680,7 @@ fn remove_lost_packets_persistent_congestion_path_aware() {
                 AckElicitation::Eliciting,
                 second_path_id,
                 ecn,
-                &bw_estimator,
+                bw_estimator.state(),
                 0,
             ),
         ),
@@ -2522,7 +2523,7 @@ fn on_timeout() {
     //# When a PTO timer expires, the PTO backoff MUST be increased,
     //# resulting in the PTO period being set to twice its current value.
     expected_pto_backoff *= 2;
-    let mut bw_estimator = BandwidthEstimator::default();
+    let mut bw_estimator = bandwidth::Estimator::default();
     bw_estimator.on_packet_sent(false, false, now);
     manager.sent_packets.insert(
         space.new_packet_number(VarInt::from_u8(1)),
@@ -2533,7 +2534,7 @@ fn on_timeout() {
             AckElicitation::Eliciting,
             unsafe { path::Id::new(0) },
             ecn,
-            &bw_estimator,
+            bw_estimator.state(),
             0,
         ),
     );

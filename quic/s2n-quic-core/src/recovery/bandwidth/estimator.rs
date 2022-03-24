@@ -6,7 +6,7 @@ use core::{cmp::max, time::Duration};
 
 #[derive(Clone, Copy, Debug, Default)]
 /// Bandwidth-related data tracked for each path
-pub struct BandwidthState {
+pub struct State {
     //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#2.2
     //# The amount of data delivered MAY be tracked in units of either octets or packets.
     delivered_bytes: u64,
@@ -16,7 +16,7 @@ pub struct BandwidthState {
     app_limited_timestamp: Option<Timestamp>,
 }
 
-impl BandwidthState {
+impl State {
     /// The total amount of data in bytes delivered so far over the lifetime of the path, not including
     /// non-congestion-controlled packets such as pure ACK packets.
     pub fn delivered_bytes(&self) -> u64 {
@@ -79,14 +79,14 @@ pub struct RateSample {
 /// Bandwidth estimator as defined in [Delivery Rate Estimation](https://datatracker.ietf.org/doc/draft-cheng-iccrg-delivery-rate-estimation/)
 /// and [BBR Congestion Control](https://datatracker.ietf.org/doc/draft-cardwell-iccrg-bbr-congestion-control/).
 #[derive(Clone, Debug, Default)]
-pub struct BandwidthEstimator {
-    state: BandwidthState,
+pub struct Estimator {
+    state: State,
     rate_sample: RateSample,
 }
 
-impl BandwidthEstimator {
+impl Estimator {
     /// Gets the current bandwidth::State
-    pub fn state(&self) -> BandwidthState {
+    pub fn state(&self) -> State {
         self.state
     }
 
