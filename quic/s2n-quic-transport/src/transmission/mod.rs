@@ -53,6 +53,7 @@ pub struct Transmission<'a, 'sub, Config: endpoint::Config, P: Payload> {
         'sub,
         <Config as endpoint::Config>::EventSubscriber,
     >,
+    pub packet_interceptor: &'a mut <Config as endpoint::Config>::PacketInterceptor,
 }
 
 impl<'a, 'sub, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
@@ -110,6 +111,18 @@ impl<'a, 'sub, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
                 // since we still want to send this packet despite Padding being
                 // congestion controlled.
                 context.write_frame_forced(&Padding { length });
+            }
+
+            {
+                // allow the packet_interceptor provider to do its thing
+                use s2n_quic_core::packet::interceptor::{Interceptor, Packet};
+                self.packet_interceptor.intercept_tx_packet(
+                    Packet {
+                        number: self.packet_number,
+                        timestamp: self.timestamp,
+                    },
+                    buffer,
+                );
             }
 
             self.tx_packet_numbers.on_transmit(self.packet_number);

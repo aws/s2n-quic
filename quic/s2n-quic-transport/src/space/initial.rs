@@ -184,6 +184,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             tx_packet_numbers: &mut self.tx_packet_numbers,
             path_id: context.path_id,
             publisher: context.publisher,
+            packet_interceptor: context.packet_interceptor,
         };
 
         let packet = Initial {
@@ -254,6 +255,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             tx_packet_numbers: &mut self.tx_packet_numbers,
             path_id: context.path_id,
             publisher: context.publisher,
+            packet_interceptor: context.packet_interceptor,
         };
 
         let packet = Initial {

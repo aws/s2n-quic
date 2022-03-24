@@ -646,7 +646,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
     fn handle_cleartext_payload<'a, Pub: event::ConnectionPublisher>(
         &mut self,
         packet_number: PacketNumber,
-        mut payload: DecoderBufferMut<'a>,
+        payload: DecoderBufferMut<'a>,
         datagram: &'a DatagramInfo,
         path_id: path::Id,
         path_manager: &mut path::Manager<Config>,
@@ -654,10 +654,23 @@ pub trait PacketSpace<Config: endpoint::Config> {
         local_id_registry: &mut connection::LocalIdRegistry,
         random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
+        packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<ProcessedPacket<'a>, connection::Error> {
         use s2n_quic_core::{
             frame::{Frame, FrameMut},
             varint::VarInt,
+        };
+
+        let mut payload = {
+            use s2n_quic_core::packet::interceptor::{Interceptor, Packet};
+
+            packet_interceptor.intercept_rx_packet(
+                Packet {
+                    number: packet_number,
+                    timestamp: datagram.timestamp,
+                },
+                payload,
+            )
         };
 
         let mut processed_packet = ProcessedPacket::new(packet_number, datagram);
