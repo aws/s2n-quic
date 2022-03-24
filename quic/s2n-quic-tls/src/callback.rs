@@ -220,12 +220,11 @@ where
                             .expect("invalid cipher");
 
                         self.context.on_handshake_keys(key, header_key)?;
-                        // TODO: https://github.com/aws/s2n-quic/pull/1238/files#r833764775
-                        // Due the way `self::poll()` works, combined with how our unit tests are
-                        // structured (core::tls::testing::Pair::poll() polls client and then
-                        // server once), the client only sees the alpn value in the second
-                        // iteration. The fix would involve calling only 'receive' on the client
-                        // and processing the server_hello.
+                        // TODO: https://github.com/aws/s2n-quic/issues/1240
+                        // https://github.com/aws/s2n-quic/pull/1238/files#r833764775
+                        // The ServerHello is received in the handshake space, so even though
+                        // we have handshake keys, we still need to read from the handshake
+                        // buffer before accessing server_name and application_protocol.
                         //
                         // if self.endpoint == endpoint::Type::Client {
                         //     // TODO use interning for these values
