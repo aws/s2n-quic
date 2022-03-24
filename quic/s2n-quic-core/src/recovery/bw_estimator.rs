@@ -61,10 +61,12 @@ impl RateSample {
     }
 }
 
-/// Bandwidth estimator as defined in https://datatracker.ietf.org/doc/draft-cheng-iccrg-delivery-rate-estimation/
-/// and https://datatracker.ietf.org/doc/draft-cardwell-iccrg-bbr-congestion-control/.
+/// Bandwidth estimator as defined in [Delivery Rate Estimation](https://datatracker.ietf.org/doc/draft-cheng-iccrg-delivery-rate-estimation/)
+/// and [BBR Congestion Control](https://datatracker.ietf.org/doc/draft-cardwell-iccrg-bbr-congestion-control/).
 #[derive(Clone, Debug, Default)]
 pub struct BandwidthEstimator {
+    //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#2.2
+    //# The amount of data delivered MAY be tracked in units of either octets or packets.
     delivered_bytes: u64,
     delivered_time: Option<Timestamp>,
     lost_bytes: u64,
@@ -111,6 +113,11 @@ impl BandwidthEstimator {
         application_limited: bool,
         now: Timestamp,
     ) {
+        //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#3.2
+        //# If there are no packets in flight yet, then we can start the delivery rate interval
+        //# at the current time, since we know that any ACKs after now indicate that the network
+        //# was able to deliver those packets completely in the sampling interval between now
+        //# and the next ACK.
         if !packets_in_flight || self.first_sent_time.is_none() || self.delivered_time.is_none() {
             self.first_sent_time = Some(now);
             self.delivered_time = Some(now);
@@ -121,6 +128,10 @@ impl BandwidthEstimator {
         }
     }
 
+    //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#3.3
+    //# For each packet that was newly SACKed or ACKed, UpdateRateSample() updates the
+    //# rate sample based on a snapshot of connection delivery information from the time
+    //# at which the packet was last transmitted.
     /// Called for each newly acknowledged packet
     pub fn on_packet_ack(
         &mut self,
@@ -147,6 +158,10 @@ impl BandwidthEstimator {
         self.delivered_time = Some(now);
         self.rate_sample.newly_acked += sent_bytes as u64;
 
+        //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#3.3
+        //# UpdateRateSample() is invoked multiple times when a stretched ACK acknowledges
+        //# multiple data packets. In this case we use the information from the most recently
+        //# sent packet, i.e., the packet with the highest "P.delivered" value.
         if delivered > self.rate_sample.prior_delivered {
             // Update info using the newest packet
             self.rate_sample.prior_delivered = delivered;
@@ -157,7 +172,12 @@ impl BandwidthEstimator {
 
             let send_elapsed = time_sent - first_sent_time;
             let ack_elapsed = now - delivered_time;
-            /* Use the longer of the send_elapsed and ack_elapsed */
+
+            //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#2.2.4
+            //# Since it is physically impossible to have data delivered faster than it is sent
+            //# in a sustained fashion, when the estimator notices that the ack_rate for a flight
+            //# is faster than the send rate for the flight, it filters out the implausible ack_rate
+            //# by capping the delivery rate sample to be no higher than the send rate.
             self.rate_sample.interval = max(send_elapsed, ack_elapsed);
 
             let sent_after_app_limited = self
