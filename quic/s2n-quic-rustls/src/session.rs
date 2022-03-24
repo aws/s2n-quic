@@ -168,6 +168,7 @@ impl Session {
     ) -> Poll<Result<(), transport::Error>> {
         // Tracks if we have attempted to receive data at least once
         let mut has_tried_receive = false;
+
         loop {
             let crypto_data = match self.rx_phase {
                 HandshakePhase::Initial => context.receive_initial(None),
@@ -177,7 +178,7 @@ impl Session {
 
             // receive anything in the incoming buffer
             if let Some(crypto_data) = crypto_data {
-                self.receive(&crypto_data)?
+                self.receive(&crypto_data)?;
             } else if has_tried_receive {
                 return self.poll_complete_handshake(context);
                 // If there's nothing to receive then we're done for now
