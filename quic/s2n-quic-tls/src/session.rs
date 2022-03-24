@@ -23,6 +23,7 @@ pub struct Session {
     state: callback::State,
     handshake_complete: bool,
     send_buffer: BytesMut,
+    emitted_server_name: bool,
 }
 
 impl Session {
@@ -44,6 +45,7 @@ impl Session {
             state: Default::default(),
             handshake_complete: false,
             send_buffer: BytesMut::new(),
+            emitted_server_name: false,
         })
     }
 }
@@ -72,6 +74,7 @@ impl tls::Session for Session {
             suite: PhantomData,
             err: None,
             send_buffer: &mut self.send_buffer,
+            emitted_server_name: &mut self.emitted_server_name,
         };
 
         unsafe {

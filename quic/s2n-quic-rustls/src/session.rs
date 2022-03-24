@@ -22,6 +22,8 @@ pub struct Session {
     tx_phase: HandshakePhase,
     emitted_zero_rtt_keys: bool,
     emitted_handshake_complete: bool,
+    emitted_server_name: bool,
+    emitted_application_protocol: bool,
 }
 
 impl fmt::Debug for Session {
@@ -41,6 +43,8 @@ impl Session {
             tx_phase: Default::default(),
             emitted_zero_rtt_keys: false,
             emitted_handshake_complete: false,
+            emitted_server_name: false,
+            emitted_application_protocol: false,
         }
     }
 
@@ -105,20 +109,8 @@ impl Session {
     //#    [ChangeCipherSpec]
     //#    Finished                        -------->
     //#    Application Data                <------->       Application Data
-    fn application_protocol(&self) -> Result<&[u8], transport::Error> {
-        let application_protocol = self.connection.alpn_protocol().ok_or_else(||
-            //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
-            //# When using ALPN, endpoints MUST immediately close a connection (see
-            //# Section 10.2 of [QUIC-TRANSPORT]) with a no_application_protocol TLS
-            //# alert (QUIC error code 0x178; see Section 4.8) if an application
-            //# protocol is not negotiated.
-
-            //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
-            //# While [ALPN] only specifies that servers
-            //# use this alert, QUIC clients MUST use error 0x178 to terminate a
-            //# connection when ALPN negotiation fails.
-            CryptoError::NO_APPLICATION_PROTOCOL.with_reason("Missing ALPN protocol"))?;
-        Ok(application_protocol)
+    fn application_protocol(&self) -> Option<&[u8]> {
+        self.connection.alpn_protocol()
     }
 
     fn server_name(&self) -> Option<ServerName> {
@@ -195,7 +187,23 @@ impl tls::Session for Session {
 
             // receive anything in the incoming buffer
             if let Some(crypto_data) = crypto_data {
-                self.receive(&crypto_data)?;
+                let receive = self.receive(&crypto_data);
+                if !self.emitted_server_name {
+                    if let Some(server_name) = self.server_name() {
+                        context.on_server_name(server_name)?;
+                        self.emitted_server_name = true;
+                    }
+                }
+                if !self.emitted_application_protocol {
+                    if let Some(application_protocol) = self.application_protocol() {
+                        let application_protocol = Bytes::copy_from_slice(application_protocol);
+                        context.on_application_protocol(application_protocol)?;
+                        self.emitted_application_protocol = true;
+                    }
+                }
+                // attempt to emit server_name and application_protocol events prior to possibly
+                // returning with an error
+                receive?
             } else if has_tried_receive {
                 return self.poll_complete_handshake(context);
                 // If there's nothing to receive then we're done for now
@@ -259,44 +267,13 @@ impl tls::Session for Session {
                         quic::KeyChange::Handshake { keys } => {
                             let (key, header_key) = PacketKeys::new(keys, cipher_suite);
 
-                            if let Some(server_name) = self.server_name() {
-                                context.on_server_name(server_name)?;
-                            }
-                            if let Connection::Server(_) = &self.connection {
-                                // TODO use interning for these values
-                                // issue: https://github.com/aws/s2n-quic/issues/248
-                                let application_protocol =
-                                    Bytes::copy_from_slice(self.application_protocol()?);
-                                context.on_application_protocol(application_protocol)?;
-                            };
-
                             context.on_handshake_keys(key, header_key)?;
-                            // TODO: https://github.com/aws/s2n-quic/issues/1240
-                            // https://github.com/aws/s2n-quic/pull/1238/files#r833764775
-                            // The ServerHello is received in the handshake space, so even though
-                            // we have handshake keys, we still need to read from the handshake
-                            // buffer before accessing server_name and application_protocol.
-                            //
-                            // if let Connection::Client(_) = &self.connection {
-                            //     // TODO use interning for these values
-                            //     // issue: https://github.com/aws/s2n-quic/issues/248
-                            //     let application_protocol =
-                            //         Bytes::copy_from_slice(self.application_protocol()?);
-                            //     context.on_application_protocol(application_protocol)?;
-                            // };
 
                             // Transition both phases to Handshake
                             self.tx_phase.transition();
                             self.rx_phase.transition();
                         }
                         quic::KeyChange::OneRtt { keys, next } => {
-                            if let Connection::Client(_) = &self.connection {
-                                // TODO use interning for these values
-                                // issue: https://github.com/aws/s2n-quic/issues/248
-                                let application_protocol =
-                                    Bytes::copy_from_slice(self.application_protocol()?);
-                                context.on_application_protocol(application_protocol)?;
-                            };
                             let (key, header_key) = OneRttKey::new(keys, next, cipher_suite);
 
                             let application_parameters = self.application_parameters()?;

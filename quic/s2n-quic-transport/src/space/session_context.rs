@@ -17,6 +17,7 @@ use s2n_quic_core::{
     ack,
     application::ServerName,
     connection::{InitialId, PeerId},
+    crypto,
     crypto::{tls, CryptoSuite, Key},
     ct::ConstantTimeEq,
     event,
@@ -328,6 +329,23 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         if self.application.is_some() {
             return Err(transport::Error::INTERNAL_ERROR
                 .with_reason("application keys initialized more than once"));
+        }
+
+        if self.application_protocol.is_empty() {
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
+            //# When using ALPN, endpoints MUST immediately close a connection (see
+            //# Section 10.2 of [QUIC-TRANSPORT]) with a no_application_protocol TLS
+            //# alert (QUIC error code 0x178; see Section 4.8) if an application
+            //# protocol is not negotiated.
+
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
+            //# While [ALPN] only specifies that servers
+            //# use this alert, QUIC clients MUST use error 0x178 to terminate a
+            //# connection when ALPN negotiation fails.
+            let err = crypto::CryptoError::NO_APPLICATION_PROTOCOL
+                .with_reason("Missing ALPN protocol")
+                .into();
+            return Err(err);
         }
 
         if Config::ENDPOINT_TYPE.is_client() {

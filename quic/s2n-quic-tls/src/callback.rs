@@ -30,6 +30,7 @@ pub struct Callback<'a, T, C> {
     pub suite: PhantomData<C>,
     pub err: Option<transport::Error>,
     pub send_buffer: &'a mut BytesMut,
+    pub emitted_server_name: &'a mut bool,
 }
 
 impl<'a, T, C> Callback<'a, T, C>
@@ -112,7 +113,8 @@ where
             connection.set_waker(None).unwrap();
 
             // Flush the send buffer before returning to the connection
-            self.flush();
+            // FIXME here
+            self.flush(None);
 
             if let Some(err) = self.err {
                 return Err(err);
@@ -199,14 +201,11 @@ where
                 };
 
                 // Flush the send buffer before transitioning to the next phase
-                self.flush();
+                self.flush(Some(conn));
 
                 match self.state.tx_phase {
                     HandshakePhase::Initial => {
                         unsafe {
-                            if let Some(server_name) = get_server_name(conn) {
-                                self.context.on_server_name(server_name)?;
-                            }
                             if self.endpoint == endpoint::Type::Server {
                                 // TODO use interning for these values
                                 // issue: https://github.com/aws/s2n-quic/issues/248
@@ -220,20 +219,6 @@ where
                             .expect("invalid cipher");
 
                         self.context.on_handshake_keys(key, header_key)?;
-                        // TODO: https://github.com/aws/s2n-quic/issues/1240
-                        // https://github.com/aws/s2n-quic/pull/1238/files#r833764775
-                        // The ServerHello is received in the handshake space, so even though
-                        // we have handshake keys, we still need to read from the handshake
-                        // buffer before accessing server_name and application_protocol.
-                        //
-                        // if self.endpoint == endpoint::Type::Client {
-                        //     // TODO use interning for these values
-                        //     // issue: https://github.com/aws/s2n-quic/issues/248
-                        //     let application_protocol =
-                        //         Bytes::copy_from_slice(get_application_protocol(conn)?);
-                        //     self.context.on_application_protocol(application_protocol)?;
-                        // };
-
                         self.state.tx_phase.transition();
                         self.state.rx_phase.transition();
                     }
@@ -283,7 +268,7 @@ where
 
         if remaining_capacity < data.len() {
             // Flush the send buffer before reallocating it
-            self.flush();
+            self.flush(None);
 
             // ensure we only do one allocation for this write
             let len = SEND_BUFFER_CAPACITY.max(data.len());
@@ -305,7 +290,7 @@ where
     }
 
     /// Flushes the send buffer into the current TX space
-    fn flush(&mut self) {
+    fn flush(&mut self, conn: Option<*mut s2n_connection>) {
         if !self.send_buffer.is_empty() {
             let chunk = self.send_buffer.split().freeze();
 
@@ -313,6 +298,17 @@ where
                 HandshakePhase::Initial => self.context.send_initial(chunk),
                 HandshakePhase::Handshake => self.context.send_handshake(chunk),
                 HandshakePhase::Application => self.context.send_application(chunk),
+            }
+        }
+
+        // attempt to emit server name after making progress
+        if !*self.emitted_server_name {
+            if let Some(conn) = conn {
+                let server_name = unsafe { get_server_name(conn) };
+                if let Some(server_name) = server_name {
+                    self.context.on_server_name(server_name).unwrap();
+                    *self.emitted_server_name = true;
+                }
             }
         }
     }
