@@ -16,23 +16,23 @@ fn on_packet_sent_timestamp_initialization() {
     let now = NoopClock.get_time();
 
     // Test that first_sent_time and delivered_time are updated if they are None
-    assert_eq!(None, bw_estimator.state.first_sent_time());
-    assert_eq!(None, bw_estimator.state.delivered_time());
+    assert_eq!(None, bw_estimator.state.first_sent_time);
+    assert_eq!(None, bw_estimator.state.delivered_time);
     bw_estimator.on_packet_sent(false, false, now);
-    assert_eq!(Some(now), bw_estimator.state.first_sent_time());
-    assert_eq!(Some(now), bw_estimator.state.delivered_time());
+    assert_eq!(Some(now), bw_estimator.state.first_sent_time);
+    assert_eq!(Some(now), bw_estimator.state.delivered_time);
 
     let new_now = now + Duration::from_secs(5);
 
     // Test that first_sent_time and delivered_time are not updated if packets are in flight
     bw_estimator.on_packet_sent(true, false, new_now);
-    assert_eq!(Some(now), bw_estimator.state.first_sent_time());
-    assert_eq!(Some(now), bw_estimator.state.delivered_time());
+    assert_eq!(Some(now), bw_estimator.state.first_sent_time);
+    assert_eq!(Some(now), bw_estimator.state.delivered_time);
 
     // Test that first_sent_time and delivered_time are updated if packets are not in flight
     bw_estimator.on_packet_sent(false, false, new_now);
-    assert_eq!(Some(new_now), bw_estimator.state.first_sent_time());
-    assert_eq!(Some(new_now), bw_estimator.state.delivered_time());
+    assert_eq!(Some(new_now), bw_estimator.state.first_sent_time);
+    assert_eq!(Some(new_now), bw_estimator.state.delivered_time);
 }
 
 #[test]
@@ -42,10 +42,10 @@ fn on_packet_sent_app_limited() {
     let now = NoopClock.get_time();
 
     bw_estimator.on_packet_sent(false, false, now);
-    assert_eq!(None, bw_estimator.state.app_limited_timestamp());
+    assert_eq!(None, bw_estimator.state.app_limited_timestamp);
 
     bw_estimator.on_packet_sent(false, true, now);
-    assert_eq!(Some(now), bw_estimator.state.app_limited_timestamp());
+    assert_eq!(Some(now), bw_estimator.state.app_limited_timestamp);
 }
 
 #[test]
@@ -67,8 +67,8 @@ fn on_packet_ack_resets_newly_acked_and_lost_on_new_ack() {
 
     bw_estimator.on_packet_ack(&packet, now);
     assert_eq!(1500, bw_estimator.rate_sample.newly_acked_bytes);
-    assert_eq!(1500, bw_estimator.state.delivered_bytes());
-    assert_eq!(Some(now), bw_estimator.state.delivered_time());
+    assert_eq!(1500, bw_estimator.state.delivered_bytes);
+    assert_eq!(Some(now), bw_estimator.state.delivered_time);
 
     bw_estimator.on_packet_loss(1000);
     assert_eq!(1000, bw_estimator.rate_sample.newly_lost_bytes);
@@ -78,8 +78,8 @@ fn on_packet_ack_resets_newly_acked_and_lost_on_new_ack() {
     bw_estimator.on_packet_ack(&packet, now);
     assert_eq!(3000, bw_estimator.rate_sample.newly_acked_bytes);
     assert_eq!(1000, bw_estimator.rate_sample.newly_lost_bytes);
-    assert_eq!(3000, bw_estimator.state.delivered_bytes());
-    assert_eq!(Some(now), bw_estimator.state.delivered_time());
+    assert_eq!(3000, bw_estimator.state.delivered_bytes);
+    assert_eq!(Some(now), bw_estimator.state.delivered_time);
 
     // A packet is acked at a later time, this should reset newly_acked and newly_lost
     // since it must be from a new ack frame
@@ -89,8 +89,8 @@ fn on_packet_ack_resets_newly_acked_and_lost_on_new_ack() {
 
     assert_eq!(100, bw_estimator.rate_sample.newly_acked_bytes);
     assert_eq!(0, bw_estimator.rate_sample.newly_lost_bytes);
-    assert_eq!(3100, bw_estimator.state.delivered_bytes());
-    assert_eq!(Some(now), bw_estimator.state.delivered_time());
+    assert_eq!(3100, bw_estimator.state.delivered_bytes);
+    assert_eq!(Some(now), bw_estimator.state.delivered_time);
 }
 
 #[test]
@@ -103,7 +103,7 @@ fn on_packet_ack_clears_app_limited_timestamp() {
     // A packet is sent while not application limited
     bw_estimator.on_packet_sent(true, false, t1);
 
-    assert_eq!(Some(t0), bw_estimator.state.app_limited_timestamp());
+    assert_eq!(Some(t0), bw_estimator.state.app_limited_timestamp);
 
     let packet_1 = SentPacketInfo::new(
         true,
@@ -121,7 +121,7 @@ fn on_packet_ack_clears_app_limited_timestamp() {
     // The same packet is acked, this shouldn't clear the app_limited_timestamp since
     // it was sent while app-limited, not after.
     bw_estimator.on_packet_ack(&packet_1, t2);
-    assert_eq!(Some(t0), bw_estimator.state.app_limited_timestamp());
+    assert_eq!(Some(t0), bw_estimator.state.app_limited_timestamp);
 
     let packet_2 = SentPacketInfo::new(
         true,
@@ -137,7 +137,7 @@ fn on_packet_ack_clears_app_limited_timestamp() {
     // Now a packet that was sent after the app_limited_timestamp has been acked,
     // so the app_limited_timestamp is cleared
     bw_estimator.on_packet_ack(&packet_2, t2);
-    assert_eq!(None, bw_estimator.state.app_limited_timestamp());
+    assert_eq!(None, bw_estimator.state.app_limited_timestamp);
 }
 
 #[test]
@@ -310,19 +310,19 @@ fn on_packet_ack_implausible_ack_rate() {
 fn on_packet_loss() {
     let mut bw_estimator = Estimator::default();
 
-    assert_eq!(0, bw_estimator.state.lost_bytes());
+    assert_eq!(0, bw_estimator.state.lost_bytes);
     assert_eq!(0, bw_estimator.rate_sample.newly_lost_bytes);
     assert_eq!(0, bw_estimator.rate_sample.lost_bytes);
 
     bw_estimator.on_packet_loss(500);
 
-    assert_eq!(500, bw_estimator.state.lost_bytes());
+    assert_eq!(500, bw_estimator.state.lost_bytes);
     assert_eq!(500, bw_estimator.rate_sample.newly_lost_bytes);
     assert_eq!(500, bw_estimator.rate_sample.lost_bytes);
 
     bw_estimator.on_packet_loss(250);
 
-    assert_eq!(750, bw_estimator.state.lost_bytes());
+    assert_eq!(750, bw_estimator.state.lost_bytes);
     assert_eq!(750, bw_estimator.rate_sample.newly_lost_bytes);
     assert_eq!(750, bw_estimator.rate_sample.lost_bytes);
 
@@ -332,7 +332,7 @@ fn on_packet_loss() {
 
     bw_estimator.on_packet_loss(250);
 
-    assert_eq!(1000, bw_estimator.state.lost_bytes());
+    assert_eq!(1000, bw_estimator.state.lost_bytes);
     assert_eq!(250, bw_estimator.rate_sample.newly_lost_bytes);
     assert_eq!(250, bw_estimator.rate_sample.lost_bytes);
 }

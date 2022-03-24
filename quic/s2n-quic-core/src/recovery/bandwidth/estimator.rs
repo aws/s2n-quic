@@ -9,46 +9,25 @@ use core::{cmp::max, time::Duration};
 pub struct State {
     //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#2.2
     //# The amount of data delivered MAY be tracked in units of either octets or packets.
-    delivered_bytes: u64,
-    delivered_time: Option<Timestamp>,
-    lost_bytes: u64,
-    first_sent_time: Option<Timestamp>,
-    app_limited_timestamp: Option<Timestamp>,
-}
-
-impl State {
     /// The total amount of data in bytes delivered so far over the lifetime of the path, not including
     /// non-congestion-controlled packets such as pure ACK packets.
-    pub fn delivered_bytes(&self) -> u64 {
-        self.delivered_bytes
-    }
-
+    pub delivered_bytes: u64,
     /// The timestamp when delivered_bytes was last updated, or the time the first packet was
     /// sent if no packet was in flight yet.
-    pub fn delivered_time(&self) -> Option<Timestamp> {
-        self.delivered_time
-    }
-
+    pub delivered_time: Option<Timestamp>,
     /// The total amount of data in bytes declared lost so far over the lifetime of the path, not including
     /// non-congestion-controlled packets such as pure ACK packets.
-    pub fn lost_bytes(&self) -> u64 {
-        self.lost_bytes
-    }
-
+    pub lost_bytes: u64,
     /// If packets are in flight, then this holds the send time of the packet that was most recently
     /// marked as delivered. Else, if the connection was recently idle, then this holds the send
     /// time of the first packet sent after resuming from idle.
-    pub fn first_sent_time(&self) -> Option<Timestamp> {
-        self.first_sent_time
-    }
-
+    pub first_sent_time: Option<Timestamp>,
     /// The time sent of the last transmitted packet marked as application-limited
-    pub fn app_limited_timestamp(&self) -> Option<Timestamp> {
-        self.app_limited_timestamp
-    }
+    pub app_limited_timestamp: Option<Timestamp>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
+/// A bandwidth delivery rate estimate with associated metadata
 pub struct RateSample {
     /// Whether this rate sample should be considered application limited
     ///

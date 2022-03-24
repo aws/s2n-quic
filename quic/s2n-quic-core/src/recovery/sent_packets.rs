@@ -71,15 +71,15 @@ impl SentPacketInfo {
             ack_elicitation,
             path_id,
             ecn,
-            delivered_bytes: bandwidth_state.delivered_bytes(),
+            delivered_bytes: bandwidth_state.delivered_bytes,
             delivered_time: bandwidth_state
-                .delivered_time()
+                .delivered_time
                 .expect("bandwidth_state must be initialized when a packet is first sent"),
-            lost_bytes: bandwidth_state.lost_bytes(),
+            lost_bytes: bandwidth_state.lost_bytes,
             first_sent_time: bandwidth_state
-                .first_sent_time()
+                .first_sent_time
                 .expect("bandwidth_state must be initialized when a packet is first sent"),
-            is_app_limited: bandwidth_state.app_limited_timestamp().is_some(),
+            is_app_limited: bandwidth_state.app_limited_timestamp.is_some(),
             bytes_in_flight,
         }
     }
