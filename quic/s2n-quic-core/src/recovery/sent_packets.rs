@@ -1,12 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::path;
-use core::convert::TryInto;
-use s2n_quic_core::{
+use crate::{
     frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification,
-    packet::number::Map as PacketNumberMap, time::Timestamp,
+    packet::number::Map as PacketNumberMap, path, time::Timestamp,
 };
+use core::convert::TryInto;
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-A.1
 
@@ -61,9 +60,12 @@ impl SentPacketInfo {
 
 #[cfg(test)]
 mod test {
-    use crate::{path, recovery::SentPacketInfo};
-    use s2n_quic_core::{
-        frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification,
+    use crate::{
+        frame::ack_elicitation::AckElicitation,
+        inet::ExplicitCongestionNotification,
+        path,
+        recovery::SentPacketInfo,
+        time::{Clock, NoopClock},
     };
 
     #[test]
@@ -71,8 +73,8 @@ mod test {
     fn too_large_packet() {
         SentPacketInfo::new(
             true,
-            u16::max_value() as usize + 1,
-            s2n_quic_platform::time::now(),
+            u16::MAX as usize + 1,
+            NoopClock.get_time(),
             AckElicitation::Eliciting,
             path::Id::new(0),
             ExplicitCongestionNotification::default(),
