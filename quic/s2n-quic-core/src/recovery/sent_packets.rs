@@ -84,6 +84,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // snapshot tests don't work on miri
     fn sent_packet_info_size_test() {
         insta::assert_debug_snapshot!(
             stringify!(sent_packet_info_size_test),
