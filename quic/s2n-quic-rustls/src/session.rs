@@ -271,24 +271,23 @@ impl tls::Session for Session {
                             };
 
                             context.on_handshake_keys(key, header_key)?;
-                            // TODO: https://github.com/aws/s2n-quic/pull/1238/files#r833764775
-                            // Due the way `self::poll()` works, combined with how our unit tests are
-                            // structured (core::tls::testing::Pair::poll() polls client and then
-                            // server once), the client only sees the alpn value in the second
-                            // iteration. The fix would involve calling only 'receive' on the client
-                            // and processing the server_hello.
-                            //
-                            // if let Connection::Client(_) = &self.connection {
-                            //     // TODO use interning for these values
-                            //     // issue: https://github.com/aws/s2n-quic/issues/248
-                            //     let application_protocol =
-                            //         Bytes::copy_from_slice(self.application_protocol()?);
-                            //     context.on_application_protocol(application_protocol)?;
-                            // };
 
                             // Transition both phases to Handshake
                             self.tx_phase.transition();
                             self.rx_phase.transition();
+
+                            // Read the SERVER_HELLO from the handshake rx buffer
+                            let crypto_data = context.receive_handshake(None);
+                            if let Some(crypto_data) = crypto_data {
+                                self.receive(&crypto_data)?;
+                            }
+                            if let Connection::Client(_) = &self.connection {
+                                // TODO use interning for these values
+                                // issue: https://github.com/aws/s2n-quic/issues/248
+                                let application_protocol =
+                                    Bytes::copy_from_slice(self.application_protocol()?);
+                                context.on_application_protocol(application_protocol)?;
+                            };
                         }
                         quic::KeyChange::OneRtt { keys, next } => {
                             if let Connection::Client(_) = &self.connection {
