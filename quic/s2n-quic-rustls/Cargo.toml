@@ -10,6 +10,7 @@ license = "Apache-2.0"
 exclude = ["corpus.tar.gz"]
 
 [dependencies]
+bytes = { version = "1", default-features = false }
 rustls = { version = "0.20", features = ["quic"] }
 rustls-pemfile = "0.3"
 s2n-codec = { version = "=0.1.0", path = "../../common/s2n-codec", default-features = false }

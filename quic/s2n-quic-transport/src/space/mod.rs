@@ -16,6 +16,7 @@ use core::{
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     ack,
+    application::ServerName,
     connection::{limits::Limits, InitialId, PeerId},
     crypto::{tls, tls::Session, CryptoSuite, Key},
     event::{self, IntoEvent},
@@ -63,6 +64,16 @@ pub struct PacketSpaceManager<Config: endpoint::Config> {
     zero_rtt_crypto:
         Option<Box<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRttKey>>,
     handshake_status: HandshakeStatus,
+    /// Server Name Indication
+    pub server_name: Option<ServerName>,
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-7
+    //# Endpoints MUST explicitly negotiate an application protocol.
+
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
+    //# Unless
+    //# another mechanism is used for agreeing on an application protocol,
+    //# endpoints MUST use ALPN for this purpose.
+    pub application_protocol: Bytes,
 }
 
 impl<Config: endpoint::Config> fmt::Debug for PacketSpaceManager<Config> {
@@ -155,6 +166,8 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
             application: None,
             zero_rtt_crypto: None,
             handshake_status: HandshakeStatus::default(),
+            server_name: None,
+            application_protocol: Bytes::new(),
         }
     }
 
@@ -203,6 +216,8 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 handshake_status: &mut self.handshake_status,
                 local_id_registry,
                 limits,
+                server_name: &mut self.server_name,
+                application_protocol: &mut self.application_protocol,
                 waker,
                 publisher,
             };

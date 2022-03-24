@@ -15,7 +15,9 @@ use core::{ops::Not, task::Waker};
 use s2n_codec::{DecoderBuffer, DecoderValue};
 use s2n_quic_core::{
     ack,
+    application::ServerName,
     connection::{InitialId, PeerId},
+    crypto,
     crypto::{tls, CryptoSuite, Key},
     ct::ConstantTimeEq,
     event,
@@ -45,6 +47,8 @@ pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPu
     pub handshake_status: &'a mut HandshakeStatus,
     pub local_id_registry: &'a mut connection::LocalIdRegistry,
     pub limits: &'a mut Limits,
+    pub server_name: &'a mut Option<ServerName>,
+    pub application_protocol: &'a mut Bytes,
     pub waker: &'a Waker,
     pub publisher: &'a mut Pub,
 }
@@ -362,24 +366,6 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             self.limits.max_keep_alive_period(),
         );
 
-        // TODO use interning for these values
-        // issue: https://github.com/aws/s2n-quic/issues/248
-        let server_name = application_parameters.server_name;
-        let application_protocol =
-            Bytes::copy_from_slice(application_parameters.application_protocol);
-
-        self.publisher.on_application_protocol_information(
-            event::builder::ApplicationProtocolInformation {
-                chosen_application_protocol: &application_protocol,
-            },
-        );
-        if let Some(chosen_server_name) = &server_name {
-            self.publisher
-                .on_server_name_information(event::builder::ServerNameInformation {
-                    chosen_server_name,
-                });
-        };
-
         let cipher_suite = key.cipher_suite().into_event();
         let max_mtu = self.path_manager.max_mtu();
         *self.application = Some(Box::new(ApplicationSpace::new(
@@ -389,8 +375,6 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             stream_manager,
             ack_manager,
             keep_alive,
-            server_name,
-            application_protocol,
             max_mtu,
         )));
         self.publisher.on_key_update(event::builder::KeyUpdate {
@@ -401,11 +385,52 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         Ok(())
     }
 
+    fn on_server_name(&mut self, server_name: ServerName) -> Result<(), transport::Error> {
+        self.publisher
+            .on_server_name_information(event::builder::ServerNameInformation {
+                chosen_server_name: &server_name,
+            });
+        *self.server_name = Some(server_name);
+
+        Ok(())
+    }
+
+    fn on_application_protocol(
+        &mut self,
+        application_protocol: Bytes,
+    ) -> Result<(), transport::Error> {
+        self.publisher.on_application_protocol_information(
+            event::builder::ApplicationProtocolInformation {
+                chosen_application_protocol: &application_protocol,
+            },
+        );
+        *self.application_protocol = application_protocol;
+
+        Ok(())
+    }
+
     fn on_handshake_complete(&mut self) -> Result<(), transport::Error> {
         // After the handshake is complete, the handshake crypto stream should be completely
         // finished
         if let Some(space) = self.handshake.as_mut() {
             space.crypto_stream.finish()?;
+        }
+
+        if self.application_protocol.is_empty() {
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
+            //# When using ALPN, endpoints MUST immediately close a connection (see
+            //# Section 10.2 of [QUIC-TRANSPORT]) with a no_application_protocol TLS
+            //# alert (QUIC error code 0x178; see Section 4.8) if an application
+            //# protocol is not negotiated.
+
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
+            //# While [ALPN] only specifies that servers
+            //# use this alert, QUIC clients MUST use error 0x178 to terminate a
+            //# connection when ALPN negotiation fails.
+            let err = crypto::CryptoError::NO_APPLICATION_PROTOCOL
+                .with_reason("Missing ALPN protocol")
+                .into();
+            return Err(err);
         }
 
         self.handshake_status

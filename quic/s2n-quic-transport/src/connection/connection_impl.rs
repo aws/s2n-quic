@@ -1717,17 +1717,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     fn server_name(&self) -> Option<ServerName> {
-        // TODO move SNI to connection
-        self.space_manager.application()?.server_name.clone()
+        self.space_manager.server_name.clone()
     }
 
     fn application_protocol(&self) -> Bytes {
-        // TODO move ALPN to connection
-        if let Some(space) = self.space_manager.application() {
-            space.application_protocol.clone()
-        } else {
-            Bytes::from_static(&[])
-        }
+        self.space_manager.application_protocol.clone()
     }
 
     fn ping(&mut self) -> Result<(), connection::Error> {
