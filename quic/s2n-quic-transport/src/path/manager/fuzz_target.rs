@@ -322,9 +322,9 @@ impl Model {
     }
 
     fn on_bytes_transmitted(&mut self, path_id_generator: u8, bytes: u16) {
-        let path_id = path_id_generator as usize % self.subject.paths.len();
+        let id = path_id_generator as usize % self.subject.paths.len();
 
-        let path = &mut self.subject[Id(path_id as u8)];
+        let path = &mut self.subject[path_id(id as u8)];
         if !path.at_amplification_limit() {
             path.on_bytes_transmitted(bytes as usize);
         }
