@@ -183,3 +183,6 @@ impl BandwidthEstimator {
         self.rate_sample.lost = self.lost_bytes - self.rate_sample.prior_lost;
     }
 }
+
+#[cfg(test)]
+mod tests;
