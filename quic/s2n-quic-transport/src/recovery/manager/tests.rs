@@ -57,6 +57,7 @@ fn one_second_pto_when_no_previous_rtt_available() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
 
     manager
@@ -451,6 +452,7 @@ fn on_ack_frame() {
         MockCongestionController::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
     context.path_mut().pto_backoff = 2;
     let ack_receive_time = ack_receive_time + Duration::from_millis(500);
@@ -1655,7 +1657,7 @@ fn remove_lost_packets_persistent_congestion_path_aware() {
         .is_some());
 
     now += Duration::from_secs(10);
-    let mut bw_estimator = bandwidth::Estimator::default();
+    let mut bw_estimator = bandwidth::Estimator::new(now);
     bw_estimator.on_packet_sent(false, false, now);
     let sent_packets_to_remove = vec![
         (
@@ -2316,6 +2318,7 @@ fn update_pto_timer() {
         MockCongestionController::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
     // simulate receiving a handshake packet to force path validation
     context.path_mut().on_handshake_packet();
@@ -2399,6 +2402,7 @@ fn pto_armed_if_handshake_not_confirmed() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
 
     // simulate receiving a handshake packet to force path validation
@@ -2427,6 +2431,7 @@ fn pto_must_be_at_least_k_granularity() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
 
     // Update RTT with the smallest possible sample
@@ -2523,7 +2528,7 @@ fn on_timeout() {
     //# When a PTO timer expires, the PTO backoff MUST be increased,
     //# resulting in the PTO period being set to twice its current value.
     expected_pto_backoff *= 2;
-    let mut bw_estimator = bandwidth::Estimator::default();
+    let mut bw_estimator = bandwidth::Estimator::new(now);
     bw_estimator.on_packet_sent(false, false, now);
     manager.sent_packets.insert(
         space.new_packet_number(VarInt::from_u8(1)),
@@ -3008,6 +3013,7 @@ fn helper_generate_path_manager_with_first_addr(
         MockCongestionController::default(),
         true,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
 
     path::Manager::new(path, registry)

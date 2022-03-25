@@ -60,6 +60,7 @@ fn get_path_by_address_test() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
 
     let second_conn_id = connection::PeerId::try_from_bytes(&[5, 4, 3, 2, 1]).unwrap();
@@ -71,6 +72,7 @@ fn get_path_by_address_test() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
 
     let mut manager = manager_server(first_path.clone());
@@ -102,6 +104,7 @@ fn test_invalid_path_fallback() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
     // simulate receiving a handshake packet to force path validation
     first_path.on_handshake_packet();
@@ -118,6 +121,7 @@ fn test_invalid_path_fallback() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
     second_path.set_challenge(challenge);
 
@@ -490,6 +494,7 @@ fn silently_return_when_there_is_no_valid_path() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
     first_path.set_challenge(challenge);
     let mut manager = manager_server(first_path);
@@ -693,6 +698,7 @@ fn test_adding_new_path() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
     let mut manager = manager_server(first_path);
 
@@ -754,6 +760,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
     let mut manager = manager_server(first_path);
 
@@ -814,6 +821,7 @@ fn do_not_add_new_path_if_client() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
     let mut manager = manager_client(first_path);
     let mut publisher = Publisher::snapshot();
@@ -867,6 +875,7 @@ fn switch_destination_connection_id_after_first_server_response() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
     let mut manager = manager_client(zero_path);
     assert_eq!(manager[zero_path_id].peer_connection_id, initial_cid);
@@ -905,6 +914,7 @@ fn limit_number_of_connection_migrations() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
     let mut manager = manager_server(first_path);
     let mut total_paths = 1;
@@ -963,6 +973,7 @@ fn connection_migration_challenge_behavior() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
     let mut manager = manager_server(first_path);
 
@@ -1056,6 +1067,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
     let mut manager = manager_server(first_path);
 
@@ -1134,6 +1146,7 @@ fn connection_migration_new_path_abandon_timer() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
     let mut manager = manager_server(first_path);
 
@@ -1254,6 +1267,7 @@ fn stop_using_a_retired_connection_id() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
     let mut manager = manager_server(first_path);
 
@@ -1348,6 +1362,7 @@ fn pending_paths_should_return_paths_pending_validation() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
     let expected_response_data = [0; 8];
     third_path.on_path_challenge(&expected_response_data);
@@ -1412,6 +1427,7 @@ fn temporary_until_authenticated() {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     );
     let mut manager = manager_server(first_path);
 
@@ -1791,6 +1807,7 @@ pub fn helper_path(peer_id: connection::PeerId) -> ServerPath {
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
+        s2n_quic_platform::time::now(),
     )
 }
 

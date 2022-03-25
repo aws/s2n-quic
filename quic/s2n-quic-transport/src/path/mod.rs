@@ -118,6 +118,7 @@ impl<Config: endpoint::Config> Path<Config> {
         congestion_controller: <Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController,
         peer_validated: bool,
         max_mtu: MaxMtu,
+        now: Timestamp,
     ) -> Path<Config> {
         let state = match Config::ENDPOINT_TYPE {
             Type::Server => {
@@ -139,7 +140,7 @@ impl<Config: endpoint::Config> Path<Config> {
             peer_connection_id,
             local_connection_id,
             rtt_estimator,
-            bw_estimator: bandwidth::Estimator::default(),
+            bw_estimator: bandwidth::Estimator::new(now),
             congestion_controller,
             pto_backoff: INITIAL_PTO_BACKOFF,
             state,
@@ -609,6 +610,7 @@ pub mod testing {
             Default::default(),
             true,
             DEFAULT_MAX_MTU,
+            s2n_quic_platform::time::now(),
         )
     }
 
@@ -621,6 +623,7 @@ pub mod testing {
             Default::default(),
             false,
             DEFAULT_MAX_MTU,
+            s2n_quic_platform::time::now(),
         )
     }
 }
@@ -1113,6 +1116,7 @@ mod tests {
 
     #[test]
     fn transmission_constraint_test() {
+        let now = NoopClock.get_time();
         let mut path = Path::new(
             Default::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
@@ -1121,8 +1125,8 @@ mod tests {
             Default::default(),
             false,
             DEFAULT_MAX_MTU,
+            now,
         );
-        let now = NoopClock.get_time();
         path.on_validated();
 
         assert_eq!(

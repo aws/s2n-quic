@@ -30,16 +30,8 @@ pub struct SentPacketInfo {
     pub path_id: path::Id,
     /// The ECN marker (if any) sent on the datagram that contained this packet
     pub ecn: ExplicitCongestionNotification,
-    /// The amount of data in bytes delivered on the connection up to the point this packet was sent
-    pub delivered_bytes: u64,
-    /// The time a packet was last acknowledged at the point this packet was sent
-    pub delivered_time: Timestamp,
-    /// The amount of data in bytes lost on the connection up to the point this packet was sent
-    pub lost_bytes: u64,
-    /// The time of the first send in a flight of data
-    pub first_sent_time: Timestamp,
-    /// True if the connection was application-limited at the time this packet was sent
-    pub is_app_limited: bool,
+    /// Bandwidth-related state at the point this packet was sent
+    pub bandwidth_state: bandwidth::State,
     /// The volume of data that was estimated to be in flight at the time of the transmission of this packet
     pub bytes_in_flight: u32,
 }
@@ -71,15 +63,7 @@ impl SentPacketInfo {
             ack_elicitation,
             path_id,
             ecn,
-            delivered_bytes: bandwidth_state.delivered_bytes,
-            delivered_time: bandwidth_state
-                .delivered_time
-                .expect("bandwidth_state must be initialized when a packet is first sent"),
-            lost_bytes: bandwidth_state.lost_bytes,
-            first_sent_time: bandwidth_state
-                .first_sent_time
-                .expect("bandwidth_state must be initialized when a packet is first sent"),
-            is_app_limited: bandwidth_state.app_limited_timestamp.is_some(),
+            bandwidth_state,
             bytes_in_flight,
         }
     }
@@ -98,8 +82,7 @@ mod test {
     #[test]
     #[should_panic]
     fn too_large_packet() {
-        let mut bw_estimator = bandwidth::Estimator::default();
-        bw_estimator.on_packet_sent(false, false, NoopClock.get_time());
+        let bw_estimator = bandwidth::Estimator::new(NoopClock.get_time());
 
         SentPacketInfo::new(
             true,

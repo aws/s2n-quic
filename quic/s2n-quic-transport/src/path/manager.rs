@@ -431,6 +431,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             cc,
             true,
             max_mtu,
+            datagram.timestamp,
         );
 
         let unblocked = path.on_bytes_received(datagram.payload_len);

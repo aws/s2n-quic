@@ -11,47 +11,39 @@ use crate::{
 
 #[test]
 fn on_packet_sent_timestamp_initialization() {
-    let mut bw_estimator = Estimator::default();
-
     let now = NoopClock.get_time();
-
-    // Test that first_sent_time and delivered_time are updated if they are None
-    assert_eq!(None, bw_estimator.state.first_sent_time);
-    assert_eq!(None, bw_estimator.state.delivered_time);
-    bw_estimator.on_packet_sent(false, false, now);
-    assert_eq!(Some(now), bw_estimator.state.first_sent_time);
-    assert_eq!(Some(now), bw_estimator.state.delivered_time);
+    let mut bw_estimator = Estimator::new(now);
 
     let new_now = now + Duration::from_secs(5);
 
     // Test that first_sent_time and delivered_time are not updated if packets are in flight
     bw_estimator.on_packet_sent(true, false, new_now);
-    assert_eq!(Some(now), bw_estimator.state.first_sent_time);
-    assert_eq!(Some(now), bw_estimator.state.delivered_time);
+    assert_eq!(now, bw_estimator.state.first_sent_time);
+    assert_eq!(now, bw_estimator.state.delivered_time);
 
     // Test that first_sent_time and delivered_time are updated if packets are not in flight
     bw_estimator.on_packet_sent(false, false, new_now);
-    assert_eq!(Some(new_now), bw_estimator.state.first_sent_time);
-    assert_eq!(Some(new_now), bw_estimator.state.delivered_time);
+    assert_eq!(new_now, bw_estimator.state.first_sent_time);
+    assert_eq!(new_now, bw_estimator.state.delivered_time);
 }
 
 #[test]
 fn on_packet_sent_app_limited() {
-    let mut bw_estimator = Estimator::default();
-
     let now = NoopClock.get_time();
+    let mut bw_estimator = Estimator::new(now);
 
     bw_estimator.on_packet_sent(false, false, now);
-    assert_eq!(None, bw_estimator.state.app_limited_timestamp);
+    assert_eq!(None, bw_estimator.app_limited_timestamp);
+    assert!(!bw_estimator.state().is_app_limited);
 
     bw_estimator.on_packet_sent(false, true, now);
-    assert_eq!(Some(now), bw_estimator.state.app_limited_timestamp);
+    assert_eq!(Some(now), bw_estimator.app_limited_timestamp);
 }
 
 #[test]
 fn on_packet_ack_resets_newly_acked_and_lost_on_new_ack() {
-    let mut bw_estimator = Estimator::default();
     let now = NoopClock.get_time();
+    let mut bw_estimator = Estimator::new(now);
     bw_estimator.on_packet_sent(false, false, now);
 
     let mut packet = SentPacketInfo::new(
@@ -68,7 +60,7 @@ fn on_packet_ack_resets_newly_acked_and_lost_on_new_ack() {
     bw_estimator.on_packet_ack(&packet, now);
     assert_eq!(1500, bw_estimator.rate_sample.newly_acked_bytes);
     assert_eq!(1500, bw_estimator.state.delivered_bytes);
-    assert_eq!(Some(now), bw_estimator.state.delivered_time);
+    assert_eq!(now, bw_estimator.state.delivered_time);
 
     bw_estimator.on_packet_loss(1000);
     assert_eq!(1000, bw_estimator.rate_sample.newly_lost_bytes);
@@ -79,7 +71,7 @@ fn on_packet_ack_resets_newly_acked_and_lost_on_new_ack() {
     assert_eq!(3000, bw_estimator.rate_sample.newly_acked_bytes);
     assert_eq!(1000, bw_estimator.rate_sample.newly_lost_bytes);
     assert_eq!(3000, bw_estimator.state.delivered_bytes);
-    assert_eq!(Some(now), bw_estimator.state.delivered_time);
+    assert_eq!(now, bw_estimator.state.delivered_time);
 
     // A packet is acked at a later time, this should reset newly_acked and newly_lost
     // since it must be from a new ack frame
@@ -90,20 +82,20 @@ fn on_packet_ack_resets_newly_acked_and_lost_on_new_ack() {
     assert_eq!(100, bw_estimator.rate_sample.newly_acked_bytes);
     assert_eq!(0, bw_estimator.rate_sample.newly_lost_bytes);
     assert_eq!(3100, bw_estimator.state.delivered_bytes);
-    assert_eq!(Some(now), bw_estimator.state.delivered_time);
+    assert_eq!(now, bw_estimator.state.delivered_time);
 }
 
 #[test]
 fn on_packet_ack_clears_app_limited_timestamp() {
-    let mut bw_estimator = Estimator::default();
     let t0 = NoopClock.get_time();
+    let mut bw_estimator = Estimator::new(t0);
     let t1 = t0 + Duration::from_secs(1);
     // A packet is sent while application limited
     bw_estimator.on_packet_sent(false, true, t0);
     // A packet is sent while not application limited
     bw_estimator.on_packet_sent(true, false, t1);
 
-    assert_eq!(Some(t0), bw_estimator.state.app_limited_timestamp);
+    assert_eq!(Some(t0), bw_estimator.app_limited_timestamp);
 
     let packet_1 = SentPacketInfo::new(
         true,
@@ -121,7 +113,8 @@ fn on_packet_ack_clears_app_limited_timestamp() {
     // The same packet is acked, this shouldn't clear the app_limited_timestamp since
     // it was sent while app-limited, not after.
     bw_estimator.on_packet_ack(&packet_1, t2);
-    assert_eq!(Some(t0), bw_estimator.state.app_limited_timestamp);
+    assert_eq!(Some(t0), bw_estimator.app_limited_timestamp);
+    assert!(bw_estimator.state.is_app_limited);
 
     let packet_2 = SentPacketInfo::new(
         true,
@@ -137,13 +130,14 @@ fn on_packet_ack_clears_app_limited_timestamp() {
     // Now a packet that was sent after the app_limited_timestamp has been acked,
     // so the app_limited_timestamp is cleared
     bw_estimator.on_packet_ack(&packet_2, t2);
-    assert_eq!(None, bw_estimator.state.app_limited_timestamp);
+    assert_eq!(None, bw_estimator.app_limited_timestamp);
+    assert!(!bw_estimator.state.is_app_limited);
 }
 
 #[test]
 fn on_packet_ack_rate_sample() {
-    let mut bw_estimator = Estimator::default();
     let t0 = NoopClock.get_time() + Duration::from_secs(60);
+    let mut bw_estimator = Estimator::new(t0);
     bw_estimator.on_packet_sent(false, false, t0);
 
     let mut packet = SentPacketInfo::new(
@@ -156,7 +150,7 @@ fn on_packet_ack_rate_sample() {
         bw_estimator.state(),
         500,
     );
-    packet.lost_bytes = 1000;
+    packet.bandwidth_state.lost_bytes = 1000;
 
     let t1 = t0 + Duration::from_secs(1);
     bw_estimator.on_packet_ack(&packet, t1);
@@ -169,28 +163,31 @@ fn on_packet_ack_rate_sample() {
 
     // Rate sample is updated since this is the first packet delivered
     assert_eq!(
-        packet.delivered_bytes,
+        packet.bandwidth_state.delivered_bytes,
         bw_estimator.rate_sample.prior_delivered_bytes
     );
-    assert_eq!(packet.lost_bytes, bw_estimator.rate_sample.prior_lost_bytes);
     assert_eq!(
-        packet.is_app_limited,
+        packet.bandwidth_state.lost_bytes,
+        bw_estimator.rate_sample.prior_lost_bytes
+    );
+    assert_eq!(
+        packet.bandwidth_state.is_app_limited,
         bw_estimator.rate_sample.is_app_limited
     );
     assert_eq!(
         packet.bytes_in_flight,
         bw_estimator.rate_sample.bytes_in_flight
     );
-    assert_eq!(Some(packet.time_sent), bw_estimator.state.first_sent_time);
+    assert_eq!(packet.time_sent, bw_estimator.state.first_sent_time);
     assert_eq!(t1 - t0, bw_estimator.rate_sample.interval);
 
     // Ack a newer packet
     let mut new_packet = packet.clone();
-    new_packet.delivered_bytes = 1500;
-    new_packet.lost_bytes = 1000;
+    new_packet.bandwidth_state.delivered_bytes = 1500;
+    new_packet.bandwidth_state.lost_bytes = 1000;
     new_packet.time_sent = t1;
-    new_packet.first_sent_time = t1;
-    new_packet.is_app_limited = true;
+    new_packet.bandwidth_state.first_sent_time = t1;
+    new_packet.bandwidth_state.is_app_limited = true;
     new_packet.bytes_in_flight = 500;
 
     bw_estimator.on_packet_ack(&new_packet, t1);
@@ -206,30 +203,27 @@ fn on_packet_ack_rate_sample() {
 
     // Rate sample is updated since this packet is newer
     assert_eq!(
-        new_packet.delivered_bytes,
+        new_packet.bandwidth_state.delivered_bytes,
         bw_estimator.rate_sample.prior_delivered_bytes
     );
     assert_eq!(
-        new_packet.lost_bytes,
+        new_packet.bandwidth_state.lost_bytes,
         bw_estimator.rate_sample.prior_lost_bytes
     );
     assert_eq!(
-        new_packet.is_app_limited,
+        new_packet.bandwidth_state.is_app_limited,
         bw_estimator.rate_sample.is_app_limited
     );
     assert_eq!(
         new_packet.bytes_in_flight,
         bw_estimator.rate_sample.bytes_in_flight
     );
-    assert_eq!(
-        Some(new_packet.time_sent),
-        bw_estimator.state.first_sent_time
-    );
+    assert_eq!(new_packet.time_sent, bw_estimator.state.first_sent_time);
     assert_eq!(t1 - t0, bw_estimator.rate_sample.interval);
 
     // Ack an older packet
     let mut old_packet = new_packet.clone();
-    old_packet.delivered_bytes = old_packet.delivered_bytes - 1;
+    old_packet.bandwidth_state.delivered_bytes = old_packet.bandwidth_state.delivered_bytes - 1;
     old_packet.time_sent = old_packet.time_sent - Duration::from_secs(1);
 
     bw_estimator.on_packet_ack(&packet, t1);
@@ -245,25 +239,22 @@ fn on_packet_ack_rate_sample() {
 
     // Rate sample is not updated since this packet is older than the current sample
     assert_eq!(
-        new_packet.delivered_bytes,
+        new_packet.bandwidth_state.delivered_bytes,
         bw_estimator.rate_sample.prior_delivered_bytes
     );
     assert_eq!(
-        new_packet.lost_bytes,
+        new_packet.bandwidth_state.lost_bytes,
         bw_estimator.rate_sample.prior_lost_bytes
     );
     assert_eq!(
-        new_packet.is_app_limited,
+        new_packet.bandwidth_state.is_app_limited,
         bw_estimator.rate_sample.is_app_limited
     );
     assert_eq!(
         new_packet.bytes_in_flight,
         bw_estimator.rate_sample.bytes_in_flight
     );
-    assert_eq!(
-        Some(new_packet.time_sent),
-        bw_estimator.state.first_sent_time
-    );
+    assert_eq!(new_packet.time_sent, bw_estimator.state.first_sent_time);
     assert_eq!(t1 - t0, bw_estimator.rate_sample.interval);
 }
 
@@ -275,10 +266,9 @@ fn on_packet_ack_rate_sample() {
 //# by capping the delivery rate sample to be no higher than the send rate.
 #[test]
 fn on_packet_ack_implausible_ack_rate() {
-    let mut bw_estimator = Estimator::default();
     let t0 = NoopClock.get_time();
-    bw_estimator.on_packet_sent(false, false, t0);
-    bw_estimator.state.delivered_time = Some(t0 + Duration::from_secs(4));
+    let mut bw_estimator = Estimator::new(t0);
+    bw_estimator.state.delivered_time = t0 + Duration::from_secs(4);
 
     let packet = SentPacketInfo::new(
         true,
@@ -294,8 +284,8 @@ fn on_packet_ack_implausible_ack_rate() {
     let now = packet.time_sent + Duration::from_secs(1);
     bw_estimator.on_packet_ack(&packet, now);
 
-    let send_elapsed = packet.time_sent - packet.first_sent_time;
-    let ack_elapsed = now - packet.delivered_time;
+    let send_elapsed = packet.time_sent - packet.bandwidth_state.first_sent_time;
+    let ack_elapsed = now - packet.bandwidth_state.delivered_time;
 
     // The amount of time to send the packets was greater than the time to
     // acknowledge them, indicating the ack rate would be implausible.
@@ -308,7 +298,7 @@ fn on_packet_ack_implausible_ack_rate() {
 
 #[test]
 fn on_packet_loss() {
-    let mut bw_estimator = Estimator::default();
+    let mut bw_estimator = Estimator::new(NoopClock.get_time());
 
     assert_eq!(0, bw_estimator.state.lost_bytes);
     assert_eq!(0, bw_estimator.rate_sample.newly_lost_bytes);
