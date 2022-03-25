@@ -182,7 +182,7 @@ fn on_packet_ack_rate_sample() {
     assert_eq!(t1 - t0, bw_estimator.rate_sample.interval);
 
     // Ack a newer packet
-    let mut new_packet = packet.clone();
+    let mut new_packet = packet;
     new_packet.bandwidth_state.delivered_bytes = 1500;
     new_packet.bandwidth_state.lost_bytes = 1000;
     new_packet.time_sent = t1;
@@ -222,9 +222,9 @@ fn on_packet_ack_rate_sample() {
     assert_eq!(t1 - t0, bw_estimator.rate_sample.interval);
 
     // Ack an older packet
-    let mut old_packet = new_packet.clone();
-    old_packet.bandwidth_state.delivered_bytes = old_packet.bandwidth_state.delivered_bytes - 1;
-    old_packet.time_sent = old_packet.time_sent - Duration::from_secs(1);
+    let mut old_packet = new_packet;
+    old_packet.bandwidth_state.delivered_bytes -= 1;
+    old_packet.time_sent -= Duration::from_secs(1);
 
     bw_estimator.on_packet_ack(&packet, t1);
 
