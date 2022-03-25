@@ -9,14 +9,16 @@ use crate::{
     },
     endpoint, transport,
 };
+use alloc::sync::Arc;
 use bytes::Bytes;
 use core::{
     fmt,
+    sync::atomic::{AtomicBool, Ordering},
     task::{Poll, Waker},
 };
 use futures_test::task::new_count_waker;
 use s2n_codec::EncoderValue;
-use std::collections::VecDeque;
+use std::{collections::VecDeque, fmt::Debug};
 
 pub mod certificates {
     macro_rules! pem {
@@ -88,12 +90,23 @@ impl CryptoSuite for Session {
     type RetryKey = crate::crypto::key::testing::Key;
 }
 
+#[derive(Debug)]
+pub struct TlsEndpoint<S: tls::Session, State: Debug> {
+    pub session: S,
+    pub context: Context<S, State>,
+}
+
+impl<S: tls::Session, State: Debug> TlsEndpoint<S, State> {
+    fn new(session: S, context: Context<S, State>) -> Self {
+        Self { session, context }
+    }
+}
+
 /// A pair of TLS sessions and contexts being driven to completion
 #[derive(Debug)]
 pub struct Pair<S: tls::Session, C: tls::Session> {
-    pub server: (S, Context<S>),
-    pub client: (C, Context<C>),
-    pub iterations: usize,
+    pub server: TlsEndpoint<S, ServerState>,
+    pub client: TlsEndpoint<C, ClientState>,
     pub server_name: ServerName,
 }
 
@@ -113,111 +126,122 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
         use crate::crypto::InitialKey;
 
         let server = server_endpoint.new_server_session(&TEST_SERVER_TRANSPORT_PARAMS);
-        let mut server_context = Context::new(endpoint::Type::Server);
+        let mut server_context =
+            Context::new(endpoint::Type::Server, ServerState::WaitingClientHello);
         server_context.initial.crypto = Some(S::InitialKey::new_server(server_name.as_bytes()));
 
         let client =
             client_endpoint.new_client_session(&TEST_CLIENT_TRANSPORT_PARAMS, server_name.clone());
-        let mut client_context = Context::new(endpoint::Type::Client);
+        let mut client_context = Context::new(endpoint::Type::Client, ClientState::ClientHelloSent);
         client_context.initial.crypto = Some(C::InitialKey::new_client(server_name.as_bytes()));
 
         Self {
-            server: (server, server_context),
-            client: (client, client_context),
-            iterations: 0,
+            server: TlsEndpoint::new(server, server_context),
+            client: TlsEndpoint::new(client, client_context),
             server_name,
         }
     }
 
     /// Returns true if `poll` should be called
     pub fn is_handshaking(&self) -> bool {
-        !(self.server.1.handshake_complete && self.client.1.handshake_complete)
+        !(self.server.context.handshake_complete && self.client.context.handshake_complete)
     }
 
     /// Continues progress of the handshake
-    pub fn poll(&mut self) -> Result<(), transport::Error> {
-        match self.client.0.poll(&mut self.client.1) {
+    pub fn poll(
+        &mut self,
+        client_hello_cb_done: Option<Arc<AtomicBool>>,
+    ) -> Result<(), transport::Error> {
+        match self.client.session.poll(&mut self.client.context) {
             Poll::Ready(res) => res?,
             Poll::Pending => (),
         }
-        match self.server.0.poll(&mut self.server.1) {
+        match self.server.session.poll(&mut self.server.context) {
             Poll::Ready(res) => res?,
             Poll::Pending => (),
         }
-
-        self.client.1.transfer(&mut self.server.1);
-        self.iterations += 1;
+        self.client.context.transfer(&mut self.server.context);
 
         eprintln!("1/2 RTT");
-
+        if let Some(client_hello_cb_done) = client_hello_cb_done {
+            // If the server is processing the async client hello callback, then return early
+            // and poll it until it completes
+            if !client_hello_cb_done.load(Ordering::SeqCst)
+                && matches!(self.server.context.state, ServerState::ClientHelloRead)
+            {
+                return Ok(());
+            };
+        }
         self.check_progress();
+
         Ok(())
     }
 
-    fn check_progress(&self) {
-        match self.iterations {
-            0 => unreachable!("check_progress is called after a single iteration"),
-            1 => {
+    fn check_progress(&mut self) {
+        match (&self.client.context.state, &self.server.context.state) {
+            (ClientState::ClientHelloSent, ServerState::WaitingClientHello) => {
                 assert!(
-                    !self.server.1.initial.rx.is_empty(),
+                    !self.server.context.initial.rx.is_empty(),
                     "client should send ClientHello"
                 );
             }
-            2 => {
+            (ClientState::WaitingServerHello, ServerState::ClientHelloRead) => {
                 assert!(
-                    self.server.1.handshake.crypto.is_some(),
+                    self.server.context.handshake.crypto.is_some(),
                     "server should have handshake keys after sending the ServerHello"
                 );
-
                 assert!(
-                    self.server.1.application.crypto.is_some(),
+                    self.server.context.application.crypto.is_some(),
                     "server should have application keys after sending a ServerFinished"
                 );
-
-                assert!(!self.server.1.handshake_complete);
-                assert!(!self.client.1.handshake_complete);
+                assert!(!self.server.context.handshake_complete);
+                assert!(!self.client.context.handshake_complete);
             }
-            3 => {
+            (ClientState::ServerHelloRead, ServerState::WaitingClientFinish) => {
                 assert!(
-                    self.client.1.handshake.crypto.is_some(),
+                    self.client.context.handshake.crypto.is_some(),
                     "client should have handshake keys after reading the ServerHello"
                 );
                 assert!(
-                    self.client.1.application.crypto.is_some(),
+                    self.client.context.application.crypto.is_some(),
                     "client should have application keys after reading the ServerFinished"
                 );
                 assert!(
-                    self.client.1.handshake_complete,
+                    self.client.context.handshake_complete,
                     "client should complete the handshake"
                 );
             }
-            4 => {
+            (ClientState::ClientFinishSent, ServerState::ClientFinishRead) => {
                 assert!(
-                    self.server.1.handshake_complete,
+                    self.server.context.handshake_complete,
                     "server should finish after reading the ClientFinished"
                 );
+                // Transition to HandshakeComplete after this case
             }
-            _ => panic!("handshake made too many iterations"),
-        }
+            _ => unreachable!("handshake made too many iterations"),
+        };
+
+        self.client.context.state.transition();
+        self.server.context.state.transition();
     }
 
     /// Finished the test
     pub fn finish(&self) {
-        self.client.1.finish(&self.server.1);
+        self.client.context.finish(&self.server.context);
 
         assert_eq!(
-            self.client.1.transport_parameters.as_ref().unwrap(),
+            self.client.context.transport_parameters.as_ref().unwrap(),
             TEST_SERVER_TRANSPORT_PARAMS,
             "client did not receive the server transport parameters"
         );
         assert_eq!(
-            self.server.1.transport_parameters.as_ref().unwrap(),
+            self.server.context.transport_parameters.as_ref().unwrap(),
             TEST_CLIENT_TRANSPORT_PARAMS,
             "server did not receive the client transport parameters"
         );
         assert_eq!(
             self.client
-                .1
+                .context
                 .server_name
                 .as_ref()
                 .expect("missing SNI on client"),
@@ -225,19 +249,75 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
         );
         assert_eq!(
             self.server
-                .1
+                .context
                 .server_name
                 .as_ref()
                 .expect("missing ServerName on server"),
             &self.server_name[..]
+        );
+        assert!(
+            matches!(self.client.context.state, ClientState::HandshakeComplete),
+            "client state did not complete: current state: {:?}",
+            self.client.context.state,
+        );
+        assert!(
+            matches!(self.server.context.state, ServerState::HandshakeComplete),
+            "server state did not complete: current state: {:?}",
+            self.server.context.state,
         );
 
         // TODO check 0-rtt keys
     }
 }
 
+#[derive(Debug)]
+pub enum ClientState {
+    ClientHelloSent,
+    WaitingServerHello,
+    ServerHelloRead,
+    ClientFinishSent,
+    HandshakeComplete,
+}
+
+impl ClientState {
+    fn transition(&mut self) {
+        let new_state = match &self {
+            ClientState::ClientHelloSent => Self::WaitingServerHello,
+            ClientState::WaitingServerHello => Self::ServerHelloRead,
+            ClientState::ServerHelloRead => Self::ClientFinishSent,
+            ClientState::ClientFinishSent => Self::HandshakeComplete,
+            ClientState::HandshakeComplete => unreachable!("handshake made too many iterations"),
+        };
+
+        *self = new_state;
+    }
+}
+
+#[derive(Debug)]
+pub enum ServerState {
+    WaitingClientHello,
+    ClientHelloRead, // send server hello, handshake keys, 1-rtt keys
+    WaitingClientFinish,
+    ClientFinishRead,
+    HandshakeComplete,
+}
+
+impl ServerState {
+    fn transition(&mut self) {
+        let new_state = match &self {
+            ServerState::WaitingClientHello => Self::ClientHelloRead,
+            ServerState::ClientHelloRead => Self::WaitingClientFinish,
+            ServerState::WaitingClientFinish => Self::ClientFinishRead,
+            ServerState::ClientFinishRead => Self::HandshakeComplete,
+            ServerState::HandshakeComplete => unreachable!("handshake made too many iterations"),
+        };
+
+        *self = new_state;
+    }
+}
+
 /// Harness to ensure a TLS implementation adheres to the session contract
-pub struct Context<C: CryptoSuite> {
+pub struct Context<C: CryptoSuite, State: Debug> {
     pub initial: Space<C::InitialKey, C::InitialHeaderKey>,
     pub handshake: Space<C::HandshakeKey, C::HandshakeHeaderKey>,
     pub application: Space<C::OneRttKey, C::OneRttHeaderKey>,
@@ -247,10 +327,11 @@ pub struct Context<C: CryptoSuite> {
     pub application_protocol: Option<Bytes>,
     pub transport_parameters: Option<Bytes>,
     endpoint: endpoint::Type,
+    pub state: State,
     waker: Waker,
 }
 
-impl<C: CryptoSuite> fmt::Debug for Context<C> {
+impl<C: CryptoSuite, State: Debug> fmt::Debug for Context<C, State> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Context")
             .field("initial", &self.initial)
@@ -261,12 +342,13 @@ impl<C: CryptoSuite> fmt::Debug for Context<C> {
             .field("sni", &self.server_name)
             .field("application_protocol", &self.application_protocol)
             .field("transport_parameters", &self.transport_parameters)
+            .field("endpoint", &self.endpoint)
             .finish()
     }
 }
 
-impl<C: CryptoSuite> Context<C> {
-    fn new(endpoint: endpoint::Type) -> Self {
+impl<C: CryptoSuite, State: Debug> Context<C, State> {
+    fn new(endpoint: endpoint::Type, state: State) -> Self {
         let (waker, _wake_counter) = new_count_waker();
         Self {
             initial: Space::default(),
@@ -278,19 +360,20 @@ impl<C: CryptoSuite> Context<C> {
             application_protocol: None,
             transport_parameters: None,
             endpoint,
+            state,
             waker,
         }
     }
 
     /// Transfers incoming and outgoing buffers between two contexts
-    pub fn transfer<O: CryptoSuite>(&mut self, other: &mut Context<O>) {
+    pub fn transfer<O: CryptoSuite, OS: Debug>(&mut self, other: &mut Context<O, OS>) {
         self.initial.transfer(&mut other.initial);
         self.handshake.transfer(&mut other.handshake);
         self.application.transfer(&mut other.application);
     }
 
     /// Finishes the test and asserts consistency
-    pub fn finish<O: CryptoSuite>(&self, other: &Context<O>) {
+    pub fn finish<O: CryptoSuite, OS: Debug>(&self, other: &Context<O, OS>) {
         self.assert_done();
         other.assert_done();
 
@@ -332,9 +415,10 @@ impl<C: CryptoSuite> Context<C> {
 
     fn log(&self, event: &str) {
         eprintln!(
-            "{:?}: {}: {}",
-            self.endpoint,
-            core::any::type_name::<C>(),
+            "{:?}: {:?}: {}: {}",
+            self.endpoint,               // Client or Server
+            self.state,                  // ClientState or ServerState
+            core::any::type_name::<C>(), // rustls or s2n-tls
             event,
         );
     }
@@ -467,7 +551,7 @@ fn protect_unprotect<P: HeaderKey, U: HeaderKey>(protect: &P, unprotect: &U, tag
     );
 }
 
-impl<C: CryptoSuite> tls::Context<C> for Context<C> {
+impl<C: CryptoSuite, State: Debug> tls::Context<C> for Context<C, State> {
     fn on_handshake_keys(
         &mut self,
         key: C::HandshakeKey,
