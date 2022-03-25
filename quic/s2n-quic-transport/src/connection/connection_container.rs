@@ -167,6 +167,37 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionNode<C, L> {
             Err(_) => Poll::Ready(Err(connection::Error::unspecified().into())),
         }
     }
+
+    #[inline]
+    fn ensure_consistency(&self) {
+        if !cfg!(debug_assertions) {
+            return;
+        }
+
+        if self.done_connections_link.is_linked() {
+            assert!(
+                !self.waiting_for_connection_id_link.is_linked(),
+                "A done connection should not be waiting for connection IDs"
+            );
+            assert!(
+                !self.waiting_for_timeout_link.is_linked(),
+                "A done connection should not be waiting for timeout"
+            );
+            assert!(
+                !self.waiting_for_transmission_link.is_linked(),
+                "A done connection should not be waiting for transmission"
+            );
+
+            return;
+        }
+
+        assert!(
+            self.waiting_for_connection_id_link.is_linked()
+                || self.waiting_for_timeout_link.is_linked()
+                || self.waiting_for_transmission_link.is_linked(),
+            "Active connections should express interest in at least one action"
+        );
+    }
 }
 
 impl<'a, C: connection::Trait, L: connection::Lock<C>> KeyAdapter<'a>
@@ -514,6 +545,8 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
                 unreachable!("Done connections should never report not done later");
             }
         }
+
+        node.ensure_consistency();
 
         Ok(())
     }

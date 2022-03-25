@@ -12,7 +12,10 @@ use crate::{
 };
 use bolero::{check, generator::*};
 use bytes::Bytes;
-use core::task::{Context, Poll};
+use core::{
+    task::{Context, Poll},
+    time::Duration,
+};
 use s2n_quic_core::{
     application, event,
     event::builder::DatagramDropReason,
@@ -27,7 +30,7 @@ use s2n_quic_core::{
         zero_rtt::ProtectedZeroRtt,
     },
     path::MaxMtu,
-    time::Timestamp,
+    time::{Timer, Timestamp},
 };
 use std::sync::Mutex;
 
@@ -36,6 +39,7 @@ struct TestConnection {
     has_been_accepted: bool,
     is_closed: bool,
     interests: ConnectionInterests,
+    close_timer: Timer,
 }
 
 impl Default for TestConnection {
@@ -44,7 +48,11 @@ impl Default for TestConnection {
             is_handshaking: true,
             has_been_accepted: false,
             is_closed: false,
-            interests: ConnectionInterests::default(),
+            interests: ConnectionInterests {
+                transmission: true,
+                ..Default::default()
+            },
+            close_timer: Default::default(),
         }
     }
 }
@@ -69,11 +77,12 @@ impl connection::Trait for TestConnection {
         _error: connection::Error,
         _close_formatter: &<Self::Config as endpoint::Config>::ConnectionCloseFormatter,
         _packet_buffer: &mut endpoint::PacketBuffer,
-        _timestamp: Timestamp,
+        timestamp: Timestamp,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) {
         assert!(!self.is_closed);
-        self.is_closed = true;
+        assert!(!self.close_timer.is_armed());
+        self.close_timer.set(timestamp + Duration::from_secs(1));
     }
 
     fn mark_as_accepted(&mut self) {
@@ -103,11 +112,14 @@ impl connection::Trait for TestConnection {
     fn on_timeout(
         &mut self,
         _connection_id_mapper: &mut connection::ConnectionIdMapper,
-        _timestamp: Timestamp,
+        timestamp: Timestamp,
         _supervisor_context: &supervisor::Context,
         _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), connection::Error> {
+        if self.close_timer.poll_expiration(timestamp).is_ready() {
+            self.is_closed = true;
+        }
         Ok(())
     }
 
@@ -418,7 +430,16 @@ fn container_test() {
                         was_called = true;
 
                         let i = &mut conn.interests;
-                        i.finalization = *finalization;
+
+                        if *finalization {
+                            // in the finalization state, that should be the only interest
+                            *i = ConnectionInterests {
+                                finalization: true,
+                                ..Default::default()
+                            };
+                            return;
+                        }
+
                         i.closing = *closing;
                         if !conn.has_been_accepted {
                             i.accept = *accept;
@@ -429,6 +450,11 @@ fn container_test() {
                         i.transmission = *transmission;
                         i.new_connection_id = *new_connection_id;
                         i.timeout = timeout.map(|ms| now + Duration::from_millis(ms as _));
+
+                        // we need to express at least one interest to ensure progress
+                        if !(i.transmission || i.new_connection_id || i.timeout.is_some()) {
+                            i.transmission = true;
+                        }
                     });
 
                     if *finalization {
@@ -454,10 +480,17 @@ fn container_test() {
                 Operation::Timeout(ms) => {
                     now += Duration::from_millis(*ms as _);
                     container.iterate_timeout_list(now, |conn, _context| {
+                        let i = &mut conn.interests;
+
                         assert!(
-                            conn.interests.timeout.take().unwrap() <= now,
+                            i.timeout.take().unwrap() <= now,
                             "connections should only be present when timeout interest is expressed"
                         );
+
+                        // we need to express at least one interest to ensure progress
+                        if !(i.transmission || i.new_connection_id || i.timeout.is_some()) {
+                            i.transmission = true;
+                        }
                     });
                 }
                 Operation::Transmit(count) => {
