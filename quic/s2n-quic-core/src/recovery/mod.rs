@@ -6,7 +6,6 @@ pub use cubic::CubicCongestionController;
 pub use rtt_estimator::*;
 pub use sent_packets::*;
 
-pub mod bandwidth;
 pub mod congestion_controller;
 pub mod cubic;
 mod hybrid_slow_start;
