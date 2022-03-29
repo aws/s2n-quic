@@ -1,105 +1,90 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{recovery::SentPacketInfo, time::Timestamp};
+use crate::time::Timestamp;
 use core::{cmp::max, time::Duration};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-/// Bandwidth-related data tracked for each path
-pub struct State {
-    //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#2.2
-    //# The amount of data delivered MAY be tracked in units of either octets or packets.
-    /// The total amount of data in bytes delivered so far over the lifetime of the path, not including
-    /// non-congestion-controlled packets such as pure ACK packets.
+/// Bandwidth-related data tracked for each sent packet
+pub struct PacketInfo {
+    /// `Estimator.delivered_bytes` at the time this packet was sent.
     pub delivered_bytes: u64,
-    /// The timestamp when delivered_bytes was last updated, or the time the first packet was
-    /// sent if no packet was in flight yet.
+    /// `Estimator.delivered_time` at the time this packet was sent.
     pub delivered_time: Timestamp,
-    /// The total amount of data in bytes declared lost so far over the lifetime of the path, not including
-    /// non-congestion-controlled packets such as pure ACK packets.
+    /// `Estimator.lost_bytes` at the time this packet was sent.
     pub lost_bytes: u64,
-    /// If packets are in flight, then this holds the send time of the packet that was most recently
-    /// marked as delivered. Else, if the connection was recently idle, then this holds the send
-    /// time of the first packet sent after resuming from idle.
+    /// `Estimator.first_sent_time` at the time this packet was sent.
     pub first_sent_time: Timestamp,
     /// The volume of data that was estimated to be in flight at the time of the transmission of this packet
     pub bytes_in_flight: u32,
-    /// Whether the path send rate is limited by the application rather than congestion control
+    /// Whether the path send rate was limited by the application rather than congestion control at the time
+    /// this packet was sent
     pub is_app_limited: bool,
-}
-
-impl State {
-    fn new(now: Timestamp) -> Self {
-        Self {
-            delivered_bytes: 0,
-            delivered_time: now,
-            lost_bytes: 0,
-            first_sent_time: now,
-            bytes_in_flight: 0,
-            is_app_limited: false,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
 /// A bandwidth delivery rate estimate with associated metadata
 pub struct RateSample {
-    /// Whether this rate sample should be considered application limited
-    ///
-    /// True if the connection was application limited at the time the most recently acknowledged
-    /// packet was sent.
-    pub is_app_limited: bool,
     /// The length of the sampling interval
     pub interval: Duration,
     /// The amount of data in bytes marked as delivered over the sampling interval
     pub delivered_bytes: u64,
-    /// A snapshot of the total data in bytes delivered over the lifetime of the connection
-    /// at the time the most recently acknowledged packet was sent
-    pub prior_delivered_bytes: u64,
-    /// The number of bytes of data acknowledged in the latest ACK frame
-    pub newly_acked_bytes: u64,
-    /// The number of bytes of data declared lost upon receipt of the latest ACK frame
-    pub newly_lost_bytes: u64,
-    /// The number of bytes that was estimated to be in flight at the time of the transmission of
-    /// the packet that has just been ACKed
-    pub bytes_in_flight: u32,
     /// The amount of data in bytes marked as lost over the sampling interval
     pub lost_bytes: u64,
-    /// A snapshot of the total data in bytes lost over the lifetime of the connection
-    /// at the time the most recently acknowledged packet was sent
+    /// `PacketInfo.is_app_limited` from the most recent acknowledged packet
+    pub is_app_limited: bool,
+    /// `PacketInfo.delivered_bytes` from the most recent acknowledged packet
+    pub prior_delivered_bytes: u64,
+    /// `PacketInfo.bytes_in_flight` from the most recent acknowledged packet
+    pub bytes_in_flight: u32,
+    /// `PacketInfo.lost_bytes` from the most recent acknowledged packet
     pub prior_lost_bytes: u64,
+}
+
+impl RateSample {
+    /// Updates the rate sample with the most recent acknowledged packet
+    fn on_ack(&mut self, packet_info: PacketInfo) {
+        debug_assert!(
+            packet_info.delivered_bytes >= self.prior_delivered_bytes,
+            "on_ack should only be called with the newest acknowledged packet"
+        );
+
+        self.is_app_limited = packet_info.is_app_limited;
+        self.prior_delivered_bytes = packet_info.delivered_bytes;
+        self.prior_lost_bytes = packet_info.lost_bytes;
+        self.bytes_in_flight = packet_info.bytes_in_flight;
+    }
 }
 
 /// Bandwidth estimator as defined in [Delivery Rate Estimation](https://datatracker.ietf.org/doc/draft-cheng-iccrg-delivery-rate-estimation/)
 /// and [BBR Congestion Control](https://datatracker.ietf.org/doc/draft-cardwell-iccrg-bbr-congestion-control/).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Estimator {
-    state: State,
-    /// The time sent of the last transmitted packet marked as application-limited
-    app_limited_timestamp: Option<Timestamp>,
+    //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#2.2
+    //# The amount of data delivered MAY be tracked in units of either octets or packets.
+    /// The total amount of data in bytes delivered so far over the lifetime of the path, not including
+    /// non-congestion-controlled packets such as pure ACK packets.
+    delivered_bytes: u64,
+    /// The timestamp when delivered_bytes was last updated, or if the connection
+    /// was recently idle, the send time of the first packet sent after resuming from idle.
+    delivered_time: Option<Timestamp>,
+    /// The total amount of data in bytes declared lost so far over the lifetime of the path, not including
+    /// non-congestion-controlled packets such as pure ACK packets.
+    lost_bytes: u64,
+    /// The send time of the packet that was most recently marked as delivered, or if the connection
+    /// was recently idle, the send time of the first packet sent after resuming from idle.
+    first_sent_time: Option<Timestamp>,
     rate_sample: RateSample,
 }
 
 impl Estimator {
-    /// Constructs a new `bandwidth::Estimator`
-    pub fn new(now: Timestamp) -> Self {
-        Self {
-            state: State::new(now),
-            app_limited_timestamp: None,
-            rate_sample: RateSample::default(),
-        }
+    /// Gets the total amount of data in bytes delivered so far over the lifetime of the path, not including
+    /// non-congestion-controlled packets such as pure ACK packets.
+    pub fn delivered_bytes(&self) -> u64 {
+        self.delivered_bytes
     }
 
-    /// Gets the current bandwidth::State
-    pub fn state(&self) -> State {
-        debug_assert_eq!(
-            self.state.is_app_limited,
-            self.app_limited_timestamp.is_some()
-        );
-        self.state
-    }
-
-    /// Gets the latest bandwidth:RateSample
+    /// Gets the latest `bandwidth::RateSample`
     pub fn rate_sample(&self) -> RateSample {
         self.rate_sample
     }
@@ -107,22 +92,31 @@ impl Estimator {
     /// Called when a packet is transmitted
     pub fn on_packet_sent(
         &mut self,
-        packets_in_flight: bool,
-        application_limited: bool,
+        bytes_in_flight: u32,
+        is_app_limited: bool,
         now: Timestamp,
-    ) {
+    ) -> PacketInfo {
         //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#3.2
         //# If there are no packets in flight yet, then we can start the delivery rate interval
         //# at the current time, since we know that any ACKs after now indicate that the network
         //# was able to deliver those packets completely in the sampling interval between now
         //# and the next ACK.
-        if !packets_in_flight {
-            self.state.first_sent_time = now;
-            self.state.delivered_time = now;
+        if bytes_in_flight == 0 {
+            self.first_sent_time = Some(now);
+            self.delivered_time = Some(now);
         }
 
-        if application_limited {
-            self.update_app_limited_timestamp(Some(now));
+        PacketInfo {
+            delivered_bytes: self.delivered_bytes,
+            delivered_time: self
+                .delivered_time
+                .expect("initialized on first sent packet"),
+            lost_bytes: self.lost_bytes,
+            first_sent_time: self
+                .first_sent_time
+                .expect("initialized on first sent packet"),
+            bytes_in_flight,
+            is_app_limited,
         }
     }
 
@@ -135,35 +129,25 @@ impl Estimator {
         &mut self,
         bytes_acknowledged: usize,
         newest_acked_time_sent: Timestamp,
-        newest_acked_packet_state: State,
+        newest_acked_packet_info: PacketInfo,
         now: Timestamp,
     ) {
-        if now > self.state.delivered_time {
-            // This is the first ack from a new ACK frame, reset newly acked and lost
-            self.rate_sample.newly_acked_bytes = 0;
-            self.rate_sample.newly_lost_bytes = 0;
-        }
-
-        self.state.delivered_bytes += bytes_acknowledged as u64;
-        self.state.delivered_time = now;
-        self.rate_sample.newly_acked_bytes += bytes_acknowledged as u64;
+        self.delivered_bytes += bytes_acknowledged as u64;
+        self.delivered_time = Some(now);
 
         //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#3.3
         //# UpdateRateSample() is invoked multiple times when a stretched ACK acknowledges
         //# multiple data packets. In this case we use the information from the most recently
         //# sent packet, i.e., the packet with the highest "P.delivered" value.
         if self.rate_sample.prior_delivered_bytes == 0
-            || newest_acked_packet_state.delivered_bytes > self.rate_sample.prior_delivered_bytes
+            || newest_acked_packet_info.delivered_bytes > self.rate_sample.prior_delivered_bytes
         {
             // Update info using the newest packet
-            self.rate_sample.prior_delivered_bytes = newest_acked_packet_state.delivered_bytes;
-            self.rate_sample.prior_lost_bytes = newest_acked_packet_state.lost_bytes;
-            self.rate_sample.is_app_limited = newest_acked_packet_state.is_app_limited;
-            self.rate_sample.bytes_in_flight = newest_acked_packet_state.bytes_in_flight;
-            self.state.first_sent_time = newest_acked_time_sent;
+            self.rate_sample.on_ack(newest_acked_packet_info);
+            self.first_sent_time = Some(newest_acked_time_sent);
 
-            let send_elapsed = packet.time_sent - newest_acked_packet_state.first_sent_time;
-            let ack_elapsed = now - newest_acked_packet_state.delivered_time;
+            let send_elapsed = newest_acked_time_sent - newest_acked_packet_info.first_sent_time;
+            let ack_elapsed = now - newest_acked_packet_info.delivered_time;
 
             //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#2.2.4
             //# Since it is physically impossible to have data delivered faster than it is sent
@@ -171,34 +155,17 @@ impl Estimator {
             //# is faster than the send rate for the flight, it filters out the implausible ack_rate
             //# by capping the delivery rate sample to be no higher than the send rate.
             self.rate_sample.interval = max(send_elapsed, ack_elapsed);
-
-            let sent_after_app_limited = self
-                .app_limited_timestamp
-                .map_or(false, |app_limited_timestamp| {
-                    packet.time_sent > app_limited_timestamp
-                });
-            if sent_after_app_limited {
-                // The connection is no longer app limited if packets that were sent after the time
-                // the connection was app limited have been acknowledged.
-                self.update_app_limited_timestamp(None);
-            }
         }
 
         self.rate_sample.delivered_bytes =
-            self.state.delivered_bytes - self.rate_sample.prior_delivered_bytes;
+            self.delivered_bytes - self.rate_sample.prior_delivered_bytes;
     }
 
     /// Called when packets are declared lost
     #[inline]
     pub fn on_loss(&mut self, lost_bytes: usize) {
-        self.state.lost_bytes += lost_bytes as u64;
-        self.rate_sample.newly_lost_bytes += lost_bytes as u64;
-        self.rate_sample.lost_bytes = self.state.lost_bytes - self.rate_sample.prior_lost_bytes;
-    }
-
-    fn update_app_limited_timestamp(&mut self, app_limited_timestamp: Option<Timestamp>) {
-        self.app_limited_timestamp = app_limited_timestamp;
-        self.state.is_app_limited = app_limited_timestamp.is_some();
+        self.lost_bytes += lost_bytes as u64;
+        self.rate_sample.lost_bytes = self.lost_bytes - self.rate_sample.prior_lost_bytes;
     }
 }
 
