@@ -34,7 +34,7 @@ SERVER=$SERVER \
   TMP_DIR=$TMP_DIR \
   OUT_DIR=$OUT_DIR \
   TEST=$TEST \
-  ultraman start --no-timestamp
+  ultraman start --no-timestamp true
 
 function report() {
   echo "$1 - generating report"
