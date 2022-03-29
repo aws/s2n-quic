@@ -3,7 +3,6 @@
 
 use core::task::Poll;
 use s2n_quic::provider::tls::s2n_tls::{ClientHelloHandler, Connection};
-use tokio::time::Sleep;
 
 pub struct MyClientHelloHandler {}
 

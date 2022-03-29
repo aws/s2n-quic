@@ -348,7 +348,7 @@ fn congestion_avoidance_after_idle_period() {
     assert_eq!(cc.bytes_in_flight, 2000);
 
     // t16: Ack a packet in Congestion Avoidance
-    cc.on_packet_ack(now, 1000, rtt_estimator, now + Duration::from_secs(16));
+    cc.on_ack(now, 1000, (), rtt_estimator, now + Duration::from_secs(16));
     // Verify the app limited time is set
     assert_eq!(
         cc.state,
@@ -369,7 +369,7 @@ fn congestion_avoidance_after_idle_period() {
     assert!(!cc.is_congestion_window_under_utilized());
 
     // t25: Ack a packet in Congestion Avoidance
-    cc.on_packet_ack(now, 1000, rtt_estimator, now + Duration::from_secs(25));
+    cc.on_ack(now, 1000, (), rtt_estimator, now + Duration::from_secs(25));
 
     // Verify congestion avoidance start time was moved from t10 to t16 to account
     // for the 6 seconds of under utilized time and the app_limited_time was reset
@@ -399,7 +399,7 @@ fn congestion_avoidance_after_fast_convergence() {
     cc.congestion_window = 80_000.0;
     cc.cubic.w_last_max = bytes_to_packets(100_000.0, max_datagram_size);
 
-    cc.on_packets_lost(100, false, now);
+    cc.on_packet_lost(100, (), false, now);
     assert_delta!(cc.congestion_window, 80_000.0 * BETA_CUBIC, 0.001);
 
     // Window max was less than the last max, so fast convergence applies
@@ -470,7 +470,7 @@ fn on_packet_lost() {
     cc.bytes_in_flight = BytesInFlight::new(100_000);
     cc.state = SlowStart;
 
-    cc.on_packets_lost(100, false, now + Duration::from_secs(10));
+    cc.on_packet_lost(100, (), false, now + Duration::from_secs(10));
 
     assert_eq!(cc.bytes_in_flight, 100_000u32 - 100);
     //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.1
@@ -500,7 +500,7 @@ fn on_packet_lost_below_minimum_window() {
     cc.bytes_in_flight = BytesInFlight::new(cc.congestion_window());
     cc.state = State::congestion_avoidance(now);
 
-    cc.on_packets_lost(100, false, now + Duration::from_secs(10));
+    cc.on_packet_lost(100, (), false, now + Duration::from_secs(10));
 
     assert_delta!(cc.congestion_window, cc.cubic.minimum_window(), 0.001);
 }
@@ -515,8 +515,8 @@ fn on_packet_lost_already_in_recovery() {
 
     // break up on_packet_loss into two call to confirm double call
     // behavior is valid (50 + 50 = 100 lost bytes)
-    cc.on_packets_lost(50, false, now);
-    cc.on_packets_lost(50, false, now);
+    cc.on_packet_lost(50, (), false, now);
+    cc.on_packet_lost(50, (), false, now);
 
     // No change to the congestion window
     assert_delta!(cc.congestion_window, 10000.0, 0.001);
@@ -536,7 +536,7 @@ fn on_packet_lost_persistent_congestion() {
     cc.bytes_in_flight = BytesInFlight::new(1000);
     cc.state = Recovery(now, Idle);
 
-    cc.on_packets_lost(100, true, now);
+    cc.on_packet_lost(100, (), true, now);
 
     assert_eq!(cc.state, SlowStart);
     assert_delta!(cc.congestion_window, cc.cubic.minimum_window(), 0.001);
@@ -634,13 +634,13 @@ fn on_packet_ack_limited() {
     cc.under_utilized = true;
     cc.state = SlowStart;
 
-    cc.on_packet_ack(now, 1, &RttEstimator::new(Duration::from_secs(0)), now);
+    cc.on_ack(now, 1, (), &RttEstimator::new(Duration::from_secs(0)), now);
 
     assert_delta!(cc.congestion_window, 100_000.0, 0.001);
 
     cc.state = State::congestion_avoidance(now);
 
-    cc.on_packet_ack(now, 1, &RttEstimator::new(Duration::from_secs(0)), now);
+    cc.on_ack(now, 1, (), &RttEstimator::new(Duration::from_secs(0)), now);
 
     assert_delta!(cc.congestion_window, 100_000.0, 0.001);
 }
@@ -656,7 +656,7 @@ fn on_packet_ack_timestamp_regression() {
     cc.under_utilized = true;
     cc.state = State::congestion_avoidance(now);
 
-    cc.on_packet_ack(now, 1, &rtt_estimator, now);
+    cc.on_ack(now, 1, (), &rtt_estimator, now);
 
     assert_eq!(
         State::CongestionAvoidance(CongestionAvoidanceTiming {
@@ -667,7 +667,7 @@ fn on_packet_ack_timestamp_regression() {
         cc.state
     );
 
-    cc.on_packet_ack(now, 1, &rtt_estimator, now - Duration::from_secs(1));
+    cc.on_ack(now, 1, (), &rtt_estimator, now - Duration::from_secs(1));
 }
 
 #[test]
@@ -686,7 +686,7 @@ fn on_packet_ack_utilized_then_under_utilized() {
     cc.state = SlowStart;
 
     cc.on_packet_sent(now, 60_000, &rtt_estimator);
-    cc.on_packet_ack(now, 50_000, &rtt_estimator, now);
+    cc.on_ack(now, 50_000, (), &rtt_estimator, now);
     let cwnd = cc.congestion_window();
 
     assert!(!cc.under_utilized);
@@ -694,7 +694,13 @@ fn on_packet_ack_utilized_then_under_utilized() {
 
     // Now the window is under utilized, but we still grow the window until more packets are sent
     assert!(cc.is_congestion_window_under_utilized());
-    cc.on_packet_ack(now, 1200, &rtt_estimator, now + Duration::from_millis(100));
+    cc.on_ack(
+        now,
+        1200,
+        (),
+        &rtt_estimator,
+        now + Duration::from_millis(100),
+    );
     assert!(cc.congestion_window() > cwnd);
 
     let cwnd = cc.congestion_window();
@@ -703,7 +709,13 @@ fn on_packet_ack_utilized_then_under_utilized() {
     // utilize the congestion window, so the window does not grow.
     cc.on_packet_sent(now, 1200, &rtt_estimator);
     assert!(cc.under_utilized);
-    cc.on_packet_ack(now, 1200, &rtt_estimator, now + Duration::from_millis(201));
+    cc.on_ack(
+        now,
+        1200,
+        (),
+        &rtt_estimator,
+        now + Duration::from_millis(201),
+    );
     assert_eq!(cc.congestion_window(), cwnd);
 }
 
@@ -719,9 +731,10 @@ fn on_packet_ack_recovery_to_congestion_avoidance() {
     cc.bytes_in_flight = BytesInFlight::new(25000);
     cc.under_utilized = false;
 
-    cc.on_packet_ack(
+    cc.on_ack(
         now + Duration::from_millis(1),
         1,
+        (),
         &RttEstimator::new(Duration::from_secs(0)),
         now + Duration::from_millis(2),
     );
@@ -745,9 +758,10 @@ fn on_packet_ack_slow_start_to_congestion_avoidance() {
     cc.slow_start.threshold = 10050.0;
     cc.under_utilized = false;
 
-    cc.on_packet_ack(
+    cc.on_ack(
         now,
         100,
+        (),
         &RttEstimator::new(Duration::from_secs(0)),
         now + Duration::from_millis(2),
     );
@@ -774,9 +788,10 @@ fn on_packet_ack_recovery() {
     cc.congestion_window = 10000.0;
     cc.bytes_in_flight = BytesInFlight::new(10000);
 
-    cc.on_packet_ack(
+    cc.on_ack(
         now,
         100,
+        (),
         &RttEstimator::new(Duration::from_secs(0)),
         now + Duration::from_millis(2),
     );
@@ -812,7 +827,13 @@ fn on_packet_ack_congestion_avoidance() {
         PacketNumberSpace::ApplicationData,
     );
 
-    cc.on_packet_ack(now, 1000, &rtt_estimator, now + Duration::from_millis(4750));
+    cc.on_ack(
+        now,
+        1000,
+        (),
+        &rtt_estimator,
+        now + Duration::from_millis(4750),
+    );
 
     let t = Duration::from_millis(4750) - Duration::from_millis(3300);
     let rtt = rtt_estimator.min_rtt();

@@ -1,21 +1,22 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::path;
-use core::convert::TryInto;
-use s2n_quic_core::{
-    frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification,
-    packet::number::Map as PacketNumberMap, time::Timestamp,
+use crate::{
+    frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification, path,
+    time::Timestamp,
 };
+use core::convert::TryInto;
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-A.1
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-A.1.1
 
-pub type SentPackets = PacketNumberMap<SentPacketInfo>;
+#[cfg(feature = "alloc")]
+pub type SentPackets<PacketInfo> = crate::packet::number::Map<SentPacketInfo<PacketInfo>>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct SentPacketInfo {
+#[non_exhaustive]
+pub struct SentPacketInfo<PacketInfo> {
     /// Indicates whether the packet counts towards bytes in flight
     pub congestion_controlled: bool,
     /// The number of bytes sent in the packet, not including UDP or IP overhead,
@@ -29,9 +30,12 @@ pub struct SentPacketInfo {
     pub path_id: path::Id,
     /// The ECN marker (if any) sent on the datagram that contained this packet
     pub ecn: ExplicitCongestionNotification,
+    /// Additional packet metadata dictated by the congestion controller
+    pub cc_packet_info: PacketInfo,
 }
 
-impl SentPacketInfo {
+impl<PacketInfo> SentPacketInfo<PacketInfo> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         congestion_controlled: bool,
         sent_bytes: usize,
@@ -39,6 +43,7 @@ impl SentPacketInfo {
         ack_elicitation: AckElicitation,
         path_id: path::Id,
         ecn: ExplicitCongestionNotification,
+        cc_packet_info: PacketInfo,
     ) -> Self {
         debug_assert_eq!(
             sent_bytes > 0,
@@ -55,15 +60,19 @@ impl SentPacketInfo {
             ack_elicitation,
             path_id,
             ecn,
+            cc_packet_info,
         }
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::{path, recovery::SentPacketInfo};
-    use s2n_quic_core::{
-        frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification,
+    use crate::{
+        frame::ack_elicitation::AckElicitation,
+        inet::ExplicitCongestionNotification,
+        path,
+        recovery::SentPacketInfo,
+        time::{Clock, NoopClock},
     };
 
     #[test]
@@ -71,24 +80,26 @@ mod test {
     fn too_large_packet() {
         SentPacketInfo::new(
             true,
-            u16::max_value() as usize + 1,
-            s2n_quic_platform::time::now(),
+            u16::MAX as usize + 1,
+            NoopClock.get_time(),
             AckElicitation::Eliciting,
-            path::Id::new(0),
+            unsafe { path::Id::new(0) },
             ExplicitCongestionNotification::default(),
+            (),
         );
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // snapshot tests don't work on miri
     fn sent_packet_info_size_test() {
         insta::assert_debug_snapshot!(
             stringify!(sent_packet_info_size_test),
-            core::mem::size_of::<SentPacketInfo>()
+            core::mem::size_of::<SentPacketInfo<()>>()
         );
 
         assert_eq!(
-            core::mem::size_of::<Option<SentPacketInfo>>(),
-            core::mem::size_of::<SentPacketInfo>()
+            core::mem::size_of::<Option<SentPacketInfo<()>>>(),
+            core::mem::size_of::<SentPacketInfo<()>>()
         );
     }
 }

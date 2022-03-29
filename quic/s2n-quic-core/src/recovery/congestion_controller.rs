@@ -36,6 +36,10 @@ impl<'a> PathInfo<'a> {
 }
 
 pub trait CongestionController: 'static + Clone + Send + Debug {
+    /// Additional metadata about a packet to track until a sent packet
+    /// is either acknowledged or declared lost
+    type PacketInfo: Copy + Send + Sized + Debug;
+
     /// Returns the size of the current congestion window in bytes
     fn congestion_window(&self) -> u32;
 
@@ -52,31 +56,46 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
     /// available congestion window
     fn requires_fast_retransmission(&self) -> bool;
 
-    /// Invoked whenever a congestion controlled packet is sent
+    /// Invoked when a packet is sent
+    ///
+    /// The `PacketInfo` returned by this method will be passed to `on_packet_ack` if
+    /// the packet is acknowledged and the packet was the newest acknowledged in the ACK frame,
+    /// or to `on_packet_lost` if the packet was declared lost.
+    ///
+    /// Note: Sent bytes may be 0 in the case the packet being sent contains only ACK frames.
+    /// These pure ACK packets are not congestion-controlled to ensure congestion control
+    /// does not impede congestion feedback.
     fn on_packet_sent(
         &mut self,
         time_sent: Timestamp,
         sent_bytes: usize,
         rtt_estimator: &RttEstimator,
-    );
+    ) -> Self::PacketInfo;
 
     /// Invoked each time the round trip time is updated, which is whenever the
-    /// largest acknowledged packet in an ACK frame is newly acknowledged
+    /// newest acknowledged packet in an ACK frame is newly acknowledged
     fn on_rtt_update(&mut self, time_sent: Timestamp, rtt_estimator: &RttEstimator);
 
-    /// Invoked for each newly acknowledged packet
-    fn on_packet_ack(
+    /// Invoked when an acknowledgement of one or more previously unacknowledged packets is received
+    ///
+    /// Generally the `bytes_acknowledged` value is aggregated over all newly acknowledged packets, though
+    /// it is possible this method may be called multiple times for one acknowledgement. In either
+    /// case, `newest_acked_time_sent` and `newest_acked_packet_info` represent the newest acknowledged
+    /// packet contributing to `bytes_acknowledged`.
+    fn on_ack(
         &mut self,
-        largest_acked_time_sent: Timestamp,
-        bytes_sent: usize,
+        newest_acked_time_sent: Timestamp,
+        bytes_acknowledged: usize,
+        newest_acked_packet_info: Self::PacketInfo,
         rtt_estimator: &RttEstimator,
         ack_receive_time: Timestamp,
     );
 
-    /// Invoked when packets are declared lost
-    fn on_packets_lost(
+    /// Invoked when a packet is declared lost
+    fn on_packet_lost(
         &mut self,
         lost_bytes: u32,
+        packet_info: Self::PacketInfo,
         persistent_congestion: bool,
         timestamp: Timestamp,
     );
@@ -123,6 +142,8 @@ pub mod testing {
         pub struct CongestionController {}
 
         impl super::CongestionController for CongestionController {
+            type PacketInfo = ();
+
             fn congestion_window(&self) -> u32 {
                 u32::max_value()
             }
@@ -149,18 +170,20 @@ pub mod testing {
 
             fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RttEstimator) {}
 
-            fn on_packet_ack(
+            fn on_ack(
                 &mut self,
-                _largest_acked_time_sent: Timestamp,
+                _newest_acked_time_sent: Timestamp,
                 _sent_bytes: usize,
+                _newest_acked_packet_info: Self::PacketInfo,
                 _rtt_estimator: &RttEstimator,
                 _ack_receive_time: Timestamp,
             ) {
             }
 
-            fn on_packets_lost(
+            fn on_packet_lost(
                 &mut self,
                 _lost_bytes: u32,
+                _packet_info: Self::PacketInfo,
                 _persistent_congestion: bool,
                 _timestamp: Timestamp,
             ) {
@@ -227,6 +250,8 @@ pub mod testing {
         }
 
         impl super::CongestionController for CongestionController {
+            type PacketInfo = ();
+
             fn congestion_window(&self) -> u32 {
                 self.congestion_window
             }
@@ -257,19 +282,21 @@ pub mod testing {
                 self.on_rtt_update += 1
             }
 
-            fn on_packet_ack(
+            fn on_ack(
                 &mut self,
-                _largest_acked_time_sent: Timestamp,
+                _newest_acked_time_sent: Timestamp,
                 _sent_bytes: usize,
+                _newest_acked_packet_info: Self::PacketInfo,
                 _rtt_estimator: &RttEstimator,
                 _ack_receive_time: Timestamp,
             ) {
                 self.on_packet_ack += 1;
             }
 
-            fn on_packets_lost(
+            fn on_packet_lost(
                 &mut self,
                 lost_bytes: u32,
+                _packet_info: Self::PacketInfo,
                 persistent_congestion: bool,
                 _timestamp: Timestamp,
             ) {

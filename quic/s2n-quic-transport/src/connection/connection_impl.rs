@@ -142,7 +142,7 @@ impl From<connection::Error> for ConnectionState {
             }
             _ => {
                 // catch all
-                ConnectionState::Closing
+                ConnectionState::Finished
             }
         }
     }
@@ -724,10 +724,26 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 self.close_sender.close(packet, timeout, timestamp);
             } else if cfg!(debug_assertions) {
                 panic!("missing packet spaces before sending connection close frame");
-            } else {
-                // if we couldn't send anything, just discard the connection
-                self.state = ConnectionState::Finished;
             }
+        }
+
+        if self.close_sender.has_transmission_interest() {
+            debug_assert_eq!(
+                self.state,
+                ConnectionState::Closing,
+                "Closing state expected with transmission interest"
+            );
+            self.state = ConnectionState::Closing;
+        } else if !matches!(
+            self.state,
+            ConnectionState::Draining | ConnectionState::Finished
+        ) {
+            debug_assert!(
+                false,
+                "Draining or Finished state expected without transmission interest; got {:?}",
+                self.state,
+            );
+            self.state = ConnectionState::Finished;
         }
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
@@ -740,29 +756,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# sufficient information to identify packets for a closing connection;
         //# the endpoint MAY discard all other connection state.
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
-        self.space_manager.discard_initial(
+        self.space_manager.close(
+            error,
             self.path_manager.active_path_mut(),
             active_path_id,
             &mut publisher,
         );
-        self.space_manager.discard_handshake(
-            self.path_manager.active_path_mut(),
-            active_path_id,
-            &mut publisher,
-        );
-        self.space_manager.discard_zero_rtt_crypto();
-
-        // We don't discard the application space so the application can
-        // be notified and read what happened.
-        if let Some((application, _handshake_status)) = self.space_manager.application_mut() {
-            //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2
-            //# A CONNECTION_CLOSE frame
-            //# causes all streams to immediately become closed; open streams can be
-            //# assumed to be implicitly reset.
-
-            // Close all streams with the derived error
-            application.stream_manager.close(error);
-        }
     }
 
     /// Generates and registers new connection IDs using the given `ConnectionIdFormat`
@@ -1597,10 +1596,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         use timer::Provider as _;
         use transmission::interest::Provider as _;
 
-        let mut interests = ConnectionInterests {
-            timeout: self.next_expiration(),
-            ..Default::default()
-        };
+        let mut interests = ConnectionInterests::default();
 
         if self.accept_state == AcceptState::HandshakeCompleted {
             interests.accept = true;
@@ -1637,6 +1633,16 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 // Remove the connection from the endpoint
                 interests.finalization = true;
             }
+        }
+
+        if interests.finalization {
+            // clear all of the other interests if we're finalizing
+            interests = ConnectionInterests {
+                finalization: true,
+                ..Default::default()
+            };
+        } else {
+            interests.timeout = self.next_expiration();
         }
 
         interests
@@ -1717,17 +1723,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     fn server_name(&self) -> Option<ServerName> {
-        // TODO move SNI to connection
-        self.space_manager.application()?.server_name.clone()
+        self.space_manager.server_name.clone()
     }
 
     fn application_protocol(&self) -> Bytes {
-        // TODO move ALPN to connection
-        if let Some(space) = self.space_manager.application() {
-            space.application_protocol.clone()
-        } else {
-            Bytes::from_static(&[])
-        }
+        self.space_manager.application_protocol.clone()
     }
 
     fn ping(&mut self) -> Result<(), connection::Error> {

@@ -5,7 +5,7 @@
 
 use crate::{
     connection::PeerIdRegistry,
-    endpoint,
+    endpoint, path,
     path::{challenge, Path},
     transmission,
 };
@@ -19,7 +19,7 @@ use s2n_quic_core::{
     packet::number::PacketNumberSpace,
     path::{
         migration::{self, Validator as _},
-        Handle as _, MaxMtu,
+        Handle as _, Id, MaxMtu,
     },
     random::Generator as _,
     recovery::{
@@ -91,7 +91,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        debug_assert!(new_path_id != Id(self.active));
+        debug_assert!(new_path_id != path_id(self.active));
 
         let prev_path_id = self.active_path_id();
 
@@ -154,7 +154,7 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// Return the Id of the active path
     #[inline]
     pub fn active_path_id(&self) -> Id {
-        Id(self.active)
+        path_id(self.active)
     }
 
     pub fn check_active_path_is_synced(&self) {
@@ -198,7 +198,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             .iter()
             .enumerate()
             .find(|(_id, path)| Path::eq_by_handle(path, handle))
-            .map(|(id, path)| (Id(id as u8), path))
+            .map(|(id, path)| (path_id(id as u8), path))
     }
 
     /// Returns the Path for the provided address if the PathManager knows about it
@@ -208,7 +208,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             .iter_mut()
             .enumerate()
             .find(|(_id, path)| Path::eq_by_handle(path, handle))
-            .map(|(id, path)| (Id(id as u8), path))
+            .map(|(id, path)| (path_id(id as u8), path))
     }
 
     /// Returns an iterator over all paths pending path_challenge or path_response
@@ -367,7 +367,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         if new_path_idx >= MAX_ALLOWED_PATHS {
             return Err(DatagramDropReason::PathLimitExceeded);
         }
-        let new_path_id = Id(new_path_idx as u8);
+        let new_path_id = path_id(new_path_idx as u8);
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-9.4
         //= type=TODO
@@ -612,7 +612,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
 
         // Remove the temporary status after successfully processing a packet
-        if self.pending_packet_authentication == Some(path_id.0) {
+        if self.pending_packet_authentication == Some(path_id.as_u8()) {
             self.pending_packet_authentication = None;
 
             // We can finally arm the challenge after authenticating the packet
@@ -713,7 +713,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         publisher: &mut Pub,
     ) -> Result<(), connection::Error> {
         for (id, path) in self.paths.iter_mut().enumerate() {
-            path.on_timeout(timestamp, Id(id as u8), random_generator, publisher);
+            path.on_timeout(timestamp, path_id(id as u8), random_generator, publisher);
         }
 
         if self.active_path().failed_validation() {
@@ -723,8 +723,8 @@ impl<Config: endpoint::Config> Manager<Config> {
                     //# To protect the connection from failing due to such a spurious
                     //# migration, an endpoint MUST revert to using the last validated peer
                     //# address when validation of a new peer address fails.
-                    let prev_path_id = Id(self.active);
-                    let new_path_id = Id(last_known_active_validated_path);
+                    let prev_path_id = path_id(self.active);
+                    let new_path_id = path_id(last_known_active_validated_path);
                     self.activate_path(publisher, prev_path_id, new_path_id);
                     self.last_known_active_validated_path = None;
                 }
@@ -805,6 +805,13 @@ impl<Config: endpoint::Config> Manager<Config> {
     }
 }
 
+#[inline]
+fn path_id(id: u8) -> path::Id {
+    // Safety: The path::Manager is responsible for managing path ID and is thus
+    //         responsible for using them safely
+    unsafe { path::Id::new(id) }
+}
+
 impl<Config: endpoint::Config> timer::Provider for Manager<Config> {
     #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
@@ -844,7 +851,7 @@ impl<'a, Config: endpoint::Config> PathsPendingValidation<'a, Config> {
             self.index += 1;
 
             if path.is_challenge_pending() || path.is_response_pending() {
-                return Some((Id(self.index - 1), self.path_manager));
+                return Some((path_id(self.index - 1), self.path_manager));
             }
         }
     }
@@ -867,40 +874,19 @@ impl<Config: endpoint::Config> transmission::interest::Provider for Manager<Conf
     }
 }
 
-/// Internal Id of a path in the manager
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
-pub struct Id(u8);
-
-impl Id {
-    pub fn new(id: u8) -> Self {
-        Self(id)
-    }
-
-    pub fn as_u8(&self) -> u8 {
-        self.0
-    }
-}
-
 impl<Config: endpoint::Config> core::ops::Index<Id> for Manager<Config> {
     type Output = Path<Config>;
 
     #[inline]
     fn index(&self, id: Id) -> &Self::Output {
-        &self.paths[id.0 as usize]
+        &self.paths[id.as_u8() as usize]
     }
 }
 
 impl<Config: endpoint::Config> core::ops::IndexMut<Id> for Manager<Config> {
     #[inline]
     fn index_mut(&mut self, id: Id) -> &mut Self::Output {
-        &mut self.paths[id.0 as usize]
-    }
-}
-
-impl event::IntoEvent<u64> for Id {
-    #[inline]
-    fn into_event(self) -> u64 {
-        self.0 as u64
+        &mut self.paths[id.as_u8() as usize]
     }
 }
 

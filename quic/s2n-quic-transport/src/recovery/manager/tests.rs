@@ -442,7 +442,7 @@ fn on_ack_frame() {
     assert_eq!(2, context.on_rtt_update_count);
 
     // Ack packet 10, but with a path that is not peer validated
-    context.path_manager[path::Id::new(0)] = Path::new(
+    context.path_manager[unsafe { path::Id::new(0) }] = Path::new(
         Default::default(),
         connection::PeerId::TEST_ID,
         connection::LocalId::TEST_ID,
@@ -1657,25 +1657,27 @@ fn remove_lost_packets_persistent_congestion_path_aware() {
     let sent_packets_to_remove = vec![
         (
             space.new_packet_number(VarInt::from_u8(9)),
-            SentPacketInfo {
-                congestion_controlled: true,
-                sent_bytes: 1,
-                time_sent: now,
-                ack_elicitation: AckElicitation::Eliciting,
+            SentPacketInfo::new(
+                true,
+                1,
+                now,
+                AckElicitation::Eliciting,
+                first_path_id,
                 ecn,
-                path_id: first_path_id,
-            },
+                (),
+            ),
         ),
         (
             space.new_packet_number(VarInt::from_u8(9)),
-            SentPacketInfo {
-                congestion_controlled: true,
-                sent_bytes: 1,
-                time_sent: now,
-                ack_elicitation: AckElicitation::Eliciting,
+            SentPacketInfo::new(
+                true,
+                1,
+                now,
+                AckElicitation::Eliciting,
+                second_path_id,
                 ecn,
-                path_id: second_path_id,
-            },
+                (),
+            ),
         ),
     ];
 
@@ -2301,7 +2303,7 @@ fn update_pto_timer() {
     assert!(!manager.pto.timer.is_armed());
 
     // Reset the path back to not peer validated
-    context.path_manager[path::Id::new(0)] = Path::new(
+    context.path_manager[unsafe { path::Id::new(0) }] = Path::new(
         Default::default(),
         connection::PeerId::TEST_ID,
         connection::LocalId::TEST_ID,
@@ -2518,14 +2520,15 @@ fn on_timeout() {
     expected_pto_backoff *= 2;
     manager.sent_packets.insert(
         space.new_packet_number(VarInt::from_u8(1)),
-        SentPacketInfo {
-            congestion_controlled: true,
-            sent_bytes: 1,
-            time_sent: now,
-            ack_elicitation: AckElicitation::Eliciting,
+        SentPacketInfo::new(
+            true,
+            1,
+            now,
+            AckElicitation::Eliciting,
+            unsafe { path::Id::new(0) },
             ecn,
-            path_id: path::Id::new(0),
-        },
+            (),
+        ),
     );
     manager.pto.timer.set(now - Duration::from_secs(5));
     manager.on_timeout(now, &mut context, &mut publisher);
@@ -2907,8 +2910,8 @@ fn helper_generate_multi_path_manager(
     let second_addr = SocketAddress::from(second_addr);
     let second_addr = RemoteAddress::from(second_addr);
 
-    let first_path_id = path::Id::new(0);
-    let second_path_id = path::Id::new(1);
+    let first_path_id = unsafe { path::Id::new(0) };
+    let second_path_id = unsafe { path::Id::new(1) };
 
     // confirm we have one path
     let mut path_manager =

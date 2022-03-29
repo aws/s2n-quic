@@ -15,12 +15,10 @@ use crate::{
     sync::flag,
     transmission,
 };
-use bytes::Bytes;
 use core::{convert::TryInto, fmt, marker::PhantomData};
 use once_cell::sync::OnceCell;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
-    application::ServerName,
     crypto::{application::KeySet, limited, tls, CryptoSuite},
     event::{self, ConnectionPublisher as _, IntoEvent},
     frame::{
@@ -62,15 +60,6 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     key_set: KeySet<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttKey>,
     header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttHeaderKey,
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#section-7
-    //# Endpoints MUST explicitly negotiate an application protocol.
-
-    //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
-    //# Unless
-    //# another mechanism is used for agreeing on an application protocol,
-    //# endpoints MUST use ALPN for this purpose.
-    pub application_protocol: Bytes,
-    pub server_name: Option<ServerName>,
     ping: flag::Ping,
     keep_alive: KeepAlive,
     processed_packet_numbers: SlidingWindow,
@@ -81,11 +70,9 @@ impl<Config: endpoint::Config> fmt::Debug for ApplicationSpace<Config> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ApplicationSpace")
             .field("ack_manager", &self.ack_manager)
-            .field("application_protocol", &self.application_protocol)
             .field("ping", &self.ping)
             .field("processed_packet_numbers", &self.processed_packet_numbers)
             .field("recovery_manager", &self.recovery_manager)
-            .field("server_name", &self.server_name)
             .field("stream_manager", &self.stream_manager)
             .field("tx_packet_numbers", &self.tx_packet_numbers)
             .finish()
@@ -101,8 +88,6 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         stream_manager: AbstractStreamManager<Config::Stream>,
         ack_manager: AckManager,
         keep_alive: KeepAlive,
-        server_name: Option<ServerName>,
-        application_protocol: Bytes,
         max_mtu: MaxMtu,
     ) -> Self {
         let key_set = KeySet::new(key, Self::key_limits(max_mtu));
@@ -114,8 +99,6 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             stream_manager,
             key_set,
             header_key,
-            server_name,
-            application_protocol,
             ping: flag::Ping::default(),
             keep_alive,
             processed_packet_numbers: SlidingWindow::default(),
