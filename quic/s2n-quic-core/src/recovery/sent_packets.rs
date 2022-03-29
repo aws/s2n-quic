@@ -30,8 +30,8 @@ pub struct SentPacketInfo<PacketInfo> {
     pub path_id: path::Id,
     /// The ECN marker (if any) sent on the datagram that contained this packet
     pub ecn: ExplicitCongestionNotification,
-    /// Bandwidth-related state at the point this packet was sent
-    pub additional_packet_info: PacketInfo,
+    /// Additional packet metadata dictated by the congestion controller
+    pub cc_packet_info: PacketInfo,
 }
 
 impl<PacketInfo> SentPacketInfo<PacketInfo> {
@@ -43,7 +43,7 @@ impl<PacketInfo> SentPacketInfo<PacketInfo> {
         ack_elicitation: AckElicitation,
         path_id: path::Id,
         ecn: ExplicitCongestionNotification,
-        additional_packet_info: PacketInfo,
+        cc_packet_info: PacketInfo,
     ) -> Self {
         debug_assert_eq!(
             sent_bytes > 0,
@@ -60,7 +60,7 @@ impl<PacketInfo> SentPacketInfo<PacketInfo> {
             ack_elicitation,
             path_id,
             ecn,
-            additional_packet_info,
+            cc_packet_info,
         }
     }
 }

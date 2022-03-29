@@ -10,7 +10,7 @@ use crate::{
     },
     transmission,
 };
-use core::{cmp::max, marker::PhantomData, time::Duration};
+use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
     event::{self, builder::CongestionSource, IntoEvent},
     frame,
@@ -60,8 +60,6 @@ pub struct Manager<Config: endpoint::Config> {
 
     // The total ecn counts for outstanding (unacknowledged) packets
     sent_packet_ecn_counts: EcnCounts,
-
-    config: PhantomData<Config>,
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.1
@@ -100,6 +98,10 @@ macro_rules! recovery_event {
     };
 }
 
+// Since `SentPacketInfo` is generic over a type supplied by the Congestion Controller implementation,
+// the type definition is particularly lengthy, especially since rust requires the fully-qualified
+// syntax to eliminate ambiguity. This macro can be used where ever the Congestion Controller
+// generic PacketInfo type is required to help with readability.
 macro_rules! packet_info_type {
     () => {
         <<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController as congestion_controller::CongestionController>::PacketInfo
@@ -119,7 +121,6 @@ impl<Config: endpoint::Config> Manager<Config> {
             time_of_last_ack_eliciting_packet: None,
             baseline_ecn_counts: EcnCounts::default(),
             sent_packet_ecn_counts: EcnCounts::default(),
-            config: PhantomData,
         }
     }
 
@@ -206,7 +207,7 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         let path_id = context.path_id();
         let path = context.path_mut();
-        let additional_packet_info = path.congestion_controller.on_packet_sent(
+        let cc_packet_info = path.congestion_controller.on_packet_sent(
             time_sent,
             congestion_controlled_bytes,
             &path.rtt_estimator,
@@ -221,7 +222,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 outcome.ack_elicitation,
                 path_id,
                 ecn,
-                additional_packet_info,
+                cc_packet_info,
             ),
         );
         path.ecn_controller
@@ -545,7 +546,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 path.congestion_controller.on_ack(
                     acked_packet_info.time_sent,
                     sent_bytes,
-                    acked_packet_info.additional_packet_info,
+                    acked_packet_info.cc_packet_info,
                     &path.rtt_estimator,
                     datagram.timestamp,
                 );
@@ -597,7 +598,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             path.congestion_controller.on_ack(
                 largest_newly_acked.time_sent,
                 current_path_acked_bytes,
-                largest_newly_acked.additional_packet_info,
+                largest_newly_acked.cc_packet_info,
                 &path.rtt_estimator,
                 datagram.timestamp,
             );
@@ -850,7 +851,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             } else if sent_info.sent_bytes > 0 {
                 path.congestion_controller.on_packet_lost(
                     sent_info.sent_bytes as u32,
-                    sent_info.additional_packet_info,
+                    sent_info.cc_packet_info,
                     persistent_congestion,
                     now,
                 );

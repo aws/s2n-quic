@@ -162,8 +162,6 @@ pub struct CubicCongestionController {
 type BytesInFlight = Counter<u32>;
 
 impl CongestionController for CubicCongestionController {
-    type PacketInfo = ();
-
     #[inline]
     fn congestion_window(&self) -> u32 {
         self.congestion_window as u32
@@ -242,14 +240,14 @@ impl CongestionController for CubicCongestionController {
     fn on_ack(
         &mut self,
         newest_acked_time_sent: Timestamp,
-        sent_bytes: usize,
+        bytes_acknowledged: usize,
         _newest_acked_packet_info: Self::PacketInfo,
         rtt_estimator: &RttEstimator,
         ack_receive_time: Timestamp,
     ) {
         self.bytes_in_flight
-            .try_sub(sent_bytes)
-            .expect("sent bytes should not exceed u32::MAX");
+            .try_sub(bytes_acknowledged)
+            .expect("bytes_acknowledged should not exceed u32::MAX");
 
         if self.under_utilized {
             self.state.on_app_limited(ack_receive_time);
@@ -280,7 +278,7 @@ impl CongestionController for CubicCongestionController {
                 //# the number of bytes acknowledged when each acknowledgment is
                 //# processed.  This results in exponential growth of the congestion
                 //# window.
-                self.congestion_window += sent_bytes as f32;
+                self.congestion_window += bytes_acknowledged as f32;
 
                 if self.congestion_window >= self.slow_start.threshold {
                     //= https://www.rfc-editor.org/rfc/rfc8312#section-4.8
@@ -314,7 +312,7 @@ impl CongestionController for CubicCongestionController {
                 //      investigation and testing to evaluate if smoothed_rtt would be a better input.
                 let rtt = rtt_estimator.min_rtt();
 
-                self.congestion_avoidance(t, rtt, sent_bytes);
+                self.congestion_avoidance(t, rtt, bytes_acknowledged);
             }
         };
 

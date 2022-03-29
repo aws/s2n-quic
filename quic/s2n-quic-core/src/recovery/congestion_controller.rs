@@ -36,7 +36,7 @@ impl<'a> PathInfo<'a> {
 }
 
 pub trait CongestionController: 'static + Clone + Send + Debug {
-    /// Additional metadata about a packet to track until a sent packet is
+    /// Additional metadata about a packet to track until a sent packet
     /// is either acknowledged or declared lost
     type PacketInfo: Copy + Send + Sized + Debug;
 
@@ -78,7 +78,7 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
 
     /// Invoked when an acknowledgement of one or more previously unacknowledged packets is received
     ///
-    /// Generally the `bytes_sent` value is aggregated over all newly acknowledged packets, though
+    /// Generally the `bytes_acknowledged` value is aggregated over all newly acknowledged packets, though
     /// it is possible this method may be called multiple times for one acknowledgement. In either
     /// case, `newest_acked_time_sent` and `newest_acked_packet_info` represent the newest acknowledged
     /// packet contributing to `bytes_acknowledged`.
