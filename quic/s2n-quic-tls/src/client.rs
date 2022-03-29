@@ -123,12 +123,7 @@ impl tls::Endpoint for Client {
     ) -> Self::Session {
         let config = self.config.clone();
         self.params.with(params, |params| {
-            let mut session = Session::new(endpoint::Type::Client, config, params).unwrap();
-            session
-                .connection
-                .set_server_name(&server_name)
-                .expect("invalid server name value");
-            session
+            Session::new(endpoint::Type::Client, config, params, Some(server_name)).unwrap()
         })
     }
 

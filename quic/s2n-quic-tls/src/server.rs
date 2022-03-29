@@ -66,13 +66,11 @@ impl Default for Builder {
 impl Builder {
     #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
     pub fn with_client_hello_handler<T: 'static + ClientHelloHandler>(
-        self,
-        _handler: T,
+        mut self,
+        handler: T,
     ) -> Result<Self, Error> {
-        unimplemented!();
-        // TODO undo once this is implemented.
-        // self.config.set_client_hello_handler(handler)?;
-        // Ok(self)
+        self.config.set_client_hello_handler(handler)?;
+        Ok(self)
     }
 
     pub fn with_application_protocols<P: IntoIterator<Item = I>, I: AsRef<[u8]>>(
@@ -138,7 +136,7 @@ impl tls::Endpoint for Server {
     fn new_server_session<Params: EncoderValue>(&mut self, params: &Params) -> Self::Session {
         let config = self.config.clone();
         self.params.with(params, |params| {
-            Session::new(endpoint::Type::Server, config, params).unwrap()
+            Session::new(endpoint::Type::Server, config, params, None).unwrap()
         })
     }
 
