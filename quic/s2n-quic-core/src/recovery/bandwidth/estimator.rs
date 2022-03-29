@@ -130,35 +130,40 @@ impl Estimator {
     //# For each packet that was newly SACKed or ACKed, UpdateRateSample() updates the
     //# rate sample based on a snapshot of connection delivery information from the time
     //# at which the packet was last transmitted.
-    /// Called for each newly acknowledged packet
-    pub fn on_packet_ack(&mut self, packet: &SentPacketInfo<State>, now: Timestamp) {
+    /// Called for each acknowledgement of one or more packets
+    pub fn on_ack(
+        &mut self,
+        bytes_acknowledged: usize,
+        newest_acked_time_sent: Timestamp,
+        newest_acked_packet_state: State,
+        now: Timestamp,
+    ) {
         if now > self.state.delivered_time {
             // This is the first ack from a new ACK frame, reset newly acked and lost
             self.rate_sample.newly_acked_bytes = 0;
             self.rate_sample.newly_lost_bytes = 0;
         }
 
-        self.state.delivered_bytes += packet.sent_bytes as u64;
+        self.state.delivered_bytes += bytes_acknowledged as u64;
         self.state.delivered_time = now;
-        self.rate_sample.newly_acked_bytes += packet.sent_bytes as u64;
+        self.rate_sample.newly_acked_bytes += bytes_acknowledged as u64;
 
         //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#3.3
         //# UpdateRateSample() is invoked multiple times when a stretched ACK acknowledges
         //# multiple data packets. In this case we use the information from the most recently
         //# sent packet, i.e., the packet with the highest "P.delivered" value.
         if self.rate_sample.prior_delivered_bytes == 0
-            || packet.additional_packet_info.delivered_bytes
-                > self.rate_sample.prior_delivered_bytes
+            || newest_acked_packet_state.delivered_bytes > self.rate_sample.prior_delivered_bytes
         {
             // Update info using the newest packet
-            self.rate_sample.prior_delivered_bytes = packet.additional_packet_info.delivered_bytes;
-            self.rate_sample.prior_lost_bytes = packet.additional_packet_info.lost_bytes;
-            self.rate_sample.is_app_limited = packet.additional_packet_info.is_app_limited;
-            self.rate_sample.bytes_in_flight = packet.additional_packet_info.bytes_in_flight;
-            self.state.first_sent_time = packet.time_sent;
+            self.rate_sample.prior_delivered_bytes = newest_acked_packet_state.delivered_bytes;
+            self.rate_sample.prior_lost_bytes = newest_acked_packet_state.lost_bytes;
+            self.rate_sample.is_app_limited = newest_acked_packet_state.is_app_limited;
+            self.rate_sample.bytes_in_flight = newest_acked_packet_state.bytes_in_flight;
+            self.state.first_sent_time = newest_acked_time_sent;
 
-            let send_elapsed = packet.time_sent - packet.additional_packet_info.first_sent_time;
-            let ack_elapsed = now - packet.additional_packet_info.delivered_time;
+            let send_elapsed = packet.time_sent - newest_acked_packet_state.first_sent_time;
+            let ack_elapsed = now - newest_acked_packet_state.delivered_time;
 
             //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#2.2.4
             //# Since it is physically impossible to have data delivered faster than it is sent
@@ -183,9 +188,9 @@ impl Estimator {
             self.state.delivered_bytes - self.rate_sample.prior_delivered_bytes;
     }
 
-    /// Called when a packet is declared lost
+    /// Called when packets are declared lost
     #[inline]
-    pub fn on_packet_loss(&mut self, lost_bytes: usize) {
+    pub fn on_loss(&mut self, lost_bytes: usize) {
         self.state.lost_bytes += lost_bytes as u64;
         self.rate_sample.newly_lost_bytes += lost_bytes as u64;
         self.rate_sample.lost_bytes = self.state.lost_bytes - self.rate_sample.prior_lost_bytes;
