@@ -29,7 +29,11 @@ impl PersistentCongestionCalculator {
     }
 
     /// Called for each packet detected as lost
-    pub fn on_lost_packet(&mut self, packet_number: PacketNumber, packet_info: &SentPacketInfo) {
+    pub fn on_lost_packet<PacketInfo>(
+        &mut self,
+        packet_number: PacketNumber,
+        packet_info: &SentPacketInfo<PacketInfo>,
+    ) {
         if self
             .first_rtt_sample
             .map_or(true, |ts| packet_info.time_sent < ts)
@@ -117,7 +121,11 @@ impl PersistentCongestionPeriod {
     }
 
     /// Extends this persistent congestion period
-    fn extend(&mut self, packet_number: PacketNumber, packet_info: &SentPacketInfo) {
+    fn extend<PacketInfo>(
+        &mut self,
+        packet_number: PacketNumber,
+        packet_info: &SentPacketInfo<PacketInfo>,
+    ) {
         debug_assert!(self.is_contiguous(packet_number));
         debug_assert!(packet_info.time_sent >= self.start);
 

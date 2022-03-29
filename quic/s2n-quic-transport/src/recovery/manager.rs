@@ -17,13 +17,13 @@ use s2n_quic_core::{
     frame::ack::EcnCounts,
     inet::{DatagramInfo, ExplicitCongestionNotification},
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
-    recovery::{CongestionController, RttEstimator, K_GRANULARITY},
+    recovery::{congestion_controller, CongestionController, RttEstimator, K_GRANULARITY},
     time::{timer, Timer, Timestamp},
     transport,
 };
 use smallvec::SmallVec;
 
-type PacketDetails = (PacketNumber, SentPacketInfo);
+type PacketDetails<PacketInfo> = (PacketNumber, SentPacketInfo<PacketInfo>);
 
 #[derive(Debug)]
 pub struct Manager<Config: endpoint::Config> {
@@ -37,7 +37,7 @@ pub struct Manager<Config: endpoint::Config> {
     //= https://www.rfc-editor.org/rfc/rfc9002#section-A.3
     //# An association of packet numbers in a packet number space to information about them.
     //  These are packets that are pending acknowledgement.
-    sent_packets: SentPackets,
+    sent_packets: SentPackets<<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController as congestion_controller::CongestionController>::PacketInfo>,
 
     // Timer set when packets may be declared lost at a time in the future
     loss_timer: Timer,
@@ -100,6 +100,13 @@ macro_rules! recovery_event {
     };
 }
 
+macro_rules! packet_info_type {
+    () => {
+        <<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController as congestion_controller::CongestionController>::PacketInfo
+    }
+}
+
+#[allow(clippy::type_complexity)]
 impl<Config: endpoint::Config> Manager<Config> {
     /// Constructs a new `recovery::Manager`
     pub fn new(space: PacketNumberSpace) -> Self {
@@ -197,12 +204,12 @@ impl<Config: endpoint::Config> Manager<Config> {
             0
         };
 
-        let packets_in_flight = !self.sent_packets.is_empty();
-        let application_limited = false; // TODO: determine if application limited
-        context.path_mut().bw_estimator.on_packet_sent(
-            packets_in_flight,
-            application_limited,
+        let path_id = context.path_id();
+        let path = context.path_mut();
+        let additional_packet_info = path.congestion_controller.on_packet_sent(
             time_sent,
+            congestion_controlled_bytes,
+            &path.rtt_estimator,
         );
 
         self.sent_packets.insert(
@@ -212,15 +219,11 @@ impl<Config: endpoint::Config> Manager<Config> {
                 congestion_controlled_bytes,
                 time_sent,
                 outcome.ack_elicitation,
-                context.path_id(),
+                path_id,
                 ecn,
-                context.path().bw_estimator.state(),
-                context.path().congestion_controller.bytes_in_flight(),
+                additional_packet_info,
             ),
         );
-
-        let path_id = context.path_id();
-        let path = context.path_mut();
         path.ecn_controller
             .on_packet_sent(ecn, path_event!(path, path_id), publisher);
         self.sent_packet_ecn_counts.increment(ecn);
@@ -235,11 +238,6 @@ impl<Config: endpoint::Config> Manager<Config> {
             let is_handshake_confirmed = context.is_handshake_confirmed();
             let path = context.path_mut_by_id(context.path_id());
             self.update_pto_timer(path, time_sent, is_handshake_confirmed);
-            path.congestion_controller.on_packet_sent(
-                time_sent,
-                congestion_controlled_bytes,
-                &path.rtt_estimator,
-            );
         }
     }
 
@@ -321,8 +319,9 @@ impl<Config: endpoint::Config> Manager<Config> {
     ) -> Result<(), transport::Error> {
         let largest_acked_packet_number =
             self.space.new_packet_number(frame.largest_acknowledged());
-        let mut newly_acked_packets =
-            SmallVec::<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>::new();
+        let mut newly_acked_packets = SmallVec::<
+            [SentPacketInfo<packet_info_type!()>; ACKED_PACKETS_INITIAL_CAPACITY],
+        >::new();
 
         // Update the largest acked packet if the largest packet acked in this frame is larger
         let new_largest_packet = if self
@@ -370,7 +369,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             let (_, largest_newly_acked_info) = largest_newly_acked;
             self.process_new_acked_packets(
                 &newly_acked_packets,
-                largest_newly_acked_info.time_sent,
+                largest_newly_acked_info,
                 new_largest_packet,
                 datagram,
                 &frame,
@@ -393,13 +392,15 @@ impl<Config: endpoint::Config> Manager<Config> {
         Pub: event::ConnectionPublisher,
     >(
         &mut self,
-        newly_acked_packets: &mut SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
+        newly_acked_packets: &mut SmallVec<
+            [SentPacketInfo<packet_info_type!()>; ACKED_PACKETS_INITIAL_CAPACITY],
+        >,
         datagram: &DatagramInfo,
         frame: &frame::Ack<A>,
         context: &mut Ctx,
         publisher: &mut Pub,
-    ) -> Result<(Option<PacketDetails>, bool), transport::Error> {
-        let mut largest_newly_acked: Option<PacketDetails> = None;
+    ) -> Result<(Option<PacketDetails<packet_info_type!()>>, bool), transport::Error> {
+        let mut largest_newly_acked: Option<PacketDetails<packet_info_type!()>> = None;
         let mut includes_ack_eliciting = false;
 
         for ack_range in frame.ack_ranges() {
@@ -444,8 +445,6 @@ impl<Config: endpoint::Config> Manager<Config> {
                 );
                 path.ecn_controller
                     .on_packet_ack(acked_packet_info.time_sent, acked_packet_info.ecn);
-                path.bw_estimator
-                    .on_packet_ack(&acked_packet_info, datagram.timestamp);
             }
 
             if let Some((start, end)) = newly_acked_range {
@@ -459,7 +458,7 @@ impl<Config: endpoint::Config> Manager<Config> {
 
     fn update_congestion_control<A: frame::ack::AckRanges, Ctx: Context<Config>>(
         &mut self,
-        largest_newly_acked: PacketDetails,
+        largest_newly_acked: PacketDetails<packet_info_type!()>,
         largest_acked_packet_number: PacketNumber,
         includes_ack_eliciting: bool,
         datagram: &DatagramInfo,
@@ -513,8 +512,10 @@ impl<Config: endpoint::Config> Manager<Config> {
         Pub: event::ConnectionPublisher,
     >(
         &mut self,
-        newly_acked_packets: &SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
-        largest_newly_acked_time_sent: Timestamp,
+        newly_acked_packets: &SmallVec<
+            [SentPacketInfo<packet_info_type!()>; ACKED_PACKETS_INITIAL_CAPACITY],
+        >,
+        largest_newly_acked: SentPacketInfo<packet_info_type!()>,
         new_largest_packet: bool,
         datagram: &DatagramInfo,
         frame: &frame::Ack<A>,
@@ -540,10 +541,11 @@ impl<Config: endpoint::Config> Manager<Config> {
 
             if acked_packet_info.path_id == current_path_id {
                 current_path_acked_bytes += sent_bytes;
-            } else {
+            } else if sent_bytes > 0 {
                 path.congestion_controller.on_packet_ack(
-                    largest_newly_acked_time_sent,
+                    largest_newly_acked.time_sent,
                     sent_bytes,
+                    largest_newly_acked.additional_packet_info,
                     &path.rtt_estimator,
                     datagram.timestamp,
                 );
@@ -593,8 +595,9 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         if current_path_acked_bytes > 0 {
             path.congestion_controller.on_packet_ack(
-                largest_newly_acked_time_sent,
+                largest_newly_acked.time_sent,
                 current_path_acked_bytes,
+                largest_newly_acked.additional_packet_info,
                 &path.rtt_estimator,
                 datagram.timestamp,
             );
@@ -712,7 +715,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         now: Timestamp,
         context: &mut Ctx,
         publisher: &mut Pub,
-    ) -> (Duration, Vec<PacketDetails>) {
+    ) -> (Duration, Vec<PacketDetails<packet_info_type!()>>) {
         let largest_acked_packet = self
             .largest_acked_packet
             .expect("This function is only called after an ack has been received");
@@ -806,7 +809,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         &mut self,
         now: Timestamp,
         persistent_congestion_duration: Duration,
-        sent_packets_to_remove: Vec<PacketDetails>,
+        sent_packets_to_remove: Vec<PacketDetails<packet_info_type!()>>,
         context: &mut Ctx,
         publisher: &mut Pub,
     ) {
@@ -845,8 +848,6 @@ impl<Config: endpoint::Config> Manager<Config> {
                     .on_packet_discarded(sent_info.sent_bytes as usize);
                 is_mtu_probe = true;
             } else if sent_info.sent_bytes > 0 {
-                path.bw_estimator
-                    .on_packet_loss(sent_info.sent_bytes as usize);
                 path.congestion_controller.on_packets_lost(
                     sent_info.sent_bytes as u32,
                     persistent_congestion,

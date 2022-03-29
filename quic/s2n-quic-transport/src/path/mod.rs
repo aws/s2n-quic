@@ -8,7 +8,7 @@ use crate::{
     contexts::WriteContext,
     endpoint,
     endpoint::Type,
-    recovery::{bandwidth, congestion_controller, CongestionController, RttEstimator},
+    recovery::{congestion_controller, CongestionController, RttEstimator},
     transmission::{self, Mode},
 };
 use s2n_quic_core::{
@@ -50,8 +50,6 @@ pub struct Path<Config: endpoint::Config> {
     pub local_connection_id: connection::LocalId,
     /// The path owns the roundtrip between peers
     pub rtt_estimator: RttEstimator,
-    /// The bandwidth estimator for the path
-    pub bw_estimator: bandwidth::Estimator,
     /// The congestion controller for the path
     pub congestion_controller: <Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController,
     /// Probe timeout backoff multiplier
@@ -91,7 +89,6 @@ impl<Config: endpoint::Config> Clone for Path<Config> {
             peer_connection_id: self.peer_connection_id,
             local_connection_id: self.local_connection_id,
             rtt_estimator: self.rtt_estimator,
-            bw_estimator: self.bw_estimator.clone(),
             congestion_controller: self.congestion_controller.clone(),
             pto_backoff: self.pto_backoff,
             state: self.state,
@@ -118,7 +115,6 @@ impl<Config: endpoint::Config> Path<Config> {
         congestion_controller: <Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController,
         peer_validated: bool,
         max_mtu: MaxMtu,
-        now: Timestamp,
     ) -> Path<Config> {
         let state = match Config::ENDPOINT_TYPE {
             Type::Server => {
@@ -140,7 +136,6 @@ impl<Config: endpoint::Config> Path<Config> {
             peer_connection_id,
             local_connection_id,
             rtt_estimator,
-            bw_estimator: bandwidth::Estimator::new(now),
             congestion_controller,
             pto_backoff: INITIAL_PTO_BACKOFF,
             state,
@@ -610,7 +605,6 @@ pub mod testing {
             Default::default(),
             true,
             DEFAULT_MAX_MTU,
-            s2n_quic_platform::time::now(),
         )
     }
 
@@ -623,7 +617,6 @@ pub mod testing {
             Default::default(),
             false,
             DEFAULT_MAX_MTU,
-            s2n_quic_platform::time::now(),
         )
     }
 }
@@ -1116,7 +1109,6 @@ mod tests {
 
     #[test]
     fn transmission_constraint_test() {
-        let now = NoopClock.get_time();
         let mut path = Path::new(
             Default::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
@@ -1125,8 +1117,8 @@ mod tests {
             Default::default(),
             false,
             DEFAULT_MAX_MTU,
-            now,
         );
+        let now = NoopClock.get_time();
         path.on_validated();
 
         assert_eq!(

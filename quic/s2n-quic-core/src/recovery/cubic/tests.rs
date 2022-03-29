@@ -348,7 +348,7 @@ fn congestion_avoidance_after_idle_period() {
     assert_eq!(cc.bytes_in_flight, 2000);
 
     // t16: Ack a packet in Congestion Avoidance
-    cc.on_packet_ack(now, 1000, rtt_estimator, now + Duration::from_secs(16));
+    cc.on_packet_ack(now, 1000, (), rtt_estimator, now + Duration::from_secs(16));
     // Verify the app limited time is set
     assert_eq!(
         cc.state,
@@ -369,7 +369,7 @@ fn congestion_avoidance_after_idle_period() {
     assert!(!cc.is_congestion_window_under_utilized());
 
     // t25: Ack a packet in Congestion Avoidance
-    cc.on_packet_ack(now, 1000, rtt_estimator, now + Duration::from_secs(25));
+    cc.on_packet_ack(now, 1000, (), rtt_estimator, now + Duration::from_secs(25));
 
     // Verify congestion avoidance start time was moved from t10 to t16 to account
     // for the 6 seconds of under utilized time and the app_limited_time was reset
@@ -634,13 +634,13 @@ fn on_packet_ack_limited() {
     cc.under_utilized = true;
     cc.state = SlowStart;
 
-    cc.on_packet_ack(now, 1, &RttEstimator::new(Duration::from_secs(0)), now);
+    cc.on_packet_ack(now, 1, (), &RttEstimator::new(Duration::from_secs(0)), now);
 
     assert_delta!(cc.congestion_window, 100_000.0, 0.001);
 
     cc.state = State::congestion_avoidance(now);
 
-    cc.on_packet_ack(now, 1, &RttEstimator::new(Duration::from_secs(0)), now);
+    cc.on_packet_ack(now, 1, (), &RttEstimator::new(Duration::from_secs(0)), now);
 
     assert_delta!(cc.congestion_window, 100_000.0, 0.001);
 }
@@ -656,7 +656,7 @@ fn on_packet_ack_timestamp_regression() {
     cc.under_utilized = true;
     cc.state = State::congestion_avoidance(now);
 
-    cc.on_packet_ack(now, 1, &rtt_estimator, now);
+    cc.on_packet_ack(now, 1, (), &rtt_estimator, now);
 
     assert_eq!(
         State::CongestionAvoidance(CongestionAvoidanceTiming {
@@ -667,7 +667,7 @@ fn on_packet_ack_timestamp_regression() {
         cc.state
     );
 
-    cc.on_packet_ack(now, 1, &rtt_estimator, now - Duration::from_secs(1));
+    cc.on_packet_ack(now, 1, (), &rtt_estimator, now - Duration::from_secs(1));
 }
 
 #[test]
@@ -686,7 +686,7 @@ fn on_packet_ack_utilized_then_under_utilized() {
     cc.state = SlowStart;
 
     cc.on_packet_sent(now, 60_000, &rtt_estimator);
-    cc.on_packet_ack(now, 50_000, &rtt_estimator, now);
+    cc.on_packet_ack(now, 50_000, (), &rtt_estimator, now);
     let cwnd = cc.congestion_window();
 
     assert!(!cc.under_utilized);
@@ -694,7 +694,13 @@ fn on_packet_ack_utilized_then_under_utilized() {
 
     // Now the window is under utilized, but we still grow the window until more packets are sent
     assert!(cc.is_congestion_window_under_utilized());
-    cc.on_packet_ack(now, 1200, &rtt_estimator, now + Duration::from_millis(100));
+    cc.on_packet_ack(
+        now,
+        1200,
+        (),
+        &rtt_estimator,
+        now + Duration::from_millis(100),
+    );
     assert!(cc.congestion_window() > cwnd);
 
     let cwnd = cc.congestion_window();
@@ -703,7 +709,13 @@ fn on_packet_ack_utilized_then_under_utilized() {
     // utilize the congestion window, so the window does not grow.
     cc.on_packet_sent(now, 1200, &rtt_estimator);
     assert!(cc.under_utilized);
-    cc.on_packet_ack(now, 1200, &rtt_estimator, now + Duration::from_millis(201));
+    cc.on_packet_ack(
+        now,
+        1200,
+        (),
+        &rtt_estimator,
+        now + Duration::from_millis(201),
+    );
     assert_eq!(cc.congestion_window(), cwnd);
 }
 
@@ -722,6 +734,7 @@ fn on_packet_ack_recovery_to_congestion_avoidance() {
     cc.on_packet_ack(
         now + Duration::from_millis(1),
         1,
+        (),
         &RttEstimator::new(Duration::from_secs(0)),
         now + Duration::from_millis(2),
     );
@@ -748,6 +761,7 @@ fn on_packet_ack_slow_start_to_congestion_avoidance() {
     cc.on_packet_ack(
         now,
         100,
+        (),
         &RttEstimator::new(Duration::from_secs(0)),
         now + Duration::from_millis(2),
     );
@@ -777,6 +791,7 @@ fn on_packet_ack_recovery() {
     cc.on_packet_ack(
         now,
         100,
+        (),
         &RttEstimator::new(Duration::from_secs(0)),
         now + Duration::from_millis(2),
     );
@@ -812,7 +827,13 @@ fn on_packet_ack_congestion_avoidance() {
         PacketNumberSpace::ApplicationData,
     );
 
-    cc.on_packet_ack(now, 1000, &rtt_estimator, now + Duration::from_millis(4750));
+    cc.on_packet_ack(
+        now,
+        1000,
+        (),
+        &rtt_estimator,
+        now + Duration::from_millis(4750),
+    );
 
     let t = Duration::from_millis(4750) - Duration::from_millis(3300);
     let rtt = rtt_estimator.min_rtt();

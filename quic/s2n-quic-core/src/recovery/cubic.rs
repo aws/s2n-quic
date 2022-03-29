@@ -162,6 +162,8 @@ pub struct CubicCongestionController {
 type BytesInFlight = Counter<u32>;
 
 impl CongestionController for CubicCongestionController {
+    type PacketInfo = ();
+
     #[inline]
     fn congestion_window(&self) -> u32 {
         self.congestion_window as u32
@@ -192,6 +194,11 @@ impl CongestionController for CubicCongestionController {
         bytes_sent: usize,
         rtt_estimator: &RttEstimator,
     ) {
+        if bytes_sent == 0 {
+            // Packet was not congestion controlled
+            return;
+        }
+
         self.bytes_in_flight
             .try_add(bytes_sent)
             .expect("bytes sent should not exceed u32::MAX");
@@ -236,6 +243,7 @@ impl CongestionController for CubicCongestionController {
         &mut self,
         largest_acked_time_sent: Timestamp,
         sent_bytes: usize,
+        _largest_acked_packet_info: Self::PacketInfo,
         rtt_estimator: &RttEstimator,
         ack_receive_time: Timestamp,
     ) {

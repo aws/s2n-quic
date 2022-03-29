@@ -36,6 +36,8 @@ impl<'a> PathInfo<'a> {
 }
 
 pub trait CongestionController: 'static + Clone + Send + Debug {
+    type PacketInfo: Copy + Send + Sized + Debug;
+
     /// Returns the size of the current congestion window in bytes
     fn congestion_window(&self) -> u32;
 
@@ -52,13 +54,18 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
     /// available congestion window
     fn requires_fast_retransmission(&self) -> bool;
 
-    /// Invoked whenever a congestion controlled packet is sent
+    /// Invoked when a packet is sent. Returns the `PacketInfo` that should be stored
+    /// with the packet.
+    ///
+    /// Sent bytes may be 0 in the case the packet contains only ACK frames. These
+    /// pure ACK packets are not congestion-controlled to ensure congestion control
+    /// does not impede congestion feedback.
     fn on_packet_sent(
         &mut self,
         time_sent: Timestamp,
         sent_bytes: usize,
         rtt_estimator: &RttEstimator,
-    );
+    ) -> Self::PacketInfo;
 
     /// Invoked each time the round trip time is updated, which is whenever the
     /// largest acknowledged packet in an ACK frame is newly acknowledged
@@ -69,6 +76,7 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
         &mut self,
         largest_acked_time_sent: Timestamp,
         bytes_sent: usize,
+        largest_acked_packet_info: Self::PacketInfo,
         rtt_estimator: &RttEstimator,
         ack_receive_time: Timestamp,
     );
@@ -123,6 +131,8 @@ pub mod testing {
         pub struct CongestionController {}
 
         impl super::CongestionController for CongestionController {
+            type PacketInfo = ();
+
             fn congestion_window(&self) -> u32 {
                 u32::max_value()
             }
@@ -153,6 +163,7 @@ pub mod testing {
                 &mut self,
                 _largest_acked_time_sent: Timestamp,
                 _sent_bytes: usize,
+                _largest_acked_packet_info: Self::PacketInfo,
                 _rtt_estimator: &RttEstimator,
                 _ack_receive_time: Timestamp,
             ) {
@@ -227,6 +238,8 @@ pub mod testing {
         }
 
         impl super::CongestionController for CongestionController {
+            type PacketInfo = ();
+
             fn congestion_window(&self) -> u32 {
                 self.congestion_window
             }
@@ -261,6 +274,7 @@ pub mod testing {
                 &mut self,
                 _largest_acked_time_sent: Timestamp,
                 _sent_bytes: usize,
+                _largest_acked_packet_info: Self::PacketInfo,
                 _rtt_estimator: &RttEstimator,
                 _ack_receive_time: Timestamp,
             ) {

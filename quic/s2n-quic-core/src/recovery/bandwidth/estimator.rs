@@ -22,6 +22,8 @@ pub struct State {
     /// marked as delivered. Else, if the connection was recently idle, then this holds the send
     /// time of the first packet sent after resuming from idle.
     pub first_sent_time: Timestamp,
+    /// The volume of data that was estimated to be in flight at the time of the transmission of this packet
+    pub bytes_in_flight: u32,
     /// Whether the path send rate is limited by the application rather than congestion control
     pub is_app_limited: bool,
 }
@@ -33,6 +35,7 @@ impl State {
             delivered_time: now,
             lost_bytes: 0,
             first_sent_time: now,
+            bytes_in_flight: 0,
             is_app_limited: false,
         }
     }
@@ -128,7 +131,7 @@ impl Estimator {
     //# rate sample based on a snapshot of connection delivery information from the time
     //# at which the packet was last transmitted.
     /// Called for each newly acknowledged packet
-    pub fn on_packet_ack(&mut self, packet: &SentPacketInfo, now: Timestamp) {
+    pub fn on_packet_ack(&mut self, packet: &SentPacketInfo<State>, now: Timestamp) {
         if now > self.state.delivered_time {
             // This is the first ack from a new ACK frame, reset newly acked and lost
             self.rate_sample.newly_acked_bytes = 0;
@@ -144,17 +147,18 @@ impl Estimator {
         //# multiple data packets. In this case we use the information from the most recently
         //# sent packet, i.e., the packet with the highest "P.delivered" value.
         if self.rate_sample.prior_delivered_bytes == 0
-            || packet.bandwidth_state.delivered_bytes > self.rate_sample.prior_delivered_bytes
+            || packet.additional_packet_info.delivered_bytes
+                > self.rate_sample.prior_delivered_bytes
         {
             // Update info using the newest packet
-            self.rate_sample.prior_delivered_bytes = packet.bandwidth_state.delivered_bytes;
-            self.rate_sample.prior_lost_bytes = packet.bandwidth_state.lost_bytes;
-            self.rate_sample.is_app_limited = packet.bandwidth_state.is_app_limited;
-            self.rate_sample.bytes_in_flight = packet.bytes_in_flight;
+            self.rate_sample.prior_delivered_bytes = packet.additional_packet_info.delivered_bytes;
+            self.rate_sample.prior_lost_bytes = packet.additional_packet_info.lost_bytes;
+            self.rate_sample.is_app_limited = packet.additional_packet_info.is_app_limited;
+            self.rate_sample.bytes_in_flight = packet.additional_packet_info.bytes_in_flight;
             self.state.first_sent_time = packet.time_sent;
 
-            let send_elapsed = packet.time_sent - packet.bandwidth_state.first_sent_time;
-            let ack_elapsed = now - packet.bandwidth_state.delivered_time;
+            let send_elapsed = packet.time_sent - packet.additional_packet_info.first_sent_time;
+            let ack_elapsed = now - packet.additional_packet_info.delivered_time;
 
             //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#2.2.4
             //# Since it is physically impossible to have data delivered faster than it is sent

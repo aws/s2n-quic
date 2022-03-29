@@ -314,9 +314,12 @@ fn send_and_ack<CC: CongestionController>(
 ) {
     let mut remaining = bytes;
 
+    let mut packet_info = None;
+
     while remaining > 0 {
         let bytes_sent = remaining.min(MINIMUM_MTU as usize);
-        congestion_controller.on_packet_sent(timestamp, bytes_sent, rtt_estimator);
+        packet_info =
+            Some(congestion_controller.on_packet_sent(timestamp, bytes_sent, rtt_estimator));
         remaining -= bytes_sent;
     }
 
@@ -330,6 +333,7 @@ fn send_and_ack<CC: CongestionController>(
         congestion_controller.on_packet_ack(
             ack_receive_time,
             bytes_sent,
+            packet_info.unwrap(),
             rtt_estimator,
             ack_receive_time,
         );

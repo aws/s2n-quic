@@ -3,7 +3,7 @@
 
 use crate::{
     frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification, path,
-    recovery::bandwidth, time::Timestamp,
+    time::Timestamp,
 };
 use core::convert::TryInto;
 
@@ -12,11 +12,11 @@ use core::convert::TryInto;
 //= https://www.rfc-editor.org/rfc/rfc9002#section-A.1.1
 
 #[cfg(feature = "alloc")]
-pub type SentPackets = crate::packet::number::Map<SentPacketInfo>;
+pub type SentPackets<PacketInfo> = crate::packet::number::Map<SentPacketInfo<PacketInfo>>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-pub struct SentPacketInfo {
+pub struct SentPacketInfo<PacketInfo> {
     /// Indicates whether the packet counts towards bytes in flight
     pub congestion_controlled: bool,
     /// The number of bytes sent in the packet, not including UDP or IP overhead,
@@ -31,12 +31,10 @@ pub struct SentPacketInfo {
     /// The ECN marker (if any) sent on the datagram that contained this packet
     pub ecn: ExplicitCongestionNotification,
     /// Bandwidth-related state at the point this packet was sent
-    pub bandwidth_state: bandwidth::State,
-    /// The volume of data that was estimated to be in flight at the time of the transmission of this packet
-    pub bytes_in_flight: u32,
+    pub additional_packet_info: PacketInfo,
 }
 
-impl SentPacketInfo {
+impl<PacketInfo> SentPacketInfo<PacketInfo> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         congestion_controlled: bool,
@@ -45,8 +43,7 @@ impl SentPacketInfo {
         ack_elicitation: AckElicitation,
         path_id: path::Id,
         ecn: ExplicitCongestionNotification,
-        bandwidth_state: bandwidth::State,
-        bytes_in_flight: u32,
+        additional_packet_info: PacketInfo,
     ) -> Self {
         debug_assert_eq!(
             sent_bytes > 0,
@@ -63,8 +60,7 @@ impl SentPacketInfo {
             ack_elicitation,
             path_id,
             ecn,
-            bandwidth_state,
-            bytes_in_flight,
+            additional_packet_info,
         }
     }
 }
@@ -75,15 +71,13 @@ mod test {
         frame::ack_elicitation::AckElicitation,
         inet::ExplicitCongestionNotification,
         path,
-        recovery::{bandwidth, SentPacketInfo},
+        recovery::SentPacketInfo,
         time::{Clock, NoopClock},
     };
 
     #[test]
     #[should_panic]
     fn too_large_packet() {
-        let bw_estimator = bandwidth::Estimator::new(NoopClock.get_time());
-
         SentPacketInfo::new(
             true,
             u16::MAX as usize + 1,
@@ -91,8 +85,7 @@ mod test {
             AckElicitation::Eliciting,
             unsafe { path::Id::new(0) },
             ExplicitCongestionNotification::default(),
-            bw_estimator.state(),
-            0,
+            (),
         );
     }
 
@@ -101,12 +94,12 @@ mod test {
     fn sent_packet_info_size_test() {
         insta::assert_debug_snapshot!(
             stringify!(sent_packet_info_size_test),
-            core::mem::size_of::<SentPacketInfo>()
+            core::mem::size_of::<SentPacketInfo<()>>()
         );
 
         assert_eq!(
-            core::mem::size_of::<Option<SentPacketInfo>>(),
-            core::mem::size_of::<SentPacketInfo>()
+            core::mem::size_of::<Option<SentPacketInfo<()>>>(),
+            core::mem::size_of::<SentPacketInfo<()>>()
         );
     }
 }

@@ -54,7 +54,6 @@ fn on_packet_ack_resets_newly_acked_and_lost_on_new_ack() {
         path::Id::test_id(),
         ExplicitCongestionNotification::NotEct,
         bw_estimator.state(),
-        0,
     );
 
     bw_estimator.on_packet_ack(&packet, now);
@@ -105,7 +104,6 @@ fn on_packet_ack_clears_app_limited_timestamp() {
         path::Id::test_id(),
         ExplicitCongestionNotification::NotEct,
         bw_estimator.state(),
-        0,
     );
 
     let t2 = t0 + Duration::from_secs(2);
@@ -124,7 +122,6 @@ fn on_packet_ack_clears_app_limited_timestamp() {
         path::Id::test_id(),
         ExplicitCongestionNotification::NotEct,
         bw_estimator.state(),
-        0,
     );
 
     // Now a packet that was sent after the app_limited_timestamp has been acked,
@@ -148,9 +145,8 @@ fn on_packet_ack_rate_sample() {
         path::Id::test_id(),
         ExplicitCongestionNotification::NotEct,
         bw_estimator.state(),
-        500,
     );
-    packet.bandwidth_state.lost_bytes = 1000;
+    packet.additional_packet_info.lost_bytes = 1000;
 
     let t1 = t0 + Duration::from_secs(1);
     bw_estimator.on_packet_ack(&packet, t1);
@@ -163,19 +159,19 @@ fn on_packet_ack_rate_sample() {
 
     // Rate sample is updated since this is the first packet delivered
     assert_eq!(
-        packet.bandwidth_state.delivered_bytes,
+        packet.additional_packet_info.delivered_bytes,
         bw_estimator.rate_sample.prior_delivered_bytes
     );
     assert_eq!(
-        packet.bandwidth_state.lost_bytes,
+        packet.additional_packet_info.lost_bytes,
         bw_estimator.rate_sample.prior_lost_bytes
     );
     assert_eq!(
-        packet.bandwidth_state.is_app_limited,
+        packet.additional_packet_info.is_app_limited,
         bw_estimator.rate_sample.is_app_limited
     );
     assert_eq!(
-        packet.bytes_in_flight,
+        packet.additional_packet_info.bytes_in_flight,
         bw_estimator.rate_sample.bytes_in_flight
     );
     assert_eq!(packet.time_sent, bw_estimator.state.first_sent_time);
@@ -183,12 +179,12 @@ fn on_packet_ack_rate_sample() {
 
     // Ack a newer packet
     let mut new_packet = packet;
-    new_packet.bandwidth_state.delivered_bytes = 1500;
-    new_packet.bandwidth_state.lost_bytes = 1000;
+    new_packet.additional_packet_info.delivered_bytes = 1500;
+    new_packet.additional_packet_info.lost_bytes = 1000;
     new_packet.time_sent = t1;
-    new_packet.bandwidth_state.first_sent_time = t1;
-    new_packet.bandwidth_state.is_app_limited = true;
-    new_packet.bytes_in_flight = 500;
+    new_packet.additional_packet_info.first_sent_time = t1;
+    new_packet.additional_packet_info.is_app_limited = true;
+    new_packet.additional_packet_info.bytes_in_flight = 500;
 
     bw_estimator.on_packet_ack(&new_packet, t1);
 
@@ -203,19 +199,19 @@ fn on_packet_ack_rate_sample() {
 
     // Rate sample is updated since this packet is newer
     assert_eq!(
-        new_packet.bandwidth_state.delivered_bytes,
+        new_packet.additional_packet_info.delivered_bytes,
         bw_estimator.rate_sample.prior_delivered_bytes
     );
     assert_eq!(
-        new_packet.bandwidth_state.lost_bytes,
+        new_packet.additional_packet_info.lost_bytes,
         bw_estimator.rate_sample.prior_lost_bytes
     );
     assert_eq!(
-        new_packet.bandwidth_state.is_app_limited,
+        new_packet.additional_packet_info.is_app_limited,
         bw_estimator.rate_sample.is_app_limited
     );
     assert_eq!(
-        new_packet.bytes_in_flight,
+        new_packet.additional_packet_info.bytes_in_flight,
         bw_estimator.rate_sample.bytes_in_flight
     );
     assert_eq!(new_packet.time_sent, bw_estimator.state.first_sent_time);
@@ -223,7 +219,7 @@ fn on_packet_ack_rate_sample() {
 
     // Ack an older packet
     let mut old_packet = new_packet;
-    old_packet.bandwidth_state.delivered_bytes -= 1;
+    old_packet.additional_packet_info.delivered_bytes -= 1;
     old_packet.time_sent -= Duration::from_secs(1);
 
     bw_estimator.on_packet_ack(&packet, t1);
@@ -239,19 +235,19 @@ fn on_packet_ack_rate_sample() {
 
     // Rate sample is not updated since this packet is older than the current sample
     assert_eq!(
-        new_packet.bandwidth_state.delivered_bytes,
+        new_packet.additional_packet_info.delivered_bytes,
         bw_estimator.rate_sample.prior_delivered_bytes
     );
     assert_eq!(
-        new_packet.bandwidth_state.lost_bytes,
+        new_packet.additional_packet_info.lost_bytes,
         bw_estimator.rate_sample.prior_lost_bytes
     );
     assert_eq!(
-        new_packet.bandwidth_state.is_app_limited,
+        new_packet.additional_packet_info.is_app_limited,
         bw_estimator.rate_sample.is_app_limited
     );
     assert_eq!(
-        new_packet.bytes_in_flight,
+        new_packet.additional_packet_info.bytes_in_flight,
         bw_estimator.rate_sample.bytes_in_flight
     );
     assert_eq!(new_packet.time_sent, bw_estimator.state.first_sent_time);
@@ -278,14 +274,13 @@ fn on_packet_ack_implausible_ack_rate() {
         path::Id::test_id(),
         ExplicitCongestionNotification::NotEct,
         bw_estimator.state(),
-        500,
     );
 
     let now = packet.time_sent + Duration::from_secs(1);
     bw_estimator.on_packet_ack(&packet, now);
 
-    let send_elapsed = packet.time_sent - packet.bandwidth_state.first_sent_time;
-    let ack_elapsed = now - packet.bandwidth_state.delivered_time;
+    let send_elapsed = packet.time_sent - packet.additional_packet_info.first_sent_time;
+    let ack_elapsed = now - packet.additional_packet_info.delivered_time;
 
     // The amount of time to send the packets was greater than the time to
     // acknowledge them, indicating the ack rate would be implausible.
