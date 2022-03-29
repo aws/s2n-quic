@@ -1127,7 +1127,7 @@ mod tests {
         );
 
         // Fill up the congestion controller
-        path.congestion_controller.on_packet_sent(
+        let packet_info = path.congestion_controller.on_packet_sent(
             now,
             path.congestion_controller.congestion_window() as usize,
             &path.rtt_estimator,
@@ -1139,7 +1139,8 @@ mod tests {
         );
 
         // Lose a byte to enter recovery
-        path.congestion_controller.on_packets_lost(1, false, now);
+        path.congestion_controller
+            .on_packet_lost(1, packet_info, false, now);
         path.congestion_controller.requires_fast_retransmission = true;
 
         assert_eq!(
@@ -1148,8 +1149,9 @@ mod tests {
         );
 
         // Lose remaining bytes
-        path.congestion_controller.on_packets_lost(
+        path.congestion_controller.on_packet_lost(
             path.congestion_controller.congestion_window(),
+            packet_info,
             false,
             now,
         );

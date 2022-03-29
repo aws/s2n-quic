@@ -12,11 +12,11 @@ use core::convert::TryInto;
 //= https://www.rfc-editor.org/rfc/rfc9002#section-A.1.1
 
 #[cfg(feature = "alloc")]
-pub type SentPackets = crate::packet::number::Map<SentPacketInfo>;
+pub type SentPackets<PacketInfo> = crate::packet::number::Map<SentPacketInfo<PacketInfo>>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-pub struct SentPacketInfo {
+pub struct SentPacketInfo<PacketInfo> {
     /// Indicates whether the packet counts towards bytes in flight
     pub congestion_controlled: bool,
     /// The number of bytes sent in the packet, not including UDP or IP overhead,
@@ -30,9 +30,12 @@ pub struct SentPacketInfo {
     pub path_id: path::Id,
     /// The ECN marker (if any) sent on the datagram that contained this packet
     pub ecn: ExplicitCongestionNotification,
+    /// Additional packet metadata dictated by the congestion controller
+    pub cc_packet_info: PacketInfo,
 }
 
-impl SentPacketInfo {
+impl<PacketInfo> SentPacketInfo<PacketInfo> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         congestion_controlled: bool,
         sent_bytes: usize,
@@ -40,6 +43,7 @@ impl SentPacketInfo {
         ack_elicitation: AckElicitation,
         path_id: path::Id,
         ecn: ExplicitCongestionNotification,
+        cc_packet_info: PacketInfo,
     ) -> Self {
         debug_assert_eq!(
             sent_bytes > 0,
@@ -56,6 +60,7 @@ impl SentPacketInfo {
             ack_elicitation,
             path_id,
             ecn,
+            cc_packet_info,
         }
     }
 }
@@ -80,6 +85,7 @@ mod test {
             AckElicitation::Eliciting,
             unsafe { path::Id::new(0) },
             ExplicitCongestionNotification::default(),
+            (),
         );
     }
 
@@ -88,12 +94,12 @@ mod test {
     fn sent_packet_info_size_test() {
         insta::assert_debug_snapshot!(
             stringify!(sent_packet_info_size_test),
-            core::mem::size_of::<SentPacketInfo>()
+            core::mem::size_of::<SentPacketInfo<()>>()
         );
 
         assert_eq!(
-            core::mem::size_of::<Option<SentPacketInfo>>(),
-            core::mem::size_of::<SentPacketInfo>()
+            core::mem::size_of::<Option<SentPacketInfo<()>>>(),
+            core::mem::size_of::<SentPacketInfo<()>>()
         );
     }
 }

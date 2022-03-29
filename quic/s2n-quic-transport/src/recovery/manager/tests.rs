@@ -1657,11 +1657,27 @@ fn remove_lost_packets_persistent_congestion_path_aware() {
     let sent_packets_to_remove = vec![
         (
             space.new_packet_number(VarInt::from_u8(9)),
-            SentPacketInfo::new(true, 1, now, AckElicitation::Eliciting, first_path_id, ecn),
+            SentPacketInfo::new(
+                true,
+                1,
+                now,
+                AckElicitation::Eliciting,
+                first_path_id,
+                ecn,
+                (),
+            ),
         ),
         (
             space.new_packet_number(VarInt::from_u8(9)),
-            SentPacketInfo::new(true, 1, now, AckElicitation::Eliciting, second_path_id, ecn),
+            SentPacketInfo::new(
+                true,
+                1,
+                now,
+                AckElicitation::Eliciting,
+                second_path_id,
+                ecn,
+                (),
+            ),
         ),
     ];
 
@@ -2511,6 +2527,7 @@ fn on_timeout() {
             AckElicitation::Eliciting,
             unsafe { path::Id::new(0) },
             ecn,
+            (),
         ),
     );
     manager.pto.timer.set(now - Duration::from_secs(5));
