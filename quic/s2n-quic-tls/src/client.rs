@@ -1,12 +1,18 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{certificate::IntoCertificate, keylog::KeyLogHandle, params::Params, session::Session};
+use crate::{
+    certificate::{IntoCertificate, IntoPrivateKey},
+    keylog::KeyLogHandle,
+    params::Params,
+    session::Session,
+};
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls, endpoint};
 use s2n_tls::raw::{
     config::{self, Config},
     error::Error,
+    ffi::s2n_cert_auth_type,
     security,
 };
 use std::sync::Arc;
@@ -72,6 +78,47 @@ impl Builder {
             .as_pem()
             .expect("pem is currently the only certificate format supported");
         self.config.trust_pem(certificate)?;
+        Ok(self)
+    }
+
+    /// Clears the default trust store for this client
+    ///
+    /// By default, the trust store is initialized with common
+    /// trust store locations for the host operating system.
+    /// By invoking this method, the trust store will be cleared.
+    ///
+    /// Note that call ordering matters. The caller should call this
+    /// method before making any calls to `with_trust_client_certificate_signed_by()`.
+    /// Calling this method after a method that modifies the trust store will clear it.
+    pub fn with_empty_trust_store(mut self) -> Result<Self, Error> {
+        self.config.wipe_trust_store()?;
+        Ok(self)
+    }
+
+    /// Add the cert and key to the key store.
+    ///
+    /// This must be set when the server requires client authentication (mutual TLS).
+    /// The client will offer the certificate to the server when it is requested
+    /// as part of the TLS handshake.
+    pub fn with_client_identity<C: IntoCertificate, PK: IntoPrivateKey>(
+        mut self,
+        certificate: C,
+        private_key: PK,
+    ) -> Result<Self, Error> {
+        let certificate = certificate.into_certificate()?;
+        let private_key = private_key.into_private_key()?;
+        self.config.load_pem(
+            certificate
+                .0
+                .as_pem()
+                .expect("pem is currently the only certificate format supported"),
+            private_key
+                .0
+                .as_pem()
+                .expect("pem is currently the only certificate format supported"),
+        )?;
+        self.config
+            .set_client_auth_type(s2n_cert_auth_type::REQUIRED)?;
         Ok(self)
     }
 

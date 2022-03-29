@@ -1,8 +1,6 @@
 ---
 source: src/main.rs
-assertion_line: 61
 expression: dump
-
 ---
 trait impl core::convert::TryFrom<s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::PlainMessage> for s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::Message associates type:
   type Error = s2n_quic::provider::tls::rustls::rustls::Error
@@ -5913,6 +5911,17 @@ struct s2n_quic::provider::tls::default::client::Builder exports function:
   C: s2n_quic::provider::tls::s2n_tls::certificate::IntoCertificate,
 
 struct s2n_quic::provider::tls::default::client::Builder exports function:
+  pub fn with_client_identity<C, PK>(
+  self,
+  certificate: C,
+  private_key: PK) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::client::Builder, s2n_tls::raw::error::Error> where
+  C: s2n_quic::provider::tls::s2n_tls::certificate::IntoCertificate,
+  PK: s2n_quic::provider::tls::s2n_tls::certificate::IntoPrivateKey,
+
+struct s2n_quic::provider::tls::default::client::Builder exports function:
+  pub fn with_empty_trust_store(self) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::client::Builder, s2n_tls::raw::error::Error>
+
+struct s2n_quic::provider::tls::default::client::Builder exports function:
   pub fn with_key_logging(self) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::client::Builder, s2n_tls::raw::error::Error>
 
 struct s2n_quic::provider::tls::default::client::Builder exports function:
@@ -5988,7 +5997,25 @@ struct s2n_quic::provider::tls::default::server::Builder exports function:
   PK: s2n_quic::provider::tls::s2n_tls::certificate::IntoPrivateKey,
 
 struct s2n_quic::provider::tls::default::server::Builder exports function:
+  pub fn with_client_authentication(self) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::server::Builder, s2n_tls::raw::error::Error>
+
+struct s2n_quic::provider::tls::default::server::Builder exports function:
+  pub fn with_empty_trust_store(self) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::server::Builder, s2n_tls::raw::error::Error>
+
+struct s2n_quic::provider::tls::default::server::Builder exports function:
   pub fn with_key_logging(self) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::server::Builder, s2n_tls::raw::error::Error>
+
+struct s2n_quic::provider::tls::default::server::Builder exports function:
+  pub fn with_trusted_certificate<C>(
+  self,
+  certificate: C) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::server::Builder, s2n_tls::raw::error::Error> where
+  C: s2n_quic::provider::tls::s2n_tls::certificate::IntoCertificate,
+
+struct s2n_quic::provider::tls::default::server::Builder exports function:
+  pub fn with_verify_client_certificate_handler<T>(
+  self,
+  handler: T) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::server::Builder, s2n_tls::raw::error::Error> where
+  T: 'static + s2n_tls::raw::config::VerifyClientCertificateHandler,
 
 struct s2n_quic::provider::tls::default::server::Server implements trait:
   impl !core::marker::Sync for s2n_quic::provider::tls::s2n_tls::Server
@@ -16094,6 +16121,17 @@ struct s2n_quic::provider::tls::s2n_tls::client::Builder exports function:
   C: s2n_quic::provider::tls::s2n_tls::certificate::IntoCertificate,
 
 struct s2n_quic::provider::tls::s2n_tls::client::Builder exports function:
+  pub fn with_client_identity<C, PK>(
+  self,
+  certificate: C,
+  private_key: PK) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::client::Builder, s2n_tls::raw::error::Error> where
+  C: s2n_quic::provider::tls::s2n_tls::certificate::IntoCertificate,
+  PK: s2n_quic::provider::tls::s2n_tls::certificate::IntoPrivateKey,
+
+struct s2n_quic::provider::tls::s2n_tls::client::Builder exports function:
+  pub fn with_empty_trust_store(self) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::client::Builder, s2n_tls::raw::error::Error>
+
+struct s2n_quic::provider::tls::s2n_tls::client::Builder exports function:
   pub fn with_key_logging(self) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::client::Builder, s2n_tls::raw::error::Error>
 
 struct s2n_quic::provider::tls::s2n_tls::client::Builder exports function:
@@ -16169,7 +16207,25 @@ struct s2n_quic::provider::tls::s2n_tls::server::Builder exports function:
   PK: s2n_quic::provider::tls::s2n_tls::certificate::IntoPrivateKey,
 
 struct s2n_quic::provider::tls::s2n_tls::server::Builder exports function:
+  pub fn with_client_authentication(self) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::server::Builder, s2n_tls::raw::error::Error>
+
+struct s2n_quic::provider::tls::s2n_tls::server::Builder exports function:
+  pub fn with_empty_trust_store(self) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::server::Builder, s2n_tls::raw::error::Error>
+
+struct s2n_quic::provider::tls::s2n_tls::server::Builder exports function:
   pub fn with_key_logging(self) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::server::Builder, s2n_tls::raw::error::Error>
+
+struct s2n_quic::provider::tls::s2n_tls::server::Builder exports function:
+  pub fn with_trusted_certificate<C>(
+  self,
+  certificate: C) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::server::Builder, s2n_tls::raw::error::Error> where
+  C: s2n_quic::provider::tls::s2n_tls::certificate::IntoCertificate,
+
+struct s2n_quic::provider::tls::s2n_tls::server::Builder exports function:
+  pub fn with_verify_client_certificate_handler<T>(
+  self,
+  handler: T) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::server::Builder, s2n_tls::raw::error::Error> where
+  T: 'static + s2n_tls::raw::config::VerifyClientCertificateHandler,
 
 struct s2n_quic::provider::tls::s2n_tls::server::Server implements trait:
   impl !core::marker::Sync for s2n_quic::provider::tls::s2n_tls::Server

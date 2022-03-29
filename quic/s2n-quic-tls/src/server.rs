@@ -12,8 +12,9 @@ use s2n_quic_core::{application::ServerName, crypto::tls, endpoint};
 #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
 use s2n_tls::raw::config::ClientHelloHandler;
 use s2n_tls::raw::{
-    config::{self, Config},
+    config::{self, Config, VerifyClientCertificateHandler},
     error::Error,
+    ffi::s2n_cert_auth_type,
     security,
 };
 use std::sync::Arc;
@@ -98,6 +99,50 @@ impl Builder {
                 .as_pem()
                 .expect("pem is currently the only certificate format supported"),
         )?;
+        Ok(self)
+    }
+
+    pub fn with_trusted_certificate<C: IntoCertificate>(
+        mut self,
+        certificate: C,
+    ) -> Result<Self, Error> {
+        let certificate = certificate.into_certificate()?;
+        let certificate = certificate
+            .0
+            .as_pem()
+            .expect("pem is currently the only certificate format supported");
+        self.config.trust_pem(certificate)?;
+        Ok(self)
+    }
+
+    /// Clears the default trust store for this client.
+    ///
+    /// By default, the trust store is initialized with common
+    /// trust store locations for the host operating system.
+    /// By invoking this method, the trust store will be cleared.
+    ///
+    /// Note that call ordering matters. The caller should call this
+    /// method before making any calls to `with_trusted_certificate()`.
+    /// Calling this method after a method that modifies the trust store will clear it.
+    pub fn with_empty_trust_store(mut self) -> Result<Self, Error> {
+        self.config.wipe_trust_store()?;
+        Ok(self)
+    }
+
+    /// Configures this server instance to require client authentication (mutual TLS).
+    pub fn with_client_authentication(mut self) -> Result<Self, Error> {
+        self.config
+            .set_client_auth_type(s2n_cert_auth_type::REQUIRED)?;
+        Ok(self)
+    }
+
+    /// Set the application level certificate verification handler which will be invoked on this
+    /// server instance when a client certificate is presented during the mutual TLS handshake.
+    pub fn with_verify_client_certificate_handler<T: 'static + VerifyClientCertificateHandler>(
+        mut self,
+        handler: T,
+    ) -> Result<Self, Error> {
+        self.config.set_verify_host_handler(handler)?;
         Ok(self)
     }
 

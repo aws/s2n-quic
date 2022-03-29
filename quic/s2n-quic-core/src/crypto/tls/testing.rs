@@ -38,6 +38,8 @@ pub mod certificates {
     pem!(CERT_PEM, "cert.pem");
     der!(KEY_DER, "key.der");
     der!(CERT_DER, "cert.der");
+    pem!(UNTRUSTED_CERT_PEM, "untrusted_cert.pem");
+    pem!(UNTRUSTED_KEY_PEM, "untrusted_key.pem");
 }
 
 #[derive(Debug)]
