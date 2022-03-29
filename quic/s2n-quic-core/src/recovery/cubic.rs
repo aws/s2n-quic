@@ -162,6 +162,8 @@ pub struct CubicCongestionController {
 type BytesInFlight = Counter<u32>;
 
 impl CongestionController for CubicCongestionController {
+    type PacketInfo = ();
+
     #[inline]
     fn congestion_window(&self) -> u32 {
         self.congestion_window as u32
