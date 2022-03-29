@@ -542,10 +542,10 @@ impl<Config: endpoint::Config> Manager<Config> {
             if acked_packet_info.path_id == current_path_id {
                 current_path_acked_bytes += sent_bytes;
             } else if sent_bytes > 0 {
-                path.congestion_controller.on_packet_ack(
-                    largest_newly_acked.time_sent,
+                path.congestion_controller.on_ack(
+                    acked_packet_info.time_sent,
                     sent_bytes,
-                    largest_newly_acked.additional_packet_info,
+                    acked_packet_info.additional_packet_info,
                     &path.rtt_estimator,
                     datagram.timestamp,
                 );
@@ -594,7 +594,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         let path = context.path_mut();
 
         if current_path_acked_bytes > 0 {
-            path.congestion_controller.on_packet_ack(
+            path.congestion_controller.on_ack(
                 largest_newly_acked.time_sent,
                 current_path_acked_bytes,
                 largest_newly_acked.additional_packet_info,
@@ -848,8 +848,9 @@ impl<Config: endpoint::Config> Manager<Config> {
                     .on_packet_discarded(sent_info.sent_bytes as usize);
                 is_mtu_probe = true;
             } else if sent_info.sent_bytes > 0 {
-                path.congestion_controller.on_packets_lost(
+                path.congestion_controller.on_packet_lost(
                     sent_info.sent_bytes as u32,
+                    sent_info.additional_packet_info,
                     persistent_congestion,
                     now,
                 );

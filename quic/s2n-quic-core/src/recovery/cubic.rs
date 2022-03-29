@@ -239,11 +239,11 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
-    fn on_packet_ack(
+    fn on_ack(
         &mut self,
-        largest_acked_time_sent: Timestamp,
+        newest_acked_time_sent: Timestamp,
         sent_bytes: usize,
-        _largest_acked_packet_info: Self::PacketInfo,
+        _newest_acked_packet_info: Self::PacketInfo,
         rtt_estimator: &RttEstimator,
         ack_receive_time: Timestamp,
     ) {
@@ -265,7 +265,7 @@ impl CongestionController for CubicCongestionController {
 
         // Check if this ack causes the controller to exit recovery
         if let State::Recovery(recovery_start_time, _) = self.state {
-            if largest_acked_time_sent > recovery_start_time {
+            if newest_acked_time_sent > recovery_start_time {
                 //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
                 //# A recovery period ends and the sender enters congestion avoidance
                 //# when a packet sent during the recovery period is acknowledged.
@@ -322,9 +322,10 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
-    fn on_packets_lost(
+    fn on_packet_lost(
         &mut self,
         lost_bytes: u32,
+        _packet_info: Self::PacketInfo,
         persistent_congestion: bool,
         timestamp: Timestamp,
     ) {
