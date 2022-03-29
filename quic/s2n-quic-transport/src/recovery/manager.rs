@@ -37,7 +37,7 @@ pub struct Manager<Config: endpoint::Config> {
     //= https://www.rfc-editor.org/rfc/rfc9002#section-A.3
     //# An association of packet numbers in a packet number space to information about them.
     //  These are packets that are pending acknowledgement.
-    sent_packets: SentPackets<<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController as congestion_controller::CongestionController>::PacketInfo>,
+    sent_packets: SentPackets<packet_info_type!()>,
 
     // Timer set when packets may be declared lost at a time in the future
     loss_timer: Timer,
@@ -98,6 +98,10 @@ macro_rules! recovery_event {
     };
 }
 
+// Since `SentPacketInfo` is generic over a type supplied by the Congestion Controller implementation,
+// the type definition is particularly lengthy, especially since rust requires the fully-qualified
+// syntax to eliminate ambiguity. This macro can be used where ever the Congestion Controller
+// generic PacketInfo type is required to help with readability.
 macro_rules! packet_info_type {
     () => {
         <<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController as congestion_controller::CongestionController>::PacketInfo
