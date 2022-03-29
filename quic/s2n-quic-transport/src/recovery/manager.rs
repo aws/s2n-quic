@@ -10,7 +10,7 @@ use crate::{
     },
     transmission,
 };
-use core::{cmp::max, marker::PhantomData, time::Duration};
+use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
     event::{self, builder::CongestionSource, IntoEvent},
     frame,
@@ -60,8 +60,6 @@ pub struct Manager<Config: endpoint::Config> {
 
     // The total ecn counts for outstanding (unacknowledged) packets
     sent_packet_ecn_counts: EcnCounts,
-
-    config: PhantomData<Config>,
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.1
@@ -119,7 +117,6 @@ impl<Config: endpoint::Config> Manager<Config> {
             time_of_last_ack_eliciting_packet: None,
             baseline_ecn_counts: EcnCounts::default(),
             sent_packet_ecn_counts: EcnCounts::default(),
-            config: PhantomData,
         }
     }
 
