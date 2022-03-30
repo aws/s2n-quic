@@ -7,18 +7,19 @@ use core::{cmp::max, time::Duration};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 /// Bandwidth-related data tracked for each sent packet
 pub struct PacketInfo {
-    /// `Estimator.delivered_bytes` at the time this packet was sent.
+    /// [Estimator::delivered_bytes] at the time this packet was sent.
     pub delivered_bytes: u64,
-    /// `Estimator.delivered_time` at the time this packet was sent.
+    /// `Estimator::delivered_time` at the time this packet was sent.
     pub delivered_time: Timestamp,
-    /// `Estimator.lost_bytes` at the time this packet was sent.
+    /// `Estimator::lost_bytes` at the time this packet was sent.
     pub lost_bytes: u64,
-    /// `Estimator.first_sent_time` at the time this packet was sent.
+    /// `Estimator::first_sent_time` at the time this packet was sent.
     pub first_sent_time: Timestamp,
-    /// The volume of data that was estimated to be in flight at the time of the transmission of this packet
+    /// The volume of data that was estimated to be in flight at the
+    /// time of the transmission of this packet
     pub bytes_in_flight: u32,
-    /// Whether the path send rate was limited by the application rather than congestion control at the time
-    /// this packet was sent
+    /// Whether the path send rate was limited by the application rather
+    /// than congestion control at the time this packet was sent
     pub is_app_limited: bool,
 }
 
@@ -31,13 +32,13 @@ pub struct RateSample {
     pub delivered_bytes: u64,
     /// The amount of data in bytes marked as lost over the sampling interval
     pub lost_bytes: u64,
-    /// `PacketInfo.is_app_limited` from the most recent acknowledged packet
+    /// [PacketInfo::is_app_limited] from the most recent acknowledged packet
     pub is_app_limited: bool,
-    /// `PacketInfo.delivered_bytes` from the most recent acknowledged packet
+    /// [PacketInfo::delivered_bytes] from the most recent acknowledged packet
     pub prior_delivered_bytes: u64,
-    /// `PacketInfo.bytes_in_flight` from the most recent acknowledged packet
+    /// [PacketInfo::bytes_in_flight] from the most recent acknowledged packet
     pub bytes_in_flight: u32,
-    /// `PacketInfo.lost_bytes` from the most recent acknowledged packet
+    /// [PacketInfo::lost_bytes] from the most recent acknowledged packet
     pub prior_lost_bytes: u64,
 }
 
@@ -84,7 +85,7 @@ impl Estimator {
         self.delivered_bytes
     }
 
-    /// Gets the latest `bandwidth::RateSample`
+    /// Gets the latest [RateSample]
     pub fn rate_sample(&self) -> RateSample {
         self.rate_sample
     }
