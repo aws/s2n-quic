@@ -664,7 +664,8 @@ pub trait PacketSpace<Config: endpoint::Config> {
         let mut payload = {
             use s2n_quic_core::packet::interceptor::{Interceptor, Packet};
 
-            packet_interceptor.intercept_rx_packet(
+            // intercept the payload after it is decrypted, but before we process the frames
+            packet_interceptor.intercept_rx_payload(
                 publisher.subject(),
                 Packet {
                     number: packet_number,

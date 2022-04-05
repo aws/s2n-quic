@@ -13,7 +13,7 @@ pub struct Packet {
 /// Trait which enables an application to intercept packets that are transmitted and received
 pub trait Interceptor: 'static + Send {
     #[inline(always)]
-    fn intercept_rx_packet<'a>(
+    fn intercept_rx_payload<'a>(
         &mut self,
         subject: Subject,
         packet: Packet,
@@ -25,7 +25,7 @@ pub trait Interceptor: 'static + Send {
     }
 
     #[inline(always)]
-    fn intercept_tx_packet<'a>(
+    fn intercept_tx_payload<'a>(
         &mut self,
         subject: Subject,
         packet: Packet,

@@ -119,8 +119,8 @@ impl<'a, 'sub, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
                     packet::interceptor::{Interceptor, Packet},
                 };
 
-                // allow the packet interceptor provider to do its thing
-                self.packet_interceptor.intercept_tx_packet(
+                // intercept the payload before it is encrypted
+                self.packet_interceptor.intercept_tx_payload(
                     self.publisher.subject(),
                     Packet {
                         number: self.packet_number,
