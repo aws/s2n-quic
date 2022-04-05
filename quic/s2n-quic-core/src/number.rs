@@ -257,3 +257,28 @@ upcast_usize!("16", u16, u16);
 upcast_usize!("32", u32, i32);
 upcast_usize!("64", u64, i64);
 upcast_usize!("128", u128, i128);
+
+/// A rational number represented by a numerator and a denominator
+pub struct Fraction(u32, u32);
+
+impl Fraction {
+    pub const fn new(numerator: u32, denominator: u32) -> Self {
+        Self(numerator, denominator)
+    }
+
+    pub fn numerator(&self) -> u32 {
+        self.0
+    }
+
+    pub fn denominator(&self) -> u32 {
+        self.1
+    }
+}
+
+impl core::ops::Div<Fraction> for core::time::Duration {
+    type Output = core::time::Duration;
+
+    fn div(self, rhs: Fraction) -> Self::Output {
+        self * rhs.1 / rhs.0
+    }
+}

@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::time::Timestamp;
+use crate::{number::Fraction, time::Timestamp};
 use core::{cmp::max, time::Duration};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -21,6 +21,38 @@ pub struct PacketInfo {
     /// Whether the path send rate was limited by the application rather
     /// than congestion control at the time this packet was sent
     pub is_app_limited: bool,
+}
+
+#[derive(Copy, Clone, Default, PartialOrd, PartialEq)]
+pub struct Bandwidth {
+    bits_per_second: u64,
+}
+
+impl Bandwidth {
+    pub const ZERO: Bandwidth = Bandwidth { bits_per_second: 0 };
+
+    pub fn new(bytes: u64, interval: Duration) -> Self {
+        const MICRO_BITS_PER_BYTE: u64 = 8 * 1000000;
+
+        if interval.is_zero() {
+            Bandwidth::ZERO
+        } else {
+            Self {
+                bits_per_second: (bytes * MICRO_BITS_PER_BYTE / interval.as_micros() as u64),
+            }
+        }
+    }
+}
+
+impl core::ops::Mul<Fraction> for Bandwidth {
+    type Output = Bandwidth;
+
+    fn mul(self, rhs: Fraction) -> Self::Output {
+        Bandwidth {
+            bits_per_second: self.bits_per_second * rhs.numerator() as u64
+                / rhs.denominator() as u64,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -54,6 +86,11 @@ impl RateSample {
         self.prior_delivered_bytes = packet_info.delivered_bytes;
         self.prior_lost_bytes = packet_info.lost_bytes;
         self.bytes_in_flight = packet_info.bytes_in_flight;
+    }
+
+    /// Gets the delivery rate of this rate sample
+    pub fn delivery_rate(&self) -> Bandwidth {
+        Bandwidth::new(self.delivered_bytes, self.interval)
     }
 }
 

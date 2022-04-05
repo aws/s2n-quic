@@ -3,31 +3,21 @@
 
 use crate::{
     counter::{Counter, Saturating},
+    number::Fraction,
     recovery::{RttEstimator, MAX_BURST_PACKETS},
     time::{Duration, Timestamp},
 };
-use core::ops::Div;
-
-struct Fraction(u32, u32);
-
-impl Div<Fraction> for Duration {
-    type Output = Duration;
-
-    fn div(self, rhs: Fraction) -> Self::Output {
-        self * rhs.1 / rhs.0
-    }
-}
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-7.7
 //# Using a value for "N" that is small, but at least 1 (for example, 1.25) ensures
 //# that variations in RTT do not result in underutilization of the congestion window.
-const N: Fraction = Fraction(5, 4); // 5/4 = 1.25
+const N: Fraction = Fraction::new(5, 4); // 5/4 = 1.25
 
 // In Slow Start, the congestion window grows rapidly, so there is a higher likelihood the congestion
 // window may be underutilized due to pacing. To prevent that, we use a higher value for `N` while
 // in slow start, as done in Linux:
 // https://github.com/torvalds/linux/blob/fc02cb2b37fe2cbf1d3334b9f0f0eab9431766c4/net/ipv4/tcp_input.c#L905-L906
-const SLOW_START_N: Fraction = Fraction(2, 1); // 2/1 = 2.00
+const SLOW_START_N: Fraction = Fraction::new(2, 1); // 2/1 = 2.00
 
 // Jim Roskind demonstrated the second packet sent on a path has a higher probability of loss due to
 // network routers being busy setting up routing tables triggered by the first packet. Setting this
