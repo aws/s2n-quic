@@ -290,8 +290,8 @@ const BLOCKED_PORTS: [u16; 14] = [
     53,    // DNS, vulnerable to reflection attacks.
     111,   // Portmap.
     123,   // NTP, vulnerable to reflection attacks.
-    137,   // NETBIOS Name Service,
     128,   // NETBIOS Datagram Service
+    137,   // NETBIOS Name Service,
     161,   // SNMP.
     389,   // CLDAP.
     500,   // IKE, can loop with QUIC.
@@ -324,6 +324,13 @@ mod tests {
     #[test]
     fn blocked_ports_is_sorted() {
         assert_eq!(Some(MAX_BLOCKED_PORT), BLOCKED_PORTS.iter().max().copied());
+
+        let mut sorted = BLOCKED_PORTS.to_vec();
+        sorted.sort();
+
+        for i in 0..BLOCKED_PORTS.len() {
+            assert_eq!(sorted[i], BLOCKED_PORTS[i]);
+        }
     }
 
     #[test]

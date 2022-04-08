@@ -123,7 +123,7 @@ pub mod default {
 
             // Block migrations to a port that is blocked
             if remote_port_blocked(packet_addr.port()) {
-                return Outcome::Deny(DenyReason::PortScopeChanged);
+                return Outcome::Deny(DenyReason::BlockedPort);
             }
 
             //= https://www.rfc-editor.org/rfc/rfc9000#section-21.5.6
