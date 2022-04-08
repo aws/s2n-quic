@@ -336,10 +336,7 @@ mod tests {
     #[test]
     fn blocked_port() {
         for port in 0..u16::MAX {
-            let blocked_expected = BLOCKED_PORTS
-                .iter()
-                .copied()
-                .any(|&blocked| blocked == port);
+            let blocked_expected = BLOCKED_PORTS.iter().copied().any(|blocked| blocked == port);
             assert_eq!(blocked_expected, remote_port_blocked(port));
         }
     }
