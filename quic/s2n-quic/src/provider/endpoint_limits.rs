@@ -88,6 +88,10 @@ pub mod default {
     /// Default implementation for the Limits
     impl super::Limiter for Limits {
         fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome {
+            if s2n_quic_core::path::remote_port_blocked(info.remote_address.port()) {
+                return Outcome::drop();
+            }
+
             if let Some(limit) = self.max_inflight_handshake_limit {
                 if info.inflight_handshakes >= limit {
                     return Outcome::retry();
@@ -115,5 +119,27 @@ pub mod default {
             .build()
             .unwrap();
         assert_eq!(elp.max_inflight_handshake_limit, Some(100));
+    }
+
+    #[test]
+    fn blocked_port_connection_attempt() {
+        use s2n_quic_core::inet::SocketAddress;
+
+        let mut remote_address = SocketAddress::default();
+        let mut limits = Limits::builder().build().unwrap();
+
+        for port in 0..u16::MAX {
+            let blocked_expected = s2n_quic_core::path::remote_port_blocked(port);
+
+            remote_address.set_port(port);
+            let info = ConnectionAttempt::new(0, 0, &remote_address);
+            let outcome = limits.on_connection_attempt(&info);
+
+            if blocked_expected {
+                assert_eq!(Outcome::drop(), outcome);
+            } else {
+                assert_eq!(Outcome::allow(), outcome);
+            }
+        }
     }
 }

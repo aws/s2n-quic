@@ -648,6 +648,7 @@ enum RetryDiscardReason<'a> {
 }
 
 enum MigrationDenyReason {
+    BlockedPort,
     PortScopeChanged,
     IpScopeChange,
     ConnectionMigrationDisabled,
