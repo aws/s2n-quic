@@ -348,7 +348,6 @@ mod tests {
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
-
     use crate::{
         connection, event,
         event::{builder::SocketAddress, IntoEvent},
