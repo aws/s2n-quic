@@ -326,7 +326,7 @@ mod tests {
         assert_eq!(Some(MAX_BLOCKED_PORT), BLOCKED_PORTS.iter().max().copied());
 
         let mut sorted = BLOCKED_PORTS.to_vec();
-        sorted.sort();
+        sorted.sort_unstable();
 
         for i in 0..BLOCKED_PORTS.len() {
             assert_eq!(sorted[i], BLOCKED_PORTS[i]);
@@ -339,8 +339,7 @@ mod tests {
             let blocked_expected = BLOCKED_PORTS
                 .iter()
                 .copied()
-                .find(|&blocked| blocked == port)
-                .is_some();
+                .any(|&blocked| blocked == port);
             assert_eq!(blocked_expected, remote_port_blocked(port));
         }
     }
