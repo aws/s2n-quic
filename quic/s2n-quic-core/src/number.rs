@@ -282,3 +282,11 @@ impl core::ops::Div<Fraction> for core::time::Duration {
         self * rhs.1 / rhs.0
     }
 }
+
+impl core::ops::Mul<Fraction> for u32 {
+    type Output = u32;
+
+    fn mul(self, rhs: Fraction) -> Self::Output {
+        self * rhs.0 / rhs.1
+    }
+}
