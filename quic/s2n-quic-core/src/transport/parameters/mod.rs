@@ -69,6 +69,7 @@ pub trait TransportParameterValidator: Sized {
 //# original_destination_connection_id, preferred_address,
 //# retry_source_connection_id, and stateless_reset_token.
 
+//= https://www.rfc-editor.org/rfc/rfc9221#section-3
 //# When clients use 0-RTT, they MAY store the value of the server's
 //# max_datagram_frame_size transport parameter. Doing so allows the
 //# client to send DATAGRAM frames in 0-RTT packets.
@@ -380,7 +381,8 @@ macro_rules! duration_transport_parameter {
     };
 }
 
-/// Implements an optional transport parameter
+/// Implements an optional transport parameter. This is used to define transport
+/// parameters that are only sent by one peer in a connection.
 macro_rules! optional_transport_parameter {
     ($ty:ty) => {
         impl TransportParameter for Option<$ty> {
@@ -1468,7 +1470,8 @@ mod snapshot_tests {
                 concat!(stringify!($endpoint_params), "__default"),
                 default_value
             );
-
+            // Tests that a transport parameter will not be sent if it is set
+            // to its default value defined in the rfc.
             let encoded_output: Vec<u8> =
                 assert_codec_round_trip_value!($endpoint_params, default_value);
             let expected_output: Vec<u8> = vec![];
