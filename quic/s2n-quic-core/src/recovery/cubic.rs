@@ -327,6 +327,7 @@ impl CongestionController for CubicCongestionController {
         lost_bytes: u32,
         _packet_info: Self::PacketInfo,
         persistent_congestion: bool,
+        _new_loss_burst: bool,
         timestamp: Timestamp,
     ) {
         debug_assert!(lost_bytes > 0);

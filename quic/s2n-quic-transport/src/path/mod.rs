@@ -1140,7 +1140,7 @@ mod tests {
 
         // Lose a byte to enter recovery
         path.congestion_controller
-            .on_packet_lost(1, packet_info, false, now);
+            .on_packet_lost(1, packet_info, false, false, now);
         path.congestion_controller.requires_fast_retransmission = true;
 
         assert_eq!(
@@ -1152,6 +1152,7 @@ mod tests {
         path.congestion_controller.on_packet_lost(
             path.congestion_controller.congestion_window(),
             packet_info,
+            false,
             false,
             now,
         );
