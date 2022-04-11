@@ -23,7 +23,7 @@ pub struct PacketInfo {
     pub is_app_limited: bool,
 }
 
-#[derive(Copy, Clone, Default, PartialOrd, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, PartialOrd, PartialEq)]
 pub struct Bandwidth {
     bits_per_second: u64,
 }
