@@ -39,6 +39,7 @@ struct TransportParameters<'a> {
     initial_max_stream_data_uni: u64,
     initial_max_streams_bidi: u64,
     initial_max_streams_uni: u64,
+    max_datagram_frame_size: u64,
 }
 
 struct PreferredAddress<'a> {
