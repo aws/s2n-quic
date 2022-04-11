@@ -49,7 +49,6 @@ pub fn run(args: &Args) -> Result<()> {
 }
 
 fn collect(mut proc: Proc, interval: Duration, is_open: Arc<AtomicBool>) {
-    let mut time = Duration::from_secs(0);
     let mut stats = Stats::default();
 
     loop {
@@ -61,6 +60,6 @@ fn collect(mut proc: Proc, interval: Duration, is_open: Arc<AtomicBool>) {
         }
 
         std::thread::sleep(interval);
-        time += interval;
+        stats.time += interval;
     }
 }
