@@ -69,11 +69,6 @@ pub trait TransportParameterValidator: Sized {
 //# original_destination_connection_id, preferred_address,
 //# retry_source_connection_id, and stateless_reset_token.
 
-//= https://www.rfc-editor.org/rfc/rfc9221#section-3
-//# When clients use 0-RTT, they MAY store the value of the server's
-//# max_datagram_frame_size transport parameter. Doing so allows the
-//# client to send DATAGRAM frames in 0-RTT packets.
-
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct ZeroRttParameters {
     pub active_connection_id_limit: VarInt,
@@ -83,6 +78,10 @@ pub struct ZeroRttParameters {
     pub initial_max_stream_data_uni: VarInt,
     pub initial_max_streams_bidi: VarInt,
     pub initial_max_streams_uni: VarInt,
+    //= https://www.rfc-editor.org/rfc/rfc9221#section-3
+    //# When clients use 0-RTT, they MAY store the value of the server's
+    //# max_datagram_frame_size transport parameter. Doing so allows the
+    //# client to send DATAGRAM frames in 0-RTT packets.
     pub max_datagram_frame_size: VarInt,
 }
 
@@ -381,8 +380,8 @@ macro_rules! duration_transport_parameter {
     };
 }
 
-/// Implements an optional transport parameter. This is used to define transport
-/// parameters that are only sent by one peer in a connection.
+/// Implements an optional transport parameter. Used for transport parameters
+/// that don't have a good default, like an IP address.
 macro_rules! optional_transport_parameter {
     ($ty:ty) => {
         impl TransportParameter for Option<$ty> {
