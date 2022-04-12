@@ -136,14 +136,14 @@ jobs:
           args: --all-features --no-deps --workspace --exclude s2n-quic-qns
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload to S3
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
           TARGET="${{ github.sha }}/doc"
@@ -152,7 +152,7 @@ jobs:
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.2
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "doc / report"
           status: "success"
@@ -345,14 +345,14 @@ jobs:
         run: ./scripts/compliance ${{ github.sha }}
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload to S3
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
           TARGET="${{ github.sha }}/compliance.html"
@@ -361,7 +361,7 @@ jobs:
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.2
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "compliance / report"
           status: "success"
@@ -398,14 +398,14 @@ jobs:
           args: --html --no-fail-fast --workspace --exclude s2n-quic-qns --exclude s2n-quic-events --all-features
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload results
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
           TARGET="${{ github.sha }}/coverage"
@@ -414,7 +414,7 @@ jobs:
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.2
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "coverage / report"
           status: "success"
@@ -471,14 +471,14 @@ jobs:
           ./scripts/recovery-sim
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload to S3
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
           TARGET="${{ github.sha }}/recovery-simulations"
@@ -487,7 +487,7 @@ jobs:
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.2
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "recovery-simulations / report"
           status: "success"
@@ -590,14 +590,14 @@ jobs:
           cargo build -Z timings --release
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload to S3
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
           TARGET="${{ github.sha }}/timing/index.html"
@@ -606,7 +606,7 @@ jobs:
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.2
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "timing / report"
           status: "success"
