@@ -1,5 +1,6 @@
 ---
 source: src/main.rs
+assertion_line: 61
 expression: dump
 ---
 trait impl core::convert::TryFrom<s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::PlainMessage> for s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::Message associates type:
@@ -4904,6 +4905,9 @@ struct s2n_quic::provider::event::events::TransportParameters exports field:
 
 struct s2n_quic::provider::event::events::TransportParameters exports field:
   max_ack_delay: core::time::Duration
+
+struct s2n_quic::provider::event::events::TransportParameters exports field:
+  max_datagram_frame_size: u64
 
 struct s2n_quic::provider::event::events::TransportParameters exports field:
   max_idle_timeout: core::time::Duration
