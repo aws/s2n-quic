@@ -8,7 +8,7 @@ use crate::{
 };
 
 /// Estimator for determining if BBR has fully utilized its available bandwidth ("filled the pipe")
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct Estimator {
     //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.13
     //# A boolean that records whether BBR estimates that it has ever
@@ -130,4 +130,129 @@ impl Estimator {
     }
 
     // TODO: track excessive ECN markings as in bbr2_check_ecn_too_high_in_startup
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::recovery::{bandwidth::RateSample, bbr::full_pipe};
+    use std::time::Duration;
+
+    #[test]
+    fn bandwidth_plateau() {
+        let mut fp_estimator = full_pipe::Estimator::default();
+        let rate_sample = RateSample::default();
+        let mut max_bw = Bandwidth::new(1000, Duration::from_secs(1));
+        fp_estimator.on_round_start(rate_sample, max_bw, false);
+
+        // Grow at 25% over 3 rounds
+        max_bw = max_bw * Fraction::new(4, 3); // 4/3 = 125%
+        for _ in 0..3 {
+            fp_estimator.on_round_start(rate_sample, max_bw, false);
+        }
+        // The pipe has not been filled yet since we have continued to grow bandwidth
+        assert!(!fp_estimator.filled_pipe());
+
+        // One more round with 24% growth, not growing fast enough to continue
+        max_bw = max_bw * Fraction::new(31, 25); // 31/25 = 124%
+        fp_estimator.on_round_start(rate_sample, max_bw, false);
+        // The pipe is considered full
+        assert!(fp_estimator.filled_pipe());
+    }
+
+    #[test]
+    fn bandwidth_plateau_app_limited() {
+        let mut fp_estimator = full_pipe::Estimator::default();
+        let mut rate_sample = RateSample::default();
+        rate_sample.is_app_limited = true;
+        let max_bw = Bandwidth::new(1000, Duration::from_secs(1));
+
+        // No growth, but app limited
+        for _ in 0..3 {
+            fp_estimator.on_round_start(rate_sample, max_bw, false);
+        }
+
+        // The pipe has not been filled yet since we were app limited
+        assert!(!fp_estimator.filled_pipe());
+    }
+
+    #[test]
+    fn excessive_loss() {
+        let mut fp_estimator = full_pipe::Estimator::default();
+        let mut rate_sample = RateSample::default();
+        // Set app_limited to true to ignore bandwidth plateau check
+        rate_sample.is_app_limited = true;
+        // More than 2% bytes lost
+        rate_sample.bytes_in_flight = 1000;
+        rate_sample.lost_bytes = 21;
+        let max_bw = Bandwidth::new(1000, Duration::from_secs(1));
+
+        // In recovery the first round
+        fp_estimator.on_round_start(rate_sample, max_bw, true);
+
+        // Only 2 loss bursts, not enough to be considered excessive loss
+        fp_estimator.on_packet_lost(true);
+        fp_estimator.on_packet_lost(true);
+
+        fp_estimator.on_round_start(rate_sample, max_bw, true);
+        // The pipe has not been filled yet since there were only 2 loss bursts
+        assert!(!fp_estimator.filled_pipe());
+
+        // 3 loss bursts, enough to be considered excessive loss
+        fp_estimator.on_packet_lost(true);
+        fp_estimator.on_packet_lost(true);
+        fp_estimator.on_packet_lost(true);
+
+        fp_estimator.on_round_start(rate_sample, max_bw, true);
+        // The pipe has not been filled yet since there were only 2 loss bursts
+        assert!(fp_estimator.filled_pipe());
+    }
+
+    #[test]
+    fn excessive_loss_loss_rate_too_low() {
+        let mut fp_estimator = full_pipe::Estimator::default();
+        let mut rate_sample = RateSample::default();
+        // Set app_limited to true to ignore bandwidth plateau check
+        rate_sample.is_app_limited = true;
+        // 2% bytes lost, just below the threshold to be considered excessive
+        rate_sample.bytes_in_flight = 1000;
+        rate_sample.lost_bytes = 20;
+        let max_bw = Bandwidth::new(1000, Duration::from_secs(1));
+
+        // In recovery the first round
+        fp_estimator.on_round_start(rate_sample, max_bw, true);
+
+        // 3 loss bursts, enough to be considered excessive loss
+        fp_estimator.on_packet_lost(true);
+        fp_estimator.on_packet_lost(true);
+        fp_estimator.on_packet_lost(true);
+
+        fp_estimator.on_round_start(rate_sample, max_bw, true);
+        // The pipe has not been filled yet since the loss rate was not high enough
+        assert!(!fp_estimator.filled_pipe());
+    }
+
+    #[test]
+    fn excessive_loss_not_in_recovery_long_enough() {
+        let mut fp_estimator = full_pipe::Estimator::default();
+        let mut rate_sample = RateSample::default();
+        // Set app_limited to true to ignore bandwidth plateau check
+        rate_sample.is_app_limited = true;
+        // More than 2% bytes lost
+        rate_sample.bytes_in_flight = 1000;
+        rate_sample.lost_bytes = 21;
+        let max_bw = Bandwidth::new(1000, Duration::from_secs(1));
+
+        // Not in recovery the first round
+        fp_estimator.on_round_start(rate_sample, max_bw, false);
+
+        // 3 loss bursts, enough to be considered excessive loss
+        fp_estimator.on_packet_lost(true);
+        fp_estimator.on_packet_lost(true);
+        fp_estimator.on_packet_lost(true);
+
+        fp_estimator.on_round_start(rate_sample, max_bw, true);
+        // The pipe has not been filled yet since we haven't been in recovery for a full round
+        assert!(!fp_estimator.filled_pipe());
+    }
 }
