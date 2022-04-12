@@ -340,6 +340,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn blocked_port() {
         for port in 0..u16::MAX {
             let blocked_expected = BLOCKED_PORTS.iter().copied().any(|blocked| blocked == port);
