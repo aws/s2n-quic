@@ -290,3 +290,29 @@ impl core::ops::Mul<Fraction> for u32 {
         self * rhs.0 / rhs.1
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::time::Duration;
+
+    #[test]
+    fn duration_div() {
+        let duration = Duration::from_millis(50000);
+        let fraction = Fraction::new(10, 5);
+
+        let result = duration / fraction;
+
+        assert_eq!(result, duration / 2);
+    }
+
+    #[test]
+    fn u32_mul() {
+        let num = 7000;
+        let fraction = Fraction::new(3, 7);
+
+        let result = num * fraction;
+
+        assert_eq!(result, 3000);
+    }
+}
