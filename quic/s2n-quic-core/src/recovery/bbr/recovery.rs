@@ -127,3 +127,94 @@ impl State {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::time::{Clock as _, NoopClock};
+    use std::time::Duration;
+
+    #[test]
+    fn recovered() {
+        let state = Recovered;
+
+        assert!(!state.in_recovery());
+        assert!(!state.packet_conservation());
+        assert!(!state.requires_fast_retransmission());
+    }
+
+    #[test]
+    fn conservation() {
+        let now = NoopClock.get_time();
+        let state = Conservation(now, FastRetransmission::RequiresTransmission);
+
+        assert!(state.in_recovery());
+        assert!(state.packet_conservation());
+        assert!(state.requires_fast_retransmission());
+    }
+
+    #[test]
+    fn growth() {
+        let now = NoopClock.get_time();
+        let state = Growth(now);
+
+        assert!(state.in_recovery());
+        assert!(!state.packet_conservation());
+        assert!(!state.requires_fast_retransmission());
+    }
+
+    #[test]
+    fn state_transitions() {
+        let now = NoopClock.get_time();
+        let mut state = Recovered;
+
+        // Acking a packet while Recovered does not change the state
+        assert!(!state.on_ack(true, now));
+        assert_eq!(state, Recovered);
+
+        // Congestion event moves Recovered to Conservation
+        state.on_congestion_event(now);
+        assert_eq!(
+            state,
+            Conservation(now, FastRetransmission::RequiresTransmission)
+        );
+        assert!(state.requires_fast_retransmission());
+
+        // Sending a packet moves FastRetransmission to Idle
+        state.on_packet_sent();
+        assert!(!state.requires_fast_retransmission());
+
+        // Ack received in the same round does not change the state
+        assert!(!state.on_ack(false, now));
+        assert!(state.packet_conservation());
+
+        // Congestion moves the recovery start time forward
+        let now = now + Duration::from_secs(5);
+        state.on_congestion_event(now);
+        assert_eq!(state, Conservation(now, FastRetransmission::Idle));
+
+        // Ack received that starts a new round moves Conservation to Growth
+        assert!(!state.on_ack(true, now));
+        assert_eq!(state, Growth(now));
+
+        // Congestion moves the recovery start time forward
+        let now = now + Duration::from_secs(10);
+        state.on_congestion_event(now);
+        assert_eq!(state, Growth(now));
+
+        // Ack for a packet sent before the recovery start time does not exit recovery
+        let sent_time = now - Duration::from_secs(1);
+        assert!(!state.on_ack(true, sent_time));
+        assert_eq!(state, Growth(now));
+
+        // Ack for a packet sent after the recovery start time exits recovery
+        let sent_time = now + Duration::from_secs(1);
+        assert!(state.on_ack(true, sent_time));
+        assert_eq!(state, Recovered);
+
+        // Ack for a packet sent after the recovery start time exits recovery even if in Conservation
+        let mut state = Conservation(now, FastRetransmission::RequiresTransmission);
+        assert!(state.on_ack(true, sent_time));
+        assert_eq!(state, Recovered);
+    }
+}
