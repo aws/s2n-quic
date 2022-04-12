@@ -325,6 +325,8 @@ pub mod api {
     #[non_exhaustive]
     pub enum MigrationDenyReason {
         #[non_exhaustive]
+        BlockedPort {},
+        #[non_exhaustive]
         PortScopeChanged {},
         #[non_exhaustive]
         IpScopeChange {},
@@ -2409,6 +2411,7 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub enum MigrationDenyReason {
+        BlockedPort,
         PortScopeChanged,
         IpScopeChange,
         ConnectionMigrationDisabled,
@@ -2418,6 +2421,7 @@ pub mod builder {
         fn into_event(self) -> api::MigrationDenyReason {
             use api::MigrationDenyReason::*;
             match self {
+                Self::BlockedPort => BlockedPort {},
                 Self::PortScopeChanged => PortScopeChanged {},
                 Self::IpScopeChange => IpScopeChange {},
                 Self::ConnectionMigrationDisabled => ConnectionMigrationDisabled {},

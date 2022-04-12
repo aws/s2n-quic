@@ -3668,6 +3668,9 @@ struct s2n_quic::provider::event::events::KeyUpdate exports constant:
 enum s2n_quic::provider::event::events::MigrationDenyReason is non-exhaustive
 
 enum s2n_quic::provider::event::events::MigrationDenyReason exports variant:
+  BlockedPort
+
+enum s2n_quic::provider::event::events::MigrationDenyReason exports variant:
   ConnectionMigrationDisabled
 
 enum s2n_quic::provider::event::events::MigrationDenyReason exports variant:
@@ -3696,6 +3699,8 @@ enum s2n_quic::provider::event::events::MigrationDenyReason implements trait:
 
 enum s2n_quic::provider::event::events::MigrationDenyReason implements trait:
   impl std::panic::UnwindSafe for s2n_quic::provider::event::events::MigrationDenyReason
+
+variant s2n_quic::provider::event::events::MigrationDenyReason::BlockedPort is non-exhaustive
 
 variant s2n_quic::provider::event::events::MigrationDenyReason::ConnectionMigrationDisabled is non-exhaustive
 

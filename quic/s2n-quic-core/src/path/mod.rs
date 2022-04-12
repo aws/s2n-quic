@@ -269,6 +269,86 @@ impl Display for MaxMtuError {
     }
 }
 
+//= https://tools.ietf.org/id/draft-ietf-quic-applicability-16#8.1
+//# Some UDP protocols are vulnerable to reflection attacks, where an attacker
+//# is able to direct traffic to a third party as a denial of service. For example,
+//# these source ports are associated with applications known to be vulnerable to
+//# reflection attacks, often due to server misconfiguration:
+//#    *  port 53 - DNS [RFC1034]
+//#    *  port 123 - NTP [RFC5905]
+
+// The below ports are also vulnerable to reflection attacks, but are within
+// the original ephemeral port range of 1024–65535, so there is a chance
+// clients may be randomly assigned them. To address this, we can throttle
+// connections using these ports instead of fully blocking them.
+
+//= https://tools.ietf.org/id/draft-ietf-quic-applicability-16#8.1
+//= type=TODO
+//= tracking-issue=1259
+//#    *  port 1900 - SSDP [SSDP]
+//#    *  port 5353 - mDNS [RFC6762]
+//#    *  port 11211 - memcached
+
+/// List of ports to refuse connections from. This list must be sorted.
+///
+/// Based on https://quiche.googlesource.com/quiche/+/bac04054bccb2a249d4705ecc94a646404d41c1b/quiche/quic/core/quic_dispatcher.cc#498
+const BLOCKED_PORTS: [u16; 11] = [
+    0,   // We cannot send to port 0 so drop that source port.
+    17,  // Quote of the Day, can loop with QUIC.
+    19,  // Chargen, can loop with QUIC.
+    53,  // DNS, vulnerable to reflection attacks.
+    111, // Portmap.
+    123, // NTP, vulnerable to reflection attacks.
+    128, // NETBIOS Datagram Service
+    137, // NETBIOS Name Service,
+    161, // SNMP.
+    389, // CLDAP.
+    500, // IKE, can loop with QUIC.
+];
+const MAX_BLOCKED_PORT: u16 = BLOCKED_PORTS[BLOCKED_PORTS.len() - 1];
+
+#[inline]
+pub fn remote_port_blocked(port: u16) -> bool {
+    if port > MAX_BLOCKED_PORT {
+        // Early return to avoid iteration if possible
+        return false;
+    }
+
+    for blocked in BLOCKED_PORTS {
+        if port == blocked {
+            return true;
+        }
+    }
+
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::path::{remote_port_blocked, BLOCKED_PORTS, MAX_BLOCKED_PORT};
+
+    #[test]
+    fn blocked_ports_is_sorted() {
+        assert_eq!(Some(MAX_BLOCKED_PORT), BLOCKED_PORTS.iter().max().copied());
+
+        let mut sorted = BLOCKED_PORTS.to_vec();
+        sorted.sort_unstable();
+
+        for i in 0..BLOCKED_PORTS.len() {
+            assert_eq!(sorted[i], BLOCKED_PORTS[i]);
+        }
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn blocked_port() {
+        for port in 0..u16::MAX {
+            let blocked_expected = BLOCKED_PORTS.iter().copied().any(|blocked| blocked == port);
+            assert_eq!(blocked_expected, remote_port_blocked(port));
+        }
+    }
+}
+
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use crate::{
