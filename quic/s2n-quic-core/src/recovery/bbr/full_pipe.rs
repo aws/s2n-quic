@@ -163,8 +163,10 @@ mod tests {
     #[test]
     fn bandwidth_plateau_app_limited() {
         let mut fp_estimator = full_pipe::Estimator::default();
-        let mut rate_sample = RateSample::default();
-        rate_sample.is_app_limited = true;
+        let rate_sample = RateSample {
+            is_app_limited: true,
+            ..Default::default()
+        };
         let max_bw = Bandwidth::new(1000, Duration::from_secs(1));
 
         // No growth, but app limited
@@ -179,12 +181,14 @@ mod tests {
     #[test]
     fn excessive_loss() {
         let mut fp_estimator = full_pipe::Estimator::default();
-        let mut rate_sample = RateSample::default();
-        // Set app_limited to true to ignore bandwidth plateau check
-        rate_sample.is_app_limited = true;
-        // More than 2% bytes lost
-        rate_sample.bytes_in_flight = 1000;
-        rate_sample.lost_bytes = 21;
+        let rate_sample = RateSample {
+            // Set app_limited to true to ignore bandwidth plateau check
+            is_app_limited: true,
+            // More than 2% bytes lost
+            bytes_in_flight: 1000,
+            lost_bytes: 21,
+            ..Default::default()
+        };
         let max_bw = Bandwidth::new(1000, Duration::from_secs(1));
 
         // In recovery the first round
@@ -211,12 +215,14 @@ mod tests {
     #[test]
     fn excessive_loss_loss_rate_too_low() {
         let mut fp_estimator = full_pipe::Estimator::default();
-        let mut rate_sample = RateSample::default();
-        // Set app_limited to true to ignore bandwidth plateau check
-        rate_sample.is_app_limited = true;
-        // 2% bytes lost, just below the threshold to be considered excessive
-        rate_sample.bytes_in_flight = 1000;
-        rate_sample.lost_bytes = 20;
+        let rate_sample = RateSample {
+            // Set app_limited to true to ignore bandwidth plateau check
+            is_app_limited: true,
+            // 2% bytes lost, just below the threshold to be considered excessive
+            bytes_in_flight: 1000,
+            lost_bytes: 2,
+            ..Default::default()
+        };
         let max_bw = Bandwidth::new(1000, Duration::from_secs(1));
 
         // In recovery the first round
@@ -235,12 +241,14 @@ mod tests {
     #[test]
     fn excessive_loss_not_in_recovery_long_enough() {
         let mut fp_estimator = full_pipe::Estimator::default();
-        let mut rate_sample = RateSample::default();
-        // Set app_limited to true to ignore bandwidth plateau check
-        rate_sample.is_app_limited = true;
-        // More than 2% bytes lost
-        rate_sample.bytes_in_flight = 1000;
-        rate_sample.lost_bytes = 21;
+        let rate_sample = RateSample {
+            // Set app_limited to true to ignore bandwidth plateau check
+            is_app_limited: true,
+            // More than 2% bytes lost
+            bytes_in_flight: 1000,
+            lost_bytes: 21,
+            ..Default::default()
+        };
         let max_bw = Bandwidth::new(1000, Duration::from_secs(1));
 
         // Not in recovery the first round
