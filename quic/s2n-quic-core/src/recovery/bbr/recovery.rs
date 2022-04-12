@@ -26,7 +26,7 @@ pub(crate) enum FastRetransmission {
 ///    delivery rate.
 /// 2) Recovery ends when there are no further losses in a round. This is not defined in the BBRv2
 ///    draft RFC (yet), but is mentioned in the Chromium source here:
-///         https://source.chromium.org/chromium/chromium/src/+/main:net/third_party/quiche/src/quic/core/congestion_control/bbr_sender.cc;drc=401f9911c6a32a0900f3968258393a9e729da625;l=696
+///         <https://source.chromium.org/chromium/chromium/src/+/main:net/third_party/quiche/src/quic/core/congestion_control/bbr_sender.cc;drc=401f9911c6a32a0900f3968258393a9e729da625;l=696>
 ///    This differs from the QUIC RFC 9002 definition that states: "A recovery period ends and the
 ///    sender enters congestion avoidance when a packet sent during the recovery period is
 ///    acknowledged."
