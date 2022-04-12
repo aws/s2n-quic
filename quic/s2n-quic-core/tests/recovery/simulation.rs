@@ -219,11 +219,11 @@ fn minimum_window<CC: CongestionController>(
     let packet_info =
         congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize, &rtt_estimator);
     // Experience persistent congestion to drop to the minimum window
-    congestion_controller.on_packet_lost(MINIMUM_MTU as u32, packet_info, true, time_zero);
+    congestion_controller.on_packet_lost(MINIMUM_MTU as u32, packet_info, true, false, time_zero);
     let packet_info =
         congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize, &rtt_estimator);
     // Lose a packet to exit slow start
-    congestion_controller.on_packet_lost(MINIMUM_MTU as u32, packet_info, false, time_zero);
+    congestion_controller.on_packet_lost(MINIMUM_MTU as u32, packet_info, false, false, time_zero);
 
     Simulation {
         name: "Minimum Window",
@@ -295,6 +295,7 @@ fn simulate_constant_rtt<CC: CongestionController>(
             congestion_controller.on_packet_lost(
                 MINIMUM_MTU as u32,
                 packet_info,
+                false,
                 false,
                 round_start,
             );

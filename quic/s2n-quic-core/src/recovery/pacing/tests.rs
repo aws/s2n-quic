@@ -65,7 +65,7 @@ fn test_one_rtt(slow_start: bool) {
     let n = if slow_start { SLOW_START_N } else { N };
     // If in slow start we should be sending 2X the cwnd in one RTT,
     // otherwise we should be sending 1.25X the cwnd.
-    let bytes_to_send = (cwnd as f32 * (n.0 as f32 / n.1 as f32)) as u32;
+    let bytes_to_send = cwnd * n;
 
     // Send one packet to move beyond the initial interval
     pacer.on_packet_sent(
