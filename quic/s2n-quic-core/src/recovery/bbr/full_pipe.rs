@@ -70,8 +70,8 @@ impl Estimator {
         if rate_sample.is_app_limited {
             //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.1.2
             //# Once per round trip, upon an ACK that acknowledges new data, and when
-            //# delivery rate sample is not application-limited (see
-            //# [draft-cheng-iccrg-delivery-rate-estimation]), BBR runs the "full pipe" estimator
+            //# the delivery rate sample is not application-limited (see [draft-
+            //# cheng-iccrg-delivery-rate-estimation]), BBR runs the "full pipe" estimator
             return false;
         }
 

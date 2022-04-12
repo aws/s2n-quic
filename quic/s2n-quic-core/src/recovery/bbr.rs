@@ -11,7 +11,7 @@ use crate::{
 mod full_pipe;
 mod recovery;
 
-//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.7
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.8
 //# The maximum tolerated per-round-trip packet loss rate when probing for bandwidth (the default is 2%).
 const LOSS_THRESH: Fraction = Fraction::new(1, 50);
 
