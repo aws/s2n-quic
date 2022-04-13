@@ -78,6 +78,11 @@ pub struct ZeroRttParameters {
     pub initial_max_stream_data_uni: VarInt,
     pub initial_max_streams_bidi: VarInt,
     pub initial_max_streams_uni: VarInt,
+    //= https://www.rfc-editor.org/rfc/rfc9221#section-3
+    //# When clients use 0-RTT, they MAY store the value of the server's
+    //# max_datagram_frame_size transport parameter. Doing so allows the
+    //# client to send DATAGRAM frames in 0-RTT packets.
+    pub max_datagram_frame_size: VarInt,
 }
 
 impl<
@@ -103,6 +108,7 @@ impl<
             initial_max_stream_data_uni,
             initial_max_streams_bidi,
             initial_max_streams_uni,
+            max_datagram_frame_size,
             ..
         } = self;
         ZeroRttParameters {
@@ -113,6 +119,7 @@ impl<
             initial_max_stream_data_uni: **initial_max_stream_data_uni,
             initial_max_streams_bidi: **initial_max_streams_bidi,
             initial_max_streams_uni: **initial_max_streams_uni,
+            max_datagram_frame_size: **max_datagram_frame_size,
         }
     }
 }
@@ -373,7 +380,8 @@ macro_rules! duration_transport_parameter {
     };
 }
 
-/// Implements an optional transport parameter
+/// Implements an optional transport parameter. Used for transport parameters
+/// that don't have a good default, like an IP address.
 macro_rules! optional_transport_parameter {
     ($ty:ty) => {
         impl TransportParameter for Option<$ty> {
@@ -763,6 +771,33 @@ impl TransportParameterValidator for InitialMaxStreamsUni {
             "initial_max_streams_uni cannot be greater than 2^60"
         );
 
+        Ok(self)
+    }
+}
+
+//= https://www.rfc-editor.org/rfc/rfc9221#section-3
+//# Support for receiving the DATAGRAM frame types is advertised by means
+//# of a QUIC transport parameter (name=max_datagram_frame_size, value=0x20).
+//# The max_datagram_frame_size transport parameter is an integer value
+//# (represented as a variable-length integer) that represents the maximum
+//# size of a DATAGRAM frame (including the frame type, length, and
+//# payload) the endpoint is willing to receive, in bytes.
+//# The default for this parameter is 0, which indicates that the
+//# endpoint does not support DATAGRAM frames.  A value greater than 0
+//# indicates that the endpoint supports the DATAGRAM frame types and is
+//# willing to receive such frames on this connection.
+transport_parameter!(MaxDatagramFrameSize(VarInt), 0x20, VarInt::from_u16(0));
+
+//= https://www.rfc-editor.org/rfc/rfc9221#section-3
+//# For most uses of DATAGRAM frames, it is RECOMMENDED to send a value of
+//# 65535 in the max_datagram_frame_size transport parameter to indicate that
+//# this endpoint will accept any DATAGRAM frame that fits inside a QUIC packet.
+impl MaxDatagramFrameSize {
+    pub const RECOMMENDED: Self = Self(VarInt::from_u16(65535));
+}
+
+impl TransportParameterValidator for MaxDatagramFrameSize {
+    fn validate(self) -> Result<Self, DecoderError> {
         Ok(self)
     }
 }
@@ -1200,6 +1235,7 @@ impl<'a> IntoEvent<event::builder::TransportParameters<'a>> for &'a ServerTransp
             initial_max_stream_data_uni: self.initial_max_stream_data_uni.into_event(),
             initial_max_streams_bidi: self.initial_max_streams_bidi.into_event(),
             initial_max_streams_uni: self.initial_max_streams_uni.into_event(),
+            max_datagram_frame_size: self.max_datagram_frame_size.into_event(),
         }
     }
 }
@@ -1230,6 +1266,7 @@ impl<'a> IntoEvent<event::builder::TransportParameters<'a>> for &'a ClientTransp
             initial_max_stream_data_uni: self.initial_max_stream_data_uni.into_event(),
             initial_max_streams_bidi: self.initial_max_streams_bidi.into_event(),
             initial_max_streams_uni: self.initial_max_streams_uni.into_event(),
+            max_datagram_frame_size: self.max_datagram_frame_size.into_event(),
         }
     }
 }
@@ -1364,6 +1401,7 @@ impl_transport_parameters!(
         initial_max_stream_data_uni: InitialMaxStreamDataUni,
         initial_max_streams_bidi: InitialMaxStreamsBidi,
         initial_max_streams_uni: InitialMaxStreamsUni,
+        max_datagram_frame_size: MaxDatagramFrameSize,
         ack_delay_exponent: AckDelayExponent,
         max_ack_delay: MaxAckDelay,
         migration_support: MigrationSupport,
@@ -1431,7 +1469,8 @@ mod snapshot_tests {
                 concat!(stringify!($endpoint_params), "__default"),
                 default_value
             );
-
+            // Tests that a transport parameter will not be sent if it is set
+            // to its default value defined in the rfc.
             let encoded_output: Vec<u8> =
                 assert_codec_round_trip_value!($endpoint_params, default_value);
             let expected_output: Vec<u8> = vec![];
@@ -1465,6 +1504,7 @@ mod snapshot_tests {
             initial_max_stream_data_uni: integer_value.try_into().unwrap(),
             initial_max_streams_bidi: integer_value.try_into().unwrap(),
             initial_max_streams_uni: integer_value.try_into().unwrap(),
+            max_datagram_frame_size: MaxDatagramFrameSize::new(0u16).unwrap(),
             ack_delay_exponent: 2u8.try_into().unwrap(),
             max_ack_delay: integer_value.try_into().unwrap(),
             migration_support: MigrationSupport::Disabled,
@@ -1508,6 +1548,7 @@ mod snapshot_tests {
             initial_max_stream_data_uni: integer_value.try_into().unwrap(),
             initial_max_streams_bidi: integer_value.try_into().unwrap(),
             initial_max_streams_uni: integer_value.try_into().unwrap(),
+            max_datagram_frame_size: MaxDatagramFrameSize::new(0u16).unwrap(),
             ack_delay_exponent: 2u8.try_into().unwrap(),
             max_ack_delay: integer_value.try_into().unwrap(),
             migration_support: MigrationSupport::Disabled,
