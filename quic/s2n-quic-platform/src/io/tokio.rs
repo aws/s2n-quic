@@ -821,7 +821,7 @@ mod tests {
                 if let Some((_header, payload)) = entry.read(&local_address) {
                     assert_eq!(payload.len(), 4, "invalid payload {:?}", payload);
 
-                    let id = (&payload[..]).try_into().unwrap();
+                    let id = (&*payload).try_into().unwrap();
                     let id = u32::from_be_bytes(id);
                     self.messages.remove(&id);
                 }

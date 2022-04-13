@@ -676,15 +676,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         &source_connection_id,
                         endpoint_context.random_generator,
                     );
-                    if let Some(id) = endpoint_context
+
+                    let outcome = endpoint_context
                         .token
-                        .validate_token(&mut context, packet.token())
-                    {
-                        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.3
-                        //# If the validation succeeds, the server SHOULD then allow
-                        //# the handshake to proceed.
-                        Some(id)
-                    } else {
+                        .validate_token(&mut context, packet.token());
+
+                    if outcome.is_none() {
                         //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.3
                         //= type=TODO
                         //= tracking-issue=344
@@ -710,6 +707,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         //# discard any Initial packet that does not carry the expected token.
                         return;
                     }
+
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.3
+                    //# If the validation succeeds, the server SHOULD then allow
+                    //# the handshake to proceed.
+                    outcome
                 } else {
                     //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.2
                     //# Upon receiving the client's Initial packet, the server can request

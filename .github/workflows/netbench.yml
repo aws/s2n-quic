@@ -15,7 +15,7 @@ env:
   RUST_BACKTRACE: 1
   # Pin the nightly toolchain to prevent breakage.
   # This should be occasionally updated.
-  RUST_NIGHTLY_TOOLCHAIN: nightly-2021-11-17
+  RUST_NIGHTLY_TOOLCHAIN: nightly-2022-04-12
   CDN: https://dnglbrstg7yg.cloudfront.net
   # enable unstable features for testing
   S2N_UNSTABLE_CRYPTO_OPT_TX: 100
@@ -77,7 +77,7 @@ jobs:
       - uses: actions-rs/toolchain@v1.0.7
         id: toolchain
         with:
-          toolchain: stable
+          toolchain: 1.60.0
           override: true
 
       - uses: camshaft/rust-cache@v1
@@ -109,7 +109,7 @@ jobs:
       - uses: actions-rs/toolchain@v1.0.7
         id: toolchain
         with:
-          toolchain: stable
+          toolchain: 1.60.0
           override: true
 
       - uses: camshaft/rust-cache@v1
