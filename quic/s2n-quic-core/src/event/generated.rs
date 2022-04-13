@@ -4740,6 +4740,7 @@ mod traits {
         fn on_keep_alive_timer_expired(&mut self, event: builder::KeepAliveTimerExpired);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
         fn quic_version(&self) -> u32;
+        #[doc = r" Returns the [`Subject`] for the current publisher"]
         fn subject(&self) -> Subject;
     }
     pub struct ConnectionPublisherSubscriber<'a, Sub: Subscriber> {

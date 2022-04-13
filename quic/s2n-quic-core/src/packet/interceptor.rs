@@ -4,6 +4,7 @@
 use crate::{event::api::Subject, packet::number::PacketNumber, time::Timestamp};
 use s2n_codec::{DecoderBufferMut, EncoderBuffer};
 
+/// TODO add `non_exhaustive` once/if this feature is stable
 #[derive(Debug)]
 pub struct Packet {
     pub number: PacketNumber,
