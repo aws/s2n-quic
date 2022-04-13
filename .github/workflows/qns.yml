@@ -127,7 +127,7 @@ jobs:
 
       - name: Cache quinn
         id: cache
-        uses: actions/cache@v2.1.7
+        uses: actions/cache@v3.0.2
         continue-on-error: true
         with:
           path: |
@@ -155,7 +155,7 @@ jobs:
     steps:
       - name: Cache
         id: cache
-        uses: actions/cache@v2.1.7
+        uses: actions/cache@v3.0.2
         continue-on-error: true
         with:
           path: tshark
