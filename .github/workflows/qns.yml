@@ -100,7 +100,7 @@ jobs:
           mkdir -p s2n-quic-qns
           cp target/${{ matrix.mode }}/s2n-quic-qns s2n-quic-qns/s2n-quic-qns-${{ matrix.mode }}
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: s2n-quic-qns-${{ matrix.mode }}
           path: s2n-quic-qns/
@@ -145,7 +145,7 @@ jobs:
           cp target/release/perf_client quinn/perf_client
           cp target/release/perf_server quinn/perf_server
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: quinn
           path: quinn/
@@ -181,7 +181,7 @@ jobs:
         run: ./tshark -v
 
       - name: Upload
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: tshark
           path: tshark
@@ -310,7 +310,7 @@ jobs:
           TARGET="${{ github.sha }}/interop/logs/latest"
           aws s3 sync results/logs "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: interop-${{ matrix.client }}-client-${{ matrix.server }}-server
           path: quic-interop-runner/results/result.json
@@ -651,7 +651,7 @@ jobs:
           zip perf.zip **/*.script
           rm -rf **/*.script
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: perf-${{ matrix.tls }}
           path: target/perf/results
