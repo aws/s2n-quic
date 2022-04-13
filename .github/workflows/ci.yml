@@ -15,7 +15,7 @@ env:
   RUST_BACKTRACE: 1
   # Pin the nightly toolchain to prevent breakage.
   # This should be occasionally updated.
-  RUST_NIGHTLY_TOOLCHAIN: nightly-2021-11-17
+  RUST_NIGHTLY_TOOLCHAIN: nightly-2022-04-12
   CDN: https://dnglbrstg7yg.cloudfront.net
   # enable unstable features for testing
   S2N_UNSTABLE_CRYPTO_OPT_TX: 100
@@ -569,7 +569,7 @@ jobs:
           git diff --exit-code
 
   # generates a report of time spent in compilation
-  # https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#timings
+  # https://doc.rust-lang.org/stable/cargo/reference/timings.html
   timing:
     runs-on: ubuntu-latest
     steps:
@@ -587,7 +587,7 @@ jobs:
       - name: Run cargo build
         run: |
           cd examples/echo
-          cargo build -Z timings --release
+          cargo build --timings --release
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -601,7 +601,7 @@ jobs:
         id: s3
         run: |
           TARGET="${{ github.sha }}/timing/index.html"
-          aws s3 cp examples/echo/cargo-timing.html "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          aws s3 cp examples/echo/target/cargo-timings/cargo-timing.html "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET"
           echo "::set-output name=URL::$URL"
 
