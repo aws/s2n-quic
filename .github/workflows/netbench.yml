@@ -135,7 +135,7 @@ jobs:
           cp -r target/netbench artifact/scenarios
           cp netbench/target/release/netbench* artifact
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: netbench
           path: artifact
@@ -185,7 +185,7 @@ jobs:
           sudo SCENARIO=$SCENARIO SERVER_0=$SERVER_0 ./netbench-collector \
             ./netbench-driver-${{ matrix.driver }}-client > results/${{ matrix.scenario }}/${{ matrix.driver }}/client.json
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: netbench-${{ matrix.driver }}-results
           path: results
@@ -205,7 +205,7 @@ jobs:
           cp -R netbench-*-results/* results/
           ./netbench/netbench-cli report-tree results reports
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: netbench-report
           path: reports
