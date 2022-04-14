@@ -21,10 +21,10 @@ use s2n_quic_core::{
     crypto::{tls, tls::Session, CryptoSuite, Key},
     event::{self, IntoEvent},
     frame::{
-        ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
-        HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionId, NewToken,
-        PathChallenge, PathResponse, ResetStream, RetireConnectionId, StopSending,
-        StreamDataBlocked, StreamsBlocked,
+        ack::AckRanges, crypto::CryptoRef, datagram::DatagramRef, stream::StreamRef, Ack,
+        ConnectionClose, DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams,
+        NewConnectionId, NewToken, PathChallenge, PathResponse, ResetStream, RetireConnectionId,
+        StopSending, StreamDataBlocked, StreamsBlocked,
     },
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
@@ -616,6 +616,16 @@ pub trait PacketSpace<Config: endpoint::Config> {
             .with_frame_type(frame.tag().into()))
     }
 
+    fn handle_datagram_frame(
+        &mut self,
+        frame: DatagramRef,
+        _packet: &mut ProcessedPacket,
+    ) -> Result<(), transport::Error> {
+        Err(transport::Error::PROTOCOL_VIOLATION
+            .with_reason(Self::INVALID_FRAME_ERROR)
+            .with_frame_type(frame.tag().into()))
+    }
+
     default_frame_handler!(handle_data_blocked_frame, DataBlocked);
     default_frame_handler!(handle_max_data_frame, MaxData);
     default_frame_handler!(handle_max_stream_data_frame, MaxStreamData);
@@ -730,6 +740,11 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 Frame::Stream(frame) => {
                     let on_error = on_frame_processed!(frame);
                     self.handle_stream_frame(frame.into(), &mut processed_packet)
+                        .map_err(on_error)?;
+                }
+                Frame::Datagram(frame) => {
+                    let on_error = on_frame_processed!(frame);
+                    self.handle_datagram_frame(frame.into(), &mut processed_packet)
                         .map_err(on_error)?;
                 }
                 Frame::DataBlocked(frame) => {

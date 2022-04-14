@@ -141,6 +141,8 @@ pub mod api {
         ConnectionClose {},
         #[non_exhaustive]
         HandshakeDone {},
+        #[non_exhaustive]
+        Datagram { len: u16 },
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1159,6 +1161,16 @@ pub mod api {
             }
         }
     }
+    impl<Data> IntoEvent<builder::Frame> for &crate::frame::Datagram<Data>
+    where
+        Data: s2n_codec::EncoderValue,
+    {
+        fn into_event(self) -> builder::Frame {
+            builder::Frame::Datagram {
+                len: self.data.encoding_size() as _,
+            }
+        }
+    }
     impl<'a> IntoEvent<builder::StreamType> for &crate::stream::StreamType {
         fn into_event(self) -> builder::StreamType {
             match self {
@@ -2076,6 +2088,9 @@ pub mod builder {
         PathResponse,
         ConnectionClose,
         HandshakeDone,
+        Datagram {
+            len: u16,
+        },
     }
     impl IntoEvent<api::Frame> for Frame {
         #[inline]
@@ -2119,6 +2134,9 @@ pub mod builder {
                 Self::PathResponse => PathResponse {},
                 Self::ConnectionClose => ConnectionClose {},
                 Self::HandshakeDone => HandshakeDone {},
+                Self::Datagram { len } => Datagram {
+                    len: len.into_event(),
+                },
             }
         }
     }

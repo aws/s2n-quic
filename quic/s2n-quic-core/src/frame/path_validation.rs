@@ -67,6 +67,7 @@ pub trait Probing {
 impl<AckRanges> Probing for crate::frame::Ack<AckRanges> {}
 impl Probing for crate::frame::ConnectionClose<'_> {}
 impl<Data> Probing for crate::frame::Crypto<Data> {}
+impl<Data> Probing for crate::frame::Datagram<Data> {}
 impl Probing for crate::frame::DataBlocked {}
 impl Probing for crate::frame::HandshakeDone {}
 impl Probing for crate::frame::MaxData {}
