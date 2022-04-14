@@ -1,11 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    frame::{FitError, Tag},
-    varint::VarInt,
-};
-use core::{convert::TryFrom, mem::size_of};
+use crate::{frame::Tag, varint::VarInt};
+
 use s2n_codec::{
     decoder_parameterized_value, DecoderBuffer, DecoderBufferMut, Encoder, EncoderValue,
 };
@@ -82,42 +79,6 @@ impl<Data> Datagram<Data> {
     }
 }
 
-impl<Data: EncoderValue> Datagram<Data> {
-    /// Tries to fit the frame into the provided capacity
-    ///
-    /// If ok, the new payload length is returned, otherwise the frame cannot
-    /// fit.
-    #[inline]
-    pub fn try_fit(&mut self, capacity: usize) -> Result<usize, FitError> {
-        let mut fixed_len = 0;
-        fixed_len += size_of::<Tag>();
-
-        let remaining_capacity = capacity.checked_sub(fixed_len).ok_or(FitError)?;
-
-        let data_len = self.data.encoding_size();
-        let max_data_len = remaining_capacity.min(data_len);
-
-        // If data fits exactly into the capacity, mark it as the last frame
-        if max_data_len == remaining_capacity {
-            self.is_last_frame = true;
-            return Ok(max_data_len);
-        }
-
-        self.is_last_frame = false;
-
-        let len_prefix_size = VarInt::try_from(max_data_len)
-            .map_err(|_| FitError)?
-            .encoding_size();
-
-        let prefixed_data_len = remaining_capacity
-            .checked_sub(len_prefix_size)
-            .ok_or(FitError)?;
-        let data_len = prefixed_data_len.min(data_len);
-
-        Ok(data_len)
-    }
-}
-
 decoder_parameterized_value!(
     impl<'a, Data> Datagram<Data> {
         fn decode(tag: Tag, buffer: Buffer) -> Result<Self> {
@@ -174,68 +135,5 @@ impl<'a> From<Datagram<DecoderBufferMut<'a>>> for DatagramMut<'a> {
     #[inline]
     fn from(d: Datagram<DecoderBufferMut<'a>>) -> Self {
         d.map_data(|data| data.into_less_safe_slice())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::frame::Padding;
-    use bolero::check;
-    use core::convert::TryInto;
-
-    fn model(length: VarInt, capacity: usize) {
-        let length = if let Ok(length) = VarInt::try_into(length) {
-            length
-        } else {
-            // If the length cannot be represented by `usize` then bail
-            return;
-        };
-
-        let mut frame = Datagram {
-            is_last_frame: false,
-            data: Padding { length },
-        };
-
-        if let Ok(max_data_len) = frame.try_fit(capacity) {
-            // We should never return a length larger than the data to send
-            assert!(length >= max_data_len);
-
-            // We should never exceed the capacity
-            frame.data = Padding {
-                length: max_data_len,
-            };
-            assert!(
-                frame.encoding_size() <= capacity,
-                "the encoding_size should not exceed capacity {:#?}",
-                frame
-            );
-
-            if frame.is_last_frame {
-                // The `is_last_frame` should _only_ be set when the encoding size == capacity
-                assert_eq!(
-                    frame.encoding_size(),
-                    capacity,
-                    "should only be the last frame if == capacity {:#?}",
-                    frame
-                );
-            }
-        } else {
-            assert!(
-                frame.encoding_size() > capacity,
-                "rejection should only occur when encoding size > capacity {:#?}",
-                frame
-            );
-        }
-    }
-
-    #[test]
-    fn try_fit_test() {
-        check!()
-            .with_type()
-            .cloned()
-            .for_each(|(length, capacity)| {
-                model(length, capacity);
-            });
     }
 }
