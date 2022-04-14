@@ -250,6 +250,7 @@ frames! {
     path_response_tag => path_response, handle_path_response_frame, PathResponse['a];
     connection_close_tag => connection_close, handle_connection_close_frame, ConnectionClose['a];
     handshake_done_tag => handshake_done, handle_handshake_done_frame, HandshakeDone;
+    datagram_tag => datagram, handle_datagram_frame, Datagram[Data];
 }
 
 #[derive(Clone, Copy, Debug, Default)]
