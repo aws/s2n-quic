@@ -21,7 +21,7 @@ impl<AckRanges> CongestionControlled for crate::frame::Ack<AckRanges> {
 }
 impl CongestionControlled for crate::frame::ConnectionClose<'_> {}
 impl<Data> CongestionControlled for crate::frame::Crypto<Data> {}
-//= https://datatracker.ietf.org/doc/html/rfc9221#section-5.4
+//= https://www.rfc-editor.org/rfc/rfc9221#section-5.4
 //# DATAGRAM frames employ the QUIC connection's congestion controller.
 impl<Data> CongestionControlled for crate::frame::Datagram<Data> {}
 impl CongestionControlled for crate::frame::DataBlocked {}

@@ -10,7 +10,7 @@ use s2n_codec::{
     decoder_parameterized_value, DecoderBuffer, DecoderBufferMut, Encoder, EncoderValue,
 };
 
-//= https://datatracker.ietf.org/doc/html/rfc9221#section-4
+//= https://www.rfc-editor.org/rfc/rfc9221#section-4
 //# DATAGRAM frames are used to transmit application data in an
 //# unreliable manner.  The Type field in the DATAGRAM frame takes the
 //# form 0b0011000X (or the values 0x30 and 0x31).
@@ -22,8 +22,7 @@ macro_rules! datagram_tag {
 }
 
 const DATAGRAM_TAG: u8 = 0x30;
-
-//= https://datatracker.ietf.org/doc/html/rfc9221#section-4
+//= https://www.rfc-editor.org/rfc/rfc9221#section-4
 //# The least significant bit of the Type field in the DATAGRAM frame is
 //# the LEN bit (0x01), which indicates whether there is a Length field
 //# present: if this bit is set to 0, the Length field is absent and the
@@ -32,14 +31,14 @@ const DATAGRAM_TAG: u8 = 0x30;
 
 const LEN_BIT: u8 = 0x01;
 
-//= https://datatracker.ietf.org/doc/html/rfc9221#section-4
+//= https://www.rfc-editor.org/rfc/rfc9221#section-4
 //# DATAGRAM Frame {
 //#   Type (i) = 0x30..0x31,
 //#   [Length (i)],
 //#   Datagram Data (..),
 //# }
 
-//= https://datatracker.ietf.org/doc/html/rfc9221#section-4
+//= https://www.rfc-editor.org/rfc/rfc9221#section-4
 //# DATAGRAM frames contain the following fields:
 //#
 //# Length:  A variable-length integer specifying the length of the

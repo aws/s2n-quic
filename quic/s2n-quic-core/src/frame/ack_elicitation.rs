@@ -71,7 +71,7 @@ impl AckElicitable for crate::frame::ConnectionClose<'_> {
     }
 }
 impl<Data> AckElicitable for crate::frame::Crypto<Data> {}
-//= https://datatracker.ietf.org/doc/html/rfc9221#section-5.2
+//= https://www.rfc-editor.org/rfc/rfc9221#section-5.2
 //# Although DATAGRAM frames are not retransmitted upon loss detection,
 //# they are ack-eliciting ([RFC9002]).
 impl<Data> AckElicitable for crate::frame::Datagram<Data> {}
