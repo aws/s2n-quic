@@ -189,7 +189,7 @@ mod tests {
         let length = if let Ok(length) = VarInt::try_into(length) {
             length
         } else {
-            // if the length cannot be represented by `usize` then bail
+            // If the length cannot be represented by `usize` then bail
             return;
         };
 
@@ -202,7 +202,7 @@ mod tests {
             // We should never return a length larger than the data to send
             assert!(length >= max_data_len);
 
-            // we should never exceed the capacity
+            // We should never exceed the capacity
             frame.data = Padding {
                 length: max_data_len,
             };
@@ -213,7 +213,7 @@ mod tests {
             );
 
             if frame.is_last_frame {
-                // the `is_last_frame` should _only_ be set when the encoding size == capacity
+                // The `is_last_frame` should _only_ be set when the encoding size == capacity
                 assert_eq!(
                     frame.encoding_size(),
                     capacity,
