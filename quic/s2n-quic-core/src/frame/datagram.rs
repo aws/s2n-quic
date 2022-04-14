@@ -166,7 +166,7 @@ impl<'a> From<Datagram<DecoderBuffer<'a>>> for DatagramRef<'a> {
 impl<'a> From<Datagram<DecoderBufferMut<'a>>> for DatagramRef<'a> {
     #[inline]
     fn from(d: Datagram<DecoderBufferMut<'a>>) -> Self {
-        d.map_data(|data| &data.into_less_safe_slice()[..])
+        d.map_data(|data| &*data.into_less_safe_slice())
     }
 }
 

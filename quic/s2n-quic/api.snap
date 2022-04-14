@@ -3186,6 +3186,9 @@ enum s2n_quic::provider::event::events::Frame exports variant:
   DataBlocked
 
 enum s2n_quic::provider::event::events::Frame exports variant:
+  Datagram
+
+enum s2n_quic::provider::event::events::Frame exports variant:
   HandshakeDone
 
 enum s2n_quic::provider::event::events::Frame exports variant:
@@ -3269,6 +3272,12 @@ variant s2n_quic::provider::event::events::Frame::Crypto exports field:
   u64
 
 variant s2n_quic::provider::event::events::Frame::DataBlocked is non-exhaustive
+
+variant s2n_quic::provider::event::events::Frame::Datagram is non-exhaustive
+
+variant s2n_quic::provider::event::events::Frame::Datagram exports field:
+  len:
+  u16
 
 variant s2n_quic::provider::event::events::Frame::HandshakeDone is non-exhaustive
 
