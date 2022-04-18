@@ -28,6 +28,7 @@ pub struct ConnectionTransmissionContext<'a, 'sub, Config: endpoint::Config> {
     pub min_packet_len: Option<usize>,
     pub transmission_mode: transmission::Mode,
     pub publisher: &'a mut event::ConnectionPublisherSubscriber<'sub, Config::EventSubscriber>,
+    pub packet_interceptor: &'a mut Config::PacketInterceptor,
 }
 
 impl<'a, 'sub, Config: endpoint::Config> ConnectionTransmissionContext<'a, 'sub, Config> {

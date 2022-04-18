@@ -310,6 +310,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                         packet,
                         endpoint_context.random_generator,
                         endpoint_context.event_subscriber,
+                        endpoint_context.packet_interceptor,
                     )
                     .map_err(|err| {
                         use connection::ProcessingError;
@@ -346,6 +347,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                     remaining,
                     endpoint_context.random_generator,
                     endpoint_context.event_subscriber,
+                    endpoint_context.packet_interceptor,
                 )?;
 
                 Ok(())

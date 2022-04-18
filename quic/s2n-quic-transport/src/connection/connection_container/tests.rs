@@ -79,6 +79,7 @@ impl connection::Trait for TestConnection {
         _packet_buffer: &mut endpoint::PacketBuffer,
         timestamp: Timestamp,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) {
         assert!(!self.is_closed);
         assert!(!self.close_timer.is_armed());
@@ -105,6 +106,7 @@ impl connection::Trait for TestConnection {
         _queue: &mut Tx,
         _timestamp: Timestamp,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), crate::contexts::ConnectionOnTransmitError> {
         Ok(())
     }
@@ -138,6 +140,7 @@ impl connection::Trait for TestConnection {
         _packet: ProtectedInitial,
         _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
@@ -150,6 +153,7 @@ impl connection::Trait for TestConnection {
         _packet: CleartextInitial,
         _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
@@ -162,6 +166,7 @@ impl connection::Trait for TestConnection {
         _packet: ProtectedHandshake,
         _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
@@ -174,6 +179,7 @@ impl connection::Trait for TestConnection {
         _packet: ProtectedShort,
         _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
@@ -185,6 +191,7 @@ impl connection::Trait for TestConnection {
         _path_id: path::Id,
         _packet: ProtectedVersionNegotiation,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
@@ -196,6 +203,7 @@ impl connection::Trait for TestConnection {
         _path_id: path::Id,
         _packet: ProtectedZeroRtt,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
@@ -207,6 +215,7 @@ impl connection::Trait for TestConnection {
         _path_id: path::Id,
         _packet: ProtectedRetry,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }

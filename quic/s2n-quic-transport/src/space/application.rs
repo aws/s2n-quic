@@ -181,6 +181,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             tx_packet_numbers: &mut self.tx_packet_numbers,
             path_id: context.path_id,
             publisher: context.publisher,
+            packet_interceptor: context.packet_interceptor,
         };
 
         let spin_bit = self.spin_bit;
@@ -266,6 +267,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             tx_packet_numbers: &mut self.tx_packet_numbers,
             path_id: context.path_id,
             publisher: context.publisher,
+            packet_interceptor: context.packet_interceptor,
         };
 
         let spin_bit = self.spin_bit;

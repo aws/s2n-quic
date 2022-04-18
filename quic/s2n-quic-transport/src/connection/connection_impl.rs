@@ -237,6 +237,7 @@ macro_rules! transmission_context {
         $timestamp:expr,
         $transmission_mode:expr,
         $subscriber:expr,
+        $packet_interceptor:expr,
         $(,)?
     ) => {{
         let ecn = $self.path_manager[$path_id]
@@ -254,6 +255,7 @@ macro_rules! transmission_context {
             min_packet_len: None,
             transmission_mode: $transmission_mode,
             publisher: &mut $self.event_context.publisher($timestamp, $subscriber),
+            packet_interceptor: $packet_interceptor,
         }
     }};
 }
@@ -415,6 +417,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         timestamp: Timestamp,
         outcome: &'a mut transmission::Outcome,
         subscriber: &'sub mut Config::EventSubscriber,
+        packet_interceptor: &'a mut Config::PacketInterceptor,
     ) -> usize {
         let mut count = 0;
         let mut pending_paths = self.path_manager.paths_pending_validation();
@@ -446,6 +449,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
                         ecn,
                         transmission_mode,
                         publisher: &mut self.event_context.publisher(timestamp, subscriber),
+                        packet_interceptor,
                     },
                     space_manager: &mut self.space_manager,
                 })
@@ -666,6 +670,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         packet_buffer: &mut endpoint::PacketBuffer,
         timestamp: Timestamp,
         subscriber: &mut Config::EventSubscriber,
+        packet_interceptor: &mut Config::PacketInterceptor,
     ) {
         match self.state {
             ConnectionState::Closing | ConnectionState::Draining | ConnectionState::Finished => {
@@ -706,6 +711,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 timestamp,
                 transmission::Mode::Normal,
                 subscriber,
+                packet_interceptor,
             );
 
             if let Some(packet) = self.space_manager.on_transmit_close(
@@ -802,6 +808,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         queue: &mut Tx,
         timestamp: Timestamp,
         subscriber: &mut Config::EventSubscriber,
+        packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<(), ConnectionOnTransmitError> {
         let mut count = 0;
 
@@ -834,6 +841,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                                 timestamp,
                                 transmission::Mode::MtuProbing,
                                 subscriber,
+                                packet_interceptor,
                             ),
                             space_manager: &mut self.space_manager,
                         })
@@ -853,6 +861,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                                 timestamp,
                                 transmission::Mode::Normal,
                                 subscriber,
+                                packet_interceptor,
                             ),
                             space_manager: &mut self.space_manager,
                         })
@@ -892,6 +901,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     timestamp,
                     &mut outcome,
                     subscriber,
+                    packet_interceptor,
                 );
 
                 let mut publisher = self.event_context.publisher(timestamp, subscriber);
@@ -1124,6 +1134,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         packet: ProtectedInitial,
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
+        packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
         //= type=TODO
@@ -1162,6 +1173,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 packet,
                 random_generator,
                 subscriber,
+                packet_interceptor,
             )?;
         }
 
@@ -1176,6 +1188,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         packet: CleartextInitial,
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
+        packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
         if let Some((space, handshake_status)) = self.space_manager.initial_mut() {
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
@@ -1207,6 +1220,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut self.local_id_registry,
                 random_generator,
                 &mut publisher,
+                packet_interceptor,
             )?;
 
             // try to move the crypto state machine forward
@@ -1227,6 +1241,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         packet: ProtectedHandshake,
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
+        packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.1
         //= type=TODO
@@ -1268,6 +1283,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut self.local_id_registry,
                 random_generator,
                 &mut publisher,
+                packet_interceptor,
             )?;
 
             if Self::Config::ENDPOINT_TYPE.is_server() {
@@ -1305,6 +1321,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         packet: ProtectedShort,
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
+        packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
         //= https://www.rfc-editor.org/rfc/rfc9001#section-5.7
         //# Endpoints in either role MUST NOT decrypt 1-RTT packets from
@@ -1387,6 +1404,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut self.local_id_registry,
                 random_generator,
                 &mut publisher,
+                packet_interceptor,
             )?;
 
             // notify the connection a packet was processed
@@ -1403,6 +1421,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         _path_id: path::Id,
         _packet: ProtectedVersionNegotiation,
         subscriber: &mut Config::EventSubscriber,
+        _packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
@@ -1443,6 +1462,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         _path_id: path::Id,
         _packet: ProtectedZeroRtt,
         subscriber: &mut Config::EventSubscriber,
+        _packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
@@ -1471,6 +1491,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         path_id: path::Id,
         packet: ProtectedRetry,
         subscriber: &mut Config::EventSubscriber,
+        _packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
         // Only the client is supposed to receive retry packets
         if Self::Config::ENDPOINT_TYPE.is_server() {

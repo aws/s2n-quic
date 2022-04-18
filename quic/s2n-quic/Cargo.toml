@@ -32,6 +32,10 @@ provider-tls-s2n = ["s2n-quic-tls"]
 #
 # This depends on experimental behavior in s2n-tls.
 unstable_client_hello = ["s2n-quic-tls/unstable_client_hello"]
+# This feature enables the packet interceptor provider, which is invoked on each cleartext packet
+unstable-provider-packet-interceptor = []
+# This feature enables the random provider
+unstable-provider-random = []
 
 [dependencies]
 bytes = { version = "1", default-features = false }
