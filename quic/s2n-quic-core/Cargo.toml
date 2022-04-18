@@ -25,6 +25,7 @@ bytes = { version = "1", default-features = false }
 hex-literal = "0.3"
 # used for event snapshot testing - needs an internal API so we require a minimum version
 insta = { version = ">=1.12", optional = true }
+num-rational = { version = "0.4", default-features = false }
 num-traits = { version = "0.2", default-features = false, features = ["libm"] }
 s2n-codec = { version = "=0.1.0", path = "../../common/s2n-codec", default-features = false }
 subtle = { version = "2", default-features = false }

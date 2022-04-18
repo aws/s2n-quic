@@ -1,8 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{number::Fraction, time::Timestamp};
+use crate::time::Timestamp;
 use core::{cmp::max, time::Duration};
+use num_rational::Ratio;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 /// Bandwidth-related data tracked for each sent packet
@@ -44,13 +45,12 @@ impl Bandwidth {
     }
 }
 
-impl core::ops::Mul<Fraction> for Bandwidth {
+impl core::ops::Mul<Ratio<u64>> for Bandwidth {
     type Output = Bandwidth;
 
-    fn mul(self, rhs: Fraction) -> Self::Output {
+    fn mul(self, rhs: Ratio<u64>) -> Self::Output {
         Bandwidth {
-            bits_per_second: self.bits_per_second * rhs.numerator() as u64
-                / rhs.denominator() as u64,
+            bits_per_second: (rhs * self.bits_per_second).to_integer(),
         }
     }
 }

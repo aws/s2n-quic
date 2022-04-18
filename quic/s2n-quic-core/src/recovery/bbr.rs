@@ -3,17 +3,17 @@
 
 use crate::{
     counter::Counter,
-    number::Fraction,
     recovery::{bandwidth, bandwidth::Bandwidth, CongestionController, RttEstimator},
     time::Timestamp,
 };
+use num_rational::Ratio;
 
 mod full_pipe;
 mod recovery;
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.8
 //# The maximum tolerated per-round-trip packet loss rate when probing for bandwidth (the default is 2%).
-const LOSS_THRESH: Fraction = Fraction::new(1, 50);
+const LOSS_THRESH: Ratio<u32> = Ratio::new_raw(1, 50);
 
 /// A congestion controller that implements "Bottleneck Bandwidth and Round-trip propagation time"
 /// version 2 (BBRv2) as specified in <https://datatracker.ietf.org/doc/draft-cardwell-iccrg-bbr-congestion-control/>.

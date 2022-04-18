@@ -19,10 +19,10 @@ fn bandwidth_zero_interval() {
 }
 
 #[test]
-fn bandwidth_mul_fraction() {
+fn bandwidth_mul_ratio() {
     let bandwidth = Bandwidth::new(7000, Duration::from_secs(1));
 
-    let result = bandwidth * Fraction::new(3, 7);
+    let result = bandwidth * Ratio::new(3, 7);
 
     assert_eq!(result, Bandwidth::new(3000, Duration::from_secs(1)));
 }

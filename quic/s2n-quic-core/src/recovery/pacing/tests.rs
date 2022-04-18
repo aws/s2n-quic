@@ -11,6 +11,7 @@ use crate::{
     time::{Clock, NoopClock, Timestamp},
 };
 use core::time::Duration;
+use num_traits::ToPrimitive;
 
 #[test]
 fn earliest_departure_time() {
@@ -62,10 +63,14 @@ fn test_one_rtt(slow_start: bool) {
     let rtt = RttEstimator::new(Duration::default());
 
     let cwnd = MINIMUM_MTU as u32 * 100;
-    let n = if slow_start { SLOW_START_N } else { N };
+    let n = if slow_start {
+        SLOW_START_N.0.to_f32().unwrap()
+    } else {
+        N.0.to_f32().unwrap()
+    };
     // If in slow start we should be sending 2X the cwnd in one RTT,
     // otherwise we should be sending 1.25X the cwnd.
-    let bytes_to_send = cwnd * n;
+    let bytes_to_send = ((cwnd as f32) * n) as u32;
 
     // Send one packet to move beyond the initial interval
     pacer.on_packet_sent(

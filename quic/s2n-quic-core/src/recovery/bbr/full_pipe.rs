@@ -3,9 +3,9 @@
 
 use crate::{
     counter::{Counter, Saturating},
-    number::Fraction,
     recovery::{bandwidth, bandwidth::Bandwidth, bbr},
 };
+use num_rational::Ratio;
 
 /// Estimator for determining if BBR has fully utilized its available bandwidth ("filled the pipe")
 #[derive(Debug, Default, Clone)]
@@ -64,7 +64,7 @@ impl Estimator {
         //# the delivery rate actually result in little increase (less than 25 percent),
         //# then it estimates that it has reached BBR.max_bw, sets BBR.filled_pipe to true,
         //# exits Startup and enters Drain.
-        const DELIVERY_RATE_INCREASE: Fraction = Fraction::new(4, 3); // 1.25
+        const DELIVERY_RATE_INCREASE: Ratio<u64> = Ratio::new_raw(4, 3); // 1.25
         const BANDWIDTH_PLATEAU_ROUND_COUNT: u8 = 3;
 
         if rate_sample.is_app_limited {
@@ -105,7 +105,8 @@ impl Estimator {
 
         if in_recovery
             && self.in_recovery_last_round
-            && rate_sample.lost_bytes > (rate_sample.bytes_in_flight * bbr::LOSS_THRESH) as u64
+            && rate_sample.lost_bytes
+                > (bbr::LOSS_THRESH * rate_sample.bytes_in_flight).to_integer() as u64
             && self.loss_bursts >= STARTUP_FULL_LOSS_COUNT
         {
             return true;
@@ -146,7 +147,7 @@ mod tests {
         fp_estimator.on_round_start(rate_sample, max_bw, false);
 
         // Grow at 25% over 3 rounds
-        max_bw = max_bw * Fraction::new(4, 3); // 4/3 = 125%
+        max_bw = max_bw * Ratio::new(4, 3); // 4/3 = 125%
         for _ in 0..3 {
             fp_estimator.on_round_start(rate_sample, max_bw, false);
         }
@@ -154,7 +155,7 @@ mod tests {
         assert!(!fp_estimator.filled_pipe());
 
         // One more round with 24% growth, not growing fast enough to continue
-        max_bw = max_bw * Fraction::new(31, 25); // 31/25 = 124%
+        max_bw = max_bw * Ratio::new(31, 25); // 31/25 = 124%
         fp_estimator.on_round_start(rate_sample, max_bw, false);
         // The pipe is considered full
         assert!(fp_estimator.filled_pipe());
