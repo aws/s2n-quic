@@ -48,19 +48,19 @@ impl State {
     /// True if packet conservation dynamics should be used to bound cwnd
     #[allow(dead_code)] // TODO: Remove when used
     #[inline]
-    pub(crate) fn packet_conservation(&self) -> bool {
+    pub fn packet_conservation(&self) -> bool {
         matches!(self, Conservation(_, _))
     }
 
     /// True if currently in recovery (either Conservation or Growth)
     #[inline]
-    pub(crate) fn in_recovery(&self) -> bool {
+    pub fn in_recovery(&self) -> bool {
         *self != Recovered
     }
 
     /// True if a single packet may be transmitted despite a cwnd constraint
     #[inline]
-    pub(crate) fn requires_fast_retransmission(&self) -> bool {
+    pub fn requires_fast_retransmission(&self) -> bool {
         matches!(
             self,
             Conservation(_, FastRetransmission::RequiresTransmission)
@@ -69,7 +69,7 @@ impl State {
 
     /// Called when a packet is transmitted
     #[inline]
-    pub(crate) fn on_packet_sent(&mut self) {
+    pub fn on_packet_sent(&mut self) {
         if let Conservation(recovery_start_time, FastRetransmission::RequiresTransmission) = self {
             // A packet has been sent since we entered recovery (fast retransmission)
             // so flip the state back to idle.
@@ -81,7 +81,7 @@ impl State {
     ///
     /// Returns `true` if the ack caused recovery to be exited
     #[inline]
-    pub(crate) fn on_ack(&mut self, round_start: bool, time_sent: Timestamp) -> bool {
+    pub fn on_ack(&mut self, round_start: bool, time_sent: Timestamp) -> bool {
         match self {
             // Check if this ack causes the controller to exit recovery
             Conservation(recovery_start_time, _) | Growth(recovery_start_time) => {
@@ -109,7 +109,7 @@ impl State {
 
     /// Called when a congestion event occurs (packet loss or ECN CE count increase)
     #[inline]
-    pub(crate) fn on_congestion_event(&mut self, now: Timestamp) {
+    pub fn on_congestion_event(&mut self, now: Timestamp) {
         match self {
             Recovered => {
                 //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2

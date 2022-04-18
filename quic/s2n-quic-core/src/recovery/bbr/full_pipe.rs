@@ -30,13 +30,13 @@ impl Estimator {
     /// Returns true if BBR estimates that is has ever fully utilized its available bandwidth
     #[allow(dead_code)] // TODO: Remove when used
     #[inline]
-    pub(crate) fn filled_pipe(&self) -> bool {
+    pub fn filled_pipe(&self) -> bool {
         self.filled_pipe
     }
 
     /// Called on each new BBR round
     #[inline]
-    pub(crate) fn on_round_start(
+    pub fn on_round_start(
         &mut self,
         rate_sample: bandwidth::RateSample,
         max_bw: Bandwidth,
@@ -119,7 +119,7 @@ impl Estimator {
 
     /// Called for each lost packet
     #[inline]
-    pub(crate) fn on_packet_lost(&mut self, new_loss_burst: bool) {
+    pub fn on_packet_lost(&mut self, new_loss_burst: bool) {
         if self.filled_pipe {
             return;
         }
