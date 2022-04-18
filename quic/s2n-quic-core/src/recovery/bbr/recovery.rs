@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{recovery::bbr::recovery::State::*, time::Timestamp};
+use crate::time::Timestamp;
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
 //# If the congestion window is reduced immediately, a
@@ -49,13 +49,13 @@ impl State {
     #[allow(dead_code)] // TODO: Remove when used
     #[inline]
     pub fn packet_conservation(&self) -> bool {
-        matches!(self, Conservation(_, _))
+        matches!(self, State::Conservation(_, _))
     }
 
     /// True if currently in recovery (either Conservation or Growth)
     #[inline]
     pub fn in_recovery(&self) -> bool {
-        *self != Recovered
+        *self != State::Recovered
     }
 
     /// True if a single packet may be transmitted despite a cwnd constraint
@@ -63,17 +63,19 @@ impl State {
     pub fn requires_fast_retransmission(&self) -> bool {
         matches!(
             self,
-            Conservation(_, FastRetransmission::RequiresTransmission)
+            State::Conservation(_, FastRetransmission::RequiresTransmission)
         )
     }
 
     /// Called when a packet is transmitted
     #[inline]
     pub fn on_packet_sent(&mut self) {
-        if let Conservation(recovery_start_time, FastRetransmission::RequiresTransmission) = self {
+        if let State::Conservation(recovery_start_time, FastRetransmission::RequiresTransmission) =
+            self
+        {
             // A packet has been sent since we entered recovery (fast retransmission)
             // so flip the state back to idle.
-            *self = Conservation(*recovery_start_time, FastRetransmission::Idle)
+            *self = State::Conservation(*recovery_start_time, FastRetransmission::Idle)
         }
     }
 
@@ -84,24 +86,24 @@ impl State {
     pub fn on_ack(&mut self, round_start: bool, time_sent: Timestamp) -> bool {
         match self {
             // Check if this ack causes the controller to exit recovery
-            Conservation(recovery_start_time, _) | Growth(recovery_start_time) => {
+            State::Conservation(recovery_start_time, _) | State::Growth(recovery_start_time) => {
                 if time_sent > *recovery_start_time {
                     //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
                     //# A recovery period ends and the sender enters congestion avoidance
                     //# when a packet sent during the recovery period is acknowledged.
-                    *self = Recovered;
+                    *self = State::Recovered;
                     return true;
                 }
             }
-            Recovered => {}
+            State::Recovered => {}
         }
 
         // Still in recovery, but if this is a new round we move from Conservation to Growth
-        if let (Conservation(recovery_start_time, _), true) = (&self, round_start) {
+        if let (State::Conservation(recovery_start_time, _), true) = (&self, round_start) {
             //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
             //# After one round-trip in Fast Recovery:
             //#    BBR.packet_conservation = false
-            *self = Growth(*recovery_start_time)
+            *self = State::Growth(*recovery_start_time)
         }
 
         false
@@ -111,15 +113,16 @@ impl State {
     #[inline]
     pub fn on_congestion_event(&mut self, now: Timestamp) {
         match self {
-            Recovered => {
+            State::Recovered => {
                 //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
                 //# If the congestion window is reduced immediately, a
                 //# single packet can be sent prior to reduction.  This speeds up loss
                 //# recovery if the data in the lost packet is retransmitted and is
                 //# similar to TCP as described in Section 5 of [RFC6675].
-                *self = Conservation(now, FastRetransmission::RequiresTransmission);
+                *self = State::Conservation(now, FastRetransmission::RequiresTransmission);
             }
-            Conservation(ref mut recovery_start_time, _) | Growth(ref mut recovery_start_time) => {
+            State::Conservation(ref mut recovery_start_time, _)
+            | State::Growth(ref mut recovery_start_time) => {
                 // BBR only allows recovery to end when there has been no congestion in a round, so
                 // extend the recovery period when congestion occurs while in recovery
                 *recovery_start_time = now
@@ -136,7 +139,7 @@ mod tests {
 
     #[test]
     fn recovered() {
-        let state = Recovered;
+        let state = State::Recovered;
 
         assert!(!state.in_recovery());
         assert!(!state.packet_conservation());
@@ -146,7 +149,7 @@ mod tests {
     #[test]
     fn conservation() {
         let now = NoopClock.get_time();
-        let state = Conservation(now, FastRetransmission::RequiresTransmission);
+        let state = State::Conservation(now, FastRetransmission::RequiresTransmission);
 
         assert!(state.in_recovery());
         assert!(state.packet_conservation());
@@ -156,7 +159,7 @@ mod tests {
     #[test]
     fn growth() {
         let now = NoopClock.get_time();
-        let state = Growth(now);
+        let state = State::Growth(now);
 
         assert!(state.in_recovery());
         assert!(!state.packet_conservation());
@@ -166,17 +169,17 @@ mod tests {
     #[test]
     fn state_transitions() {
         let now = NoopClock.get_time();
-        let mut state = Recovered;
+        let mut state = State::Recovered;
 
         // Acking a packet while Recovered does not change the state
         assert!(!state.on_ack(true, now));
-        assert_eq!(state, Recovered);
+        assert_eq!(state, State::Recovered);
 
         // Congestion event moves Recovered to Conservation
         state.on_congestion_event(now);
         assert_eq!(
             state,
-            Conservation(now, FastRetransmission::RequiresTransmission)
+            State::Conservation(now, FastRetransmission::RequiresTransmission)
         );
         assert!(state.requires_fast_retransmission());
 
@@ -191,30 +194,30 @@ mod tests {
         // Congestion moves the recovery start time forward
         let now = now + Duration::from_secs(5);
         state.on_congestion_event(now);
-        assert_eq!(state, Conservation(now, FastRetransmission::Idle));
+        assert_eq!(state, State::Conservation(now, FastRetransmission::Idle));
 
         // Ack received that starts a new round moves Conservation to Growth
         assert!(!state.on_ack(true, now));
-        assert_eq!(state, Growth(now));
+        assert_eq!(state, State::Growth(now));
 
         // Congestion moves the recovery start time forward
         let now = now + Duration::from_secs(10);
         state.on_congestion_event(now);
-        assert_eq!(state, Growth(now));
+        assert_eq!(state, State::Growth(now));
 
         // Ack for a packet sent before the recovery start time does not exit recovery
         let sent_time = now - Duration::from_secs(1);
         assert!(!state.on_ack(true, sent_time));
-        assert_eq!(state, Growth(now));
+        assert_eq!(state, State::Growth(now));
 
         // Ack for a packet sent after the recovery start time exits recovery
         let sent_time = now + Duration::from_secs(1);
         assert!(state.on_ack(true, sent_time));
-        assert_eq!(state, Recovered);
+        assert_eq!(state, State::Recovered);
 
         // Ack for a packet sent after the recovery start time exits recovery even if in Conservation
-        let mut state = Conservation(now, FastRetransmission::RequiresTransmission);
+        let mut state = State::Conservation(now, FastRetransmission::RequiresTransmission);
         assert!(state.on_ack(true, sent_time));
-        assert_eq!(state, Recovered);
+        assert_eq!(state, State::Recovered);
     }
 }
