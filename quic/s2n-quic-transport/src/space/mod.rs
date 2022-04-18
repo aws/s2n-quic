@@ -21,10 +21,10 @@ use s2n_quic_core::{
     crypto::{tls, tls::Session, CryptoSuite, Key},
     event::{self, IntoEvent},
     frame::{
-        ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
-        HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionId, NewToken,
-        PathChallenge, PathResponse, ResetStream, RetireConnectionId, StopSending,
-        StreamDataBlocked, StreamsBlocked,
+        ack::AckRanges, crypto::CryptoRef, datagram::DatagramRef, stream::StreamRef, Ack,
+        ConnectionClose, DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams,
+        NewConnectionId, NewToken, PathChallenge, PathResponse, ResetStream, RetireConnectionId,
+        StopSending, StreamDataBlocked, StreamsBlocked,
     },
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
@@ -616,6 +616,16 @@ pub trait PacketSpace<Config: endpoint::Config> {
             .with_frame_type(frame.tag().into()))
     }
 
+    fn handle_datagram_frame(
+        &mut self,
+        frame: DatagramRef,
+        _packet: &mut ProcessedPacket,
+    ) -> Result<(), transport::Error> {
+        Err(transport::Error::PROTOCOL_VIOLATION
+            .with_reason(Self::INVALID_FRAME_ERROR)
+            .with_frame_type(frame.tag().into()))
+    }
+
     default_frame_handler!(handle_data_blocked_frame, DataBlocked);
     default_frame_handler!(handle_max_data_frame, MaxData);
     default_frame_handler!(handle_max_stream_data_frame, MaxStreamData);
@@ -636,7 +646,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
     fn handle_cleartext_payload<'a, Pub: event::ConnectionPublisher>(
         &mut self,
         packet_number: PacketNumber,
-        mut payload: DecoderBufferMut<'a>,
+        payload: DecoderBufferMut<'a>,
         datagram: &'a DatagramInfo,
         path_id: path::Id,
         path_manager: &mut path::Manager<Config>,
@@ -644,10 +654,25 @@ pub trait PacketSpace<Config: endpoint::Config> {
         local_id_registry: &mut connection::LocalIdRegistry,
         random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
+        packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<ProcessedPacket<'a>, connection::Error> {
         use s2n_quic_core::{
             frame::{Frame, FrameMut},
             varint::VarInt,
+        };
+
+        let mut payload = {
+            use s2n_quic_core::packet::interceptor::{Interceptor, Packet};
+
+            // intercept the payload after it is decrypted, but before we process the frames
+            packet_interceptor.intercept_rx_payload(
+                publisher.subject(),
+                Packet {
+                    number: packet_number,
+                    timestamp: datagram.timestamp,
+                },
+                payload,
+            )
         };
 
         let mut processed_packet = ProcessedPacket::new(packet_number, datagram);
@@ -730,6 +755,11 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 Frame::Stream(frame) => {
                     let on_error = on_frame_processed!(frame);
                     self.handle_stream_frame(frame.into(), &mut processed_packet)
+                        .map_err(on_error)?;
+                }
+                Frame::Datagram(frame) => {
+                    let on_error = on_frame_processed!(frame);
+                    self.handle_datagram_frame(frame.into(), &mut processed_packet)
                         .map_err(on_error)?;
                 }
                 Frame::DataBlocked(frame) => {

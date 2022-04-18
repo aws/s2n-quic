@@ -1,5 +1,6 @@
 ---
 source: src/main.rs
+assertion_line: 61
 expression: dump
 ---
 trait impl core::convert::TryFrom<s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::PlainMessage> for s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::Message associates type:
@@ -3185,6 +3186,9 @@ enum s2n_quic::provider::event::events::Frame exports variant:
   DataBlocked
 
 enum s2n_quic::provider::event::events::Frame exports variant:
+  Datagram
+
+enum s2n_quic::provider::event::events::Frame exports variant:
   HandshakeDone
 
 enum s2n_quic::provider::event::events::Frame exports variant:
@@ -3268,6 +3272,12 @@ variant s2n_quic::provider::event::events::Frame::Crypto exports field:
   u64
 
 variant s2n_quic::provider::event::events::Frame::DataBlocked is non-exhaustive
+
+variant s2n_quic::provider::event::events::Frame::Datagram is non-exhaustive
+
+variant s2n_quic::provider::event::events::Frame::Datagram exports field:
+  len:
+  u16
 
 variant s2n_quic::provider::event::events::Frame::HandshakeDone is non-exhaustive
 
@@ -4909,6 +4919,9 @@ struct s2n_quic::provider::event::events::TransportParameters exports field:
 
 struct s2n_quic::provider::event::events::TransportParameters exports field:
   max_ack_delay: core::time::Duration
+
+struct s2n_quic::provider::event::events::TransportParameters exports field:
+  max_datagram_frame_size: u64
 
 struct s2n_quic::provider::event::events::TransportParameters exports field:
   max_idle_timeout: core::time::Duration

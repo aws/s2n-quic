@@ -39,6 +39,7 @@ struct TransportParameters<'a> {
     initial_max_stream_data_uni: u64,
     initial_max_streams_bidi: u64,
     initial_max_streams_uni: u64,
+    max_datagram_frame_size: u64,
 }
 
 struct PreferredAddress<'a> {
@@ -309,6 +310,9 @@ enum Frame {
     PathResponse,
     ConnectionClose,
     HandshakeDone,
+    Datagram {
+        len: u16,
+    },
 }
 
 impl IntoEvent<builder::Frame> for &crate::frame::Padding {
@@ -444,6 +448,17 @@ where
     fn into_event(self) -> builder::Frame {
         builder::Frame::Crypto {
             offset: self.offset.as_u64(),
+            len: self.data.encoding_size() as _,
+        }
+    }
+}
+
+impl<Data> IntoEvent<builder::Frame> for &crate::frame::Datagram<Data>
+where
+    Data: s2n_codec::EncoderValue,
+{
+    fn into_event(self) -> builder::Frame {
+        builder::Frame::Datagram {
             len: self.data.encoding_size() as _,
         }
     }
