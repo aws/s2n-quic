@@ -34,11 +34,11 @@ jobs:
     outputs:
       matrix: ${{ steps.implementations.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           path: s2n-quic
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           repository: marten-seemann/quic-interop-runner
           ref: ${{ env.INTEROP_RUNNER_REF }}
@@ -74,7 +74,7 @@ jobs:
     env:
       RUSTFLAGS: "-g"
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           submodules: true
 
@@ -100,7 +100,7 @@ jobs:
           mkdir -p s2n-quic-qns
           cp target/${{ matrix.mode }}/s2n-quic-qns s2n-quic-qns/s2n-quic-qns-${{ matrix.mode }}
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: s2n-quic-qns-${{ matrix.mode }}
           path: s2n-quic-qns/
@@ -111,7 +111,7 @@ jobs:
     env:
       RUSTFLAGS: "-g"
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           repository: quinn-rs/quinn
           ref: ${{ env.QUINN_REF }}
@@ -127,7 +127,7 @@ jobs:
 
       - name: Cache quinn
         id: cache
-        uses: actions/cache@v2.1.7
+        uses: actions/cache@v3.0.2
         continue-on-error: true
         with:
           path: |
@@ -145,7 +145,7 @@ jobs:
           cp target/release/perf_client quinn/perf_client
           cp target/release/perf_server quinn/perf_server
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: quinn
           path: quinn/
@@ -155,7 +155,7 @@ jobs:
     steps:
       - name: Cache
         id: cache
-        uses: actions/cache@v2.1.7
+        uses: actions/cache@v3.0.2
         continue-on-error: true
         with:
           path: tshark
@@ -181,7 +181,7 @@ jobs:
         run: ./tshark -v
 
       - name: Upload
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: tshark
           path: tshark
@@ -192,16 +192,16 @@ jobs:
     strategy:
       matrix: ${{ fromJson(needs.env.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           path: s2n-quic
 
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         with:
           name: s2n-quic-qns-debug
           path: s2n-quic-qns/
 
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         with:
           name: s2n-quic-qns-release
           path: s2n-quic-qns/
@@ -218,7 +218,7 @@ jobs:
           docker build . --file Dockerfile --tag aws/s2n-quic-qns --build-arg tls=s2n-tls
           docker build . --file Dockerfile --tag aws/s2n-quic-qns-rustls --build-arg tls=rustls
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           repository: marten-seemann/quic-interop-runner
           ref: ${{ env.INTEROP_RUNNER_REF }}
@@ -235,12 +235,12 @@ jobs:
           docker pull "wesleyrosenblum/quic-network-simulator@$NETWORK_SIMULATOR_REF"
           docker pull "martenseemann/quic-interop-iperf-endpoint@$IPERF_ENDPOINT_REF"
 
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v3
         with:
           python-version: 3.7
 
       - name: Download tshark
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: tshark
           path: .
@@ -296,21 +296,21 @@ jobs:
           done
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload to S3
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         working-directory: quic-interop-runner
         run: |
           TARGET="${{ github.sha }}/interop/logs/latest"
           aws s3 sync results/logs "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: interop-${{ matrix.client }}-client-${{ matrix.server }}-server
           path: quic-interop-runner/results/result.json
@@ -324,9 +324,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [interop]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         with:
           path: results/
 
@@ -342,7 +342,7 @@ jobs:
 
       - name: Get latest successfull interop commit SHA on main branch
         id: mainsha
-        if: github.event.pull_request && github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event.pull_request && github.repository == github.event.pull_request.head.repo.full_name
         run: |
           curl \
           --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/qns.yml/runs?branch=main&status=success&per_page=1" \
@@ -353,14 +353,14 @@ jobs:
           echo "::set-output name=MAIN_SHA::$MAIN_SHA"
 
       - name: Download latest main interop result
-        if: github.event.pull_request && github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event.pull_request && github.repository == github.event.pull_request.head.repo.full_name
         run: |
           rm -f prev_result.json
           wget $CDN/${{ steps.mainsha.outputs.MAIN_SHA }}/interop/logs/latest/result.json || echo '{}' > result.json
           mv result.json prev_result.json
 
       - name: Generate report for pull request
-        if: github.event.pull_request && github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event.pull_request && github.repository == github.event.pull_request.head.repo.full_name
         run: |
           mkdir -p web/logs/latest
           MAIN_SHA=${{ steps.mainsha.outputs.MAIN_SHA }}
@@ -389,14 +389,14 @@ jobs:
               web/logs/latest/result.json
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload to S3
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
           cp .github/interop/*.html web/
@@ -407,7 +407,7 @@ jobs:
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.2
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "interop / report"
           status: "success"
@@ -423,7 +423,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [env, s2n-quic-qns, tshark]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           submodules: true
 
@@ -436,7 +436,7 @@ jobs:
       - uses: camshaft/rust-cache@v1
 
       - name: Download tshark
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: tshark
           path: .
@@ -454,7 +454,7 @@ jobs:
 
       # authenticate pull to avoid hitting pull quota
       - name: Login to Amazon Elastic Container Registry Public
-        if: github.event.pull_request
+        if: github.repository == github.event.pull_request.head.repo.full_name
         uses: docker/login-action@v1
         with:
           registry: public.ecr.aws
@@ -465,12 +465,12 @@ jobs:
         if: github.event.pull_request
         run: docker pull public.ecr.aws/s2n/s2n-quic-qns:main
 
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         with:
           name: s2n-quic-qns-debug
           path: s2n-quic-qns-build/
 
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         with:
           name: s2n-quic-qns-release
           path: s2n-quic-qns-build/
@@ -495,14 +495,14 @@ jobs:
         run: sudo env "PATH=$PATH" "BUILD_S2N_QUIC=false" ./scripts/benchmark/run-all
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload results
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
           TARGET="${{ github.sha }}/bench"
@@ -511,7 +511,7 @@ jobs:
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.2
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "bench / report"
           status: "success"
@@ -529,7 +529,7 @@ jobs:
         tls: ["s2n-tls", "rustls"]
 
     steps:
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         with:
           name: s2n-quic-qns-debug
 
@@ -590,7 +590,7 @@ jobs:
             server: "s2n-quic"
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           submodules: true
 
@@ -614,12 +614,12 @@ jobs:
         with:
           crate: ultraman
 
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         with:
           name: s2n-quic-qns-release
           path: target/release/
 
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         with:
           name: quinn
           path: target/perf/quinn/bin/
@@ -651,7 +651,7 @@ jobs:
           zip perf.zip **/*.script
           rm -rf **/*.script
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: perf-${{ matrix.tls }}
           path: target/perf/results
@@ -660,14 +660,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: [perf]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         with:
           name: perf-rustls
           path: ./perf-results/rustls
 
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         with:
           name: perf-s2n-tls
           path: ./perf-results/s2n-tls
@@ -678,14 +678,14 @@ jobs:
           tree -H "." -T "Performance Results" --noreport --charset utf-8 > index.html
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload results
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
           TARGET="${{ github.sha }}/perf"
@@ -694,7 +694,7 @@ jobs:
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.2
-        if: github.event_name == 'push' || github.repository.name == github.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "perf / report"
           status: "success"

@@ -1,6 +1,6 @@
 ---
 source: quic/s2n-quic-core/src/transport/parameters/mod.rs
-assertion_line: 1452
+assertion_line: 1542
 expression: default_value
 
 ---
@@ -41,6 +41,11 @@ TransportParameters {
         ),
     ),
     initial_max_streams_uni: InitialMaxStreamsUni(
+        VarInt(
+            0,
+        ),
+    ),
+    max_datagram_frame_size: MaxDatagramFrameSize(
         VarInt(
             0,
         ),

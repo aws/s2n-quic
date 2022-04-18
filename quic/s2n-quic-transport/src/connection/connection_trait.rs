@@ -59,6 +59,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         packet_buffer: &mut endpoint::PacketBuffer,
         timestamp: Timestamp,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     );
 
     /// Marks a connection which advertised itself as having completed the handshake
@@ -81,6 +82,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         queue: &mut Tx,
         timestamp: Timestamp,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ConnectionOnTransmitError>
     where
         Tx: tx::Queue<Handle = <Self::Config as endpoint::Config>::PathHandle>;
@@ -114,6 +116,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         packet: ProtectedInitial,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when an unprotected initial packet had been received
@@ -124,6 +127,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         packet: CleartextInitial,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a handshake packet had been received
@@ -134,6 +138,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         packet: ProtectedHandshake,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a short packet had been received
@@ -144,6 +149,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         packet: ProtectedShort,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a version negotiation packet had been received
@@ -153,6 +159,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         path_id: path::Id,
         packet: ProtectedVersionNegotiation,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a zero rtt packet had been received
@@ -162,6 +169,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         path_id: path::Id,
         packet: ProtectedZeroRtt,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a retry packet had been received
@@ -171,6 +179,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         path_id: path::Id,
         packet: ProtectedRetry,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError>;
 
     /// Notifies a connection it has received a datagram from a peer
@@ -199,6 +208,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         packet: ProtectedPacket,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.1
         //# If a client receives a packet that uses a different version than it
@@ -230,27 +240,46 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         // independently.
 
         match packet {
-            ProtectedPacket::Short(packet) => {
-                self.handle_short_packet(datagram, path_id, packet, random_generator, subscriber)
-            }
-            ProtectedPacket::VersionNegotiation(packet) => {
-                self.handle_version_negotiation_packet(datagram, path_id, packet, subscriber)
-            }
-            ProtectedPacket::Initial(packet) => {
-                self.handle_initial_packet(datagram, path_id, packet, random_generator, subscriber)
-            }
-            ProtectedPacket::ZeroRtt(packet) => {
-                self.handle_zero_rtt_packet(datagram, path_id, packet, subscriber)
-            }
+            ProtectedPacket::Short(packet) => self.handle_short_packet(
+                datagram,
+                path_id,
+                packet,
+                random_generator,
+                subscriber,
+                packet_interceptor,
+            ),
+            ProtectedPacket::VersionNegotiation(packet) => self.handle_version_negotiation_packet(
+                datagram,
+                path_id,
+                packet,
+                subscriber,
+                packet_interceptor,
+            ),
+            ProtectedPacket::Initial(packet) => self.handle_initial_packet(
+                datagram,
+                path_id,
+                packet,
+                random_generator,
+                subscriber,
+                packet_interceptor,
+            ),
+            ProtectedPacket::ZeroRtt(packet) => self.handle_zero_rtt_packet(
+                datagram,
+                path_id,
+                packet,
+                subscriber,
+                packet_interceptor,
+            ),
             ProtectedPacket::Handshake(packet) => self.handle_handshake_packet(
                 datagram,
                 path_id,
                 packet,
                 random_generator,
                 subscriber,
+                packet_interceptor,
             ),
             ProtectedPacket::Retry(packet) => {
-                self.handle_retry_packet(datagram, path_id, packet, subscriber)
+                self.handle_retry_packet(datagram, path_id, packet, subscriber, packet_interceptor)
             }
         }
     }
@@ -267,6 +296,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         mut payload: DecoderBufferMut,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), connection::Error> {
         let remote_address = path_handle.remote_address();
         let connection_info = ConnectionInfo::new(&remote_address);
@@ -301,8 +331,14 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                     break;
                 }
 
-                let result =
-                    self.handle_packet(datagram, path_id, packet, random_generator, subscriber);
+                let result = self.handle_packet(
+                    datagram,
+                    path_id,
+                    packet,
+                    random_generator,
+                    subscriber,
+                    packet_interceptor,
+                );
 
                 if let Err(ProcessingError::ConnectionError(err)) = result {
                     // CryptoErrors returned as a result of a packet failing decryption will be

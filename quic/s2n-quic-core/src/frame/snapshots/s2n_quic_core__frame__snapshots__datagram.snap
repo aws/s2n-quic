@@ -1,0 +1,31 @@
+---
+source: quic/s2n-quic-core/src/frame/mod.rs
+assertion_line: 231
+expression: values
+---
+[
+    Datagram(
+        Datagram {
+            is_last_frame: false,
+            data: DecoderBufferMut {
+                bytes: [
+                    73,
+                    39,
+                    109,
+                    32,
+                    97,
+                    32,
+                    100,
+                    97,
+                    116,
+                    97,
+                    103,
+                    114,
+                    97,
+                    109,
+                    33,
+                ],
+            },
+        },
+    ),
+]

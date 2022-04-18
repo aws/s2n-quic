@@ -4,11 +4,7 @@
 use super::*;
 use core::marker::PhantomData;
 use s2n_quic_core::{connection::id::Generator, crypto, path};
-use s2n_quic_transport::{
-    connection,
-    endpoint::{self},
-    stream,
-};
+use s2n_quic_transport::{connection, endpoint, stream};
 
 impl_providers_state! {
     #[derive(Debug, Default)]
@@ -16,6 +12,7 @@ impl_providers_state! {
         congestion_controller: CongestionController,
         connection_close_formatter: ConnectionCloseFormatter,
         connection_id: ConnectionID,
+        packet_interceptor: PacketInterceptor,
         stateless_reset_token: StatelessResetToken,
         random: Random,
         event: Event,
@@ -33,6 +30,7 @@ impl<
         CongestionController: congestion_controller::Provider,
         ConnectionCloseFormatter: connection_close_formatter::Provider,
         ConnectionID: connection_id::Provider,
+        PacketInterceptor: packet_interceptor::Provider,
         StatelessResetToken: stateless_reset_token::Provider,
         Random: random::Provider,
         Event: event::Provider,
@@ -45,6 +43,7 @@ impl<
         CongestionController,
         ConnectionCloseFormatter,
         ConnectionID,
+        PacketInterceptor,
         StatelessResetToken,
         Random,
         Event,
@@ -59,6 +58,7 @@ impl<
             congestion_controller,
             connection_close_formatter,
             connection_id,
+            packet_interceptor,
             stateless_reset_token,
             random,
             event,
@@ -73,6 +73,7 @@ impl<
             .start()
             .map_err(StartError::new)?;
         let connection_id = connection_id.start().map_err(StartError::new)?;
+        let packet_interceptor = packet_interceptor.start().map_err(StartError::new)?;
         let stateless_reset_token = stateless_reset_token.start().map_err(StartError::new)?;
         let random = random.start().map_err(StartError::new)?;
         let endpoint_limits = EndpointLimits;
@@ -99,6 +100,7 @@ impl<
             congestion_controller,
             connection_close_formatter,
             connection_id,
+            packet_interceptor,
             stateless_reset_token,
             random,
             endpoint_limits,
@@ -185,6 +187,7 @@ struct EndpointConfig<
     CongestionController,
     ConnectionCloseFormatter,
     ConnectionID,
+    PacketInterceptor,
     PathHandle,
     StatelessResetToken,
     Random,
@@ -196,6 +199,7 @@ struct EndpointConfig<
     congestion_controller: CongestionController,
     connection_close_formatter: ConnectionCloseFormatter,
     connection_id: ConnectionID,
+    packet_interceptor: PacketInterceptor,
     stateless_reset_token: StatelessResetToken,
     random: Random,
     endpoint_limits: EndpointLimits,
@@ -212,6 +216,7 @@ impl<
         CongestionController: congestion_controller::Endpoint,
         ConnectionCloseFormatter: connection_close_formatter::Formatter,
         ConnectionID: connection::id::Format,
+        PacketInterceptor: packet_interceptor::PacketInterceptor,
         PathHandle: path::Handle,
         StatelessResetToken: stateless_reset_token::Generator,
         Random: s2n_quic_core::random::Generator,
@@ -224,6 +229,7 @@ impl<
         CongestionController,
         ConnectionCloseFormatter,
         ConnectionID,
+        PacketInterceptor,
         PathHandle,
         StatelessResetToken,
         Random,
@@ -242,6 +248,7 @@ impl<
         CongestionController: congestion_controller::Endpoint,
         ConnectionCloseFormatter: connection_close_formatter::Formatter,
         ConnectionID: connection::id::Format,
+        PacketInterceptor: packet_interceptor::PacketInterceptor,
         PathHandle: path::Handle,
         StatelessResetToken: stateless_reset_token::Generator,
         Random: s2n_quic_core::random::Generator,
@@ -254,6 +261,7 @@ impl<
         CongestionController,
         ConnectionCloseFormatter,
         ConnectionID,
+        PacketInterceptor,
         PathHandle,
         StatelessResetToken,
         Random,
@@ -279,6 +287,7 @@ impl<
     type ConnectionLimits = Limits;
     type Stream = stream::StreamImpl;
     type PathMigrationValidator = PathMigration;
+    type PacketInterceptor = PacketInterceptor;
 
     const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Client;
 
@@ -287,6 +296,7 @@ impl<
             congestion_controller: &mut self.congestion_controller,
             connection_close_formatter: &mut self.connection_close_formatter,
             connection_id_format: &mut self.connection_id,
+            packet_interceptor: &mut self.packet_interceptor,
             stateless_reset_token_generator: &mut self.stateless_reset_token,
             random_generator: &mut self.random,
             tls: &mut self.tls,

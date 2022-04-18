@@ -16,14 +16,15 @@ use core::{
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     ack,
+    application::ServerName,
     connection::{limits::Limits, InitialId, PeerId},
     crypto::{tls, tls::Session, CryptoSuite, Key},
     event::{self, IntoEvent},
     frame::{
-        ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
-        HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionId, NewToken,
-        PathChallenge, PathResponse, ResetStream, RetireConnectionId, StopSending,
-        StreamDataBlocked, StreamsBlocked,
+        ack::AckRanges, crypto::CryptoRef, datagram::DatagramRef, stream::StreamRef, Ack,
+        ConnectionClose, DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams,
+        NewConnectionId, NewToken, PathChallenge, PathResponse, ResetStream, RetireConnectionId,
+        StopSending, StreamDataBlocked, StreamsBlocked,
     },
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
@@ -63,6 +64,16 @@ pub struct PacketSpaceManager<Config: endpoint::Config> {
     zero_rtt_crypto:
         Option<Box<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRttKey>>,
     handshake_status: HandshakeStatus,
+    /// Server Name Indication
+    pub server_name: Option<ServerName>,
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-7
+    //# Endpoints MUST explicitly negotiate an application protocol.
+
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
+    //# Unless
+    //# another mechanism is used for agreeing on an application protocol,
+    //# endpoints MUST use ALPN for this purpose.
+    pub application_protocol: Bytes,
 }
 
 impl<Config: endpoint::Config> fmt::Debug for PacketSpaceManager<Config> {
@@ -155,6 +166,8 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
             application: None,
             zero_rtt_crypto: None,
             handshake_status: HandshakeStatus::default(),
+            server_name: None,
+            application_protocol: Bytes::new(),
         }
     }
 
@@ -203,6 +216,8 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 handshake_status: &mut self.handshake_status,
                 local_id_registry,
                 limits,
+                server_name: &mut self.server_name,
+                application_protocol: &mut self.application_protocol,
                 waker,
                 publisher,
             };
@@ -393,6 +408,31 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         })
     }
 
+    pub fn close<Pub: event::ConnectionPublisher>(
+        &mut self,
+        error: connection::Error,
+        path: &mut path::Path<Config>,
+        path_id: path::Id,
+        publisher: &mut Pub,
+    ) {
+        self.session_info = None;
+        self.retry_cid = None;
+        self.discard_initial(path, path_id, publisher);
+        self.discard_handshake(path, path_id, publisher);
+        self.discard_zero_rtt_crypto();
+
+        // Don't discard the application space until the application has read the error
+        if let Some((application, _handshake_status)) = self.application_mut() {
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2
+            //# A CONNECTION_CLOSE frame
+            //# causes all streams to immediately become closed; open streams can be
+            //# assumed to be implicitly reset.
+
+            // Close all streams with the derived error
+            application.stream_manager.close(error);
+        }
+    }
+
     pub fn on_retry_packet(&mut self, retry_source_connection_id: PeerId) {
         debug_assert!(Config::ENDPOINT_TYPE.is_client());
         self.retry_cid = Some(Box::new(retry_source_connection_id));
@@ -576,6 +616,16 @@ pub trait PacketSpace<Config: endpoint::Config> {
             .with_frame_type(frame.tag().into()))
     }
 
+    fn handle_datagram_frame(
+        &mut self,
+        frame: DatagramRef,
+        _packet: &mut ProcessedPacket,
+    ) -> Result<(), transport::Error> {
+        Err(transport::Error::PROTOCOL_VIOLATION
+            .with_reason(Self::INVALID_FRAME_ERROR)
+            .with_frame_type(frame.tag().into()))
+    }
+
     default_frame_handler!(handle_data_blocked_frame, DataBlocked);
     default_frame_handler!(handle_max_data_frame, MaxData);
     default_frame_handler!(handle_max_stream_data_frame, MaxStreamData);
@@ -596,7 +646,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
     fn handle_cleartext_payload<'a, Pub: event::ConnectionPublisher>(
         &mut self,
         packet_number: PacketNumber,
-        mut payload: DecoderBufferMut<'a>,
+        payload: DecoderBufferMut<'a>,
         datagram: &'a DatagramInfo,
         path_id: path::Id,
         path_manager: &mut path::Manager<Config>,
@@ -604,10 +654,25 @@ pub trait PacketSpace<Config: endpoint::Config> {
         local_id_registry: &mut connection::LocalIdRegistry,
         random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
+        packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<ProcessedPacket<'a>, connection::Error> {
         use s2n_quic_core::{
             frame::{Frame, FrameMut},
             varint::VarInt,
+        };
+
+        let mut payload = {
+            use s2n_quic_core::packet::interceptor::{Interceptor, Packet};
+
+            // intercept the payload after it is decrypted, but before we process the frames
+            packet_interceptor.intercept_rx_payload(
+                publisher.subject(),
+                Packet {
+                    number: packet_number,
+                    timestamp: datagram.timestamp,
+                },
+                payload,
+            )
         };
 
         let mut processed_packet = ProcessedPacket::new(packet_number, datagram);
@@ -690,6 +755,11 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 Frame::Stream(frame) => {
                     let on_error = on_frame_processed!(frame);
                     self.handle_stream_frame(frame.into(), &mut processed_packet)
+                        .map_err(on_error)?;
+                }
+                Frame::Datagram(frame) => {
+                    let on_error = on_frame_processed!(frame);
+                    self.handle_datagram_frame(frame.into(), &mut processed_packet)
                         .map_err(on_error)?;
                 }
                 Frame::DataBlocked(frame) => {

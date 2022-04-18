@@ -21,6 +21,8 @@ export SERVER_0=localhost:4433
 ./target/release/netbench-driver-$DRIVER-client ./target/netbench/request_response.json
 ```
 
+> Note: if the netbench driver is being run on a mac, set the local IP on the client driver to 0.0.0.0 as follows: `--local-ip 0.0.0.0`
+
 ## Building docker images
 
 ```sh

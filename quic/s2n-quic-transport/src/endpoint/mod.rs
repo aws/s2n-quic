@@ -137,8 +137,12 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         let timestamp = clock.get_time();
 
         self.connections.iterate_transmission_list(|connection| {
-            transmit_result =
-                connection.on_transmit(queue, timestamp, endpoint_context.event_subscriber);
+            transmit_result = connection.on_transmit(
+                queue,
+                timestamp,
+                endpoint_context.event_subscriber,
+                endpoint_context.packet_interceptor,
+            );
             if transmit_result.is_err() {
                 // If one connection fails, return
                 ConnectionContainerIterationResult::BreakAndInsertAtBack
@@ -210,6 +214,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                         close_packet_buffer,
                         timestamp,
                         endpoint_context.event_subscriber,
+                        endpoint_context.packet_interceptor,
                     );
                 }
             });
@@ -557,6 +562,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     packet,
                     endpoint_context.random_generator,
                     endpoint_context.event_subscriber,
+                    endpoint_context.packet_interceptor,
                 ) {
                     match err {
                         ProcessingError::DuplicatePacket => {
@@ -587,6 +593,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                                 close_packet_buffer,
                                 datagram.timestamp,
                                 endpoint_context.event_subscriber,
+                                endpoint_context.packet_interceptor,
                             );
                             return Err(());
                         }
@@ -621,6 +628,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     remaining,
                     endpoint_context.random_generator,
                     endpoint_context.event_subscriber,
+                    endpoint_context.packet_interceptor,
                 ) {
                     conn.close(
                         err,
@@ -628,6 +636,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         close_packet_buffer,
                         datagram.timestamp,
                         endpoint_context.event_subscriber,
+                        endpoint_context.packet_interceptor,
                     );
                     return Err(());
                 }
@@ -676,15 +685,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         &source_connection_id,
                         endpoint_context.random_generator,
                     );
-                    if let Some(id) = endpoint_context
+
+                    let outcome = endpoint_context
                         .token
-                        .validate_token(&mut context, packet.token())
-                    {
-                        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.3
-                        //# If the validation succeeds, the server SHOULD then allow
-                        //# the handshake to proceed.
-                        Some(id)
-                    } else {
+                        .validate_token(&mut context, packet.token());
+
+                    if outcome.is_none() {
                         //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.3
                         //= type=TODO
                         //= tracking-issue=344
@@ -710,6 +716,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         //# discard any Initial packet that does not carry the expected token.
                         return;
                     }
+
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.3
+                    //# If the validation succeeds, the server SHOULD then allow
+                    //# the handshake to proceed.
+                    outcome
                 } else {
                     //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.2
                     //# Upon receiving the client's Initial packet, the server can request
@@ -872,6 +883,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 close_packet_buffer,
                 timestamp,
                 endpoint_context.event_subscriber,
+                endpoint_context.packet_interceptor,
             );
         });
 
@@ -898,6 +910,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         close_packet_buffer,
                         timestamp,
                         endpoint_context.event_subscriber,
+                        endpoint_context.packet_interceptor,
                     );
                 }
             });
@@ -1128,6 +1141,7 @@ pub mod testing {
         type ConnectionCloseFormatter = s2n_quic_core::connection::close::Development;
         type EventSubscriber = Subscriber;
         type PathMigrationValidator = path::migration::default::Validator;
+        type PacketInterceptor = s2n_quic_core::packet::interceptor::Disabled;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()
@@ -1156,6 +1170,7 @@ pub mod testing {
         type ConnectionCloseFormatter = s2n_quic_core::connection::close::Development;
         type EventSubscriber = Subscriber;
         type PathMigrationValidator = path::migration::default::Validator;
+        type PacketInterceptor = s2n_quic_core::packet::interceptor::Disabled;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()
