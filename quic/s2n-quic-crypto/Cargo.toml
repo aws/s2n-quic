@@ -33,7 +33,7 @@ ctr = "0.8"
 ghash = "0.4"
 hex-literal = "0.3"
 insta = "1"
-pretty-hex = "0.2"
+pretty-hex = "0.3"
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
 
 [[test]]
