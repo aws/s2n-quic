@@ -9,6 +9,8 @@ check-filename = true
 [default.extend-words]
 # ECN Capable Transport
 ect = "ect"
+# num_rational uses "numer" as short for "numerator"
+numer = "numer"
 
 [files]
 extend-exclude = [

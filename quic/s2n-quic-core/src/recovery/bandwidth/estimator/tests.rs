@@ -4,6 +4,29 @@
 use super::*;
 use crate::time::{Clock, NoopClock};
 
+#[test]
+fn bandwidth() {
+    let result = Bandwidth::new(1000, Duration::from_secs(10));
+
+    assert_eq!(100 * 8, result.bits_per_second);
+}
+
+#[test]
+fn bandwidth_zero_interval() {
+    let result = Bandwidth::new(500, Duration::ZERO);
+
+    assert_eq!(Bandwidth::ZERO, result);
+}
+
+#[test]
+fn bandwidth_mul_ratio() {
+    let bandwidth = Bandwidth::new(7000, Duration::from_secs(1));
+
+    let result = bandwidth * Ratio::new(3, 7);
+
+    assert_eq!(result, Bandwidth::new(3000, Duration::from_secs(1)));
+}
+
 // first_sent_time and delivered_time typically hold values from recently acknowledged packets. However,
 // when  no packet has been sent yet, or there are no packets currently in flight, these values are initialized
 // with the time when a packet is sent. This test confirms first_sent_time and delivered_time are

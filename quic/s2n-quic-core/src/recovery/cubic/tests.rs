@@ -399,7 +399,7 @@ fn congestion_avoidance_after_fast_convergence() {
     cc.congestion_window = 80_000.0;
     cc.cubic.w_last_max = bytes_to_packets(100_000.0, max_datagram_size);
 
-    cc.on_packet_lost(100, (), false, now);
+    cc.on_packet_lost(100, (), false, false, now);
     assert_delta!(cc.congestion_window, 80_000.0 * BETA_CUBIC, 0.001);
 
     // Window max was less than the last max, so fast convergence applies
@@ -470,7 +470,7 @@ fn on_packet_lost() {
     cc.bytes_in_flight = BytesInFlight::new(100_000);
     cc.state = SlowStart;
 
-    cc.on_packet_lost(100, (), false, now + Duration::from_secs(10));
+    cc.on_packet_lost(100, (), false, false, now + Duration::from_secs(10));
 
     assert_eq!(cc.bytes_in_flight, 100_000u32 - 100);
     //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.1
@@ -500,7 +500,7 @@ fn on_packet_lost_below_minimum_window() {
     cc.bytes_in_flight = BytesInFlight::new(cc.congestion_window());
     cc.state = State::congestion_avoidance(now);
 
-    cc.on_packet_lost(100, (), false, now + Duration::from_secs(10));
+    cc.on_packet_lost(100, (), false, false, now + Duration::from_secs(10));
 
     assert_delta!(cc.congestion_window, cc.cubic.minimum_window(), 0.001);
 }
@@ -515,8 +515,8 @@ fn on_packet_lost_already_in_recovery() {
 
     // break up on_packet_loss into two call to confirm double call
     // behavior is valid (50 + 50 = 100 lost bytes)
-    cc.on_packet_lost(50, (), false, now);
-    cc.on_packet_lost(50, (), false, now);
+    cc.on_packet_lost(50, (), false, false, now);
+    cc.on_packet_lost(50, (), false, false, now);
 
     // No change to the congestion window
     assert_delta!(cc.congestion_window, 10000.0, 0.001);
@@ -536,7 +536,7 @@ fn on_packet_lost_persistent_congestion() {
     cc.bytes_in_flight = BytesInFlight::new(1000);
     cc.state = Recovery(now, Idle);
 
-    cc.on_packet_lost(100, (), true, now);
+    cc.on_packet_lost(100, (), true, false, now);
 
     assert_eq!(cc.state, SlowStart);
     assert_delta!(cc.congestion_window, cc.cubic.minimum_window(), 0.001);

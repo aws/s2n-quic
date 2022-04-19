@@ -816,11 +816,11 @@ impl<Config: endpoint::Config> Manager<Config> {
     ) {
         let current_path_id = context.path_id();
         let mut is_congestion_event = false;
+        let mut prev_lost_packet_number = None;
 
         // Remove the lost packets and account for the bytes on the proper congestion controller
         for (packet_number, sent_info) in sent_packets_to_remove {
             let path = context.path_mut_by_id(sent_info.path_id);
-
             self.sent_packets.remove(packet_number);
 
             //= https://www.rfc-editor.org/rfc/rfc9002#section-7.6.2
@@ -832,6 +832,10 @@ impl<Config: endpoint::Config> Manager<Config> {
                 > path.rtt_estimator.persistent_congestion_threshold()
                 // Check that the packet was sent on this path
                 && sent_info.path_id == current_path_id;
+
+            let new_loss_burst = prev_lost_packet_number.map_or(true, |prev: PacketNumber| {
+                packet_number.checked_distance(prev) != Some(1)
+            });
 
             let mut is_mtu_probe = false;
             if sent_info.sent_bytes as usize > path.mtu_controller.mtu() {
@@ -853,6 +857,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     sent_info.sent_bytes as u32,
                     sent_info.cc_packet_info,
                     persistent_congestion,
+                    new_loss_burst,
                     now,
                 );
                 is_mtu_probe = false;
@@ -895,6 +900,8 @@ impl<Config: endpoint::Config> Manager<Config> {
                 //# persistent congestion is established.
                 path.rtt_estimator.on_persistent_congestion();
             }
+
+            prev_lost_packet_number = Some(packet_number);
         }
 
         if is_congestion_event {

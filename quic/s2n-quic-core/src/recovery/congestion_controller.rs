@@ -92,11 +92,16 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
     );
 
     /// Invoked when a packet is declared lost
+    ///
+    /// `new_loss_burst` is true if the lost packet is the first in a
+    /// contiguous series of lost packets. This can be used for measuring or
+    /// filtering out noise from burst losses.
     fn on_packet_lost(
         &mut self,
         lost_bytes: u32,
         packet_info: Self::PacketInfo,
         persistent_congestion: bool,
+        new_loss_burst: bool,
         timestamp: Timestamp,
     );
 
@@ -185,6 +190,7 @@ pub mod testing {
                 _lost_bytes: u32,
                 _packet_info: Self::PacketInfo,
                 _persistent_congestion: bool,
+                _new_loss_burst: bool,
                 _timestamp: Timestamp,
             ) {
             }
@@ -230,6 +236,7 @@ pub mod testing {
             pub congestion_window: u32,
             pub congestion_events: u32,
             pub requires_fast_retransmission: bool,
+            pub loss_bursts: u32,
         }
 
         impl Default for CongestionController {
@@ -245,6 +252,7 @@ pub mod testing {
                     congestion_window: 1500 * 10,
                     congestion_events: 0,
                     requires_fast_retransmission: false,
+                    loss_bursts: 0,
                 }
             }
         }
@@ -298,6 +306,7 @@ pub mod testing {
                 lost_bytes: u32,
                 _packet_info: Self::PacketInfo,
                 persistent_congestion: bool,
+                new_loss_burst: bool,
                 _timestamp: Timestamp,
             ) {
                 self.bytes_in_flight = self.bytes_in_flight.saturating_sub(lost_bytes);
@@ -305,6 +314,10 @@ pub mod testing {
                 self.persistent_congestion = Some(persistent_congestion);
                 self.on_packets_lost += 1;
                 self.requires_fast_retransmission = true;
+
+                if new_loss_burst {
+                    self.loss_bursts += 1;
+                }
             }
 
             fn on_congestion_event(&mut self, _event_time: Timestamp) {

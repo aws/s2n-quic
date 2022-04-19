@@ -1941,6 +1941,7 @@ fn persistent_congestion() {
         context.path().congestion_controller.persistent_congestion
     );
     assert_eq!(context.path().rtt_estimator.first_rtt_sample(), None);
+    assert_eq!(1, context.path().congestion_controller.loss_bursts);
 
     // t=20: Send packet #10
     manager.on_packet_sent(
@@ -2094,6 +2095,7 @@ fn persistent_congestion_multiple_periods() {
         Some(true),
         context.path().congestion_controller.persistent_congestion
     );
+    assert_eq!(2, context.path().congestion_controller.loss_bursts);
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-7.6.2
