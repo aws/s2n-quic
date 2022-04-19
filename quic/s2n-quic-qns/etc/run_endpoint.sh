@@ -29,6 +29,16 @@ TLS=${TLS:-s2n-tls}
 SERVER_PARAMS+=" --disable-gso"
 CLIENT_PARAMS+=" --disable-gso"
 
+ARCH=$(uname -m)
+echo $ARCH
+if [ "$ARCH" == "aarch64" ] || [ "$ARCH" == "arm64" ]; then
+  # x86 images running on ARM hardware may produce incorrect
+  # UDP checksums. These commands will force the UDP checksum to
+  # be recalculated.
+  tc qdisc add dev eth0 handle ffff: ingress
+  tc filter add dev eth0 parent ffff: matchall action csum udp
+fi
+
 if [ "$QNS_MODE" == "interop" ]; then
     if [ "$ROLE" == "server" ]; then
         SERVER_PARAMS+=" --www-dir /www"
