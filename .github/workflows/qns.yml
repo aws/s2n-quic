@@ -340,27 +340,26 @@ jobs:
           INTEROP_LOG_URL=${INTEROP_BASE_URL}$(jq --raw-output '.log_dir' latest.json)/SERVER_CLIENT/TEST/
           echo "::set-output name=INTEROP_LOG_URL::$INTEROP_LOG_URL"
 
-      - name: Get latest successfull interop commit SHA on main branch
+      - name: Get latest successful interop commit SHA on main branch
         id: mainsha
-        if: github.event.pull_request && github.repository == github.event.pull_request.head.repo.full_name
+        if: github.event.pull_request
         run: |
           curl \
           --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/qns.yml/runs?branch=main&status=success&per_page=1" \
-          --header "authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
           --header "Accept: application/vnd.github.v3+json" > latest_workflow_run.json
           MAIN_SHA=$(jq --raw-output '.workflow_runs[0] | .head_sha' latest_workflow_run.json)
           rm -f latest_workflow_run.json
           echo "::set-output name=MAIN_SHA::$MAIN_SHA"
 
       - name: Download latest main interop result
-        if: github.event.pull_request && github.repository == github.event.pull_request.head.repo.full_name
+        if: github.event.pull_request
         run: |
           rm -f prev_result.json
           wget $CDN/${{ steps.mainsha.outputs.MAIN_SHA }}/interop/logs/latest/result.json || echo '{}' > result.json
           mv result.json prev_result.json
 
       - name: Generate report for pull request
-        if: github.event.pull_request && github.repository == github.event.pull_request.head.repo.full_name
+        if: github.event.pull_request
         run: |
           mkdir -p web/logs/latest
           MAIN_SHA=${{ steps.mainsha.outputs.MAIN_SHA }}
