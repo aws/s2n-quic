@@ -9,6 +9,7 @@ use crate::{
 use num_rational::Ratio;
 
 mod full_pipe;
+mod network;
 mod recovery;
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.8
