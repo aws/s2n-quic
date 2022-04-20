@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    aead,
     aes::Encrypt,
     aesgcm::{
         payload::{DecryptionPayload, Payload},
-        Error, NONCE_LEN, TAG_LEN,
+        NONCE_LEN, TAG_LEN,
     },
     block::{Batch, BatchMut, Block, Zeroed, LEN as BLOCK_LEN},
     ctr::Ctr,
@@ -15,6 +16,7 @@ use core::{
     marker::PhantomData,
     sync::atomic::{compiler_fence, Ordering},
 };
+use zeroize::Zeroize;
 
 pub struct AesGcm<Aes, GHash, Ctr, const N: usize> {
     aes: Aes,
@@ -34,6 +36,17 @@ where
             ghash,
             ctr: PhantomData,
         }
+    }
+}
+
+impl<A, G, C, const N: usize> Zeroize for AesGcm<A, G, C, N>
+where
+    A: Zeroize,
+    G: Zeroize,
+{
+    fn zeroize(&mut self) {
+        self.aes.zeroize();
+        self.ghash.zeroize();
     }
 }
 
@@ -246,7 +259,7 @@ where
     }
 }
 
-impl<A, G, C, B, const N: usize> crate::aesgcm::AesGcm for AesGcm<A, G, C, N>
+impl<A, G, C, B, const N: usize> aead::Aead for AesGcm<A, G, C, N>
 where
     A: Encrypt<Block = B>,
     G: GHash<Block = B>,
@@ -255,6 +268,9 @@ where
     [B; N]: Batch<Block = B> + BatchMut + Zeroed,
     for<'a> &'a mut [u8]: Payload<B>,
 {
+    type Nonce = [u8; NONCE_LEN];
+    type Tag = [u8; TAG_LEN];
+
     #[inline(always)]
     fn encrypt(
         &self,
@@ -262,8 +278,9 @@ where
         aad: &[u8],
         payload: &mut [u8],
         tag: &mut [u8; TAG_LEN],
-    ) {
-        *tag = Self::aesgcm(self, nonce, aad, payload).into_array()
+    ) -> aead::Result {
+        *tag = Self::aesgcm(self, nonce, aad, payload).into_array();
+        Ok(())
     }
 
     #[inline(always)]
@@ -273,7 +290,7 @@ where
         aad: &[u8],
         payload: &mut [u8],
         tag: &[u8; TAG_LEN],
-    ) -> Result<(), super::Error> {
+    ) -> Result<(), aead::Error> {
         // wrap the payload in one that returns the payload block instead of the XOR'd
         let payload = DecryptionPayload(payload);
 
@@ -294,7 +311,7 @@ where
             //       in s2n-quic we zeroize all received packets anyway, so we would
             //       end up zeroizing payloads twice. In the case that this code is used outside
             //       of s2n-quic _please_ zeroize the `payload`.
-            Error
+            aead::Error::DECRYPT_ERROR
         })
     }
 }

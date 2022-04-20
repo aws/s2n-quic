@@ -57,7 +57,7 @@ impl tls::Endpoint for Server {
         )
         .expect("could not create rustls server session");
 
-        Session::new(session.into())
+        Session::new(session.into(), None)
     }
 
     fn new_client_session<Params: EncoderValue>(
@@ -69,7 +69,7 @@ impl tls::Endpoint for Server {
     }
 
     fn max_tag_length(&self) -> usize {
-        s2n_quic_ring::MAX_TAG_LEN
+        s2n_quic_crypto::MAX_TAG_LEN
     }
 }
 

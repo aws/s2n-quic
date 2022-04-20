@@ -772,9 +772,10 @@ impl<'a, T: IntervalBound> Iterator for Iter<'a, T> {
         loop {
             if let Some(item) = self.head.as_mut().and_then(Iterator::next) {
                 return Some(item);
-            } else {
-                self.head = Some(self.iter.next().cloned().or_else(|| self.tail.take())?);
             }
+
+            let item = self.iter.next().cloned().or_else(|| self.tail.take())?;
+            self.head = Some(item);
         }
     }
 
@@ -793,14 +794,14 @@ impl<'a, T: IntervalBound> DoubleEndedIterator for Iter<'a, T> {
         loop {
             if let Some(item) = self.tail.as_mut().and_then(DoubleEndedIterator::next_back) {
                 return Some(item);
-            } else {
-                self.tail = Some(
-                    self.iter
-                        .next_back()
-                        .cloned()
-                        .or_else(|| self.head.take())?,
-                );
             }
+
+            let item = self
+                .iter
+                .next_back()
+                .cloned()
+                .or_else(|| self.head.take())?;
+            self.tail = Some(item);
         }
     }
 }

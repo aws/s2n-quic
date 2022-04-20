@@ -4,6 +4,7 @@
 use crate::cipher_suite::{
     HeaderProtectionKey, HeaderProtectionKeys, OneRttKey, PacketKey, PacketKeys,
 };
+use bytes::Bytes;
 use core::{fmt, fmt::Debug, task::Poll};
 use rustls::{
     quic::{self, QuicExt},
@@ -21,6 +22,9 @@ pub struct Session {
     tx_phase: HandshakePhase,
     emitted_zero_rtt_keys: bool,
     emitted_handshake_complete: bool,
+    emitted_server_name: bool,
+    emitted_application_protocol: bool,
+    server_name: Option<ServerName>,
 }
 
 impl fmt::Debug for Session {
@@ -33,13 +37,16 @@ impl fmt::Debug for Session {
 }
 
 impl Session {
-    pub fn new(connection: Connection) -> Self {
+    pub fn new(connection: Connection, server_name: Option<ServerName>) -> Self {
         Self {
             connection,
             rx_phase: Default::default(),
             tx_phase: Default::default(),
             emitted_zero_rtt_keys: false,
             emitted_handshake_complete: false,
+            emitted_server_name: false,
+            emitted_application_protocol: false,
+            server_name,
         }
     }
 
@@ -72,23 +79,6 @@ impl Session {
     }
 
     fn application_parameters(&self) -> Result<tls::ApplicationParameters, transport::Error> {
-        //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
-        //# Unless
-        //# another mechanism is used for agreeing on an application protocol,
-        //# endpoints MUST use ALPN for this purpose.
-        let application_protocol = self.connection.alpn_protocol().ok_or_else(||
-            //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
-            //# When using ALPN, endpoints MUST immediately close a connection (see
-            //# Section 10.2 of [QUIC-TRANSPORT]) with a no_application_protocol TLS
-            //# alert (QUIC error code 0x178; see Section 4.8) if an application
-            //# protocol is not negotiated.
-
-            //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
-            //# While [ALPN] only specifies that servers
-            //# use this alert, QUIC clients MUST use error 0x178 to terminate a
-            //# connection when ALPN negotiation fails.
-            CryptoError::NO_APPLICATION_PROTOCOL.with_reason("Missing ALPN protocol"))?;
-
         //= https://www.rfc-editor.org/rfc/rfc9001#section-8.2
         //# endpoints that
         //# receive ClientHello or EncryptedExtensions messages without the
@@ -100,19 +90,34 @@ impl Session {
                 CryptoError::MISSING_EXTENSION.with_reason("Missing QUIC transport parameters")
             })?;
 
-        let server_name = self.server_name();
-
         Ok(tls::ApplicationParameters {
-            application_protocol,
-            server_name,
             transport_parameters,
         })
     }
 
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
+    //# Unless
+    //# another mechanism is used for agreeing on an application protocol,
+    //# endpoints MUST use ALPN for this purpose.
+    //
+    //= https://www.rfc-editor.org/rfc/rfc7301#section-3.1
+    //# Client                                              Server
+    //#
+    //#    ClientHello                     -------->       ServerHello
+    //#      (ALPN extension &                               (ALPN extension &
+    //#       list of protocols)                              selected protocol)
+    //#                                                    [ChangeCipherSpec]
+    //#                                    <--------       Finished
+    //#    [ChangeCipherSpec]
+    //#    Finished                        -------->
+    //#    Application Data                <------->       Application Data
+    fn application_protocol(&self) -> Option<&[u8]> {
+        self.connection.alpn_protocol()
+    }
+
     fn server_name(&self) -> Option<ServerName> {
         match &self.connection {
-            // TODO return the original value
-            Connection::Client(_) => None,
+            Connection::Client(_) => self.server_name.clone(),
             Connection::Server(server) => {
                 server.sni_hostname().map(|server_name| server_name.into())
             }
@@ -137,6 +142,10 @@ impl Session {
         context: &mut C,
     ) -> Poll<Result<(), transport::Error>> {
         if self.tx_phase == HandshakePhase::Application && !self.connection.is_handshaking() {
+            // attempt to emit server_name and application_protocol events prior to completing the
+            // handshake
+            self.emit_events(context)?;
+
             // the handshake is complete!
             if !self.emitted_handshake_complete {
                 self.rx_phase.transition();
@@ -152,22 +161,8 @@ impl Session {
             Poll::Pending
         }
     }
-}
 
-impl crypto::CryptoSuite for Session {
-    type HandshakeKey = PacketKeys;
-    type HandshakeHeaderKey = HeaderProtectionKeys;
-    type InitialKey = s2n_quic_ring::initial::RingInitialKey;
-    type InitialHeaderKey = s2n_quic_ring::initial::RingInitialHeaderKey;
-    type OneRttKey = OneRttKey;
-    type OneRttHeaderKey = HeaderProtectionKeys;
-    type ZeroRttKey = PacketKey;
-    type ZeroRttHeaderKey = HeaderProtectionKey;
-    type RetryKey = s2n_quic_ring::retry::RingRetryKey;
-}
-
-impl tls::Session for Session {
-    fn poll<C: tls::Context<Self>>(
+    fn poll_impl<C: tls::Context<Self>>(
         &mut self,
         context: &mut C,
     ) -> Poll<Result<(), transport::Error>> {
@@ -255,6 +250,7 @@ impl tls::Session for Session {
                         }
                         quic::KeyChange::OneRtt { keys, next } => {
                             let (key, header_key) = OneRttKey::new(keys, next, cipher_suite);
+
                             let application_parameters = self.application_parameters()?;
 
                             context.on_one_rtt_keys(key, header_key, application_parameters)?;
@@ -267,6 +263,52 @@ impl tls::Session for Session {
                 }
             }
         }
+    }
+
+    fn emit_events<C: tls::Context<Self>>(
+        &mut self,
+        context: &mut C,
+    ) -> Result<(), transport::Error> {
+        if !self.emitted_server_name {
+            if let Some(server_name) = self.server_name() {
+                context.on_server_name(server_name)?;
+                self.emitted_server_name = true;
+            }
+        }
+        if !self.emitted_application_protocol {
+            if let Some(application_protocol) = self.application_protocol() {
+                let application_protocol = Bytes::copy_from_slice(application_protocol);
+                context.on_application_protocol(application_protocol)?;
+                self.emitted_application_protocol = true;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl crypto::CryptoSuite for Session {
+    type HandshakeKey = PacketKeys;
+    type HandshakeHeaderKey = HeaderProtectionKeys;
+    type InitialKey = s2n_quic_crypto::initial::InitialKey;
+    type InitialHeaderKey = s2n_quic_crypto::initial::InitialHeaderKey;
+    type OneRttKey = OneRttKey;
+    type OneRttHeaderKey = HeaderProtectionKeys;
+    type ZeroRttKey = PacketKey;
+    type ZeroRttHeaderKey = HeaderProtectionKey;
+    type RetryKey = s2n_quic_crypto::retry::RetryKey;
+}
+
+impl tls::Session for Session {
+    fn poll<C: tls::Context<Self>>(
+        &mut self,
+        context: &mut C,
+    ) -> Poll<Result<(), transport::Error>> {
+        let result = self.poll_impl(context);
+        // attempt to emit server_name and application_protocol events prior to possibly
+        // returning with an error
+        self.emit_events(context)?;
+        result
     }
 }
 

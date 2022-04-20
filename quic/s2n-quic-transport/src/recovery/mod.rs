@@ -4,7 +4,5 @@
 pub use manager::*;
 /// re-export core
 pub use s2n_quic_core::recovery::*;
-pub use sent_packets::*;
 
 mod manager;
-mod sent_packets;

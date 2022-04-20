@@ -15,14 +15,17 @@ env:
   RUST_BACKTRACE: 1
   # Pin the nightly toolchain to prevent breakage.
   # This should be occasionally updated.
-  RUST_NIGHTLY_TOOLCHAIN: nightly-2021-11-17
+  RUST_NIGHTLY_TOOLCHAIN: nightly-2022-04-12
   CDN: https://dnglbrstg7yg.cloudfront.net
+  # enable unstable features for testing
+  S2N_UNSTABLE_CRYPTO_OPT_TX: 100
+  S2N_UNSTABLE_CRYPTO_OPT_RX: 100
 
 jobs:
   rustfmt:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - uses: actions-rs/toolchain@v1.0.7
         id: toolchain
@@ -45,7 +48,7 @@ jobs:
       matrix:
         toolchain: [stable, beta]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - uses: actions-rs/toolchain@v1.0.7
         id: toolchain
@@ -67,14 +70,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           lfs: true
 
       - uses: actions-rs/toolchain@v1.0.7
         id: toolchain
         with:
-          toolchain: stable
+          toolchain: 1.60.0
           override: true
 
       - uses: camshaft/rust-cache@v1
@@ -101,12 +104,12 @@ jobs:
     outputs:
       scenarios: ${{ steps.scenarios.outputs.scenarios }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - uses: actions-rs/toolchain@v1.0.7
         id: toolchain
         with:
-          toolchain: stable
+          toolchain: 1.60.0
           override: true
 
       - uses: camshaft/rust-cache@v1
@@ -130,14 +133,14 @@ jobs:
         run: |
           mkdir -p artifact
           cp -r target/netbench artifact/scenarios
-          cp netbench/target/release/netbench-driver* artifact
+          cp netbench/target/release/netbench* artifact
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: netbench
           path: artifact
 
-  run:
+  run-localhost:
     runs-on: ubuntu-latest
     needs: [build]
     strategy:
@@ -152,21 +155,80 @@ jobs:
       SCENARIO: scenarios/${{ matrix.scenario }}.json
 
     steps:
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         with:
           name: netbench
           path: .
 
       - name: Prepare artifact
         run: |
-          chmod +x ./netbench-driver*
+          chmod +x ./netbench*
+          mkdir -p results/${{ matrix.scenario }}/${{ matrix.driver }}
 
-      # TODO use netbench-cli instead when it's available
+      - name: Install bpftrace
+        run: |
+          sudo docker pull quay.io/iovisor/bpftrace:master-vanilla_llvm_clang_glibc2.27
+          sudo docker run -v $(pwd):/output quay.io/iovisor/bpftrace:master-vanilla_llvm_clang_glibc2.27 \
+            /bin/bash -c "cp /usr/bin/bpftrace /output"
+          sudo chown root:root bpftrace
+          sudo chmod +x bpftrace
+          sudo mv bpftrace /usr/bin/
+
       - name: Run server
         run: |
-          ./netbench-driver-${{ matrix.driver }}-server &
+          sudo SCENARIO=$SCENARIO ./netbench-collector \
+            ./netbench-driver-${{ matrix.driver }}-server > results/${{ matrix.scenario }}/${{ matrix.driver }}/server.json &
 
       - name: Run client
         run: |
           export SERVER_0=localhost:4433
-          ./netbench-driver-${{ matrix.driver }}-client
+          sudo SCENARIO=$SCENARIO SERVER_0=$SERVER_0 ./netbench-collector \
+            ./netbench-driver-${{ matrix.driver }}-client > results/${{ matrix.scenario }}/${{ matrix.driver }}/client.json
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: netbench-${{ matrix.driver }}-results
+          path: results
+
+  report:
+    runs-on: ubuntu-latest
+    needs: [run-localhost]
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          path: .
+
+      - name: Generate reports
+        run: |
+          chmod +x ./netbench/netbench*
+          mkdir -p results
+          cp -R netbench-*-results/* results/
+          ./netbench/netbench-cli report-tree results reports
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: netbench-report
+          path: reports
+
+      - uses: aws-actions/configure-aws-credentials@v1.6.1
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-1
+
+      - name: Upload results
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+        id: s3
+        run: |
+          TARGET="${{ github.sha }}/netbench"
+          aws s3 sync reports "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          URL="$CDN/$TARGET/index.html"
+          echo "::set-output name=URL::$URL"
+
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+        with:
+          name: "netbench / report"
+          status: "success"
+          url: "${{ steps.s3.outputs.URL }}"

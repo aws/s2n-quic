@@ -1,6 +1,6 @@
 ---
 source: quic/s2n-quic-core/src/transport/parameters/mod.rs
-assertion_line: 1493
+assertion_line: 1596
 expression: encoded_output
 
 ---

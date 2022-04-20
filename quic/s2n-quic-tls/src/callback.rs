@@ -1,18 +1,18 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use core::{ffi::c_void, marker::PhantomData};
 use s2n_quic_core::{
     application::ServerName,
     crypto::{tls, CryptoError, CryptoSuite},
     endpoint, transport,
 };
-use s2n_quic_ring::{
-    handshake::RingHandshakeKey,
-    one_rtt::RingOneRttKey,
+use s2n_quic_crypto::{
+    handshake::HandshakeKey,
+    one_rtt::OneRttKey,
     ring::{aead, hkdf},
-    Prk, RingCryptoSuite, SecretPair,
+    Prk, SecretPair, Suite,
 };
 use s2n_tls::raw::{connection::Connection, error::Fallible, ffi::*};
 
@@ -30,21 +30,23 @@ pub struct Callback<'a, T, C> {
     pub suite: PhantomData<C>,
     pub err: Option<transport::Error>,
     pub send_buffer: &'a mut BytesMut,
+    pub emitted_server_name: &'a mut bool,
+    pub server_name: &'a Option<ServerName>,
 }
 
 impl<'a, T, C> Callback<'a, T, C>
 where
     T: 'a + tls::Context<C>,
     C: CryptoSuite<
-        HandshakeKey = <RingCryptoSuite as CryptoSuite>::HandshakeKey,
-        HandshakeHeaderKey = <RingCryptoSuite as CryptoSuite>::HandshakeHeaderKey,
-        InitialKey = <RingCryptoSuite as CryptoSuite>::InitialKey,
-        InitialHeaderKey = <RingCryptoSuite as CryptoSuite>::InitialHeaderKey,
-        OneRttKey = <RingCryptoSuite as CryptoSuite>::OneRttKey,
-        OneRttHeaderKey = <RingCryptoSuite as CryptoSuite>::OneRttHeaderKey,
-        ZeroRttKey = <RingCryptoSuite as CryptoSuite>::ZeroRttKey,
-        ZeroRttHeaderKey = <RingCryptoSuite as CryptoSuite>::ZeroRttHeaderKey,
-        RetryKey = <RingCryptoSuite as CryptoSuite>::RetryKey,
+        HandshakeKey = <Suite as CryptoSuite>::HandshakeKey,
+        HandshakeHeaderKey = <Suite as CryptoSuite>::HandshakeHeaderKey,
+        InitialKey = <Suite as CryptoSuite>::InitialKey,
+        InitialHeaderKey = <Suite as CryptoSuite>::InitialHeaderKey,
+        OneRttKey = <Suite as CryptoSuite>::OneRttKey,
+        OneRttHeaderKey = <Suite as CryptoSuite>::OneRttHeaderKey,
+        ZeroRttKey = <Suite as CryptoSuite>::ZeroRttKey,
+        ZeroRttHeaderKey = <Suite as CryptoSuite>::ZeroRttHeaderKey,
+        RetryKey = <Suite as CryptoSuite>::RetryKey,
     >,
 {
     /// Initializes the s2n-tls connection with all of the contexts and callbacks
@@ -66,6 +68,8 @@ where
             .set_receive_callback(Some(Self::recv_cb))
             .unwrap();
         connection.set_receive_context(context).unwrap();
+        // A Waker is provided for use with the client hello callback.
+        connection.set_waker(Some(self.context.waker())).unwrap();
     }
 
     /// Removes all of the callback and context pointers from the connection
@@ -107,9 +111,21 @@ where
             connection
                 .set_receive_context(core::ptr::null_mut())
                 .unwrap();
+            connection.set_waker(None).unwrap();
 
             // Flush the send buffer before returning to the connection
             self.flush();
+            // attempt to emit server name after making progress and prior to error handling
+            if !*self.emitted_server_name {
+                if let Some(server_name) = self.server_name.clone().or_else(|| {
+                    connection
+                        .server_name()
+                        .map(|server_name| server_name.into())
+                }) {
+                    self.context.on_server_name(server_name)?;
+                    *self.emitted_server_name = true;
+                }
+            }
 
             if let Some(err) = self.err {
                 return Err(err);
@@ -200,25 +216,32 @@ where
 
                 match self.state.tx_phase {
                     HandshakePhase::Initial => {
-                        let (key, header_key) =
-                            RingHandshakeKey::new(self.endpoint, aead_algo, pair)
-                                .expect("invalid cipher");
-                        self.context.on_handshake_keys(key, header_key)?;
+                        let (key, header_key) = HandshakeKey::new(self.endpoint, aead_algo, pair)
+                            .expect("invalid cipher");
 
+                        self.context.on_handshake_keys(key, header_key)?;
                         self.state.tx_phase.transition();
                         self.state.rx_phase.transition();
                     }
                     _ => {
-                        let (key, header_key) = RingOneRttKey::new(self.endpoint, aead_algo, pair)
-                            .expect("invalid cipher");
+                        let (key, header_key) =
+                            OneRttKey::new(self.endpoint, aead_algo, pair).expect("invalid cipher");
 
                         let params = unsafe {
                             // Safety: conn needs to outlive params
+                            //
+                            // TODO use interning for these values
+                            // issue: https://github.com/aws/s2n-quic/issues/248
+                            //
+                            // Move this event to where `on_server_name` is emitted once we expose
+                            // the functionality in s2n_tls bindings
+                            let application_protocol =
+                                Bytes::copy_from_slice(get_application_protocol(conn)?);
+                            self.context.on_application_protocol(application_protocol)?;
                             get_application_params(conn)?
                         };
-                        self.context.on_one_rtt_keys(key, header_key, params)?;
 
-                        self.state.tx_phase.transition();
+                        self.context.on_one_rtt_keys(key, header_key, params)?;
                     }
                 }
 
@@ -326,6 +349,18 @@ pub struct State {
     secrets: Secrets,
 }
 
+impl State {
+    /// Complete the handshake
+    pub fn on_handshake_complete(&mut self) {
+        debug_assert_eq!(self.tx_phase, HandshakePhase::Handshake);
+        debug_assert_eq!(self.rx_phase, HandshakePhase::Handshake);
+        self.tx_phase.transition();
+        self.rx_phase.transition();
+        debug_assert_eq!(self.tx_phase, HandshakePhase::Application);
+        debug_assert_eq!(self.rx_phase, HandshakePhase::Application);
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 enum HandshakePhase {
     Initial,
@@ -413,13 +448,6 @@ unsafe fn get_application_params<'a>(
     connection: *mut s2n_connection,
 ) -> Result<tls::ApplicationParameters<'a>, CryptoError> {
     //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
-    //# Unless
-    //# another mechanism is used for agreeing on an application protocol,
-    //# endpoints MUST use ALPN for this purpose.
-    let application_protocol =
-        get_application_protocol(connection).ok_or(CryptoError::NO_APPLICATION_PROTOCOL)?;
-
-    //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
     //# When using ALPN, endpoints MUST immediately close a connection (see
     //# Section 10.2 of [QUIC-TRANSPORT]) with a no_application_protocol TLS
     //# alert (QUIC error code 0x178; see Section 4.8) if an application
@@ -432,29 +460,33 @@ unsafe fn get_application_params<'a>(
     let transport_parameters =
         get_transport_parameters(connection).ok_or(CryptoError::MISSING_EXTENSION)?;
 
-    let server_name = get_server_name(connection);
-
     Ok(tls::ApplicationParameters {
-        application_protocol,
-        server_name,
         transport_parameters,
     })
 }
 
-unsafe fn get_server_name(connection: *mut s2n_connection) -> Option<ServerName> {
-    let ptr = s2n_get_server_name(connection).into_result().ok()?;
-    let data = get_cstr_slice(ptr)?;
-
-    // validate sni is a valid UTF-8 string
-    let string = core::str::from_utf8(data).ok()?;
-    Some(string.into())
-}
-
-unsafe fn get_application_protocol<'a>(connection: *mut s2n_connection) -> Option<&'a [u8]> {
-    let ptr = s2n_get_application_protocol(connection)
-        .into_result()
-        .ok()?;
-    get_cstr_slice(ptr)
+//= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
+//# Unless
+//# another mechanism is used for agreeing on an application protocol,
+//# endpoints MUST use ALPN for this purpose.
+//
+//= https://www.rfc-editor.org/rfc/rfc7301#section-3.1
+//# Client                                              Server
+//#
+//#    ClientHello                     -------->       ServerHello
+//#      (ALPN extension &                               (ALPN extension &
+//#       list of protocols)                              selected protocol)
+//#                                                    [ChangeCipherSpec]
+//#                                    <--------       Finished
+//#    [ChangeCipherSpec]
+//#    Finished                        -------->
+//#    Application Data                <------->       Application Data
+unsafe fn get_application_protocol<'a>(
+    connection: *mut s2n_connection,
+) -> Result<&'a [u8], CryptoError> {
+    let ptr = s2n_get_application_protocol(connection).into_result().ok();
+    ptr.and_then(|ptr| get_cstr_slice(ptr))
+        .ok_or(CryptoError::MISSING_EXTENSION)
 }
 
 unsafe fn get_transport_parameters<'a>(connection: *mut s2n_connection) -> Option<&'a [u8]> {

@@ -70,7 +70,7 @@ macro_rules! impl_tests {
                     {
                         let (payload, tag) = output.split_at_mut(payload.len());
                         let tag = tag.try_into().unwrap();
-                        key.encrypt(&input.nonce, aad, payload, tag);
+                        key.encrypt(&input.nonce, aad, payload, tag).unwrap();
                     }
 
                     let outcome = Outcome {

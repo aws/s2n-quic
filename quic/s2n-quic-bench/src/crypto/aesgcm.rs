@@ -5,11 +5,11 @@ use core::convert::TryInto;
 use criterion::{black_box, BenchmarkId, Criterion, Throughput};
 use s2n_quic_crypto::testing::{
     self,
-    aesgcm::{AesGcm, NONCE_LEN, TAG_LEN},
+    aesgcm::{Key, NONCE_LEN, TAG_LEN},
 };
 
 struct Implementation {
-    key: Box<dyn AesGcm>,
+    key: Key,
     name: &'static str,
 }
 
@@ -54,7 +54,9 @@ pub fn benchmarks(c: &mut Criterion) {
 
                         let (payload, tag) = input.split_at_mut(payload_len);
                         let tag: &mut [u8; TAG_LEN] = tag.try_into().unwrap();
-                        b.iter(|| key.encrypt(&nonce, &aad, payload, tag));
+                        b.iter(|| {
+                            let _ = key.encrypt(&nonce, &aad, payload, tag);
+                        });
                     },
                 );
             }
@@ -76,7 +78,7 @@ pub fn benchmarks(c: &mut Criterion) {
                     let tag: &mut [u8; TAG_LEN] = tag.try_into().unwrap();
 
                     // create a valid encrypted payload
-                    key.encrypt(&nonce, &aad, payload, tag);
+                    key.encrypt(&nonce, &aad, payload, tag).unwrap();
                     let tag = &*tag;
 
                     b.iter_batched(

@@ -1,24 +1,30 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::aesgcm::{
-    testing::{AesGcm, NONCE_LEN},
-    Error, TAG_LEN,
+use crate::{
+    aead,
+    aesgcm::{NONCE_LEN, TAG_LEN},
 };
-use ::ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_128_GCM, AES_256_GCM};
+use ::ring::aead::{Aad, LessSafeKey, Nonce};
 
-impl AesGcm for LessSafeKey {
+impl aead::Aead for LessSafeKey {
+    type Nonce = [u8; NONCE_LEN];
+    type Tag = [u8; TAG_LEN];
+
     fn encrypt(
         &self,
         nonce: &[u8; NONCE_LEN],
         aad: &[u8],
         input: &mut [u8],
         tag_buf: &mut [u8; TAG_LEN],
-    ) {
+    ) -> aead::Result {
         let nonce = Nonce::assume_unique_for_key(*nonce);
         let aad = Aad::from(aad);
-        let tag = self.seal_in_place_separate_tag(nonce, aad, input).unwrap();
+        let tag = self
+            .seal_in_place_separate_tag(nonce, aad, input)
+            .map_err(|_| aead::Error::INTERNAL_ERROR)?;
         tag_buf.copy_from_slice(tag.as_ref());
+        Ok(())
     }
 
     fn decrypt(
@@ -27,7 +33,7 @@ impl AesGcm for LessSafeKey {
         aad: &[u8],
         input: &mut [u8],
         tag: &[u8; TAG_LEN],
-    ) -> Result<(), Error> {
+    ) -> aead::Result {
         let nonce = Nonce::assume_unique_for_key(*nonce);
         let aad = Aad::from(aad);
         let input = unsafe {
@@ -46,18 +52,19 @@ impl AesGcm for LessSafeKey {
             let len = input.len() + TAG_LEN;
             core::slice::from_raw_parts_mut(ptr, len)
         };
-        self.open_in_place(nonce, aad, input).map_err(|_| Error)?;
+        self.open_in_place(nonce, aad, input)
+            .map_err(|_| aead::Error::DECRYPT_ERROR)?;
         Ok(())
     }
 }
 
 macro_rules! impl_aesgcm {
     ($name:ident, $lower:ident) => {
+        #[cfg(any(test, feature = "testing"))]
         pub mod $lower {
-            use super::*;
             use crate::aesgcm::testing::$lower::Implementation;
+            use ::ring::aead::{$name, LessSafeKey, UnboundKey};
 
-            #[cfg(any(test, feature = "testing"))]
             pub fn implementations(impls: &mut Vec<Implementation>) {
                 impls.push(Implementation {
                     name: "ring",

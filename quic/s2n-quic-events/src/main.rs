@@ -445,6 +445,9 @@ impl ToTokens for Output {
 
                     /// Returns the QUIC version negotiated for the current connection, if any
                     fn quic_version(&self) -> u32;
+
+                    /// Returns the [`Subject`] for the current publisher
+                    fn subject(&self) -> Subject;
                 }
 
                 pub struct ConnectionPublisherSubscriber<'a, Sub: Subscriber> {
@@ -486,6 +489,11 @@ impl ToTokens for Output {
                     #[inline]
                     fn quic_version(&self) -> u32 {
                         self.quic_version
+                    }
+
+                    #[inline]
+                    fn subject(&self) -> api::Subject {
+                        self.meta.subject()
                     }
                 }
             }
@@ -580,6 +588,10 @@ impl ToTokens for Output {
 
                     fn quic_version(&self) -> u32 {
                         1
+                    }
+
+                    fn subject(&self) -> api::Subject {
+                        api::Subject::Connection { id: 0 }
                     }
                 }
 

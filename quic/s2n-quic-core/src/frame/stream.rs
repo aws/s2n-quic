@@ -272,7 +272,7 @@ impl<'a> From<Stream<DecoderBuffer<'a>>> for StreamRef<'a> {
 impl<'a> From<Stream<DecoderBufferMut<'a>>> for StreamRef<'a> {
     #[inline]
     fn from(s: Stream<DecoderBufferMut<'a>>) -> Self {
-        s.map_data(|data| &data.into_less_safe_slice()[..])
+        s.map_data(|data| &*data.into_less_safe_slice())
     }
 }
 

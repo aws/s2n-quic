@@ -245,6 +245,22 @@ impl<Providers: ClientProviders> Builder<Providers> {
         ClientProviders
     );
 
+    #[cfg(all(s2n_quic_unstable, feature = "unstable-provider-packet-interceptor"))]
+    impl_provider_method!(
+        /// Sets the packet interceptor provider for the [`Client`]
+        with_packet_interceptor,
+        packet_interceptor,
+        ServerProviders
+    );
+
+    #[cfg(all(s2n_quic_unstable, feature = "unstable-provider-random"))]
+    impl_provider_method!(
+        /// Sets the random provider for the [`Client`]
+        with_random,
+        random,
+        ServerProviders
+    );
+
     /// Starts the [`Client`] with the configured providers
     ///
     /// # Examples

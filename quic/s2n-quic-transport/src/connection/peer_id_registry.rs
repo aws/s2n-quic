@@ -19,8 +19,6 @@ use crate::{
     path,
     transmission::{self, WriteContext},
 };
-use alloc::rc::Rc;
-use core::cell::RefCell;
 use s2n_quic_core::{
     ack, connection, endpoint,
     event::{self, IntoEvent},
@@ -29,6 +27,7 @@ use s2n_quic_core::{
     stateless_reset, transport,
 };
 use smallvec::SmallVec;
+use std::sync::{Arc, Mutex};
 
 /// The amount of ConnectionIds we can register without dynamic memory allocation
 const NR_STATIC_REGISTRABLE_IDS: usize = 5;
@@ -56,7 +55,7 @@ pub struct PeerIdRegistry {
     /// The internal connection ID for this registration
     internal_id: InternalConnectionId,
     /// The shared state between mapper and registration
-    state: Rc<RefCell<ConnectionIdMapperState>>,
+    state: Arc<Mutex<ConnectionIdMapperState>>,
     /// The connection IDs which are currently registered
     registered_ids: SmallVec<[PeerIdInfo; NR_STATIC_REGISTRABLE_IDS]>,
     /// The largest retire prior to value that has been received from the peer
@@ -225,7 +224,10 @@ impl From<PeerIdRegistrationError> for transport::Error {
 
 impl Drop for PeerIdRegistry {
     fn drop(&mut self) {
-        let mut guard = self.state.borrow_mut();
+        let mut guard = self
+            .state
+            .lock()
+            .expect("should succeed unless the lock is poisoned");
 
         // Stop tracking all associated stateless reset tokens
         for token in self
@@ -242,7 +244,7 @@ impl PeerIdRegistry {
     /// Constructs a new `PeerIdRegistry`.
     pub(crate) fn new(
         internal_id: InternalConnectionId,
-        state: Rc<RefCell<ConnectionIdMapperState>>,
+        state: Arc<Mutex<ConnectionIdMapperState>>,
     ) -> Self {
         Self {
             internal_id,
@@ -291,7 +293,8 @@ impl PeerIdRegistry {
         }
 
         self.state
-            .borrow_mut()
+            .lock()
+            .expect("should succeed unless the lock is poisoned")
             .stateless_reset_map
             .insert(stateless_reset_token, self.internal_id);
     }
@@ -421,7 +424,10 @@ impl PeerIdRegistry {
 
     /// Removes connection IDs that were pending acknowledgement
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
-        let mut mapper_state = self.state.borrow_mut();
+        let mut mapper_state = self
+            .state
+            .lock()
+            .expect("should succeed unless the lock is poisoned");
 
         self.registered_ids.retain(|id_info| {
             if let PendingAcknowledgement(packet_number) = id_info.status {
@@ -478,7 +484,8 @@ impl PeerIdRegistry {
                 //# been retired.
                 if let Some(token) = id_info.stateless_reset_token {
                     self.state
-                        .borrow_mut()
+                        .lock()
+                        .expect("should succeed unless the lock is poisoned")
                         .stateless_reset_map
                         .insert(token, self.internal_id);
                 }

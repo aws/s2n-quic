@@ -139,6 +139,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
             tx_packet_numbers: &mut self.tx_packet_numbers,
             path_id: context.path_id,
             publisher: context.publisher,
+            packet_interceptor: context.packet_interceptor,
         };
 
         let packet = Handshake {
@@ -208,6 +209,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
             tx_packet_numbers: &mut self.tx_packet_numbers,
             path_id: context.path_id,
             publisher: context.publisher,
+            packet_interceptor: context.packet_interceptor,
         };
 
         let packet = Handshake {

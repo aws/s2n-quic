@@ -45,6 +45,7 @@ pub mod api {
         pub initial_max_stream_data_uni: u64,
         pub initial_max_streams_bidi: u64,
         pub initial_max_streams_uni: u64,
+        pub max_datagram_frame_size: u64,
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -140,6 +141,8 @@ pub mod api {
         ConnectionClose {},
         #[non_exhaustive]
         HandshakeDone {},
+        #[non_exhaustive]
+        Datagram { len: u16 },
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -324,6 +327,8 @@ pub mod api {
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub enum MigrationDenyReason {
+        #[non_exhaustive]
+        BlockedPort {},
         #[non_exhaustive]
         PortScopeChanged {},
         #[non_exhaustive]
@@ -837,6 +842,7 @@ pub mod api {
         pub timeout_expired: bool,
         pub rx_ready: bool,
         pub tx_ready: bool,
+        pub application_wakeup: bool,
     }
     impl Event for PlatformEventLoopWakeup {
         const NAME: &'static str = "platform:event_loop_wakeup";
@@ -1151,6 +1157,16 @@ pub mod api {
         fn into_event(self) -> builder::Frame {
             builder::Frame::Crypto {
                 offset: self.offset.as_u64(),
+                len: self.data.encoding_size() as _,
+            }
+        }
+    }
+    impl<Data> IntoEvent<builder::Frame> for &crate::frame::Datagram<Data>
+    where
+        Data: s2n_codec::EncoderValue,
+    {
+        fn into_event(self) -> builder::Frame {
+            builder::Frame::Datagram {
                 len: self.data.encoding_size() as _,
             }
         }
@@ -1808,8 +1824,9 @@ pub mod tracing {
                 timeout_expired,
                 rx_ready,
                 tx_ready,
+                application_wakeup,
             } = event;
-            tracing :: event ! (target : "platform_event_loop_wakeup" , parent : parent , tracing :: Level :: DEBUG , timeout_expired = tracing :: field :: debug (timeout_expired) , rx_ready = tracing :: field :: debug (rx_ready) , tx_ready = tracing :: field :: debug (tx_ready));
+            tracing :: event ! (target : "platform_event_loop_wakeup" , parent : parent , tracing :: Level :: DEBUG , timeout_expired = tracing :: field :: debug (timeout_expired) , rx_ready = tracing :: field :: debug (rx_ready) , tx_ready = tracing :: field :: debug (tx_ready) , application_wakeup = tracing :: field :: debug (application_wakeup));
         }
     }
 }
@@ -1881,6 +1898,7 @@ pub mod builder {
         pub initial_max_stream_data_uni: u64,
         pub initial_max_streams_bidi: u64,
         pub initial_max_streams_uni: u64,
+        pub max_datagram_frame_size: u64,
     }
     impl<'a> IntoEvent<api::TransportParameters<'a>> for TransportParameters<'a> {
         #[inline]
@@ -1902,6 +1920,7 @@ pub mod builder {
                 initial_max_stream_data_uni,
                 initial_max_streams_bidi,
                 initial_max_streams_uni,
+                max_datagram_frame_size,
             } = self;
             api::TransportParameters {
                 original_destination_connection_id: original_destination_connection_id.into_event(),
@@ -1921,6 +1940,7 @@ pub mod builder {
                 initial_max_stream_data_uni: initial_max_stream_data_uni.into_event(),
                 initial_max_streams_bidi: initial_max_streams_bidi.into_event(),
                 initial_max_streams_uni: initial_max_streams_uni.into_event(),
+                max_datagram_frame_size: max_datagram_frame_size.into_event(),
             }
         }
     }
@@ -2068,6 +2088,9 @@ pub mod builder {
         PathResponse,
         ConnectionClose,
         HandshakeDone,
+        Datagram {
+            len: u16,
+        },
     }
     impl IntoEvent<api::Frame> for Frame {
         #[inline]
@@ -2111,6 +2134,9 @@ pub mod builder {
                 Self::PathResponse => PathResponse {},
                 Self::ConnectionClose => ConnectionClose {},
                 Self::HandshakeDone => HandshakeDone {},
+                Self::Datagram { len } => Datagram {
+                    len: len.into_event(),
+                },
             }
         }
     }
@@ -2407,6 +2433,7 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub enum MigrationDenyReason {
+        BlockedPort,
         PortScopeChanged,
         IpScopeChange,
         ConnectionMigrationDisabled,
@@ -2416,6 +2443,7 @@ pub mod builder {
         fn into_event(self) -> api::MigrationDenyReason {
             use api::MigrationDenyReason::*;
             match self {
+                Self::BlockedPort => BlockedPort {},
                 Self::PortScopeChanged => PortScopeChanged {},
                 Self::IpScopeChange => IpScopeChange {},
                 Self::ConnectionMigrationDisabled => ConnectionMigrationDisabled {},
@@ -3257,6 +3285,7 @@ pub mod builder {
         pub timeout_expired: bool,
         pub rx_ready: bool,
         pub tx_ready: bool,
+        pub application_wakeup: bool,
     }
     impl IntoEvent<api::PlatformEventLoopWakeup> for PlatformEventLoopWakeup {
         #[inline]
@@ -3265,11 +3294,13 @@ pub mod builder {
                 timeout_expired,
                 rx_ready,
                 tx_ready,
+                application_wakeup,
             } = self;
             api::PlatformEventLoopWakeup {
                 timeout_expired: timeout_expired.into_event(),
                 rx_ready: rx_ready.into_event(),
                 tx_ready: tx_ready.into_event(),
+                application_wakeup: application_wakeup.into_event(),
             }
         }
     }
@@ -4709,6 +4740,8 @@ mod traits {
         fn on_keep_alive_timer_expired(&mut self, event: builder::KeepAliveTimerExpired);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
         fn quic_version(&self) -> u32;
+        #[doc = r" Returns the [`Subject`] for the current publisher"]
+        fn subject(&self) -> Subject;
     }
     pub struct ConnectionPublisherSubscriber<'a, Sub: Subscriber> {
         meta: ConnectionMeta,
@@ -5029,6 +5062,10 @@ mod traits {
         #[inline]
         fn quic_version(&self) -> u32 {
             self.quic_version
+        }
+        #[inline]
+        fn subject(&self) -> api::Subject {
+            self.meta.subject()
         }
     }
 }
@@ -6000,6 +6037,9 @@ pub mod testing {
         }
         fn quic_version(&self) -> u32 {
             1
+        }
+        fn subject(&self) -> api::Subject {
+            api::Subject::Connection { id: 0 }
         }
     }
     impl Drop for Publisher {

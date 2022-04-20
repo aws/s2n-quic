@@ -54,7 +54,7 @@ impl<Data> Crypto<Data> {
         crypto_tag!()
     }
 
-    /// Converts the stream data from one type to another
+    /// Converts the crypto data from one type to another
     pub fn map_data<F: FnOnce(Data) -> Out, Out>(self, map: F) -> Crypto<Out> {
         Crypto {
             offset: self.offset,
@@ -123,7 +123,7 @@ impl<'a> From<Crypto<DecoderBuffer<'a>>> for CryptoRef<'a> {
 
 impl<'a> From<Crypto<DecoderBufferMut<'a>>> for CryptoRef<'a> {
     fn from(s: Crypto<DecoderBufferMut<'a>>) -> Self {
-        s.map_data(|data| &data.into_less_safe_slice()[..])
+        s.map_data(|data| &*data.into_less_safe_slice())
     }
 }
 

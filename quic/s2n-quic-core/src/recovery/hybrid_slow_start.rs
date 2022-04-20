@@ -98,8 +98,8 @@ impl HybridSlowStart {
         time_of_last_sent_packet: Timestamp,
         rtt: Duration,
     ) {
-        if congestion_window >= self.threshold
-            || (self.use_hystart_plus_plus && self.threshold < f32::MAX)
+        let ss_threshold_found = self.threshold < f32::MAX;
+        if congestion_window >= self.threshold || (self.use_hystart_plus_plus && ss_threshold_found)
         {
             //= https://tools.ietf.org/id/draft-ietf-tcpm-hystartplusplus-04.txt#section-4.3
             //# An implementation SHOULD use HyStart++ only for the initial slow
@@ -176,6 +176,11 @@ impl HybridSlowStart {
     /// return cwnd increment during slow start phase
     /// should be called from on_packet_ack
     pub fn cwnd_increment(&self, sent_bytes: usize) -> f32 {
+        if cfg!(debug_assertions) {
+            if !self.use_hystart_plus_plus {
+                assert_eq!(self.ss_growth_divisor, 1.0);
+            }
+        }
         (sent_bytes as f32) / self.ss_growth_divisor
     }
 

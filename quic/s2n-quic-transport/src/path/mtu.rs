@@ -23,8 +23,8 @@ enum State {
     //= https://www.rfc-editor.org/rfc/rfc8899#section-5.2
     //# The DISABLED state is the initial state before probing has started.
     Disabled,
-    // SEARCH_REQUESTED is used to indicate a probe packet has been requested
-    // to be transmitted, but has not been transmitted yet.
+    /// SEARCH_REQUESTED is used to indicate a probe packet has been requested
+    /// to be transmitted, but has not been transmitted yet.
     SearchRequested,
     //= https://www.rfc-editor.org/rfc/rfc8899#section-5.2
     //# The SEARCHING state is the main probing state.
@@ -53,27 +53,27 @@ const BASE_PLPMTU: u16 = MINIMUM_MTU;
 //# value of MAX_PROBES is 3.
 const MAX_PROBES: u8 = 3;
 
-// The minimum length of the data field of a packet sent over an
-// Ethernet is 1500 octets, thus the maximum length of an IP datagram
-// sent over an Ethernet is 1500 octets.
-// See https://www.rfc-editor.org/rfc/rfc894.txt
+/// The minimum length of the data field of a packet sent over an
+/// Ethernet is 1500 octets, thus the maximum length of an IP datagram
+/// sent over an Ethernet is 1500 octets.
+/// See https://www.rfc-editor.org/rfc/rfc894.txt
 const ETHERNET_MTU: u16 = 1500;
 
-// If the next value to probe is within the PROBE_THRESHOLD bytes of
-// the current Path MTU, probing will be considered complete.
+/// If the next value to probe is within the PROBE_THRESHOLD bytes of
+/// the current Path MTU, probing will be considered complete.
 const PROBE_THRESHOLD: u16 = 20;
 
-// When the black_hole_counter exceeds this threshold, on_black_hole_detected will be
-// called to reduce the MTU to the BASE_PLPMTU. The black_hole_counter is incremented when
-// a packet is lost that is:
-//      1) not an MTU probe
-//      2) larger than the BASE_PLPMTU
-//      3) sent after the largest MTU-sized acknowledged packet number
-// This is a possible indication that the path cannot support the MTU that was previously confirmed.
+/// When the black_hole_counter exceeds this threshold, on_black_hole_detected will be
+/// called to reduce the MTU to the BASE_PLPMTU. The black_hole_counter is incremented when
+/// a packet is lost that is:
+///      1) not an MTU probe
+///      2) larger than the BASE_PLPMTU
+///      3) sent after the largest MTU-sized acknowledged packet number
+/// This is a possible indication that the path cannot support the MTU that was previously confirmed.
 const BLACK_HOLE_THRESHOLD: u8 = 3;
 
-// After a black hole has been detected, the mtu::Controller will wait this duration
-// before probing for a larger MTU again.
+/// After a black hole has been detected, the mtu::Controller will wait this duration
+/// before probing for a larger MTU again.
 const BLACK_HOLE_COOL_OFF_DURATION: Duration = Duration::from_secs(60);
 
 //= https://www.rfc-editor.org/rfc/rfc8899#section-5.1.1
@@ -90,25 +90,27 @@ pub struct Controller {
     //# The Packetization Layer PMTU is an estimate of the largest size
     //# of PL datagram that can be sent by a path, controlled by PLPMTUD
     plpmtu: u16,
-    // The maximum size the UDP payload can reach for any probe packet.
+    /// The maximum size any packet can reach
+    max_mtu: MaxMtu,
+    /// The maximum size the UDP payload can reach for any probe packet.
     max_udp_payload: u16,
     //= https://www.rfc-editor.org/rfc/rfc8899#section-5.1.3
     //# The PROBED_SIZE is the size of the current probe packet
     //# as determined at the PL.  This is a tentative value for the
     //# PLPMTU, which is awaiting confirmation by an acknowledgment.
     probed_size: u16,
-    // The maximum size datagram to probe for. In contrast to the max_udp_payload,
-    // this value will decrease if probes are not acknowledged.
+    /// The maximum size datagram to probe for. In contrast to the max_udp_payload,
+    /// this value will decrease if probes are not acknowledged.
     max_probe_size: u16,
     //= https://www.rfc-editor.org/rfc/rfc8899#section-5.1.3
     //# The PROBE_COUNT is a count of the number of successive
     //# unsuccessful probe packets that have been sent.
     probe_count: u8,
-    // A count of the number of packets with a size > MINIMUM_MTU lost since
-    // the last time a packet with size equal to the current MTU was acknowledged.
+    /// A count of the number of packets with a size > MINIMUM_MTU lost since
+    /// the last time a packet with size equal to the current MTU was acknowledged.
     black_hole_counter: Counter<u8, Saturating>,
-    // The largest acknowledged packet with size >= the plpmtu. Used when tracking
-    // packets that have been lost for the purpose of detecting a black hole.
+    /// The largest acknowledged packet with size >= the plpmtu. Used when tracking
+    /// packets that have been lost for the purpose of detecting a black hole.
     largest_acked_mtu_sized_packet: Option<PacketNumber>,
     //= https://www.rfc-editor.org/rfc/rfc8899#section-5.1.1
     //# The PMTU_RAISE_TIMER is configured to the period a
@@ -143,6 +145,7 @@ impl Controller {
             state: State::Disabled,
             plpmtu: BASE_PLPMTU,
             probed_size: initial_probed_size,
+            max_mtu,
             max_udp_payload,
             max_probe_size: max_udp_payload,
             probe_count: 0,
@@ -320,6 +323,11 @@ impl Controller {
     /// Gets the currently validated maximum transmission unit, not including IP or UDP header len
     pub fn mtu(&self) -> usize {
         self.plpmtu as usize
+    }
+
+    /// Returns the maximum size any packet can reach
+    pub fn max_mtu(&self) -> MaxMtu {
+        self.max_mtu
     }
 
     /// Gets the MTU currently being probed for

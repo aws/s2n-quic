@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use cfg_if::cfg_if;
 use core::fmt;
 
 #[macro_use]
@@ -19,8 +20,23 @@ pub mod tls;
 pub(crate) mod congestion_controller;
 pub(crate) mod connection_close_formatter;
 pub(crate) mod path_migration;
-pub(crate) mod random;
 pub(crate) mod sync;
+
+cfg_if!(
+    if #[cfg(all(s2n_quic_unstable, feature = "unstable-provider-packet-interceptor"))] {
+        pub mod packet_interceptor;
+    } else {
+        pub(crate) mod packet_interceptor;
+    }
+);
+
+cfg_if!(
+    if #[cfg(all(s2n_quic_unstable, feature = "unstable-provider-random"))] {
+        pub mod random;
+    } else {
+        pub(crate) mod random;
+    }
+);
 
 /// An error indicating a failure to start an endpoint
 pub struct StartError(Box<dyn 'static + fmt::Display>);

@@ -1,7 +1,0 @@
----
-source: quic/s2n-quic-ring/src/cipher_suite/mod.rs
-assertion_line: 262
-expression: "core::mem::size_of::<TLS_AES_256_GCM_SHA384>()"
-
----
-720

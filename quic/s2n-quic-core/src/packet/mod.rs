@@ -21,6 +21,7 @@ pub mod retry;
 
 pub mod decoding;
 pub mod encoding;
+pub mod interceptor;
 pub mod key_phase;
 pub mod long;
 

@@ -4,11 +4,11 @@
 //! Maps from external connection IDs to internal connection IDs
 
 use crate::connection::{local_id_registry::LocalIdRegistry, InternalConnectionId, PeerIdRegistry};
-use alloc::rc::Rc;
-use core::{cell::RefCell, convert::TryFrom as _, hash::BuildHasher};
+use core::{convert::TryFrom as _, hash::BuildHasher};
 use hashbrown::hash_map::{Entry, HashMap};
 use s2n_quic_core::{connection, endpoint, random, stateless_reset, time::Timestamp};
 use siphasher::sip::SipHasher13;
+use std::sync::{Arc, Mutex};
 
 // Since the input to the hash function (stateless reset token) come from the peer, we need to
 // ensure that maliciously crafted values do not result in poor bucketing and thus degraded
@@ -212,7 +212,7 @@ impl ConnectionIdMapperState {
 /// Maps from external connection IDs to internal connection IDs
 pub struct ConnectionIdMapper {
     /// The shared state between mapper and registration
-    state: Rc<RefCell<ConnectionIdMapperState>>,
+    state: Arc<Mutex<ConnectionIdMapperState>>,
     /// The endpoint type for the endpoint using this mapper
     endpoint_type: endpoint::Type,
 }
@@ -224,7 +224,7 @@ impl ConnectionIdMapper {
         endpoint_type: endpoint::Type,
     ) -> Self {
         Self {
-            state: Rc::new(RefCell::new(ConnectionIdMapperState::new(random_generator))),
+            state: Arc::new(Mutex::new(ConnectionIdMapperState::new(random_generator))),
             endpoint_type,
         }
     }
@@ -235,7 +235,10 @@ impl ConnectionIdMapper {
         &self,
         connection_id: &connection::LocalId,
     ) -> Option<InternalConnectionId> {
-        let guard = self.state.borrow();
+        let guard = self
+            .state
+            .lock()
+            .expect("should succeed unless the lock is poisoned");
         guard.local_id_map.get(connection_id).or_else(|| {
             if self.endpoint_type.is_server() {
                 // The ID wasn't in the local ID map, so we'll check the initial ID
@@ -257,7 +260,10 @@ impl ConnectionIdMapper {
         internal_id: InternalConnectionId,
     ) -> Result<(), ()> {
         debug_assert!(self.endpoint_type.is_server());
-        let mut guard = self.state.borrow_mut();
+        let mut guard = self
+            .state
+            .lock()
+            .expect("should succeed unless the lock is poisoned");
         guard.initial_id_map.try_insert(initial_id, internal_id)
     }
 
@@ -268,7 +274,10 @@ impl ConnectionIdMapper {
         &mut self,
         peer_stateless_reset_token: &stateless_reset::Token,
     ) -> Option<InternalConnectionId> {
-        let mut guard = self.state.borrow_mut();
+        let mut guard = self
+            .state
+            .lock()
+            .expect("should succeed unless the lock is poisoned");
         //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3.1
         //# When comparing a datagram to stateless reset token values, endpoints
         //# MUST perform the comparison without leaking information about the
@@ -289,7 +298,10 @@ impl ConnectionIdMapper {
         internal_id: &InternalConnectionId,
     ) -> Option<connection::InitialId> {
         debug_assert!(self.endpoint_type.is_server());
-        let mut guard = self.state.borrow_mut();
+        let mut guard = self
+            .state
+            .lock()
+            .expect("should succeed unless the lock is poisoned");
         guard.initial_id_map.remove(internal_id)
     }
 
@@ -377,7 +389,8 @@ mod tests {
 
         mapper
             .state
-            .borrow_mut()
+            .lock()
+            .expect("should succeed unless the lock is poisoned")
             .stateless_reset_map
             .remove(&TEST_TOKEN_3);
 

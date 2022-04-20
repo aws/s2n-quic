@@ -8,7 +8,15 @@ use std::sync::{
     Arc,
 };
 
+mod usdt;
+pub use self::usdt::Usdt;
+
 pub trait Trace {
+    #[inline(always)]
+    fn enter_connection(&mut self, id: u64) {
+        let _ = id;
+    }
+
     #[inline(always)]
     fn exec(&mut self, now: Timestamp, op: &op::Connection) {
         let _ = now;
@@ -99,6 +107,12 @@ pub trait Trace {
 
 impl<A: Trace, B: Trace> Trace for (A, B) {
     #[inline(always)]
+    fn enter_connection(&mut self, id: u64) {
+        self.0.enter_connection(id);
+        self.1.enter_connection(id);
+    }
+
+    #[inline(always)]
     fn exec(&mut self, now: Timestamp, op: &op::Connection) {
         self.0.exec(now, op);
         self.1.exec(now, op);
@@ -184,6 +198,13 @@ impl<A: Trace, B: Trace> Trace for (A, B) {
 }
 
 impl<T: Trace> Trace for Option<T> {
+    #[inline(always)]
+    fn enter_connection(&mut self, id: u64) {
+        if let Some(t) = self.as_mut() {
+            t.enter_connection(id);
+        }
+    }
+
     #[inline(always)]
     fn exec(&mut self, now: Timestamp, op: &op::Connection) {
         if let Some(t) = self.as_mut() {
@@ -301,9 +322,9 @@ pub type MemoryLogger = Logger<std::io::Cursor<Vec<u8>>>;
 pub type StdioLogger = Logger<std::io::BufWriter<std::io::Stdout>>;
 
 impl<O: Output> Logger<O> {
-    pub fn new(id: u64, traces: Arc<Vec<String>>) -> Self {
+    pub fn new(traces: Arc<Vec<String>>) -> Self {
         Self {
-            id,
+            id: 0,
             traces,
             scope: vec![],
             output: O::new(),
@@ -409,6 +430,11 @@ impl Output for std::io::Cursor<Vec<u8>> {
 }
 
 impl<O: Output> Trace for Logger<O> {
+    #[inline(always)]
+    fn enter_connection(&mut self, id: u64) {
+        self.id = id;
+    }
+
     #[inline(always)]
     fn exec(&mut self, now: Timestamp, op: &op::Connection) {
         if self.verbose {

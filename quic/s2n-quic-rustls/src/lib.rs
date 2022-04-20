@@ -52,7 +52,7 @@ fn client_server_test() {
     let mut pair = tls::testing::Pair::new(&mut server, &mut client, "localhost".into());
 
     while pair.is_handshaking() {
-        pair.poll().unwrap();
+        pair.poll(None).unwrap();
     }
 
     pair.finish();

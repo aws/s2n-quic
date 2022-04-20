@@ -79,6 +79,8 @@ pub enum Outcome {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DenyReason {
+    // The new address uses a port that is blocked
+    BlockedPort,
     // The new address uses a port in a different scope
     PortScopeChanged,
     // The new address uses an IP in a different scope
@@ -90,6 +92,7 @@ pub enum DenyReason {
 impl IntoEvent<event::builder::ConnectionMigrationDenied> for DenyReason {
     fn into_event(self) -> event::builder::ConnectionMigrationDenied {
         let reason = match self {
+            DenyReason::BlockedPort => event::builder::MigrationDenyReason::BlockedPort,
             DenyReason::PortScopeChanged => event::builder::MigrationDenyReason::PortScopeChanged,
             DenyReason::IpScopeChanged => event::builder::MigrationDenyReason::IpScopeChange,
             DenyReason::ConnectionMigrationDisabled => {
@@ -108,6 +111,7 @@ pub trait Validator: 'static + Send {
 
 pub mod default {
     use super::*;
+    use crate::path::remote_port_blocked;
 
     #[derive(Debug, Default)]
     pub struct Validator;
@@ -116,6 +120,11 @@ pub mod default {
         fn on_migration_attempt(&mut self, attempt: &Attempt) -> Outcome {
             let active_addr = to_addr(&attempt.active_path.remote_addr);
             let packet_addr = to_addr(&attempt.packet.remote_address);
+
+            // Block migrations to a port that is blocked
+            if remote_port_blocked(packet_addr.port()) {
+                return Outcome::Deny(DenyReason::BlockedPort);
+            }
 
             //= https://www.rfc-editor.org/rfc/rfc9000#section-21.5.6
             //# it might be possible over time to identify

@@ -6,10 +6,12 @@ use crate::{
     arch::*,
     block::{BatchMut, Block, Zeroed},
 };
+use zeroize::Zeroize;
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 
+#[derive(Zeroize)]
 pub struct Key<const ROUNDS: usize> {
     pub encrypt: EncryptionKey<ROUNDS>,
     pub decrypt: DecryptionKey<ROUNDS>,
@@ -55,6 +57,7 @@ impl<const N: usize> super::aes256::DecryptionKey for Key<N> {
     }
 }
 
+#[derive(Zeroize)]
 pub struct EncryptionKey<const ROUNDS: usize>([KeyRound; ROUNDS]);
 
 impl<const N: usize> super::aes128::EncryptionKey for EncryptionKey<N> {
@@ -83,6 +86,7 @@ impl<const N: usize> super::aes256::EncryptionKey for EncryptionKey<N> {
     }
 }
 
+#[derive(Zeroize)]
 pub struct DecryptionKey<const ROUNDS: usize>([KeyRound; ROUNDS]);
 
 impl<const N: usize> super::aes128::DecryptionKey for DecryptionKey<N> {
@@ -387,6 +391,7 @@ pub mod aes256 {
 pub struct KeyRound(__m128i);
 
 impl KeyRound {
+    #[inline(always)]
     fn inv_mix_columns(self) -> Self {
         unsafe {
             debug_assert!(Avx2::is_supported());
@@ -394,6 +399,15 @@ impl KeyRound {
         }
     }
 }
+
+impl Default for KeyRound {
+    #[inline(always)]
+    fn default() -> Self {
+        Self(__m128i::zeroed())
+    }
+}
+
+impl zeroize::DefaultIsZeroes for KeyRound {}
 
 impl super::KeyRound for KeyRound {
     type Block = __m128i;

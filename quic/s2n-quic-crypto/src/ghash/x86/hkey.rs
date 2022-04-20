@@ -6,6 +6,7 @@ use crate::{
     block::{x86::M128iExt, Block, Zeroed},
     ghash::x86::algo,
 };
+use zeroize::DefaultIsZeroes;
 
 pub trait HKey: Copy + Zeroed {
     fn new(h: __m128i) -> Self;
@@ -26,6 +27,15 @@ impl H {
         }
     }
 }
+
+impl Default for H {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::zeroed()
+    }
+}
+
+impl DefaultIsZeroes for H {}
 
 impl Zeroed for H {
     #[inline(always)]
@@ -84,6 +94,15 @@ impl Zeroed for Hr {
         }
     }
 }
+
+impl Default for Hr {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::zeroed()
+    }
+}
+
+impl DefaultIsZeroes for Hr {}
 
 impl HKey for Hr {
     #[inline(always)]

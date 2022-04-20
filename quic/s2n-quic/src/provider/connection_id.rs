@@ -125,7 +125,7 @@ pub mod default {
             let mut id = [0u8; connection::id::MAX_LEN];
             let id = &mut id[..self.len];
             rand::thread_rng().fill_bytes(id);
-            (&id[..]).try_into().expect("length already checked")
+            (&*id).try_into().expect("length already checked")
         }
 
         fn lifetime(&self) -> Option<Duration> {

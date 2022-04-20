@@ -31,6 +31,7 @@ impl<'a, C: Client<'a>> Thread<'a, C> {
         }
     }
 
+    #[inline]
     pub(super) fn poll<T: Trace, Ch: Checkpoints>(
         &mut self,
         client: &mut C,
@@ -57,6 +58,7 @@ impl<'a, C: Client<'a>> Thread<'a, C> {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[inline]
     fn on_op<T: Trace, Ch: Checkpoints>(
         &mut self,
         client: &mut C,
@@ -118,6 +120,7 @@ impl<'a, C: Client<'a>> Thread<'a, C> {
         }
     }
 
+    #[inline]
     fn poll_op<T: Trace, Ch: Checkpoints>(
         &mut self,
         client: &mut C,
@@ -135,6 +138,7 @@ impl<'a, C: Client<'a>> Thread<'a, C> {
                 let connect = core::pin::Pin::new(connect);
                 let connection = ready!(connect.poll(cx))?;
                 let time = now - *start;
+                trace.enter_connection(connection.id());
                 trace.connect(now, *id, time);
                 self.op = Some(Op::Connection { connection });
                 return self.poll_op(client, addresses, trace, checkpoints, now, cx);

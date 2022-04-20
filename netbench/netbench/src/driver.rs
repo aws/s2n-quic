@@ -48,6 +48,7 @@ impl<'a, C: Connection> Driver<'a, C> {
         Ok(self.connection)
     }
 
+    #[inline]
     pub fn poll_with_timer<T: Trace, Ch: Checkpoints, Ti: Timer>(
         &mut self,
         trace: &mut T,
@@ -66,6 +67,7 @@ impl<'a, C: Connection> Driver<'a, C> {
         res
     }
 
+    #[inline]
     pub fn poll<T: Trace, Ch: Checkpoints>(
         &mut self,
         trace: &mut T,
@@ -73,6 +75,8 @@ impl<'a, C: Connection> Driver<'a, C> {
         now: timer::Timestamp,
         cx: &mut Context,
     ) -> Poll<Result<()>> {
+        trace.enter_connection(self.connection.id());
+
         if self.is_finished {
             return self.connection.poll_finish(cx);
         }
@@ -153,6 +157,12 @@ impl<'a, C: Connection> Driver<'a, C> {
 }
 
 impl<'a, C: Connection> crate::client::Connection for Driver<'a, C> {
+    #[inline]
+    fn id(&self) -> u64 {
+        self.connection.id()
+    }
+
+    #[inline]
     fn poll<T, Ch>(
         &mut self,
         trace: &mut T,
@@ -169,6 +179,7 @@ impl<'a, C: Connection> crate::client::Connection for Driver<'a, C> {
 }
 
 impl<'a, C: Connection> timer::Provider for Driver<'a, C> {
+    #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
         self.local_thread.timers(query)?;
         for (_, thread) in self.peer_streams.iter() {
