@@ -13,4 +13,4 @@ exclude = ["corpus.tar.gz"]
 s2n-quic-tls = { version = "=0.2.0", path = "../s2n-quic-tls" }
 
 [target.'cfg(not(unix))'.dependencies]
-s2n-quic-rustls = { version = "=0.1.2", path = "../s2n-quic-rustls" }
+s2n-quic-rustls = { version = "=0.1.3", path = "../s2n-quic-rustls" }
