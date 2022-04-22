@@ -20,7 +20,9 @@ pub(crate) trait Filter<T> {
     fn supersedes(new: T, current: Option<T>) -> bool;
 }
 
+#[derive(Clone, Debug)]
 pub(crate) struct MaxFilter;
+#[derive(Clone, Debug)]
 pub(crate) struct MinFilter;
 
 impl<T: core::cmp::PartialOrd> Filter<T> for MaxFilter {
