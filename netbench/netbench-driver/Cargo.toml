@@ -1,5 +1,6 @@
 [package]
 name = "netbench-driver"
+# this in an unpublished internal crate so the version should not be changed
 version = "0.1.0"
 authors = ["AWS s2n"]
 edition = "2018"
@@ -13,7 +14,7 @@ mimalloc = "0.1"
 netbench = { version = "0.1", path = "../netbench" }
 probe = "0.3"
 s2n-quic = { version = "1", path = "../../quic/s2n-quic", features = ["provider-tls-s2n"] }
-s2n-quic-core = { version = "0.1", path = "../../quic/s2n-quic-core", features = ["testing"] }
+s2n-quic-core = { version = "0.2", path = "../../quic/s2n-quic-core", features = ["testing"] }
 structopt = "0.3"
 tokio = { version = "1", features = ["io-util", "net", "time"] }
 tokio-native-tls = "0.3"

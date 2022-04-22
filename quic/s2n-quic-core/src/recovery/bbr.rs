@@ -11,6 +11,7 @@ use num_rational::Ratio;
 mod full_pipe;
 mod network;
 mod recovery;
+mod windowed_filter;
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.8
 //# The maximum tolerated per-round-trip packet loss rate when probing for bandwidth (the default is 2%).
