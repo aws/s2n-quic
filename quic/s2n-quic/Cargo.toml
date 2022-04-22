@@ -36,6 +36,8 @@ unstable_client_hello = ["s2n-quic-tls/unstable_client_hello"]
 unstable-provider-packet-interceptor = []
 # This feature enables the random provider
 unstable-provider-random = []
+# This feature enables the datagram provider
+unstable-provider-datagram = []
 
 [dependencies]
 bytes = { version = "1", default-features = false }
