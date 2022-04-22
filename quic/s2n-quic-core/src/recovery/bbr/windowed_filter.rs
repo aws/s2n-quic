@@ -7,6 +7,7 @@ use core::marker::PhantomData;
 /// time period specified by the `window_length`
 ///
 /// Based on https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=f672258391b42a5c7cc2732c9c063e56a85c8dbe
+#[derive(Clone, Debug)]
 pub(crate) struct WindowedFilter<T, TimeType, DurationType, FilterType> {
     current_value: Option<T>,
     last_updated: Option<TimeType>,
