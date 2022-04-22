@@ -3,7 +3,7 @@
 
 use crate::{
     counter::Counter,
-    recovery::{bandwidth, bandwidth::Bandwidth, CongestionController, RttEstimator},
+    recovery::{bandwidth, CongestionController, RttEstimator},
     time::Timestamp,
 };
 use num_rational::Ratio;
@@ -25,11 +25,6 @@ const LOSS_THRESH: Ratio<u32> = Ratio::new_raw(1, 50);
 #[derive(Debug, Clone)]
 struct BbrCongestionController {
     bw_estimator: bandwidth::Estimator,
-    //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.9.1
-    //# The windowed maximum recent bandwidth sample - obtained using the BBR delivery rate sampling
-    //# algorithm [draft-cheng-iccrg-delivery-rate-estimation] - measured during the current or
-    //# previous bandwidth probing cycle (or during Startup, if the flow is still in that state).
-    max_bw: Bandwidth,
     full_pipe_estimator: full_pipe::Estimator,
     //= https://www.rfc-editor.org/rfc/rfc9002#section-B.2
     //# The sum of the size in bytes of all sent packets
@@ -42,6 +37,7 @@ struct BbrCongestionController {
     //# congestion feedback.
     bytes_in_flight: BytesInFlight,
     recovery_state: recovery::State,
+    network_model: network::Model,
 }
 
 type BytesInFlight = Counter<u32>;
@@ -112,7 +108,7 @@ impl CongestionController for BbrCongestionController {
         if round_start {
             self.full_pipe_estimator.on_round_start(
                 self.bw_estimator.rate_sample(),
-                self.max_bw,
+                self.network_model.max_bw(),
                 self.recovery_state.in_recovery(),
             )
         }
