@@ -39,15 +39,12 @@ impl<T: core::cmp::PartialOrd> Filter<T> for MinFilter {
 }
 
 /// Filter that maintains the maximum value seen over the window
-#[allow(dead_code)] // TODO: Remove when used
 pub(crate) type WindowedMaxFilter<T, TimeType, DurationType> =
     WindowedFilter<T, TimeType, DurationType, MaxFilter>;
 /// Filter that maintains the minimum value seen over the window
-#[allow(dead_code)] // TODO: Remove when used
 pub(crate) type WindowedMinFilter<T, TimeType, DurationType> =
     WindowedFilter<T, TimeType, DurationType, MinFilter>;
 
-#[allow(dead_code)] // TODO: Remove when used
 impl<
         T: Copy + PartialOrd,
         TimeType: Copy + PartialOrd + core::ops::Sub<Output = DurationType>,
@@ -92,11 +89,16 @@ impl<
         })
     }
 }
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.3.2
+//# A BBR implementation MAY use a generic windowed min filter to track BBR.min_rtt.
+//# However, a significant savings in space and improvement in freshness can be achieved
+//# by integrating the BBR.min_rtt estimation into the ProbeRTT state machine
 
 /// Specialized WindowedMinFilter for tracking min round trip time
 ///
 /// BBRv2 tracks both a min probe RTT that is refreshed at least every `PROBE_RTT_INTERVAL`,
 /// and an overall min_rtt that is refreshed at least every `MIN_RTT_FILTER_LEN`.
+#[derive(Clone, Debug)]
 pub(crate) struct MinRttWindowedFilter {
     min_probe_rtt: WindowedFilter<Duration, Timestamp, Duration, MinFilter>,
     min_rtt: WindowedFilter<Duration, Timestamp, Duration, MinFilter>,
@@ -148,22 +150,17 @@ impl MinRttWindowedFilter {
     }
 
     /// The current windowed estimate of minimum round trip time
-    #[allow(dead_code)] // TODO: Remove when used
     pub fn min_rtt(&self) -> Option<Duration> {
         self.min_rtt.value()
     }
 
     /// True if the probe RTT has expired and is due for a refresh by entering the ProbeRTT state
-    #[allow(dead_code)] // TODO: Remove when used
     pub fn probe_rtt_expired(&self) -> bool {
         self.probe_rtt_expired
     }
 
     /// Overrides the last updated time for Min Probe RTT to ensure ProbeRTT is not entered until
     /// the next `PROBE_RTT_INTERVAL`.
-    ///
-    /// Called immediately after ProbeRTT period ends or after resuming from idle
-    #[allow(dead_code)] // TODO: Remove when used
     pub fn schedule_next_probe_rtt(&mut self, now: Timestamp) {
         self.min_probe_rtt.last_updated = Some(now);
     }

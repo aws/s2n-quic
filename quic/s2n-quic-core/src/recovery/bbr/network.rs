@@ -1,10 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::recovery::{
-    bandwidth::{Bandwidth, PacketInfo, RateSample},
-    bbr::windowed_filter::WindowedMaxFilter,
+use crate::{
+    recovery::{
+        bandwidth::{Bandwidth, PacketInfo, RateSample},
+        bbr::windowed_filter::{MinRttWindowedFilter, WindowedMaxFilter},
+    },
+    time::Timestamp,
 };
+use core::time::Duration;
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.1
 //# Several aspects of the BBR algorithm depend on counting the progress of "packet-timed" round
@@ -47,6 +51,9 @@ pub(crate) struct Model {
     //# algorithm [draft-cheng-iccrg-delivery-rate-estimation] - measured during the current or
     //# previous bandwidth probing cycle (or during Startup, if the flow is still in that state).
     max_bw_filter: WindowedMaxFilter<Bandwidth, core::num::Wrapping<u8>, core::num::Wrapping<u8>>,
+    //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.9.2
+    //# The windowed minimum round-trip time sample measured over the last MinRTTFilterLen = 10 seconds.
+    min_rtt_filter: MinRttWindowedFilter,
     //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.11
     //# The virtual time used by the BBR.max_bw filter window.
     cycle_count: core::num::Wrapping<u8>,
@@ -62,6 +69,7 @@ impl Model {
         Self {
             round_counter: Default::default(),
             max_bw_filter: WindowedMaxFilter::new(MAX_BW_FILTER_LEN),
+            min_rtt_filter: MinRttWindowedFilter::new(),
             cycle_count: Default::default(),
         }
     }
@@ -71,12 +79,32 @@ impl Model {
         self.max_bw_filter.value().unwrap_or(Bandwidth::ZERO)
     }
 
+    /// The windowed minimum round trip time
+    pub fn min_rtt(&self) -> Option<Duration> {
+        self.min_rtt_filter.min_rtt()
+    }
+
+    /// True if the probe RTT has expired and is due for a refresh by entering the ProbeRTT state
+    pub fn probe_rtt_expired(&self) -> bool {
+        self.min_rtt_filter.probe_rtt_expired()
+    }
+
+    /// Overrides the last updated time for Min Probe RTT to ensure ProbeRTT is not entered until
+    /// the next PROBE_RTT_INTERVAL.
+    ///
+    /// Called immediately after ProbeRTT period ends or after resuming from idle
+    pub fn schedule_next_probe_rtt(&mut self, now: Timestamp) {
+        self.min_rtt_filter.schedule_next_probe_rtt(now)
+    }
+
     /// Called for each acknowledgement of one or more packets
     pub fn on_ack(
         &mut self,
         packet_info: PacketInfo,
         rate_sample: RateSample,
         delivered_bytes: u64,
+        rtt: Duration,
+        now: Timestamp,
     ) {
         self.round_counter.on_ack(packet_info, delivered_bytes);
 
@@ -89,5 +117,7 @@ impl Model {
             self.max_bw_filter
                 .update(rate_sample.delivery_rate(), self.cycle_count);
         }
+
+        self.min_rtt_filter.update(rtt, now)
     }
 }
