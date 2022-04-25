@@ -1,8 +1,15 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-pub trait DatagramApi: Sender + Receiver {}
+pub trait Endpoint: 'static + Send {
+    type Sender: Sender;
+    type Receiver: Receiver;
 
-impl<T: 'static + Sender + Receiver + Send> DatagramApi for T {}
+    fn create_connection(&mut self, info: &ConnectionInfo) -> (Self::Sender, Self::Receiver);
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct ConnectionInfo {}
 
 pub trait Sender: 'static + Send {}
 pub trait Receiver: 'static + Send {}
@@ -10,5 +17,16 @@ pub trait Receiver: 'static + Send {}
 #[derive(Debug, Default)]
 pub struct Disabled;
 
-impl Receiver for Disabled {}
-impl Sender for Disabled {}
+impl Endpoint for Disabled {
+    type Sender = DisabledSender;
+    type Receiver = DisabledReceiver;
+
+    fn create_connection(&mut self, _info: &ConnectionInfo) -> (Self::Sender, Self::Receiver) {
+        (DisabledSender, DisabledReceiver)
+    }
+}
+pub struct DisabledSender;
+pub struct DisabledReceiver;
+
+impl Receiver for DisabledReceiver {}
+impl Sender for DisabledSender {}

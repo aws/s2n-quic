@@ -43,7 +43,7 @@ pub trait Config: 'static + Send + Sized + core::fmt::Debug {
     /// The packet_interceptor implementation for the endpoint
     type PacketInterceptor: packet::interceptor::Interceptor;
     /// The datagram implementation for the endpoint
-    type Datagram: datagram::DatagramApi;
+    type DatagramEndpoint: datagram::Endpoint;
 
     /// The type of the local endpoint
     const ENDPOINT_TYPE: endpoint::Type;
@@ -86,5 +86,5 @@ pub struct Context<'a, Cfg: Config> {
 
     pub packet_interceptor: &'a mut Cfg::PacketInterceptor,
 
-    pub datagram: &'a mut Cfg::Datagram,
+    pub datagram: &'a mut Cfg::DatagramEndpoint,
 }

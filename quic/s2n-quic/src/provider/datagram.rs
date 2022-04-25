@@ -3,23 +3,23 @@
 
 //! Provides unreliable datagram support
 
-use s2n_quic_core::datagram::{DatagramApi, Disabled};
-pub trait Provider: 'static {
-    type DatagramApi: 'static + DatagramApi;
-    type Error: core::fmt::Display;
+use s2n_quic_core::datagram::{Disabled, Endpoint};
+pub trait Provider {
+    type Endpoint: Endpoint;
+    type Error: 'static + core::fmt::Display;
 
-    fn start(self) -> Result<Self::DatagramApi, Self::Error>;
+    fn start(self) -> Result<Self::Endpoint, Self::Error>;
 }
 
 impl_provider_utils!();
 
 pub type Default = Disabled;
 
-impl<T: 'static + Send + DatagramApi> Provider for T {
-    type DatagramApi = T;
+impl<T: 'static + Send + Endpoint> Provider for T {
+    type Endpoint = T;
     type Error = core::convert::Infallible;
 
-    fn start(self) -> Result<Self::DatagramApi, Self::Error> {
+    fn start(self) -> Result<Self::Endpoint, Self::Error> {
         Ok(self)
     }
 }

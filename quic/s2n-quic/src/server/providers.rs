@@ -193,7 +193,7 @@ impl<
         Sync,
         Tls: crypto::tls::Endpoint,
         AddressToken: address_token::Format,
-        Datagram: s2n_quic_core::datagram::DatagramApi,
+        Datagram: s2n_quic_core::datagram::Endpoint,
     > core::fmt::Debug
     for EndpointConfig<
         CongestionController,
@@ -233,7 +233,7 @@ impl<
         Sync: 'static + Send,
         Tls: crypto::tls::Endpoint,
         AddressToken: address_token::Format,
-        Datagram: s2n_quic_core::datagram::DatagramApi,
+        Datagram: s2n_quic_core::datagram::Endpoint,
     > endpoint::Config
     for EndpointConfig<
         CongestionController,
@@ -270,7 +270,7 @@ impl<
     type Stream = stream::StreamImpl;
     type PathMigrationValidator = PathMigration;
     type PacketInterceptor = PacketInterceptor;
-    type Datagram = Datagram;
+    type DatagramEndpoint = Datagram;
 
     const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Server;
 
