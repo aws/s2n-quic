@@ -34,6 +34,7 @@ use s2n_quic_core::{
 
 mod application;
 mod crypto_stream;
+pub(crate) mod datagram;
 mod handshake;
 mod handshake_status;
 mod initial;
@@ -201,6 +202,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         now: Timestamp,
         waker: &Waker,
         publisher: &mut Pub,
+        datagram: &mut Config::DatagramEndpoint,
     ) -> Poll<Result<(), transport::Error>> {
         if let Some(session_info) = self.session_info.as_mut() {
             let mut context: SessionContext<Config, Pub> = SessionContext {
@@ -219,6 +221,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 application_protocol: &mut self.application_protocol,
                 waker,
                 publisher,
+                datagram,
             };
 
             match session_info.session.poll(&mut context)? {

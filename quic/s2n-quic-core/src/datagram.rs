@@ -4,15 +4,22 @@ pub trait Endpoint: 'static + Send {
     type Sender: Sender;
     type Receiver: Receiver;
 
-    fn create_connection(&mut self, info: &ConnectionInfo) -> (Self::Sender, Self::Receiver);
+    fn new_datagram(&mut self) -> (Self::Sender, Self::Receiver);
 }
 
-#[derive(Debug)]
-#[non_exhaustive]
-pub struct ConnectionInfo {}
-
-pub trait Sender: 'static + Send {}
 pub trait Receiver: 'static + Send {}
+pub trait Sender: 'static + Send {
+    fn on_transmit<P: Packet>(&mut self, _packet: &mut P) {
+        todo!();
+    }
+}
+
+pub trait Packet {
+    fn remaining_capacity(&self) -> usize;
+    fn maximum_datagram_payload(&self) -> usize;
+    fn write_datagram(&mut self, data: &[u8]);
+    fn pending_streams(&self) -> bool;
+}
 
 #[derive(Debug, Default)]
 pub struct Disabled;
@@ -21,7 +28,7 @@ impl Endpoint for Disabled {
     type Sender = DisabledSender;
     type Receiver = DisabledReceiver;
 
-    fn create_connection(&mut self, _info: &ConnectionInfo) -> (Self::Sender, Self::Receiver) {
+    fn new_datagram(&mut self) -> (Self::Sender, Self::Receiver) {
         (DisabledSender, DisabledReceiver)
     }
 }

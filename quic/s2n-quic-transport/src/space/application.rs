@@ -8,7 +8,7 @@ use crate::{
     path::{path_event, Path},
     processed_packet::ProcessedPacket,
     recovery,
-    space::{keep_alive::KeepAlive, HandshakeStatus, PacketSpace, TxPacketNumbers},
+    space::{datagram, keep_alive::KeepAlive, HandshakeStatus, PacketSpace, TxPacketNumbers},
     stream::AbstractStreamManager,
     sync::flag,
     transmission,
@@ -18,6 +18,7 @@ use once_cell::sync::OnceCell;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{application::KeySet, limited, tls, CryptoSuite},
+    datagram::Endpoint,
     event::{self, ConnectionPublisher as _, IntoEvent},
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
@@ -62,6 +63,7 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     keep_alive: KeepAlive,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager<Config>,
+    datagram_manager: datagram::Manager<Config>,
 }
 
 impl<Config: endpoint::Config> fmt::Debug for ApplicationSpace<Config> {
@@ -87,6 +89,8 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         ack_manager: AckManager,
         keep_alive: KeepAlive,
         max_mtu: MaxMtu,
+        datagram_sender: <<Config as endpoint::Config>::DatagramEndpoint as Endpoint>::Sender,
+        datagram_receiver: <<Config as endpoint::Config>::DatagramEndpoint as Endpoint>::Receiver,
     ) -> Self {
         let key_set = KeySet::new(key, Self::key_limits(max_mtu));
 
@@ -101,6 +105,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             keep_alive,
             processed_packet_numbers: SlidingWindow::default(),
             recovery_manager: recovery::Manager::new(PacketNumberSpace::ApplicationData),
+            datagram_manager: datagram::Manager::new(datagram_sender, datagram_receiver),
         }
     }
 
@@ -172,6 +177,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 &mut self.ping,
                 &mut self.stream_manager,
                 &mut self.recovery_manager,
+                &mut self.datagram_manager,
             ),
             timestamp,
             transmission_constraint,

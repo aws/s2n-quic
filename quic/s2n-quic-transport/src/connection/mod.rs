@@ -81,4 +81,6 @@ pub struct Parameters<'a, Cfg: endpoint::Config> {
     pub supervisor_context: &'a supervisor::Context<'a>,
     /// The event subscriber for the endpoint
     pub event_subscriber: &'a mut Cfg::EventSubscriber,
+    // The datagram provider for the endpoint
+    pub datagram_endpoint: &'a mut Cfg::DatagramEndpoint,
 }

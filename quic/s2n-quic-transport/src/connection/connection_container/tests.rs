@@ -131,6 +131,7 @@ impl connection::Trait for TestConnection {
         &mut self,
         _timestamp: Timestamp,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        _datagram: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
     ) -> Result<(), connection::Error> {
         Ok(())
     }
@@ -143,6 +144,7 @@ impl connection::Trait for TestConnection {
         _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
+        _datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
@@ -156,6 +158,7 @@ impl connection::Trait for TestConnection {
         _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
+        _datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
@@ -169,6 +172,7 @@ impl connection::Trait for TestConnection {
         _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
+        _datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }

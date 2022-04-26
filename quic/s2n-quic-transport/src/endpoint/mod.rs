@@ -213,7 +213,11 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                     }
                 };
 
-                if let Err(error) = conn.on_wakeup(timestamp, endpoint_context.event_subscriber) {
+                if let Err(error) = conn.on_wakeup(
+                    timestamp,
+                    endpoint_context.event_subscriber,
+                    endpoint_context.datagram,
+                ) {
                     conn.close(
                         error,
                         endpoint_context.connection_close_formatter,
@@ -569,6 +573,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     endpoint_context.random_generator,
                     endpoint_context.event_subscriber,
                     endpoint_context.packet_interceptor,
+                    endpoint_context.datagram,
                 ) {
                     match err {
                         ProcessingError::DuplicatePacket => {
@@ -635,6 +640,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     endpoint_context.random_generator,
                     endpoint_context.event_subscriber,
                     endpoint_context.packet_interceptor,
+                    endpoint_context.datagram,
                 ) {
                     conn.close(
                         err,
@@ -1114,6 +1120,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             event_context,
             supervisor_context: &supervisor_context,
             event_subscriber: endpoint_context.event_subscriber,
+            datagram_endpoint: endpoint_context.datagram,
         };
         let connection = <Cfg as crate::endpoint::Config>::Connection::new(connection_parameters)?;
         self.connections
