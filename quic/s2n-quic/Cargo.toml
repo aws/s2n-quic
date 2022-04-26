@@ -35,7 +35,7 @@ unstable_client_hello = ["s2n-quic-tls/unstable_client_hello"]
 # This feature enables the datagram provider
 unstable-provider-datagram = []
 # This feature enables the testing IO provider
-unstable-provider-io-testing = ["s2n-quic-platform/testing"]
+unstable-provider-io-testing = ["s2n-quic-platform/io-testing"]
 # This feature enables the packet interceptor provider, which is invoked on each cleartext packet
 unstable-provider-packet-interceptor = []
 # This feature enables the random provider

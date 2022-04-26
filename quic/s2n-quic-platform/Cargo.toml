@@ -12,7 +12,8 @@ exclude = ["corpus.tar.gz"]
 [features]
 default = ["std", "tokio-runtime", "wipe"]
 std = ["s2n-quic-core/std", "socket2", "lazy_static"]
-testing = ["std", "generator", "futures/std", "bach"] # Testing allows to overwrite the system time
+testing = ["std", "generator", "futures/std", "io-testing"] # Testing allows to overwrite the system time
+io-testing = ["bach"]
 generator = ["bolero-generator", "s2n-quic-core/generator"]
 tokio-runtime = ["futures", "pin-project", "tokio"]
 wipe = ["zeroize"]
