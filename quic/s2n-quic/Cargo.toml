@@ -34,6 +34,8 @@ provider-tls-s2n = ["s2n-quic-tls"]
 unstable_client_hello = ["s2n-quic-tls/unstable_client_hello"]
 # This feature enables the datagram provider
 unstable-provider-datagram = []
+# This feature enables the testing IO provider
+unstable-provider-io-testing = ["s2n-quic-platform/io-testing"]
 # This feature enables the packet interceptor provider, which is invoked on each cleartext packet
 unstable-provider-packet-interceptor = []
 # This feature enables the random provider
@@ -62,7 +64,7 @@ zeroize = { version = "1", optional = true, default-features = false }
 
 [dev-dependencies]
 bolero = { version = "0.6" }
-s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
+s2n-quic-core = { path = "../s2n-quic-core", features = ["testing", "event-tracing"] }
 s2n-quic-platform = { path = "../s2n-quic-platform", features = ["testing"] }
 tokio = { version = "1", features = ["full"] }
-
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

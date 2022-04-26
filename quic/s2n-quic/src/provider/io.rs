@@ -16,6 +16,9 @@ pub trait Provider: 'static {
     ) -> Result<SocketAddress, Self::Error>;
 }
 
+#[cfg(any(test, all(s2n_quic_unstable, feature = "unstable-provider-io-testing")))]
+pub mod testing;
+
 pub mod tokio;
 
 pub use self::tokio as default;

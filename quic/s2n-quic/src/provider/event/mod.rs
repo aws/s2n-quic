@@ -25,11 +25,11 @@ pub trait Provider {
 pub mod disabled;
 
 /// This module contains event integration with [`tracing`](https://docs.rs/tracing)
-#[cfg(feature = "provider-event-tracing")]
+#[cfg(any(feature = "provider-event-tracing", test))]
 pub mod tracing;
 
 cfg_if! {
-    if #[cfg(feature = "provider-event-tracing")] {
+    if #[cfg(any(feature = "provider-event-tracing", test))] {
         pub use self::tracing as default;
     } else {
         // Events are disabled by default.
