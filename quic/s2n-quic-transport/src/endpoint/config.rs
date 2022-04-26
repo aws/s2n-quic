@@ -5,7 +5,7 @@
 
 use crate::{connection, stream};
 use s2n_quic_core::{
-    crypto::tls, endpoint, event, packet, path, random, recovery::congestion_controller,
+    crypto::tls, datagram, endpoint, event, packet, path, random, recovery::congestion_controller,
     stateless_reset,
 };
 
@@ -42,6 +42,8 @@ pub trait Config: 'static + Send + Sized + core::fmt::Debug {
     type PathMigrationValidator: path::migration::Validator;
     /// The packet_interceptor implementation for the endpoint
     type PacketInterceptor: packet::interceptor::Interceptor;
+    /// The datagram implementation for the endpoint
+    type DatagramEndpoint: datagram::Endpoint;
 
     /// The type of the local endpoint
     const ENDPOINT_TYPE: endpoint::Type;
@@ -83,4 +85,6 @@ pub struct Context<'a, Cfg: Config> {
     pub path_migration: &'a mut Cfg::PathMigrationValidator,
 
     pub packet_interceptor: &'a mut Cfg::PacketInterceptor,
+
+    pub datagram: &'a mut Cfg::DatagramEndpoint,
 }

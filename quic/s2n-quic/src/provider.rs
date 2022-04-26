@@ -38,6 +38,14 @@ cfg_if!(
     }
 );
 
+cfg_if!(
+    if #[cfg(all(s2n_quic_unstable, feature = "unstable-provider-datagram"))] {
+        pub mod datagram;
+    } else {
+        pub(crate) mod datagram;
+    }
+);
+
 /// An error indicating a failure to start an endpoint
 pub struct StartError(Box<dyn 'static + fmt::Display>);
 
