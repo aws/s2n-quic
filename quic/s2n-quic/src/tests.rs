@@ -3,17 +3,43 @@
 
 use crate::{
     client::Connect,
-    provider::io::testing::{spawn, spawn_primary, test, time::delay, Handle, Model, Result},
+    provider::{
+        event,
+        io::testing::{spawn, spawn_primary, test, time::delay, Handle, Model, Result},
+    },
     Client, Server,
 };
 use s2n_quic_core::{crypto::tls::testing::certificates, stream::testing::Data};
 use std::{net::SocketAddr, time::Duration};
 
+fn events() -> event::tracing::Provider {
+    use std::sync::Once;
+
+    static TRACING: Once = Once::new();
+
+    // make sure this only gets initialized once
+    TRACING.call_once(|| {
+        let format = tracing_subscriber::fmt::format()
+            .with_level(false) // don't include levels in formatted output
+            .with_timer(tracing_subscriber::fmt::time::uptime())
+            .with_ansi(false)
+            .compact(); // Use a less verbose output format.
+
+        tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::new("debug"))
+            .event_format(format)
+            .with_test_writer()
+            .init();
+    });
+
+    event::tracing::Provider::default()
+}
+
 fn server(handle: &Handle) -> Result<SocketAddr> {
     let mut server = Server::builder()
         .with_io(handle.builder().build().unwrap())?
         .with_tls((certificates::CERT_PEM, certificates::KEY_PEM))?
-        .with_event(crate::provider::event::tracing::Provider::default())?
+        .with_event(events())?
         .start()?;
     let server_addr = server.local_addr()?;
 
@@ -39,7 +65,7 @@ fn client(handle: &Handle, server_addr: SocketAddr) -> Result {
     let client = Client::builder()
         .with_io(handle.builder().build().unwrap())?
         .with_tls(certificates::CERT_PEM)?
-        .with_event(crate::provider::event::tracing::Provider::default())?
+        .with_event(events())?
         .start()?;
 
     spawn_primary(async move {

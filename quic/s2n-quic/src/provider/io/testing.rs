@@ -39,28 +39,6 @@ pub fn test_seed<N: Network, F: FnOnce(&Handle) -> Result<O>, O>(
     seed: u64,
     f: F,
 ) -> Result<Duration> {
-    #[cfg(any(feature = "provider-event-tracing", test))]
-    {
-        use std::sync::Once;
-
-        static TRACING: Once = Once::new();
-
-        // make sure this only gets initialized once
-        TRACING.call_once(|| {
-            let format = tracing_subscriber::fmt::format()
-                .with_level(false) // don't include levels in formatted output
-                .with_timer(tracing_subscriber::fmt::time::uptime())
-                .with_ansi(false)
-                .compact(); // Use a less verbose output format.
-
-            tracing_subscriber::fmt()
-                .with_env_filter(tracing_subscriber::EnvFilter::new("debug"))
-                .event_format(format)
-                .with_test_writer()
-                .init();
-        });
-    }
-
     let mut executor = Executor::new(network, seed);
     let handle = executor.handle().clone();
 
