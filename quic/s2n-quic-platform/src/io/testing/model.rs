@@ -22,7 +22,7 @@ impl Model {
 
     /// The amount of time between sending packets
     ///
-    /// Setting this value to 0 will transmit all allowed packets at the exact same time.
+    /// Setting this value to `0` will transmit all allowed packets at the exact same time.
     pub fn set_jitter(&self, value: Duration) -> &Self {
         self.0
             .jitter
@@ -72,8 +72,10 @@ impl Model {
 
     /// The odds a packet will be retransmitted.
     ///
-    /// Each packet will make an independent decision with odds of 1 in N.
-    pub fn set_retransmit_rate(&self, value: u64) -> &Self {
+    /// Each packet will make an independent decision with odds of `0.0..1.0`, with `0.0` having no
+    /// chance and `1.0` occurring with each packet.
+    pub fn set_retransmit_rate(&self, value: f64) -> &Self {
+        let value = rate_to_u64(value);
         self.0.retransmit_rate.store(value, Ordering::SeqCst);
         self
     }
@@ -84,7 +86,8 @@ impl Model {
 
     /// The odds a packet will be corrupted.
     ///
-    /// Each packet will make an independent decision with odds of 1 in N.
+    /// Each packet will make an independent decision with odds of `0.0..1.0`, with `0.0` having no
+    /// chance and `1.0` occurring with each packet.
     pub fn set_corrupt_rate(&self, value: f64) -> &Self {
         let value = rate_to_u64(value);
         self.0.corrupt_rate.store(value, Ordering::SeqCst);
@@ -97,22 +100,21 @@ impl Model {
 
     /// The odds a packet will be dropped.
     ///
-    /// Each packet will make an independent decision with odds of 1 in N.
+    /// Each packet will make an independent decision with odds of `0.0..1.0`, with `0.0` having no
+    /// chance and `1.0` occurring with each packet.
     pub fn set_drop_rate(&self, value: f64) -> &Self {
         let value = rate_to_u64(value);
         self.0.drop_rate.store(value, Ordering::SeqCst);
         self
     }
 
-    fn mtu(&self) -> u16 {
-        self.0.mtu.load(Ordering::SeqCst)
+    fn max_udp_payload(&self) -> u16 {
+        self.0.max_udp_payload.load(Ordering::SeqCst)
     }
 
     /// The maximum payload size for the network
-    ///
-    /// NOTE: this is the UDP payload and doesn't include Ethernet/IP/UDP headers
-    pub fn set_mtu(&self, value: u16) -> &Self {
-        self.0.mtu.store(value, Ordering::SeqCst);
+    pub fn set_max_udp_payload(&self, value: u16) -> &Self {
+        self.0.max_udp_payload.store(value, Ordering::SeqCst);
         self
     }
 
@@ -148,7 +150,7 @@ struct State {
     retransmit_rate: AtomicU64,
     corrupt_rate: AtomicU64,
     drop_rate: AtomicU64,
-    mtu: AtomicU16,
+    max_udp_payload: AtomicU16,
     max_inflight: AtomicU64,
     current_inflight: AtomicU64,
 }
@@ -163,7 +165,7 @@ impl Default for State {
             retransmit_rate: AtomicU64::new(0),
             corrupt_rate: AtomicU64::new(0),
             drop_rate: AtomicU64::new(0),
-            mtu: AtomicU16::new(MaxMtu::default().into()),
+            max_udp_payload: AtomicU16::new(MaxMtu::default().into()),
             max_inflight: AtomicU64::new(u64::MAX),
             current_inflight: AtomicU64::new(0),
         }
@@ -178,26 +180,32 @@ impl Network for Model {
         let retransmit_rate = self.retransmit_rate();
         let corrupt_rate = self.corrupt_rate();
         let drop_rate = self.drop_rate();
-        let mtu = self.mtu() as usize;
+        let max_udp_payload = self.max_udp_payload() as usize;
 
         let now = super::time::now();
         let mut transmit_time = now + self.delay();
         let transmit_time = &mut transmit_time;
 
+        #[inline]
+        fn gen_rate(rate: u64) -> bool {
+            // ensure the rate isn't 0 before actually generating a random number
+            rate > 0 && super::rand::gen::<u64>() < rate
+        }
+
         let mut transmit = |packet: Cow<Packet>| {
             // drop the packet if it's over the current MTU
-            if packet.payload.len() > mtu {
+            if packet.payload.len() > max_udp_payload {
                 return 0;
             }
 
             // drop the packet if enabled
-            if drop_rate > 0 && super::rand::gen::<u64>() < drop_rate {
+            if gen_rate(drop_rate) {
                 return 0;
             }
 
             let mut packet = packet.into_owned();
 
-            if corrupt_rate > 0 && super::rand::gen::<u64>() < corrupt_rate {
+            if !packet.payload.is_empty() && gen_rate(corrupt_rate) {
                 // randomly truncate the payload
                 let num_bytes = super::rand::gen_range(0..packet.payload.len());
                 if num_bytes > 0 {
@@ -248,6 +256,8 @@ impl Network for Model {
 
             // spawn a task that will push the packet onto the receiver queue at the transit time
             super::spawn(async move {
+                // if the packet isn't scheduled to transmit immediately, wait until the computed
+                // time
                 if now != transmit_time {
                     super::time::delay_until(transmit_time).await;
                 }
@@ -269,11 +279,12 @@ impl Network for Model {
             }
 
             // retransmit the packet until the rate fails or we retransmit 5
+            //
+            // We limit retransmissions to 5 just so we don't endlessly iterate when the
+            // `retransmit_rate` is high. This _should_ be high enough where we're getting
+            // retransmission coverage without needlessly saturating the network.
             let mut count = 0;
-            while retransmit_rate > 0
-                && count < 5
-                && super::rand::gen_range(0..retransmit_rate) == 0
-            {
+            while count < 5 && gen_rate(retransmit_rate) {
                 transmission_count += transmit(Cow::Borrowed(&packet));
                 count += 1;
             }

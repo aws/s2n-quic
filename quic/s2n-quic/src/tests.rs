@@ -3,48 +3,11 @@
 
 use crate::{
     client::Connect,
-    provider::io::testing::{spawn, spawn_primary, time::delay, Executor, Handle, Model},
+    provider::io::testing::{spawn, spawn_primary, test, time::delay, Handle, Model, Result},
     Client, Server,
 };
 use s2n_quic_core::{crypto::tls::testing::certificates, stream::testing::Data};
-use std::{net::SocketAddr, sync::Once, time::Duration};
-
-type Error = Box<dyn 'static + std::error::Error>;
-type Result<T = (), E = Error> = core::result::Result<T, E>;
-
-fn setup<F: FnOnce(&Handle) -> Result<O>, O>(network: Model, f: F) {
-    setup_seed(network, 123456789, f)
-}
-
-fn setup_seed<F: FnOnce(&Handle) -> Result<O>, O>(network: Model, seed: u64, f: F) {
-    static TRACING: Once = Once::new();
-
-    // make sure this only gets initialized once
-    TRACING.call_once(|| {
-        let format = tracing_subscriber::fmt::format()
-            .with_level(false) // don't include levels in formatted output
-            .with_timer(tracing_subscriber::fmt::time::uptime())
-            .with_ansi(false)
-            .compact(); // Use a less verbose output format.
-
-        tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::new("debug"))
-            .event_format(format)
-            .with_test_writer()
-            .init();
-    });
-
-    let mut executor = Executor::new(network, seed);
-    let handle = executor.handle().clone();
-
-    let result = executor.enter(|| f(&handle));
-
-    if let Err(err) = result {
-        panic!("{:?}", err);
-    }
-
-    executor.run();
-}
+use std::{net::SocketAddr, time::Duration};
 
 fn server(handle: &Handle) -> Result<SocketAddr> {
     let mut server = Server::builder()
@@ -112,11 +75,11 @@ fn client_server(handle: &Handle) -> Result<SocketAddr> {
 
 #[test]
 fn client_server_test() {
-    setup(Model::default(), client_server);
+    test(Model::default(), client_server).unwrap();
 }
 
 fn blackhole(model: Model, blackhole_duration: Duration) {
-    setup(model.clone(), |handle| {
+    test(model.clone(), |handle| {
         spawn(async move {
             // switch back and forth between blackhole and not
             loop {
@@ -130,6 +93,7 @@ fn blackhole(model: Model, blackhole_duration: Duration) {
         });
         client_server(handle)
     })
+    .unwrap();
 }
 
 #[test]

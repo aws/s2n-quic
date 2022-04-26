@@ -121,8 +121,14 @@ impl<N: Network> bach::executor::Environment for Env<N> {
 
         self.stalled_iterations += 1;
 
+        // A stalled iteration is a macrostep that didn't actually execute any tasks.
+        //
+        // The idea with limiting it prevents the runtime from looping endlessly and not
+        // actually doing any work. The value of 100 was chosen somewhat arbitrarily as a high
+        // enough number that we won't get false positives but low enough that the number of
+        // loops stays within reasonable ranges.
         if self.stalled_iterations > 100 {
-            panic!("stalled test");
+            panic!("the runtime stalled after 100 iterations");
         }
 
         while let Some(time) = self.time.advance() {
