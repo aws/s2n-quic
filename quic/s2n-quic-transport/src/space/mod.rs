@@ -441,6 +441,10 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     pub fn retry_cid(&self) -> Option<&PeerId> {
         self.retry_cid.as_deref()
     }
+
+    pub fn has_ack_interest(&self) -> bool {
+        false
+    }
 }
 
 impl<Config: endpoint::Config> timer::Provider for PacketSpaceManager<Config> {

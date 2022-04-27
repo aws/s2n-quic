@@ -698,6 +698,8 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         path.on_peer_validated();
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, local_id_registry, path_id, path_manager);
+
+        // TODO instead of processing ACKs, store the information and express interest
         recovery_manager.on_ack_frame(datagram, frame, &mut context, publisher)
     }
 

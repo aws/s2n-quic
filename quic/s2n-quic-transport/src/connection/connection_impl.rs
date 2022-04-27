@@ -1043,6 +1043,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         Ok(())
     }
 
+    /// Process ACKs for the `Connection`.
+    fn on_process_acks(&mut self) {}
+
     /// Handles all external wakeups on the [`Connection`].
     fn on_wakeup(
         &mut self,
@@ -1638,12 +1641,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     && self.space_manager.handshake().is_none()
                     && self.local_id_registry.connection_id_interest()
                         != connection::id::Interest::None;
+                interests.ack = self.space_manager.has_ack_interest();
             }
             ConnectionState::Closing => {
                 let constraint = self.path_manager.active_path().transmission_constraint();
                 interests.closing = true;
                 interests.transmission = self.close_sender.can_transmit(constraint);
                 interests.finalization = self.close_sender.finalization_status().is_final();
+                interests.ack = self.space_manager.has_ack_interest();
             }
             ConnectionState::Draining | ConnectionState::Finished => {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.2
@@ -1653,6 +1658,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
                 // Remove the connection from the endpoint
                 interests.finalization = true;
+                interests.ack = self.space_manager.has_ack_interest();
             }
         }
 
