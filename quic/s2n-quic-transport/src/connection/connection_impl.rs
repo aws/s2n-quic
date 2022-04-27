@@ -4,6 +4,7 @@
 //! Contains the implementation of the `Connection`
 
 use crate::{
+    ack::interest::Provider as _,
     connection::{
         self,
         close_sender::CloseSender,
@@ -21,7 +22,7 @@ use crate::{
     recovery::RttEstimator,
     space::{PacketSpace, PacketSpaceManager},
     stream, transmission,
-    transmission::interest::Provider,
+    transmission::interest::Provider as _,
     wakeup_queue::WakeupHandle,
 };
 use alloc::sync::Arc;

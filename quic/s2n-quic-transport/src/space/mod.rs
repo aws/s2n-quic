@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    connection, endpoint, path,
+    ack, connection, endpoint, path,
     path::{path_event, Path},
     processed_packet::ProcessedPacket,
     space::rx_packet_numbers::AckManager,
@@ -15,7 +15,7 @@ use core::{
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    ack,
+    ack::Settings as AckSettings,
     application::ServerName,
     connection::{limits::Limits, InitialId, PeerId},
     crypto::{tls, tls::Session, CryptoSuite, Key},
@@ -144,7 +144,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         now: Timestamp,
         publisher: &mut Pub,
     ) -> Self {
-        let ack_manager = AckManager::new(PacketNumberSpace::Initial, ack::Settings::EARLY);
+        let ack_manager = AckManager::new(PacketNumberSpace::Initial, AckSettings::EARLY);
 
         publisher.on_key_update(event::builder::KeyUpdate {
             key_type: event::builder::KeyType::Initial,
@@ -441,9 +441,12 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     pub fn retry_cid(&self) -> Option<&PeerId> {
         self.retry_cid.as_deref()
     }
+}
 
-    pub fn has_ack_interest(&self) -> bool {
-        false
+impl<Config: endpoint::Config> ack::interest::Provider for PacketSpaceManager<Config> {
+    #[inline]
+    fn ack_interest<Q: ack::interest::Query>(&self, query: &mut Q) -> ack::interest::Result {
+        query.on_interest(ack::interest::Interest::None)
     }
 }
 
