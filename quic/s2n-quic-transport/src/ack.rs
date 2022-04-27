@@ -47,4 +47,40 @@ pub mod interest {
     pub struct QueryBreak;
 
     pub type Result<T = (), E = QueryBreak> = core::result::Result<T, E>;
+
+    #[cfg(test)]
+    mod test {
+        use super::{Provider, Query, *};
+
+        #[test]
+        fn has_ack_interest() {
+            assert!(!Foo.has_ack_interest());
+            assert!(Bar.has_ack_interest());
+            assert!(Buzz { foo: Foo, bar: Bar }.has_ack_interest());
+        }
+
+        struct Foo;
+        impl Provider for Foo {
+            fn ack_interest<Q: Query>(&self, query: &mut Q) -> super::Result {
+                query.on_interest(Interest::None)
+            }
+        }
+        struct Bar;
+        impl Provider for Bar {
+            fn ack_interest<Q: Query>(&self, query: &mut Q) -> super::Result {
+                query.on_interest(Interest::Immediate)
+            }
+        }
+        struct Buzz {
+            foo: Foo,
+            bar: Bar,
+        }
+        impl Provider for Buzz {
+            fn ack_interest<Q: Query>(&self, query: &mut Q) -> super::Result {
+                self.foo.ack_interest(query)?;
+                self.bar.ack_interest(query)?;
+                query.on_interest(Interest::None)
+            }
+        }
+    }
 }
