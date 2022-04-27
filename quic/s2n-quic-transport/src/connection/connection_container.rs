@@ -621,7 +621,7 @@ pub struct ConnectionContainer<C: connection::Trait, L: connection::Lock<C>> {
 }
 
 macro_rules! iterate_interruptible {
-    ($sel:ident, $list_name:tt, $link_name:ident, $func:tt) => {
+    ($sel:ident, $list_name:ident, $link_name:ident, $func:expr) => {
         let mut extracted_list = $sel.interest_lists.$list_name.take();
         let mut cursor = extracted_list.front_mut();
 

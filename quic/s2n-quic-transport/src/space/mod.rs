@@ -15,7 +15,6 @@ use core::{
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    ack::Settings as AckSettings,
     application::ServerName,
     connection::{limits::Limits, InitialId, PeerId},
     crypto::{tls, tls::Session, CryptoSuite, Key},
@@ -144,7 +143,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         now: Timestamp,
         publisher: &mut Pub,
     ) -> Self {
-        let ack_manager = AckManager::new(PacketNumberSpace::Initial, AckSettings::EARLY);
+        let ack_manager = AckManager::new(PacketNumberSpace::Initial, ack::Settings::EARLY);
 
         publisher.on_key_update(event::builder::KeyUpdate {
             key_type: event::builder::KeyType::Initial,
