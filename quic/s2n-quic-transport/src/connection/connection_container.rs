@@ -957,11 +957,47 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
 
     /// Iterates over all `Connection`s which are waiting to process ACKs,
     /// and executes the given function on each `Connection`
-    pub fn iterate_new_ack_list<F>(&mut self, mut func: F)
+    pub fn iterate_ack_list<F>(&mut self, mut func: F)
     where
-        F: FnMut(&mut C) -> ConnectionContainerIterationResult,
+        F: FnMut(&mut C),
     {
-        iterate_interruptible!(self, waiting_for_ack, waiting_for_ack_link, func);
+        let mut extracted_list = self.interest_lists.waiting_for_ack.take();
+        let mut cursor = extracted_list.front_mut();
+
+        while let Some(connection) = cursor.remove() {
+            // Note that while we iterate over the intrusive lists here
+            // `Connection` is part of no list anymore, since it also got dropped
+            // from list that is described by the `cursor`.
+            debug_assert!(!connection.waiting_for_ack_link.is_linked());
+
+            let interests = match connection.inner.write(|conn| {
+                func(conn);
+                conn.interests()
+            }) {
+                Ok(result) => result,
+                Err(_) => {
+                    // the connection panicked so remove it from the container
+                    self.remove_poisoned_node(&connection);
+                    continue;
+                }
+            };
+
+            // Update the interests after the interaction and outside of the per-connection Mutex
+            if self
+                .interest_lists
+                .update_interests(
+                    &mut self.accept_queue,
+                    &connection,
+                    interests,
+                    ConnectionContainerIterationResult::Continue,
+                )
+                .is_err()
+            {
+                self.remove_poisoned_node(&connection);
+            }
+        }
+
+        self.finalize_done_connections();
     }
 
     /// Iterates over all `Connection`s which are waiting for timeouts before the current time
