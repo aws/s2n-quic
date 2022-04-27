@@ -119,6 +119,12 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                 self.receive_datagram(&header, payload, timestamp)
             }
         }
+
+        // process ACKs on Connections with interest
+        self.connections.iterate_ack_list(|connection| {
+            connection.on_process_acks();
+        });
+
         let len = entries.len();
         queue.finish(len);
     }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    connection, endpoint, path,
+    ack, connection, endpoint, path,
     path::{path_event, Path},
     processed_packet::ProcessedPacket,
     space::rx_packet_numbers::AckManager,
@@ -15,7 +15,6 @@ use core::{
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    ack,
     application::ServerName,
     connection::{limits::Limits, InitialId, PeerId},
     crypto::{tls, tls::Session, CryptoSuite, Key},
@@ -440,6 +439,13 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
     pub fn retry_cid(&self) -> Option<&PeerId> {
         self.retry_cid.as_deref()
+    }
+}
+
+impl<Config: endpoint::Config> ack::interest::Provider for PacketSpaceManager<Config> {
+    #[inline]
+    fn ack_interest<Q: ack::interest::Query>(&self, query: &mut Q) -> ack::interest::Result {
+        query.on_interest(ack::interest::Interest::None)
     }
 }
 
