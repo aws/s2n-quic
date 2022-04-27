@@ -24,6 +24,8 @@ pub struct PacketInfo {
     pub is_app_limited: bool,
 }
 
+const MICRO_BITS_PER_BYTE: u64 = 8 * 1000000;
+
 #[derive(Copy, Clone, Debug, Default, PartialOrd, PartialEq)]
 pub struct Bandwidth {
     bits_per_second: u64,
@@ -33,8 +35,6 @@ impl Bandwidth {
     pub const ZERO: Bandwidth = Bandwidth { bits_per_second: 0 };
 
     pub fn new(bytes: u64, interval: Duration) -> Self {
-        const MICRO_BITS_PER_BYTE: u64 = 8 * 1000000;
-
         if interval.is_zero() {
             Bandwidth::ZERO
         } else {
@@ -52,6 +52,14 @@ impl core::ops::Mul<Ratio<u64>> for Bandwidth {
         Bandwidth {
             bits_per_second: (rhs * self.bits_per_second).to_integer(),
         }
+    }
+}
+
+impl core::ops::Mul<Duration> for Bandwidth {
+    type Output = u64;
+
+    fn mul(self, rhs: Duration) -> Self::Output {
+        (self.bits_per_second * rhs.as_micros() as u64) / MICRO_BITS_PER_BYTE
     }
 }
 

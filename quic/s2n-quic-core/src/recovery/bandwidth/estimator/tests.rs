@@ -27,6 +27,15 @@ fn bandwidth_mul_ratio() {
     assert_eq!(result, Bandwidth::new(3000, Duration::from_secs(1)));
 }
 
+#[test]
+fn bandwidth_mul_duration() {
+    let bandwidth = Bandwidth::new(7000, Duration::from_secs(2));
+
+    let result = bandwidth * Duration::from_secs(10);
+
+    assert_eq!(result, 35000);
+}
+
 // first_sent_time and delivered_time typically hold values from recently acknowledged packets. However,
 // when  no packet has been sent yet, or there are no packets currently in flight, these values are initialized
 // with the time when a packet is sent. This test confirms first_sent_time and delivered_time are
