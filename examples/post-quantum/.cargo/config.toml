@@ -1,0 +1,2 @@
+[build]
+rustflags=['--cfg', 's2n_quic_unstable', '--cfg', 's2n_quic_enable_pq_tls']
