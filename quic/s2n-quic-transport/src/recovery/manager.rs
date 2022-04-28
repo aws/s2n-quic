@@ -15,7 +15,7 @@ use s2n_quic_core::{
     event::{self, builder::CongestionSource, IntoEvent},
     frame,
     frame::ack::EcnCounts,
-    inet::{DatagramInfo, ExplicitCongestionNotification},
+    inet::ExplicitCongestionNotification,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     recovery::{congestion_controller, CongestionController, RttEstimator, K_GRANULARITY},
     time::{timer, Timer, Timestamp},
@@ -313,7 +313,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         Pub: event::ConnectionPublisher,
     >(
         &mut self,
-        datagram: &DatagramInfo,
+        timestamp: Timestamp,
         frame: frame::Ack<A>,
         context: &mut Ctx,
         publisher: &mut Pub,
@@ -344,7 +344,7 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         let (largest_newly_acked, includes_ack_eliciting) = self.process_ack_range(
             &mut newly_acked_packets,
-            datagram,
+            timestamp,
             &frame,
             context,
             publisher,
@@ -362,7 +362,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 largest_newly_acked,
                 largest_acked_packet_number,
                 includes_ack_eliciting,
-                datagram,
+                timestamp,
                 &frame,
                 context,
             );
@@ -372,7 +372,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 &newly_acked_packets,
                 largest_newly_acked_info,
                 new_largest_packet,
-                datagram,
+                timestamp,
                 &frame,
                 context,
                 publisher,
@@ -396,7 +396,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         newly_acked_packets: &mut SmallVec<
             [SentPacketInfo<packet_info_type!()>; ACKED_PACKETS_INITIAL_CAPACITY],
         >,
-        datagram: &DatagramInfo,
+        timestamp: Timestamp,
         frame: &frame::Ack<A>,
         context: &mut Ctx,
         publisher: &mut Pub,
@@ -412,9 +412,9 @@ impl<Config: endpoint::Config> Manager<Config> {
                 self.space.new_packet_number(end),
             );
 
-            context.validate_packet_ack(datagram, &acked_packets)?;
+            context.validate_packet_ack(timestamp, &acked_packets)?;
             // notify components of packets acked
-            context.on_packet_ack(datagram, &acked_packets);
+            context.on_packet_ack(timestamp, &acked_packets);
 
             let mut newly_acked_range: Option<(PacketNumber, PacketNumber)> = None;
 
@@ -462,7 +462,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         largest_newly_acked: PacketDetails<packet_info_type!()>,
         largest_acked_packet_number: PacketNumber,
         includes_ack_eliciting: bool,
-        datagram: &DatagramInfo,
+        timestamp: Timestamp,
         frame: &frame::Ack<A>,
         context: &mut Ctx,
     ) {
@@ -487,12 +487,12 @@ impl<Config: endpoint::Config> Manager<Config> {
         should_update_rtt &= includes_ack_eliciting;
 
         if should_update_rtt {
-            let latest_rtt = datagram.timestamp - largest_newly_acked_info.time_sent;
+            let latest_rtt = timestamp - largest_newly_acked_info.time_sent;
             let path = context.path_mut_by_id(largest_newly_acked_info.path_id);
             path.rtt_estimator.update_rtt(
                 frame.ack_delay(),
                 latest_rtt,
-                datagram.timestamp,
+                timestamp,
                 is_handshake_confirmed,
                 largest_acked_packet_number.space(),
             );
@@ -518,7 +518,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         >,
         largest_newly_acked: SentPacketInfo<packet_info_type!()>,
         new_largest_packet: bool,
-        datagram: &DatagramInfo,
+        timestamp: Timestamp,
         frame: &frame::Ack<A>,
         context: &mut Ctx,
         publisher: &mut Pub,
@@ -527,7 +527,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         //# Once a later packet within the same packet number space has been
         //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
         //# was sent a threshold amount of time in the past.
-        self.detect_and_remove_lost_packets(datagram.timestamp, context, publisher);
+        self.detect_and_remove_lost_packets(timestamp, context, publisher);
 
         let current_path_id = context.path_id();
         let is_handshake_confirmed = context.is_handshake_confirmed();
@@ -548,7 +548,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     sent_bytes,
                     acked_packet_info.cc_packet_info,
                     &path.rtt_estimator,
-                    datagram.timestamp,
+                    timestamp,
                 );
             }
 
@@ -566,7 +566,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             }
 
             if acked_packet_info.path_id != current_path_id {
-                self.update_pto_timer(path, datagram.timestamp, is_handshake_confirmed);
+                self.update_pto_timer(path, timestamp, is_handshake_confirmed);
             }
         }
 
@@ -586,7 +586,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.process_ecn(
                 newly_acked_ecn_counts,
                 frame.ecn_counts,
-                datagram,
+                timestamp,
                 context,
                 publisher,
             );
@@ -600,10 +600,10 @@ impl<Config: endpoint::Config> Manager<Config> {
                 current_path_acked_bytes,
                 largest_newly_acked.cc_packet_info,
                 &path.rtt_estimator,
-                datagram.timestamp,
+                timestamp,
             );
 
-            self.update_pto_timer(path, datagram.timestamp, is_handshake_confirmed);
+            self.update_pto_timer(path, timestamp, is_handshake_confirmed);
         }
     }
 
@@ -611,7 +611,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         &mut self,
         newly_acked_ecn_counts: EcnCounts,
         ack_frame_ecn_counts: Option<EcnCounts>,
-        datagram: &DatagramInfo,
+        timestamp: Timestamp,
         context: &mut Ctx,
         publisher: &mut Pub,
     ) {
@@ -623,7 +623,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.sent_packet_ecn_counts,
             self.baseline_ecn_counts,
             ack_frame_ecn_counts,
-            datagram.timestamp,
+            timestamp,
             path.rtt_estimator.smoothed_rtt(),
             path_event!(path, path_id),
             publisher,
@@ -638,7 +638,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             context
                 .path_mut()
                 .congestion_controller
-                .on_congestion_event(datagram.timestamp);
+                .on_congestion_event(timestamp);
             let path = context.path();
             publisher.on_congestion(event::builder::Congestion {
                 path: path_event!(path, path_id),
@@ -970,7 +970,7 @@ pub trait Context<Config: endpoint::Config> {
 
     fn validate_packet_ack(
         &mut self,
-        datagram: &DatagramInfo,
+        timestamp: Timestamp,
         packet_number_range: &PacketNumberRange,
     ) -> Result<(), transport::Error>;
 
@@ -979,7 +979,7 @@ pub trait Context<Config: endpoint::Config> {
         packet_number_range: &PacketNumberRange,
         publisher: &mut Pub,
     );
-    fn on_packet_ack(&mut self, datagram: &DatagramInfo, packet_number_range: &PacketNumberRange);
+    fn on_packet_ack(&mut self, timestamp: Timestamp, packet_number_range: &PacketNumberRange);
     fn on_packet_loss<Pub: event::ConnectionPublisher>(
         &mut self,
         packet_number_range: &PacketNumberRange,
