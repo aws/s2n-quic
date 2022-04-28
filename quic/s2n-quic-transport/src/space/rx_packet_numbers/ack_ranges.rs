@@ -25,10 +25,13 @@ impl AckRanges {
     }
 
     /// Inserts a packet number; dropping smaller values if needed
+    #[inline]
     pub fn insert_packet_number(&mut self, packet_number: PacketNumber) -> bool {
         if self.0.insert_value(packet_number).is_ok() {
             return true;
         } else {
+            // TODO: add metrics if ack ranges are being dropped
+            //
             // shed the lowest packet number ranges to make room for larger ones
             if let Some(min) = self.0.pop_min() {
                 return if min < packet_number {
@@ -44,6 +47,7 @@ impl AckRanges {
     }
 
     /// Returns the overall range of the ack_ranges
+    #[inline]
     pub fn spread(&self) -> usize {
         match (self.min_value(), self.max_value()) {
             (Some(min), Some(max)) => {
