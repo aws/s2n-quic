@@ -46,11 +46,7 @@ impl PendingAckRanges {
         self.ack_delay = self.ack_delay.max(ack_delay);
 
         // TODO: add metrics if ack ranges are being dropped
-        let mut did_insert = true;
-        for packet_number in acked_packets {
-            did_insert &= self.ranges.insert_packet_number(packet_number);
-        }
-        did_insert
+        self.ranges.insert_packet_number_range(acked_packets)
     }
 
     /// Returns an iterator over all of the values contained in the ranges `IntervalSet`.

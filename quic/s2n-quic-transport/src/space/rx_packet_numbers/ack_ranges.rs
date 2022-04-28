@@ -5,9 +5,14 @@ use crate::interval_set::{IntervalSet, RangeInclusiveIter};
 use core::{
     convert::TryInto,
     num::NonZeroUsize,
-    ops::{Deref, DerefMut, RangeInclusive},
+    ops::{Bound, Deref, DerefMut, RangeInclusive},
 };
-use s2n_quic_core::{ack::Settings, frame::ack, packet::number::PacketNumber, varint::VarInt};
+use s2n_quic_core::{
+    ack::Settings,
+    frame::ack,
+    packet::number::{PacketNumber, PacketNumberRange},
+    varint::VarInt,
+};
 
 #[derive(Clone, Debug)]
 pub struct AckRanges(IntervalSet<PacketNumber>);
@@ -26,16 +31,20 @@ impl AckRanges {
 
     /// Inserts a packet number; dropping smaller values if needed
     #[inline]
-    pub fn insert_packet_number(&mut self, packet_number: PacketNumber) -> bool {
-        if self.0.insert_value(packet_number).is_ok() {
+    pub fn insert_packet_number_range(&mut self, pn_range: PacketNumberRange) -> bool {
+        let interval = (
+            Bound::Included(pn_range.start()),
+            Bound::Included(pn_range.end()),
+        );
+        if self.0.insert(interval).is_ok() {
             return true;
         } else {
             // TODO: add metrics if ack ranges are being dropped
             //
             // shed the lowest packet number ranges to make room for larger ones
             if let Some(min) = self.0.pop_min() {
-                return if min < packet_number {
-                    self.0.insert_value(packet_number).is_ok()
+                return if min < pn_range.start() {
+                    self.0.insert(interval).is_ok()
                 } else {
                     let _ = self.0.insert_front(min);
                     false
@@ -44,6 +53,12 @@ impl AckRanges {
         }
 
         false
+    }
+
+    /// Inserts a packet number; dropping smaller values if needed
+    #[inline]
+    pub fn insert_packet_number(&mut self, packet_number: PacketNumber) -> bool {
+        self.insert_packet_number_range(PacketNumberRange::new(packet_number, packet_number))
     }
 
     /// Returns the overall range of the ack_ranges
