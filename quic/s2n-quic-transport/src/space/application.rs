@@ -616,11 +616,11 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
 
     fn validate_packet_ack(
         &mut self,
-        datagram: &DatagramInfo,
+        timestamp: Timestamp,
         packet_number_range: &PacketNumberRange,
     ) -> Result<(), transport::Error> {
         self.tx_packet_numbers
-            .on_packet_ack(datagram, packet_number_range)
+            .on_packet_ack(timestamp, packet_number_range)
     }
 
     fn on_new_packet_ack<Pub: event::ConnectionPublisher>(
@@ -636,9 +636,9 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
         self.path_manager.on_packet_ack(packet_number_range);
     }
 
-    fn on_packet_ack(&mut self, datagram: &DatagramInfo, packet_number_range: &PacketNumberRange) {
+    fn on_packet_ack(&mut self, timestamp: Timestamp, packet_number_range: &PacketNumberRange) {
         self.ack_manager
-            .on_packet_ack(datagram, packet_number_range);
+            .on_packet_ack(timestamp, packet_number_range);
     }
 
     fn on_packet_loss<Pub: event::ConnectionPublisher>(
@@ -687,7 +687,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
     fn handle_ack_frame<A: AckRanges, Pub: event::ConnectionPublisher>(
         &mut self,
         frame: Ack<A>,
-        datagram: &DatagramInfo,
+        timestamp: Timestamp,
         path_id: path::Id,
         path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
@@ -700,13 +700,13 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
             self.recovery(handshake_status, local_id_registry, path_id, path_manager);
 
         // TODO instead of processing ACKs, store the information and express interest
-        recovery_manager.on_ack_frame(datagram, frame, &mut context, publisher)
+        recovery_manager.on_ack_frame(timestamp, frame, &mut context, publisher)
     }
 
     fn handle_connection_close_frame(
         &mut self,
         _frame: ConnectionClose,
-        _datagram: &DatagramInfo,
+        _timestamp: Timestamp,
         _path: &mut Path<Config>,
     ) -> Result<(), transport::Error> {
         Ok(())
@@ -880,7 +880,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
     fn handle_handshake_done_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: HandshakeDone,
-        datagram: &DatagramInfo,
+        timestamp: Timestamp,
         path: &mut Path<Config>,
         local_id_registry: &mut connection::LocalIdRegistry,
         handshake_status: &mut HandshakeStatus,
@@ -903,7 +903,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         //# At the
         //# client, the handshake is considered confirmed when a HANDSHAKE_DONE
         //# frame is received.
-        self.on_handshake_confirmed(path, local_id_registry, datagram.timestamp);
+        self.on_handshake_confirmed(path, local_id_registry, timestamp);
 
         Ok(())
     }

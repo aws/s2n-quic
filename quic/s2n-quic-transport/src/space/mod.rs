@@ -537,7 +537,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
     fn handle_ack_frame<A: AckRanges, Pub: event::ConnectionPublisher>(
         &mut self,
         frame: Ack<A>,
-        datagram: &DatagramInfo,
+        timestamp: Timestamp,
         path_id: path::Id,
         path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
@@ -548,14 +548,14 @@ pub trait PacketSpace<Config: endpoint::Config> {
     fn handle_connection_close_frame(
         &mut self,
         frame: ConnectionClose,
-        datagram: &DatagramInfo,
+        timestamp: Timestamp,
         path: &mut Path<Config>,
     ) -> Result<(), transport::Error>;
 
     fn handle_handshake_done_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: HandshakeDone,
-        _datagram: &DatagramInfo,
+        _timestamp: Timestamp,
         _path: &mut Path<Config>,
         _local_id_registry: &mut connection::LocalIdRegistry,
         _handshake_status: &mut HandshakeStatus,
@@ -741,7 +741,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     let on_error = on_frame_processed!(frame);
                     self.handle_ack_frame(
                         frame,
-                        datagram,
+                        datagram.timestamp,
                         path_id,
                         path_manager,
                         handshake_status,
@@ -752,8 +752,12 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 }
                 Frame::ConnectionClose(frame) => {
                     let on_error = on_frame_processed!(frame);
-                    self.handle_connection_close_frame(frame, datagram, &mut path_manager[path_id])
-                        .map_err(on_error)?;
+                    self.handle_connection_close_frame(
+                        frame,
+                        datagram.timestamp,
+                        &mut path_manager[path_id],
+                    )
+                    .map_err(on_error)?;
 
                     // skip processing any other frames and return an error
                     return Err(frame.into());
@@ -842,7 +846,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     let on_error = on_frame_processed!(frame);
                     self.handle_handshake_done_frame(
                         frame,
-                        datagram,
+                        datagram.timestamp,
                         &mut path_manager[path_id],
                         local_id_registry,
                         handshake_status,

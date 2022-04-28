@@ -3,7 +3,6 @@
 
 use s2n_quic_core::{
     ack,
-    inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
     time::Timestamp,
     transport,
@@ -29,7 +28,7 @@ impl TxPacketNumbers {
     /// This method gets called when a packet delivery got acknowledged
     pub fn on_packet_ack<A: ack::Set>(
         &mut self,
-        datagram: &DatagramInfo,
+        timestamp: Timestamp,
         ack_set: &A,
     ) -> Result<(), transport::Error> {
         let largest = ack_set.largest();
@@ -46,7 +45,7 @@ impl TxPacketNumbers {
 
         // record the largest packet acked
         if largest > self.largest_sent_acked.0 {
-            self.largest_sent_acked = (largest, datagram.timestamp);
+            self.largest_sent_acked = (largest, timestamp);
         }
 
         Ok(())

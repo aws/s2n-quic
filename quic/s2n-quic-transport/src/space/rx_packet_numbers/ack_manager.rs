@@ -15,7 +15,6 @@ use s2n_quic_core::{
     ack,
     counter::{Counter, Saturating},
     frame::{ack::EcnCounts, Ack, Ping},
-    inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
     time::{timer, Timer, Timestamp},
     varint::VarInt,
@@ -164,7 +163,7 @@ impl AckManager {
     }
 
     /// Called when a set of packets was acknowledged
-    pub fn on_packet_ack<A: ack::Set>(&mut self, _datagram: &DatagramInfo, ack_set: &A) {
+    pub fn on_packet_ack<A: ack::Set>(&mut self, _timestamp: Timestamp, ack_set: &A) {
         if let Some(ack_range) = self.ack_eliciting_transmissions.on_update(ack_set) {
             self.ack_ranges
                 .remove(ack_range)
@@ -360,7 +359,7 @@ mod tests {
     use s2n_quic_core::{
         ack, connection, endpoint,
         frame::{ack_elicitation::AckElicitation, ping, Frame},
-        inet::ExplicitCongestionNotification,
+        inet::{DatagramInfo, ExplicitCongestionNotification},
         time::{Clock, NoopClock},
     };
 

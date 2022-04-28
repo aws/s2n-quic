@@ -56,7 +56,8 @@ impl Endpoint {
 
         if let Some(ack) = packet.ack {
             for ack_range in ack.ack_ranges {
-                self.ack_manager.on_packet_ack(&datagram, &ack_range);
+                self.ack_manager
+                    .on_packet_ack(datagram.timestamp, &ack_range);
             }
         }
 

@@ -2718,7 +2718,7 @@ fn ack_packets_on_path(
         ecn_counts,
     };
 
-    let _ = manager.on_ack_frame(&datagram, frame, context, publisher);
+    let _ = manager.on_ack_frame(datagram.timestamp, frame, context, publisher);
 
     for packet in acked_packets {
         assert!(manager.sent_packets.get(packet).is_none());
@@ -3066,7 +3066,7 @@ impl<'a> recovery::Context<Config> for MockContext<'a> {
 
     fn validate_packet_ack(
         &mut self,
-        _datagram: &DatagramInfo,
+        _timestamp: Timestamp,
         _packet_number_range: &PacketNumberRange,
     ) -> Result<(), transport::Error> {
         self.validate_packet_ack_count += 1;
@@ -3081,11 +3081,7 @@ impl<'a> recovery::Context<Config> for MockContext<'a> {
         self.on_new_packet_ack_count += 1;
     }
 
-    fn on_packet_ack(
-        &mut self,
-        _datagram: &DatagramInfo,
-        _packet_number_range: &PacketNumberRange,
-    ) {
+    fn on_packet_ack(&mut self, _timestamp: Timestamp, _packet_number_range: &PacketNumberRange) {
         self.on_packet_ack_count += 1;
     }
 
