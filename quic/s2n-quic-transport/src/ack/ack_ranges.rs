@@ -45,10 +45,12 @@ impl AckRanges {
             Some(min) => {
                 if min < pn_range.start() {
                     // TODO: add metrics for ack ranges being dropped
-                    self.0.insert(interval).expect(
+                    let insert_res = self.0.insert(interval);
+                    debug_assert!(
+                        insert_res.is_ok(),
                         "min range was removed, so it should be possible to insert another range",
                     );
-                    Ok(())
+                    insert_res.map_err(|_| ())
                 } else {
                     // new value is smaller than min so inset it back in the front
                     let _ = self.0.insert_front(min);
@@ -110,7 +112,8 @@ impl DerefMut for AckRanges {
 }
 
 #[cfg(test)]
-pub mod tests {
+mod tests {
+    use bolero::check;
     use s2n_quic_core::{packet::number::PacketNumberSpace, varint};
 
     use super::{super::tests::packet_numbers_iter, *};
@@ -237,5 +240,20 @@ pub mod tests {
         use insta::assert_debug_snapshot;
 
         assert_debug_snapshot!("AckRanges", size_of::<AckRanges>());
+    }
+
+    #[test]
+    fn insert_packet_number_range_fuzz() {
+        let mut ack_ranges = AckRanges::new(10);
+        check!()
+            .with_type::<(u32, u32)>()
+            .map(|(a, b)| (a.min(b), a.max(b))) // ensure valid range
+            .for_each(|(a, b)| {
+                let pn_a = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u32(*a));
+                let pn_b = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u32(*b));
+                let range_1 = PacketNumberRange::new(pn_a, pn_b);
+
+                assert!(ack_ranges.insert_packet_number_range(range_1).is_ok());
+            });
     }
 }
