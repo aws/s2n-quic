@@ -38,18 +38,18 @@ impl AckRanges {
         );
         if self.0.insert(interval).is_ok() {
             return true;
-        } else {
-            // TODO: add metrics if ack ranges are being dropped
-            //
-            // shed the lowest packet number ranges to make room for larger ones
-            if let Some(min) = self.0.pop_min() {
-                return if min < pn_range.start() {
-                    self.0.insert(interval).is_ok()
-                } else {
-                    let _ = self.0.insert_front(min);
-                    false
-                };
-            }
+        }
+
+        // TODO: add metrics if ack ranges are being dropped
+        //
+        // shed the lowest packet number ranges to make room for larger ones
+        if let Some(min) = self.0.pop_min() {
+            return if min < pn_range.start() {
+                self.0.insert(interval).is_ok()
+            } else {
+                let _ = self.0.insert_front(min);
+                false
+            };
         }
 
         false
@@ -107,6 +107,8 @@ impl DerefMut for AckRanges {
 
 #[cfg(test)]
 pub mod tests {
+    use s2n_quic_core::{packet::number::PacketNumberSpace, varint};
+
     use super::{super::tests::packet_numbers_iter, *};
 
     #[test]
@@ -148,6 +150,81 @@ pub mod tests {
         assert!(ack_ranges.contains(&pn_b));
         assert!(ack_ranges.contains(&pn_c));
         assert!(ack_ranges.contains(&pn_d));
+    }
+
+    #[test]
+    fn overlapping_range_test() {
+        let mut packet_numbers = packet_numbers_iter().step_by(2); // skip every other packet number
+        let mut ack_ranges = AckRanges::new(3);
+
+        // |---a---b---c---d---e---f---g---h---i---|
+        //     ^0
+        //         ^-1-^
+        //                 ^--2----^
+        //                             ^-3-^
+        //                                 ^-4-^
+        //             ^--1_2--^
+        //     ^--0_1--^
+        let pn_a = packet_numbers.next().unwrap();
+        let pn_b = packet_numbers.next().unwrap();
+        let pn_c = packet_numbers.next().unwrap();
+        let pn_d = packet_numbers.next().unwrap();
+        let pn_e = packet_numbers.next().unwrap();
+        let pn_f = packet_numbers.next().unwrap();
+        let pn_g = packet_numbers.next().unwrap();
+        let pn_h = packet_numbers.next().unwrap();
+        let pn_i = packet_numbers.next().unwrap();
+        let range_0 = PacketNumberRange::new(pn_a, pn_a);
+        let range_1 = PacketNumberRange::new(pn_b, pn_c);
+        let range_2 = PacketNumberRange::new(pn_d, pn_f);
+        let range_3 = PacketNumberRange::new(pn_g, pn_h);
+        let range_4 = PacketNumberRange::new(pn_h, pn_i);
+        let range_0_1 = PacketNumberRange::new(pn_a, pn_c);
+        let range_1_2 = PacketNumberRange::new(pn_c, pn_e);
+
+        assert!(ack_ranges.insert_packet_number_range(range_1));
+        assert!(ack_ranges.insert_packet_number_range(range_2));
+        assert!(ack_ranges.insert_packet_number_range(range_3));
+        assert_eq!(ack_ranges.interval_len(), 3);
+
+        for pn in range_1 {
+            assert!(ack_ranges.contains(&pn));
+        }
+        for pn in range_2 {
+            assert!(ack_ranges.contains(&pn));
+        }
+        for pn in range_3 {
+            assert!(ack_ranges.contains(&pn));
+        }
+
+        // merge ranges 1 and 2
+        assert!(ack_ranges.insert_packet_number_range(range_1_2));
+        assert_eq!(ack_ranges.interval_len(), 2);
+
+        // insert range 0 at low end
+        assert!(ack_ranges.insert_packet_number_range(range_0));
+        assert_eq!(ack_ranges.interval_len(), 3);
+
+        // merge range 0_1 at low end
+        assert!(ack_ranges.insert_packet_number_range(range_0_1));
+        assert_eq!(ack_ranges.interval_len(), 2);
+
+        // merge new range at high end
+        assert!(ack_ranges.insert_packet_number_range(range_4));
+        assert_eq!(ack_ranges.interval_len(), 2);
+    }
+
+    #[test]
+    fn large_range_test() {
+        let pn_a = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u32(1));
+        let pn_b = PacketNumberSpace::ApplicationData
+            .new_packet_number(VarInt::new(varint::MAX_VARINT_VALUE).unwrap());
+        let mut ack_ranges = AckRanges::new(3);
+
+        let range_1 = PacketNumberRange::new(pn_a, pn_b);
+
+        assert!(ack_ranges.insert_packet_number_range(range_1));
+        assert_eq!(ack_ranges.interval_len(), 1);
     }
 
     #[test]
