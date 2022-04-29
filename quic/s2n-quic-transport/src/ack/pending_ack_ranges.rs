@@ -33,7 +33,7 @@ impl PendingAckRanges {
         acked_packets: impl Iterator<Item = &'a PacketNumberRange>,
         ecn_counts: Option<EcnCounts>,
         ack_delay: Duration,
-    ) -> bool {
+    ) -> Result<(), ()> {
         if let Some(ecn_counts) = ecn_counts {
             self.ecn_counts = self.ecn_counts.max(ecn_counts);
         }
@@ -48,10 +48,13 @@ impl PendingAckRanges {
         let mut did_insert = true;
         // TODO: add metrics if ack ranges are being dropped
         for range in acked_packets {
-            did_insert &= self.ranges.insert_packet_number_range(*range)
+            did_insert &= self.ranges.insert_packet_number_range(*range).is_ok()
         }
 
-        did_insert
+        match did_insert {
+            true => Ok(()),
+            false => Err(()),
+        }
     }
 
     /// Returns an iterator over all of the values contained in the ranges `IntervalSet`.
@@ -103,7 +106,9 @@ mod tests {
         let pn_a = packet_numbers.next().unwrap();
         let pn_range_a = vec![PacketNumberRange::new(pn_a, pn_a)];
 
-        assert!(pending_ack_ranges.extend(pn_range_a.iter(), Some(ecn_counts), now));
+        assert!(pending_ack_ranges
+            .extend(pn_range_a.iter(), Some(ecn_counts), now)
+            .is_ok());
 
         assert_eq!(pending_ack_ranges.ack_delay, now);
         assert_eq!(pending_ack_ranges.ecn_counts, ecn_counts);
@@ -118,7 +123,9 @@ mod tests {
         let pn_b = packet_numbers.next().unwrap();
         let pn_range_b = vec![PacketNumberRange::new(pn_b, pn_b)];
 
-        assert!(pending_ack_ranges.extend(pn_range_b.iter(), Some(ecn_counts), now));
+        assert!(pending_ack_ranges
+            .extend(pn_range_b.iter(), Some(ecn_counts), now)
+            .is_ok());
 
         assert_eq!(pending_ack_ranges.ack_delay, now);
         assert_eq!(pending_ack_ranges.ecn_counts, ecn_counts);
@@ -148,11 +155,15 @@ mod tests {
         // insert ranges
         let pn_a = packet_numbers.next().unwrap();
         let pn_range_a = vec![PacketNumberRange::new(pn_a, pn_a)];
-        assert!(pending_ack_ranges.extend(pn_range_a.iter(), Some(ecn_counts), now));
+        assert!(pending_ack_ranges
+            .extend(pn_range_a.iter(), Some(ecn_counts), now)
+            .is_ok());
 
         let pn_b = packet_numbers.next().unwrap();
         let pn_range_b = vec![PacketNumberRange::new(pn_b, pn_b)];
-        assert!(pending_ack_ranges.extend(pn_range_b.iter(), Some(ecn_counts), now));
+        assert!(pending_ack_ranges
+            .extend(pn_range_b.iter(), Some(ecn_counts), now)
+            .is_ok());
 
         let coll: Vec<PacketNumber> = pending_ack_ranges.iter().flatten().collect();
         assert_eq!(coll.len(), 2);
@@ -174,7 +185,9 @@ mod tests {
 
         let range_1 = vec![PacketNumberRange::new(pn_a, pn_b)];
 
-        assert!(pending_ack_ranges.extend(range_1.iter(), Some(ecn_counts), now));
+        assert!(pending_ack_ranges
+            .extend(range_1.iter(), Some(ecn_counts), now)
+            .is_ok());
         assert_eq!(pending_ack_ranges.ranges.interval_len(), 1);
     }
 

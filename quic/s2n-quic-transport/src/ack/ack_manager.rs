@@ -212,7 +212,7 @@ impl AckManager {
         //
         // Most likely, this packet is very old and the contents have already
         // been retransmitted by the peer.
-        if !self.ack_ranges.insert_packet_number(packet_number) {
+        if self.ack_ranges.insert_packet_number(packet_number).is_err() {
             return;
         }
 
@@ -464,9 +464,12 @@ mod tests {
         );
 
         manager.ack_ranges = AckRanges::default();
-        manager.ack_ranges.insert_packet_number(
-            PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(1)),
-        );
+        assert!(manager
+            .ack_ranges
+            .insert_packet_number(
+                PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(1)),
+            )
+            .is_ok());
         manager.transmission_state = AckTransmissionState::Active { retransmissions: 0 };
         manager.transmissions_since_elicitation =
             Counter::new(ack::Settings::EARLY.ack_elicitation_interval);
@@ -528,9 +531,12 @@ mod tests {
         write_context.transmission_constraint = transmission::Constraint::CongestionLimited;
 
         manager.ack_ranges = AckRanges::default();
-        manager.ack_ranges.insert_packet_number(
-            PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(1)),
-        );
+        assert!(manager
+            .ack_ranges
+            .insert_packet_number(
+                PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(1)),
+            )
+            .is_ok());
         manager.transmission_state = AckTransmissionState::Active { retransmissions: 0 };
         manager.transmissions_since_elicitation = Counter::new(u8::max_value());
 

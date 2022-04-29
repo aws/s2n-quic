@@ -31,33 +31,37 @@ impl AckRanges {
 
     /// Inserts a packet number; dropping smaller values if needed
     #[inline]
-    pub fn insert_packet_number_range(&mut self, pn_range: PacketNumberRange) -> bool {
+    pub fn insert_packet_number_range(&mut self, pn_range: PacketNumberRange) -> Result<(), ()> {
         let interval = (
             Bound::Included(pn_range.start()),
             Bound::Included(pn_range.end()),
         );
         if self.0.insert(interval).is_ok() {
-            return true;
+            return Ok(());
         }
 
-        // TODO: add metrics if ack ranges are being dropped
-        //
-        // shed the lowest packet number ranges to make room for larger ones
-        if let Some(min) = self.0.pop_min() {
-            return if min < pn_range.start() {
-                self.0.insert(interval).is_ok()
-            } else {
-                let _ = self.0.insert_front(min);
-                false
-            };
+        // attempt to shed the lowest packet number ranges to make room for larger ones
+        match self.0.pop_min() {
+            Some(min) => {
+                if min < pn_range.start() {
+                    // TODO: add metrics for ack ranges being dropped
+                    self.0.insert(interval).expect(
+                        "min range was removed, so it should be possible to insert another range",
+                    );
+                    Ok(())
+                } else {
+                    // new value is smaller than min so inset it back in the front
+                    let _ = self.0.insert_front(min);
+                    Err(())
+                }
+            }
+            None => Err(()),
         }
-
-        false
     }
 
     /// Inserts a packet number; dropping smaller values if needed
     #[inline]
-    pub fn insert_packet_number(&mut self, packet_number: PacketNumber) -> bool {
+    pub fn insert_packet_number(&mut self, packet_number: PacketNumber) -> Result<(), ()> {
         self.insert_packet_number_range(PacketNumberRange::new(packet_number, packet_number))
     }
 
@@ -118,13 +122,13 @@ pub mod tests {
 
         // insert gaps up to the limit
         let pn_a = packet_numbers.next().unwrap();
-        assert!(ack_ranges.insert_packet_number(pn_a));
+        assert!(ack_ranges.insert_packet_number(pn_a).is_ok());
 
         let pn_b = packet_numbers.next().unwrap();
-        assert!(ack_ranges.insert_packet_number(pn_b));
+        assert!(ack_ranges.insert_packet_number(pn_b).is_ok());
 
         let pn_c = packet_numbers.next().unwrap();
-        assert!(ack_ranges.insert_packet_number(pn_c));
+        assert!(ack_ranges.insert_packet_number(pn_c).is_ok());
 
         // ensure everything was inserted
         assert_eq!(ack_ranges.interval_len(), 3);
@@ -134,7 +138,7 @@ pub mod tests {
 
         // insert a new packet number gap
         let pn_d = packet_numbers.next().unwrap();
-        assert!(ack_ranges.insert_packet_number(pn_d));
+        assert!(ack_ranges.insert_packet_number(pn_d).is_ok());
 
         // ensure the previous smaller packet number was dropped
         assert_eq!(ack_ranges.interval_len(), 3);
@@ -144,7 +148,7 @@ pub mod tests {
         assert!(ack_ranges.contains(&pn_d));
 
         // ensure smaller values are not recorded
-        assert!(!ack_ranges.insert_packet_number(pn_a));
+        assert!(ack_ranges.insert_packet_number(pn_a).is_err());
         assert_eq!(ack_ranges.interval_len(), 3);
         assert!(!ack_ranges.contains(&pn_a));
         assert!(ack_ranges.contains(&pn_b));
@@ -182,9 +186,9 @@ pub mod tests {
         let range_0_1 = PacketNumberRange::new(pn_a, pn_c);
         let range_1_2 = PacketNumberRange::new(pn_c, pn_e);
 
-        assert!(ack_ranges.insert_packet_number_range(range_1));
-        assert!(ack_ranges.insert_packet_number_range(range_2));
-        assert!(ack_ranges.insert_packet_number_range(range_3));
+        assert!(ack_ranges.insert_packet_number_range(range_1).is_ok());
+        assert!(ack_ranges.insert_packet_number_range(range_2).is_ok());
+        assert!(ack_ranges.insert_packet_number_range(range_3).is_ok());
         assert_eq!(ack_ranges.interval_len(), 3);
 
         for pn in range_1 {
@@ -198,19 +202,19 @@ pub mod tests {
         }
 
         // merge ranges 1 and 2
-        assert!(ack_ranges.insert_packet_number_range(range_1_2));
+        assert!(ack_ranges.insert_packet_number_range(range_1_2).is_ok());
         assert_eq!(ack_ranges.interval_len(), 2);
 
         // insert range 0 at low end
-        assert!(ack_ranges.insert_packet_number_range(range_0));
+        assert!(ack_ranges.insert_packet_number_range(range_0).is_ok());
         assert_eq!(ack_ranges.interval_len(), 3);
 
         // merge range 0_1 at low end
-        assert!(ack_ranges.insert_packet_number_range(range_0_1));
+        assert!(ack_ranges.insert_packet_number_range(range_0_1).is_ok());
         assert_eq!(ack_ranges.interval_len(), 2);
 
         // merge new range at high end
-        assert!(ack_ranges.insert_packet_number_range(range_4));
+        assert!(ack_ranges.insert_packet_number_range(range_4).is_ok());
         assert_eq!(ack_ranges.interval_len(), 2);
     }
 
@@ -223,7 +227,7 @@ pub mod tests {
 
         let range_1 = PacketNumberRange::new(pn_a, pn_b);
 
-        assert!(ack_ranges.insert_packet_number_range(range_1));
+        assert!(ack_ranges.insert_packet_number_range(range_1).is_ok());
         assert_eq!(ack_ranges.interval_len(), 1);
     }
 
