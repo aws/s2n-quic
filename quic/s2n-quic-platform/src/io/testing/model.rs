@@ -3,7 +3,7 @@
 
 use super::network::{Buffers, Network, Packet};
 use core::time::Duration;
-use s2n_quic_core::path::MaxMtu;
+use s2n_quic_core::{havoc, path::MaxMtu};
 use std::{
     borrow::Cow,
     sync::{
@@ -206,25 +206,17 @@ impl Network for Model {
             let mut packet = packet.into_owned();
 
             if !packet.payload.is_empty() && gen_rate(corrupt_rate) {
-                // randomly truncate the payload
-                let num_bytes = super::rand::gen_range(0..packet.payload.len());
-                if num_bytes > 0 {
-                    packet.payload.truncate(num_bytes);
-                }
+                use havoc::Strategy as _;
 
-                // randomly swap bytes in the payload
-                let num_bytes = super::rand::gen_range(0..packet.payload.len());
-                if num_bytes > 0 {
-                    super::rand::swap_count(&mut packet.payload, num_bytes);
-                }
+                let new_len = havoc::Truncate
+                    .randomly()
+                    .and_then(havoc::Swap.repeat(0..packet.payload.len()).randomly())
+                    .and_then(havoc::Mutate.repeat(0..packet.payload.len()).randomly())
+                    .havoc_slice(&mut super::rand::Havoc, &mut packet.payload);
 
-                // randomly rewrite bytes in the payload
-                let num_bytes = super::rand::gen_range(0..packet.payload.len());
-                if num_bytes > 0 {
-                    for _ in 0..num_bytes {
-                        let index = super::rand::gen_range(0..packet.payload.len());
-                        packet.payload[index] = super::rand::gen();
-                    }
+                // if the len was changed, then update it
+                if new_len != packet.payload.len() {
+                    packet.payload.truncate(new_len);
                 }
             }
 
