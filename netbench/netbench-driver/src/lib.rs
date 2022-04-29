@@ -3,7 +3,9 @@
 
 use netbench::{
     client::{self, AddressMap},
-    scenario, trace, Error, Result,
+    scenario, trace,
+    units::Byte,
+    Error, Result,
 };
 use std::{net::IpAddr, ops::Deref, path::Path, str::FromStr, sync::Arc, time::Duration};
 use structopt::StructOpt;
@@ -32,6 +34,12 @@ pub struct Server {
 
     #[structopt(long, short = "V")]
     pub verbose: bool,
+
+    #[structopt(long, default_value = "8KiB")]
+    pub rx_buffer: Byte,
+
+    #[structopt(long, default_value = "8KiB")]
+    pub tx_buffer: Byte,
 
     #[structopt(env = "SCENARIO")]
     pub scenario: Scenario,
@@ -72,6 +80,12 @@ pub struct Client {
 
     #[structopt(long, short = "V")]
     pub verbose: bool,
+
+    #[structopt(long, default_value = "8KiB")]
+    pub rx_buffer: Byte,
+
+    #[structopt(long, default_value = "8KiB")]
+    pub tx_buffer: Byte,
 
     #[structopt(env = "SCENARIO")]
     pub scenario: Scenario,
