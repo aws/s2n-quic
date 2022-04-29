@@ -348,13 +348,7 @@ impl io::tx::Entry for Packet {
     {
         self.path.remote_address = message.path_handle().remote_address;
         self.ecn = message.ecn();
-        let len = message.write_payload(&mut self.payload, 0);
-
-        if len == 0 {
-            return Err(io::tx::Error::EmptyPayload);
-        }
-
-        Ok(len)
+        message.write_payload(io::tx::PayloadBuffer::new(&mut self.payload), 0)
     }
 
     fn payload(&self) -> &[u8] {

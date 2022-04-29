@@ -156,7 +156,7 @@ impl<'a, Message: message::Message, B> Slice<'a, Message, B> {
         let prev_message = &mut self.messages[gso.index];
         // check to make sure the message can be GSO'd and can be included in the same
         // GSO payload as the previous message
-        if !(message.can_gso() && prev_message.can_gso(&mut message)) {
+        if !(message.can_gso(gso.size) && prev_message.can_gso(&mut message)) {
             self.flush_gso();
             return Ok(Err(message));
         }
@@ -178,16 +178,26 @@ impl<'a, Message: message::Message, B> Slice<'a, Message, B> {
 
         // allow the message to write up to `gso.size` bytes
         let buffer = &mut message::Message::payload_mut(prev_message)[payload_len..];
+        let buffer = tx::PayloadBuffer::new(buffer);
 
-        match message.write_payload(buffer, gso.count) {
-            0 => {
+        match message.write_payload(buffer, gso.count).and_then(|size| {
+            // we don't want to send empty packets
+            if size == 0 {
+                Err(tx::Error::EmptyPayload)
+            } else {
+                Ok(size)
+            }
+        }) {
+            Err(err) => {
                 unsafe {
                     // revert the len to what it was before
                     prev_message.set_payload_len(payload_len);
                 }
-                Err(tx::Error::EmptyPayload)
+                Err(err)
             }
-            size => {
+            Ok(size) => {
+                debug_assert_ne!(size, 0, "payloads should never be empty");
+
                 unsafe {
                     debug_assert!(
                         gso.size >= size,

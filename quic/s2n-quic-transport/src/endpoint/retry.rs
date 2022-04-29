@@ -157,14 +157,16 @@ impl<Path: path::Handle> tx::Message for &Transmission<Path> {
     }
 
     #[inline]
-    fn can_gso(&self) -> bool {
-        true
+    fn can_gso(&self, segment_len: usize) -> bool {
+        segment_len >= self.as_ref().len()
     }
 
     #[inline]
-    fn write_payload(&mut self, buffer: &mut [u8], _gso_offset: usize) -> usize {
-        let packet = self.as_ref();
-        buffer[..packet.len()].copy_from_slice(packet);
-        packet.len()
+    fn write_payload(
+        &mut self,
+        mut buffer: tx::PayloadBuffer,
+        _gso_offset: usize,
+    ) -> Result<usize, tx::Error> {
+        buffer.write(self.as_ref())
     }
 }
