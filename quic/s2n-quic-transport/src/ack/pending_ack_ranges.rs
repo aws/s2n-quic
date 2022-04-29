@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{interval_set, space::rx_packet_numbers::ack_ranges::AckRanges};
+use crate::{ack::ack_ranges::AckRanges, interval_set};
 use core::time::Duration;
 use s2n_quic_core::{
     frame::ack::EcnCounts,
@@ -176,5 +176,13 @@ mod tests {
 
         assert!(pending_ack_ranges.extend(range_1.iter(), Some(ecn_counts), now));
         assert_eq!(pending_ack_ranges.ranges.interval_len(), 1);
+    }
+
+    #[test]
+    fn size_of_snapshots() {
+        use core::mem::size_of;
+        use insta::assert_debug_snapshot;
+
+        assert_debug_snapshot!("PendingAckRanges", size_of::<PendingAckRanges>());
     }
 }

@@ -3,13 +3,13 @@
 
 use super::*;
 use crate::{
+    ack::ack_ranges::AckRanges,
     connection::{ConnectionIdMapper, InternalConnectionIdGenerator},
     contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
     endpoint::{self, testing::Server as Config},
     path::MINIMUM_MTU,
     recovery,
     recovery::manager::PtoState::RequiresTransmission,
-    space::rx_packet_numbers::ack_ranges::AckRanges,
 };
 use core::{ops::RangeInclusive, time::Duration};
 use s2n_quic_core::{

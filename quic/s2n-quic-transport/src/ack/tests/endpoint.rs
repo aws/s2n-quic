@@ -3,8 +3,8 @@
 
 use super::{generator::gen_ack_settings, Packet, TestEnvironment};
 use crate::{
-    contexts::WriteContext, processed_packet::ProcessedPacket,
-    space::rx_packet_numbers::ack_manager::AckManager, transmission::interest::Provider,
+    ack::ack_manager::AckManager, contexts::WriteContext, processed_packet::ProcessedPacket,
+    transmission::interest::Provider,
 };
 use bolero::generator::*;
 use s2n_quic_core::{

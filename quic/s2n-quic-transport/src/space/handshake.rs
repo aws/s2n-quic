@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    ack::AckManager,
     connection::{self, ConnectionTransmissionContext, ProcessingError},
     endpoint, path,
     path::{path_event, Path},
     processed_packet::ProcessedPacket,
     recovery,
-    space::{
-        rx_packet_numbers::AckManager, CryptoStream, HandshakeStatus, PacketSpace, TxPacketNumbers,
-    },
+    space::{CryptoStream, HandshakeStatus, PacketSpace, TxPacketNumbers},
     transmission,
 };
 use core::{fmt, marker::PhantomData};

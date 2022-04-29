@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    contexts::WriteContext,
-    processed_packet::ProcessedPacket,
-    space::rx_packet_numbers::{
+    ack::{
         ack_eliciting_transmission::{AckElicitingTransmission, AckElicitingTransmissionSet},
         ack_ranges::AckRanges,
         ack_transmission_state::AckTransmissionState,
     },
+    contexts::WriteContext,
+    processed_packet::ProcessedPacket,
     transmission,
 };
 use s2n_quic_core::{
