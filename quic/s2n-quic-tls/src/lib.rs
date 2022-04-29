@@ -6,6 +6,11 @@
 #[global_allocator]
 static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 
+#[cfg(all(s2n_quic_unstable, s2n_quic_enable_pq_tls))]
+static DEFAULT_POLICY: &s2n_tls::raw::security::Policy = &s2n_tls::raw::security::TESTING_PQ;
+#[cfg(not(all(s2n_quic_unstable, s2n_quic_enable_pq_tls)))]
+static DEFAULT_POLICY: &s2n_tls::raw::security::Policy = &s2n_tls::raw::security::DEFAULT_TLS13;
+
 mod callback;
 mod keylog;
 mod params;
