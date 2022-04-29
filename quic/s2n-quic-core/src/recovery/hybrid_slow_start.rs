@@ -176,10 +176,8 @@ impl HybridSlowStart {
     /// return cwnd increment during slow start phase
     /// should be called from on_packet_ack
     pub fn cwnd_increment(&self, sent_bytes: usize) -> f32 {
-        if cfg!(debug_assertions) {
-            if !self.use_hystart_plus_plus {
-                assert_eq!(self.ss_growth_divisor, 1.0);
-            }
+        if cfg!(debug_assertions) && !self.use_hystart_plus_plus {
+            assert_eq!(self.ss_growth_divisor, 1.0);
         }
         (sent_bytes as f32) / self.ss_growth_divisor
     }
