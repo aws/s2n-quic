@@ -194,6 +194,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         self.zero_rtt_crypto = None;
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn poll_crypto<Pub: event::ConnectionPublisher>(
         &mut self,
         path_manager: &mut path::Manager<Config>,

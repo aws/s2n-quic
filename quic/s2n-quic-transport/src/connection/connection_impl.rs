@@ -1246,6 +1246,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a handshake packet had been received
+    #[allow(clippy::too_many_arguments)]
     fn handle_handshake_packet(
         &mut self,
         datagram: &DatagramInfo,

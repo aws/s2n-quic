@@ -112,6 +112,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     // Packet handling
 
     /// Is called when an initial packet had been received
+    #[allow(clippy::too_many_arguments)]
     fn handle_initial_packet(
         &mut self,
         datagram: &DatagramInfo,
@@ -124,6 +125,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     ) -> Result<(), ProcessingError>;
 
     /// Is called when an unprotected initial packet had been received
+    #[allow(clippy::too_many_arguments)]
     fn handle_cleartext_initial_packet(
         &mut self,
         datagram: &DatagramInfo,
@@ -136,6 +138,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a handshake packet had been received
+    #[allow(clippy::too_many_arguments)]
     fn handle_handshake_packet(
         &mut self,
         datagram: &DatagramInfo,
@@ -207,6 +210,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     fn quic_version(&self) -> u32;
 
     /// Handles reception of a single QUIC packet
+    #[allow(clippy::too_many_arguments)]
     fn handle_packet(
         &mut self,
         datagram: &DatagramInfo,
