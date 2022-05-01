@@ -28,9 +28,9 @@ impl PendingAckRanges {
 
     /// Extend with a packet number range; dropping smaller values if needed
     #[inline]
-    pub fn extend<'a>(
+    pub fn extend(
         &mut self,
-        acked_packets: impl Iterator<Item = &'a PacketNumberRange>,
+        acked_packets: impl Iterator<Item = PacketNumberRange>,
         ecn_counts: Option<EcnCounts>,
         ack_delay: Duration,
     ) -> Result<(), ()> {
@@ -48,7 +48,7 @@ impl PendingAckRanges {
         let mut did_insert = true;
         // TODO: add metrics if ack ranges are being dropped
         for range in acked_packets {
-            did_insert &= self.ranges.insert_packet_number_range(*range).is_ok()
+            did_insert &= self.ranges.insert_packet_number_range(range).is_ok()
         }
 
         match did_insert {
@@ -105,10 +105,10 @@ mod tests {
         ecn_counts.increment(ExplicitCongestionNotification::Ect1);
         ecn_counts.increment(ExplicitCongestionNotification::Ce);
         let pn_a = packet_numbers.next().unwrap();
-        let pn_range_a = vec![PacketNumberRange::new(pn_a, pn_a)];
+        let pn_range_a = Some(PacketNumberRange::new(pn_a, pn_a));
 
         assert!(pending_ack_ranges
-            .extend(pn_range_a.iter(), Some(ecn_counts), now)
+            .extend(pn_range_a.into_iter(), Some(ecn_counts), now)
             .is_ok());
 
         assert_eq!(pending_ack_ranges.ack_delay, now);
@@ -122,10 +122,10 @@ mod tests {
         ecn_counts.increment(ExplicitCongestionNotification::Ect1);
         ecn_counts.increment(ExplicitCongestionNotification::Ce);
         let pn_b = packet_numbers.next().unwrap();
-        let pn_range_b = vec![PacketNumberRange::new(pn_b, pn_b)];
+        let pn_range_b = Some(PacketNumberRange::new(pn_b, pn_b));
 
         assert!(pending_ack_ranges
-            .extend(pn_range_b.iter(), Some(ecn_counts), now)
+            .extend(pn_range_b.into_iter(), Some(ecn_counts), now)
             .is_ok());
 
         assert_eq!(pending_ack_ranges.ack_delay, now);
@@ -155,15 +155,15 @@ mod tests {
 
         // insert ranges
         let pn_a = packet_numbers.next().unwrap();
-        let pn_range_a = vec![PacketNumberRange::new(pn_a, pn_a)];
+        let pn_range_a = Some(PacketNumberRange::new(pn_a, pn_a));
         assert!(pending_ack_ranges
-            .extend(pn_range_a.iter(), Some(ecn_counts), now)
+            .extend(pn_range_a.into_iter(), Some(ecn_counts), now)
             .is_ok());
 
         let pn_b = packet_numbers.next().unwrap();
-        let pn_range_b = vec![PacketNumberRange::new(pn_b, pn_b)];
+        let pn_range_b = Some(PacketNumberRange::new(pn_b, pn_b));
         assert!(pending_ack_ranges
-            .extend(pn_range_b.iter(), Some(ecn_counts), now)
+            .extend(pn_range_b.into_iter(), Some(ecn_counts), now)
             .is_ok());
 
         let coll: Vec<PacketNumber> = pending_ack_ranges.iter().flatten().collect();
@@ -184,10 +184,10 @@ mod tests {
         let ack_ranges = AckRanges::new(3);
         let mut pending_ack_ranges = PendingAckRanges::new(ack_ranges, ecn_counts, now);
 
-        let range_1 = vec![PacketNumberRange::new(pn_a, pn_b)];
+        let range_1 = Some(PacketNumberRange::new(pn_a, pn_b));
 
         assert!(pending_ack_ranges
-            .extend(range_1.iter(), Some(ecn_counts), now)
+            .extend(range_1.into_iter(), Some(ecn_counts), now)
             .is_ok());
         assert_eq!(pending_ack_ranges.ranges.interval_len(), 1);
     }
@@ -213,10 +213,10 @@ mod tests {
                 let pn_a = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u32(*a));
                 let pn_b = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u32(*b));
 
-                let range_1 = vec![PacketNumberRange::new(pn_a, pn_b)];
+                let range_1 = Some(PacketNumberRange::new(pn_a, pn_b));
 
                 assert!(pending_ack_ranges
-                    .extend(range_1.iter(), Some(ecn_counts), now)
+                    .extend(range_1.into_iter(), Some(ecn_counts), now)
                     .is_ok());
             });
     }
