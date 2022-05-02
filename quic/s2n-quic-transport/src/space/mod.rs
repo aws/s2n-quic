@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    ack, connection, endpoint, path,
+    ack,
+    ack::AckManager,
+    connection, endpoint, path,
     path::{path_event, Path},
     processed_packet::ProcessedPacket,
-    space::rx_packet_numbers::AckManager,
     transmission,
 };
 use bytes::Bytes;
@@ -37,7 +38,6 @@ mod handshake;
 mod handshake_status;
 mod initial;
 mod keep_alive;
-pub(crate) mod rx_packet_numbers;
 mod session_context;
 mod tx_packet_numbers;
 

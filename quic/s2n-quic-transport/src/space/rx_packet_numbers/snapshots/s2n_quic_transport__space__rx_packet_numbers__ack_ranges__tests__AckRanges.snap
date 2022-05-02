@@ -1,5 +1,0 @@
----
-source: quic/s2n-quic-transport/src/space/rx_packet_numbers/ack_ranges.rs
-expression: "size_of::<AckRanges>()"
----
-40
