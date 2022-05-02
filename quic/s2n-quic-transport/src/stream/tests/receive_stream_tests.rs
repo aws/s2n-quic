@@ -652,14 +652,10 @@ fn exceed_stream_flow_control_window() {
         .on_internal_reset(connection::Error::unspecified().into(), &mut events);
 
     assert_eq!(
-        stream_interests(&[]),
-        test_env.stream.get_stream_interests()
-    );
-    test_env.assert_pop_error();
-    assert_eq!(
         stream_interests(&["fin"]),
         test_env.stream.get_stream_interests()
     );
+    test_env.assert_pop_error();
 }
 
 #[test]
@@ -700,14 +696,10 @@ fn exceed_connection_flow_control_window() {
         .on_internal_reset(connection::Error::unspecified().into(), &mut events);
 
     assert_eq!(
-        stream_interests(&[]),
-        test_env.stream.get_stream_interests()
-    );
-    test_env.assert_pop_error();
-    assert_eq!(
         stream_interests(&["fin"]),
         test_env.stream.get_stream_interests()
     );
+    test_env.assert_pop_error();
 }
 
 #[test]
