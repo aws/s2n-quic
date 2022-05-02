@@ -21,6 +21,8 @@ pub struct ConnectionInterests {
     pub transmission: bool,
     /// Is `true` if a `Connection` needs a new connection id
     pub new_connection_id: bool,
+    /// Is `true` if a `Connection` should attempt to receive or send ACKs
+    pub ack: bool,
     /// Is `Some(Timestamp)` if the connection needs to be woken up at the specified time
     pub timeout: Option<Timestamp>,
 }
@@ -44,6 +46,7 @@ impl ConnectionInterests {
             accept: self.accept || other.accept,
             transmission: self.transmission || other.transmission,
             new_connection_id: self.new_connection_id || other.new_connection_id,
+            ack: self.ack || other.ack,
             timeout: match (self.timeout, other.timeout) {
                 (Some(a), Some(b)) => Some(a.min(b)),
                 (Some(a), None) => Some(a),
@@ -84,6 +87,7 @@ mod tests {
             finalization: true,
             closing: true,
             new_connection_id: false,
+            ack: false,
             timeout: None,
         };
 
@@ -94,6 +98,7 @@ mod tests {
             finalization: false,
             closing: false,
             new_connection_id: true,
+            ack: true,
             timeout: Some(b_time),
         };
 
@@ -104,6 +109,7 @@ mod tests {
             finalization: true,
             closing: true,
             new_connection_id: false,
+            ack: false,
             timeout: Some(c_time),
         };
 
@@ -114,6 +120,7 @@ mod tests {
                 finalization: false,
                 closing: false,
                 new_connection_id: true,
+                ack: true,
                 timeout: Some(b_time),
             },
             a + b
@@ -126,6 +133,7 @@ mod tests {
                 finalization: true,
                 closing: true,
                 new_connection_id: false,
+                ack: false,
                 timeout: Some(c_time),
             },
             a + c
@@ -138,6 +146,7 @@ mod tests {
                 finalization: false,
                 closing: false,
                 new_connection_id: true,
+                ack: true,
                 timeout: Some(b_time),
             },
             b + c

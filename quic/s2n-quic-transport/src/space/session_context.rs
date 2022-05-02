@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    ack::AckManager,
     connection::{self, limits::Limits},
     endpoint, path,
     space::{
-        keep_alive::KeepAlive, rx_packet_numbers::AckManager, ApplicationSpace, HandshakeSpace,
-        HandshakeStatus, InitialSpace,
+        keep_alive::KeepAlive, ApplicationSpace, HandshakeSpace, HandshakeStatus, InitialSpace,
     },
     stream::AbstractStreamManager,
 };

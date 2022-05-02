@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    ack::AckManager,
     connection::{self, ConnectionTransmissionContext, ProcessingError},
     endpoint, path,
     path::{path_event, Path},
     processed_packet::ProcessedPacket,
     recovery,
-    space::{
-        rx_packet_numbers::AckManager, CryptoStream, HandshakeStatus, PacketSpace, TxPacketNumbers,
-    },
+    space::{CryptoStream, HandshakeStatus, PacketSpace, TxPacketNumbers},
     transmission,
 };
 use core::{fmt, marker::PhantomData};
@@ -439,11 +438,11 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
 
     fn validate_packet_ack(
         &mut self,
-        datagram: &DatagramInfo,
+        timestamp: Timestamp,
         packet_number_range: &PacketNumberRange,
     ) -> Result<(), transport::Error> {
         self.tx_packet_numbers
-            .on_packet_ack(datagram, packet_number_range)
+            .on_packet_ack(timestamp, packet_number_range)
     }
 
     fn on_new_packet_ack<Pub: event::ConnectionPublisher>(
@@ -454,9 +453,9 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
         self.crypto_stream.on_packet_ack(packet_number_range);
     }
 
-    fn on_packet_ack(&mut self, datagram: &DatagramInfo, packet_number_range: &PacketNumberRange) {
+    fn on_packet_ack(&mut self, timestamp: Timestamp, packet_number_range: &PacketNumberRange) {
         self.ack_manager
-            .on_packet_ack(datagram, packet_number_range);
+            .on_packet_ack(timestamp, packet_number_range);
     }
 
     fn on_packet_loss<Pub: event::ConnectionPublisher>(
@@ -494,7 +493,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for HandshakeSpace<Config> {
     fn handle_ack_frame<A: AckRanges, Pub: event::ConnectionPublisher>(
         &mut self,
         frame: Ack<A>,
-        datagram: &DatagramInfo,
+        timestamp: Timestamp,
         path_id: path::Id,
         path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
@@ -505,13 +504,13 @@ impl<Config: endpoint::Config> PacketSpace<Config> for HandshakeSpace<Config> {
         path.on_peer_validated();
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, path_id, path_manager);
-        recovery_manager.on_ack_frame(datagram, frame, &mut context, publisher)
+        recovery_manager.on_ack_frame(timestamp, frame, &mut context, publisher)
     }
 
     fn handle_connection_close_frame(
         &mut self,
         frame: ConnectionClose,
-        _datagram: &DatagramInfo,
+        _timestamp: Timestamp,
         _path: &mut Path<Config>,
     ) -> Result<(), transport::Error> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.4

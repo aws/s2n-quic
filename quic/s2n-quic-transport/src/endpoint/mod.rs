@@ -119,6 +119,12 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                 self.receive_datagram(&header, payload, timestamp)
             }
         }
+
+        // process ACKs on Connections with interest
+        self.connections.iterate_ack_list(|connection| {
+            connection.on_process_acks();
+        });
+
         let len = entries.len();
         queue.finish(len);
     }
@@ -1142,6 +1148,7 @@ pub mod testing {
         type EventSubscriber = Subscriber;
         type PathMigrationValidator = path::migration::default::Validator;
         type PacketInterceptor = s2n_quic_core::packet::interceptor::Disabled;
+        type DatagramEndpoint = s2n_quic_core::datagram::Disabled;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()
@@ -1171,6 +1178,7 @@ pub mod testing {
         type EventSubscriber = Subscriber;
         type PathMigrationValidator = path::migration::default::Validator;
         type PacketInterceptor = s2n_quic_core::packet::interceptor::Disabled;
+        type DatagramEndpoint = s2n_quic_core::datagram::Disabled;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()

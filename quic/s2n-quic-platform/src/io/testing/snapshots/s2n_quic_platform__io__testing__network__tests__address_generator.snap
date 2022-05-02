@@ -1,0 +1,36 @@
+---
+source: quic/s2n-quic-platform/src/io/testing/network.rs
+expression: addrs
+---
+[
+    IpV4(
+        SocketAddressV4(1.0.0.0:49152),
+    ),
+    IpV4(
+        SocketAddressV4(1.0.0.1:49153),
+    ),
+    IpV4(
+        SocketAddressV4(1.0.0.2:49154),
+    ),
+    IpV4(
+        SocketAddressV4(1.0.0.3:49155),
+    ),
+    IpV4(
+        SocketAddressV4(1.0.0.4:49156),
+    ),
+    IpV4(
+        SocketAddressV4(1.0.0.5:49157),
+    ),
+    IpV4(
+        SocketAddressV4(1.0.0.6:49158),
+    ),
+    IpV4(
+        SocketAddressV4(1.0.0.7:49159),
+    ),
+    IpV4(
+        SocketAddressV4(1.0.0.8:49160),
+    ),
+    IpV4(
+        SocketAddressV4(1.0.0.9:49161),
+    ),
+]

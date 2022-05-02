@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{space::rx_packet_numbers::ack_ranges::AckRanges, transmission};
+use crate::{ack::ack_ranges::AckRanges, transmission};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AckTransmissionState {
@@ -237,7 +237,9 @@ mod tests {
             "empty ack_ranges should transition to Disabled"
         );
 
-        ack_ranges.insert_packet_number(packet_numbers.next().unwrap());
+        assert!(ack_ranges
+            .insert_packet_number(packet_numbers.next().unwrap())
+            .is_ok());
 
         assert_eq!(
             *AckTransmissionState::Disabled.on_update(&ack_ranges),
@@ -245,8 +247,12 @@ mod tests {
             "one ack range should transition to passive"
         );
 
-        ack_ranges.insert_packet_number(packet_numbers.next().unwrap());
-        ack_ranges.insert_packet_number(packet_numbers.next().unwrap());
+        assert!(ack_ranges
+            .insert_packet_number(packet_numbers.next().unwrap())
+            .is_ok());
+        assert!(ack_ranges
+            .insert_packet_number(packet_numbers.next().unwrap())
+            .is_ok());
 
         assert_eq!(
             *AckTransmissionState::Disabled.on_update(&ack_ranges),

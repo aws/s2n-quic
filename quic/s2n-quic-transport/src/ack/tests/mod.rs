@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::space::rx_packet_numbers::ack_eliciting_transmission::AckElicitingTransmission;
+use crate::ack::ack_eliciting_transmission::AckElicitingTransmission;
 use s2n_quic_core::{
     packet::number::{PacketNumber, PacketNumberSpace},
     varint::VarInt,

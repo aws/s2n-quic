@@ -125,6 +125,8 @@ impl connection::Trait for TestConnection {
         Ok(())
     }
 
+    fn on_process_acks(&mut self) {}
+
     fn on_wakeup(
         &mut self,
         _timestamp: Timestamp,

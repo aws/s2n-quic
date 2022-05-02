@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    ack,
+    ack::AckManager,
     connection, endpoint, path,
     path::{path_event, Path},
     processed_packet::ProcessedPacket,
-    space::rx_packet_numbers::AckManager,
     transmission,
 };
 use bytes::Bytes;
@@ -15,7 +16,6 @@ use core::{
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    ack,
     application::ServerName,
     connection::{limits::Limits, InitialId, PeerId},
     crypto::{tls, tls::Session, CryptoSuite, Key},
@@ -38,7 +38,6 @@ mod handshake;
 mod handshake_status;
 mod initial;
 mod keep_alive;
-pub(crate) mod rx_packet_numbers;
 mod session_context;
 mod tx_packet_numbers;
 
@@ -443,6 +442,13 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     }
 }
 
+impl<Config: endpoint::Config> ack::interest::Provider for PacketSpaceManager<Config> {
+    #[inline]
+    fn ack_interest<Q: ack::interest::Query>(&self, query: &mut Q) -> ack::interest::Result {
+        query.on_interest(ack::interest::Interest::None)
+    }
+}
+
 impl<Config: endpoint::Config> timer::Provider for PacketSpaceManager<Config> {
     #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
@@ -531,7 +537,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
     fn handle_ack_frame<A: AckRanges, Pub: event::ConnectionPublisher>(
         &mut self,
         frame: Ack<A>,
-        datagram: &DatagramInfo,
+        timestamp: Timestamp,
         path_id: path::Id,
         path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
@@ -542,14 +548,14 @@ pub trait PacketSpace<Config: endpoint::Config> {
     fn handle_connection_close_frame(
         &mut self,
         frame: ConnectionClose,
-        datagram: &DatagramInfo,
+        timestamp: Timestamp,
         path: &mut Path<Config>,
     ) -> Result<(), transport::Error>;
 
     fn handle_handshake_done_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: HandshakeDone,
-        _datagram: &DatagramInfo,
+        _timestamp: Timestamp,
         _path: &mut Path<Config>,
         _local_id_registry: &mut connection::LocalIdRegistry,
         _handshake_status: &mut HandshakeStatus,
@@ -735,7 +741,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     let on_error = on_frame_processed!(frame);
                     self.handle_ack_frame(
                         frame,
-                        datagram,
+                        datagram.timestamp,
                         path_id,
                         path_manager,
                         handshake_status,
@@ -746,8 +752,12 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 }
                 Frame::ConnectionClose(frame) => {
                     let on_error = on_frame_processed!(frame);
-                    self.handle_connection_close_frame(frame, datagram, &mut path_manager[path_id])
-                        .map_err(on_error)?;
+                    self.handle_connection_close_frame(
+                        frame,
+                        datagram.timestamp,
+                        &mut path_manager[path_id],
+                    )
+                    .map_err(on_error)?;
 
                     // skip processing any other frames and return an error
                     return Err(frame.into());
@@ -836,7 +846,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     let on_error = on_frame_processed!(frame);
                     self.handle_handshake_done_frame(
                         frame,
-                        datagram,
+                        datagram.timestamp,
                         &mut path_manager[path_id],
                         local_id_registry,
                         handshake_status,

@@ -7,6 +7,7 @@
 #![deny(unused_must_use)]
 extern crate alloc;
 
+mod ack;
 mod buffer;
 mod contexts;
 mod interval_set;
