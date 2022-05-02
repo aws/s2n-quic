@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    ack::AckManager,
+    ack::{pending_ack_ranges::PendingAckRanges, AckManager},
     connection::{self, ConnectionTransmissionContext, ProcessingError},
     endpoint, path,
     path::{path_event, Path},
@@ -21,8 +21,8 @@ use s2n_quic_core::{
     datagram::Endpoint,
     event::{self, ConnectionPublisher as _, IntoEvent},
     frame::{
-        ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
-        HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionId, NewToken,
+        self, ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose,
+        DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionId, NewToken,
         PathChallenge, PathResponse, ResetStream, RetireConnectionId, StopSending,
         StreamDataBlocked, StreamsBlocked,
     },
@@ -47,6 +47,8 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     /// The current state of the Spin bit
     /// TODO: Spin me
     pub spin_bit: SpinBit,
+    /// Aggregate ACK info stored for delayed processing
+    pub pending_ack_ranges: PendingAckRanges,
     /// The crypto suite for application data
     /// TODO: What about ZeroRtt?
     //= https://www.rfc-editor.org/rfc/rfc9001#section-6.3
@@ -98,6 +100,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             tx_packet_numbers: TxPacketNumbers::new(PacketNumberSpace::ApplicationData, now),
             ack_manager,
             spin_bit: SpinBit::Zero,
+            pending_ack_ranges: PendingAckRanges::default(),
             stream_manager,
             key_set,
             header_key,
@@ -212,7 +215,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         outcome.bytes_progressed +=
             (self.stream_manager.outgoing_bytes_progressed() - bytes_progressed).as_u64() as usize;
 
-        let (recovery_manager, mut recovery_context) = self.recovery(
+        let (recovery_manager, mut recovery_context, _) = self.recovery(
             handshake_status,
             context.local_id_registry,
             context.path_id,
@@ -369,7 +372,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         self.ack_manager.on_timeout(timestamp);
         self.key_set.on_timeout(timestamp);
 
-        let (recovery_manager, mut context) = self.recovery(
+        let (recovery_manager, mut context, _) = self.recovery(
             handshake_status,
             local_id_registry,
             path_manager.active_path_id(),
@@ -418,6 +421,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     ) -> (
         &'a mut recovery::Manager<Config>,
         RecoveryContext<'a, Config>,
+        &'a mut PendingAckRanges,
     ) {
         (
             &mut self.recovery_manager,
@@ -431,6 +435,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 path_manager,
                 tx_packet_numbers: &mut self.tx_packet_numbers,
             },
+            &mut self.pending_ack_ranges,
         )
     }
 
@@ -544,6 +549,50 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         };
 
         limits
+    }
+
+    // Store ACKs in PendingAckRanges for delayed processing
+    pub fn update_pending_acks<A: frame::ack::AckRanges>(
+        &mut self,
+        frame: &frame::Ack<A>,
+        pending_ack_ranges: &mut PendingAckRanges,
+    ) -> Result<(), transport::Error> {
+        let range = frame.ack_ranges().into_iter().map(|f| {
+            PacketNumberRange::new(
+                PacketNumberSpace::ApplicationData.new_packet_number(*f.start()),
+                PacketNumberSpace::ApplicationData.new_packet_number(*f.end()),
+            )
+        });
+        pending_ack_ranges
+            .extend(range, frame.ecn_counts, frame.ack_delay())
+            .or(
+                // TODO: post metrics: ack ranges were dropped
+                Ok(()),
+            )
+    }
+
+    pub fn on_process_pending_acks<Pub: event::ConnectionPublisher>(
+        &mut self,
+        timestamp: Timestamp,
+        path_id: path::Id,
+        path_manager: &mut path::Manager<Config>,
+        handshake_status: &mut HandshakeStatus,
+        local_id_registry: &mut connection::LocalIdRegistry,
+        publisher: &mut Pub,
+    ) -> Result<(), transport::Error> {
+        debug_assert!(
+            !self.pending_ack_ranges.is_empty(),
+            "pending_ack_ranges should be non-empty since connection indicated ack interest"
+        );
+
+        let (recovery_manager, mut context, pending_ack_ranges) =
+            self.recovery(handshake_status, local_id_registry, path_id, path_manager);
+        recovery_manager.on_process_pending_ack_ranges(
+            timestamp,
+            pending_ack_ranges,
+            &mut context,
+            publisher,
+        )
     }
 }
 
@@ -700,10 +749,10 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
     ) -> Result<(), transport::Error> {
         let path = &mut path_manager[path_id];
         path.on_peer_validated();
-        let (recovery_manager, mut context) =
+        let (recovery_manager, mut context, _) =
             self.recovery(handshake_status, local_id_registry, path_id, path_manager);
 
-        // TODO instead of processing ACKs, store the information and express interest
+        // self.update_pending_acks(&frame, &mut self.pending_ack_ranges)
         recovery_manager.on_ack_frame(timestamp, frame, &mut context, publisher)
     }
 

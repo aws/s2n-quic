@@ -125,7 +125,12 @@ impl connection::Trait for TestConnection {
         Ok(())
     }
 
-    fn on_process_acks(&mut self) {}
+    fn on_process_pending_acks(
+        &mut self,
+        _timestamp: Timestamp,
+        _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+    ) {
+    }
 
     fn on_wakeup(
         &mut self,

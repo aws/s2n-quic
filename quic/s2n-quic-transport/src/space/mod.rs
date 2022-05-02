@@ -444,11 +444,48 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     pub fn retry_cid(&self) -> Option<&PeerId> {
         self.retry_cid.as_deref()
     }
+
+    pub fn on_process_pending_acks<Pub: event::ConnectionPublisher>(
+        &mut self,
+        timestamp: Timestamp,
+        path_id: path::Id,
+        path_manager: &mut path::Manager<Config>,
+        local_id_registry: &mut connection::LocalIdRegistry,
+        publisher: &mut Pub,
+    ) -> Result<(), transport::Error> {
+        debug_assert!(
+            self.application().is_some(),
+            "application space should exists since delay ACK processing is only enabled\
+            post handshake complete and connection indicated ACK interest"
+        );
+        debug_assert!(
+            !self.application().unwrap().pending_ack_ranges.is_empty(),
+            "pending_ack_ranges should be non-empty since connection indicated ACK interest"
+        );
+
+        if let Some((space, handshake_status)) = self.application_mut() {
+            space.on_process_pending_acks(
+                timestamp,
+                path_id,
+                path_manager,
+                handshake_status,
+                local_id_registry,
+                publisher,
+            )?;
+        }
+
+        Ok(())
+    }
 }
 
 impl<Config: endpoint::Config> ack::interest::Provider for PacketSpaceManager<Config> {
     #[inline]
     fn ack_interest<Q: ack::interest::Query>(&self, query: &mut Q) -> ack::interest::Result {
+        if let Some(space) = self.application() {
+            if !space.pending_ack_ranges.is_empty() {
+                return query.on_interest(ack::interest::Interest::Immediate);
+            }
+        }
         query.on_interest(ack::interest::Interest::None)
     }
 }

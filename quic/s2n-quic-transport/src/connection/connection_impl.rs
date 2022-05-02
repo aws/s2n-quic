@@ -1049,7 +1049,27 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Process ACKs for the `Connection`.
-    fn on_process_acks(&mut self) {}
+    fn on_process_pending_acks(
+        &mut self,
+        timestamp: Timestamp,
+        subscriber: &mut Config::EventSubscriber,
+    ) {
+        let mut publisher = self.event_context.publisher(timestamp, subscriber);
+
+        // TODO: care should be taken to only delay ACK processing for the active path.
+        // However, the active path could change so it might be necessary to track the
+        // active path across some ACK delay processing.
+        let path_id = self.path_manager.active_path_id();
+        self.space_manager
+            .on_process_pending_acks(
+                timestamp,
+                path_id,
+                &mut self.path_manager,
+                &mut self.local_id_registry,
+                &mut publisher,
+            )
+            .unwrap();
+    }
 
     /// Handles all external wakeups on the [`Connection`].
     fn on_wakeup(
