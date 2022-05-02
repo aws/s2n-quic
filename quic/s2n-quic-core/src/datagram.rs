@@ -9,9 +9,7 @@ pub trait Endpoint: 'static + Send {
 
 pub trait Receiver: 'static + Send {}
 pub trait Sender: 'static + Send {
-    fn on_transmit<P: Packet>(&mut self, _packet: &mut P) {
-        todo!();
-    }
+    fn on_transmit<P: Packet>(&mut self, _packet: &mut P);
 }
 
 pub trait Packet {
@@ -35,5 +33,7 @@ impl Endpoint for Disabled {
 pub struct DisabledSender;
 pub struct DisabledReceiver;
 
+impl Sender for DisabledSender {
+    fn on_transmit<P: Packet>(&mut self, _packet: &mut P) {}
+}
 impl Receiver for DisabledReceiver {}
-impl Sender for DisabledSender {}
