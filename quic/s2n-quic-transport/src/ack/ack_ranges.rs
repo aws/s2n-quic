@@ -244,11 +244,12 @@ mod tests {
 
     #[test]
     fn insert_packet_number_range_fuzz() {
-        let mut ack_ranges = AckRanges::new(10);
         check!()
             .with_type::<(u32, u32)>()
             .map(|(a, b)| (a.min(b), a.max(b))) // ensure valid range
             .for_each(|(a, b)| {
+                let mut ack_ranges = AckRanges::new(1);
+
                 let pn_a = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u32(*a));
                 let pn_b = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u32(*b));
                 let range_1 = PacketNumberRange::new(pn_a, pn_b);

@@ -204,12 +204,13 @@ mod tests {
     fn extend_fuzz() {
         let now = Duration::from_millis(0);
         let ecn_counts = EcnCounts::default();
-        let ack_ranges = AckRanges::new(10);
-        let mut pending_ack_ranges = PendingAckRanges::new(ack_ranges, ecn_counts, now);
         check!()
             .with_type::<(u32, u32)>()
             .map(|(a, b)| (a.min(b), a.max(b))) // ensure valid range
             .for_each(|(a, b)| {
+                let ack_ranges = AckRanges::new(1);
+                let mut pending_ack_ranges = PendingAckRanges::new(ack_ranges, ecn_counts, now);
+
                 let pn_a = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u32(*a));
                 let pn_b = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u32(*b));
 
