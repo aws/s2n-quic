@@ -19,7 +19,7 @@ tokio-runtime = ["futures", "pin-project", "tokio"]
 wipe = ["zeroize"]
 
 [dependencies]
-bach = { version = "0.0.4", optional = true }
+bach = { version = "0.0.5", optional = true }
 bolero-generator = { version = "0.6", default-features = false, optional = true }
 cfg-if = "1"
 errno = "0.2"
@@ -35,7 +35,7 @@ zeroize = { version = "1", default-features = false, optional = true }
 libc = "0.2"
 
 [dev-dependencies]
-bach = { version = "0.0.4" }
+bach = { version = "0.0.5" }
 bolero = "0.6"
 bolero-generator = { version = "0.6", default-features = false }
 futures = { version = "0.3", features = ["std"] }
