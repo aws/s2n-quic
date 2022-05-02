@@ -26,13 +26,17 @@ pub struct PacketInfo {
 
 const MICRO_BITS_PER_BYTE: u64 = 8 * 1000000;
 
-#[derive(Copy, Clone, Debug, Default, PartialOrd, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, Eq, Ord, PartialOrd, PartialEq)]
 pub struct Bandwidth {
     bits_per_second: u64,
 }
 
 impl Bandwidth {
     pub const ZERO: Bandwidth = Bandwidth { bits_per_second: 0 };
+
+    pub const MAX: Bandwidth = Bandwidth {
+        bits_per_second: u64::MAX,
+    };
 
     pub fn new(bytes: u64, interval: Duration) -> Self {
         if interval.is_zero() {

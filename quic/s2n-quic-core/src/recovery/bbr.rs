@@ -8,14 +8,21 @@ use crate::{
 };
 use num_rational::Ratio;
 
+mod data_rate;
+mod data_volume;
 mod full_pipe;
-mod network;
 mod recovery;
+mod round;
 mod windowed_filter;
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.8
 //# The maximum tolerated per-round-trip packet loss rate when probing for bandwidth (the default is 2%).
 const LOSS_THRESH: Ratio<u32> = Ratio::new_raw(1, 50);
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.8
+//# The default multiplicative decrease to make upon each round trip during which
+//# the connection detects packet loss (the value is 0.7)
+const BETA: Ratio<u64> = Ratio::new_raw(7, 10);
 
 /// A congestion controller that implements "Bottleneck Bandwidth and Round-trip propagation time"
 /// version 2 (BBRv2) as specified in <https://datatracker.ietf.org/doc/draft-cardwell-iccrg-bbr-congestion-control/>.
@@ -24,6 +31,7 @@ const LOSS_THRESH: Ratio<u32> = Ratio::new_raw(1, 50);
 /// and the Linux Kernel TCP BBRv2 implementation, see <https://github.com/google/bbr/blob/v2alpha/net/ipv4/tcp_bbr2.c>
 #[derive(Debug, Clone)]
 struct BbrCongestionController {
+    round_counter: round::Counter,
     bw_estimator: bandwidth::Estimator,
     full_pipe_estimator: full_pipe::Estimator,
     //= https://www.rfc-editor.org/rfc/rfc9002#section-B.2
@@ -37,7 +45,9 @@ struct BbrCongestionController {
     //# congestion feedback.
     bytes_in_flight: BytesInFlight,
     recovery_state: recovery::State,
-    network_model: network::Model,
+    data_rate_model: data_rate::Model,
+    #[allow(dead_code)] // TODO: Remove when used
+    data_volume_model: data_volume::Model,
 }
 
 type BytesInFlight = Counter<u32>;
@@ -101,14 +111,17 @@ impl CongestionController for BbrCongestionController {
             newest_acked_packet_info,
             ack_receive_time,
         );
-        let round_start = false; // TODO: track rounds
+        self.round_counter.on_ack(
+            newest_acked_packet_info,
+            self.bw_estimator.delivered_bytes(),
+        );
         self.recovery_state
-            .on_ack(round_start, newest_acked_time_sent);
+            .on_ack(self.round_counter.round_start(), newest_acked_time_sent);
 
-        if round_start {
+        if self.round_counter.round_start() {
             self.full_pipe_estimator.on_round_start(
                 self.bw_estimator.rate_sample(),
-                self.network_model.max_bw(),
+                self.data_rate_model.max_bw(),
                 self.recovery_state.in_recovery(),
             )
         }
