@@ -103,26 +103,18 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
 
         let local_address = queue.local_address();
         let entries = queue.as_slice_mut();
-        let mut now: Option<Timestamp> = None;
+        let timestamp = clock.get_time();
 
         for entry in entries.iter_mut() {
             if let Some((header, payload)) = entry.read(&local_address) {
-                let timestamp = match now {
-                    Some(now) => now,
-                    _ => {
-                        let time = clock.get_time();
-                        now = Some(time);
-                        time
-                    }
-                };
-
                 self.receive_datagram(&header, payload, timestamp)
             }
         }
 
+        let endpoint_context = self.config.context();
         // process ACKs on Connections with interest
         self.connections.iterate_ack_list(|connection| {
-            connection.on_process_acks();
+            connection.on_process_pending_acks(timestamp, endpoint_context.event_subscriber);
         });
 
         let len = entries.len();
