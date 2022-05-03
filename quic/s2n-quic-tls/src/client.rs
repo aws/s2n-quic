@@ -13,7 +13,6 @@ use s2n_tls::raw::{
     config::{self, Config},
     error::Error,
     ffi::s2n_cert_auth_type,
-    security,
 };
 use std::sync::Arc;
 
@@ -48,9 +47,7 @@ impl Default for Builder {
         let mut config = config::Builder::default();
         config.enable_quic().unwrap();
         // https://github.com/aws/s2n-tls/blob/main/docs/USAGE-GUIDE.md#s2n_config_set_cipher_preferences
-        config
-            .set_security_policy(&security::DEFAULT_TLS13)
-            .unwrap();
+        config.set_security_policy(crate::DEFAULT_POLICY).unwrap();
         config
             .set_application_protocol_preference(&[b"h3"])
             .unwrap();
