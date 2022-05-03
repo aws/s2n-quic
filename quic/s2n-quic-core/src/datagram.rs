@@ -24,9 +24,6 @@ pub trait Packet {
     /// Returns the remaining space in the packet left to write datagrams
     fn remaining_capacity(&self) -> usize;
 
-    /// Returns the largest datagram that can fit in space remaining in the packet
-    fn maximum_datagram_payload(&self) -> usize;
-
     /// Writes a single datagram to a packet. This function should be called
     /// per datagram.
     fn write_datagram(&mut self, data: &[u8]);

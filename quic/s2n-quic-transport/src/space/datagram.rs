@@ -53,11 +53,6 @@ const FRAME_TYPE_LEN: usize = 1;
 impl<'a, C: WriteContext> s2n_quic_core::datagram::Packet for Packet<'a, C> {
     /// Returns the remaining space in the packet
     fn remaining_capacity(&self) -> usize {
-        self.context.remaining_capacity()
-    }
-
-    /// Returns the largest datagram that can fit in space remaining in the packet
-    fn maximum_datagram_payload(&self) -> usize {
         let space = self.context.remaining_capacity();
         //= https://www.rfc-editor.org/rfc/rfc9221#section-4
         //# The least significant bit of the Type field in the DATAGRAM frame is

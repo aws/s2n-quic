@@ -133,9 +133,9 @@ impl<'a, S: Stream, Config: endpoint::Config> Normal<'a, S, Config> {
 
             self.path_manager.on_transmit(context);
 
-            // By default, unreliable datagrams are sent before stream data. This can be
-            // configured by implementing a custom datagram sender and choosing to cede
-            // packet space for stream data.
+            // The default sending behavior is to alternate between sending datagrams
+            // and sending stream data. This can be configured by implementing a
+            // custom datagram sender and choosing when to cede packet space for stream data.
             self.datagram_manager
                 .on_transmit(context, self.stream_manager);
 
