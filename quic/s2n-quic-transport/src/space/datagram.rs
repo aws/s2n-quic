@@ -26,6 +26,9 @@ impl<Config: endpoint::Config> Manager<Config> {
         Self { sender, receiver }
     }
 
+    // This function creates a packet that a user can interrogate to learn
+    // more about the packet space available for datagrams, and to write
+    // datagrams to the packet.
     pub fn on_transmit<S: Stream, W: WriteContext>(
         &mut self,
         context: &mut W,
@@ -54,9 +57,15 @@ impl<'a, C: WriteContext> s2n_quic_core::datagram::Packet for Packet<'a, C> {
     /// Returns the largest datagram that can fit in space remaining in the packet
     fn maximum_datagram_payload(&self) -> usize {
         let space = self.context.remaining_capacity();
+        //= https://www.rfc-editor.org/rfc/rfc9221#section-4
+        //# The least significant bit of the Type field in the DATAGRAM frame is
+        //# the LEN bit (0x01), which indicates whether there is a Length field
+        //# present: if this bit is set to 0, the Length field is absent and the
+        //# Datagram Data field extends to the end of the packet; if this bit is
+        //# set to 1, the Length field is present.
         // In the case where the user writes the largest datagram possible
-        // we don't factor in the size of the Length field as
-        // it will be the last frame in the packet.
+        // we don't factor in the size of the Length field as it will be the last
+        // frame in the packet. Thus we only have to factor out the frame type field.
         space - FRAME_TYPE_LEN
     }
 

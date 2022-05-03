@@ -79,8 +79,8 @@ pub struct Parameters<'a, Cfg: endpoint::Config> {
     pub event_context: <Cfg::EventSubscriber as event::Subscriber>::ConnectionContext,
     /// The context passed to the connection supervisor
     pub supervisor_context: &'a supervisor::Context<'a>,
-    /// The event subscriber for the endpoint
-    pub event_subscriber: &'a mut Cfg::EventSubscriber,
     // The datagram provider for the endpoint
     pub datagram_endpoint: &'a mut Cfg::DatagramEndpoint,
+    /// The event subscriber for the endpoint
+    pub event_subscriber: &'a mut Cfg::EventSubscriber,
 }

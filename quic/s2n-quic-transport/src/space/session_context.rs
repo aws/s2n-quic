@@ -368,7 +368,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             self.limits.max_keep_alive_period(),
         );
 
-        let (datagram_sender, datagram_receiver) = self.datagram.new_datagram();
+        let (datagram_sender, datagram_receiver) = self.datagram.split();
         let cipher_suite = key.cipher_suite().into_event();
         let max_mtu = self.path_manager.max_mtu();
         *self.application = Some(Box::new(ApplicationSpace::new(
