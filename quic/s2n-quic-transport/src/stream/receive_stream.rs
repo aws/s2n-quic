@@ -570,6 +570,9 @@ impl ReceiveStream {
         // Return the waker to wake up potential users of the stream
         if let Some((waker, _low_watermark)) = self.read_waiter.take() {
             events.store_read_waker(waker);
+        } else {
+            // There aren't any wakers associated with this stream so finalize it
+            self.final_state_observed = true;
         }
     }
 

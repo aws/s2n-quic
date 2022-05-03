@@ -680,23 +680,25 @@ impl SendStream {
 
     /// A reset that is triggered without having received a `RESET` frame.
     pub fn on_internal_reset(&mut self, error: StreamError, events: &mut StreamEvents) {
-        if self.init_reset(
+        let _ = self.init_reset(
             // This is remote in a sense we do not have to emit a message
             ResetSource::InternalReset,
             error,
-        ) == InitResetResult::ResetInitiated
-        {
-            // Return the waker to wake up potential users of the stream.
-            // If the Stream got reset, then blocked writers need to get woken up.
-            if let Some((waker, _should_flush)) = self.write_waiter.take() {
-                events.store_write_waker(waker);
-            }
+        );
+
+        // Return the waker to wake up potential users of the stream.
+        // If the Stream got reset, then blocked writers need to get woken up.
+        if let Some((waker, _should_flush)) = self.write_waiter.take() {
+            events.store_write_waker(waker);
+        } else {
+            // There aren't any wakers associated with this stream so finalize it
+            self.final_state_observed = true;
         }
     }
 
     pub fn on_flush(&mut self, error: StreamError, events: &mut StreamEvents) {
         match self.data_sender.state() {
-            data_sender::State::Finishing(_) | data_sender::State::Finished => {
+            data_sender::State::Finishing(_) => {
                 // wait until the data sender is done sending
             }
             _ => {
