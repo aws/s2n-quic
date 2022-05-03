@@ -11,6 +11,10 @@ use s2n_quic_core::{
     frame,
 };
 
+// Contains the datagram sender and receiver implementations.
+//
+// Used to call datagram callbacks during packet transmission and
+// packet processing.
 pub struct Manager<Config: endpoint::Config> {
     sender: <<Config as endpoint::Config>::DatagramEndpoint as Endpoint>::Sender,
     // TODO: Remove this warning once Receiver is implemented
@@ -26,9 +30,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         Self { sender, receiver }
     }
 
-    // This function creates a packet that a user can interrogate to learn
-    // more about the packet space available for datagrams, and to write
-    // datagrams to the packet.
+    /// A callback that allows users to write datagrams directly to the packet.
     pub fn on_transmit<S: Stream, W: WriteContext>(
         &mut self,
         context: &mut W,

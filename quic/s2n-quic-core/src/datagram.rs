@@ -14,8 +14,7 @@ pub trait Endpoint: 'static + Send {
 
 pub trait Receiver: 'static + Send {}
 pub trait Sender: 'static + Send {
-    /// The on_transmit function is a callback that allows users to write
-    /// datagrams directly to the packet.
+    /// A callback that allows users to write datagrams directly to the packet.
     fn on_transmit<P: Packet>(&mut self, packet: &mut P);
 }
 
@@ -24,13 +23,17 @@ pub trait Sender: 'static + Send {
 pub trait Packet {
     /// Returns the remaining space in the packet left to write datagrams
     fn remaining_capacity(&self) -> usize;
+
     /// Returns the largest datagram that can fit in space remaining in the packet
     fn maximum_datagram_payload(&self) -> usize;
+
     /// Writes a single datagram to a packet. This function should be called
     /// per datagram.
     fn write_datagram(&mut self, data: &[u8]);
-    /// Returns whether or not there is reliable data waiting to be sent. Use this
-    /// method to decide whether or not to cede the packet space to the stream data.
+
+    /// Returns whether or not there is reliable data waiting to be sent.
+    ///
+    /// Use method to decide whether or not to cede the packet space to the stream data.
     fn pending_streams(&self) -> bool;
 }
 
