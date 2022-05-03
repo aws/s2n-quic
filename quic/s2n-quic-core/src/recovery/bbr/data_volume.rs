@@ -94,6 +94,18 @@ impl Model {
         )
     }
 
+    /// The long-term maximum volume of in-flight data that the algorithm
+    /// estimates will produce acceptable queue pressure
+    pub fn inflight_hi(&self) -> u64 {
+        self.inflight_hi
+    }
+
+    /// The short-term maximum volume of in-flight data that the algorithm
+    /// estimates is safe for matching the current network path delivery process
+    pub fn inflight_lo(&self) -> u64 {
+        self.inflight_lo
+    }
+
     /// True if the probe RTT has expired and is due for a refresh by entering the ProbeRTT state
     pub fn probe_rtt_expired(&self) -> bool {
         self.min_rtt_filter.probe_rtt_expired()
@@ -185,4 +197,106 @@ impl Model {
 
         inflight
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::time::{Clock, NoopClock};
+
+    #[test]
+    fn new() {
+        let now = NoopClock.get_time();
+        let model = Model::new(now);
+
+        assert_eq!(0, model.extra_acked());
+        assert_eq!(None, model.min_rtt());
+        assert_eq!(u64::MAX, model.inflight_hi());
+        assert_eq!(u64::MAX, model.inflight_lo());
+    }
+
+    #[test]
+    fn update_ack_aggregation() {
+        let now = NoopClock.get_time();
+        let mut model = Model::new(now);
+
+        let now = now + Duration::from_millis(200);
+        let bw = Bandwidth::new(1500, Duration::from_secs(1));
+
+        // The first call to update_ack_aggregation starts a new ack aggregation epoch
+        model.update_ack_aggregation(bw, 1600, 12000, 0, now);
+
+        assert_eq!(1600, model.extra_acked());
+        assert_eq!(now, model.extra_acked_interval_start);
+        assert_eq!(1600, model.extra_acked_delivered);
+
+        let now = now + Duration::from_secs(1);
+
+        model.update_ack_aggregation(bw, 1600, 12000, 1, now);
+
+        // The BW sample indicates 1500 bytes should be ACKed over the interval, but instead 1600 were,
+        // meaning the extra acked amount is 100 bytes. This is added to the initial 1600 extra acked
+        // amount to arrive at 1700 bytes.
+        assert_eq!(1700, model.extra_acked());
+
+        let now = now + Duration::from_secs(1);
+
+        // Even more extra data is acked, but since the cwnd is lower than the extra amount, that
+        // value is used as the extra acked (1600 bytes). 1700 remains the max extra acked.
+        model.update_ack_aggregation(bw, 1700, 1600, 2, now);
+        assert_eq!(1700, model.extra_acked());
+    }
+
+    #[test]
+    fn update_upper_bound() {
+        let now = NoopClock.get_time();
+        let mut model = Model::new(now);
+
+        let inflight_hi = 100;
+
+        model.update_upper_bound(inflight_hi);
+
+        // We didn't have a valid inflight_hi value yet, so the first sample is used
+        assert_eq!(inflight_hi, model.inflight_hi());
+
+        model.update_upper_bound(50);
+
+        // The new sample is lower than inflight_hi, so don't update inflight_hi
+        assert_eq!(inflight_hi, model.inflight_hi());
+
+        let inflight_hi = 150;
+        model.update_upper_bound(inflight_hi);
+
+        // The new sample is higher than inflight_hi, so update inflight_hi
+        assert_eq!(inflight_hi, model.inflight_hi());
+    }
+
+    #[test]
+    fn update_lower_bound() {
+        let now = NoopClock.get_time();
+        let mut model = Model::new(now);
+
+        model.update_lower_bound(1000, 100);
+
+        // We didn't have a valid inflight_lo value yet, and the given inflight_latest is lower than cwnd * BETA,
+        // so inflight_lo is set to cwnd * BETA
+        assert_eq!((BETA * 1000).to_integer(), model.inflight_lo());
+
+        model.update_upper_bound(50);
+
+        // The new sample is lower than inflight_lo, so don't update inflight_lo
+        assert_eq!((BETA * 1000).to_integer(), model.inflight_lo());
+
+        let inflight_lo = 1500;
+        model.update_lower_bound(1000, inflight_lo);
+
+        // The new sample is higher than inflight_lo, so update inflight_lo
+        assert_eq!(inflight_lo, model.inflight_lo());
+
+        // Resetting the lower bound sets inflight_lo to u64::MAX
+        model.reset_lower_bound();
+        assert_eq!(u64::MAX, model.inflight_lo());
+    }
+
+    // TODO: add tests for max_inflight and quantization_budget
 }

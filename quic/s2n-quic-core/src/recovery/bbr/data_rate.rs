@@ -244,7 +244,7 @@ mod tests {
         // The new sample is higher than bw_lo, so update bw_lo
         assert_eq!(higher_bw, model.bw_lo());
 
-        // Reseting the lower bound sets bw_lo to Bandwidth::MAX
+        // Resetting the lower bound sets bw_lo to Bandwidth::MAX
         model.reset_lower_bound();
         assert_eq!(Bandwidth::MAX, model.bw_lo());
     }
