@@ -124,3 +124,183 @@ impl Model {
         self.bw = self.max_bw().min(self.bw_lo).min(self.bw_hi)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn new() {
+        let model = Model::new();
+
+        assert_eq!(Bandwidth::ZERO, model.max_bw());
+        assert_eq!(Bandwidth::ZERO, model.bw());
+        assert_eq!(Bandwidth::MAX, model.bw_hi());
+        assert_eq!(Bandwidth::MAX, model.bw_lo());
+    }
+
+    #[test]
+    fn update_max_bw() {
+        let mut model = Model::new();
+
+        let mut rate_sample = RateSample {
+            interval: Duration::from_millis(10),
+            delivered_bytes: 100,
+            is_app_limited: true,
+            ..Default::default()
+        };
+        let bw = rate_sample.delivery_rate();
+
+        // Sample is app limited, but we don't have any data yet, so we use the sample
+        model.update_max_bw(rate_sample);
+        assert_eq!(bw, model.max_bw());
+
+        model.advance_max_bw_filter();
+
+        rate_sample.is_app_limited = false;
+        rate_sample.delivered_bytes = 50;
+
+        // Sample is not app limited, so the sample is used. It is less than the max
+        // though, so the max does not change
+        model.update_max_bw(rate_sample);
+        assert_eq!(bw, model.max_bw());
+
+        rate_sample.delivered_bytes = 75;
+        let bw = rate_sample.delivery_rate();
+
+        model.advance_max_bw_filter();
+
+        // The MaxBwFilter only tracks 2 values, so the previous max of 100 falls off and
+        // the latest bw estimate becomes the max
+        model.update_max_bw(rate_sample);
+        assert_eq!(bw, model.max_bw());
+
+        // Advance the max bw filter twice so existing values should fall off
+        model.advance_max_bw_filter();
+        model.advance_max_bw_filter();
+        rate_sample.is_app_limited = true;
+        rate_sample.delivered_bytes = 50;
+
+        // The sample is app limited so the max stays the same
+        model.update_max_bw(rate_sample);
+        assert_eq!(bw, model.max_bw());
+    }
+
+    #[test]
+    fn update_upper_bound() {
+        let mut model = Model::new();
+
+        let bw = Bandwidth::new(100, Duration::from_millis(10));
+
+        model.update_upper_bound(bw);
+
+        // We didn't have a valid bw_hi value yet, so the first sample is used
+        assert_eq!(bw, model.bw_hi());
+
+        let lower_bw = Bandwidth::new(50, Duration::from_millis(10));
+        model.update_upper_bound(lower_bw);
+
+        // The new sample is lower than bw_hi, so don't update bw_hi
+        assert_eq!(bw, model.bw_hi());
+
+        let higher_bw = Bandwidth::new(150, Duration::from_millis(10));
+        model.update_upper_bound(higher_bw);
+
+        // The new sample is higher than bw_hi, so update bw_hi
+        assert_eq!(higher_bw, model.bw_hi());
+    }
+
+    #[test]
+    fn update_lower_bound() {
+        let mut model = Model::new();
+
+        let bw = Bandwidth::new(50, Duration::from_millis(10));
+
+        let rate_sample = RateSample {
+            interval: Duration::from_millis(10),
+            delivered_bytes: 100,
+            ..Default::default()
+        };
+
+        model.update_max_bw(rate_sample);
+        model.update_lower_bound(bw);
+
+        let max_bw = model.max_bw();
+
+        // We didn't have a valid bw_lo value yet, and the given bw is lower than max_bw * BETA,
+        // so bw_lo is set to max_bw * BETA
+        assert_eq!(max_bw * BETA, model.bw_lo());
+
+        let lower_bw = Bandwidth::new(50, Duration::from_millis(10));
+        model.update_upper_bound(lower_bw);
+
+        // The new sample is lower than bw_lo, so don't update bw_lo
+        assert_eq!(max_bw * BETA, model.bw_lo());
+
+        let higher_bw = Bandwidth::new(150, Duration::from_millis(10));
+        model.update_lower_bound(higher_bw);
+
+        // The new sample is higher than bw_lo, so update bw_lo
+        assert_eq!(higher_bw, model.bw_lo());
+
+        // Reseting the lower bound sets bw_lo to Bandwidth::MAX
+        model.reset_lower_bound();
+        assert_eq!(Bandwidth::MAX, model.bw_lo());
+    }
+
+    #[test]
+    fn bound_bw_for_model() {
+        let mut model = Model::new();
+
+        let mut rate_sample = RateSample {
+            interval: Duration::from_millis(10),
+            delivered_bytes: 100,
+            ..Default::default()
+        };
+
+        let high_bw = rate_sample.delivery_rate();
+        let med_bw = Bandwidth::new(75, Duration::from_millis(10));
+        let low_bw = Bandwidth::new(50, Duration::from_millis(10));
+
+        model.update_max_bw(rate_sample);
+        model.update_upper_bound(low_bw);
+        model.update_lower_bound(med_bw);
+
+        // bw is not updated yet
+        assert_eq!(Bandwidth::ZERO, model.bw());
+
+        model.bound_bw_for_model();
+
+        assert_eq!(low_bw, model.bw());
+        assert_eq!(
+            model.max_bw().min(model.bw_lo()).min(model.bw_hi()),
+            model.bw()
+        );
+
+        // bw_hi is no longer the min
+        model.update_upper_bound(high_bw);
+        model.bound_bw_for_model();
+
+        assert_eq!(med_bw, model.bw());
+        assert_eq!(
+            model.max_bw().min(model.bw_lo()).min(model.bw_hi()),
+            model.bw()
+        );
+
+        rate_sample.delivered_bytes = 10;
+        let low_bw = rate_sample.delivery_rate();
+
+        // bw_lo is no longer the min
+        model.advance_max_bw_filter();
+        model.advance_max_bw_filter();
+        model.update_max_bw(rate_sample);
+        model.bound_bw_for_model();
+
+        assert_eq!(low_bw, model.bw());
+        assert_eq!(
+            model.max_bw().min(model.bw_lo()).min(model.bw_hi()),
+            model.bw()
+        );
+    }
+}
