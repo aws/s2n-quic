@@ -53,6 +53,7 @@ pub struct Connection<T: AsyncRead + AsyncWrite> {
     inner: Pin<Box<T>>,
     rx_open: bool,
     tx_open: bool,
+    tx_flushing: bool,
     frame: Option<frame::Frame>,
     read_buf: ReadBuffer,
     decoder: frame::Decoder,
@@ -85,6 +86,7 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
             inner,
             rx_open: true,
             tx_open: true,
+            tx_flushing: false,
             frame: None,
             read_buf: Default::default(),
             decoder: Default::default(),
@@ -106,51 +108,69 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
             };
         }
 
-        if self.write_buf.is_empty() {
-            return Ok(());
-        }
+        let mut total_len = 0;
 
         if self.inner.as_ref().is_write_vectored() {
-            let chunks = self.write_buf.chunks();
+            while !self.write_buf.is_empty() {
+                let chunks = self.write_buf.chunks();
 
-            return match self.inner.as_mut().poll_write_vectored(cx, &chunks) {
-                Poll::Ready(result) => {
-                    let len = result?;
-                    self.write_buf.advance(len);
-                    self.write_buf.notify(cx);
-                    Ok(())
+                match self.inner.as_mut().poll_write_vectored(cx, &chunks) {
+                    Poll::Ready(result) => {
+                        let len = result?;
+                        self.write_buf.advance(len);
+                        total_len += len;
+                    }
+                    Poll::Pending => {
+                        // we don't need to flush since this call does that
+                        self.tx_flushing = false;
+                    }
                 }
-                Poll::Pending => Ok(()),
-            };
-        }
+            }
+        } else {
+            while let Some(mut chunk) = self.write_buf.pop_front() {
+                match self.inner.as_mut().poll_write(cx, &chunk) {
+                    Poll::Ready(result) => {
+                        let len = result?;
+                        chunk.advance(len);
+                        total_len += len;
 
-        while let Some(mut chunk) = self.write_buf.pop_front() {
-            match self.inner.as_mut().poll_write(cx, &chunk) {
-                Poll::Ready(result) => {
-                    let len = result?;
-                    chunk.advance(len);
+                        if !chunk.is_empty() {
+                            self.write_buf.push_front(chunk);
+                        }
 
-                    if !chunk.is_empty() {
+                        if len == 0 {
+                            return if self.write_buf.is_empty() {
+                                self.tx_open = false;
+                                Ok(())
+                            } else {
+                                Err("stream was closed with pending data".into())
+                            };
+                        }
+                    }
+                    Poll::Pending => {
                         self.write_buf.push_front(chunk);
+                        // we don't need to flush since this call does that
+                        self.tx_flushing = false;
+                        break;
                     }
-
-                    if len == 0 {
-                        return if self.write_buf.is_empty() {
-                            self.tx_open = false;
-                            Ok(())
-                        } else {
-                            Err("stream was closed with pending data".into())
-                        };
-                    }
-                }
-                Poll::Pending => {
-                    self.write_buf.push_front(chunk);
-                    break;
                 }
             }
         }
 
-        self.write_buf.notify(cx);
+        if total_len > 0 {
+            self.write_buf.notify(cx);
+
+            // if we don't have anything buffered, tell the socket
+            // to flush to the operating system
+            self.tx_flushing = self.write_buf.is_empty();
+        }
+
+        if self.tx_flushing {
+            if let Poll::Ready(res) = self.inner.as_mut().poll_flush(cx) {
+                self.tx_flushing = false;
+                res?;
+            }
+        }
 
         Ok(())
     }
@@ -450,6 +470,12 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
             }
 
             // notify the peer we're not writing anything anymore
+            // https://docs.rs/tokio/latest/tokio/io/trait.AsyncWrite.html#tymethod.poll_shutdown
+            // > Invocation of a shutdown implies an invocation of flush. Once
+            // > this method returns Ready it implies that a flush successfully
+            // > happened before the shutdown happened. That is, callers don’t need
+            // > to call flush before calling shutdown. They can rely that by
+            // > calling shutdown any pending buffered data will be written out.
             ready!(self.inner.as_mut().poll_shutdown(cx))?;
             self.tx_open = false;
         }
