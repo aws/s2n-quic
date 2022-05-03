@@ -618,6 +618,12 @@ impl<S: StreamTrait> StreamContainer<S> {
             self.finalize_done_streams(controller);
         }
     }
+
+    /// Returns whether or not streams have data to send
+    pub fn pending_streams(&self) -> bool {
+        !self.interest_lists.waiting_for_transmission.is_empty()
+            || !self.interest_lists.waiting_for_retransmission.is_empty()
+    }
 }
 
 impl<S: StreamTrait> timer::Provider for StreamContainer<S> {

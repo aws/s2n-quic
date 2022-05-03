@@ -20,6 +20,7 @@ use s2n_quic_core::{
     crypto,
     crypto::{tls, CryptoSuite, Key},
     ct::ConstantTimeEq,
+    datagram::Endpoint,
     event,
     event::IntoEvent,
     packet::number::PacketNumberSpace,
@@ -51,6 +52,7 @@ pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPu
     pub application_protocol: &'a mut Bytes,
     pub waker: &'a Waker,
     pub publisher: &'a mut Pub,
+    pub datagram: &'a mut Config::DatagramEndpoint,
 }
 
 impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
@@ -366,6 +368,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             self.limits.max_keep_alive_period(),
         );
 
+        let (datagram_sender, datagram_receiver) = self.datagram.split();
         let cipher_suite = key.cipher_suite().into_event();
         let max_mtu = self.path_manager.max_mtu();
         *self.application = Some(Box::new(ApplicationSpace::new(
@@ -376,6 +379,8 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             ack_manager,
             keep_alive,
             max_mtu,
+            datagram_sender,
+            datagram_receiver,
         )));
         self.publisher.on_key_update(event::builder::KeyUpdate {
             key_type: event::builder::KeyType::OneRtt { generation: 0 },
