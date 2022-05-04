@@ -1,15 +1,13 @@
 use netbench::{multiplex, scenario, Result};
 use netbench_driver::Allocator;
 use std::{collections::HashSet, sync::Arc};
-use std::fs::File;
-use std::io::BufReader;
 use structopt::StructOpt;
 use tokio::{
     io::AsyncReadExt,
     net::{TcpListener, TcpStream},
     spawn,
 };
-use s2n_tls_tokio::{TlsAcceptor, TlsConnector};
+use s2n_tls_tokio::TlsAcceptor;
 use s2n_tls::raw::{
     config::{Builder, Config},
     error::Error,
