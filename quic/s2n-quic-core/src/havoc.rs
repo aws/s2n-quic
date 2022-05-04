@@ -12,6 +12,8 @@ pub use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 pub trait Random {
     fn fill(&mut self, bytes: &mut [u8]);
 
+    fn gen_range(&mut self, range: Range<usize>) -> usize;
+
     #[inline]
     fn shuffle(&mut self, bytes: &mut [u8]) {
         if bytes.is_empty() {
@@ -71,17 +73,13 @@ pub trait Random {
         let v = self.gen_range(0..max);
         unsafe { VarInt::new_unchecked(v as _) }
     }
-
-    #[inline]
-    fn gen_range(&mut self, range: Range<usize>) -> usize {
-        let value = self.gen_u64() as usize;
-        value.max(range.start).min(range.end.saturating_sub(1))
-    }
 }
 
 pub trait Strategy: Sized {
+    /// Applies the havoc strategy to the supplied buffer
     fn havoc<R: Random>(&mut self, rand: &mut R, buffer: &mut EncoderBuffer);
 
+    /// Applies the havoc strategy to the supplied buffer slice and returns the new buffer length
     #[inline]
     fn havoc_slice<R: Random>(&mut self, rand: &mut R, buffer: &mut [u8]) -> usize {
         let mut buffer = EncoderBuffer::new(buffer);
@@ -89,26 +87,32 @@ pub trait Strategy: Sized {
         buffer.len()
     }
 
-    fn alternate<B: Strategy>(self, b: B, range: Range<usize>) -> Alternate<Self, B> {
-        Alternate::new(self, b, range)
+    /// Alternate between two strategies with the supplied `period`
+    fn alternate<B: Strategy>(self, b: B, period: Range<usize>) -> Alternate<Self, B> {
+        Alternate::new(self, b, period)
     }
 
-    fn repeat(self, range: Range<usize>) -> Repeat<Self> {
-        Repeat::new(self, range)
+    /// Apply the strategy `count` times
+    fn repeat(self, count: Range<usize>) -> Repeat<Self> {
+        Repeat::new(self, count)
     }
 
+    /// Randomly apply the strategy
     fn randomly(self) -> Randomly<Self> {
         Randomly { strategy: self }
     }
 
-    fn toggle(self, range: Range<usize>) -> Toggle<Self> {
-        Toggle::new(self, range)
+    /// Toggle the strategy on and off for the supplied `period`
+    fn toggle(self, period: Range<usize>) -> Toggle<Self> {
+        Toggle::new(self, period)
     }
 
+    /// Applies two strategies in order
     fn and_then<B: Strategy>(self, b: B) -> AndThen<Self, B> {
         AndThen { a: self, b }
     }
 
+    /// Repeatedly applies the strategy as long as the buffer has capacity
     fn while_has_capacity(self) -> WhileHasCapacity<Self> {
         WhileHasCapacity { strategy: self }
     }
@@ -381,18 +385,19 @@ impl Strategy for Frame {
         type GenFrame<R> = for<'a> fn(
             rand: &'a mut R,
             payload: &'a mut [u8],
+            remaining_capacity: usize,
         ) -> frame::Frame<'a, AckRanges<'a, R>, &'a mut [u8]>;
 
         let frames: &[GenFrame<R>] = &[
-            |rand, data| {
+            |rand, _data, cap| {
                 frame::Padding {
-                    length: rand.gen_range(1..data.len()),
+                    length: rand.gen_range(1..cap),
                 }
                 .into()
             },
-            |_rand, _data| frame::Ping.into(),
+            |_rand, _data, _cap| frame::Ping.into(),
             // TODO ACK
-            |rand, _data| {
+            |rand, _data, _cap| {
                 frame::ResetStream {
                     stream_id: rand.gen_varint(),
                     application_error_code: rand.gen_varint(),
@@ -400,27 +405,27 @@ impl Strategy for Frame {
                 }
                 .into()
             },
-            |rand, _data| {
+            |rand, _data, _cap| {
                 frame::StopSending {
                     stream_id: rand.gen_varint(),
                     application_error_code: rand.gen_varint(),
                 }
                 .into()
             },
-            |rand, data| {
-                let data = rand.gen_slice(data);
+            |rand, data, cap| {
+                let data = rand.gen_slice(&mut data[..cap]);
                 frame::Crypto {
                     offset: rand.gen_varint(),
                     data,
                 }
                 .into()
             },
-            |rand, data| {
-                let token = rand.gen_slice(data);
+            |rand, data, cap| {
+                let token = rand.gen_slice(&mut data[..cap]);
                 frame::NewToken { token }.into()
             },
-            |rand, data| {
-                let data = rand.gen_slice(data);
+            |rand, data, cap| {
+                let data = rand.gen_slice(&mut data[..cap]);
                 frame::Stream {
                     stream_id: rand.gen_varint(),
                     offset: rand.gen_varint(),
@@ -430,20 +435,20 @@ impl Strategy for Frame {
                 }
                 .into()
             },
-            |rand, _data| {
+            |rand, _data, _cap| {
                 frame::MaxData {
                     maximum_data: rand.gen_varint(),
                 }
                 .into()
             },
-            |rand, _data| {
+            |rand, _data, _cap| {
                 frame::MaxStreamData {
                     stream_id: rand.gen_varint(),
                     maximum_stream_data: rand.gen_varint(),
                 }
                 .into()
             },
-            |rand, _data| {
+            |rand, _data, _cap| {
                 frame::MaxStreams {
                     stream_type: if rand.gen_bool() {
                         StreamType::Unidirectional
@@ -454,20 +459,20 @@ impl Strategy for Frame {
                 }
                 .into()
             },
-            |rand, _data| {
+            |rand, _data, _cap| {
                 frame::DataBlocked {
                     data_limit: rand.gen_varint(),
                 }
                 .into()
             },
-            |rand, _data| {
+            |rand, _data, _cap| {
                 frame::StreamDataBlocked {
                     stream_id: rand.gen_varint(),
                     stream_data_limit: rand.gen_varint(),
                 }
                 .into()
             },
-            |rand, _data| {
+            |rand, _data, _cap| {
                 frame::StreamsBlocked {
                     stream_type: if rand.gen_bool() {
                         StreamType::Unidirectional
@@ -478,13 +483,13 @@ impl Strategy for Frame {
                 }
                 .into()
             },
-            |rand, data| {
+            |rand, data, cap| {
                 let (stateless_reset_token, data) = data.split_at_mut(STATELESS_RESET_TOKEN_LEN);
 
                 rand.fill(stateless_reset_token);
                 let stateless_reset_token = (&*stateless_reset_token).try_into().unwrap();
 
-                let connection_id = rand.gen_slice(data);
+                let connection_id = rand.gen_slice(&mut data[..cap]);
 
                 frame::NewConnectionId {
                     sequence_number: rand.gen_varint(),
@@ -494,25 +499,25 @@ impl Strategy for Frame {
                 }
                 .into()
             },
-            |rand, _data| {
+            |rand, _data, _cap| {
                 frame::RetireConnectionId {
                     sequence_number: rand.gen_varint(),
                 }
                 .into()
             },
-            |rand, data| {
+            |rand, data, _cap| {
                 let data = &mut data[..frame::path_challenge::DATA_LEN];
                 rand.fill(data);
                 let data = (&*data).try_into().unwrap();
                 frame::PathChallenge { data }.into()
             },
-            |rand, data| {
+            |rand, data, _cap| {
                 let data = &mut data[..frame::path_challenge::DATA_LEN];
                 rand.fill(data);
                 let data = (&*data).try_into().unwrap();
                 frame::PathResponse { data }.into()
             },
-            |rand, data| {
+            |rand, data, cap| {
                 frame::ConnectionClose {
                     error_code: rand.gen_varint(),
                     frame_type: if rand.gen_bool() {
@@ -521,7 +526,7 @@ impl Strategy for Frame {
                         None
                     },
                     reason: if rand.gen_bool() {
-                        let reason = rand.gen_slice(data);
+                        let reason = rand.gen_slice(&mut data[..cap]);
                         Some(reason)
                     } else {
                         None
@@ -529,9 +534,9 @@ impl Strategy for Frame {
                 }
                 .into()
             },
-            |_rand, _data| frame::HandshakeDone.into(),
-            |rand, data| {
-                let data = rand.gen_slice(data);
+            |_rand, _data, _cap| frame::HandshakeDone.into(),
+            |rand, data, cap| {
+                let data = rand.gen_slice(&mut data[..cap]);
                 frame::Datagram {
                     is_last_frame: rand.gen_bool(),
                     data,
@@ -542,8 +547,7 @@ impl Strategy for Frame {
 
         let index = rand.gen_range(0..frames.len());
         let mut payload = [0u8; 1500];
-        let payload = &mut payload[..buffer.remaining_capacity()];
-        let frame = frames[index](rand, payload);
+        let frame = frames[index](rand, &mut payload, buffer.remaining_capacity());
 
         if frame.encoding_size() <= buffer.remaining_capacity() {
             buffer.encode(&frame);
@@ -588,6 +592,24 @@ mod tests {
             for byte in bytes.iter_mut() {
                 *byte = *self.0.next().unwrap_or(&0);
             }
+        }
+
+        #[inline]
+        fn gen_range(&mut self, range: Range<usize>) -> usize {
+            let start = range.start.min(range.end);
+            let end = range.start.max(range.end);
+
+            // this method is biased and should not be used outside of this test
+
+            let variance = end - start;
+
+            // check to see if they're the same number
+            if variance == 0 {
+                return start;
+            }
+
+            let value = self.gen_u64() as usize;
+            start + value % variance
         }
     }
 
