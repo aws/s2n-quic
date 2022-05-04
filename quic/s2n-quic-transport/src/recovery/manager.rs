@@ -11,7 +11,7 @@ use crate::{
     },
     transmission,
 };
-use core::{cmp::max, ops::RangeInclusive, time::Duration};
+use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
     event::{self, builder::CongestionSource, IntoEvent},
     frame,
@@ -325,8 +325,9 @@ impl<Config: endpoint::Config> Manager<Config> {
             .expect("pending range should not be empty");
         self.process_acks(
             timestamp,
-            pending_ack_ranges.iter(),
-            |_space, pn| pn,
+            pending_ack_ranges
+                .iter()
+                .map(|ack_range| PacketNumberRange::new(*ack_range.start(), *ack_range.end())),
             largest_acked_packet_number,
             pending_ack_ranges.ack_delay(),
             pending_ack_ranges.ecn_counts(),
@@ -351,12 +352,14 @@ impl<Config: endpoint::Config> Manager<Config> {
         context: &mut Ctx,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        let largest_acked_packet_number =
-            self.space.new_packet_number(frame.largest_acknowledged());
+        let space = self.space;
+        let largest_acked_packet_number = space.new_packet_number(frame.largest_acknowledged());
         self.process_acks(
             timestamp,
-            frame.ack_ranges(),
-            |space, varint| space.new_packet_number(varint),
+            frame.ack_ranges().map(|ack_range| {
+                let (start, end) = ack_range.into_inner();
+                PacketNumberRange::new(space.new_packet_number(start), space.new_packet_number(end))
+            }),
             largest_acked_packet_number,
             frame.ack_delay(),
             frame.ecn_counts,
@@ -369,20 +372,16 @@ impl<Config: endpoint::Config> Manager<Config> {
 
     /// Generic interface for processing ACK ranges.
     #[allow(clippy::too_many_arguments)]
-    fn process_acks<Ctx: Context<Config>, Pub: event::ConnectionPublisher, Pn, F>(
+    fn process_acks<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         timestamp: Timestamp,
-        ranges: impl Iterator<Item = RangeInclusive<Pn>>,
-        func: F,
+        ranges: impl Iterator<Item = PacketNumberRange>,
         largest_acked_packet_number: PacketNumber,
         ack_delay: Duration,
         ecn_counts: Option<EcnCounts>,
         context: &mut Ctx,
         publisher: &mut Pub,
-    ) -> Result<(), transport::Error>
-    where
-        F: Fn(PacketNumberSpace, Pn) -> PacketNumber,
-    {
+    ) -> Result<(), transport::Error> {
         // Update the largest acked packet if the largest packet acked in this frame is larger
         let received_new_largest_packet = match self.largest_acked_packet {
             Some(current_largest) if current_largest > largest_acked_packet_number => false,
@@ -399,7 +398,6 @@ impl<Config: endpoint::Config> Manager<Config> {
             &mut newly_acked_packets,
             timestamp,
             ranges,
-            func,
             context,
             publisher,
         )?;
@@ -441,37 +439,27 @@ impl<Config: endpoint::Config> Manager<Config> {
     }
 
     // Process ack_range and return largest_newly_acked and if the packet is ack eliciting.
-    fn process_ack_range<Ctx: Context<Config>, Pub: event::ConnectionPublisher, Pn, F>(
+    fn process_ack_range<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         newly_acked_packets: &mut SmallVec<
             [SentPacketInfo<packet_info_type!()>; ACKED_PACKETS_INITIAL_CAPACITY],
         >,
         timestamp: Timestamp,
-        ranges: impl Iterator<Item = RangeInclusive<Pn>>,
-        func: F,
+        ranges: impl Iterator<Item = PacketNumberRange>,
         context: &mut Ctx,
         publisher: &mut Pub,
-    ) -> Result<(Option<PacketDetails<packet_info_type!()>>, bool), transport::Error>
-    where
-        F: Fn(PacketNumberSpace, Pn) -> PacketNumber,
-    {
+    ) -> Result<(Option<PacketDetails<packet_info_type!()>>, bool), transport::Error> {
         let mut largest_newly_acked: Option<PacketDetails<packet_info_type!()>> = None;
         let mut includes_ack_eliciting = false;
 
-        for ack_range in ranges {
-            let (start, end) = ack_range.into_inner();
-
-            let acked_packets =
-                PacketNumberRange::new(func(self.space, start), func(self.space, end));
-
-            context.validate_packet_ack(timestamp, &acked_packets)?;
+        for pn_range in ranges {
+            context.validate_packet_ack(timestamp, &pn_range)?;
             // notify components of packets acked
-            context.on_packet_ack(timestamp, &acked_packets);
+            context.on_packet_ack(timestamp, &pn_range);
 
             let mut newly_acked_range: Option<(PacketNumber, PacketNumber)> = None;
 
-            for (packet_number, acked_packet_info) in self.sent_packets.remove_range(acked_packets)
-            {
+            for (packet_number, acked_packet_info) in self.sent_packets.remove_range(pn_range) {
                 newly_acked_packets.push(acked_packet_info);
 
                 if largest_newly_acked.map_or(true, |(pn, _)| packet_number > pn) {
