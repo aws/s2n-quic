@@ -387,7 +387,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         // Update the largest acked packet if the largest packet acked in this frame is larger
-        let received_new_largest_packet = match self.largest_acked_packet {
+        let acked_new_largest_packet = match self.largest_acked_packet {
             Some(current_largest) if current_largest > largest_acked_packet_number => false,
             _ => {
                 self.largest_acked_packet = Some(largest_acked_packet_number);
@@ -427,7 +427,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.process_new_acked_packets(
                 &newly_acked_packets,
                 largest_newly_acked_info,
-                received_new_largest_packet,
+                acked_new_largest_packet,
                 timestamp,
                 ecn_counts,
                 context,

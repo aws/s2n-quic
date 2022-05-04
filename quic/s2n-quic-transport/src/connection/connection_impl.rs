@@ -1053,22 +1053,26 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         &mut self,
         timestamp: Timestamp,
         subscriber: &mut Config::EventSubscriber,
-    ) {
+    ) -> Result<(), connection::Error> {
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
 
         // TODO: care should be taken to only delay ACK processing for the active path.
         // However, the active path could change so it might be necessary to track the
         // active path across some ACK delay processing.
         let path_id = self.path_manager.active_path_id();
-        if let Err(_err) = self.space_manager.on_pending_ack_ranges(
-            timestamp,
-            path_id,
-            &mut self.path_manager,
-            &mut self.local_id_registry,
-            &mut publisher,
-        ) {
-            // TODO: publish metrics
-        }
+        self.space_manager
+            .on_pending_ack_ranges(
+                timestamp,
+                path_id,
+                &mut self.path_manager,
+                &mut self.local_id_registry,
+                &mut publisher,
+            )
+            .map_err(|err| {
+                // TODO: publish metrics
+
+                err.into()
+            })
     }
 
     /// Handles all external wakeups on the [`Connection`].

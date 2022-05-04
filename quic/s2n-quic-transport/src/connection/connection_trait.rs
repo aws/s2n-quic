@@ -104,7 +104,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         &mut self,
         timestamp: Timestamp,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
-    );
+    ) -> Result<(), connection::Error>;
 
     /// Handles all external wakeups on the [`Connection`].
     fn on_wakeup(
