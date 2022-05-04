@@ -7,10 +7,7 @@ pub use s2n_quic_core::endpoint::{
     limits::{ConnectionAttempt, Outcome},
     Limiter,
 };
-use s2n_quic_core::{
-    path::THROTTLED_PORTS_LEN,
-    time::Timestamp,
-};
+use s2n_quic_core::{path::THROTTLED_PORTS_LEN, time::Timestamp};
 
 pub trait Provider: 'static {
     type Limits: 'static + Limiter;
