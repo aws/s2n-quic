@@ -16,6 +16,7 @@ pub mod datagram;
 pub mod endpoint;
 pub mod event;
 pub mod frame;
+pub mod havoc;
 pub mod inet;
 pub mod io;
 pub mod number;

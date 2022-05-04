@@ -20,10 +20,36 @@ pub use model::Model;
 pub use network::{Network, PathHandle};
 pub use time::now;
 
-pub use bach::{
-    rand,
-    task::{spawn, spawn_primary},
-};
+pub use bach::task::{spawn, spawn_primary};
+
+pub mod rand {
+    pub use ::bach::rand::*;
+
+    #[derive(Clone, Copy, Default)]
+    pub struct Havoc;
+
+    impl s2n_quic_core::havoc::Random for Havoc {
+        #[inline]
+        fn fill(&mut self, bytes: &mut [u8]) {
+            fill_bytes(bytes);
+        }
+
+        #[inline]
+        fn gen_bool(&mut self) -> bool {
+            gen()
+        }
+
+        #[inline]
+        fn shuffle(&mut self, bytes: &mut [u8]) {
+            shuffle(bytes);
+        }
+
+        #[inline]
+        fn gen_range(&mut self, range: core::ops::Range<usize>) -> usize {
+            gen_range(range)
+        }
+    }
+}
 
 pub struct Executor<N: Network> {
     executor: bach::executor::Executor<Env<N>>,
