@@ -37,6 +37,12 @@ usdt:{{bin}}:netbench__dealloc
   @d=stats(arg0);
 }
 
+usdt:{{bin}}:netbench__connect
+/pid==cpid/
+{
+  @O=count();
+}
+
 uprobe:{{libc}}:malloc
 /pid==cpid/
 {

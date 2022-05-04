@@ -86,7 +86,9 @@ impl Builder {
         let mut builder = client::Builder::new(id, self.state.clone());
         f(&mut builder);
 
-        self.state.clients.borrow_mut()[id as usize].scenario = builder.finish();
+        let client = &mut self.state.clients.borrow_mut()[id as usize];
+
+        client.scenario = builder.finish();
     }
 
     pub(super) fn finish(self) -> super::Scenario {
@@ -97,6 +99,7 @@ impl Builder {
             .into_iter()
             .map(|mut client| {
                 client.certificate_authorities.sort_unstable();
+
                 Arc::new(client)
             })
             .collect();
