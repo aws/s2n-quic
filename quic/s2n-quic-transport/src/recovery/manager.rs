@@ -323,7 +323,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         let largest_acked_packet_number = pending_ack_ranges
             .max_value()
             .expect("pending range should not be empty");
-        self.process_acks(
+        let result = self.process_acks(
             timestamp,
             pending_ack_ranges.iter(),
             largest_acked_packet_number,
@@ -331,9 +331,15 @@ impl<Config: endpoint::Config> Manager<Config> {
             pending_ack_ranges.ecn_counts(),
             context,
             publisher,
-        )?;
+        );
 
-        Ok(())
+        // reset pending ack information after processing
+        //
+        // If there was an error during processing its probably safer
+        // to clear the queue rather than try again.
+        pending_ack_ranges.clear();
+
+        result
     }
 
     /// Process ACK frame.
