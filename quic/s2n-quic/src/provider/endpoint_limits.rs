@@ -259,8 +259,10 @@ pub mod default {
 
     #[test]
     fn blocked_port_connection_attempt() {
-        use s2n_quic_core::inet::SocketAddress;
-        use s2n_quic_core::time::{testing::Clock as MockClock, Clock};
+        use s2n_quic_core::{
+            inet::SocketAddress,
+            time::{testing::Clock as MockClock, Clock},
+        };
 
         let mut remote_address = SocketAddress::default();
         let mut limits = Limits::builder().build().unwrap();
