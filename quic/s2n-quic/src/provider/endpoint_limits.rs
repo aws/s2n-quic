@@ -3,11 +3,11 @@
 
 //! Allows applications to limit peer's ability to open new connections
 
-pub use s2n_quic_core::{
-    endpoint::{
-        limits::{ConnectionAttempt, Outcome},
-        Limiter,
-    },
+pub use s2n_quic_core::endpoint::{
+    limits::{ConnectionAttempt, Outcome},
+    Limiter,
+};
+use s2n_quic_core::{
     path::THROTTLED_PORTS_LEN,
     time::Timestamp,
 };
