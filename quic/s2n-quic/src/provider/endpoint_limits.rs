@@ -58,14 +58,14 @@ impl BasicRateLimiter {
         connection_attempt: &ConnectionAttempt,
     ) -> bool {
         self.count += 1;
-        let time_stamp = connection_attempt.time_stamp;
+        let timestamp = connection_attempt.timestamp;
 
         if self.count > limit {
             match self.last_throttle_reset {
                 // If the throttle timer is still within the throttle_frequency
                 // then throttle the connection.
                 Some(last_throttle_reset)
-                    if time_stamp.saturating_duration_since(last_throttle_reset)
+                    if timestamp.saturating_duration_since(last_throttle_reset)
                         < throttle_frequency =>
                 {
                     return true;
@@ -75,7 +75,7 @@ impl BasicRateLimiter {
                 // Let the connection through.
                 _ => {
                     self.count = 0;
-                    self.last_throttle_reset = Some(time_stamp);
+                    self.last_throttle_reset = Some(timestamp);
                     return false;
                 }
             };
@@ -83,7 +83,7 @@ impl BasicRateLimiter {
 
         // If this is the first time calling instantiate the throttle timer.
         if self.last_throttle_reset.is_none() {
-            self.last_throttle_reset = Some(time_stamp);
+            self.last_throttle_reset = Some(timestamp);
         }
 
         false
@@ -92,12 +92,12 @@ impl BasicRateLimiter {
 
 #[cfg(any(test, feature = "testing"))]
 mod tests {
-    use super::{BasicRateLimiter, THROTTLED_PORT_LIMIT, THROTTLE_FREQUENCY_MS};
+    use super::{BasicRateLimiter, THROTTLED_PORT_LIMIT, THROTTLE_FREQUENCY};
     use core::time::Duration;
     use s2n_quic_core::{
         endpoint::limits::ConnectionAttempt,
         inet::SocketAddress,
-        time::clock::{testing::Clock as MockClock, Clock},
+        time::{testing::Clock as MockClock, Clock},
     };
 
     #[test]
@@ -146,10 +146,10 @@ mod tests {
         // If the constants change consider modifying the above test cases to make sure we are
         // confident that we are hitting all the correct conditions.
         //
-        // For example if we increase THROTTLE_FREQUENCY_MS to a very large period, do the above
+        // For example if we increase THROTTLE_FREQUENCY to a very large period, do the above
         // tests still make sense?
         assert_eq!(THROTTLED_PORT_LIMIT, 10);
-        assert_eq!(THROTTLE_FREQUENCY_MS, 1000);
+        assert_eq!(THROTTLE_FREQUENCY, Duration::from_secs(1));
     }
 }
 
@@ -193,7 +193,7 @@ pub mod default {
         pub fn build(self) -> Result<Limits, Infallible> {
             Ok(Limits {
                 max_inflight_handshake_limit: self.max_inflight_handshake_limit,
-                rate_limiter: Some([BasicRateLimiter::default(); THROTTLED_PORTS_LEN]),
+                rate_limiter: [BasicRateLimiter::default(); THROTTLED_PORTS_LEN],
             })
         }
     }
@@ -202,7 +202,7 @@ pub mod default {
     pub struct Limits {
         /// Maximum number of handshakes to allow before Retry packets are queued
         max_inflight_handshake_limit: Option<usize>,
-        rate_limiter: Option<[BasicRateLimiter; THROTTLED_PORTS_LEN]>,
+        rate_limiter: [BasicRateLimiter; THROTTLED_PORTS_LEN],
     }
 
     impl Limits {
@@ -219,20 +219,11 @@ pub mod default {
                 return Outcome::drop();
             }
 
-            if s2n_quic_core::path::remote_port_throttled(remote_port) {
-                let port_index = s2n_quic_core::path::remote_port_throttled_index(remote_port);
-                match (self.rate_limiter, port_index) {
-                    (Some(rate_limiter), Some(port_index)) => {
-                        let mut rate_limiter = rate_limiter[port_index];
-                        if rate_limiter.should_throttle(
-                            THROTTLED_PORT_LIMIT,
-                            Duration::from_millis(THROTTLE_FREQUENCY_MS),
-                            info,
-                        ) {
-                            return Outcome::drop();
-                        }
-                    }
-                    _ => (),
+            if let Some(port_index) = s2n_quic_core::path::remote_port_throttled_index(remote_port)
+            {
+                let rate_limiter = &mut self.rate_limiter[port_index];
+                if rate_limiter.should_throttle(THROTTLED_PORT_LIMIT, THROTTLE_FREQUENCY, info) {
+                    return Outcome::drop();
                 }
             }
 
@@ -251,7 +242,7 @@ pub mod default {
         fn default() -> Self {
             Self {
                 max_inflight_handshake_limit: None,
-                rate_limiter: None,
+                rate_limiter: [BasicRateLimiter::default(); THROTTLED_PORTS_LEN],
             }
         }
     }
