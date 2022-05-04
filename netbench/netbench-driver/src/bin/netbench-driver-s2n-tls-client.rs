@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use netbench::{multiplex, scenario, Result};
 use netbench_driver::Allocator;
 use std::{collections::HashSet, future::Future, net::SocketAddr, pin::Pin, sync::Arc};
