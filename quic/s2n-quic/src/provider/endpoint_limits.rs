@@ -8,6 +8,7 @@ pub use s2n_quic_core::{
         limits::{ConnectionAttempt, Outcome},
         Limiter,
     },
+    path::THROTTLED_PORTS_LEN,
     time::Timestamp,
 };
 
@@ -192,7 +193,7 @@ pub mod default {
         pub fn build(self) -> Result<Limits, Infallible> {
             Ok(Limits {
                 max_inflight_handshake_limit: self.max_inflight_handshake_limit,
-                rate_limiter: Some(BasicRateLimiter::default()),
+                rate_limiter: Some([BasicRateLimiter::default(); THROTTLED_PORTS_LEN]),
             })
         }
     }
@@ -201,7 +202,7 @@ pub mod default {
     pub struct Limits {
         /// Maximum number of handshakes to allow before Retry packets are queued
         max_inflight_handshake_limit: Option<usize>,
-        rate_limiter: Option<BasicRateLimiter>,
+        rate_limiter: Option<[BasicRateLimiter;THROTTLED_PORTS_LEN]>,
     }
 
     impl Limits {
@@ -213,19 +214,25 @@ pub mod default {
     /// Default implementation for the Limits
     impl super::Limiter for Limits {
         fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome {
-            if s2n_quic_core::path::remote_port_blocked(info.remote_address.port()) {
+            let remote_port = info.remote_address.port();
+            if s2n_quic_core::path::remote_port_blocked(remote_port) {
                 return Outcome::drop();
             }
 
-            if s2n_quic_core::path::remote_port_throttled(info.remote_address.port()) {
-                if let Some(mut rate_limiter) = self.rate_limiter {
-                    if rate_limiter.should_throttle(
-                        THROTTLED_PORT_LIMIT,
-                        Duration::from_millis(THROTTLE_FREQUENCY_MS),
-                        info,
-                    ) {
-                        return Outcome::drop();
+            if s2n_quic_core::path::remote_port_throttled(remote_port) {
+                let port_index = s2n_quic_core::path::remote_port_throttled_index(remote_port);
+                match (self.rate_limiter, port_index) {
+                    (Some(rate_limiter), Some(port_index)) => {
+                        let mut rate_limiter = rate_limiter[port_index];
+                        if rate_limiter.should_throttle(
+                            THROTTLED_PORT_LIMIT,
+                            Duration::from_millis(THROTTLE_FREQUENCY_MS),
+                            info,
+                        ) {
+                            return Outcome::drop();
+                        }
                     }
+                    _ => (),
                 }
             }
 

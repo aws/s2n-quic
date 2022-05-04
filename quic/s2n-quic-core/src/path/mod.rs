@@ -325,6 +325,17 @@ const THROTTLED_PORTS: [u16; 3] = [
     11211, // memcache, vulnerable to reflection attacks.
 ];
 const MAX_THROTTLED_PORT: u16 = THROTTLED_PORTS[THROTTLED_PORTS.len() - 1];
+pub const THROTTLED_PORTS_LEN: usize = THROTTLED_PORTS.len();
+
+#[inline]
+pub fn remote_port_throttled_index(port: u16) -> Option<usize> {
+    for (idx, throttled_port) in THROTTLED_PORTS.iter().enumerate() {
+        if *throttled_port == port {
+            return Some(idx);
+        }
+    }
+    None
+}
 
 #[inline]
 pub fn remote_port_throttled(port: u16) -> bool {
