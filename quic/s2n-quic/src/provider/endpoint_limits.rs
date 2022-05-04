@@ -202,7 +202,7 @@ pub mod default {
     pub struct Limits {
         /// Maximum number of handshakes to allow before Retry packets are queued
         max_inflight_handshake_limit: Option<usize>,
-        rate_limiter: Option<[BasicRateLimiter;THROTTLED_PORTS_LEN]>,
+        rate_limiter: Option<[BasicRateLimiter; THROTTLED_PORTS_LEN]>,
     }
 
     impl Limits {
