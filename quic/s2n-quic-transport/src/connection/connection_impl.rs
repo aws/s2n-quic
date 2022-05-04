@@ -1060,15 +1060,15 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         // However, the active path could change so it might be necessary to track the
         // active path across some ACK delay processing.
         let path_id = self.path_manager.active_path_id();
-        self.space_manager
-            .on_pending_ack_ranges(
-                timestamp,
-                path_id,
-                &mut self.path_manager,
-                &mut self.local_id_registry,
-                &mut publisher,
-            )
-            .unwrap();
+        if let Err(_err) = self.space_manager.on_pending_ack_ranges(
+            timestamp,
+            path_id,
+            &mut self.path_manager,
+            &mut self.local_id_registry,
+            &mut publisher,
+        ) {
+            // TODO: publish metrics
+        }
     }
 
     /// Handles all external wakeups on the [`Connection`].
