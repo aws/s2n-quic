@@ -4,6 +4,7 @@
 use crate::{
     event::{api::SocketAddress, IntoEvent},
     inet,
+    time::Timestamp,
 };
 
 /// Outcome describes how the library should proceed on a connection attempt. The implementor will
@@ -74,6 +75,7 @@ pub struct ConnectionAttempt<'a> {
     /// The unverified address of the connecting peer
     /// This address comes from the datagram
     pub remote_address: SocketAddress<'a>,
+    pub time_stamp: Timestamp,
 }
 
 impl<'a> ConnectionAttempt<'a> {
@@ -82,11 +84,13 @@ impl<'a> ConnectionAttempt<'a> {
         inflight_handshakes: usize,
         connection_count: usize,
         remote_address: &'a inet::SocketAddress,
+        time_stamp: Timestamp,
     ) -> Self {
         Self {
             inflight_handshakes,
             connection_count,
             remote_address: remote_address.into_event(),
+            time_stamp,
         }
     }
 }

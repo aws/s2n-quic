@@ -3,9 +3,12 @@
 
 //! Allows applications to limit peer's ability to open new connections
 
-pub use s2n_quic_core::endpoint::{
-    limits::{ConnectionAttempt, Outcome},
-    Limiter,
+pub use s2n_quic_core::{
+    endpoint::{
+        limits::{ConnectionAttempt, Outcome},
+        Limiter,
+    },
+    time::Timestamp,
 };
 
 pub trait Provider: 'static {
@@ -18,7 +21,6 @@ pub trait Provider: 'static {
 
 use core::time::Duration;
 pub use default::Limits as Default;
-use std::time::Instant;
 
 impl_provider_utils!();
 
@@ -36,7 +38,7 @@ const THROTTLE_FREQUENCY_MS: u64 = 1000;
 
 #[derive(Default, Debug, Clone, Copy)]
 struct BasicRateLimiter {
-    last_throttle_reset: Option<Instant>,
+    last_throttle_reset: Option<Timestamp>,
     count: usize,
 }
 
@@ -48,16 +50,22 @@ impl BasicRateLimiter {
     /// If the throttle timer expires the count is reset and `should_throttle` returns False.
     ///
     /// Returns False if the `should_throttle` invoke count is less than `limit`.
-    fn should_throttle(&mut self, limit: usize, throttle_frequency: Duration) -> bool {
+    fn should_throttle(
+        &mut self,
+        limit: usize,
+        throttle_frequency: Duration,
+        connection_attempt: &ConnectionAttempt,
+    ) -> bool {
         self.count += 1;
+        let time_stamp = connection_attempt.time_stamp;
 
         if self.count > limit {
-            let now = Instant::now();
             match self.last_throttle_reset {
                 // If the throttle timer is still within the throttle_frequency
                 // then throttle the connection.
                 Some(last_throttle_reset)
-                    if now.duration_since(last_throttle_reset) < throttle_frequency =>
+                    if time_stamp.saturating_duration_since(last_throttle_reset)
+                        < throttle_frequency =>
                 {
                     return true;
                 }
@@ -66,7 +74,7 @@ impl BasicRateLimiter {
                 // Let the connection through.
                 _ => {
                     self.count = 0;
-                    self.last_throttle_reset = Some(now);
+                    self.last_throttle_reset = Some(time_stamp);
                     return false;
                 }
             };
@@ -74,21 +82,29 @@ impl BasicRateLimiter {
 
         // If this is the first time calling instantiate the throttle timer.
         if self.last_throttle_reset.is_none() {
-            self.last_throttle_reset = Some(Instant::now());
+            self.last_throttle_reset = Some(time_stamp);
         }
 
         false
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 mod tests {
     use super::{BasicRateLimiter, THROTTLED_PORT_LIMIT, THROTTLE_FREQUENCY_MS};
     use core::time::Duration;
-    use std::thread::sleep;
+    use s2n_quic_core::{
+        endpoint::limits::ConnectionAttempt,
+        inet::SocketAddress,
+        time::clock::{testing::Clock as MockClock, Clock},
+    };
 
     #[test]
     fn first_throttle_reset() {
+        let remote_address = SocketAddress::default();
+        let mock_clock = MockClock::default();
+        let info = ConnectionAttempt::new(0, 0, &remote_address, mock_clock.get_time());
+
         let mut rate_limiter = BasicRateLimiter::default();
         // The first time the throttle limit is hit the timer will be created so we expect to be
         // able to connect THROTTLED_PORT_LIMIT amount of times before the connection is throttled.
@@ -97,15 +113,18 @@ mod tests {
 
         for request in 0..(THROTTLED_PORT_LIMIT * 3) {
             if request >= THROTTLED_PORT_LIMIT {
-                assert!(rate_limiter.should_throttle(THROTTLED_PORT_LIMIT, very_long_freq));
+                assert!(rate_limiter.should_throttle(THROTTLED_PORT_LIMIT, very_long_freq, &info));
             } else {
-                assert!(!rate_limiter.should_throttle(THROTTLED_PORT_LIMIT, very_long_freq));
+                assert!(!rate_limiter.should_throttle(THROTTLED_PORT_LIMIT, very_long_freq, &info));
             }
         }
     }
 
     #[test]
     fn throttle_timer_reset() {
+        let remote_address = SocketAddress::default();
+        let mut mock_clock = MockClock::default();
+
         let mut rate_limiter = BasicRateLimiter::default();
         let short_freq = Duration::from_millis(10);
         let sleep_longer_than_short_freq = Duration::from_millis(500);
@@ -113,10 +132,11 @@ mod tests {
         // This test should never throttle because everytime the limit is about to get hit the
         // thread sleeps long enough for the throttle reset timer to fire.
         for request in 0..(THROTTLED_PORT_LIMIT * 3) {
+            let info = ConnectionAttempt::new(0, 0, &remote_address, mock_clock.get_time());
             if request % THROTTLED_PORT_LIMIT == 0 {
-                sleep(sleep_longer_than_short_freq);
+                mock_clock.inc_by(sleep_longer_than_short_freq)
             }
-            assert!(!rate_limiter.should_throttle(THROTTLED_PORT_LIMIT, short_freq));
+            assert!(!rate_limiter.should_throttle(THROTTLED_PORT_LIMIT, short_freq, &info));
         }
     }
 
@@ -202,6 +222,7 @@ pub mod default {
                     if rate_limiter.should_throttle(
                         THROTTLED_PORT_LIMIT,
                         Duration::from_millis(THROTTLE_FREQUENCY_MS),
+                        info,
                     ) {
                         return Outcome::drop();
                     }
@@ -241,15 +262,17 @@ pub mod default {
     #[test]
     fn blocked_port_connection_attempt() {
         use s2n_quic_core::inet::SocketAddress;
+        use s2n_quic_core::time::{testing::Clock as MockClock, Clock};
 
         let mut remote_address = SocketAddress::default();
         let mut limits = Limits::builder().build().unwrap();
+        let mock_clock = MockClock::default();
 
         for port in 0..u16::MAX {
             let blocked_expected = s2n_quic_core::path::remote_port_blocked(port);
 
             remote_address.set_port(port);
-            let info = ConnectionAttempt::new(0, 0, &remote_address);
+            let info = ConnectionAttempt::new(0, 0, &remote_address, mock_clock.get_time());
             let outcome = limits.on_connection_attempt(&info);
 
             if blocked_expected {

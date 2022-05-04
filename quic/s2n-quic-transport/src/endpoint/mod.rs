@@ -342,6 +342,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             self.connections.handshake_connections(),
             self.connections.len(),
             &remote_address,
+            timestamp,
         );
 
         let context = self.config.context();
