@@ -16,7 +16,9 @@ pub trait Provider: 'static {
     fn start(self) -> Result<Self::Limits, Self::Error>;
 }
 
+use core::time::Duration;
 pub use default::Limits as Default;
+use std::time::Instant;
 
 impl_provider_utils!();
 
@@ -26,6 +28,107 @@ impl<T: 'static + Limiter> Provider for T {
 
     fn start(self) -> Result<Self::Limits, Self::Error> {
         Ok(self)
+    }
+}
+
+const THROTTLED_PORT_LIMIT: usize = 10;
+const THROTTLE_FREQUENCY_MS: u64 = 1000;
+
+#[derive(Default, Debug, Clone, Copy)]
+struct BasicRateLimiter {
+    last_throttle_reset: Option<Instant>,
+    count: usize,
+}
+
+impl BasicRateLimiter {
+    /// Throttles a connection based on a limit.
+    /// Returns True if the `should_throttle` invoke count is greater than `limit` and the
+    /// connection has not been throttled in the last `throttle_frequency` duration.
+    ///
+    /// If the throttle timer expires the count is reset and `should_throttle` returns False.
+    ///
+    /// Returns False if the `should_throttle` invoke count is less than `limit`.
+    fn should_throttle(&mut self, limit: usize, throttle_frequency: Duration) -> bool {
+        self.count += 1;
+
+        if self.count > limit {
+            let now = Instant::now();
+            match self.last_throttle_reset {
+                // If the throttle timer is still within the throttle_frequency
+                // then throttle the connection.
+                Some(last_throttle_reset)
+                    if now.duration_since(last_throttle_reset) < throttle_frequency =>
+                {
+                    return true;
+                }
+                // If the throttle timer is greater than the throttle_frequency
+                // then reset the throttle count and the throttle timer.
+                // Let the connection through.
+                _ => {
+                    self.count = 0;
+                    self.last_throttle_reset = Some(now);
+                    return false;
+                }
+            };
+        }
+
+        // If this is the first time calling instantiate the throttle timer.
+        if self.last_throttle_reset.is_none() {
+            self.last_throttle_reset = Some(Instant::now());
+        }
+
+        false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BasicRateLimiter, THROTTLED_PORT_LIMIT, THROTTLE_FREQUENCY_MS};
+    use core::time::Duration;
+    use std::thread::sleep;
+
+    #[test]
+    fn first_throttle_reset() {
+        let mut rate_limiter = BasicRateLimiter::default();
+        // The first time the throttle limit is hit the timer will be created so we expect to be
+        // able to connect THROTTLED_PORT_LIMIT amount of times before the connection is throttled.
+        // Note: This test should run fast enough to not let the timer reset.
+        let very_long_freq = Duration::MAX;
+
+        for request in 0..(THROTTLED_PORT_LIMIT * 3) {
+            if request >= THROTTLED_PORT_LIMIT {
+                assert!(rate_limiter.should_throttle(THROTTLED_PORT_LIMIT, very_long_freq));
+            } else {
+                assert!(!rate_limiter.should_throttle(THROTTLED_PORT_LIMIT, very_long_freq));
+            }
+        }
+    }
+
+    #[test]
+    fn throttle_timer_reset() {
+        let mut rate_limiter = BasicRateLimiter::default();
+        let short_freq = Duration::from_millis(10);
+        let sleep_longer_than_short_freq = Duration::from_millis(500);
+
+        // This test should never throttle because everytime the limit is about to get hit the
+        // thread sleeps long enough for the throttle reset timer to fire.
+        for request in 0..(THROTTLED_PORT_LIMIT * 3) {
+            if request % THROTTLED_PORT_LIMIT == 0 {
+                sleep(sleep_longer_than_short_freq);
+            }
+            assert!(!rate_limiter.should_throttle(THROTTLED_PORT_LIMIT, short_freq));
+        }
+    }
+
+    #[test]
+    fn throttle_constants_changed() {
+        // If the constants change consider modifying the above test cases to make sure we are
+        // confident that we are hitting all the correct conditions.
+        //
+        // For example if we increase THROTTLE_FREQUENCY_MS to a very large period, do the above
+        // tests still make sense?
+        assert_eq!(THROTTLED_PORT_LIMIT, 10);
+        assert_eq!(THROTTLE_FREQUENCY_MS, 1000);
     }
 }
 
@@ -69,6 +172,7 @@ pub mod default {
         pub fn build(self) -> Result<Limits, Infallible> {
             Ok(Limits {
                 max_inflight_handshake_limit: self.max_inflight_handshake_limit,
+                rate_limiter: Some(BasicRateLimiter::default()),
             })
         }
     }
@@ -77,6 +181,7 @@ pub mod default {
     pub struct Limits {
         /// Maximum number of handshakes to allow before Retry packets are queued
         max_inflight_handshake_limit: Option<usize>,
+        rate_limiter: Option<BasicRateLimiter>,
     }
 
     impl Limits {
@@ -90,6 +195,17 @@ pub mod default {
         fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome {
             if s2n_quic_core::path::remote_port_blocked(info.remote_address.port()) {
                 return Outcome::drop();
+            }
+
+            if s2n_quic_core::path::remote_port_throttled(info.remote_address.port()) {
+                if let Some(mut rate_limiter) = self.rate_limiter {
+                    if rate_limiter.should_throttle(
+                        THROTTLED_PORT_LIMIT,
+                        Duration::from_millis(THROTTLE_FREQUENCY_MS),
+                    ) {
+                        return Outcome::drop();
+                    }
+                }
             }
 
             if let Some(limit) = self.max_inflight_handshake_limit {
@@ -107,6 +223,7 @@ pub mod default {
         fn default() -> Self {
             Self {
                 max_inflight_handshake_limit: None,
+                rate_limiter: None,
             }
         }
     }
