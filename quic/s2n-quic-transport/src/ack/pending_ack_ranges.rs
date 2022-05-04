@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{ack::ack_ranges::AckRanges, interval_set};
+use crate::ack::ack_ranges::AckRanges;
 use core::time::Duration;
 use s2n_quic_core::{
     frame::ack::EcnCounts,
@@ -59,8 +59,11 @@ impl PendingAckRanges {
 
     /// Returns an iterator over all values in the `AckRanges`
     #[inline]
-    pub fn iter(&self) -> interval_set::RangeInclusiveIter<PacketNumber> {
-        self.ack_ranges.inclusive_ranges()
+    pub fn iter(&self) -> impl Iterator<Item = PacketNumberRange> + '_ {
+        self.ack_ranges
+            .inclusive_ranges()
+            .into_iter()
+            .map(|ack_range| PacketNumberRange::new(*ack_range.start(), *ack_range.end()))
     }
 
     /// Returns `EcnCounts` aggregated over all the pending ACKs
@@ -189,13 +192,7 @@ mod tests {
             .extend(pn_range_b.into_iter(), Some(ecn_counts), now)
             .is_ok());
 
-        let coll: Vec<PacketNumber> = pending_ack_ranges
-            .iter()
-            .flat_map(|range| {
-                let (start, end) = range.into_inner();
-                PacketNumberRange::new(start, end)
-            })
-            .collect();
+        let coll: Vec<PacketNumber> = pending_ack_ranges.iter().flatten().collect();
         assert_eq!(coll.len(), 2);
         let arr = [pn_a, pn_b];
         for pn in coll.iter() {

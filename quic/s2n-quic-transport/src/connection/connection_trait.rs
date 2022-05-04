@@ -100,7 +100,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     ) -> Result<(), connection::Error>;
 
     /// Process pendings ACKs for the `Connection`.
-    fn on_process_pending_acks(
+    fn on_pending_ack_ranges(
         &mut self,
         timestamp: Timestamp,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,

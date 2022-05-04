@@ -445,7 +445,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         self.retry_cid.as_deref()
     }
 
-    pub fn on_process_pending_acks<Pub: event::ConnectionPublisher>(
+    pub fn on_pending_ack_ranges<Pub: event::ConnectionPublisher>(
         &mut self,
         timestamp: Timestamp,
         path_id: path::Id,
@@ -464,7 +464,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         );
 
         if let Some((space, handshake_status)) = self.application_mut() {
-            space.on_process_pending_acks(
+            space.on_pending_ack_ranges(
                 timestamp,
                 path_id,
                 path_manager,

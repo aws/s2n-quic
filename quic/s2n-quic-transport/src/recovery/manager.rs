@@ -308,7 +308,7 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// Process pending ACK information.
     ///
     /// Update congestion controller, timers and meta data around acked packet ranges.
-    pub fn on_process_pending_ack_ranges<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
+    pub fn on_pending_ack_ranges<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         timestamp: Timestamp,
         pending_ack_ranges: &mut PendingAckRanges,
@@ -325,9 +325,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             .expect("pending range should not be empty");
         self.process_acks(
             timestamp,
-            pending_ack_ranges
-                .iter()
-                .map(|ack_range| PacketNumberRange::new(*ack_range.start(), *ack_range.end())),
+            pending_ack_ranges.iter(),
             largest_acked_packet_number,
             pending_ack_ranges.ack_delay(),
             pending_ack_ranges.ecn_counts(),

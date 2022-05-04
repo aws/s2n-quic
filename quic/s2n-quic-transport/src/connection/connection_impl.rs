@@ -1049,7 +1049,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Process ACKs for the `Connection`.
-    fn on_process_pending_acks(
+    fn on_pending_ack_ranges(
         &mut self,
         timestamp: Timestamp,
         subscriber: &mut Config::EventSubscriber,
@@ -1061,7 +1061,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         // active path across some ACK delay processing.
         let path_id = self.path_manager.active_path_id();
         self.space_manager
-            .on_process_pending_acks(
+            .on_pending_ack_ranges(
                 timestamp,
                 path_id,
                 &mut self.path_manager,

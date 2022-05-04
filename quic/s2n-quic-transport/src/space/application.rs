@@ -552,26 +552,23 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     }
 
     // Store ACKs in PendingAckRanges for delayed processing
+    //
+    // Returns `Err` if the range was not inserted.
     pub fn update_pending_acks<A: frame::ack::AckRanges>(
         &mut self,
         frame: &frame::Ack<A>,
         pending_ack_ranges: &mut PendingAckRanges,
-    ) -> Result<(), transport::Error> {
+    ) -> Result<(), ()> {
         let range = frame.ack_ranges().into_iter().map(|f| {
             PacketNumberRange::new(
                 PacketNumberSpace::ApplicationData.new_packet_number(*f.start()),
                 PacketNumberSpace::ApplicationData.new_packet_number(*f.end()),
             )
         });
-        pending_ack_ranges
-            .extend(range, frame.ecn_counts, frame.ack_delay())
-            .or(
-                // TODO: post metrics: ack ranges were dropped
-                Ok(()),
-            )
+        pending_ack_ranges.extend(range, frame.ecn_counts, frame.ack_delay())
     }
 
-    pub fn on_process_pending_acks<Pub: event::ConnectionPublisher>(
+    pub fn on_pending_ack_ranges<Pub: event::ConnectionPublisher>(
         &mut self,
         timestamp: Timestamp,
         path_id: path::Id,
@@ -587,7 +584,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
         let (recovery_manager, mut context, pending_ack_ranges) =
             self.recovery(handshake_status, local_id_registry, path_id, path_manager);
-        recovery_manager.on_process_pending_ack_ranges(
+        recovery_manager.on_pending_ack_ranges(
             timestamp,
             pending_ack_ranges,
             &mut context,
@@ -752,6 +749,9 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         let (recovery_manager, mut context, _) =
             self.recovery(handshake_status, local_id_registry, path_id, path_manager);
 
+        // TODO enable delayed ack processing. It might be possible to process
+        // the ACKs immediately if insertion into PendingAckRanges fails
+        //
         // self.update_pending_acks(&frame, &mut self.pending_ack_ranges)
         recovery_manager.on_ack_frame(timestamp, frame, &mut context, publisher)
     }
