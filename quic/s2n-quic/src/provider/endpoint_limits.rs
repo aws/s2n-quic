@@ -35,7 +35,7 @@ impl<T: 'static + Limiter> Provider for T {
 }
 
 const THROTTLED_PORT_LIMIT: usize = 10;
-const THROTTLE_FREQUENCY_MS: u64 = 1000;
+const THROTTLE_FREQUENCY: Duration = Duration::from_secs(1);
 
 #[derive(Default, Debug, Clone, Copy)]
 struct BasicRateLimiter {
