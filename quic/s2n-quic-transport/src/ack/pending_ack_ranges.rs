@@ -1,19 +1,21 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{ack::ack_ranges::AckRanges, interval_set};
+use crate::{ack::ack_ranges::AckRanges, interval_set, path};
 use core::time::Duration;
 use s2n_quic_core::{
     frame::ack::EcnCounts,
     packet::number::{PacketNumber, PacketNumberRange},
 };
 
-/// Stores aggregated ACK info for delayed processing
+/// Stores aggregated ACK info for delayed pactive_path_id()rocessing
 #[derive(Clone, Debug, Default)]
 pub struct PendingAckRanges {
     ack_ranges: AckRanges,
     ecn_counts: EcnCounts,
     ack_delay: Duration,
+    /// The path for which to delay ack processing
+    pub current_active_path: Option<path::Id>,
 }
 
 impl PendingAckRanges {
@@ -23,6 +25,7 @@ impl PendingAckRanges {
             ack_ranges,
             ecn_counts,
             ack_delay,
+            current_active_path: None,
         }
     }
 
@@ -79,6 +82,12 @@ impl PendingAckRanges {
         self.ack_delay
     }
 
+    /// Set the current active path for which to aggregate ACKs
+    #[inline]
+    pub fn set_active_path(&mut self, path_id: path::Id) {
+        self.current_active_path = Some(path_id)
+    }
+
     /// Returns the largest `PacketNumber` stored in the AckRanges.
     ///
     /// If no items are present in the set, `None` is returned.
@@ -88,10 +97,11 @@ impl PendingAckRanges {
 
     /// Clear the ack ranges and reset values
     #[inline]
-    pub fn clear(&mut self) {
+    pub fn reset(&mut self) {
         self.ack_ranges.clear();
         self.ecn_counts = EcnCounts::default();
         self.ack_delay = Duration::default();
+        self.current_active_path = None;
     }
 
     /// Returns if ack ranges are being tracked
@@ -159,7 +169,7 @@ mod tests {
         // ensure pending_ack_ranges clear functionality works
         {
             assert!(!pending_ack_ranges.is_empty());
-            pending_ack_ranges.clear();
+            pending_ack_ranges.reset();
 
             assert!(pending_ack_ranges.is_empty());
             assert_eq!(pending_ack_ranges.ack_ranges.interval_len(), 0);

@@ -444,7 +444,6 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     pub fn on_process_pending_acks<Pub: event::ConnectionPublisher>(
         &mut self,
         timestamp: Timestamp,
-        path_id: path::Id,
         path_manager: &mut path::Manager<Config>,
         local_id_registry: &mut connection::LocalIdRegistry,
         publisher: &mut Pub,
@@ -462,12 +461,13 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         if let Some((space, handshake_status)) = self.application_mut() {
             space.on_process_pending_acks(
                 timestamp,
-                path_id,
                 path_manager,
                 handshake_status,
                 local_id_registry,
                 publisher,
             )?;
+            // reset pending ack information after processing
+            space.pending_ack_ranges.reset();
         }
 
         Ok(())

@@ -1055,11 +1055,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         // TODO: care should be taken to only delay ACK processing for the active path.
         // However, the active path could change so it might be necessary to track the
         // active path across some ACK delay processing.
-        let path_id = self.path_manager.active_path_id();
         self.space_manager
             .on_process_pending_acks(
                 timestamp,
-                path_id,
                 &mut self.path_manager,
                 &mut self.local_id_registry,
                 &mut publisher,
@@ -1418,6 +1416,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut publisher,
             );
 
+            space
+                .pending_ack_ranges
+                .set_active_path(self.path_manager.active_path_id());
             let processed_packet = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -1430,6 +1431,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut publisher,
                 packet_interceptor,
             )?;
+
+            // clear ack information after processing if there are no acks
+            // to process, otherwise reset after processing
+            if space.pending_ack_ranges.is_empty() {
+                space.pending_ack_ranges.reset();
+            }
 
             // notify the connection a packet was processed
             self.on_processed_packet(&processed_packet, subscriber)?;

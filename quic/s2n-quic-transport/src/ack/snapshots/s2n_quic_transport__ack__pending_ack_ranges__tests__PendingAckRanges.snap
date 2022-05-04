@@ -1,7 +1,7 @@
 ---
 source: quic/s2n-quic-transport/src/ack/pending_ack_ranges.rs
-assertion_line: 186
+assertion_line: 239
 expression: "size_of::<PendingAckRanges>()"
 
 ---
-80
+88

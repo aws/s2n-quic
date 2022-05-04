@@ -114,6 +114,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         let endpoint_context = self.config.context();
         // process ACKs on Connections with interest
         self.connections.iterate_ack_list(|connection| {
+            println!("1---------------");
             connection.on_process_pending_acks(timestamp, endpoint_context.event_subscriber);
         });
 

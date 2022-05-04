@@ -549,7 +549,6 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     pub fn update_pending_acks<A: frame::ack::AckRanges>(
         &mut self,
         frame: &frame::Ack<A>,
-        pending_ack_ranges: &mut PendingAckRanges,
     ) -> Result<(), transport::Error> {
         let range = frame.ack_ranges().into_iter().map(|f| {
             PacketNumberRange::new(
@@ -557,7 +556,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 PacketNumberSpace::ApplicationData.new_packet_number(*f.end()),
             )
         });
-        pending_ack_ranges
+        self.pending_ack_ranges
             .extend(range, frame.ecn_counts, frame.ack_delay())
             .or(
                 // TODO: post metrics: ack ranges were dropped
@@ -568,7 +567,6 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     pub fn on_process_pending_acks<Pub: event::ConnectionPublisher>(
         &mut self,
         timestamp: Timestamp,
-        path_id: path::Id,
         path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
@@ -579,8 +577,14 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             "pending_ack_ranges should be non-empty since connection indicated ack interest"
         );
 
-        let (recovery_manager, mut context, pending_ack_ranges) =
-            self.recovery(handshake_status, local_id_registry, path_id, path_manager);
+        let (recovery_manager, mut context, pending_ack_ranges) = self.recovery(
+            handshake_status,
+            local_id_registry,
+            self.pending_ack_ranges
+                .current_active_path
+                .expect("active path should be set"),
+            path_manager,
+        );
         recovery_manager.on_process_pending_ack_ranges(
             timestamp,
             pending_ack_ranges,
@@ -741,13 +745,20 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         local_id_registry: &mut connection::LocalIdRegistry,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
+        debug_assert!(self.pending_ack_ranges.current_active_path.is_some());
+
         let path = &mut path_manager[path_id];
         path.on_peer_validated();
+        let current_active_path = self.pending_ack_ranges.current_active_path.unwrap();
+
         let (recovery_manager, mut context, _) =
             self.recovery(handshake_status, local_id_registry, path_id, path_manager);
 
-        // self.update_pending_acks(&frame, &mut self.pending_ack_ranges)
-        recovery_manager.on_ack_frame(timestamp, frame, &mut context, publisher)
+        if current_active_path == path_id {
+            self.update_pending_acks(&frame)
+        } else {
+            recovery_manager.on_ack_frame(timestamp, frame, &mut context, publisher)
+        }
     }
 
     fn handle_connection_close_frame(
