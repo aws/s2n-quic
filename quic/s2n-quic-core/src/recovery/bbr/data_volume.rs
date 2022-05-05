@@ -80,7 +80,7 @@ impl Model {
         &self,
         bdp: u64,
         offload_budget: u64,
-        min_pipe_cwnd: u64,
+        min_pipe_cwnd: u32,
         probebw_up: bool,
         max_datagram_size: u16,
     ) -> u64 {
@@ -129,7 +129,7 @@ impl Model {
         &mut self,
         bw: Bandwidth,
         bytes_acknowledged: usize,
-        cwnd: u64,
+        cwnd: u32,
         round_count: u64,
         now: Timestamp,
     ) {
@@ -143,7 +143,7 @@ impl Model {
             expected_delivered = 0;
         }
         self.extra_acked_delivered += bytes_acknowledged as u64;
-        let extra = (self.extra_acked_delivered - expected_delivered).min(cwnd);
+        let extra = (self.extra_acked_delivered - expected_delivered).min(cwnd as u64);
         self.extra_acked_filter.update(extra, round_count);
     }
 
@@ -158,9 +158,9 @@ impl Model {
 
     /// Updates `inflight_lo` with the given `inflight_latest` if it exceeds
     /// the current `inflight_lo` * `bbr::BETA`
-    pub fn update_lower_bound(&mut self, cwnd: u64, inflight_latest: u64) {
+    pub fn update_lower_bound(&mut self, cwnd: u32, inflight_latest: u64) {
         if self.inflight_lo == u64::MAX {
-            self.inflight_lo = cwnd
+            self.inflight_lo = cwnd as u64;
         }
 
         self.inflight_lo = inflight_latest.max((BETA * self.inflight_lo).to_integer());
@@ -176,7 +176,7 @@ impl Model {
         &self,
         inflight: u64,
         offload_budget: u64,
-        min_pipe_cwnd: u64,
+        min_pipe_cwnd: u32,
         probebw_up: bool,
         max_datagram_size: u16,
     ) -> u64 {
@@ -189,7 +189,7 @@ impl Model {
         //#     inflight += 2
         //#   return inflight
 
-        let mut inflight = inflight.max(offload_budget).max(min_pipe_cwnd);
+        let mut inflight = inflight.max(offload_budget).max(min_pipe_cwnd as u64);
 
         if probebw_up {
             inflight += 2 * max_datagram_size as u64;

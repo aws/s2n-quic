@@ -8,6 +8,7 @@ use crate::{
 };
 use num_rational::Ratio;
 
+mod congestion;
 mod data_rate;
 mod data_volume;
 mod full_pipe;
@@ -44,7 +45,9 @@ struct BbrCongestionController {
     //# bytes_in_flight to ensure congestion control does not impede
     //# congestion feedback.
     bytes_in_flight: BytesInFlight,
+    cwnd: u32,
     recovery_state: recovery::State,
+    congestion_state: congestion::State,
     data_rate_model: data_rate::Model,
     #[allow(dead_code)] // TODO: Remove when used
     data_volume_model: data_volume::Model,
@@ -56,7 +59,7 @@ impl CongestionController for BbrCongestionController {
     type PacketInfo = bandwidth::PacketInfo;
 
     fn congestion_window(&self) -> u32 {
-        todo!()
+        self.cwnd
     }
 
     fn bytes_in_flight(&self) -> u32 {
@@ -117,6 +120,16 @@ impl CongestionController for BbrCongestionController {
         );
         self.recovery_state
             .on_ack(self.round_counter.round_start(), newest_acked_time_sent);
+        let is_probing_bw = false; // TODO: track probing state
+        self.congestion_state.update(
+            newest_acked_packet_info,
+            self.bw_estimator.rate_sample(),
+            self.bw_estimator.delivered_bytes(),
+            &mut self.data_rate_model,
+            &mut self.data_volume_model,
+            is_probing_bw,
+            self.cwnd,
+        );
 
         if self.round_counter.round_start() {
             self.full_pipe_estimator.on_round_start(
@@ -125,6 +138,9 @@ impl CongestionController for BbrCongestionController {
                 self.recovery_state.in_recovery(),
             )
         }
+
+        self.congestion_state
+            .advance(self.bw_estimator.rate_sample());
     }
 
     fn on_packet_lost(
