@@ -73,6 +73,7 @@ impl Report {
         stat!("d", deallocs);
         stat!("S", syscalls);
         stat!("O", connections);
+        stat!("A", accept);
 
         macro_rules! try_map {
             ($prefix:literal, $on_value:expr) => {
@@ -136,6 +137,7 @@ impl Report {
             .saturating_sub(prev.context_switches);
         let syscalls = current.syscalls.saturating_sub(prev.syscalls);
         let connections = current.connections.saturating_sub(prev.connections);
+        let accept = current.accept.saturating_sub(prev.accept);
 
         let time = self.interval.as_millis() as u64 * self.count;
         let time = Duration::from_millis(time);
@@ -149,6 +151,7 @@ impl Report {
             context_switches,
             syscalls,
             connections,
+            accept,
             memory: current.memory,
             virtual_memory: current.virtual_memory,
             allocs: current.allocs,
