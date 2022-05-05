@@ -72,7 +72,13 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
     }
 
     #[inline]
-    fn can_gso(&self) -> bool {
+    fn can_gso(&self, segment_len: usize) -> bool {
+        if let Some(min_packet_len) = self.context.min_packet_len {
+            if segment_len < min_packet_len {
+                return false;
+            }
+        }
+
         // If a packet can be GSO'd it means it's limited to the previously written packet
         // size. This becomes a problem for MTU probes where they will likely exceed that amount.
         // As such, if we're probing we want to let the IO layer know to not GSO the current
@@ -80,8 +86,17 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
         !self.context.transmission_mode.is_mtu_probing()
     }
 
-    fn write_payload(&mut self, buffer: &mut [u8], gso_offset: usize) -> usize {
+    fn write_payload(
+        &mut self,
+        buffer: tx::PayloadBuffer,
+        gso_offset: usize,
+    ) -> Result<usize, tx::Error> {
         let space_manager = &mut self.space_manager;
+        let buffer = unsafe {
+            // the WriterContext has its own checks for buffer capacity so convert `buffer` into a
+            // `&mut [u8]`
+            buffer.into_mut_slice()
+        };
 
         let mtu = self
             .context
@@ -361,9 +376,10 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                     len: datagram_len as u16,
                     gso_offset,
                 });
+            Ok(datagram_len)
+        } else {
+            Err(tx::Error::EmptyPayload)
         }
-
-        datagram_len
     }
 }
 
