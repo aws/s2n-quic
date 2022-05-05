@@ -11,10 +11,10 @@ pub(crate) struct State {
     /// Tracks round trips for ensuring BBR reacts to congestion only once per round
     loss_round_counter: round::Counter,
     //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.10
-    //= a 1-round-trip max of delivered bandwidth (rs.delivery_rate)
+    //# a 1-round-trip max of delivered bandwidth (rs.delivery_rate)
     bw_latest: Bandwidth,
     //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.10
-    //= a 1-round-trip max of delivered volume of data (rs.delivered)
+    //# a 1-round-trip max of delivered volume of data (rs.delivered)
     inflight_latest: u64,
     /// True if loss was encountered at any point in the current round trip
     loss_in_round: bool,
