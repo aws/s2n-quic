@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::ack::ack_ranges::AckRanges;
+use crate::{ack::ack_ranges::AckRanges, path};
 use core::time::Duration;
 use s2n_quic_core::{
     frame::ack::EcnCounts,
@@ -14,18 +14,11 @@ pub struct PendingAckRanges {
     ack_ranges: AckRanges,
     ecn_counts: EcnCounts,
     ack_delay: Duration,
+    /// The path for which to aggregate ACKs
+    pub current_active_path: Option<path::Id>,
 }
 
 impl PendingAckRanges {
-    #[inline]
-    pub fn new(ack_ranges: AckRanges, ecn_counts: EcnCounts, ack_delay: Duration) -> Self {
-        PendingAckRanges {
-            ack_ranges,
-            ecn_counts,
-            ack_delay,
-        }
-    }
-
     /// Extend with a packet number range; dropping smaller values if needed
     #[inline]
     pub fn extend(
@@ -34,6 +27,11 @@ impl PendingAckRanges {
         ecn_counts: Option<EcnCounts>,
         ack_delay: Duration,
     ) -> Result<(), ()> {
+        debug_assert!(
+            self.current_active_path.is_some(),
+            "active path should be set prior to inserting acks"
+        );
+
         if let Some(ecn_counts) = ecn_counts {
             self.ecn_counts = self.ecn_counts.max(ecn_counts);
         }
@@ -46,7 +44,6 @@ impl PendingAckRanges {
         self.ack_delay = self.ack_delay.max(ack_delay);
 
         let mut did_insert = true;
-        // TODO: add metrics if ack ranges are being dropped
         for range in acked_packets {
             did_insert &= self.ack_ranges.insert_packet_number_range(range).is_ok()
         }
@@ -60,6 +57,11 @@ impl PendingAckRanges {
     /// Returns an iterator over all values in the `AckRanges`
     #[inline]
     pub fn iter(&self) -> impl Iterator<Item = PacketNumberRange> + '_ {
+        debug_assert!(
+            self.current_active_path.is_some(),
+            "active path should be set prior to processing acks"
+        );
+
         self.ack_ranges
             .inclusive_ranges()
             .into_iter()
@@ -69,6 +71,11 @@ impl PendingAckRanges {
     /// Returns `EcnCounts` aggregated over all the pending ACKs
     #[inline]
     pub fn ecn_counts(&self) -> Option<EcnCounts> {
+        debug_assert!(
+            self.current_active_path.is_some(),
+            "active path should be set prior to processing acks"
+        );
+
         if self.ack_ranges.is_empty() {
             None
         } else {
@@ -79,22 +86,51 @@ impl PendingAckRanges {
     /// Returns the ACK delay associated with all the pending ACKs
     #[inline]
     pub fn ack_delay(&self) -> Duration {
+        debug_assert!(
+            self.current_active_path.is_some(),
+            "active path should be set prior to processing acks"
+        );
+
         self.ack_delay
+    }
+
+    /// Set the current active path for which to aggregate ACKs
+    #[inline]
+    pub fn set_active_path(&mut self, path_id: path::Id) {
+        self.current_active_path = Some(path_id)
     }
 
     /// Returns the largest `PacketNumber` stored in the AckRanges.
     ///
     /// If no items are present in the set, `None` is returned.
     pub fn max_value(&self) -> Option<PacketNumber> {
+        debug_assert!(
+            self.current_active_path.is_some(),
+            "active path should be set prior to processing acks"
+        );
+
         self.ack_ranges.max_value()
     }
 
-    /// Clear the ack ranges and reset values
+    /// Clear the aggregated ACK information
     #[inline]
-    pub fn clear(&mut self) {
+    pub fn reset_aggregate_info(&mut self) {
         self.ack_ranges.clear();
         self.ecn_counts = EcnCounts::default();
         self.ack_delay = Duration::default();
+    }
+
+    /// Re-initialize all fields.
+    ///
+    /// Should be called at the end of a processing round to clear all data.
+    #[inline]
+    pub fn wipe(&mut self) {
+        debug_assert!(
+            self.current_active_path.is_some(),
+            "wipe called more than once"
+        );
+        self.reset_aggregate_info();
+        self.current_active_path = None;
     }
 
     /// Returns if ack ranges are being tracked
@@ -112,8 +148,22 @@ mod tests {
         frame::ack::EcnCounts,
         inet::ExplicitCongestionNotification,
         packet::number::{PacketNumberRange, PacketNumberSpace},
+        path::Id,
         varint::{self, VarInt},
     };
+
+    pub fn helper_new_pending(
+        ack_ranges: AckRanges,
+        ecn_counts: EcnCounts,
+        ack_delay: Duration,
+    ) -> PendingAckRanges {
+        PendingAckRanges {
+            ack_ranges,
+            ecn_counts,
+            ack_delay,
+            current_active_path: None,
+        }
+    }
 
     #[test]
     fn pending_ack_ranges_test() {
@@ -121,7 +171,8 @@ mod tests {
         let mut ecn_counts = EcnCounts::default();
         let mut packet_numbers = packet_numbers_iter().step_by(2); // skip every other packet number
         let ack_ranges = AckRanges::new(3);
-        let mut pending_ack_ranges = PendingAckRanges::new(ack_ranges, ecn_counts, now);
+        let mut pending_ack_ranges = helper_new_pending(ack_ranges, ecn_counts, now);
+        pending_ack_ranges.set_active_path(Id::test_id());
 
         assert!(pending_ack_ranges.is_empty());
 
@@ -162,7 +213,7 @@ mod tests {
         // ensure pending_ack_ranges clear functionality works
         {
             assert!(!pending_ack_ranges.is_empty());
-            pending_ack_ranges.clear();
+            pending_ack_ranges.reset_aggregate_info();
 
             assert!(pending_ack_ranges.is_empty());
             assert_eq!(pending_ack_ranges.ack_ranges.interval_len(), 0);
@@ -177,7 +228,8 @@ mod tests {
         let ecn_counts = EcnCounts::default();
         let mut packet_numbers = packet_numbers_iter().step_by(2); // skip every other packet number
         let ack_ranges = AckRanges::new(3);
-        let mut pending_ack_ranges = PendingAckRanges::new(ack_ranges, ecn_counts, now);
+        let mut pending_ack_ranges = helper_new_pending(ack_ranges, ecn_counts, now);
+        pending_ack_ranges.set_active_path(Id::test_id());
 
         // insert ranges
         let pn_a = packet_numbers.next().unwrap();
@@ -208,7 +260,8 @@ mod tests {
         let pn_b = PacketNumberSpace::ApplicationData
             .new_packet_number(VarInt::new(varint::MAX_VARINT_VALUE).unwrap());
         let ack_ranges = AckRanges::new(3);
-        let mut pending_ack_ranges = PendingAckRanges::new(ack_ranges, ecn_counts, now);
+        let mut pending_ack_ranges = helper_new_pending(ack_ranges, ecn_counts, now);
+        pending_ack_ranges.set_active_path(Id::test_id());
 
         let range_1 = Some(PacketNumberRange::new(pn_a, pn_b));
 
@@ -235,7 +288,8 @@ mod tests {
             .map(|(a, b)| (a.min(b), a.max(b))) // ensure valid range
             .for_each(|(a, b)| {
                 let ack_ranges = AckRanges::new(1);
-                let mut pending_ack_ranges = PendingAckRanges::new(ack_ranges, ecn_counts, now);
+                let mut pending_ack_ranges = helper_new_pending(ack_ranges, ecn_counts, now);
+                pending_ack_ranges.set_active_path(Id::test_id());
 
                 let pn_a = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u32(*a));
                 let pn_b = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u32(*b));

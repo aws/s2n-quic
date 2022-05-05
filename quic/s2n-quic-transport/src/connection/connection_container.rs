@@ -451,7 +451,13 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
                         remove_interest!($list_name);
                     }
                 }
-                debug_assert_eq!($interest, node.$link_name.is_linked());
+                debug_assert_eq!(
+                    $interest,
+                    node.$link_name.is_linked(),
+                    "interest: {}, linked: {}",
+                    $interest,
+                    node.$link_name.is_linked()
+                );
             };
         }
 

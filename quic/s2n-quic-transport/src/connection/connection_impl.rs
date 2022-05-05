@@ -1056,23 +1056,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     ) -> Result<(), connection::Error> {
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
 
-        // TODO: care should be taken to only delay ACK processing for the active path.
-        // However, the active path could change so it might be necessary to track the
-        // active path across some ACK delay processing.
-        let path_id = self.path_manager.active_path_id();
         self.space_manager
             .on_pending_ack_ranges(
                 timestamp,
-                path_id,
                 &mut self.path_manager,
                 &mut self.local_id_registry,
                 &mut publisher,
             )
-            .map_err(|err| {
-                // TODO: publish metrics
-
-                err.into()
-            })
+            .map_err(|err| err.into())
     }
 
     /// Handles all external wakeups on the [`Connection`].
@@ -1432,6 +1423,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut publisher,
             );
 
+            space
+                .pending_ack_ranges
+                .set_active_path(self.path_manager.active_path_id());
             let processed_packet = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -1444,6 +1438,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut publisher,
                 packet_interceptor,
             )?;
+
+            // there are no pending ACKs to process so wipe the structure to avoid
+            // an unnecessary connection wakeup
+            if space.pending_ack_ranges.is_empty() {
+                space.pending_ack_ranges.wipe();
+            }
 
             // notify the connection a packet was processed
             self.on_processed_packet(&processed_packet, subscriber)?;

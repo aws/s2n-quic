@@ -337,7 +337,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         //
         // If there was an error during processing its probably safer
         // to clear the queue rather than try again.
-        pending_ack_ranges.clear();
+        pending_ack_ranges.reset_aggregate_info();
 
         result
     }

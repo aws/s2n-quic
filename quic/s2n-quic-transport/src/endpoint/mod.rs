@@ -110,7 +110,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                 Some(time) => time,
                 None => {
                     now = Some(clock.get_time());
-                    now.expect("value should be set")
+                    now.expect("value set above")
                 }
             };
 
@@ -119,21 +119,32 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
             }
         }
 
-        // TODO process pending acks
-        // let endpoint_context = self.config.context();
-        // // process ACKs on Connections with interest
-        // self.connections.iterate_ack_list(|connection| {
-        //     let timestamp = match now {
-        //         Some(time) => time,
-        //         None => {
-        //             now = Some(clock.get_time());
-        //             now.expect("value should be set")
-        //         }
-        //     };
-        //
-        //     // handle error and potentially close the connection
-        //     connection.on_pending_ack_ranges(timestamp, endpoint_context.event_subscriber);
-        // });
+        let endpoint_context = self.config.context();
+        let close_packet_buffer = &mut self.close_packet_buffer;
+        // process ACKs on Connections with interest
+        self.connections.iterate_ack_list(|connection| {
+            let timestamp = match now {
+                Some(time) => time,
+                None => {
+                    now = Some(clock.get_time());
+                    now.expect("value set above")
+                }
+            };
+
+            // handle error and potentially close the connection
+            if let Err(error) =
+                connection.on_pending_ack_ranges(timestamp, endpoint_context.event_subscriber)
+            {
+                connection.close(
+                    error,
+                    endpoint_context.connection_close_formatter,
+                    close_packet_buffer,
+                    timestamp,
+                    endpoint_context.event_subscriber,
+                    endpoint_context.packet_interceptor,
+                );
+            }
+        });
 
         let len = entries.len();
         queue.finish(len);
