@@ -5,7 +5,7 @@ use netbench::{multiplex, scenario, Result};
 use netbench_driver::Allocator;
 use std::{collections::HashSet, future::Future, net::SocketAddr, pin::Pin, sync::Arc};
 use structopt::StructOpt;
-use tokio::{io, io::AsyncWriteExt, net::TcpStream};
+use tokio::{io::AsyncWriteExt, net::TcpStream};
 use s2n_tls_tokio::{TlsConnector, TlsStream};
 use s2n_tls::raw::{
     config::{Builder, Config},
@@ -52,9 +52,7 @@ impl Client {
         Ok(ClientImpl {
             config,
             connector,
-            id: 0,
-            rx_buffer: *self.opts.rx_buffer as _,
-            tx_buffer: *self.opts.tx_buffer as _,
+            id: 0
         })
     }
 
@@ -71,16 +69,13 @@ impl Client {
     }
 }
 
-type Stream = io::BufStream<TcpStream>;
-type Connection<'a> = netbench::Driver<'a, multiplex::Connection<TlsStream<Stream>>>;
+type Connection<'a> = netbench::Driver<'a, multiplex::Connection<TlsStream<TcpStream>>>;
 
 #[derive(Clone)]
 struct ClientImpl {
     config: multiplex::Config,
     connector: Arc<s2n_tls_tokio::TlsConnector>,
     id: u64,
-    rx_buffer: usize,
-    tx_buffer: usize,
 }
 
 impl ClientImpl {
@@ -106,13 +101,9 @@ impl<'a> netbench::client::Client<'a> for ClientImpl {
         let config = self.config.clone();
         let connector = self.connector.clone();
         let server_name = server_name.to_string();
-        let rx_buffer = self.rx_buffer;
-        let tx_buffer = self.tx_buffer;
 
         let fut = async move {
             let conn = TcpStream::connect(addr).await?;
-            let conn = io::BufStream::with_capacity(rx_buffer, tx_buffer, conn);
-
             let mut conn = connector.connect(&server_name, conn).await?;
 
             conn.write_u64(server_conn_id).await?;

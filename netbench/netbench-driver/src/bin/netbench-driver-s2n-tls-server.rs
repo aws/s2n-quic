@@ -5,7 +5,11 @@ use netbench::{multiplex, scenario, Result};
 use netbench_driver::Allocator;
 use std::{collections::HashSet, sync::Arc};
 use structopt::StructOpt;
-use tokio::{io, io::AsyncReadExt, net::{TcpListener, TcpStream}, spawn};
+use tokio::{
+    io::AsyncReadExt,
+    net::{TcpListener, TcpStream},
+    spawn,
+};
 use s2n_tls_tokio::TlsAcceptor;
 use s2n_tls::raw::{
     config::{Builder, Config},
@@ -30,7 +34,6 @@ pub struct Server {
 impl Server {
     pub async fn run(&self) -> Result<()> {
         let scenario = self.opts.scenario();
-        let buffer = (*self.opts.rx_buffer as usize, *self.opts.tx_buffer as usize);
 
         let server = self.server().await?;
 
@@ -57,8 +60,7 @@ impl Server {
                     id,
                     scenario,
                     trace,
-                    config,
-                    buffer,
+                    config
                 ).await {
                     eprintln!("error: {}", err);
                 }
@@ -72,18 +74,14 @@ impl Server {
             scenario: Arc<scenario::Server>,
             mut trace: impl netbench::Trace,
             config: multiplex::Config,
-            (rx_buffer, tx_buffer): (usize, usize),
         ) -> Result<()> {
-            eprintln!("handle connection");
-            let connection = io::BufStream::with_capacity(rx_buffer, tx_buffer, connection);
-            let connection = acceptor.accept(connection).await?;
-            let mut connection = Box::pin(connection);
-
+            let mut connection = acceptor.accept(connection).await?;
             let server_idx = connection.read_u64().await?;
             let scenario = scenario
                 .connections
                 .get(server_idx as usize)
                 .ok_or("invalid connection id")?;
+            let connection = Box::pin(connection);
 
             let conn = netbench::Driver::new(
                 scenario,
