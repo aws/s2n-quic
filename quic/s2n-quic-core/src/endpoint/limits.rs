@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    event::Timestamp,
     event::{api::SocketAddress, IntoEvent},
     inet,
-    time::Timestamp,
 };
 
 /// Outcome describes how the library should proceed on a connection attempt. The implementor will
