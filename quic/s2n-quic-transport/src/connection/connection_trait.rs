@@ -99,7 +99,12 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), connection::Error>;
 
-    fn on_process_acks(&mut self);
+    /// Process pendings ACKs for the `Connection`.
+    fn on_pending_ack_ranges(
+        &mut self,
+        timestamp: Timestamp,
+        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+    ) -> Result<(), connection::Error>;
 
     /// Handles all external wakeups on the [`Connection`].
     fn on_wakeup(

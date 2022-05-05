@@ -63,7 +63,7 @@ intrusive_adapter!(WaitingForConnectionIdAdapter<C, L> = Arc<ConnectionNode<C, L
 // Intrusive list adapter for managing the list of
 // `waiting_for_ack` connections
 intrusive_adapter!(WaitingForAckAdapter<C, L> = Arc<ConnectionNode<C, L>>: ConnectionNode<C, L> {
-    waiting_for_connection_id_link: LinkedListLink
+    waiting_for_ack_link: LinkedListLink
 } where C: connection::Trait, L: connection::Lock<C>);
 
 // Intrusive red black tree adapter for managing a list of `waiting_for_timeout` connections
@@ -957,6 +957,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
 
     /// Iterates over all `Connection`s which are waiting to process ACKs,
     /// and executes the given function on each `Connection`
+    #[allow(dead_code)]
     pub fn iterate_ack_list<F>(&mut self, mut func: F)
     where
         F: FnMut(&mut C),

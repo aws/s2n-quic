@@ -1,26 +1,26 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{ack::ack_ranges::AckRanges, interval_set};
+use crate::ack::ack_ranges::AckRanges;
 use core::time::Duration;
 use s2n_quic_core::{
     frame::ack::EcnCounts,
     packet::number::{PacketNumber, PacketNumberRange},
 };
 
-/// Stores ACK ranges pending processing
+/// Stores aggregated ACK info for delayed processing
 #[derive(Clone, Debug, Default)]
 pub struct PendingAckRanges {
-    ranges: AckRanges,
+    ack_ranges: AckRanges,
     ecn_counts: EcnCounts,
     ack_delay: Duration,
 }
 
 impl PendingAckRanges {
     #[inline]
-    pub fn new(ranges: AckRanges, ecn_counts: EcnCounts, ack_delay: Duration) -> Self {
+    pub fn new(ack_ranges: AckRanges, ecn_counts: EcnCounts, ack_delay: Duration) -> Self {
         PendingAckRanges {
-            ranges,
+            ack_ranges,
             ecn_counts,
             ack_delay,
         }
@@ -48,7 +48,7 @@ impl PendingAckRanges {
         let mut did_insert = true;
         // TODO: add metrics if ack ranges are being dropped
         for range in acked_packets {
-            did_insert &= self.ranges.insert_packet_number_range(range).is_ok()
+            did_insert &= self.ack_ranges.insert_packet_number_range(range).is_ok()
         }
 
         match did_insert {
@@ -57,16 +57,42 @@ impl PendingAckRanges {
         }
     }
 
-    /// Returns an iterator over all of the values contained in the ranges `IntervalSet`.
+    /// Returns an iterator over all values in the `AckRanges`
     #[inline]
-    pub fn iter(&self) -> interval_set::IntervalIter<PacketNumber> {
-        self.ranges.intervals()
+    pub fn iter(&self) -> impl Iterator<Item = PacketNumberRange> + '_ {
+        self.ack_ranges
+            .inclusive_ranges()
+            .into_iter()
+            .map(|ack_range| PacketNumberRange::new(*ack_range.start(), *ack_range.end()))
+    }
+
+    /// Returns `EcnCounts` aggregated over all the pending ACKs
+    #[inline]
+    pub fn ecn_counts(&self) -> Option<EcnCounts> {
+        if self.ack_ranges.is_empty() {
+            None
+        } else {
+            Some(self.ecn_counts)
+        }
+    }
+
+    /// Returns the ACK delay associated with all the pending ACKs
+    #[inline]
+    pub fn ack_delay(&self) -> Duration {
+        self.ack_delay
+    }
+
+    /// Returns the largest `PacketNumber` stored in the AckRanges.
+    ///
+    /// If no items are present in the set, `None` is returned.
+    pub fn max_value(&self) -> Option<PacketNumber> {
+        self.ack_ranges.max_value()
     }
 
     /// Clear the ack ranges and reset values
     #[inline]
     pub fn clear(&mut self) {
-        self.ranges.clear();
+        self.ack_ranges.clear();
         self.ecn_counts = EcnCounts::default();
         self.ack_delay = Duration::default();
     }
@@ -74,7 +100,7 @@ impl PendingAckRanges {
     /// Returns if ack ranges are being tracked
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.ranges.is_empty()
+        self.ack_ranges.is_empty()
     }
 }
 
@@ -114,7 +140,7 @@ mod tests {
         assert_eq!(pending_ack_ranges.ack_delay, now);
         assert_eq!(pending_ack_ranges.ecn_counts, ecn_counts);
         assert!(!pending_ack_ranges.is_empty());
-        assert_eq!(pending_ack_ranges.ranges.interval_len(), 1);
+        assert_eq!(pending_ack_ranges.ack_ranges.interval_len(), 1);
 
         // insert new range with updated ack_delay and ecn_counts
         now = now.saturating_add(Duration::from_millis(1));
@@ -131,7 +157,7 @@ mod tests {
         assert_eq!(pending_ack_ranges.ack_delay, now);
         assert_eq!(pending_ack_ranges.ecn_counts, ecn_counts);
         assert!(!pending_ack_ranges.is_empty());
-        assert_eq!(pending_ack_ranges.ranges.interval_len(), 2);
+        assert_eq!(pending_ack_ranges.ack_ranges.interval_len(), 2);
 
         // ensure pending_ack_ranges clear functionality works
         {
@@ -139,9 +165,9 @@ mod tests {
             pending_ack_ranges.clear();
 
             assert!(pending_ack_ranges.is_empty());
-            assert_eq!(pending_ack_ranges.ranges.interval_len(), 0);
-            assert!(!pending_ack_ranges.ranges.contains(&pn_a));
-            assert!(!pending_ack_ranges.ranges.contains(&pn_b));
+            assert_eq!(pending_ack_ranges.ack_ranges.interval_len(), 0);
+            assert!(!pending_ack_ranges.ack_ranges.contains(&pn_a));
+            assert!(!pending_ack_ranges.ack_ranges.contains(&pn_b));
         }
     }
 
@@ -189,7 +215,7 @@ mod tests {
         assert!(pending_ack_ranges
             .extend(range_1.into_iter(), Some(ecn_counts), now)
             .is_ok());
-        assert_eq!(pending_ack_ranges.ranges.interval_len(), 1);
+        assert_eq!(pending_ack_ranges.ack_ranges.interval_len(), 1);
     }
 
     #[test]

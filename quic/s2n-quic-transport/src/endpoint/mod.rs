@@ -106,24 +106,34 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         let mut now: Option<Timestamp> = None;
 
         for entry in entries.iter_mut() {
-            if let Some((header, payload)) = entry.read(&local_address) {
-                let timestamp = match now {
-                    Some(now) => now,
-                    _ => {
-                        let time = clock.get_time();
-                        now = Some(time);
-                        time
-                    }
-                };
+            let timestamp = match now {
+                Some(time) => time,
+                None => {
+                    now = Some(clock.get_time());
+                    now.expect("value should be set")
+                }
+            };
 
+            if let Some((header, payload)) = entry.read(&local_address) {
                 self.receive_datagram(&header, payload, timestamp)
             }
         }
 
-        // process ACKs on Connections with interest
-        self.connections.iterate_ack_list(|connection| {
-            connection.on_process_acks();
-        });
+        // TODO process pending acks
+        // let endpoint_context = self.config.context();
+        // // process ACKs on Connections with interest
+        // self.connections.iterate_ack_list(|connection| {
+        //     let timestamp = match now {
+        //         Some(time) => time,
+        //         None => {
+        //             now = Some(clock.get_time());
+        //             now.expect("value should be set")
+        //         }
+        //     };
+        //
+        //     // handle error and potentially close the connection
+        //     connection.on_pending_ack_ranges(timestamp, endpoint_context.event_subscriber);
+        // });
 
         let len = entries.len();
         queue.finish(len);
