@@ -20,6 +20,8 @@ tokio = { version = "1", features = ["io-util", "net", "time"] }
 tokio-native-tls = "0.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+s2n-tls = { version = "0.0.8" }
+s2n-tls-tokio = { version = "0.0.8" }
 
 # Pin to this version until s2n-tls supports OpenSSL 3.0
 # Build the vendored version to make it easy to test in dev
