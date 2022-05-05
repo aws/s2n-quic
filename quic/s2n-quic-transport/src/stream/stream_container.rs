@@ -620,7 +620,7 @@ impl<S: StreamTrait> StreamContainer<S> {
     }
 
     /// Returns whether or not streams have data to send
-    pub fn pending_streams(&self) -> bool {
+    pub fn has_pending_streams(&self) -> bool {
         !self.interest_lists.waiting_for_transmission.is_empty()
             || !self.interest_lists.waiting_for_retransmission.is_empty()
     }

@@ -20,7 +20,7 @@ use s2n_quic_core::{
     crypto,
     crypto::{tls, CryptoSuite, Key},
     ct::ConstantTimeEq,
-    datagram::Endpoint,
+    datagram::{ConnectionInfo, Endpoint},
     event,
     event::IntoEvent,
     packet::number::PacketNumberSpace,
@@ -368,7 +368,8 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             self.limits.max_keep_alive_period(),
         );
 
-        let (datagram_sender, datagram_receiver) = self.datagram.split();
+        let conn_info = ConnectionInfo {};
+        let (datagram_sender, datagram_receiver) = self.datagram.create_connection(&conn_info);
         let cipher_suite = key.cipher_suite().into_event();
         let max_mtu = self.path_manager.max_mtu();
         *self.application = Some(Box::new(ApplicationSpace::new(
