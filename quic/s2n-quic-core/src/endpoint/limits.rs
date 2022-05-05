@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    event::Timestamp,
-    event::{api::SocketAddress, IntoEvent},
+    event::{api::SocketAddress, IntoEvent, Timestamp},
     inet,
 };
 
