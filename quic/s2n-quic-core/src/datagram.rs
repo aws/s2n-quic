@@ -16,9 +16,16 @@ pub trait Endpoint: 'static + Send {
 // datagram provider
 #[non_exhaustive]
 pub struct ConnectionInfo {}
+
 impl ConnectionInfo {
     pub fn new() -> Self {
-        Self {}
+        ConnectionInfo {}
+    }
+}
+
+impl Default for ConnectionInfo {
+    fn default() -> Self {
+        ConnectionInfo::new()
     }
 }
 
