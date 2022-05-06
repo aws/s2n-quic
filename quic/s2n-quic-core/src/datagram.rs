@@ -11,9 +11,16 @@ pub trait Endpoint: 'static + Send {
 
     fn create_connection(&mut self, info: &ConnectionInfo) -> (Self::Sender, Self::Receiver);
 }
+
 // ConnectionInfo will eventually contain information needed to set up a
 // datagram provider
+#[non_exhaustive]
 pub struct ConnectionInfo {}
+impl ConnectionInfo {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
 
 pub trait Receiver: 'static + Send {}
 pub trait Sender: 'static + Send {
@@ -59,13 +66,17 @@ impl Endpoint for Disabled {
         (DisabledSender, DisabledReceiver)
     }
 }
+
 pub struct DisabledSender;
 pub struct DisabledReceiver;
 
 impl Sender for DisabledSender {
     fn on_transmit<P: Packet>(&mut self, _packet: &mut P) {}
+
+    #[inline]
     fn has_transmission_interest(&self) -> bool {
         false
     }
 }
+
 impl Receiver for DisabledReceiver {}

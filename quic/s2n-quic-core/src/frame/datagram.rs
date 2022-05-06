@@ -18,7 +18,7 @@ macro_rules! datagram_tag {
     };
 }
 
-const DATAGRAM_TAG: u8 = 0x30;
+pub const DATAGRAM_TAG: u8 = 0x30;
 //= https://www.rfc-editor.org/rfc/rfc9221#section-4
 //# The least significant bit of the Type field in the DATAGRAM frame is
 //# the LEN bit (0x01), which indicates whether there is a Length field

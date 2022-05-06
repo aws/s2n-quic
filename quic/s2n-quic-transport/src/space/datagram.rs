@@ -61,44 +61,33 @@ struct Packet<'a, C: WriteContext> {
     has_pending_streams: bool,
 }
 
-const FRAME_TYPE_LEN: usize = 1;
-const MAX_LEN_VALUE: usize = 8;
-
 impl<'a, C: WriteContext> s2n_quic_core::datagram::Packet for Packet<'a, C> {
     /// Returns the remaining space in the packet
     fn remaining_capacity(&self) -> usize {
         let space = self.context.remaining_capacity();
         // Remove the frame type length and the maximum length value
         space
-            .saturating_sub(FRAME_TYPE_LEN)
-            .saturating_sub(MAX_LEN_VALUE)
+            .saturating_sub(frame::datagram::DATAGRAM_TAG.encoding_size())
+            .saturating_sub(
+                VarInt::new(space as u64)
+                    .unwrap_or(VarInt::MAX)
+                    .encoding_size(),
+            )
     }
 
     /// Writes a single datagram to a packet
     fn write_datagram(&mut self, data: &[u8]) -> Result<(), WriteError> {
         let remaining_capacity = self.context.remaining_capacity();
         let data_len = data.len();
-        let is_last_frame = remaining_capacity == FRAME_TYPE_LEN + data_len;
-
-        if !is_last_frame {
-            let encoded_length = match VarInt::new(data_len as u64) {
-                Ok(encoded_length) => encoded_length,
-                Err(_e) => return Err(WriteError::DatagramIsTooLarge),
-            };
-            // Calculates the complete size of the encoded datagram, including the
-            // VarInt size and frame size
-            let encoded_datagram_size = encoded_length.encoding_size() + FRAME_TYPE_LEN + data_len;
-
-            if encoded_datagram_size > remaining_capacity {
-                return Err(WriteError::DatagramIsTooLarge);
-            }
-        }
-
+        let is_last_frame =
+            remaining_capacity == frame::datagram::DATAGRAM_TAG.encoding_size() + data_len;
         let frame = frame::Datagram {
             is_last_frame,
             data,
         };
-        self.context.write_frame(&frame);
+        self.context
+            .write_frame(&frame)
+            .ok_or(WriteError::DatagramIsTooLarge)?;
 
         Ok(())
     }
@@ -107,34 +96,4 @@ impl<'a, C: WriteContext> s2n_quic_core::datagram::Packet for Packet<'a, C> {
     fn has_pending_streams(&self) -> bool {
         self.has_pending_streams
     }
-}
-
-#[test]
-fn write_datagrams() {
-    use crate::{
-        contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
-        transmission::{Constraint, Mode},
-    };
-    use s2n_quic_core::datagram::Packet as _;
-
-    let mut frame_buffer = OutgoingFrameBuffer::new();
-    let packet_size = 5;
-    frame_buffer.set_max_packet_size(Some(packet_size));
-    let mut write_context = MockWriteContext::new(
-        s2n_quic_platform::time::now(),
-        &mut frame_buffer,
-        Constraint::None,
-        Mode::Normal,
-        endpoint::Type::Server,
-    );
-
-    let mut packet = Packet {
-        context: &mut write_context,
-        has_pending_streams: false,
-    };
-    let max_datagram = vec![1, 2, 3];
-    let too_large_datagram = vec![1, 2, 3, 4];
-    assert!(packet.write_datagram(&max_datagram).is_ok());
-    packet.context.frame_buffer.clear();
-    assert!(packet.write_datagram(&too_large_datagram).is_err());
 }
