@@ -21,10 +21,10 @@ use s2n_quic_core::{
     datagram::Endpoint,
     event::{self, ConnectionPublisher as _, IntoEvent},
     frame::{
-        self, ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose,
-        DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionId, NewToken,
-        PathChallenge, PathResponse, ResetStream, RetireConnectionId, StopSending,
-        StreamDataBlocked, StreamsBlocked,
+        self, ack::AckRanges, crypto::CryptoRef, datagram::DatagramRef, stream::StreamRef, Ack,
+        ConnectionClose, DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams,
+        NewConnectionId, NewToken, PathChallenge, PathResponse, ResetStream, RetireConnectionId,
+        StopSending, StreamDataBlocked, StreamsBlocked,
     },
     inet::DatagramInfo,
     packet::{
@@ -778,6 +778,11 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         packet.bytes_progressed +=
             (self.stream_manager.incoming_bytes_progressed() - bytes_progressed).as_u64() as usize;
 
+        Ok(())
+    }
+
+    fn handle_datagram_frame(&mut self, frame: DatagramRef) -> Result<(), transport::Error> {
+        self.datagram_manager.on_datagram_frame(frame);
         Ok(())
     }
 

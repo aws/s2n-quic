@@ -29,9 +29,12 @@ impl Default for ConnectionInfo {
     }
 }
 
-pub trait Receiver: 'static + Send {}
+pub trait Receiver: 'static + Send {
+    // A callback that gives users direct access to datagrams as they are read off a packet
+    fn on_datagram(&self, datagram: &[u8]);
+}
 pub trait Sender: 'static + Send {
-    /// A callback that allows users to write datagrams directly to the packet.
+    /// A callback that allows users to write datagrams directly to the packet
     fn on_transmit<P: Packet>(&mut self, packet: &mut P);
 
     /// A callback that checks if a user has datagrams ready to send
@@ -86,4 +89,6 @@ impl Sender for DisabledSender {
     }
 }
 
-impl Receiver for DisabledReceiver {}
+impl Receiver for DisabledReceiver {
+    fn on_datagram(&self, _datagram: &[u8]) {}
+}

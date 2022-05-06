@@ -8,8 +8,8 @@ use crate::{
 };
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{
-    datagram::{Endpoint, Sender, WriteError},
-    frame,
+    datagram::{Endpoint, Receiver, Sender, WriteError},
+    frame::{self, datagram::DatagramRef},
     varint::VarInt,
 };
 
@@ -19,8 +19,6 @@ use s2n_quic_core::{
 // packet processing.
 pub struct Manager<Config: endpoint::Config> {
     sender: <<Config as endpoint::Config>::DatagramEndpoint as Endpoint>::Sender,
-    // TODO: Remove this warning once Receiver is implemented
-    #[allow(dead_code)]
     receiver: <<Config as endpoint::Config>::DatagramEndpoint as Endpoint>::Receiver,
 }
 
@@ -43,6 +41,12 @@ impl<Config: endpoint::Config> Manager<Config> {
             has_pending_streams: stream_manager.has_pending_streams(),
         };
         self.sender.on_transmit(&mut packet);
+    }
+
+    // A callback that allows users to access datagrams directly after they are
+    // received.
+    pub fn on_datagram_frame(&self, datagram: DatagramRef) {
+        self.receiver.on_datagram(datagram.data);
     }
 }
 
