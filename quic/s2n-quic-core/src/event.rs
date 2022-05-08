@@ -120,12 +120,6 @@ impl IntoEvent<Timestamp> for crate::time::Timestamp {
     }
 }
 
-impl From<crate::time::Timestamp> for Timestamp {
-    fn from(timestamp: crate::time::Timestamp) -> Timestamp {
-        Timestamp(timestamp)
-    }
-}
-
 pub mod query {
 
     //! This module provides `Query` and `QueryMut` traits, which are used for querying the

@@ -1891,9 +1891,6 @@ struct s2n_quic::provider::event::Timestamp implements trait:
   impl core::clone::Clone for s2n_quic::provider::event::Timestamp
 
 struct s2n_quic::provider::event::Timestamp implements trait:
-  impl core::convert::From<s2n_quic_core::time::timestamp::Timestamp> for s2n_quic::provider::event::Timestamp
-
-struct s2n_quic::provider::event::Timestamp implements trait:
   impl core::fmt::Debug for s2n_quic::provider::event::Timestamp
 
 struct s2n_quic::provider::event::Timestamp implements trait:
