@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    event::{api::SocketAddress, IntoEvent},
+    event::{api::SocketAddress, IntoEvent, Timestamp},
     inet,
 };
 
@@ -74,6 +74,7 @@ pub struct ConnectionAttempt<'a> {
     /// The unverified address of the connecting peer
     /// This address comes from the datagram
     pub remote_address: SocketAddress<'a>,
+    pub timestamp: Timestamp,
 }
 
 impl<'a> ConnectionAttempt<'a> {
@@ -82,11 +83,13 @@ impl<'a> ConnectionAttempt<'a> {
         inflight_handshakes: usize,
         connection_count: usize,
         remote_address: &'a inet::SocketAddress,
+        timestamp: Timestamp,
     ) -> Self {
         Self {
             inflight_handshakes,
             connection_count,
             remote_address: remote_address.into_event(),
+            timestamp,
         }
     }
 }
