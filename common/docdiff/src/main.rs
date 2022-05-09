@@ -80,6 +80,8 @@ impl fmt::Display for Dump {
 impl Dump {
     fn new(crate_name: &str) -> Result<Self> {
         cmd!("cargo", "doc", "--all-features", "--workspace")
+            .env("RUSTFLAGS", "--cfg docdiff")
+            .env("RUSTDOCFLAGS", "--cfg docdiff")
             .stdout_path("/dev/null")
             .run()?;
 
