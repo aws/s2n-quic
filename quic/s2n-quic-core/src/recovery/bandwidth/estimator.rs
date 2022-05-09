@@ -38,12 +38,20 @@ impl Bandwidth {
         bits_per_second: u64::MAX,
     };
 
+    /// Constructs a new `Bandwidth` with the given bytes per interval
     pub fn new(bytes: u64, interval: Duration) -> Self {
         if interval.is_zero() {
             Bandwidth::ZERO
         } else {
             Self {
-                bits_per_second: (bytes * MICRO_BITS_PER_BYTE / interval.as_micros() as u64),
+                // Prefer multiplying by MICRO_BITS_PER_BYTE first to avoid losing resolution
+                bits_per_second: match bytes.checked_mul(MICRO_BITS_PER_BYTE) {
+                    Some(micro_bits) => micro_bits / interval.as_micros() as u64,
+                    None => {
+                        // If that overflows, divide first by the interval
+                        (bytes / interval.as_micros() as u64).saturating_mul(MICRO_BITS_PER_BYTE)
+                    }
+                },
             }
         }
     }
@@ -63,7 +71,14 @@ impl core::ops::Mul<Duration> for Bandwidth {
     type Output = u64;
 
     fn mul(self, rhs: Duration) -> Self::Output {
-        (self.bits_per_second * rhs.as_micros() as u64) / MICRO_BITS_PER_BYTE
+        // Prefer multiplying by the duration first to avoid losing resolution
+        match self.bits_per_second.checked_mul(rhs.as_micros() as u64) {
+            Some(micro_bits) => micro_bits / MICRO_BITS_PER_BYTE,
+            None => {
+                // If that overflows, divide first by MICRO_BITS_PER_BYTE
+                (self.bits_per_second / MICRO_BITS_PER_BYTE).saturating_mul(rhs.as_micros() as u64)
+            }
+        }
     }
 }
 
