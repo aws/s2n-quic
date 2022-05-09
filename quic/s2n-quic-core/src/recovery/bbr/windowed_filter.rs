@@ -100,8 +100,8 @@ impl<
 /// and an overall min_rtt that is refreshed at least every `MIN_RTT_FILTER_LEN`.
 #[derive(Clone, Debug)]
 pub(crate) struct MinRttWindowedFilter {
-    min_probe_rtt: WindowedFilter<Duration, Timestamp, Duration, MinFilter>,
-    min_rtt: WindowedFilter<Duration, Timestamp, Duration, MinFilter>,
+    min_probe_rtt: WindowedMinFilter<Duration, Timestamp, Duration>,
+    min_rtt: WindowedMinFilter<Duration, Timestamp, Duration>,
     //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.14.2
     //# A boolean recording whether the BBR.probe_rtt_min_delay has expired and is due for a
     //# refresh with an application idle period or a transition into ProbeRTT state.
@@ -302,7 +302,8 @@ mod tests {
         assert!(!filter.probe_rtt_expired());
         assert_eq!(Some(Duration::from_millis(7)), filter.min_probe_rtt.value());
 
-        // Now the Min RTT has expired
+        // Now the Min RTT has expired, since it has been MIN_RTT_FILTER_LEN (10 seconds) since the
+        // min_rtt value was first set (PROBE_RTT_INTERVAL + 2 seconds + 3 seconds)
         let now = now + Duration::from_secs(3);
         filter.update(Duration::from_millis(10), now);
         // min_rtt is updated since it has expired. The value is set to the current probe_rtt

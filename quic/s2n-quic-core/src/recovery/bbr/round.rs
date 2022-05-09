@@ -17,7 +17,7 @@ pub(crate) struct Counter {
     /// The number of rounds counted since initialization
     round_count: u64,
 }
-#[allow(dead_code)] // TODO: Remove when used
+
 impl Counter {
     /// Called for each acknowledgement of one or more packets
     pub fn on_ack(&mut self, packet_info: PacketInfo, delivered_bytes: u64) {
@@ -45,6 +45,7 @@ impl Counter {
     }
 
     /// The number of rounds counted since initialization
+    #[allow(dead_code)] // TODO: Remove when used
     pub fn round_count(&self) -> u64 {
         self.round_count
     }
