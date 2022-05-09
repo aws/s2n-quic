@@ -102,7 +102,8 @@ mod tests {
     fn first_throttle_reset() {
         let remote_address = SocketAddress::default();
         let mock_clock = MockClock::default();
-        let info = ConnectionAttempt::new(0, 0, &remote_address, mock_clock.get_time().into_event());
+        let info =
+            ConnectionAttempt::new(0, 0, &remote_address, mock_clock.get_time().into_event());
 
         let mut rate_limiter = BasicRateLimiter::default();
         // The first time the throttle limit is hit the timer will be created so we expect to be
@@ -131,7 +132,8 @@ mod tests {
         // This test should never throttle because everytime the limit is about to get hit the
         // thread sleeps long enough for the throttle reset timer to fire.
         for request in 0..(THROTTLED_PORT_LIMIT * 3) {
-            let info = ConnectionAttempt::new(0, 0, &remote_address, mock_clock.get_time().into_event());
+            let info =
+                ConnectionAttempt::new(0, 0, &remote_address, mock_clock.get_time().into_event());
             if request % THROTTLED_PORT_LIMIT == 0 {
                 mock_clock.inc_by(sleep_longer_than_short_freq)
             }
@@ -258,9 +260,9 @@ pub mod default {
     #[test]
     fn blocked_port_connection_attempt() {
         use s2n_quic_core::{
+            event::IntoEvent,
             inet::SocketAddress,
             time::{testing::Clock as MockClock, Clock},
-            event::IntoEvent,
         };
 
         let mut remote_address = SocketAddress::default();
@@ -271,7 +273,8 @@ pub mod default {
             let blocked_expected = s2n_quic_core::path::remote_port_blocked(port);
 
             remote_address.set_port(port);
-            let info = ConnectionAttempt::new(0, 0, &remote_address, mock_clock.get_time().into_event());
+            let info =
+                ConnectionAttempt::new(0, 0, &remote_address, mock_clock.get_time().into_event());
             let outcome = limits.on_connection_attempt(&info);
 
             if blocked_expected {
