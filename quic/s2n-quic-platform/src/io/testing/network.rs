@@ -49,6 +49,19 @@ impl Default for Buffers {
 }
 
 impl Buffers {
+    pub fn close(&self) {
+        let mut lock = self.inner.lock().unwrap();
+        lock.is_open = false;
+
+        let state = &mut *lock;
+
+        for entry in state.tx.values_mut().chain(state.rx.values_mut()) {
+            if let Some(waker) = entry.waker.take() {
+                waker.wake();
+            }
+        }
+    }
+
     pub fn tx<F: FnOnce(&mut Queue)>(&self, handle: SocketAddress, f: F) {
         let mut lock = self.inner.lock().unwrap();
         if let Some(queue) = lock.tx.get_mut(&handle) {
@@ -76,6 +89,9 @@ impl Buffers {
 
             queues.push(queue);
         }
+
+        // shuffle the queue so each endpoint has a fair chance of transmitting
+        super::rand::shuffle(&mut queues);
 
         loop {
             let mut has_result = false;
