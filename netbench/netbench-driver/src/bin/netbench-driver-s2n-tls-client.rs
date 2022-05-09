@@ -3,15 +3,15 @@
 
 use netbench::{multiplex, scenario, Result};
 use netbench_driver::Allocator;
-use std::{collections::HashSet, future::Future, net::SocketAddr, pin::Pin, sync::Arc};
-use structopt::StructOpt;
-use tokio::{io::AsyncWriteExt, net::TcpStream};
-use s2n_tls_tokio::{TlsConnector, TlsStream};
 use s2n_tls::raw::{
     config::{Builder, Config},
     error::Error,
     security::DEFAULT_TLS13,
 };
+use s2n_tls_tokio::{TlsConnector, TlsStream};
+use std::{collections::HashSet, future::Future, net::SocketAddr, pin::Pin, sync::Arc};
+use structopt::StructOpt;
+use tokio::{io::AsyncWriteExt, net::TcpStream};
 
 #[global_allocator]
 static ALLOCATOR: Allocator = Allocator::new();
@@ -52,7 +52,7 @@ impl Client {
         Ok(ClientImpl {
             config,
             connector,
-            id: 0
+            id: 0,
         })
     }
 

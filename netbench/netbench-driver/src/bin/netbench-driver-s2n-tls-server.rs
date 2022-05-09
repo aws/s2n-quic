@@ -3,18 +3,18 @@
 
 use netbench::{multiplex, scenario, Result};
 use netbench_driver::Allocator;
+use s2n_tls::raw::{
+    config::{Builder, Config},
+    error::Error,
+    security::DEFAULT_TLS13,
+};
+use s2n_tls_tokio::TlsAcceptor;
 use std::{collections::HashSet, sync::Arc};
 use structopt::StructOpt;
 use tokio::{
     io::AsyncReadExt,
     net::{TcpListener, TcpStream},
     spawn,
-};
-use s2n_tls_tokio::TlsAcceptor;
-use s2n_tls::raw::{
-    config::{Builder, Config},
-    error::Error,
-    security::DEFAULT_TLS13,
 };
 
 #[global_allocator]
@@ -54,14 +54,9 @@ impl Server {
             let trace = trace.clone();
             let config = config.clone();
             spawn(async move {
-                if let Err(err) = handle_connection(
-                    acceptor,
-                    connection,
-                    id,
-                    scenario,
-                    trace,
-                    config
-                ).await {
+                if let Err(err) =
+                    handle_connection(acceptor, connection, id, scenario, trace, config).await
+                {
                     eprintln!("error: {}", err);
                 }
             });
@@ -85,11 +80,7 @@ impl Server {
 
             let conn = netbench::Driver::new(
                 scenario,
-                netbench::multiplex::Connection::new(
-                    conn_id,
-                    connection,
-                    config
-                )
+                netbench::multiplex::Connection::new(conn_id, connection, config),
             );
 
             let mut checkpoints = HashSet::new();
