@@ -981,8 +981,8 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     }
 
     /// Returns whether or not streams have data to send
-    pub fn pending_streams(&self) -> bool {
-        self.inner.streams.pending_streams()
+    pub fn has_pending_streams(&self) -> bool {
+        self.inner.streams.has_pending_streams()
     }
 }
 

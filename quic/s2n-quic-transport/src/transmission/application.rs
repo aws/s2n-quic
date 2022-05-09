@@ -164,6 +164,7 @@ impl<'a, S: Stream, Config: endpoint::Config> transmission::interest::Provider
         self.ack_manager.transmission_interest(query)?;
         self.handshake_status.transmission_interest(query)?;
         self.stream_manager.transmission_interest(query)?;
+        self.datagram_manager.transmission_interest(query)?;
         self.local_id_registry.transmission_interest(query)?;
         self.path_manager.transmission_interest(query)?;
         self.recovery_manager.transmission_interest(query)?;

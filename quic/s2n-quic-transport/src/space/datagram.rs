@@ -4,11 +4,13 @@
 use crate::{
     endpoint,
     stream::{AbstractStreamManager, StreamTrait as Stream},
-    transmission::WriteContext,
+    transmission::{interest, WriteContext},
 };
+use s2n_codec::EncoderValue;
 use s2n_quic_core::{
-    datagram::{Endpoint, Sender},
+    datagram::{Endpoint, Sender, WriteError},
     frame,
+    varint::VarInt,
 };
 
 // Contains the datagram sender and receiver implementations.
@@ -38,48 +40,60 @@ impl<Config: endpoint::Config> Manager<Config> {
     ) {
         let mut packet = Packet {
             context,
-            pending_streams: stream_manager.pending_streams(),
+            has_pending_streams: stream_manager.has_pending_streams(),
         };
         self.sender.on_transmit(&mut packet);
     }
 }
-struct Packet<'a, C: WriteContext> {
-    context: &'a mut C,
-    pending_streams: bool,
+
+impl<Config: endpoint::Config> interest::Provider for Manager<Config> {
+    #[inline]
+    fn transmission_interest<Q: interest::Query>(&self, query: &mut Q) -> interest::Result {
+        if self.sender.has_transmission_interest() {
+            query.on_new_data()?;
+        }
+        Ok(())
+    }
 }
 
-const FRAME_TYPE_LEN: usize = 1;
+struct Packet<'a, C: WriteContext> {
+    context: &'a mut C,
+    has_pending_streams: bool,
+}
 
 impl<'a, C: WriteContext> s2n_quic_core::datagram::Packet for Packet<'a, C> {
     /// Returns the remaining space in the packet
     fn remaining_capacity(&self) -> usize {
         let space = self.context.remaining_capacity();
-        //= https://www.rfc-editor.org/rfc/rfc9221#section-4
-        //# The least significant bit of the Type field in the DATAGRAM frame is
-        //# the LEN bit (0x01), which indicates whether there is a Length field
-        //# present: if this bit is set to 0, the Length field is absent and the
-        //# Datagram Data field extends to the end of the packet; if this bit is
-        //# set to 1, the Length field is present.
-        // In the case where the user writes the largest datagram possible
-        // we don't factor in the size of the Length field as it will be the last
-        // frame in the packet. Thus we only have to factor out the frame type field.
-        space - FRAME_TYPE_LEN
+        // Remove the frame type length and the maximum length value
+        space
+            .saturating_sub(frame::datagram::DATAGRAM_TAG.encoding_size())
+            .saturating_sub(
+                VarInt::new(space as u64)
+                    .unwrap_or(VarInt::MAX)
+                    .encoding_size(),
+            )
     }
 
     /// Writes a single datagram to a packet
-    fn write_datagram(&mut self, data: &[u8]) {
+    fn write_datagram(&mut self, data: &[u8]) -> Result<(), WriteError> {
         let remaining_capacity = self.context.remaining_capacity();
         let data_len = data.len();
-        let is_last_frame = remaining_capacity == FRAME_TYPE_LEN + data_len;
+        let is_last_frame =
+            remaining_capacity == frame::datagram::DATAGRAM_TAG.encoding_size() + data_len;
         let frame = frame::Datagram {
             is_last_frame,
             data,
         };
-        self.context.write_frame(&frame);
+        self.context
+            .write_frame(&frame)
+            .ok_or(WriteError::DatagramIsTooLarge)?;
+
+        Ok(())
     }
 
     // Returns whether or not there is reliable data ready to send
-    fn pending_streams(&self) -> bool {
-        self.pending_streams
+    fn has_pending_streams(&self) -> bool {
+        self.has_pending_streams
     }
 }
