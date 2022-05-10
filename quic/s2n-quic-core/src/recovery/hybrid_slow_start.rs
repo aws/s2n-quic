@@ -58,6 +58,7 @@ const CSS_GROWTH_DIVISOR: f32 = 4.0;
 /// Maximum rounds for CSS phase
 const CSS_ROUNDS: usize = 5;
 /// environment variable for using hystart++
+#[cfg(feature = "std")]
 const USE_HYSTART_PLUS_PLUS: &str = "S2N_UNSTABLE_USE_HYSTART_PP";
 
 impl HybridSlowStart {
@@ -192,11 +193,16 @@ impl HybridSlowStart {
         (LOW_SSTHRESH * self.max_datagram_size) as f32
     }
 
+    #[cfg(feature = "std")]
     fn use_hystart_parameter() -> bool {
         use once_cell::sync::OnceCell;
         static USE_HYSTART_PP: OnceCell<bool> = OnceCell::new();
-        #[cfg(feature = "std")]
         *USE_HYSTART_PP.get_or_init(|| std::env::var(USE_HYSTART_PLUS_PLUS).is_ok())
+    }
+
+    #[cfg(not(feature = "std"))]
+    fn use_hystart_parameter() -> bool {
+        false
     }
 }
 
