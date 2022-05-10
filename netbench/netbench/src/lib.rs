@@ -13,6 +13,7 @@ pub mod testing;
 
 pub mod helper;
 pub mod multiplex;
+pub mod duplex;
 pub mod operation;
 #[cfg(feature = "s2n-quic")]
 pub mod s2n_quic;
