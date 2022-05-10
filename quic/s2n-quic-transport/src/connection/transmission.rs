@@ -13,6 +13,7 @@ use s2n_quic_core::{
     inet::ExplicitCongestionNotification,
     io::tx,
     packet::{encoding::PacketEncodingError, number::PacketNumberSpace},
+    recovery::CongestionController,
     time::Timestamp,
 };
 
@@ -72,9 +73,15 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
     }
 
     #[inline]
-    fn can_gso(&self, segment_len: usize) -> bool {
+    fn can_gso(&self, segment_len: usize, segment_count: usize) -> bool {
         if let Some(min_packet_len) = self.context.min_packet_len {
             if segment_len < min_packet_len {
+                return false;
+            }
+        }
+
+        if let Some(send_quantum) = self.context.path().congestion_controller.send_quantum() {
+            if segment_len * segment_count >= send_quantum {
                 return false;
             }
         }

@@ -99,7 +99,7 @@ pub trait Message {
     fn ipv6_flow_label(&mut self) -> u32;
 
     /// Returns true if the packet can be used in a GSO packet
-    fn can_gso(&self, segment_len: usize) -> bool;
+    fn can_gso(&self, segment_len: usize, segment_count: usize) -> bool;
 
     /// Writes the payload of the message to an output buffer
     fn write_payload(&mut self, buffer: PayloadBuffer, gso_offset: usize) -> Result<usize, Error>;
@@ -161,7 +161,7 @@ impl<Handle: path::Handle, Payload: AsRef<[u8]>> Message for (Handle, Payload) {
         0
     }
 
-    fn can_gso(&self, segment_len: usize) -> bool {
+    fn can_gso(&self, segment_len: usize, _segment_count: usize) -> bool {
         segment_len >= self.1.as_ref().len()
     }
 

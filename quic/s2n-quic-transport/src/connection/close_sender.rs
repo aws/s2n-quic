@@ -152,7 +152,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> tx::Message
     }
 
     #[inline]
-    fn can_gso(&self, segment_len: usize) -> bool {
+    fn can_gso(&self, segment_len: usize, _segment_count: usize) -> bool {
         segment_len >= self.packet.len()
     }
 

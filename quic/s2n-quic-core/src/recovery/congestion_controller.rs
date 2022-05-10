@@ -119,6 +119,16 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
     ///
     /// If the time is in the past or is `None`, the packet should be transmitted immediately.
     fn earliest_departure_time(&self) -> Option<Timestamp>;
+
+    /// The maximum number of bytes for an aggregation of packets scheduled and transmitted together.
+    ///
+    /// If the value is `None`, the congestion controller does not influence the send aggregation.
+    ///
+    /// The effect of this value is dependent on platform support for GSO (Generic Segmentation
+    /// Offload) as well as the configured `MaxSegments` value.
+    fn send_quantum(&self) -> Option<usize> {
+        None
+    }
 }
 
 #[cfg(any(test, feature = "testing"))]
