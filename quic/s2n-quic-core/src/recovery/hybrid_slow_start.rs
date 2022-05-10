@@ -58,14 +58,12 @@ const CSS_GROWTH_DIVISOR: f32 = 4.0;
 /// Maximum rounds for CSS phase
 const CSS_ROUNDS: usize = 5;
 /// environment variable for using hystart++
-#[cfg(feature = "std")]
 const USE_HYSTART_PLUS_PLUS: &str = "S2N_UNSTABLE_USE_HYSTART_PP";
 
 impl HybridSlowStart {
     /// Constructs a new `HybridSlowStart`. `max_datagram_size` is used for determining
     /// the minimum slow start threshold.
     pub fn new(max_datagram_size: u16) -> Self {
-        let _hystart_param = Self::get_hystart_parameter();
         Self {
             sample_count: 0,
             last_min_rtt: None,
@@ -76,7 +74,7 @@ impl HybridSlowStart {
             threshold: f32::MAX,
             max_datagram_size,
             rtt_round_end_time: None,
-            use_hystart_plus_plus: _hystart_param,
+            use_hystart_plus_plus: Self::use_hystart_parameter(),
             ss_growth_divisor: 1.0,
             css_count: 0,
             css_baseline_min_rtt: Duration::ZERO,
@@ -174,10 +172,8 @@ impl HybridSlowStart {
     /// return cwnd increment during slow start phase
     /// should be called from on_packet_ack
     pub fn cwnd_increment(&self, sent_bytes: usize) -> f32 {
-        if cfg!(debug_assertions) {
-            if !self.use_hystart_plus_plus {
-                assert_eq!(self.ss_growth_divisor, 1.0);
-            }
+        if cfg!(debug_assertions) && !self.use_hystart_plus_plus {
+            assert_eq!(self.ss_growth_divisor, 1.0);
         }
         (sent_bytes as f32) / self.ss_growth_divisor
     }
@@ -196,7 +192,7 @@ impl HybridSlowStart {
         (LOW_SSTHRESH * self.max_datagram_size) as f32
     }
 
-    fn get_hystart_parameter() -> bool {
+    fn use_hystart_parameter() -> bool {
         use once_cell::sync::OnceCell;
         static USE_HYSTART_PP: OnceCell<bool> = OnceCell::new();
         #[cfg(feature = "std")]
