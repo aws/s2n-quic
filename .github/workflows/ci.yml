@@ -425,10 +425,11 @@ jobs:
     strategy:
       matrix:
         example:
-          - examples/echo
-          - examples/rustls-provider
           - examples/dos-mitigation
+          - examples/echo
           - examples/event-framework
+          - examples/post-quantum
+          - examples/rustls-provider
 
     steps:
       - uses: actions/checkout@v3
