@@ -12,6 +12,23 @@ fn bandwidth() {
 }
 
 #[test]
+fn bandwidth_saturating() {
+    let result = Bandwidth::new(u64::MAX, Duration::from_secs(1));
+
+    assert_eq!(Bandwidth::MAX, result);
+}
+
+#[test]
+fn bandwidth_overflow() {
+    let result = Bandwidth::new(u64::MAX, Duration::from_secs(8));
+
+    let expected_bits_per_second =
+        u64::MAX / (Duration::from_secs(8).as_micros() as u64) * MICRO_BITS_PER_BYTE;
+
+    assert_eq!(expected_bits_per_second, result.bits_per_second);
+}
+
+#[test]
 fn bandwidth_zero_interval() {
     let result = Bandwidth::new(500, Duration::ZERO);
 
@@ -25,6 +42,36 @@ fn bandwidth_mul_ratio() {
     let result = bandwidth * Ratio::new(3, 7);
 
     assert_eq!(result, Bandwidth::new(3000, Duration::from_secs(1)));
+}
+
+#[test]
+fn bandwidth_mul_duration() {
+    let bandwidth = Bandwidth::new(7000, Duration::from_secs(2));
+
+    let result = bandwidth * Duration::from_secs(10);
+
+    assert_eq!(result, 35000);
+}
+
+#[test]
+fn bandwidth_mul_saturation() {
+    let bandwidth = Bandwidth::MAX;
+
+    let result = bandwidth * Duration::from_secs(10);
+
+    assert_eq!(result, u64::MAX);
+}
+
+#[test]
+fn bandwidth_mul_overflow() {
+    let bandwidth = Bandwidth {
+        bits_per_second: 18446744073704000000, // closest value to u64::MAX that divides evenly by MICRO_BITS_PER_BYTE
+    };
+
+    let result = bandwidth * Duration::from_millis(500);
+
+    // Divide by 8 to convert to bytes and divide by 2 since we multiplied by .5 seconds
+    assert_eq!(result, 18446744073704000000 / 8 / 2);
 }
 
 // first_sent_time and delivered_time typically hold values from recently acknowledged packets. However,
