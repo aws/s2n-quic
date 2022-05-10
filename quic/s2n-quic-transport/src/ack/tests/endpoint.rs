@@ -3,8 +3,8 @@
 
 use super::{generator::gen_ack_settings, Packet, TestEnvironment};
 use crate::{
-    contexts::WriteContext, processed_packet::ProcessedPacket,
-    space::rx_packet_numbers::ack_manager::AckManager, transmission::interest::Provider,
+    ack::ack_manager::AckManager, contexts::WriteContext, processed_packet::ProcessedPacket,
+    transmission::interest::Provider,
 };
 use bolero::generator::*;
 use s2n_quic_core::{
@@ -56,7 +56,8 @@ impl Endpoint {
 
         if let Some(ack) = packet.ack {
             for ack_range in ack.ack_ranges {
-                self.ack_manager.on_packet_ack(&datagram, &ack_range);
+                self.ack_manager
+                    .on_packet_ack(datagram.timestamp, &ack_range);
             }
         }
 

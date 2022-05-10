@@ -54,6 +54,9 @@ pub enum Error {
     /// The provided message did not write a payload
     EmptyPayload,
 
+    /// The provided buffer was too small for the desired payload
+    UndersizedBuffer,
+
     /// The transmission queue is at capacity
     AtCapacity,
 }
@@ -96,10 +99,47 @@ pub trait Message {
     fn ipv6_flow_label(&mut self) -> u32;
 
     /// Returns true if the packet can be used in a GSO packet
-    fn can_gso(&self) -> bool;
+    fn can_gso(&self, segment_len: usize) -> bool;
 
     /// Writes the payload of the message to an output buffer
-    fn write_payload(&mut self, buffer: &mut [u8], gso_offset: usize) -> usize;
+    fn write_payload(&mut self, buffer: PayloadBuffer, gso_offset: usize) -> Result<usize, Error>;
+}
+
+#[derive(Debug)]
+pub struct PayloadBuffer<'a>(&'a mut [u8]);
+
+impl<'a> PayloadBuffer<'a> {
+    #[inline]
+    pub fn new(bytes: &'a mut [u8]) -> Self {
+        Self(bytes)
+    }
+
+    /// # Safety
+    ///
+    /// This function should only be used in the case that the writer has its own safety checks in place
+    #[inline]
+    pub unsafe fn into_mut_slice(self) -> &'a mut [u8] {
+        self.0
+    }
+
+    #[track_caller]
+    #[inline]
+    pub fn write(&mut self, bytes: &[u8]) -> Result<usize, Error> {
+        if bytes.is_empty() {
+            return Err(Error::EmptyPayload);
+        }
+
+        if let Some(buffer) = self.0.get_mut(0..bytes.len()) {
+            buffer.copy_from_slice(bytes);
+            Ok(bytes.len())
+        } else {
+            debug_assert!(
+                false,
+                "tried to write more bytes than was available in the buffer"
+            );
+            Err(Error::UndersizedBuffer)
+        }
+    }
 }
 
 impl<Handle: path::Handle, Payload: AsRef<[u8]>> Message for (Handle, Payload) {
@@ -121,19 +161,16 @@ impl<Handle: path::Handle, Payload: AsRef<[u8]>> Message for (Handle, Payload) {
         0
     }
 
-    fn can_gso(&self) -> bool {
-        true
+    fn can_gso(&self, segment_len: usize) -> bool {
+        segment_len >= self.1.as_ref().len()
     }
 
-    fn write_payload(&mut self, buffer: &mut [u8], _gso_offset: usize) -> usize {
-        let payload = self.1.as_ref();
-        let len = payload.len();
-        if let Some(buffer) = buffer.get_mut(..len) {
-            buffer.copy_from_slice(payload);
-            len
-        } else {
-            0
-        }
+    fn write_payload(
+        &mut self,
+        mut buffer: PayloadBuffer,
+        _gso_offset: usize,
+    ) -> Result<usize, Error> {
+        buffer.write(self.1.as_ref())
     }
 }
 
@@ -158,9 +195,24 @@ mod tests {
         assert_eq!(message.ecn(), Default::default());
         assert_eq!(message.delay(), Default::default());
         assert_eq!(message.ipv6_flow_label(), 0);
-        assert_eq!(message.write_payload(&mut buffer[..], 0), 3);
+        assert_eq!(
+            message.write_payload(PayloadBuffer::new(&mut buffer[..]), 0),
+            Ok(3)
+        );
+    }
 
-        // assert an empty buffer doesn't panic
-        assert_eq!(message.write_payload(&mut [][..], 0), 0);
+    #[test]
+    #[should_panic]
+    fn message_tuple_undersized_test() {
+        let remote_address = SocketAddressV4::new([127, 0, 0, 1], 80).into();
+        let local_address = SocketAddressV4::new([192, 168, 0, 1], 3000).into();
+        let tuple = path::Tuple {
+            remote_address,
+            local_address,
+        };
+        let mut message = (tuple, [1u8, 2, 3]);
+
+        // assert an undersized buffer panics in debug
+        let _ = message.write_payload(PayloadBuffer::new(&mut [][..]), 0);
     }
 }

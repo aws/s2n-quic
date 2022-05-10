@@ -203,12 +203,7 @@ impl tx::Entry for Message {
     ) -> Result<usize, tx::Error> {
         let payload = MessageTrait::payload_mut(self);
 
-        let len = message.write_payload(payload, 0);
-
-        // don't send empty payloads
-        if len == 0 {
-            return Err(tx::Error::EmptyPayload);
-        }
+        let len = message.write_payload(tx::PayloadBuffer::new(payload), 0)?;
 
         unsafe {
             debug_assert!(len <= payload.len());

@@ -1,5 +1,6 @@
 [package]
 name = "netbench"
+# this in an unpublished internal crate so the version should not be changed
 version = "0.1.0"
 authors = ["AWS s2n"]
 edition = "2018"
@@ -20,7 +21,7 @@ num-traits = "0.2"
 openssl = "0.10"
 probe = "0.3"
 rcgen = "0.9"
-s2n-quic-core = { version = "0.1", path = "../../quic/s2n-quic-core", features = ["testing"] }
+s2n-quic-core = { version = "0.2", path = "../../quic/s2n-quic-core", features = ["testing"] }
 s2n-quic = { version = "1", path = "../../quic/s2n-quic", optional = true }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"

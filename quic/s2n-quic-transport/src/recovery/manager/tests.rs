@@ -3,13 +3,13 @@
 
 use super::*;
 use crate::{
+    ack::ack_ranges::AckRanges,
     connection::{ConnectionIdMapper, InternalConnectionIdGenerator},
     contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
     endpoint::{self, testing::Server as Config},
     path::MINIMUM_MTU,
     recovery,
     recovery::manager::PtoState::RequiresTransmission,
-    space::rx_packet_numbers::ack_ranges::AckRanges,
 };
 use core::{ops::RangeInclusive, time::Duration};
 use s2n_quic_core::{
@@ -579,7 +579,7 @@ fn process_new_acked_packets_update_pto_timer() {
     // Trigger 1:
     // Ack packet first_path
     let ack_receive_time = time_sent + Duration::from_millis(500);
-    ack_packets_on_path(
+    helper_ack_packets_on_path(
         1..=1,
         ack_receive_time,
         &mut context,
@@ -603,7 +603,7 @@ fn process_new_acked_packets_update_pto_timer() {
     // Trigger 2:
     // Ack packet second_path
     let ack_receive_time = ack_receive_time + Duration::from_secs(1);
-    ack_packets_on_path(
+    helper_ack_packets_on_path(
         2..=2,
         ack_receive_time,
         &mut context,
@@ -688,7 +688,7 @@ fn process_new_acked_packets_congestion_controller() {
     // Trigger 1:
     // Ack packet 1 on path 1
     let ack_receive_time = time_sent + Duration::from_millis(500);
-    ack_packets_on_path(
+    helper_ack_packets_on_path(
         1..=1,
         ack_receive_time,
         &mut context,
@@ -717,7 +717,7 @@ fn process_new_acked_packets_congestion_controller() {
     // Trigger 2:
     // Ack packet 2 on path 1
     let ack_receive_time = time_sent + Duration::from_millis(500);
-    ack_packets_on_path(
+    helper_ack_packets_on_path(
         2..=2,
         ack_receive_time,
         &mut context,
@@ -814,7 +814,7 @@ fn process_new_acked_packets_pto_timer() {
     // Trigger 1:
     // Ack packet 1 on path 1
     let ack_receive_time = time_sent + Duration::from_millis(500);
-    ack_packets_on_path(
+    helper_ack_packets_on_path(
         1..=1,
         ack_receive_time,
         &mut context,
@@ -847,7 +847,7 @@ fn process_new_acked_packets_pto_timer() {
     // Trigger 2:
     // Ack packet 2 on path 1
     let ack_receive_time = time_sent + Duration::from_millis(500);
-    ack_packets_on_path(
+    helper_ack_packets_on_path(
         2..=2,
         ack_receive_time,
         &mut context,
@@ -1170,7 +1170,7 @@ fn no_rtt_update_when_receiving_packet_on_different_path() {
 
     // Ack packet 0 on diffent path as it was sent.. expect no rtt update
     let ack_receive_time = time_sent + Duration::from_millis(500);
-    ack_packets_on_path(
+    helper_ack_packets_on_path(
         0..=0,
         ack_receive_time,
         &mut context,
@@ -1194,7 +1194,7 @@ fn no_rtt_update_when_receiving_packet_on_different_path() {
 
     // Ack packet 1 on same path as it was sent.. expect rtt update
     let ack_receive_time = time_sent + Duration::from_millis(1500);
-    ack_packets_on_path(
+    helper_ack_packets_on_path(
         1..=1,
         ack_receive_time,
         &mut context,
@@ -1283,7 +1283,7 @@ fn rtt_update_when_receiving_ack_from_multiple_paths() {
     assert_eq!(manager.sent_packets.iter().count(), 2);
 
     // receive ack for both packets on address of first path (first packet is largest)
-    ack_packets_on_path(
+    helper_ack_packets_on_path(
         0..=1,
         ack_receive_time,
         &mut context,
@@ -2674,7 +2674,7 @@ fn on_transmit_normal_transmission_mode() {
 }
 
 // Helper function that will call on_ack_frame with the given packet numbers
-fn ack_packets_on_path(
+fn helper_ack_packets_on_path(
     range: RangeInclusive<u8>,
     ack_receive_time: Timestamp,
     context: &mut MockContext,
@@ -2709,7 +2709,7 @@ fn ack_packets_on_path(
     let mut ack_range = AckRanges::new(acked_packets.count());
 
     for acked_packet in acked_packets {
-        ack_range.insert_packet_number(acked_packet);
+        assert!(ack_range.insert_packet_number(acked_packet).is_ok());
     }
 
     let frame = frame::Ack {
@@ -2718,7 +2718,7 @@ fn ack_packets_on_path(
         ecn_counts,
     };
 
-    let _ = manager.on_ack_frame(&datagram, frame, context, publisher);
+    let _ = manager.on_ack_frame(datagram.timestamp, frame, context, publisher);
 
     for packet in acked_packets {
         assert!(manager.sent_packets.get(packet).is_none());
@@ -2735,7 +2735,7 @@ fn ack_packets(
     publisher: &mut Publisher,
 ) {
     let addr = context.path().handle;
-    ack_packets_on_path(
+    helper_ack_packets_on_path(
         range,
         ack_receive_time,
         context,
@@ -3066,7 +3066,7 @@ impl<'a> recovery::Context<Config> for MockContext<'a> {
 
     fn validate_packet_ack(
         &mut self,
-        _datagram: &DatagramInfo,
+        _timestamp: Timestamp,
         _packet_number_range: &PacketNumberRange,
     ) -> Result<(), transport::Error> {
         self.validate_packet_ack_count += 1;
@@ -3081,11 +3081,7 @@ impl<'a> recovery::Context<Config> for MockContext<'a> {
         self.on_new_packet_ack_count += 1;
     }
 
-    fn on_packet_ack(
-        &mut self,
-        _datagram: &DatagramInfo,
-        _packet_number_range: &PacketNumberRange,
-    ) {
+    fn on_packet_ack(&mut self, _timestamp: Timestamp, _packet_number_range: &PacketNumberRange) {
         self.on_packet_ack_count += 1;
     }
 

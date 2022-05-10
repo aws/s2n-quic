@@ -387,7 +387,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
 }
 
 /// Manages all active `Stream`s inside a connection.
-/// `AbstractStreamManager` is paramterized over the `Stream` type.
+/// `AbstractStreamManager` is parameterized over the `Stream` type.
 #[derive(Debug)]
 pub struct AbstractStreamManager<S> {
     pub(super) inner: StreamManagerState<S>,
@@ -978,6 +978,11 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             api_call_context,
             |stream| stream.poll_request(request, context),
         )
+    }
+
+    /// Returns whether or not streams have data to send
+    pub fn has_pending_streams(&self) -> bool {
+        self.inner.streams.has_pending_streams()
     }
 }
 

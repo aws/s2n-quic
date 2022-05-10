@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    ack::AckManager,
     connection::{self, limits::Limits},
     endpoint, path,
     space::{
-        keep_alive::KeepAlive, rx_packet_numbers::AckManager, ApplicationSpace, HandshakeSpace,
-        HandshakeStatus, InitialSpace,
+        keep_alive::KeepAlive, ApplicationSpace, HandshakeSpace, HandshakeStatus, InitialSpace,
     },
     stream::AbstractStreamManager,
 };
@@ -20,6 +20,7 @@ use s2n_quic_core::{
     crypto,
     crypto::{tls, CryptoSuite, Key},
     ct::ConstantTimeEq,
+    datagram::{ConnectionInfo, Endpoint},
     event,
     event::IntoEvent,
     packet::number::PacketNumberSpace,
@@ -51,6 +52,7 @@ pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPu
     pub application_protocol: &'a mut Bytes,
     pub waker: &'a Waker,
     pub publisher: &'a mut Pub,
+    pub datagram: &'a mut Config::DatagramEndpoint,
 }
 
 impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
@@ -366,6 +368,8 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             self.limits.max_keep_alive_period(),
         );
 
+        let conn_info = ConnectionInfo::new();
+        let (datagram_sender, datagram_receiver) = self.datagram.create_connection(&conn_info);
         let cipher_suite = key.cipher_suite().into_event();
         let max_mtu = self.path_manager.max_mtu();
         *self.application = Some(Box::new(ApplicationSpace::new(
@@ -376,6 +380,8 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             ack_manager,
             keep_alive,
             max_mtu,
+            datagram_sender,
+            datagram_receiver,
         )));
         self.publisher.on_key_update(event::builder::KeyUpdate {
             key_type: event::builder::KeyType::OneRtt { generation: 0 },

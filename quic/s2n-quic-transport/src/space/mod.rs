@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    ack,
+    ack::AckManager,
     connection, endpoint, path,
     path::{path_event, Path},
     processed_packet::ProcessedPacket,
-    space::rx_packet_numbers::AckManager,
     transmission,
 };
 use bytes::Bytes;
@@ -15,7 +16,6 @@ use core::{
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    ack,
     application::ServerName,
     connection::{limits::Limits, InitialId, PeerId},
     crypto::{tls, tls::Session, CryptoSuite, Key},
@@ -34,11 +34,11 @@ use s2n_quic_core::{
 
 mod application;
 mod crypto_stream;
+pub(crate) mod datagram;
 mod handshake;
 mod handshake_status;
 mod initial;
 mod keep_alive;
-pub(crate) mod rx_packet_numbers;
 mod session_context;
 mod tx_packet_numbers;
 
@@ -194,6 +194,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         self.zero_rtt_crypto = None;
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn poll_crypto<Pub: event::ConnectionPublisher>(
         &mut self,
         path_manager: &mut path::Manager<Config>,
@@ -202,6 +203,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         now: Timestamp,
         waker: &Waker,
         publisher: &mut Pub,
+        datagram: &mut Config::DatagramEndpoint,
     ) -> Poll<Result<(), transport::Error>> {
         if let Some(session_info) = self.session_info.as_mut() {
             let mut context: SessionContext<Config, Pub> = SessionContext {
@@ -220,6 +222,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 application_protocol: &mut self.application_protocol,
                 waker,
                 publisher,
+                datagram,
             };
 
             match session_info.session.poll(&mut context)? {
@@ -441,6 +444,50 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     pub fn retry_cid(&self) -> Option<&PeerId> {
         self.retry_cid.as_deref()
     }
+
+    pub fn on_pending_ack_ranges<Pub: event::ConnectionPublisher>(
+        &mut self,
+        timestamp: Timestamp,
+        path_id: path::Id,
+        path_manager: &mut path::Manager<Config>,
+        local_id_registry: &mut connection::LocalIdRegistry,
+        publisher: &mut Pub,
+    ) -> Result<(), transport::Error> {
+        debug_assert!(
+            self.application().is_some(),
+            "application space should exists since delay ACK processing is only enabled\
+            post handshake complete and connection indicated ACK interest"
+        );
+        debug_assert!(
+            !self.application().unwrap().pending_ack_ranges.is_empty(),
+            "pending_ack_ranges should be non-empty since connection indicated ACK interest"
+        );
+
+        if let Some((space, handshake_status)) = self.application_mut() {
+            space.on_pending_ack_ranges(
+                timestamp,
+                path_id,
+                path_manager,
+                handshake_status,
+                local_id_registry,
+                publisher,
+            )?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<Config: endpoint::Config> ack::interest::Provider for PacketSpaceManager<Config> {
+    #[inline]
+    fn ack_interest<Q: ack::interest::Query>(&self, query: &mut Q) -> ack::interest::Result {
+        if let Some(space) = self.application() {
+            if !space.pending_ack_ranges.is_empty() {
+                return query.on_interest(ack::interest::Interest::Immediate);
+            }
+        }
+        query.on_interest(ack::interest::Interest::None)
+    }
 }
 
 impl<Config: endpoint::Config> timer::Provider for PacketSpaceManager<Config> {
@@ -531,7 +578,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
     fn handle_ack_frame<A: AckRanges, Pub: event::ConnectionPublisher>(
         &mut self,
         frame: Ack<A>,
-        datagram: &DatagramInfo,
+        timestamp: Timestamp,
         path_id: path::Id,
         path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
@@ -542,14 +589,14 @@ pub trait PacketSpace<Config: endpoint::Config> {
     fn handle_connection_close_frame(
         &mut self,
         frame: ConnectionClose,
-        datagram: &DatagramInfo,
+        timestamp: Timestamp,
         path: &mut Path<Config>,
     ) -> Result<(), transport::Error>;
 
     fn handle_handshake_done_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: HandshakeDone,
-        _datagram: &DatagramInfo,
+        _timestamp: Timestamp,
         _path: &mut Path<Config>,
         _local_id_registry: &mut connection::LocalIdRegistry,
         _handshake_status: &mut HandshakeStatus,
@@ -735,7 +782,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     let on_error = on_frame_processed!(frame);
                     self.handle_ack_frame(
                         frame,
-                        datagram,
+                        datagram.timestamp,
                         path_id,
                         path_manager,
                         handshake_status,
@@ -746,8 +793,12 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 }
                 Frame::ConnectionClose(frame) => {
                     let on_error = on_frame_processed!(frame);
-                    self.handle_connection_close_frame(frame, datagram, &mut path_manager[path_id])
-                        .map_err(on_error)?;
+                    self.handle_connection_close_frame(
+                        frame,
+                        datagram.timestamp,
+                        &mut path_manager[path_id],
+                    )
+                    .map_err(on_error)?;
 
                     // skip processing any other frames and return an error
                     return Err(frame.into());
@@ -836,7 +887,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     let on_error = on_frame_processed!(frame);
                     self.handle_handshake_done_frame(
                         frame,
-                        datagram,
+                        datagram.timestamp,
                         &mut path_manager[path_id],
                         local_id_registry,
                         handshake_status,

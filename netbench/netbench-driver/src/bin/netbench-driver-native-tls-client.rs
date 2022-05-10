@@ -5,7 +5,10 @@ use netbench::{multiplex, scenario, Result};
 use netbench_driver::Allocator;
 use std::{collections::HashSet, future::Future, net::SocketAddr, pin::Pin, sync::Arc};
 use structopt::StructOpt;
-use tokio::{io::AsyncWriteExt, net::TcpStream};
+use tokio::{
+    io::{self, AsyncWriteExt},
+    net::TcpStream,
+};
 use tokio_native_tls::{
     native_tls::{Certificate, TlsConnector},
     TlsStream,
@@ -56,17 +59,22 @@ impl Client {
             config,
             connector,
             id: 0,
+            rx_buffer: *self.opts.rx_buffer as _,
+            tx_buffer: *self.opts.tx_buffer as _,
         })
     }
 }
 
-type Connection<'a> = netbench::Driver<'a, multiplex::Connection<TlsStream<TcpStream>>>;
+type Stream = io::BufStream<TcpStream>;
+type Connection<'a> = netbench::Driver<'a, multiplex::Connection<TlsStream<Stream>>>;
 
 #[derive(Clone, Debug)]
 struct ClientImpl {
     config: multiplex::Config,
     connector: Arc<tokio_native_tls::TlsConnector>,
     id: u64,
+    rx_buffer: usize,
+    tx_buffer: usize,
 }
 
 impl ClientImpl {
@@ -92,9 +100,13 @@ impl<'a> netbench::client::Client<'a> for ClientImpl {
         let config = self.config.clone();
         let connector = self.connector.clone();
         let server_name = server_name.to_string();
+        let rx_buffer = self.rx_buffer;
+        let tx_buffer = self.tx_buffer;
 
         let fut = async move {
             let conn = TcpStream::connect(addr).await?;
+            let conn = io::BufStream::with_capacity(rx_buffer, tx_buffer, conn);
+
             let mut conn = connector.connect(&server_name, conn).await?;
 
             // The native-tls crate does not expose the server name on the server so we need to

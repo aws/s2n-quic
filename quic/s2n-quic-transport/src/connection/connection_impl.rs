@@ -4,6 +4,7 @@
 //! Contains the implementation of the `Connection`
 
 use crate::{
+    ack::interest::Provider as _,
     connection::{
         self,
         close_sender::CloseSender,
@@ -21,7 +22,7 @@ use crate::{
     recovery::RttEstimator,
     space::{PacketSpace, PacketSpaceManager},
     stream, transmission,
-    transmission::interest::Provider,
+    transmission::interest::Provider as _,
     wakeup_queue::WakeupHandle,
 };
 use alloc::sync::Arc;
@@ -265,6 +266,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         &mut self,
         timestamp: Timestamp,
         subscriber: &mut Config::EventSubscriber,
+        datagram: &mut Config::DatagramEndpoint,
     ) -> Result<(), connection::Error> {
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
         let space_manager = &mut self.space_manager;
@@ -276,6 +278,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             timestamp,
             &self.waker,
             &mut publisher,
+            datagram,
         ) {
             Poll::Ready(res) => res?,
             Poll::Pending => return Ok(()),
@@ -608,9 +611,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         };
 
         if Config::ENDPOINT_TYPE.is_client() {
-            if let Err(error) =
-                connection.update_crypto_state(parameters.timestamp, parameters.event_subscriber)
-            {
+            if let Err(error) = connection.update_crypto_state(
+                parameters.timestamp,
+                parameters.event_subscriber,
+                parameters.datagram_endpoint,
+            ) {
                 connection.with_event_publisher(
                     parameters.timestamp,
                     None,
@@ -1043,17 +1048,45 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         Ok(())
     }
 
+    /// Process ACKs for the `Connection`.
+    fn on_pending_ack_ranges(
+        &mut self,
+        timestamp: Timestamp,
+        subscriber: &mut Config::EventSubscriber,
+    ) -> Result<(), connection::Error> {
+        let mut publisher = self.event_context.publisher(timestamp, subscriber);
+
+        // TODO: care should be taken to only delay ACK processing for the active path.
+        // However, the active path could change so it might be necessary to track the
+        // active path across some ACK delay processing.
+        let path_id = self.path_manager.active_path_id();
+        self.space_manager
+            .on_pending_ack_ranges(
+                timestamp,
+                path_id,
+                &mut self.path_manager,
+                &mut self.local_id_registry,
+                &mut publisher,
+            )
+            .map_err(|err| {
+                // TODO: publish metrics
+
+                err.into()
+            })
+    }
+
     /// Handles all external wakeups on the [`Connection`].
     fn on_wakeup(
         &mut self,
         timestamp: Timestamp,
         subscriber: &mut Config::EventSubscriber,
+        datagram: &mut Config::DatagramEndpoint,
     ) -> Result<(), connection::Error> {
         // reset the queued state first so that new wakeup request are not missed
         self.wakeup_handle.wakeup_handled();
 
         // check if crypto progress can be made
-        self.update_crypto_state(timestamp, subscriber)?;
+        self.update_crypto_state(timestamp, subscriber, datagram)?;
 
         // return an error if the application set one
         self.error?;
@@ -1135,6 +1168,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
         packet_interceptor: &mut Config::PacketInterceptor,
+        datagram_endpoint: &mut Config::DatagramEndpoint,
     ) -> Result<(), ProcessingError> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
         //= type=TODO
@@ -1174,6 +1208,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 random_generator,
                 subscriber,
                 packet_interceptor,
+                datagram_endpoint,
             )?;
         }
 
@@ -1189,6 +1224,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
         packet_interceptor: &mut Config::PacketInterceptor,
+        datagram_endpoint: &mut Config::DatagramEndpoint,
     ) -> Result<(), ProcessingError> {
         if let Some((space, handshake_status)) = self.space_manager.initial_mut() {
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
@@ -1224,7 +1260,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             )?;
 
             // try to move the crypto state machine forward
-            self.update_crypto_state(datagram.timestamp, subscriber)?;
+            self.update_crypto_state(datagram.timestamp, subscriber, datagram_endpoint)?;
 
             // notify the connection a packet was processed
             self.on_processed_packet(&processed_packet, subscriber)?;
@@ -1234,6 +1270,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a handshake packet had been received
+    #[allow(clippy::too_many_arguments)]
     fn handle_handshake_packet(
         &mut self,
         datagram: &DatagramInfo,
@@ -1242,6 +1279,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
         packet_interceptor: &mut Config::PacketInterceptor,
+        datagram_endpoint: &mut Config::DatagramEndpoint,
     ) -> Result<(), ProcessingError> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.1
         //= type=TODO
@@ -1304,7 +1342,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             self.path_manager[path_id].on_handshake_packet();
 
             // try to move the crypto state machine forward
-            self.update_crypto_state(datagram.timestamp, subscriber)?;
+            self.update_crypto_state(datagram.timestamp, subscriber, datagram_endpoint)?;
 
             // notify the connection a packet was processed
             self.on_processed_packet(&processed_packet, subscriber)?;
@@ -1638,12 +1676,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     && self.space_manager.handshake().is_none()
                     && self.local_id_registry.connection_id_interest()
                         != connection::id::Interest::None;
+                interests.ack = self.space_manager.has_ack_interest();
             }
             ConnectionState::Closing => {
                 let constraint = self.path_manager.active_path().transmission_constraint();
                 interests.closing = true;
                 interests.transmission = self.close_sender.can_transmit(constraint);
                 interests.finalization = self.close_sender.finalization_status().is_final();
+                interests.ack = self.space_manager.has_ack_interest();
             }
             ConnectionState::Draining | ConnectionState::Finished => {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.2
@@ -1653,6 +1693,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
                 // Remove the connection from the endpoint
                 interests.finalization = true;
+                interests.ack = self.space_manager.has_ack_interest();
             }
         }
 

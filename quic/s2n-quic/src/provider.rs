@@ -23,7 +23,7 @@ pub(crate) mod path_migration;
 pub(crate) mod sync;
 
 cfg_if!(
-    if #[cfg(all(s2n_quic_unstable, feature = "unstable-provider-packet-interceptor"))] {
+    if #[cfg(all(not(docdiff), feature = "unstable-provider-packet-interceptor"))] {
         pub mod packet_interceptor;
     } else {
         pub(crate) mod packet_interceptor;
@@ -31,10 +31,18 @@ cfg_if!(
 );
 
 cfg_if!(
-    if #[cfg(all(s2n_quic_unstable, feature = "unstable-provider-random"))] {
+    if #[cfg(all(not(docdiff), feature = "unstable-provider-random"))] {
         pub mod random;
     } else {
         pub(crate) mod random;
+    }
+);
+
+cfg_if!(
+    if #[cfg(all(not(docdiff), feature = "unstable-provider-datagram"))] {
+        pub mod datagram;
+    } else {
+        pub(crate) mod datagram;
     }
 );
 

@@ -69,12 +69,19 @@ pub use client::Client;
 pub use connection::Connection;
 pub use server::Server;
 
+#[cfg(test)]
+mod tests;
+
 // Require `--cfg s2n_quic_unstable` is set when using unstable features
 #[cfg(
     all(
         // add new unstable features to this list
         any(
-            feature = "unstable_client_hello"
+            feature = "unstable_client_hello",
+            feature = "unstable-provider-datagram",
+            feature = "unstable-provider-io-testing",
+            feature = "unstable-provider-packet-interceptor",
+            feature = "unstable-provider-random",
         ),
         // any unstable features requires at least one of the following conditions
         not(any(
@@ -83,6 +90,8 @@ pub use server::Server;
             doctest,
             // we're compiling docs for docs.rs
             docsrs,
+            // we're running docdiff
+            docdiff,
             // we're developing s2n-quic
             s2n_internal_dev,
             // the application has explicitly opted into unstable features

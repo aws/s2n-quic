@@ -99,16 +99,25 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), connection::Error>;
 
-    /// Handles all external wakeups on the [`Connection`].
-    fn on_wakeup(
+    /// Process pendings ACKs for the `Connection`.
+    fn on_pending_ack_ranges(
         &mut self,
         timestamp: Timestamp,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), connection::Error>;
 
+    /// Handles all external wakeups on the [`Connection`].
+    fn on_wakeup(
+        &mut self,
+        timestamp: Timestamp,
+        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
+        datagram: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
+    ) -> Result<(), connection::Error>;
+
     // Packet handling
 
     /// Is called when an initial packet had been received
+    #[allow(clippy::too_many_arguments)]
     fn handle_initial_packet(
         &mut self,
         datagram: &DatagramInfo,
@@ -117,9 +126,11 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
+        datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when an unprotected initial packet had been received
+    #[allow(clippy::too_many_arguments)]
     fn handle_cleartext_initial_packet(
         &mut self,
         datagram: &DatagramInfo,
@@ -128,9 +139,11 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
+        datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a handshake packet had been received
+    #[allow(clippy::too_many_arguments)]
     fn handle_handshake_packet(
         &mut self,
         datagram: &DatagramInfo,
@@ -139,6 +152,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
+        datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a short packet had been received
@@ -201,6 +215,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     fn quic_version(&self) -> u32;
 
     /// Handles reception of a single QUIC packet
+    #[allow(clippy::too_many_arguments)]
     fn handle_packet(
         &mut self,
         datagram: &DatagramInfo,
@@ -209,6 +224,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
+        datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
     ) -> Result<(), ProcessingError> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.1
         //# If a client receives a packet that uses a different version than it
@@ -262,6 +278,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 random_generator,
                 subscriber,
                 packet_interceptor,
+                datagram_endpoint,
             ),
             ProtectedPacket::ZeroRtt(packet) => self.handle_zero_rtt_packet(
                 datagram,
@@ -277,6 +294,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 random_generator,
                 subscriber,
                 packet_interceptor,
+                datagram_endpoint,
             ),
             ProtectedPacket::Retry(packet) => {
                 self.handle_retry_packet(datagram, path_id, packet, subscriber, packet_interceptor)
@@ -297,6 +315,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
+        datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
     ) -> Result<(), connection::Error> {
         let remote_address = path_handle.remote_address();
         let connection_info = ConnectionInfo::new(&remote_address);
@@ -338,6 +357,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                     random_generator,
                     subscriber,
                     packet_interceptor,
+                    datagram_endpoint,
                 );
 
                 if let Err(ProcessingError::ConnectionError(err)) = result {

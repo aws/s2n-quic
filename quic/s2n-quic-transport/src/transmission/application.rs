@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    ack::AckManager,
     connection,
     contexts::WriteContext,
     endpoint, path,
     path::mtu,
     recovery,
-    space::{rx_packet_numbers::AckManager, HandshakeStatus},
+    space::{datagram, HandshakeStatus},
     stream::{AbstractStreamManager, StreamTrait as Stream},
     sync::{flag, flag::Ping},
     transmission::{self, Mode},
@@ -36,6 +37,7 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
         ping: &'a mut flag::Ping,
         stream_manager: &'a mut AbstractStreamManager<Config::Stream>,
         recovery_manager: &'a mut recovery::Manager<Config>,
+        datagram_manager: &'a mut datagram::Manager<Config>,
     ) -> Self {
         if transmission_mode != Mode::PathValidationOnly {
             debug_assert_eq!(path_id, path_manager.active_path_id());
@@ -51,6 +53,7 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
                     local_id_registry,
                     path_manager,
                     recovery_manager,
+                    datagram_manager,
                 })
             }
             Mode::MtuProbing => transmission::application::Payload::MtuProbe(MtuProbe {
@@ -105,6 +108,7 @@ pub struct Normal<'a, S: Stream, Config: endpoint::Config> {
     local_id_registry: &'a mut connection::LocalIdRegistry,
     path_manager: &'a mut path::Manager<Config>,
     recovery_manager: &'a mut recovery::Manager<Config>,
+    datagram_manager: &'a mut datagram::Manager<Config>,
 }
 
 impl<'a, S: Stream, Config: endpoint::Config> Normal<'a, S, Config> {
@@ -128,6 +132,12 @@ impl<'a, S: Stream, Config: endpoint::Config> Normal<'a, S, Config> {
             self.local_id_registry.on_transmit(context);
 
             self.path_manager.on_transmit(context);
+
+            // The default sending behavior is to alternate between sending datagrams
+            // and sending stream data. This can be configured by implementing a
+            // custom datagram sender and choosing when to cede packet space for stream data.
+            self.datagram_manager
+                .on_transmit(context, self.stream_manager);
 
             let _ = self.stream_manager.on_transmit(context);
 
@@ -154,6 +164,7 @@ impl<'a, S: Stream, Config: endpoint::Config> transmission::interest::Provider
         self.ack_manager.transmission_interest(query)?;
         self.handshake_status.transmission_interest(query)?;
         self.stream_manager.transmission_interest(query)?;
+        self.datagram_manager.transmission_interest(query)?;
         self.local_id_registry.transmission_interest(query)?;
         self.path_manager.transmission_interest(query)?;
         self.recovery_manager.transmission_interest(query)?;

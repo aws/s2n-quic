@@ -152,8 +152,8 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> tx::Message
     }
 
     #[inline]
-    fn can_gso(&self) -> bool {
-        true
+    fn can_gso(&self, segment_len: usize) -> bool {
+        segment_len >= self.packet.len()
     }
 
     #[inline]
@@ -162,9 +162,11 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> tx::Message
     }
 
     #[inline]
-    fn write_payload(&mut self, buffer: &mut [u8], gso_offset: usize) -> usize {
-        let len = self.packet.len();
-
+    fn write_payload(
+        &mut self,
+        mut buffer: tx::PayloadBuffer,
+        gso_offset: usize,
+    ) -> Result<usize, tx::Error> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
         //# |  Note: Allowing retransmission of a closing packet is an
         //# |  exception to the requirement that a new packet number be used
@@ -173,7 +175,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> tx::Message
         //# |  control, which are not expected to be relevant for a closed
         //# |  connection.  Retransmitting the final packet requires less
         //# |  state.
-        buffer[..len].copy_from_slice(self.packet);
+        let len = buffer.write(self.packet)?;
 
         self.path.on_bytes_transmitted(len);
         *self.transmission = TransmissionState::Idle;
@@ -184,7 +186,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> tx::Message
                 gso_offset,
             });
 
-        len
+        Ok(len)
     }
 }
 
@@ -361,9 +363,9 @@ mod tests {
                 // transmit an initial packet
                 assert!(sender.can_transmit(path.transmission_constraint()));
                 let now = s2n_quic_platform::time::now();
-                sender
+                let _ = sender
                     .transmission(&mut path, now, &mut publisher)
-                    .write_payload(&mut buffer, 0);
+                    .write_payload(tx::PayloadBuffer::new(&mut buffer), 0);
 
                 for (gap, packet_size) in events {
                     // get the next timer event
@@ -383,9 +385,9 @@ mod tests {
                     for _ in 0..3 {
                         let interest = sender.get_transmission_interest();
                         if interest.can_transmit(path.transmission_constraint()) {
-                            sender
+                            let _ = sender
                                 .transmission(&mut path, now, &mut publisher)
-                                .write_payload(&mut buffer, 0);
+                                .write_payload(tx::PayloadBuffer::new(&mut buffer), 0);
                             transmission_count += 1;
                         }
                     }

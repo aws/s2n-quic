@@ -106,19 +106,35 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         let mut now: Option<Timestamp> = None;
 
         for entry in entries.iter_mut() {
-            if let Some((header, payload)) = entry.read(&local_address) {
-                let timestamp = match now {
-                    Some(now) => now,
-                    _ => {
-                        let time = clock.get_time();
-                        now = Some(time);
-                        time
-                    }
-                };
+            let timestamp = match now {
+                Some(time) => time,
+                None => {
+                    now = Some(clock.get_time());
+                    now.expect("value should be set")
+                }
+            };
 
+            if let Some((header, payload)) = entry.read(&local_address) {
                 self.receive_datagram(&header, payload, timestamp)
             }
         }
+
+        // TODO process pending acks
+        // let endpoint_context = self.config.context();
+        // // process ACKs on Connections with interest
+        // self.connections.iterate_ack_list(|connection| {
+        //     let timestamp = match now {
+        //         Some(time) => time,
+        //         None => {
+        //             now = Some(clock.get_time());
+        //             now.expect("value should be set")
+        //         }
+        //     };
+        //
+        //     // handle error and potentially close the connection
+        //     connection.on_pending_ack_ranges(timestamp, endpoint_context.event_subscriber);
+        // });
+
         let len = entries.len();
         queue.finish(len);
     }
@@ -207,7 +223,11 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                     }
                 };
 
-                if let Err(error) = conn.on_wakeup(timestamp, endpoint_context.event_subscriber) {
+                if let Err(error) = conn.on_wakeup(
+                    timestamp,
+                    endpoint_context.event_subscriber,
+                    endpoint_context.datagram,
+                ) {
                     conn.close(
                         error,
                         endpoint_context.connection_close_formatter,
@@ -332,6 +352,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             self.connections.handshake_connections(),
             self.connections.len(),
             &remote_address,
+            timestamp.into_event(),
         );
 
         let context = self.config.context();
@@ -563,6 +584,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     endpoint_context.random_generator,
                     endpoint_context.event_subscriber,
                     endpoint_context.packet_interceptor,
+                    endpoint_context.datagram,
                 ) {
                     match err {
                         ProcessingError::DuplicatePacket => {
@@ -629,6 +651,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     endpoint_context.random_generator,
                     endpoint_context.event_subscriber,
                     endpoint_context.packet_interceptor,
+                    endpoint_context.datagram,
                 ) {
                     conn.close(
                         err,
@@ -1108,6 +1131,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             event_context,
             supervisor_context: &supervisor_context,
             event_subscriber: endpoint_context.event_subscriber,
+            datagram_endpoint: endpoint_context.datagram,
         };
         let connection = <Cfg as crate::endpoint::Config>::Connection::new(connection_parameters)?;
         self.connections
@@ -1142,6 +1166,7 @@ pub mod testing {
         type EventSubscriber = Subscriber;
         type PathMigrationValidator = path::migration::default::Validator;
         type PacketInterceptor = s2n_quic_core::packet::interceptor::Disabled;
+        type DatagramEndpoint = s2n_quic_core::datagram::Disabled;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()
@@ -1171,6 +1196,7 @@ pub mod testing {
         type EventSubscriber = Subscriber;
         type PathMigrationValidator = path::migration::default::Validator;
         type PacketInterceptor = s2n_quic_core::packet::interceptor::Disabled;
+        type DatagramEndpoint = s2n_quic_core::datagram::Disabled;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()

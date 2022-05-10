@@ -60,6 +60,12 @@ intrusive_adapter!(WaitingForConnectionIdAdapter<C, L> = Arc<ConnectionNode<C, L
     waiting_for_connection_id_link: LinkedListLink
 } where C: connection::Trait, L: connection::Lock<C>);
 
+// Intrusive list adapter for managing the list of
+// `waiting_for_ack` connections
+intrusive_adapter!(WaitingForAckAdapter<C, L> = Arc<ConnectionNode<C, L>>: ConnectionNode<C, L> {
+    waiting_for_ack_link: LinkedListLink
+} where C: connection::Trait, L: connection::Lock<C>);
+
 // Intrusive red black tree adapter for managing a list of `waiting_for_timeout` connections
 intrusive_adapter!(WaitingForTimeoutAdapter<C, L> = Arc<ConnectionNode<C, L>>: ConnectionNode<C, L> {
     waiting_for_timeout_link: RBTreeLink
@@ -87,6 +93,8 @@ struct ConnectionNode<C: connection::Trait, L: connection::Lock<C>> {
     waiting_for_transmission_link: LinkedListLink,
     /// Allows the Connection to be part of the `waiting_for_connection_id` collection
     waiting_for_connection_id_link: LinkedListLink,
+    /// Allows the Connection to be part of the `waiting_for_ack` collection
+    waiting_for_ack_link: LinkedListLink,
     /// Allows the Connection to be part of the `waiting_for_timeout` collection
     waiting_for_timeout_link: RBTreeLink,
     /// The cached time at which the connection will timeout next
@@ -110,6 +118,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionNode<C, L> {
             done_connections_link: LinkedListLink::new(),
             waiting_for_transmission_link: LinkedListLink::new(),
             waiting_for_connection_id_link: LinkedListLink::new(),
+            waiting_for_ack_link: LinkedListLink::new(),
             waiting_for_timeout_link: RBTreeLink::new(),
             timeout: Cell::new(None),
             application_handle_count: AtomicUsize::new(0),
@@ -359,6 +368,8 @@ struct InterestLists<C: connection::Trait, L: connection::Lock<C>> {
     waiting_for_transmission: LinkedList<WaitingForTransmissionAdapter<C, L>>,
     /// Connections which need a new connection ID
     waiting_for_connection_id: LinkedList<WaitingForConnectionIdAdapter<C, L>>,
+    /// Connections which need process ACKs
+    waiting_for_ack: LinkedList<WaitingForAckAdapter<C, L>>,
     /// Connections which are waiting for a timeout to occur
     waiting_for_timeout: RBTree<WaitingForTimeoutAdapter<C, L>>,
     waiting_for_open: BTreeMap<InternalConnectionId, ConnectionSender>,
@@ -374,6 +385,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
             done_connections: LinkedList::new(DoneConnectionsAdapter::new()),
             waiting_for_transmission: LinkedList::new(WaitingForTransmissionAdapter::new()),
             waiting_for_connection_id: LinkedList::new(WaitingForConnectionIdAdapter::new()),
+            waiting_for_ack: LinkedList::new(WaitingForAckAdapter::new()),
             waiting_for_timeout: RBTree::new(WaitingForTimeoutAdapter::new()),
             waiting_for_open: BTreeMap::new(),
             handshake_connections: 0,
@@ -454,6 +466,8 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
             waiting_for_connection_id_link,
             waiting_for_connection_id
         );
+
+        sync_interests_list!(interests.ack, waiting_for_ack_link, waiting_for_ack);
 
         // Check if the timeout has changed since last time we queried the interests
         if node.timeout.get() != interests.timeout {
@@ -573,6 +587,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
 
         remove_connection_from_list!(waiting_for_transmission, waiting_for_transmission_link);
         remove_connection_from_list!(waiting_for_connection_id, waiting_for_connection_id_link);
+        remove_connection_from_list!(waiting_for_ack, waiting_for_ack_link);
         remove_connection_from_list!(waiting_for_timeout, waiting_for_timeout_link);
 
         self.connection_count -= 1;
@@ -606,7 +621,7 @@ pub struct ConnectionContainer<C: connection::Trait, L: connection::Lock<C>> {
 }
 
 macro_rules! iterate_interruptible {
-    ($sel:ident, $list_name:tt, $link_name:ident, $func:ident) => {
+    ($sel:ident, $list_name:ident, $link_name:ident, $func:expr) => {
         let mut extracted_list = $sel.interest_lists.$list_name.take();
         let mut cursor = extracted_list.front_mut();
 
@@ -938,6 +953,21 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
             waiting_for_connection_id_link,
             func
         );
+    }
+
+    /// Iterates over all `Connection`s which are waiting to process ACKs,
+    /// and executes the given function on each `Connection`
+    #[allow(dead_code)]
+    pub fn iterate_ack_list<F>(&mut self, mut func: F)
+    where
+        F: FnMut(&mut C),
+    {
+        iterate_interruptible!(self, waiting_for_ack, waiting_for_ack_link, {
+            |c| {
+                func(c);
+                ConnectionContainerIterationResult::Continue
+            }
+        });
     }
 
     /// Iterates over all `Connection`s which are waiting for timeouts before the current time

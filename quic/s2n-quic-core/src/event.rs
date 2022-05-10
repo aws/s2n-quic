@@ -104,6 +104,13 @@ impl Timestamp {
         // with it's documentation captures this intent.
         unsafe { self.0.as_duration() }
     }
+
+    /// Returns the `Duration` which elapsed since an earlier `Timestamp`.
+    /// If `earlier` is more recent, the method returns a `Duration` of 0.
+    #[inline]
+    pub fn saturating_duration_since(self, earlier: Self) -> Duration {
+        self.0.saturating_duration_since(earlier.0)
+    }
 }
 
 impl IntoEvent<Timestamp> for crate::time::Timestamp {
