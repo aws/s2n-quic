@@ -12,6 +12,7 @@ use crate::{
 use bytes::Bytes;
 use core::{
     fmt,
+    ops::RangeInclusive,
     task::{Poll, Waker},
 };
 use s2n_codec::DecoderBufferMut;
@@ -22,14 +23,15 @@ use s2n_quic_core::{
     event::{self, IntoEvent},
     frame::{
         ack::AckRanges, crypto::CryptoRef, datagram::DatagramRef, stream::StreamRef, Ack,
-        ConnectionClose, DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams,
-        NewConnectionId, NewToken, PathChallenge, PathResponse, ResetStream, RetireConnectionId,
-        StopSending, StreamDataBlocked, StreamsBlocked,
+        ConnectionClose, DataBlocked, Frame, FrameMut, HandshakeDone, MaxData, MaxStreamData,
+        MaxStreams, NewConnectionId, NewToken, PathChallenge, PathResponse, ResetStream,
+        RetireConnectionId, StopSending, StreamDataBlocked, StreamsBlocked,
     },
     inet::DatagramInfo,
-    packet::number::{PacketNumber, PacketNumberSpace},
+    packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     time::{timer, Timestamp},
     transport,
+    varint::VarInt,
 };
 
 mod application;
@@ -704,11 +706,6 @@ pub trait PacketSpace<Config: endpoint::Config> {
         publisher: &mut Pub,
         packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<ProcessedPacket<'a>, connection::Error> {
-        use s2n_quic_core::{
-            frame::{Frame, FrameMut},
-            varint::VarInt,
-        };
-
         let mut payload = {
             use s2n_quic_core::packet::interceptor::{Interceptor, Packet};
 
@@ -934,4 +931,14 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
         Ok(processed_packet)
     }
+}
+
+pub(crate) fn into_pn_range_iter(
+    iter: impl Iterator<Item = RangeInclusive<VarInt>>,
+    space: PacketNumberSpace,
+) -> impl Iterator<Item = PacketNumberRange> {
+    iter.map(move |ack_range| {
+        let (start, end) = ack_range.into_inner();
+        PacketNumberRange::new(space.new_packet_number(start), space.new_packet_number(end))
+    })
 }

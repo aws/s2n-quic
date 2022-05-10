@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use super::into_pn_range_iter;
 use crate::{
     ack::AckManager,
     connection::{self, ConnectionTransmissionContext, ProcessingError},
@@ -652,7 +653,18 @@ impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
     ) -> Result<(), transport::Error> {
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, path_id, path_manager);
-        recovery_manager.on_ack_frame(timestamp, frame, &mut context, publisher)
+
+        let space = PacketNumberSpace::Initial;
+        let largest_acked_packet_number = space.new_packet_number(frame.largest_acknowledged());
+        recovery_manager.process_acks(
+            timestamp,
+            into_pn_range_iter(frame.ack_ranges(), space),
+            largest_acked_packet_number,
+            frame.ack_delay(),
+            frame.ecn_counts,
+            &mut context,
+            publisher,
+        )
     }
 
     fn handle_connection_close_frame(

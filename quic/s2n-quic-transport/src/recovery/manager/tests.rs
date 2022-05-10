@@ -10,6 +10,7 @@ use crate::{
     path::MINIMUM_MTU,
     recovery,
     recovery::manager::PtoState::RequiresTransmission,
+    space::into_pn_range_iter,
 };
 use core::{ops::RangeInclusive, time::Duration};
 use s2n_quic_core::{
@@ -2718,7 +2719,17 @@ fn helper_ack_packets_on_path(
         ecn_counts,
     };
 
-    let _ = manager.on_ack_frame(datagram.timestamp, frame, context, publisher);
+    let space = manager.space;
+    let largest_acked_packet_number = space.new_packet_number(frame.largest_acknowledged());
+    let _ = manager.process_acks(
+        datagram.timestamp,
+        into_pn_range_iter(frame.ack_ranges(), space),
+        largest_acked_packet_number,
+        frame.ack_delay(),
+        frame.ecn_counts,
+        context,
+        publisher,
+    );
 
     for packet in acked_packets {
         assert!(manager.sent_packets.get(packet).is_none());
