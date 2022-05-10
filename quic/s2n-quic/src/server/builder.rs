@@ -295,7 +295,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ServerProviders
     );
 
-    #[cfg(all(s2n_quic_unstable, feature = "unstable-provider-packet-interceptor"))]
+    #[cfg(all(not(docdiff), feature = "unstable-provider-packet-interceptor"))]
     impl_provider_method!(
         /// Sets the packet interceptor provider for the [`Server`]
         with_packet_interceptor,
@@ -303,7 +303,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ServerProviders
     );
 
-    #[cfg(all(s2n_quic_unstable, feature = "unstable-provider-random"))]
+    #[cfg(all(not(docdiff), feature = "unstable-provider-random"))]
     impl_provider_method!(
         /// Sets the random provider for the [`Server`]
         with_random,
