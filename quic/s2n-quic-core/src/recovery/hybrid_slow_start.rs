@@ -65,6 +65,7 @@ impl HybridSlowStart {
     /// Constructs a new `HybridSlowStart`. `max_datagram_size` is used for determining
     /// the minimum slow start threshold.
     pub fn new(max_datagram_size: u16) -> Self {
+        let _hystart_param = Self::get_hystart_parameter();
         Self {
             sample_count: 0,
             last_min_rtt: None,
@@ -75,10 +76,7 @@ impl HybridSlowStart {
             threshold: f32::MAX,
             max_datagram_size,
             rtt_round_end_time: None,
-            #[cfg(feature = "std")]
-            use_hystart_plus_plus: std::env::var(USE_HYSTART_PLUS_PLUS).is_ok(),
-            #[cfg(not(feature = "std"))]
-            use_hystart_plus_plus: false,
+            use_hystart_plus_plus: _hystart_param,
             ss_growth_divisor: 1.0,
             css_count: 0,
             css_baseline_min_rtt: Duration::ZERO,
@@ -196,6 +194,13 @@ impl HybridSlowStart {
 
     fn low_ssthresh(&self) -> f32 {
         (LOW_SSTHRESH * self.max_datagram_size) as f32
+    }
+
+    fn get_hystart_parameter() -> bool {
+        use once_cell::sync::OnceCell;
+        static USE_HYSTART_PP: OnceCell<bool> = OnceCell::new();
+        #[cfg(feature = "std")]
+        *USE_HYSTART_PP.get_or_init(|| std::env::var(USE_HYSTART_PLUS_PLUS).is_ok())
     }
 }
 
