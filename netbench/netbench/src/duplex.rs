@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{connection::Owner, Result};
-use bytes::Buf;
+use bytes::{Buf, Bytes};
 use core::{
     pin::Pin,
     task::{Context, Poll},
 };
 use futures::ready;
 use std::collections::{hash_map::Entry, HashMap, HashSet, VecDeque};
-use tokio::io::{AsyncRead, AsyncWrite};
+use std::io::IoSlice;
+use std::mem::MaybeUninit;
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use s2n_quic_core::stream::testing::Data;
 
 #[derive(Debug)]
@@ -18,7 +20,8 @@ pub struct Connection<T: AsyncRead + AsyncWrite> {
     inner: Pin<Box<T>>,
     stream_opened: bool,
     to_send: u64,
-    to_receive: u64,
+    buffered_offset: u64,
+    received_offset: u64,
 }
 
 impl<T: AsyncRead + AsyncWrite> Connection<T> {
@@ -28,7 +31,8 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
             inner,
             stream_opened: false,
             to_send: 0,
-            to_receive: 0,
+            buffered_offset: 0,
+            received_offset: 0,
         }
     }
 
@@ -51,15 +55,43 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
     }
 
     fn write(&mut self, cx: &mut Context) -> Result<()> {
-        if self.inner.as_ref().is_write_vectored() {
-            eprintln!("is write vectored");
-        } else {
-            eprintln!("is not write vectored");
+        if self.to_send == 0 {
+            return Ok(());
         }
+
+        if self.inner.as_ref().is_write_vectored() {
+            let to_send = vec![1; self.to_send as usize];
+            let to_send = IoSlice::new(to_send.as_slice());
+
+            match self.inner.as_mut().poll_write_vectored(cx, &[to_send]) {
+                Poll::Ready(result) => {
+                    let len = result? as u64;
+                    self.to_send -= len;
+                    eprintln!("to send: {}", self.to_send);
+                }
+                _ => {}
+            }
+        } else {
+            panic!("not write vectored");
+        }
+
         Ok(())
     }
 
     fn read(&mut self, cx: &mut Context) -> Result<()> {
+        let mut buf: [MaybeUninit<u8>; 65535] = unsafe {
+            MaybeUninit::uninit().assume_init()
+        };
+        let mut buf = ReadBuf::uninit(&mut buf);
+        match self.inner.as_mut().poll_read(cx, &mut buf) {
+            Poll::Ready(result) => {
+                let len = buf.filled().len() as u64;
+                self.buffered_offset += len;
+                eprintln!("buffered offset: {}", self.buffered_offset);
+            }
+            _ => {}
+        }
+
         Ok(())
     }
 }
@@ -86,26 +118,35 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
     }
 
     fn poll_send(&mut self, owner: Owner, id: u64, bytes: u64, cx: &mut Context) -> Poll<Result<u64>> {
+        eprintln!("poll send: {}", bytes);
         self.to_send += bytes;
         Ok(bytes).into()
     }
 
     fn poll_receive(&mut self, owner: Owner, id: u64, bytes: u64, cx: &mut Context) -> Poll<Result<u64>> {
-        self.to_receive += bytes;
-        Ok(bytes).into()
+        eprintln!("poll receive: {}", bytes);
+        let len = (self.buffered_offset - self.received_offset).min(bytes);
+
+        if len == 0 {
+            return Poll::Pending;
+        }
+
+        self.received_offset += len;
+        Ok(len).into()
     }
 
     fn poll_send_finish(&mut self, owner: Owner, id: u64, cx: &mut Context) -> Poll<Result<()>> {
-        todo!()
+        Ok(()).into()
     }
 
     fn poll_receive_finish(&mut self, owner: Owner, id: u64, cx: &mut Context) -> Poll<Result<()>> {
-        todo!()
+        Ok(()).into()
     }
 
     fn poll_progress(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         loop {
             self.write(cx);
+            self.read(cx);
         }
     }
 
