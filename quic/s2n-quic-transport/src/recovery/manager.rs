@@ -335,8 +335,8 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         // reset pending ack information after processing
         //
-        // If there was an error during processing its probably safer
-        // to clear the queue rather than try again.
+        // If there was an error during processing, the connection is closed
+        // so it should not matter if the queue is cleared.
         pending_ack_ranges.reset_aggregate_info();
 
         result

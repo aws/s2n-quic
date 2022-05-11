@@ -131,10 +131,12 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                 }
             };
 
-            // handle error and potentially close the connection
+            // handle error and close the connection
             if let Err(error) =
                 connection.on_pending_ack_ranges(timestamp, endpoint_context.event_subscriber)
             {
+                // post metrics: connection close metrics
+
                 connection.close(
                     error,
                     endpoint_context.connection_close_formatter,

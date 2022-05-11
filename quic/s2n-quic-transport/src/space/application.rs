@@ -756,7 +756,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         let current_active_path = self
             .pending_ack_ranges
             .current_active_path
-            .expect("current path should set at the start of the round");
+            .expect("current path should be set at the start of the round");
         if current_active_path == path_id {
             if self.update_pending_acks(&frame).is_ok() {
                 return Ok(());
