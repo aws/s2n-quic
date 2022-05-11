@@ -19,7 +19,9 @@ pub struct Connection<T: AsyncRead + AsyncWrite> {
     id: u64,
     inner: Pin<Box<T>>,
     stream_opened: bool,
+    send_data: Vec<u8>,
     to_send: u64,
+    read_buffer: [MaybeUninit<u8>; 65535],
     buffered_offset: u64,
     received_offset: u64,
 }
@@ -30,7 +32,9 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
             id,
             inner,
             stream_opened: false,
+            send_data: Vec::new(),
             to_send: 0,
+            read_buffer: unsafe { MaybeUninit::uninit().assume_init() },
             buffered_offset: 0,
             received_offset: 0,
         }
@@ -69,7 +73,7 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
                 Poll::Ready(result) => {
                     len += result? as u64;
                     self.to_send -= len;
-                    eprintln!("to send: {}", self.to_send);
+                    eprintln!("sent: {}", len);
                 }
                 _ => {}
             }
@@ -79,23 +83,18 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
 
         if len > 0 {
             cx.waker().wake_by_ref();
-            self.inner.as_mut().poll_flush(cx);
         }
 
         Ok(())
     }
 
     fn read(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        let mut buf: [MaybeUninit<u8>; 65535] = unsafe {
-            MaybeUninit::uninit().assume_init()
-        };
-        let mut buf = ReadBuf::uninit(&mut buf);
+        let mut buf = ReadBuf::uninit(&mut self.read_buffer);
         let mut len = 0;
         match self.inner.as_mut().poll_read(cx, &mut buf) {
             Poll::Ready(result) => {
                 len += buf.filled().len() as u64;
                 self.buffered_offset += len;
-                //eprintln!("buffered offset: {}", self.buffered_offset);
             }
             Poll::Pending => {
                 return Poll::Pending;
@@ -104,7 +103,6 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
 
         if len > 0 {
             cx.waker().wake_by_ref();
-            self.inner.as_mut().poll_flush(cx);
         }
 
         Ok(()).into()
