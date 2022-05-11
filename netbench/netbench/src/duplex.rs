@@ -59,13 +59,15 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
             return Ok(());
         }
 
+        let mut len = 0;
+
         if self.inner.as_ref().is_write_vectored() {
             let to_send = vec![1; self.to_send as usize];
             let to_send = IoSlice::new(to_send.as_slice());
 
             match self.inner.as_mut().poll_write_vectored(cx, &[to_send]) {
                 Poll::Ready(result) => {
-                    let len = result? as u64;
+                    len += result? as u64;
                     self.to_send -= len;
                     eprintln!("to send: {}", self.to_send);
                 }
@@ -75,24 +77,37 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
             panic!("not write vectored");
         }
 
+        if len > 0 {
+            cx.waker().wake_by_ref();
+            self.inner.as_mut().poll_flush(cx);
+        }
+
         Ok(())
     }
 
-    fn read(&mut self, cx: &mut Context) -> Result<()> {
+    fn read(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         let mut buf: [MaybeUninit<u8>; 65535] = unsafe {
             MaybeUninit::uninit().assume_init()
         };
         let mut buf = ReadBuf::uninit(&mut buf);
+        let mut len = 0;
         match self.inner.as_mut().poll_read(cx, &mut buf) {
             Poll::Ready(result) => {
-                let len = buf.filled().len() as u64;
+                len += buf.filled().len() as u64;
                 self.buffered_offset += len;
-                eprintln!("buffered offset: {}", self.buffered_offset);
+                //eprintln!("buffered offset: {}", self.buffered_offset);
             }
-            _ => {}
+            Poll::Pending => {
+                return Poll::Pending;
+            }
         }
 
-        Ok(())
+        if len > 0 {
+            cx.waker().wake_by_ref();
+            self.inner.as_mut().poll_flush(cx);
+        }
+
+        Ok(()).into()
     }
 }
 
@@ -146,11 +161,24 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
     fn poll_progress(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         loop {
             self.write(cx);
-            self.read(cx);
+            ready!(self.read(cx));
         }
     }
 
     fn poll_finish(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        todo!()
+        if self.stream_opened {
+            self.write(cx);
+            if self.to_send > 0 {
+                return Poll::Pending;
+            }
+
+            ready!(self.inner.as_mut().poll_shutdown(cx));
+            self.close_stream();
+        }
+
+        loop {
+            ready!(self.read(cx));
+            return Ok(()).into();
+        }
     }
 }
