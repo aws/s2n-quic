@@ -14,6 +14,9 @@ use std::mem::MaybeUninit;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use s2n_quic_core::stream::testing::Data;
 
+const READ_BUFFER_SIZE: usize = 100_000;
+const SEND_BUFFER_SIZE: usize = 100_000_000;
+
 #[derive(Debug)]
 pub struct Connection<T: AsyncRead + AsyncWrite> {
     id: u64,
@@ -21,7 +24,7 @@ pub struct Connection<T: AsyncRead + AsyncWrite> {
     stream_opened: bool,
     send_data: Vec<u8>,
     to_send: u64,
-    read_buffer: [MaybeUninit<u8>; 65535],
+    read_buffer: [MaybeUninit<u8>; READ_BUFFER_SIZE],
     buffered_offset: u64,
     received_offset: u64,
 }
@@ -32,7 +35,7 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
             id,
             inner,
             stream_opened: false,
-            send_data: Vec::new(),
+            send_data: vec![1; SEND_BUFFER_SIZE],
             to_send: 0,
             read_buffer: unsafe { MaybeUninit::uninit().assume_init() },
             buffered_offset: 0,
@@ -66,8 +69,8 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
         let mut len = 0;
 
         if self.inner.as_ref().is_write_vectored() {
-            let to_send = vec![1; self.to_send as usize];
-            let to_send = IoSlice::new(to_send.as_slice());
+            let send_size = SEND_BUFFER_SIZE.min(self.to_send as usize);
+            let to_send = IoSlice::new(&self.send_data[0..send_size]);
 
             match self.inner.as_mut().poll_write_vectored(cx, &[to_send]) {
                 Poll::Ready(result) => {
