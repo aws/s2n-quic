@@ -107,6 +107,11 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
         let mut len = 0;
         match self.inner.as_mut().poll_read(cx, &mut buf) {
             Poll::Ready(result) => {
+                if buf.filled().is_empty() {
+                    self.close_stream();
+                    return Ok(()).into();
+                }
+
                 len += buf.filled().len() as u64;
                 self.buffered_offset += len;
             }
@@ -177,6 +182,10 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
         loop {
             self.write(cx);
             ready!(self.read(cx));
+
+            if !self.stream_opened {
+                return Ok(()).into();
+            }
         }
     }
 
