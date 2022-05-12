@@ -2,17 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{connection::Owner, Result};
-use bytes::{Buf, Bytes};
 use core::{
     pin::Pin,
     task::{Context, Poll},
 };
 use futures::ready;
-use std::collections::{hash_map::Entry, HashMap, HashSet, VecDeque};
 use std::io::IoSlice;
 use std::mem::MaybeUninit;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use s2n_quic_core::stream::testing::Data;
 
 const READ_BUFFER_SIZE: usize = 100_000;
 const SEND_BUFFER_SIZE: usize = 100_000_000;
@@ -106,9 +103,11 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
         let mut buf = ReadBuf::uninit(&mut self.read_buffer);
         let mut len = 0;
         match self.inner.as_mut().poll_read(cx, &mut buf) {
-            Poll::Ready(result) => {
+            Poll::Ready(_) => {
                 if buf.filled().is_empty() {
-                    self.close_stream();
+                    if self.stream_opened {
+                        self.close_stream()?;
+                    }
                     return Ok(()).into();
                 }
 
@@ -133,15 +132,15 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
         self.id
     }
 
-    fn poll_open_bidirectional_stream(&mut self, id: u64, cx: &mut Context) -> Poll<Result<()>> {
+    fn poll_open_bidirectional_stream(&mut self, _: u64, _: &mut Context) -> Poll<Result<()>> {
         self.open_stream().into()
     }
 
-    fn poll_open_send_stream(&mut self, id: u64, cx: &mut Context) -> Poll<Result<()>> {
+    fn poll_open_send_stream(&mut self, _: u64, _: &mut Context) -> Poll<Result<()>> {
         self.open_stream().into()
     }
 
-    fn poll_accept_stream(&mut self, cx: &mut Context) -> Poll<Result<Option<u64>>> {
+    fn poll_accept_stream(&mut self, _: &mut Context) -> Poll<Result<Option<u64>>> {
         let id: u64 = 0;
         match self.open_stream().into() {
             Ok(()) => Ok(Some(id)).into(),
@@ -149,7 +148,7 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
         }
     }
 
-    fn poll_send(&mut self, owner: Owner, id: u64, bytes: u64, cx: &mut Context) -> Poll<Result<u64>> {
+    fn poll_send(&mut self, _: Owner, _: u64, bytes: u64, _: &mut Context) -> Poll<Result<u64>> {
         let to_add = bytes.min(SEND_BUFFER_SIZE as u64 - self.to_send);
         if to_add == 0 {
             return Poll::Pending;
@@ -159,7 +158,7 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
         Ok(to_add).into()
     }
 
-    fn poll_receive(&mut self, owner: Owner, id: u64, bytes: u64, cx: &mut Context) -> Poll<Result<u64>> {
+    fn poll_receive(&mut self, _: Owner, _: u64, bytes: u64, _: &mut Context) -> Poll<Result<u64>> {
         let len = (self.buffered_offset - self.received_offset).min(bytes);
 
         if len == 0 {
@@ -170,18 +169,18 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
         Ok(len).into()
     }
 
-    fn poll_send_finish(&mut self, owner: Owner, id: u64, cx: &mut Context) -> Poll<Result<()>> {
+    fn poll_send_finish(&mut self, _: Owner, _: u64, _: &mut Context) -> Poll<Result<()>> {
         Ok(()).into()
     }
 
-    fn poll_receive_finish(&mut self, owner: Owner, id: u64, cx: &mut Context) -> Poll<Result<()>> {
+    fn poll_receive_finish(&mut self, _: Owner, _: u64, _: &mut Context) -> Poll<Result<()>> {
         Ok(()).into()
     }
 
     fn poll_progress(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         loop {
-            self.write(cx);
-            ready!(self.read(cx));
+            self.write(cx)?;
+            ready!(self.read(cx))?;
 
             if !self.stream_opened {
                 return Ok(()).into();
@@ -191,17 +190,17 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
 
     fn poll_finish(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         if self.stream_opened {
-            self.write(cx);
+            self.write(cx)?;
             if self.to_send > 0 {
                 return Poll::Pending;
             }
 
-            ready!(self.inner.as_mut().poll_shutdown(cx));
-            self.close_stream();
+            ready!(self.inner.as_mut().poll_shutdown(cx))?;
+            self.close_stream()?;
         }
 
         loop {
-            ready!(self.read(cx));
+            ready!(self.read(cx))?;
             return Ok(()).into();
         }
     }
