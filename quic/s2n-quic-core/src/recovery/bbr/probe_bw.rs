@@ -71,7 +71,7 @@ impl CyclePhase {
 }
 
 /// How the incoming ACK stream relates to our bandwidth probing
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AckPhase {
     /// not probing; not getting probe feedback
     Init,
@@ -108,6 +108,7 @@ pub(crate) struct State {
 }
 
 impl State {
+    /// Constructs new `probe_bw::State`
     #[allow(dead_code)] // TODO: Remove when used
     pub fn new() -> Self {
         Self {
@@ -128,6 +129,7 @@ impl State {
         self.cycle_phase
     }
 
+    /// Returns true if enough time has passed to transition the cycle phase
     pub fn check_time_to_probe_bw(
         &mut self,
         target_inflight: u32,
@@ -146,6 +148,7 @@ impl State {
         false
     }
 
+    /// Probe for possible increases in bandwidth
     pub fn probe_inflight_hi_upward(
         &mut self,
         bytes_acknowledged: usize,
@@ -176,23 +179,32 @@ impl State {
         self.bw_probe_up_cnt = (cwnd / growth_this_round as u32).max(1);
     }
 
+    /// True if the given `interval` duration has elapsed since the current cycle phase began
     fn has_elapsed_in_phase(&self, interval: Duration, now: Timestamp) -> bool {
         self.cycle_stamp
             .map_or(false, |cycle_stamp| now > cycle_stamp + interval)
     }
 
+    /// Bandwidth probing can cause loss. To help coexistence with loss-based
+    /// congestion control we spread out our probing in a Reno-conscious way. Due to
+    /// the shape of the Reno sawtooth, the time required between loss epochs for an
+    /// idealized Reno flow is a number of round trips that is the BDP of that
+    /// flow. We count packet-timed round trips directly, since measured RTT can
+    /// vary widely, and Reno is driven by packet-timed round trips.
     fn is_reno_coexistence_probe_time(&self, target_inflight: u32, max_data_size: u16) -> bool {
         let rounds = target_inflight.min(MAX_BW_PROBE_ROUNDS * max_data_size as u32);
         self.rounds_since_bw_probe as u32 >= rounds
     }
 
-    fn start_probe_bw_cruise(&mut self) {
+    /// Start the `Cruise` cycle phase
+    fn start_cruise(&mut self) {
         debug_assert_eq!(self.cycle_phase, CyclePhase::Down);
 
         self.cycle_phase = CyclePhase::Cruise
     }
 
-    fn start_probe_bw_up(
+    /// Start the `Up` cycle phase
+    fn start_up(
         &mut self,
         round_counter: &mut round::Counter,
         delivered_bytes: u64,
@@ -210,7 +222,8 @@ impl State {
         self.raise_inflight_hi_slope(cwnd, max_data_size);
     }
 
-    fn start_probe_bw_refill(
+    /// Start the `Refill` cycle phase
+    fn start_refill(
         &mut self,
         data_volume_model: &mut data_volume::Model,
         data_rate_model: &mut data_rate::Model,
@@ -230,7 +243,8 @@ impl State {
         self.cycle_phase = CyclePhase::Refill;
     }
 
-    fn start_probe_bw_down(
+    /// Start the `Down` cycle phase
+    fn start_down(
         &mut self,
         congestion_state: &mut congestion::State,
         round_counter: &mut round::Counter,
@@ -246,6 +260,7 @@ impl State {
         self.cycle_phase = CyclePhase::Down;
     }
 
+    /// Returns true if it is time to transition from `Down` to `Cruise`
     fn check_time_to_cruise(
         &self,
         bytes_in_flight: u32,
@@ -266,7 +281,13 @@ impl State {
 
 /// Methods related to the ProbeBW state
 impl BbrCongestionController {
+    /// Transition the current Probe BW cycle phase if necessary
     pub fn update_probe_bw_cycle_phase(&mut self, now: Timestamp) {
+        debug_assert!(
+            self.full_pipe_estimator.filled_pipe(),
+            "only handling steady-state behavior here"
+        );
+
         let target_inflight = self.target_inflight();
 
         // TODO: debug_assert(self.state == Probe_Bw, "only handling ProveBW states here")
@@ -278,7 +299,7 @@ impl BbrCongestionController {
                     self.max_datagram_size,
                     now,
                 ) {
-                    self.probe_bw_state.start_probe_bw_refill(
+                    self.probe_bw_state.start_refill(
                         &mut self.data_volume_model,
                         &mut self.data_rate_model,
                         &mut self.round_counter,
@@ -291,13 +312,13 @@ impl BbrCongestionController {
                         self.inflight(self.data_rate_model.max_bw(), Ratio::one()),
                     )
                 {
-                    self.probe_bw_state.start_probe_bw_cruise();
+                    self.probe_bw_state.start_cruise();
                 }
             }
             CyclePhase::Refill => {
                 // After one round of Refill, start Up
                 if self.round_counter.round_start() {
-                    self.probe_bw_state.start_probe_bw_up(
+                    self.probe_bw_state.start_up(
                         &mut self.round_counter,
                         self.bw_estimator.delivered_bytes(),
                         self.cwnd,
@@ -319,7 +340,7 @@ impl BbrCongestionController {
                             self.probe_bw_state.cycle_phase.pacing_gain(),
                         )
                 {
-                    self.probe_bw_state.start_probe_bw_down(
+                    self.probe_bw_state.start_down(
                         &mut self.congestion_state,
                         &mut self.round_counter,
                         self.bw_estimator.delivered_bytes(),
@@ -330,36 +351,35 @@ impl BbrCongestionController {
         }
     }
 
+    /// Adapt the upper bounds lower or higher depending on the loss rate
     pub fn adapt_upper_bounds(
         &mut self,
         rate_sample: RateSample,
         bytes_acknowledged: usize,
         now: Timestamp,
     ) {
-        if !self.full_pipe_estimator.filled_pipe() {
-            return; // only handling steady-state behavior here
+        debug_assert!(
+            self.full_pipe_estimator.filled_pipe(),
+            "only handling steady-state behavior here"
+        );
+
+        // Update AckPhase once per round
+        if self.round_counter.round_start() {
+            self.update_ack_phase(rate_sample);
         }
 
-        // TODO: let is_probe_bw = self.state == ProbeBw
-        let is_probe_bw = true;
-
-        if self.probe_bw_state.ack_phase == AckPhase::ProbeStarting
-            && self.round_counter.round_start()
-        {
-            // starting to get bw probing samples
-            self.probe_bw_state.ack_phase = AckPhase::ProbeFeedback;
-        }
-        if self.probe_bw_state.ack_phase == AckPhase::ProbeStopping
-            && self.round_counter.round_start()
-        {
-            self.probe_bw_state.bw_probe_samples = false;
-            self.probe_bw_state.ack_phase = AckPhase::Init;
-
-            if is_probe_bw && !rate_sample.is_app_limited {
-                self.data_rate_model.advance_max_bw_filter();
+        if Self::is_inflight_too_high(rate_sample.lost_bytes, rate_sample.bytes_in_flight) {
+            if self.probe_bw_state.bw_probe_samples {
+                // Inflight is too high and the sample is from bandwidth probing: lower inflight downward
+                self.on_inflight_too_high(
+                    rate_sample.is_app_limited,
+                    rate_sample.bytes_in_flight,
+                    self.target_inflight(),
+                    now,
+                );
             }
-        }
-        if !self.check_inflight_too_high(rate_sample, now) {
+        } else {
+            // Loss rate is safe. Adjust upper bounds upward
             if self.data_volume_model.inflight_hi() == u64::MAX
                 || self.data_rate_model.bw_hi() == Bandwidth::MAX
             {
@@ -386,24 +406,29 @@ impl BbrCongestionController {
         }
     }
 
-    fn check_inflight_too_high(&mut self, rate_sample: RateSample, now: Timestamp) -> bool {
-        let inflight_too_high = BbrCongestionController::is_inflight_too_high(
-            rate_sample.lost_bytes,
-            rate_sample.bytes_in_flight,
-        );
+    /// Update AckPhase and advance the Max BW filter if necessary
+    fn update_ack_phase(&mut self, rate_sample: RateSample) {
+        // TODO: let is_probe_bw = self.state == ProbeBw
+        let is_probe_bw = true;
 
-        if inflight_too_high && self.probe_bw_state.bw_probe_samples {
-            self.on_inflight_too_high(
-                rate_sample.is_app_limited,
-                rate_sample.bytes_in_flight,
-                self.target_inflight(),
-                now,
-            );
+        match self.probe_bw_state.ack_phase {
+            AckPhase::ProbeStarting => {
+                // starting to get bw probing samples
+                self.probe_bw_state.ack_phase = AckPhase::ProbeFeedback;
+            }
+            AckPhase::ProbeStopping => {
+                self.probe_bw_state.bw_probe_samples = false;
+                self.probe_bw_state.ack_phase = AckPhase::Init;
+
+                if is_probe_bw && !rate_sample.is_app_limited {
+                    self.data_rate_model.advance_max_bw_filter();
+                }
+            }
+            _ => {}
         }
-
-        inflight_too_high
     }
 
+    /// Called when loss indicates the current inflight amount is too high
     pub fn on_inflight_too_high(
         &mut self,
         is_app_limited: bool,
@@ -421,7 +446,7 @@ impl BbrCongestionController {
 
         // TODO: Check self.state == State::ProbeBw
         if self.probe_bw_state.cycle_phase == CyclePhase::Up {
-            self.probe_bw_state.start_probe_bw_down(
+            self.probe_bw_state.start_down(
                 &mut self.congestion_state,
                 &mut self.round_counter,
                 self.bw_estimator.delivered_bytes(),
