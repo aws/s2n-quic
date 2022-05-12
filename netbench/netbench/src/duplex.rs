@@ -141,8 +141,13 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
     }
 
     fn poll_send(&mut self, owner: Owner, id: u64, bytes: u64, cx: &mut Context) -> Poll<Result<u64>> {
-        self.to_send += bytes;
-        Ok(bytes).into()
+        let to_add = bytes.min(SEND_BUFFER_SIZE as u64 - self.to_send);
+        if to_add == 0 {
+            return Poll::Pending;
+        }
+
+        self.to_send += to_add;
+        Ok(to_add).into()
     }
 
     fn poll_receive(&mut self, owner: Owner, id: u64, bytes: u64, cx: &mut Context) -> Poll<Result<u64>> {
