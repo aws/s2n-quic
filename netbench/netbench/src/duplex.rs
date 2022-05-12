@@ -76,7 +76,6 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
                 Poll::Ready(result) => {
                     len += result? as u64;
                     self.to_send -= len;
-                    eprintln!("sent: {}", len);
                 }
                 _ => {}
             }
@@ -134,13 +133,11 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
     }
 
     fn poll_send(&mut self, owner: Owner, id: u64, bytes: u64, cx: &mut Context) -> Poll<Result<u64>> {
-        eprintln!("poll send: {}", bytes);
         self.to_send += bytes;
         Ok(bytes).into()
     }
 
     fn poll_receive(&mut self, owner: Owner, id: u64, bytes: u64, cx: &mut Context) -> Poll<Result<u64>> {
-        eprintln!("poll receive: {}", bytes);
         let len = (self.buffered_offset - self.received_offset).min(bytes);
 
         if len == 0 {
