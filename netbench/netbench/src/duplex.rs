@@ -95,6 +95,10 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
             cx.waker().wake_by_ref();
         }
 
+        if let Poll::Ready(res) = self.inner.as_mut().poll_flush(cx) {
+            res?;
+        }
+
         Ok(())
     }
 
