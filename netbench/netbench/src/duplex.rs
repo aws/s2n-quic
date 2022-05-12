@@ -66,10 +66,10 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
             return Ok(());
         }
 
+        let send_size = SEND_BUFFER_SIZE.min(self.to_send as usize);
         let mut len = 0;
 
         if self.inner.as_ref().is_write_vectored() {
-            let send_size = SEND_BUFFER_SIZE.min(self.to_send as usize);
             let to_send = IoSlice::new(&self.send_data[0..send_size]);
 
             match self.inner.as_mut().poll_write_vectored(cx, &[to_send]) {
@@ -80,7 +80,15 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
                 _ => {}
             }
         } else {
-            panic!("not write vectored");
+            let to_send = &self.send_data[0..send_size];
+
+            match self.inner.as_mut().poll_write(cx, to_send) {
+                Poll::Ready(result) => {
+                    len += result? as u64;
+                    self.to_send -= len;
+                }
+                _ => {}
+            }
         }
 
         if len > 0 {
