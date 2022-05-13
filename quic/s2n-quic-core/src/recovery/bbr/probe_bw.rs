@@ -3,7 +3,7 @@
 
 use crate::{
     recovery::{
-        bandwidth::{Bandwidth, RateSample},
+        bandwidth::RateSample,
         bbr,
         bbr::{congestion, data_rate, data_volume, round, BbrCongestionController},
         CongestionController,
@@ -380,21 +380,28 @@ impl BbrCongestionController {
             }
         } else {
             // Loss rate is safe. Adjust upper bounds upward
-            if self.data_volume_model.inflight_hi() == u64::MAX
-                || self.data_rate_model.bw_hi() == Bandwidth::MAX
-            {
-                // No upper bounds to raise
+
+            if self.data_volume_model.inflight_hi() == u64::MAX {
+                // no upper bounds to raise
                 return;
             }
-            self.data_volume_model
-                .update_upper_bound(rate_sample.bytes_in_flight as u64);
-            self.data_rate_model
-                .update_upper_bound(rate_sample.delivery_rate());
+
+            // draft-cardwell-iccrg-bbr-congestion-control-02 also considers raising bw_hi at this
+            // point, but since the draft never lowers bw_hi from its initial value of Infinity, this
+            // doesn't have any effect. bw_hi in the current Linux V2Alpha BBR2 branch corresponds
+            // to max_hi from the draft, there is no equivalent to the bw_hi in the draft
+            // TODO: Update this logic based on subsequent draft updates or consider lowering
+            //       bw_hi in `on_inflight_too_high`
+            if rate_sample.bytes_in_flight as u64 > self.data_volume_model.inflight_hi() {
+                self.data_volume_model
+                    .update_upper_bound(rate_sample.bytes_in_flight as u64);
+            }
 
             if self.probe_bw_state.cycle_phase == CyclePhase::Up
                 && self.is_congestion_limited()
                 && self.cwnd as u64 >= self.data_volume_model.inflight_hi()
             {
+                // inflight_hi is being fully utilized, so probe if we can increase it
                 self.probe_bw_state.probe_inflight_hi_upward(
                     bytes_acknowledged,
                     &mut self.data_volume_model,
@@ -438,7 +445,6 @@ impl BbrCongestionController {
     ) {
         self.probe_bw_state.bw_probe_samples = false; // only react once per bw probe
         if !is_app_limited {
-            // TODO: fix update_upper_bound
             self.data_volume_model.update_upper_bound(
                 (bytes_in_flight as u64).max((bbr::BETA * target_inflight as u64).to_integer()),
             )

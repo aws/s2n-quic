@@ -126,13 +126,9 @@ impl Model {
         self.extra_acked_filter.update(extra, round_count);
     }
 
-    /// Updates `inflight_hi` with the given `inflight_hi` if it exceeds the current `inflight_hi`
+    /// Updates `inflight_hi` with the given `inflight_hi`
     pub fn update_upper_bound(&mut self, inflight_hi: u64) {
-        if self.inflight_hi == u64::MAX {
-            self.inflight_hi = inflight_hi;
-        } else {
-            self.inflight_hi = inflight_hi.max(self.inflight_hi);
-        }
+        self.inflight_hi = inflight_hi;
     }
 
     /// Updates `inflight_lo` with the given `inflight_latest` if it exceeds
@@ -197,30 +193,6 @@ mod tests {
         // value is used as the extra acked (1600 bytes). 1700 remains the max extra acked.
         model.update_ack_aggregation(bw, 1700, 1600, 2, now);
         assert_eq!(1700, model.extra_acked());
-    }
-
-    #[test]
-    fn update_upper_bound() {
-        let now = NoopClock.get_time();
-        let mut model = Model::new(now);
-
-        let inflight_hi = 100;
-
-        model.update_upper_bound(inflight_hi);
-
-        // We didn't have a valid inflight_hi value yet, so the first sample is used
-        assert_eq!(inflight_hi, model.inflight_hi());
-
-        model.update_upper_bound(50);
-
-        // The new sample is lower than inflight_hi, so don't update inflight_hi
-        assert_eq!(inflight_hi, model.inflight_hi());
-
-        let inflight_hi = 150;
-        model.update_upper_bound(inflight_hi);
-
-        // The new sample is higher than inflight_hi, so update inflight_hi
-        assert_eq!(inflight_hi, model.inflight_hi());
     }
 
     #[test]
