@@ -163,10 +163,12 @@ impl State {
         round_start: bool,
     ) {
         self.bw_probe_up_acks += bytes_acknowledged as u32;
+        // Increase inflight_hi by the number of bw_probe_up_cnt bytes within bw_probe_up_acks
         if self.bw_probe_up_acks >= self.bw_probe_up_cnt {
             let delta = self.bw_probe_up_acks / self.bw_probe_up_cnt;
             self.bw_probe_up_acks -= delta * self.bw_probe_up_cnt;
-            let inflight_hi = data_volume_model.inflight_hi() + delta as u64;
+            let inflight_hi =
+                data_volume_model.inflight_hi() + (delta as u64 * max_data_size as u64);
             data_volume_model.update_upper_bound(inflight_hi);
         }
         if round_start {
@@ -469,7 +471,10 @@ impl BbrCongestionController {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::time::{Clock, NoopClock};
+    use crate::{
+        recovery::bandwidth::{Bandwidth, PacketInfo},
+        time::{Clock, NoopClock},
+    };
 
     #[test]
     fn pacing_gain() {
@@ -551,5 +556,179 @@ mod tests {
         assert!(!state.check_time_to_probe_bw(u32::MAX, 1200, now));
         state.rounds_since_bw_probe = Counter::new(MAX_BW_PROBE_ROUNDS);
         assert!(state.check_time_to_probe_bw(u32::MAX, 1200, now));
+    }
+
+    #[test]
+    fn probe_inflight_hi_upward() {
+        let mut state = State::new();
+        let now = NoopClock.get_time();
+
+        let bytes_acknowledged = 2400;
+        let mut data_volume_model = data_volume::Model::new(now);
+        let cwnd = 12000;
+        let max_data_size = 1200;
+        let round_start = true;
+
+        state.bw_probe_up_rounds = 3;
+        data_volume_model.update_upper_bound(12000);
+
+        state.probe_inflight_hi_upward(
+            bytes_acknowledged,
+            &mut data_volume_model,
+            cwnd,
+            max_data_size,
+            round_start,
+        );
+
+        assert_eq!(bytes_acknowledged as u32, state.bw_probe_up_acks);
+        assert_eq!(12000, data_volume_model.inflight_hi());
+        assert_eq!(4, state.bw_probe_up_rounds);
+        // bw_probe_up_cnt = cwnd (12000) / 1 << 3
+        assert_eq!(cwnd / 8, state.bw_probe_up_cnt);
+
+        let new_bytes_acknowledged = (cwnd / 8) as usize;
+        state.probe_inflight_hi_upward(
+            new_bytes_acknowledged,
+            &mut data_volume_model,
+            cwnd,
+            max_data_size,
+            false,
+        );
+
+        // bw_probe_up_acks = bytes_acknowledged + new_bytes_acknowledged = 3900
+        // delta = 3900 / bw_probe_up_cnt  = 3900 / 1500 = 2
+        // bw_probe_up_acks = bw_probe_up_acks - delta * bw_probe_up_cnt = 3900 - 2 * 1500 = 900
+        assert_eq!(900, state.bw_probe_up_acks);
+        // inflight_hi = inflight_hi + delta * max_data_size = 12000 + 2 * 1200 = 14400
+        assert_eq!(14400, data_volume_model.inflight_hi());
+        // bw_probe_up_rounds stays the same, since round_start was false
+        assert_eq!(4, state.bw_probe_up_rounds);
+        // bw_probe_up_cnt stays the same, since round_start was false
+        assert_eq!(cwnd / 8, state.bw_probe_up_cnt);
+    }
+
+    #[test]
+    fn start_cruise() {
+        let mut state = State::new();
+
+        state.start_cruise();
+
+        assert_eq!(CyclePhase::Cruise, state.cycle_phase());
+    }
+
+    #[test]
+    fn start_up() {
+        let mut state = State::new();
+        let mut round_counter = round::Counter::default();
+        let delivered_bytes = 100;
+        let cwnd = 12000;
+        let max_data_size = 1200;
+        let now = NoopClock.get_time();
+
+        state.cycle_phase = CyclePhase::Refill;
+
+        state.start_up(
+            &mut round_counter,
+            delivered_bytes,
+            cwnd,
+            max_data_size,
+            now,
+        );
+
+        assert_eq!(CyclePhase::Up, state.cycle_phase());
+        assert!(state.bw_probe_samples);
+        assert_eq!(AckPhase::ProbeStarting, state.ack_phase);
+        assert_eq!(Some(now), state.cycle_stamp);
+
+        // raise_inflight_hi_slope is called
+        assert_eq!(1, state.bw_probe_up_rounds);
+        assert_eq!(cwnd, state.bw_probe_up_cnt);
+
+        // verify the end of round is set to delivered_bytes
+        // verify the end of round is set to delivered_bytes
+        assert_round_end(round_counter, delivered_bytes);
+    }
+
+    #[test]
+    fn start_refill() {
+        let mut state = State::new();
+        let mut round_counter = round::Counter::default();
+        let delivered_bytes = 100;
+        let now = NoopClock.get_time();
+        let mut data_volume_model = data_volume::Model::new(now);
+        let mut data_rate_model = data_rate::Model::new();
+        data_volume_model.update_lower_bound(12000, 12000);
+        data_rate_model.update_lower_bound(Bandwidth::ZERO);
+
+        state.cycle_phase = CyclePhase::Cruise;
+
+        state.start_refill(
+            &mut data_volume_model,
+            &mut data_rate_model,
+            &mut round_counter,
+            delivered_bytes,
+        );
+
+        assert_eq!(CyclePhase::Refill, state.cycle_phase());
+        // Lower bounds are reset
+        assert_eq!(u64::MAX, data_volume_model.inflight_lo());
+        assert_eq!(Bandwidth::MAX, data_rate_model.bw_lo());
+
+        assert_eq!(0, state.bw_probe_up_rounds);
+        assert_eq!(0, state.bw_probe_up_acks);
+        assert_eq!(AckPhase::Refilling, state.ack_phase);
+
+        // verify the end of round is set to delivered_bytes
+        assert_round_end(round_counter, delivered_bytes);
+    }
+
+    #[test]
+    fn start_down() {
+        let mut state = State::new();
+        let mut congestion_state = congestion::testing::test_state();
+        let mut round_counter = round::Counter::default();
+        let delivered_bytes = 100;
+        let now = NoopClock.get_time();
+
+        state.cycle_phase = CyclePhase::Up;
+
+        state.start_down(
+            &mut congestion_state,
+            &mut round_counter,
+            delivered_bytes,
+            now,
+        );
+
+        assert_eq!(CyclePhase::Down, state.cycle_phase());
+        assert_eq!(u32::MAX, state.bw_probe_up_cnt);
+        assert_eq!(Counter::new(0), state.rounds_since_bw_probe); // TODO: BBRPickProbeWait
+        assert_eq!(Duration::from_secs(2), state.bw_probe_wait); // TODO: BBRPickProbeWait
+        assert_eq!(Some(now), state.cycle_stamp);
+        assert_eq!(AckPhase::ProbeStopping, state.ack_phase);
+
+        // verify congestion state is reset
+        congestion::testing::assert_reset(congestion_state);
+
+        // verify the end of round is set to delivered_bytes
+        assert_round_end(round_counter, delivered_bytes);
+    }
+
+    fn assert_round_end(mut round_counter: round::Counter, expected_end: u64) {
+        let now = NoopClock.get_time();
+        // verify the end of round is set to delivered_bytes
+        let mut packet_info = PacketInfo {
+            delivered_bytes: expected_end - 1,
+            delivered_time: now,
+            lost_bytes: 0,
+            first_sent_time: now,
+            bytes_in_flight: 0,
+            is_app_limited: false,
+        };
+        round_counter.on_ack(packet_info, expected_end);
+        assert!(!round_counter.round_start());
+
+        packet_info.delivered_bytes = expected_end;
+        round_counter.on_ack(packet_info, expected_end);
+        assert!(round_counter.round_start());
     }
 }
