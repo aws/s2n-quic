@@ -96,9 +96,9 @@ pub(crate) struct State {
     bw_probe_wait: Duration,
     /// Packet-timed rounds since probed bw
     rounds_since_bw_probe: Counter<u8, Saturating>,
-    /// Packets delivered per inflight_hi increment
+    /// Bytes delivered per inflight_hi increment
     bw_probe_up_cnt: u32,
-    /// Packets ACKed since inflight_hi increment
+    /// Bytes ACKed since inflight_hi increment
     bw_probe_up_acks: u32,
     /// cwnd-limited rounds in PROBE_UP
     bw_probe_up_rounds: u8,
@@ -117,7 +117,7 @@ impl State {
             ack_phase: AckPhase::Init,
             bw_probe_wait: Duration::ZERO,
             rounds_since_bw_probe: Counter::default(),
-            bw_probe_up_cnt: 0,
+            bw_probe_up_cnt: u32::MAX,
             bw_probe_up_acks: 0,
             bw_probe_up_rounds: 0,
             bw_probe_samples: false,
@@ -154,7 +154,7 @@ impl State {
     }
 
     /// Probe for possible increases in bandwidth
-    pub fn probe_inflight_hi_upward(
+    fn probe_inflight_hi_upward(
         &mut self,
         bytes_acknowledged: usize,
         data_volume_model: &mut data_volume::Model,
@@ -179,9 +179,12 @@ impl State {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.4
         //# BBR takes an approach where the additive increase to BBR.inflight_hi
         //# exponentially doubles each round trip
-        let growth_this_round = max_data_size << self.bw_probe_up_rounds;
+        let growth_this_round = 1 << self.bw_probe_up_rounds;
+        // The MAX_BW_PROBE_UP_ROUNDS (30) number below means `growth_this_round` is capped at 1G
+        // and the lower bound of `bw_probe_up_cnt` is (practically) 1 mss, at this speed inflight_hi
+        // grows by approximately 1 packet per packet acked.
         self.bw_probe_up_rounds = (self.bw_probe_up_rounds + 1).min(MAX_BW_PROBE_UP_ROUNDS);
-        self.bw_probe_up_cnt = (cwnd / growth_this_round as u32).max(1);
+        self.bw_probe_up_cnt = (cwnd / growth_this_round).max(max_data_size as u32);
     }
 
     /// True if the given `interval` duration has elapsed since the current cycle phase began
@@ -269,24 +272,6 @@ impl State {
         round_counter.set_round_end(delivered_bytes);
         self.cycle_phase = CyclePhase::Down;
     }
-
-    /// Returns true if it is time to transition from `Down` to `Cruise`
-    fn check_time_to_cruise(
-        &self,
-        bytes_in_flight: u32,
-        inflight_with_headroom: u32,
-        bdp: u32,
-    ) -> bool {
-        debug_assert_eq!(self.cycle_phase, CyclePhase::Down);
-
-        if bytes_in_flight > inflight_with_headroom {
-            return false; // not enough headroom
-        }
-        if bytes_in_flight <= bdp {
-            return true; // inflight <= estimated BDP
-        }
-        false
-    }
 }
 
 /// Methods related to the ProbeBW state
@@ -316,11 +301,7 @@ impl BbrCongestionController {
                         self.bw_estimator.delivered_bytes(),
                     );
                 } else if self.probe_bw_state.cycle_phase == CyclePhase::Down
-                    && self.probe_bw_state.check_time_to_cruise(
-                        self.bytes_in_flight(),
-                        self.inflight_with_headroom(),
-                        self.inflight(self.data_rate_model.max_bw(), Ratio::one()),
-                    )
+                    && self.check_time_to_cruise()
                 {
                     self.probe_bw_state.start_cruise();
                 }
@@ -469,6 +450,19 @@ impl BbrCongestionController {
                 now,
             );
         }
+    }
+
+    /// Returns true if it is time to transition from `Down` to `Cruise`
+    fn check_time_to_cruise(&self) -> bool {
+        debug_assert_eq!(self.probe_bw_state.cycle_phase, CyclePhase::Down);
+
+        if self.bytes_in_flight > self.inflight_with_headroom() {
+            return false; // not enough headroom
+        }
+        if self.bytes_in_flight <= self.inflight(self.data_rate_model.max_bw(), Ratio::one()) {
+            return true; // inflight <= estimated BDP
+        }
+        false
     }
 }
 
