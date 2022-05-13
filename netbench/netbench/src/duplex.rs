@@ -7,8 +7,7 @@ use core::{
     task::{Context, Poll},
 };
 use futures::ready;
-use std::io::IoSlice;
-use std::mem::MaybeUninit;
+use std::{io::IoSlice, mem::MaybeUninit};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 const READ_BUFFER_SIZE: usize = 100_000;
@@ -68,23 +67,15 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
 
         if self.inner.as_ref().is_write_vectored() {
             let to_send = IoSlice::new(&self.send_data[0..send_size]);
-
-            match self.inner.as_mut().poll_write_vectored(cx, &[to_send]) {
-                Poll::Ready(result) => {
-                    len += result? as u64;
-                    self.to_send -= len;
-                }
-                _ => {}
+            if let Poll::Ready(result) = self.inner.as_mut().poll_write_vectored(cx, &[to_send]) {
+                len += result? as u64;
+                self.to_send -= len;
             }
         } else {
             let to_send = &self.send_data[0..send_size];
-
-            match self.inner.as_mut().poll_write(cx, to_send) {
-                Poll::Ready(result) => {
-                    len += result? as u64;
-                    self.to_send -= len;
-                }
-                _ => {}
+            if let Poll::Ready(result) = self.inner.as_mut().poll_write(cx, to_send) {
+                len += result? as u64;
+                self.to_send -= len;
             }
         }
 
@@ -142,7 +133,7 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
 
     fn poll_accept_stream(&mut self, _: &mut Context) -> Poll<Result<Option<u64>>> {
         let id: u64 = 0;
-        match self.open_stream().into() {
+        match self.open_stream() {
             Ok(()) => Ok(Some(id)).into(),
             Err(err) => Err(err).into(),
         }
@@ -201,7 +192,9 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
 
         loop {
             ready!(self.read(cx))?;
-            return Ok(()).into();
+            if !self.stream_opened {
+                return Ok(()).into();
+            }
         }
     }
 }
