@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    counter::{Counter, Saturating},
     recovery::{
         bandwidth::RateSample,
         bbr,
@@ -10,14 +11,14 @@ use crate::{
     },
     time::Timestamp,
 };
-use core::time::Duration;
+use core::{convert::TryInto, time::Duration};
 use num_rational::Ratio;
 use num_traits::One;
 
 const MAX_BW_PROBE_UP_ROUNDS: u8 = 30;
 
 /// Max number of packet-timed rounds to wait before probing for bandwidth
-const MAX_BW_PROBE_ROUNDS: u32 = 63;
+const MAX_BW_PROBE_ROUNDS: u8 = 63;
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3
 //# a BBR flow in ProbeBW mode cycles through the four
@@ -59,7 +60,7 @@ impl CyclePhase {
         //# the network is delivering data. It tries to match the sending rate to the flow's
         //# current available bandwidth, to try to achieve high utilization of the available
         //# bandwidth without increasing queue pressure. It does this by switching to a
-        //# pacing_gain of 1.0, sending at 100% of BBR.bw. N
+        //# pacing_gain of 1.0, sending at 100% of BBR.bw.
         const CRUISE_REFILL_PACING_GAIN: Ratio<u64> = Ratio::new_raw(1, 1);
 
         match self {
@@ -94,7 +95,7 @@ pub(crate) struct State {
     /// A random duration to wait until probing for bandwidth
     bw_probe_wait: Duration,
     /// Packet-timed rounds since probed bw
-    rounds_since_bw_probe: u8,
+    rounds_since_bw_probe: Counter<u8, Saturating>,
     /// Packets delivered per inflight_hi increment
     bw_probe_up_cnt: u32,
     /// Packets ACKed since inflight_hi increment
@@ -115,7 +116,7 @@ impl State {
             cycle_phase: CyclePhase::Down,
             ack_phase: AckPhase::Init,
             bw_probe_wait: Duration::ZERO,
-            rounds_since_bw_probe: 0,
+            rounds_since_bw_probe: Counter::default(),
             bw_probe_up_cnt: 0,
             bw_probe_up_acks: 0,
             bw_probe_up_rounds: 0,
@@ -129,9 +130,13 @@ impl State {
         self.cycle_phase
     }
 
+    pub fn on_round_start(&mut self) {
+        self.rounds_since_bw_probe += 1;
+    }
+
     /// Returns true if enough time has passed to transition the cycle phase
     pub fn check_time_to_probe_bw(
-        &mut self,
+        &self,
         target_inflight: u32,
         max_data_size: u16,
         now: Timestamp,
@@ -192,8 +197,12 @@ impl State {
     /// flow. We count packet-timed round trips directly, since measured RTT can
     /// vary widely, and Reno is driven by packet-timed round trips.
     fn is_reno_coexistence_probe_time(&self, target_inflight: u32, max_data_size: u16) -> bool {
-        let rounds = target_inflight.min(MAX_BW_PROBE_ROUNDS * max_data_size as u32);
-        self.rounds_since_bw_probe as u32 >= rounds
+        let reno_rounds = target_inflight / max_data_size as u32;
+        let rounds = reno_rounds
+            .try_into()
+            .unwrap_or(u8::MAX)
+            .min(MAX_BW_PROBE_ROUNDS);
+        self.rounds_since_bw_probe >= rounds
     }
 
     /// Start the `Cruise` cycle phase
@@ -253,7 +262,8 @@ impl State {
     ) {
         congestion_state.reset();
         self.bw_probe_up_cnt = u32::MAX;
-        // TODO: BBRPickProbeWait
+        self.rounds_since_bw_probe = Counter::default(); // TODO: BBRPickProbeWait
+        self.bw_probe_wait = Duration::from_secs(2); // TODO: BBRPickProbeWait
         self.cycle_stamp = Some(now);
         self.ack_phase = AckPhase::ProbeStopping;
         round_counter.set_round_end(delivered_bytes);
@@ -459,5 +469,93 @@ impl BbrCongestionController {
                 now,
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::time::{Clock, NoopClock};
+
+    #[test]
+    fn pacing_gain() {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.1
+        //= type=test
+        //# In the ProbeBW_DOWN phase of the cycle, a BBR flow pursues the deceleration tactic,
+        //# to try to send slower than the network is delivering data, to reduce the amount of data
+        //# in flight, with all of the standard motivations for the deceleration tactic (discussed
+        //# in "State Machine Tactics", above). It does this by switching to a BBR.pacing_gain of
+        //# 0.9, sending at 90% of BBR.bw.
+        assert_eq!(Ratio::new_raw(9, 10), CyclePhase::Down.pacing_gain());
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.4
+        //= type=test
+        //# After ProbeBW_REFILL refills the pipe, ProbeBW_UP probes for possible increases in
+        //# available bandwidth by using a BBR.pacing_gain of 1.25, sending faster than the current
+        //# estimated available bandwidth.
+        assert_eq!(Ratio::new_raw(5, 4), CyclePhase::Up.pacing_gain());
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.3
+        //= type=test
+        //# During ProbeBW_REFILL BBR uses a BBR.pacing_gain of 1.0, to send at a rate that
+        //# matches the current estimated available bandwidth
+        assert_eq!(Ratio::new_raw(1, 1), CyclePhase::Refill.pacing_gain());
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.2
+        //= type=test
+        //# In the ProbeBW_CRUISE phase of the cycle, a BBR flow pursues the "cruising" tactic
+        //# (discussed in "State Machine Tactics", above), attempting to send at the same rate
+        //# the network is delivering data. It tries to match the sending rate to the flow's
+        //# current available bandwidth, to try to achieve high utilization of the available
+        //# bandwidth without increasing queue pressure. It does this by switching to a
+        //# pacing_gain of 1.0, sending at 100% of BBR.bw.
+        assert_eq!(Ratio::new_raw(1, 1), CyclePhase::Cruise.pacing_gain());
+    }
+
+    #[test]
+    fn new_probe_bw_state() {
+        let state = State::new();
+
+        assert_eq!(CyclePhase::Down, state.cycle_phase);
+        assert_eq!(AckPhase::Init, state.ack_phase);
+        assert_eq!(Duration::ZERO, state.bw_probe_wait);
+        assert_eq!(Counter::new(0), state.rounds_since_bw_probe);
+        assert_eq!(0, state.bw_probe_up_acks);
+        assert_eq!(0, state.bw_probe_up_rounds);
+        assert!(!state.bw_probe_samples);
+        assert_eq!(None, state.cycle_stamp);
+    }
+
+    #[test]
+    fn check_time_to_probe_bw() {
+        let mut state = State::new();
+        let now = NoopClock.get_time();
+
+        // cycle_stamp hasn't been set yet
+        assert!(!state.check_time_to_probe_bw(12000, 1200, now));
+
+        state.cycle_stamp = Some(now);
+        let bw_probe_wait = Duration::from_millis(500);
+        state.bw_probe_wait = bw_probe_wait;
+        // not ready to probe yet
+        assert!(!state.check_time_to_probe_bw(12000, 1200, now + bw_probe_wait));
+        // now we're ready to probe
+        assert!(state.check_time_to_probe_bw(
+            100,
+            1200,
+            now + bw_probe_wait + Duration::from_millis(1)
+        ));
+
+        state.rounds_since_bw_probe = Counter::new(10);
+        // 13200 / 1200 = 11 reno rounds, not in reno coexistence probe time
+        assert!(!state.check_time_to_probe_bw(13200, 1200, now));
+        // 12000 / 1200 = 10 reno rounds, now we are in reno coexistence probe time
+        assert!(state.check_time_to_probe_bw(12000, 1200, now));
+
+        // At high BDPs, we probe when MAX_BW_PROBE_ROUNDS is reached
+        state.rounds_since_bw_probe = Counter::new(MAX_BW_PROBE_ROUNDS - 1);
+        assert!(!state.check_time_to_probe_bw(u32::MAX, 1200, now));
+        state.rounds_since_bw_probe = Counter::new(MAX_BW_PROBE_ROUNDS);
+        assert!(state.check_time_to_probe_bw(u32::MAX, 1200, now));
     }
 }

@@ -157,7 +157,8 @@ impl CongestionController for BbrCongestionController {
                 self.bw_estimator.rate_sample(),
                 self.data_rate_model.max_bw(),
                 self.recovery_state.in_recovery(),
-            )
+            );
+            self.probe_bw_state.on_round_start();
         }
 
         if self.full_pipe_estimator.filled_pipe() {
