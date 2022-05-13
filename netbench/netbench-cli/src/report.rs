@@ -104,6 +104,8 @@ impl Report {
                     reallocs,
                     deallocs,
                     syscalls,
+                    connections,
+                    accept,
                     send,
                     receive,
                 } = event?;
@@ -166,6 +168,8 @@ impl Report {
                 emit!(Branches, branches);
                 emit!(ContextSwitches, context_switches);
                 emit!(Syscalls, syscalls);
+                emit!(Connections, connections);
+                emit!(Accept, accept);
                 emit!(AllocBytes, allocs.total);
                 emit!(AllocCount, allocs.count);
                 emit!(ReallocBytes, reallocs.total);
@@ -331,6 +335,8 @@ stat!(
         Branches = "branches",
         ContextSwitches = "context-switches",
         Syscalls = "syscalls",
+        Connections = "connections",
+        Accept = "accept (streams)",
         AllocBytes = "alloc (bytes)",
         AllocCount = "alloc (count)",
         ReallocBytes = "realloc (bytes)",

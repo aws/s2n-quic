@@ -59,6 +59,10 @@ pub struct Stats {
     #[serde(default, skip_serializing_if = "is_default")]
     pub syscalls: u64,
     #[serde(default, skip_serializing_if = "is_default")]
+    pub connections: u64,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub accept: u64,
+    #[serde(default, skip_serializing_if = "is_default")]
     pub allocs: Stat,
     #[serde(default, skip_serializing_if = "is_default")]
     pub reallocs: Stat,

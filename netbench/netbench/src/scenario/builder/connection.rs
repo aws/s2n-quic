@@ -170,23 +170,43 @@ impl Connect<Client> for Connection<Server> {
     fn connect_to(&self, handle: &Connection<Client>) -> op::Client {
         let server_id = self.endpoint_id;
         let server = &mut self.state.servers.borrow_mut()[server_id as usize];
-        let server_connection_id = server.connections.len() as u64;
-        server
-            .connections
-            .push(Arc::new(crate::scenario::Connection {
-                ops: self.template.ops.clone(),
-                peer_streams: handle.template.peer_streams.clone(),
+
+        fn push(
+            connections: &mut Vec<Arc<crate::scenario::Connection>>,
+            ops: &Vec<op::Connection>,
+            peer_streams: &Vec<Vec<op::Connection>>,
+        ) -> u64 {
+            // try to dedupe the connection operations if one exists
+            for (id, prev) in connections.iter().enumerate() {
+                if &prev.ops == ops && &prev.peer_streams == peer_streams {
+                    return id as u64;
+                }
+            }
+
+            let id = connections.len() as u64;
+
+            connections.push(Arc::new(crate::scenario::Connection {
+                ops: ops.clone(),
+                peer_streams: peer_streams.clone(),
             }));
+
+            id
+        }
+
+        let server_connection_id = push(
+            &mut server.connections,
+            &self.template.ops,
+            &handle.template.peer_streams,
+        );
+
         let certificate_authority = server.certificate_authority;
 
         let client = &mut self.state.clients.borrow_mut()[handle.endpoint_id as usize];
-        let client_connection_id = client.connections.len() as u64;
-        client
-            .connections
-            .push(Arc::new(crate::scenario::Connection {
-                ops: handle.template.ops.clone(),
-                peer_streams: self.template.peer_streams.clone(),
-            }));
+        let client_connection_id = push(
+            &mut client.connections,
+            &handle.template.ops,
+            &self.template.peer_streams,
+        );
 
         if !client
             .certificate_authorities
@@ -205,6 +225,15 @@ impl Connect<Client> for Connection<Server> {
 }
 
 impl Connect<Client> for Server {
+    fn connect_to(&self, handle: &Connection<Client>) -> op::Client {
+        self.with(|_| {
+            // empty instructions
+        })
+        .connect_to(handle)
+    }
+}
+
+impl Connect<Client> for &Server {
     fn connect_to(&self, handle: &Connection<Client>) -> op::Client {
         self.with(|_| {
             // empty instructions
