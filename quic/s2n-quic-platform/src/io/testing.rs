@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::select::{self, Select};
-use bach::{
-    executor::{self, JoinHandle},
-    time::scheduler,
-};
+use bach::time::scheduler;
 use core::{pin::Pin, task::Poll};
 use s2n_quic_core::{endpoint::Endpoint, inet::SocketAddress};
 
@@ -20,7 +17,7 @@ pub use model::Model;
 pub use network::{Network, PathHandle};
 pub use time::now;
 
-pub use bach::task::{spawn, spawn_primary};
+pub use bach::task::{self, primary, spawn};
 
 pub mod rand {
     pub use ::bach::rand::*;
@@ -49,6 +46,10 @@ pub mod rand {
             gen_range(range)
         }
     }
+}
+
+pub mod executor {
+    pub use bach::executor::{Handle, JoinHandle};
 }
 
 pub struct Executor<N: Network> {
@@ -86,6 +87,21 @@ impl<N: Network> Executor<N> {
     pub fn run(&mut self) {
         self.executor.block_on_primary();
     }
+
+    pub fn close(&mut self) {
+        // close the environment, which notifies all of the tasks that we're shutting down
+        self.executor.environment().close(|| {});
+        while self.executor.macrostep() > 0 {}
+
+        // then close the actual executor
+        self.executor.close()
+    }
+}
+
+impl<N: Network> Drop for Executor<N> {
+    fn drop(&mut self) {
+        self.close();
+    }
 }
 
 struct Env<N> {
@@ -100,6 +116,22 @@ struct Env<N> {
 impl<N> Env<N> {
     fn enter<F: FnOnce() -> O, O>(&self, f: F) -> O {
         self.handle.enter(|| self.time.enter(|| self.rand.enter(f)))
+    }
+
+    fn close<F: FnOnce()>(&mut self, f: F) {
+        let handle = &mut self.handle;
+        let rand = &mut self.rand;
+        let time = &mut self.time;
+        let buffers = &mut self.buffers;
+        handle.enter(|| {
+            rand.enter(|| {
+                time.close();
+                time.enter(|| {
+                    buffers.close();
+                    f();
+                });
+            })
+        })
     }
 }
 
@@ -164,6 +196,13 @@ impl<N: Network> bach::executor::Environment for Env<N> {
             }
         }
     }
+
+    fn close<F>(&mut self, close: F)
+    where
+        F: 'static + FnOnce() + Send,
+    {
+        Self::close(self, close)
+    }
 }
 
 #[derive(Clone)]
@@ -200,7 +239,7 @@ impl Io {
     pub fn start<E: Endpoint<PathHandle = network::PathHandle>>(
         self,
         endpoint: E,
-    ) -> Result<(JoinHandle<()>, SocketAddress)> {
+    ) -> Result<(executor::JoinHandle<()>, SocketAddress)> {
         let Builder {
             handle: Handle { executor, buffers },
             address,

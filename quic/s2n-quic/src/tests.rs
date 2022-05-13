@@ -5,7 +5,7 @@ use crate::{
     client::Connect,
     provider::{
         event,
-        io::testing::{spawn, spawn_primary, test, time::delay, Handle, Model, Result},
+        io::testing::{primary, spawn, test, time::delay, Handle, Model, Result},
     },
     Client, Server,
 };
@@ -68,7 +68,7 @@ fn client(handle: &Handle, server_addr: SocketAddr) -> Result {
         .with_event(events())?
         .start()?;
 
-    spawn_primary(async move {
+    primary::spawn(async move {
         let connect = Connect::new(server_addr).with_server_name("localhost");
         let mut connection = client.connect(connect).await.unwrap();
 
@@ -78,7 +78,7 @@ fn client(handle: &Handle, server_addr: SocketAddr) -> Result {
         let mut send_data = Data::new(10_000);
 
         let mut recv_data = send_data;
-        spawn_primary(async move {
+        primary::spawn(async move {
             while let Some(chunk) = recv.receive().await.unwrap() {
                 recv_data.receive(&[chunk]);
             }
