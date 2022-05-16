@@ -74,6 +74,34 @@ impl<'a> IntoEvent<&'a str> for &'a str {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Range<T: Copy> {
+    start: T,
+    end: T,
+}
+
+impl<T: Copy> Range<T> {
+    #[inline]
+    pub fn start(&self) -> T {
+        self.start
+    }
+
+    #[inline]
+    pub fn end(&self) -> T {
+        self.end
+    }
+}
+
+impl<T: IntoEvent<U> + Copy, U: Copy> IntoEvent<Range<U>> for core::ops::Range<T> {
+    #[inline]
+    fn into_event(self) -> Range<U> {
+        Range {
+            start: self.start.into_event(),
+            end: self.end.into_event(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Copy)]
 pub struct Timestamp(crate::time::Timestamp);
 

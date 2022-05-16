@@ -102,6 +102,13 @@ struct Congestion<'a> {
     source: CongestionSource,
 }
 
+#[event("recovery:ack_processed")]
+/// Events related to ACK processing
+struct AckProcessed<'a> {
+    action: AckAction,
+    path: Path<'a>,
+}
+
 #[event("transport:packet_dropped")]
 /// Packet was dropped with the given reason
 struct PacketDropped<'a> {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    event::IntoEvent,
     packet::number::{
         derive_truncation_range, packet_number_space::PacketNumberSpace,
         truncated_packet_number::TruncatedPacketNumber,
@@ -35,6 +36,12 @@ const PACKET_NUMBER_MASK: u64 = core::u64::MAX >> PACKET_SPACE_BITLEN;
 #[derive(Clone, Copy, Eq)]
 #[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
 pub struct PacketNumber(NonZeroU64);
+
+impl IntoEvent<u64> for PacketNumber {
+    fn into_event(self) -> u64 {
+        self.as_u64()
+    }
+}
 
 impl Default for PacketNumber {
     fn default() -> Self {

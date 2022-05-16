@@ -679,9 +679,12 @@ pub trait PacketSpace<Config: endpoint::Config> {
     default_frame_handler!(handle_streams_blocked_frame, StreamsBlocked);
     default_frame_handler!(handle_new_token_frame, NewToken);
 
-    fn on_processed_packet(
+    fn on_processed_packet<Pub: event::ConnectionPublisher>(
         &mut self,
         processed_packet: ProcessedPacket,
+        path_id: path::Id,
+        path: &Path<Config>,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error>;
 
     // TODO: Reduce arguments, https://github.com/aws/s2n-quic/issues/312
@@ -925,7 +928,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         //# receipt by sending one or more ACK frames containing the packet
         //# number of the received packet.
 
-        self.on_processed_packet(processed_packet)?;
+        self.on_processed_packet(processed_packet, path_id, &path_manager[path_id], publisher)?;
 
         Ok(processed_packet)
     }
