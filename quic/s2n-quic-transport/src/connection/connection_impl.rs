@@ -1439,10 +1439,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 packet_interceptor,
             )?;
 
-            // there are no pending ACKs to process so wipe the structure to avoid
-            // an unnecessary connection wakeup
+            // there are no pending ACKs to process so reset the structure so that
+            // it can be reused in the next round
             if space.pending_ack_ranges.is_empty() {
-                space.pending_ack_ranges.wipe();
+                space.pending_ack_ranges.reset();
             }
 
             // notify the connection a packet was processed

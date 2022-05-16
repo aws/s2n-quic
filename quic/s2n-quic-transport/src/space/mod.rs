@@ -471,8 +471,8 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 publisher,
             )?;
 
-            // wipe all information associated with the current round
-            space.pending_ack_ranges.wipe();
+            // reset all information associated with the current round
+            space.pending_ack_ranges.reset();
         }
 
         Ok(())

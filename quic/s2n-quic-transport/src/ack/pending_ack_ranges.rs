@@ -122,12 +122,13 @@ impl PendingAckRanges {
 
     /// Re-initialize all fields.
     ///
-    /// Should be called at the end of a processing round to clear all data.
+    /// Should be called at the end of a processing round to clear all
+    /// data. Resets aggregated ack information and the current_active_path.
     #[inline]
-    pub fn wipe(&mut self) {
+    pub fn reset(&mut self) {
         debug_assert!(
             self.current_active_path.is_some(),
-            "wipe called more than once"
+            "reset called more than once"
         );
         self.reset_aggregate_info();
         self.current_active_path = None;
