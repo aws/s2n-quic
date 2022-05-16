@@ -321,11 +321,11 @@ pub mod api {
         #[doc = " When at `capacity`, the lowest packet_number range is dropped."]
         RxAckRangeDropped {
             #[doc = " The packet number range which was dropped"]
-            packet_number_range: crate::event::Range<u64>,
+            packet_number_range: core::ops::Range<u64>,
             #[doc = " The number of disjoint ranges the IntervalSet can store"]
-            capacity: u16,
+            capacity: usize,
             #[doc = " The store packet_number range in the IntervalSet"]
-            stored_range: crate::event::Range<u64>,
+            stored_range: core::ops::Range<u64>,
         },
     }
     #[derive(Clone, Debug)]
@@ -2461,7 +2461,7 @@ pub mod builder {
             #[doc = " The packet number range which was dropped"]
             packet_number_range: core::ops::Range<u64>,
             #[doc = " The number of disjoint ranges the IntervalSet can store"]
-            capacity: u16,
+            capacity: usize,
             #[doc = " The store packet_number range in the IntervalSet"]
             stored_range: core::ops::Range<u64>,
         },

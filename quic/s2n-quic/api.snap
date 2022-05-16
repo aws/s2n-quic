@@ -2214,15 +2214,15 @@ variant s2n_quic::provider::event::events::AckAction::RxAckRangeDropped is non-e
 
 variant s2n_quic::provider::event::events::AckAction::RxAckRangeDropped exports field:
   capacity:
-  u16
+  usize
 
 variant s2n_quic::provider::event::events::AckAction::RxAckRangeDropped exports field:
   packet_number_range:
-  s2n_quic_core::event::Range<u64>
+  core::ops::range::Range<u64>
 
 variant s2n_quic::provider::event::events::AckAction::RxAckRangeDropped exports field:
   stored_range:
-  s2n_quic_core::event::Range<u64>
+  core::ops::range::Range<u64>
 
 struct s2n_quic::provider::event::events::AckProcessed is non-exhaustive
 

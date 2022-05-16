@@ -240,7 +240,7 @@ impl AckManager {
                     publisher.on_ack_processed(AckProcessed {
                         action: AckAction::RxAckRangeDropped {
                             packet_number_range: min.into_event()..max.into_event(),
-                            capacity: self.ack_ranges.intervals().count() as u16,
+                            capacity: self.ack_ranges.interval_len(),
                             stored_range: start..end,
                         },
                         path,

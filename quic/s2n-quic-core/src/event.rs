@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{connection, endpoint};
-use core::time::Duration;
+use core::{ops::Range, time::Duration};
 
 mod generated;
 pub use generated::*;
@@ -74,30 +74,12 @@ impl<'a> IntoEvent<&'a str> for &'a str {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Range<T: Copy> {
-    start: T,
-    end: T,
-}
-
-impl<T: Copy> Range<T> {
+impl<T> IntoEvent<Range<T>> for Range<T> {
     #[inline]
-    pub fn start(&self) -> T {
-        self.start
-    }
-
-    #[inline]
-    pub fn end(&self) -> T {
-        self.end
-    }
-}
-
-impl<T: IntoEvent<U> + Copy, U: Copy> IntoEvent<Range<U>> for core::ops::Range<T> {
-    #[inline]
-    fn into_event(self) -> Range<U> {
+    fn into_event(self) -> Range<T> {
         Range {
-            start: self.start.into_event(),
-            end: self.end.into_event(),
+            start: self.start,
+            end: self.end,
         }
     }
 }
