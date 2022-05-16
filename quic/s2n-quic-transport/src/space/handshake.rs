@@ -509,7 +509,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for HandshakeSpace<Config> {
         let largest_acked_packet_number = space.new_packet_number(frame.largest_acknowledged());
         recovery_manager.process_acks(
             timestamp,
-            frame.into_pn_range_iter(space),
+            frame.pn_range_iter(space),
             largest_acked_packet_number,
             frame.ack_delay(),
             frame.ecn_counts,

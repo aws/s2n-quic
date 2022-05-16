@@ -2722,7 +2722,7 @@ fn helper_ack_packets_on_path(
     let largest_acked_packet_number = space.new_packet_number(frame.largest_acknowledged());
     let _ = manager.process_acks(
         datagram.timestamp,
-        frame.into_pn_range_iter(space),
+        frame.pn_range_iter(space),
         largest_acked_packet_number,
         frame.ack_delay(),
         frame.ecn_counts,

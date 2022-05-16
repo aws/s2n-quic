@@ -115,7 +115,7 @@ impl<A: AckRanges> Ack<A> {
         self.ack_ranges.largest_acknowledged()
     }
 
-    pub fn into_pn_range_iter(
+    pub fn pn_range_iter(
         &self,
         space: PacketNumberSpace,
     ) -> impl Iterator<Item = PacketNumberRange> {
