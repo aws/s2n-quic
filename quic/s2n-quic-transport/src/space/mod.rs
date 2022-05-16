@@ -12,7 +12,6 @@ use crate::{
 use bytes::Bytes;
 use core::{
     fmt,
-    ops::RangeInclusive,
     task::{Poll, Waker},
 };
 use s2n_codec::DecoderBufferMut;
@@ -28,7 +27,7 @@ use s2n_quic_core::{
         RetireConnectionId, StopSending, StreamDataBlocked, StreamsBlocked,
     },
     inet::DatagramInfo,
-    packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
+    packet::number::{PacketNumber, PacketNumberSpace},
     time::{timer, Timestamp},
     transport,
     varint::VarInt,
@@ -931,14 +930,4 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
         Ok(processed_packet)
     }
-}
-
-pub(crate) fn into_pn_range_iter(
-    iter: impl Iterator<Item = RangeInclusive<VarInt>>,
-    space: PacketNumberSpace,
-) -> impl Iterator<Item = PacketNumberRange> {
-    iter.map(move |ack_range| {
-        let (start, end) = ack_range.into_inner();
-        PacketNumberRange::new(space.new_packet_number(start), space.new_packet_number(end))
-    })
 }
