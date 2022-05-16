@@ -321,11 +321,11 @@ pub mod api {
         #[doc = " When at `capacity`, the lowest packet_number range is dropped."]
         RxAckRangeDropped {
             #[doc = " The packet number range which was dropped"]
-            packet_number_range: core::ops::Range<u64>,
+            packet_number_range: core::ops::RangeInclusive<u64>,
             #[doc = " The number of disjoint ranges the IntervalSet can store"]
             capacity: usize,
             #[doc = " The store packet_number range in the IntervalSet"]
-            stored_range: core::ops::Range<u64>,
+            stored_range: core::ops::RangeInclusive<u64>,
         },
     }
     #[derive(Clone, Debug)]
@@ -2459,11 +2459,11 @@ pub mod builder {
         #[doc = " When at `capacity`, the lowest packet_number range is dropped."]
         RxAckRangeDropped {
             #[doc = " The packet number range which was dropped"]
-            packet_number_range: core::ops::Range<u64>,
+            packet_number_range: core::ops::RangeInclusive<u64>,
             #[doc = " The number of disjoint ranges the IntervalSet can store"]
             capacity: usize,
             #[doc = " The store packet_number range in the IntervalSet"]
-            stored_range: core::ops::Range<u64>,
+            stored_range: core::ops::RangeInclusive<u64>,
         },
     }
     impl IntoEvent<api::AckAction> for AckAction {

@@ -661,11 +661,11 @@ enum AckAction {
     /// When at `capacity`, the lowest packet_number range is dropped.
     RxAckRangeDropped {
         /// The packet number range which was dropped
-        packet_number_range: core::ops::Range<u64>,
+        packet_number_range: core::ops::RangeInclusive<u64>,
         /// The number of disjoint ranges the IntervalSet can store
         capacity: usize,
         /// The store packet_number range in the IntervalSet
-        stored_range: core::ops::Range<u64>,
+        stored_range: core::ops::RangeInclusive<u64>,
     },
     // /// Acks were aggregated for delayed processing
     // AggregatePending {
