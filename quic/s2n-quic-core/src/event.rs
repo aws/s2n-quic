@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{connection, endpoint};
-use core::time::Duration;
+use core::{ops::RangeInclusive, time::Duration};
 
 mod generated;
 pub use generated::*;
@@ -70,6 +70,13 @@ impl<T: IntoEvent<U>, U> IntoEvent<Option<U>> for Option<T> {
 impl<'a> IntoEvent<&'a str> for &'a str {
     #[inline]
     fn into_event(self) -> Self {
+        self
+    }
+}
+
+impl<T> IntoEvent<RangeInclusive<T>> for RangeInclusive<T> {
+    #[inline]
+    fn into_event(self) -> RangeInclusive<T> {
         self
     }
 }

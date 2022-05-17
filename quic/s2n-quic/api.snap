@@ -1965,6 +1965,12 @@ struct s2n_quic::provider::event::disabled::Subscriber implements trait:
 struct s2n_quic::provider::event::disabled::Subscriber implements trait:
   impl std::panic::UnwindSafe for s2n_quic::provider::event::disabled::Subscriber
 
+module s2n_quic::provider::event::events exports enum:
+  s2n_quic::provider::event::events::AckAction
+
+module s2n_quic::provider::event::events exports struct:
+  s2n_quic::provider::event::events::AckProcessed
+
 module s2n_quic::provider::event::events exports struct:
   s2n_quic::provider::event::events::ActivePathUpdated
 
@@ -2177,6 +2183,81 @@ module s2n_quic::provider::event::events exports struct:
 
 module s2n_quic::provider::event::events exports struct:
   s2n_quic::provider::event::events::VersionInformation
+
+enum s2n_quic::provider::event::events::AckAction is non-exhaustive
+
+enum s2n_quic::provider::event::events::AckAction exports variant:
+  RxAckRangeDropped
+
+enum s2n_quic::provider::event::events::AckAction implements trait:
+  impl core::clone::Clone for s2n_quic::provider::event::events::AckAction
+
+enum s2n_quic::provider::event::events::AckAction implements trait:
+  impl core::fmt::Debug for s2n_quic::provider::event::events::AckAction
+
+enum s2n_quic::provider::event::events::AckAction implements trait:
+  impl core::marker::Send for s2n_quic::provider::event::events::AckAction
+
+enum s2n_quic::provider::event::events::AckAction implements trait:
+  impl core::marker::Sync for s2n_quic::provider::event::events::AckAction
+
+enum s2n_quic::provider::event::events::AckAction implements trait:
+  impl core::marker::Unpin for s2n_quic::provider::event::events::AckAction
+
+enum s2n_quic::provider::event::events::AckAction implements trait:
+  impl std::panic::RefUnwindSafe for s2n_quic::provider::event::events::AckAction
+
+enum s2n_quic::provider::event::events::AckAction implements trait:
+  impl std::panic::UnwindSafe for s2n_quic::provider::event::events::AckAction
+
+variant s2n_quic::provider::event::events::AckAction::RxAckRangeDropped is non-exhaustive
+
+variant s2n_quic::provider::event::events::AckAction::RxAckRangeDropped exports field:
+  capacity:
+  usize
+
+variant s2n_quic::provider::event::events::AckAction::RxAckRangeDropped exports field:
+  packet_number_range:
+  core::ops::range::Range<u64>
+
+variant s2n_quic::provider::event::events::AckAction::RxAckRangeDropped exports field:
+  stored_range:
+  core::ops::range::Range<u64>
+
+struct s2n_quic::provider::event::events::AckProcessed is non-exhaustive
+
+struct s2n_quic::provider::event::events::AckProcessed exports field:
+  action: s2n_quic::provider::event::events::AckAction
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl<'a> core::clone::Clone for s2n_quic::provider::event::events::AckProcessed<'a>
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::AckProcessed<'a>
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl<'a> core::marker::Send for s2n_quic::provider::event::events::AckProcessed<'a>
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl<'a> core::marker::Sync for s2n_quic::provider::event::events::AckProcessed<'a>
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl<'a> core::marker::Unpin for s2n_quic::provider::event::events::AckProcessed<'a>
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::AckProcessed<'a>
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl<'a> std::panic::RefUnwindSafe for s2n_quic::provider::event::events::AckProcessed<'a>
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl<'a> std::panic::UnwindSafe for s2n_quic::provider::event::events::AckProcessed<'a>
+
+struct s2n_quic::provider::event::events::AckProcessed exports field:
+  path: s2n_quic::provider::event::events::Path<'a>
+
+struct s2n_quic::provider::event::events::AckProcessed exports constant:
+  pub const NAME: &'static str
 
 struct s2n_quic::provider::event::events::ActivePathUpdated is non-exhaustive
 

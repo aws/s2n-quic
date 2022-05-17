@@ -502,15 +502,15 @@ impl builder::PacketHeader {
 
         match packet_number.space() {
             PacketNumberSpace::Initial => PacketHeader::Initial {
-                number: packet_number.as_u64(),
+                number: packet_number.into_event(),
                 version,
             },
             PacketNumberSpace::Handshake => PacketHeader::Handshake {
-                number: packet_number.as_u64(),
+                number: packet_number.into_event(),
                 version,
             },
             PacketNumberSpace::ApplicationData => PacketHeader::OneRtt {
-                number: packet_number.as_u64(),
+                number: packet_number.into_event(),
             },
         }
     }
@@ -648,6 +648,37 @@ enum PacketDropReason<'a> {
         reason: RetryDiscardReason<'a>,
         path: Path<'a>,
     },
+}
+
+enum AckAction {
+    /// Ack range for received packets was dropped due to space constraints
+    ///
+    /// For the purpose of processing Acks, RX packet numbers are stored as
+    /// packet_number ranges in an IntervalSet; only lower and upper bounds
+    /// are stored instead of individual packet_numbers. Ranges are merged
+    /// when possible so only disjointed ranges are stored.
+    ///
+    /// When at `capacity`, the lowest packet_number range is dropped.
+    RxAckRangeDropped {
+        /// The packet number range which was dropped
+        packet_number_range: core::ops::RangeInclusive<u64>,
+        /// The number of disjoint ranges the IntervalSet can store
+        capacity: usize,
+        /// The store packet_number range in the IntervalSet
+        stored_range: core::ops::RangeInclusive<u64>,
+    },
+    // /// Acks were aggregated for delayed processing
+    // AggregatePending {
+    //     ///  number of packet_numbers aggregated
+    //     count: u16,
+    // },
+    // /// Pending Acks were processed
+    // ProcessPending {
+    //     ///  number of packet_numbers acked
+    //     count: u16,
+    // },
+    // /// Acks aggregation failed due to space constraints
+    // AggregationPendingFailed,
 }
 
 enum RetryDiscardReason<'a> {
