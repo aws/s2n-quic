@@ -6474,9 +6474,6 @@ crate s2n_quic::provider::tls::rustls::rustls exports enum:
 crate s2n_quic::provider::tls::rustls::rustls exports struct:
   s2n_quic::provider::tls::rustls::rustls::ConnectionCommon
 
-crate s2n_quic::provider::tls::rustls::rustls exports struct:
-  s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload
-
 crate s2n_quic::provider::tls::rustls::rustls exports static:
   s2n_quic::provider::tls::rustls::rustls::DEFAULT_CIPHER_SUITES
 
@@ -8001,6 +7998,7 @@ struct s2n_quic::provider::tls::rustls::rustls::ConfigBuilder implements trait:
 
 struct s2n_quic::provider::tls::rustls::rustls::ConfigBuilder implements trait:
   impl<Side, State> core::fmt::Debug for s2n_quic::provider::tls::rustls::rustls::ConfigBuilder<Side, State> where
+  State: core::fmt::Debug,
   Side: s2n_quic::provider::tls::rustls::rustls::ConfigSide,
 
 struct s2n_quic::provider::tls::rustls::rustls::ConfigBuilder implements trait:
@@ -8276,33 +8274,6 @@ struct s2n_quic::provider::tls::rustls::rustls::ConnectionCommon exports functio
 struct s2n_quic::provider::tls::rustls::rustls::ConnectionCommon exports function:
   pub fn writer(&mut self) -> s2n_quic::provider::tls::rustls::rustls::Writer<'_>ⓘ
 
-struct s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload implements trait:
-  impl core::clone::Clone for s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload
-
-struct s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload implements trait:
-  impl core::cmp::PartialEq<s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload> for s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload
-
-struct s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload implements trait:
-  impl core::fmt::Debug for s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload
-
-struct s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload implements trait:
-  impl core::marker::Send for s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload
-
-struct s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload implements trait:
-  impl core::marker::Sync for s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload
-
-struct s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload implements trait:
-  impl core::marker::Unpin for s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload
-
-struct s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload implements trait:
-  impl std::panic::RefUnwindSafe for s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload
-
-struct s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload implements trait:
-  impl std::panic::UnwindSafe for s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload
-
-struct s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload exports function:
-  pub fn content_type(&self) -> s2n_quic::provider::tls::rustls::rustls::internal::msgs::enums::ContentType
-
 typedef s2n_quic::provider::tls::rustls::rustls::DistinguishedNames exports typedef:
   type DistinguishedNames = alloc::vec::Vec<s2n_quic::provider::tls::rustls::rustls::internal::msgs::base::PayloadU16, alloc::alloc::Global>;
 
@@ -8316,7 +8287,7 @@ enum s2n_quic::provider::tls::rustls::rustls::Error exports variant:
   CorruptMessage
 
 enum s2n_quic::provider::tls::rustls::rustls::Error exports variant:
-  CorruptMessagePayload(s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload)
+  CorruptMessagePayload(s2n_quic::provider::tls::rustls::rustls::internal::msgs::enums::ContentType)
 
 enum s2n_quic::provider::tls::rustls::rustls::Error exports variant:
   DecryptError
@@ -9238,6 +9209,9 @@ struct s2n_quic::provider::tls::rustls::rustls::WantsCipherSuites implements tra
   impl core::clone::Clone for s2n_quic::provider::tls::rustls::rustls::WantsCipherSuites
 
 struct s2n_quic::provider::tls::rustls::rustls::WantsCipherSuites implements trait:
+  impl core::fmt::Debug for s2n_quic::provider::tls::rustls::rustls::WantsCipherSuites
+
+struct s2n_quic::provider::tls::rustls::rustls::WantsCipherSuites implements trait:
   impl core::marker::Send for s2n_quic::provider::tls::rustls::rustls::WantsCipherSuites
 
 struct s2n_quic::provider::tls::rustls::rustls::WantsCipherSuites implements trait:
@@ -9262,6 +9236,9 @@ struct s2n_quic::provider::tls::rustls::rustls::WantsKxGroups implements trait:
   impl core::clone::Clone for s2n_quic::provider::tls::rustls::rustls::WantsKxGroups
 
 struct s2n_quic::provider::tls::rustls::rustls::WantsKxGroups implements trait:
+  impl core::fmt::Debug for s2n_quic::provider::tls::rustls::rustls::WantsKxGroups
+
+struct s2n_quic::provider::tls::rustls::rustls::WantsKxGroups implements trait:
   impl core::marker::Send for s2n_quic::provider::tls::rustls::rustls::WantsKxGroups
 
 struct s2n_quic::provider::tls::rustls::rustls::WantsKxGroups implements trait:
@@ -9277,6 +9254,12 @@ struct s2n_quic::provider::tls::rustls::rustls::WantsVerifier implements trait:
   impl !std::panic::UnwindSafe for s2n_quic::provider::tls::rustls::rustls::WantsVerifier
 
 struct s2n_quic::provider::tls::rustls::rustls::WantsVerifier implements trait:
+  impl core::clone::Clone for s2n_quic::provider::tls::rustls::rustls::WantsVerifier
+
+struct s2n_quic::provider::tls::rustls::rustls::WantsVerifier implements trait:
+  impl core::fmt::Debug for s2n_quic::provider::tls::rustls::rustls::WantsVerifier
+
+struct s2n_quic::provider::tls::rustls::rustls::WantsVerifier implements trait:
   impl core::marker::Send for s2n_quic::provider::tls::rustls::rustls::WantsVerifier
 
 struct s2n_quic::provider::tls::rustls::rustls::WantsVerifier implements trait:
@@ -9290,6 +9273,12 @@ struct s2n_quic::provider::tls::rustls::rustls::WantsVersions implements trait:
 
 struct s2n_quic::provider::tls::rustls::rustls::WantsVersions implements trait:
   impl !std::panic::UnwindSafe for s2n_quic::provider::tls::rustls::rustls::WantsVersions
+
+struct s2n_quic::provider::tls::rustls::rustls::WantsVersions implements trait:
+  impl core::clone::Clone for s2n_quic::provider::tls::rustls::rustls::WantsVersions
+
+struct s2n_quic::provider::tls::rustls::rustls::WantsVersions implements trait:
+  impl core::fmt::Debug for s2n_quic::provider::tls::rustls::rustls::WantsVersions
 
 struct s2n_quic::provider::tls::rustls::rustls::WantsVersions implements trait:
   impl core::marker::Send for s2n_quic::provider::tls::rustls::rustls::WantsVersions
@@ -9659,6 +9648,12 @@ struct s2n_quic::provider::tls::rustls::rustls::client::WantsClientCert implemen
   impl !std::panic::UnwindSafe for s2n_quic::provider::tls::rustls::rustls::client::WantsClientCert
 
 struct s2n_quic::provider::tls::rustls::rustls::client::WantsClientCert implements trait:
+  impl core::clone::Clone for s2n_quic::provider::tls::rustls::rustls::client::WantsClientCert
+
+struct s2n_quic::provider::tls::rustls::rustls::client::WantsClientCert implements trait:
+  impl core::fmt::Debug for s2n_quic::provider::tls::rustls::rustls::client::WantsClientCert
+
+struct s2n_quic::provider::tls::rustls::rustls::client::WantsClientCert implements trait:
   impl core::marker::Send for s2n_quic::provider::tls::rustls::rustls::client::WantsClientCert
 
 struct s2n_quic::provider::tls::rustls::rustls::client::WantsClientCert implements trait:
@@ -9672,6 +9667,12 @@ struct s2n_quic::provider::tls::rustls::rustls::client::WantsTransparencyPolicyO
 
 struct s2n_quic::provider::tls::rustls::rustls::client::WantsTransparencyPolicyOrClientCert implements trait:
   impl !std::panic::UnwindSafe for s2n_quic::provider::tls::rustls::rustls::client::WantsTransparencyPolicyOrClientCert
+
+struct s2n_quic::provider::tls::rustls::rustls::client::WantsTransparencyPolicyOrClientCert implements trait:
+  impl core::clone::Clone for s2n_quic::provider::tls::rustls::rustls::client::WantsTransparencyPolicyOrClientCert
+
+struct s2n_quic::provider::tls::rustls::rustls::client::WantsTransparencyPolicyOrClientCert implements trait:
+  impl core::fmt::Debug for s2n_quic::provider::tls::rustls::rustls::client::WantsTransparencyPolicyOrClientCert
 
 struct s2n_quic::provider::tls::rustls::rustls::client::WantsTransparencyPolicyOrClientCert implements trait:
   impl core::marker::Send for s2n_quic::provider::tls::rustls::rustls::client::WantsTransparencyPolicyOrClientCert
@@ -15911,6 +15912,12 @@ struct s2n_quic::provider::tls::rustls::rustls::server::WantsServerCert implemen
 
 struct s2n_quic::provider::tls::rustls::rustls::server::WantsServerCert implements trait:
   impl !std::panic::UnwindSafe for s2n_quic::provider::tls::rustls::rustls::server::WantsServerCert
+
+struct s2n_quic::provider::tls::rustls::rustls::server::WantsServerCert implements trait:
+  impl core::clone::Clone for s2n_quic::provider::tls::rustls::rustls::server::WantsServerCert
+
+struct s2n_quic::provider::tls::rustls::rustls::server::WantsServerCert implements trait:
+  impl core::fmt::Debug for s2n_quic::provider::tls::rustls::rustls::server::WantsServerCert
 
 struct s2n_quic::provider::tls::rustls::rustls::server::WantsServerCert implements trait:
   impl core::marker::Send for s2n_quic::provider::tls::rustls::rustls::server::WantsServerCert
