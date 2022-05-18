@@ -11,7 +11,7 @@ OUT=${1:-target/recovery-sim}
 mkdir -p $OUT
 OUT=$(realpath $OUT)
 
-RECOVERY_SIM_DIR=$OUT cargo test -p s2n-quic-core --test recovery-simulation -- --nocapture
+RECOVERY_SIM_DIR=$OUT cargo test -p s2n-quic-core --test recovery-simulation --features=testing -- --nocapture
 
 cd $OUT
 # Generate an html file with a directory listing of all recovery simulations. -P is used to only include
