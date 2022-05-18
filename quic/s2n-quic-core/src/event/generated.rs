@@ -309,6 +309,27 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub enum AckAction {
+        #[non_exhaustive]
+        #[doc = " Ack range for received packets was dropped due to space constraints"]
+        #[doc = ""]
+        #[doc = " For the purpose of processing Acks, RX packet numbers are stored as"]
+        #[doc = " packet_number ranges in an IntervalSet; only lower and upper bounds"]
+        #[doc = " are stored instead of individual packet_numbers. Ranges are merged"]
+        #[doc = " when possible so only disjointed ranges are stored."]
+        #[doc = ""]
+        #[doc = " When at `capacity`, the lowest packet_number range is dropped."]
+        RxAckRangeDropped {
+            #[doc = " The packet number range which was dropped"]
+            packet_number_range: core::ops::RangeInclusive<u64>,
+            #[doc = " The number of disjoint ranges the IntervalSet can store"]
+            capacity: usize,
+            #[doc = " The store packet_number range in the IntervalSet"]
+            stored_range: core::ops::RangeInclusive<u64>,
+        },
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     pub enum RetryDiscardReason<'a> {
         #[non_exhaustive]
         #[doc = " Received a Retry packet with SCID field equal to DCID field."]
@@ -525,6 +546,16 @@ pub mod api {
     }
     impl<'a> Event for Congestion<'a> {
         const NAME: &'static str = "recovery:congestion";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Events related to ACK processing"]
+    pub struct AckProcessed<'a> {
+        pub action: AckAction,
+        pub path: Path<'a>,
+    }
+    impl<'a> Event for AckProcessed<'a> {
+        const NAME: &'static str = "recovery:ack_processed";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1188,15 +1219,15 @@ pub mod api {
             use builder::PacketHeader;
             match packet_number.space() {
                 PacketNumberSpace::Initial => PacketHeader::Initial {
-                    number: packet_number.as_u64(),
+                    number: packet_number.into_event(),
                     version,
                 },
                 PacketNumberSpace::Handshake => PacketHeader::Handshake {
-                    number: packet_number.as_u64(),
+                    number: packet_number.into_event(),
                     version,
                 },
                 PacketNumberSpace::ApplicationData => PacketHeader::OneRtt {
-                    number: packet_number.as_u64(),
+                    number: packet_number.into_event(),
                 },
             }
         }
@@ -1427,6 +1458,17 @@ pub mod tracing {
             let id = context.id();
             let api::Congestion { path, source } = event;
             tracing :: event ! (target : "congestion" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , source = tracing :: field :: debug (source));
+        }
+        #[inline]
+        fn on_ack_processed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::AckProcessed,
+        ) {
+            let id = context.id();
+            let api::AckProcessed { action, path } = event;
+            tracing :: event ! (target : "ack_processed" , parent : id , tracing :: Level :: DEBUG , action = tracing :: field :: debug (action) , path = tracing :: field :: debug (path));
         }
         #[inline]
         fn on_packet_dropped(
@@ -2406,6 +2448,42 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub enum AckAction {
+        #[doc = " Ack range for received packets was dropped due to space constraints"]
+        #[doc = ""]
+        #[doc = " For the purpose of processing Acks, RX packet numbers are stored as"]
+        #[doc = " packet_number ranges in an IntervalSet; only lower and upper bounds"]
+        #[doc = " are stored instead of individual packet_numbers. Ranges are merged"]
+        #[doc = " when possible so only disjointed ranges are stored."]
+        #[doc = ""]
+        #[doc = " When at `capacity`, the lowest packet_number range is dropped."]
+        RxAckRangeDropped {
+            #[doc = " The packet number range which was dropped"]
+            packet_number_range: core::ops::RangeInclusive<u64>,
+            #[doc = " The number of disjoint ranges the IntervalSet can store"]
+            capacity: usize,
+            #[doc = " The store packet_number range in the IntervalSet"]
+            stored_range: core::ops::RangeInclusive<u64>,
+        },
+    }
+    impl IntoEvent<api::AckAction> for AckAction {
+        #[inline]
+        fn into_event(self) -> api::AckAction {
+            use api::AckAction::*;
+            match self {
+                Self::RxAckRangeDropped {
+                    packet_number_range,
+                    capacity,
+                    stored_range,
+                } => RxAckRangeDropped {
+                    packet_number_range: packet_number_range.into_event(),
+                    capacity: capacity.into_event(),
+                    stored_range: stored_range.into_event(),
+                },
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub enum RetryDiscardReason<'a> {
         #[doc = " Received a Retry packet with SCID field equal to DCID field."]
         ScidEqualsDcid { cid: &'a [u8] },
@@ -2770,6 +2848,22 @@ pub mod builder {
             api::Congestion {
                 path: path.into_event(),
                 source: source.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Events related to ACK processing"]
+    pub struct AckProcessed<'a> {
+        pub action: AckAction,
+        pub path: Path<'a>,
+    }
+    impl<'a> IntoEvent<api::AckProcessed<'a>> for AckProcessed<'a> {
+        #[inline]
+        fn into_event(self) -> api::AckProcessed<'a> {
+            let AckProcessed { action, path } = self;
+            api::AckProcessed {
+                action: action.into_event(),
+                path: path.into_event(),
             }
         }
     }
@@ -3643,6 +3737,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `AckProcessed` event is triggered"]
+        #[inline]
+        fn on_ack_processed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &AckProcessed,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `PacketDropped` event is triggered"]
         #[inline]
         fn on_packet_dropped(
@@ -4194,6 +4300,16 @@ mod traits {
             (self.1).on_congestion(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_ack_processed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &AckProcessed,
+        ) {
+            (self.0).on_ack_processed(&mut context.0, meta, event);
+            (self.1).on_ack_processed(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_packet_dropped(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -4698,6 +4814,8 @@ mod traits {
         fn on_recovery_metrics(&mut self, event: builder::RecoveryMetrics);
         #[doc = "Publishes a `Congestion` event to the publisher's subscriber"]
         fn on_congestion(&mut self, event: builder::Congestion);
+        #[doc = "Publishes a `AckProcessed` event to the publisher's subscriber"]
+        fn on_ack_processed(&mut self, event: builder::AckProcessed);
         #[doc = "Publishes a `PacketDropped` event to the publisher's subscriber"]
         fn on_packet_dropped(&mut self, event: builder::PacketDropped);
         #[doc = "Publishes a `KeyUpdate` event to the publisher's subscriber"]
@@ -4872,6 +4990,15 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_congestion(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_ack_processed(&mut self, event: builder::AckProcessed) {
+            let event = event.into_event();
+            self.subscriber
+                .on_ack_processed(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -5087,6 +5214,7 @@ pub mod testing {
         pub packet_lost: u32,
         pub recovery_metrics: u32,
         pub congestion: u32,
+        pub ack_processed: u32,
         pub packet_dropped: u32,
         pub key_update: u32,
         pub key_space_discarded: u32,
@@ -5155,6 +5283,7 @@ pub mod testing {
                 packet_lost: 0,
                 recovery_metrics: 0,
                 congestion: 0,
+                ack_processed: 0,
                 packet_dropped: 0,
                 key_update: 0,
                 key_space_discarded: 0,
@@ -5316,6 +5445,17 @@ pub mod testing {
             event: &api::Congestion,
         ) {
             self.congestion += 1;
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
+        }
+        fn on_ack_processed(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::AckProcessed,
+        ) {
+            self.ack_processed += 1;
             if self.location.is_some() {
                 self.output.push(format!("{:?} {:?}", meta, event));
             }
@@ -5644,6 +5784,7 @@ pub mod testing {
         pub packet_lost: u32,
         pub recovery_metrics: u32,
         pub congestion: u32,
+        pub ack_processed: u32,
         pub packet_dropped: u32,
         pub key_update: u32,
         pub key_space_discarded: u32,
@@ -5702,6 +5843,7 @@ pub mod testing {
                 packet_lost: 0,
                 recovery_metrics: 0,
                 congestion: 0,
+                ack_processed: 0,
                 packet_dropped: 0,
                 key_update: 0,
                 key_space_discarded: 0,
@@ -5887,6 +6029,13 @@ pub mod testing {
         }
         fn on_congestion(&mut self, event: builder::Congestion) {
             self.congestion += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
+        }
+        fn on_ack_processed(&mut self, event: builder::AckProcessed) {
+            self.ack_processed += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 self.output.push(format!("{:?}", event));

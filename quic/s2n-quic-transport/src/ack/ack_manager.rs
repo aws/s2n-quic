@@ -4,7 +4,7 @@
 use crate::{
     ack::{
         ack_eliciting_transmission::{AckElicitingTransmission, AckElicitingTransmissionSet},
-        ack_ranges::AckRanges,
+        ack_ranges::{AckRanges, AckRangesError},
         ack_transmission_state::AckTransmissionState,
     },
     contexts::WriteContext,
@@ -14,6 +14,11 @@ use crate::{
 use s2n_quic_core::{
     ack,
     counter::{Counter, Saturating},
+    event::{
+        self,
+        builder::{AckAction, AckProcessed},
+        IntoEvent as _,
+    },
     frame::{ack::EcnCounts, Ack, Ping},
     packet::number::{PacketNumber, PacketNumberSpace},
     time::{timer, Timer, Timestamp},
@@ -188,7 +193,12 @@ impl AckManager {
     }
 
     /// Called after an RX packet has been processed
-    pub fn on_processed_packet(&mut self, processed_packet: &ProcessedPacket) {
+    pub fn on_processed_packet<Pub: event::ConnectionPublisher>(
+        &mut self,
+        processed_packet: &ProcessedPacket,
+        path: event::builder::Path,
+        publisher: &mut Pub,
+    ) {
         let packet_number = processed_packet.packet_number;
         let now = processed_packet.datagram.timestamp;
 
@@ -212,7 +222,31 @@ impl AckManager {
         //
         // Most likely, this packet is very old and the contents have already
         // been retransmitted by the peer.
-        if self.ack_ranges.insert_packet_number(packet_number).is_err() {
+        if let Err(err) = self.ack_ranges.insert_packet_number(packet_number) {
+            match err {
+                AckRangesError::RangeInsertionFailed { min, max }
+                | AckRangesError::LowestRangeDropped { min, max } => {
+                    let start = self
+                        .ack_ranges
+                        .min_value()
+                        .expect("should be non empty")
+                        .into_event();
+                    let end = self
+                        .ack_ranges
+                        .max_value()
+                        .expect("should be non empty")
+                        .into_event();
+
+                    publisher.on_ack_processed(AckProcessed {
+                        action: AckAction::RxAckRangeDropped {
+                            packet_number_range: min.into_event()..=max.into_event(),
+                            capacity: self.ack_ranges.interval_len(),
+                            stored_range: start..=end,
+                        },
+                        path,
+                    });
+                }
+            };
             return;
         }
 
@@ -349,7 +383,10 @@ impl transmission::interest::Provider for AckManager {
 #[cfg(test)]
 mod tests {
     use super::{super::tests::*, *};
-    use crate::contexts::testing::{MockWriteContext, OutgoingFrameBuffer};
+    use crate::{
+        contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
+        path::{path_event, testing::helper_path_server},
+    };
     use core::{
         iter::{empty, once},
         mem::size_of,
@@ -358,8 +395,10 @@ mod tests {
     use insta::assert_debug_snapshot;
     use s2n_quic_core::{
         ack, connection, endpoint,
+        event::testing::Publisher,
         frame::{ack_elicitation::AckElicitation, ping, Frame},
         inet::{DatagramInfo, ExplicitCongestionNotification},
+        path,
         time::{Clock, NoopClock},
     };
 
@@ -384,7 +423,13 @@ mod tests {
         assert!(!manager.transmission_state.is_active());
 
         // Trigger:
-        manager.on_processed_packet(&processed_packet);
+        let path = helper_path_server();
+        let path_id = path::Id::test_id();
+        manager.on_processed_packet(
+            &processed_packet,
+            path_event!(path, path_id),
+            &mut Publisher::snapshot(),
+        );
 
         // Expectation:
         assert!(manager.transmission_state.is_active());
@@ -403,7 +448,14 @@ mod tests {
         // Process a packet in an Ect0 datagram
         let pn = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(1));
         let datagram = helper_datagram_info(ExplicitCongestionNotification::Ect0);
-        manager.on_processed_packet(&ProcessedPacket::new(pn, &datagram));
+        let path = helper_path_server();
+        let path_id = path::Id::test_id();
+        let mut publisher = Publisher::snapshot();
+        manager.on_processed_packet(
+            &ProcessedPacket::new(pn, &datagram),
+            path_event!(path, path_id),
+            &mut publisher,
+        );
 
         assert_eq!(1, manager.ecn_counts.ect_0_count.as_u64());
         assert_eq!(0, manager.ecn_counts.ect_1_count.as_u64());
@@ -413,8 +465,17 @@ mod tests {
         let pn1 = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(2));
         let pn2 = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(3));
         let datagram = helper_datagram_info(ExplicitCongestionNotification::Ect1);
-        manager.on_processed_packet(&ProcessedPacket::new(pn1, &datagram));
-        manager.on_processed_packet(&ProcessedPacket::new(pn2, &datagram));
+
+        manager.on_processed_packet(
+            &ProcessedPacket::new(pn1, &datagram),
+            path_event!(path, path_id),
+            &mut publisher,
+        );
+        manager.on_processed_packet(
+            &ProcessedPacket::new(pn2, &datagram),
+            path_event!(path, path_id),
+            &mut publisher,
+        );
 
         assert_eq!(1, manager.ecn_counts.ect_0_count.as_u64());
         assert_eq!(2, manager.ecn_counts.ect_1_count.as_u64());
@@ -423,7 +484,11 @@ mod tests {
         // Process a packet in an Ce datagram
         let pn = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(4));
         let datagram = helper_datagram_info(ExplicitCongestionNotification::Ce);
-        manager.on_processed_packet(&ProcessedPacket::new(pn, &datagram));
+        manager.on_processed_packet(
+            &ProcessedPacket::new(pn, &datagram),
+            path_event!(path, path_id),
+            &mut publisher,
+        );
 
         assert_eq!(1, manager.ecn_counts.ect_0_count.as_u64());
         assert_eq!(2, manager.ecn_counts.ect_1_count.as_u64());
@@ -432,7 +497,11 @@ mod tests {
         // Process a packet in a NotEct datagram
         let pn = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(5));
         let datagram = helper_datagram_info(ExplicitCongestionNotification::NotEct);
-        manager.on_processed_packet(&ProcessedPacket::new(pn, &datagram));
+        manager.on_processed_packet(
+            &ProcessedPacket::new(pn, &datagram),
+            path_event!(path, path_id),
+            &mut publisher,
+        );
 
         assert_eq!(1, manager.ecn_counts.ect_0_count.as_u64());
         assert_eq!(2, manager.ecn_counts.ect_1_count.as_u64());

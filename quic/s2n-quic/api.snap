@@ -1965,6 +1965,12 @@ struct s2n_quic::provider::event::disabled::Subscriber implements trait:
 struct s2n_quic::provider::event::disabled::Subscriber implements trait:
   impl std::panic::UnwindSafe for s2n_quic::provider::event::disabled::Subscriber
 
+module s2n_quic::provider::event::events exports enum:
+  s2n_quic::provider::event::events::AckAction
+
+module s2n_quic::provider::event::events exports struct:
+  s2n_quic::provider::event::events::AckProcessed
+
 module s2n_quic::provider::event::events exports struct:
   s2n_quic::provider::event::events::ActivePathUpdated
 
@@ -2177,6 +2183,81 @@ module s2n_quic::provider::event::events exports struct:
 
 module s2n_quic::provider::event::events exports struct:
   s2n_quic::provider::event::events::VersionInformation
+
+enum s2n_quic::provider::event::events::AckAction is non-exhaustive
+
+enum s2n_quic::provider::event::events::AckAction exports variant:
+  RxAckRangeDropped
+
+enum s2n_quic::provider::event::events::AckAction implements trait:
+  impl core::clone::Clone for s2n_quic::provider::event::events::AckAction
+
+enum s2n_quic::provider::event::events::AckAction implements trait:
+  impl core::fmt::Debug for s2n_quic::provider::event::events::AckAction
+
+enum s2n_quic::provider::event::events::AckAction implements trait:
+  impl core::marker::Send for s2n_quic::provider::event::events::AckAction
+
+enum s2n_quic::provider::event::events::AckAction implements trait:
+  impl core::marker::Sync for s2n_quic::provider::event::events::AckAction
+
+enum s2n_quic::provider::event::events::AckAction implements trait:
+  impl core::marker::Unpin for s2n_quic::provider::event::events::AckAction
+
+enum s2n_quic::provider::event::events::AckAction implements trait:
+  impl std::panic::RefUnwindSafe for s2n_quic::provider::event::events::AckAction
+
+enum s2n_quic::provider::event::events::AckAction implements trait:
+  impl std::panic::UnwindSafe for s2n_quic::provider::event::events::AckAction
+
+variant s2n_quic::provider::event::events::AckAction::RxAckRangeDropped is non-exhaustive
+
+variant s2n_quic::provider::event::events::AckAction::RxAckRangeDropped exports field:
+  capacity:
+  usize
+
+variant s2n_quic::provider::event::events::AckAction::RxAckRangeDropped exports field:
+  packet_number_range:
+  core::ops::range::RangeInclusive<u64>
+
+variant s2n_quic::provider::event::events::AckAction::RxAckRangeDropped exports field:
+  stored_range:
+  core::ops::range::RangeInclusive<u64>
+
+struct s2n_quic::provider::event::events::AckProcessed is non-exhaustive
+
+struct s2n_quic::provider::event::events::AckProcessed exports field:
+  action: s2n_quic::provider::event::events::AckAction
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl<'a> core::clone::Clone for s2n_quic::provider::event::events::AckProcessed<'a>
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::AckProcessed<'a>
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl<'a> core::marker::Send for s2n_quic::provider::event::events::AckProcessed<'a>
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl<'a> core::marker::Sync for s2n_quic::provider::event::events::AckProcessed<'a>
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl<'a> core::marker::Unpin for s2n_quic::provider::event::events::AckProcessed<'a>
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::AckProcessed<'a>
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl<'a> std::panic::RefUnwindSafe for s2n_quic::provider::event::events::AckProcessed<'a>
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl<'a> std::panic::UnwindSafe for s2n_quic::provider::event::events::AckProcessed<'a>
+
+struct s2n_quic::provider::event::events::AckProcessed exports field:
+  path: s2n_quic::provider::event::events::Path<'a>
+
+struct s2n_quic::provider::event::events::AckProcessed exports constant:
+  pub const NAME: &'static str
 
 struct s2n_quic::provider::event::events::ActivePathUpdated is non-exhaustive
 
@@ -6393,6 +6474,9 @@ crate s2n_quic::provider::tls::rustls::rustls exports enum:
 crate s2n_quic::provider::tls::rustls::rustls exports struct:
   s2n_quic::provider::tls::rustls::rustls::ConnectionCommon
 
+crate s2n_quic::provider::tls::rustls::rustls exports struct:
+  s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload
+
 crate s2n_quic::provider::tls::rustls::rustls exports static:
   s2n_quic::provider::tls::rustls::rustls::DEFAULT_CIPHER_SUITES
 
@@ -8192,6 +8276,33 @@ struct s2n_quic::provider::tls::rustls::rustls::ConnectionCommon exports functio
 struct s2n_quic::provider::tls::rustls::rustls::ConnectionCommon exports function:
   pub fn writer(&mut self) -> s2n_quic::provider::tls::rustls::rustls::Writer<'_>ⓘ
 
+struct s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload implements trait:
+  impl core::clone::Clone for s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload
+
+struct s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload implements trait:
+  impl core::cmp::PartialEq<s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload> for s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload
+
+struct s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload implements trait:
+  impl core::fmt::Debug for s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload
+
+struct s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload implements trait:
+  impl core::marker::Send for s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload
+
+struct s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload implements trait:
+  impl core::marker::Sync for s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload
+
+struct s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload implements trait:
+  impl core::marker::Unpin for s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload
+
+struct s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload implements trait:
+  impl std::panic::RefUnwindSafe for s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload
+
+struct s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload implements trait:
+  impl std::panic::UnwindSafe for s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload
+
+struct s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload exports function:
+  pub fn content_type(&self) -> s2n_quic::provider::tls::rustls::rustls::internal::msgs::enums::ContentType
+
 typedef s2n_quic::provider::tls::rustls::rustls::DistinguishedNames exports typedef:
   type DistinguishedNames = alloc::vec::Vec<s2n_quic::provider::tls::rustls::rustls::internal::msgs::base::PayloadU16, alloc::alloc::Global>;
 
@@ -8205,7 +8316,7 @@ enum s2n_quic::provider::tls::rustls::rustls::Error exports variant:
   CorruptMessage
 
 enum s2n_quic::provider::tls::rustls::rustls::Error exports variant:
-  CorruptMessagePayload(s2n_quic::provider::tls::rustls::rustls::internal::msgs::enums::ContentType)
+  CorruptMessagePayload(s2n_quic::provider::tls::rustls::rustls::CorruptMessagePayload)
 
 enum s2n_quic::provider::tls::rustls::rustls::Error exports variant:
   DecryptError
@@ -8699,6 +8810,9 @@ enum s2n_quic::provider::tls::rustls::rustls::ServerName is non-exhaustive
 
 enum s2n_quic::provider::tls::rustls::rustls::ServerName exports variant:
   DnsName(DnsName)
+
+enum s2n_quic::provider::tls::rustls::rustls::ServerName exports variant:
+  IpAddress(std::net::ip::IpAddr)
 
 enum s2n_quic::provider::tls::rustls::rustls::ServerName implements trait:
   impl core::clone::Clone for s2n_quic::provider::tls::rustls::rustls::ServerName
@@ -9501,6 +9615,9 @@ enum s2n_quic::provider::tls::rustls::rustls::client::ServerName is non-exhausti
 
 enum s2n_quic::provider::tls::rustls::rustls::client::ServerName exports variant:
   DnsName(DnsName)
+
+enum s2n_quic::provider::tls::rustls::rustls::client::ServerName exports variant:
+  IpAddress(std::net::ip::IpAddr)
 
 enum s2n_quic::provider::tls::rustls::rustls::client::ServerName implements trait:
   impl core::clone::Clone for s2n_quic::provider::tls::rustls::rustls::ServerName
@@ -14552,7 +14669,7 @@ enum s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::MessagePa
   ChangeCipherSpec(s2n_quic::provider::tls::rustls::rustls::internal::msgs::ccs::ChangeCipherSpecPayload)
 
 enum s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::MessagePayload exports variant:
-  Handshake(s2n_quic::provider::tls::rustls::rustls::internal::msgs::handshake::HandshakeMessagePayload)
+  Handshake
 
 enum s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::MessagePayload implements trait:
   impl core::fmt::Debug for s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::MessagePayload
@@ -14579,10 +14696,21 @@ enum s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::MessagePa
   pub fn encode(&self, bytes: &mut alloc::vec::Vec<u8, alloc::alloc::Global>)
 
 enum s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::MessagePayload exports function:
+  pub fn handshake(parsed: s2n_quic::provider::tls::rustls::rustls::internal::msgs::handshake::HandshakeMessagePayload) -> s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::MessagePayload
+
+enum s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::MessagePayload exports function:
   pub fn new(
   typ: s2n_quic::provider::tls::rustls::rustls::internal::msgs::enums::ContentType,
   vers: s2n_quic::provider::tls::rustls::rustls::ProtocolVersion,
   payload: s2n_quic::provider::tls::rustls::rustls::internal::msgs::base::Payload) -> core::result::Result<s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::MessagePayload, s2n_quic::provider::tls::rustls::rustls::Error>
+
+variant s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::MessagePayload::Handshake exports field:
+  encoded:
+  s2n_quic::provider::tls::rustls::rustls::internal::msgs::base::Payload
+
+variant s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::MessagePayload::Handshake exports field:
+  parsed:
+  s2n_quic::provider::tls::rustls::rustls::internal::msgs::handshake::HandshakeMessagePayload
 
 struct s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::OpaqueMessage implements trait:
   impl core::clone::Clone for s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::OpaqueMessage
@@ -15496,6 +15624,9 @@ struct s2n_quic::provider::tls::rustls::rustls::server::ClientHello implements t
 
 struct s2n_quic::provider::tls::rustls::rustls::server::ClientHello exports function:
   pub fn alpn(&self) -> core::option::Option<impl core::iter::traits::iterator::Iterator<Item = &'a [u8]>>
+
+struct s2n_quic::provider::tls::rustls::rustls::server::ClientHello exports function:
+  pub fn cipher_suites(&self) -> &[s2n_quic::provider::tls::rustls::rustls::CipherSuite]
 
 struct s2n_quic::provider::tls::rustls::rustls::server::ClientHello exports function:
   pub fn server_name(&self) -> core::option::Option<&str>
