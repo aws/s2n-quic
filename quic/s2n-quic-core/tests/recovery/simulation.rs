@@ -7,6 +7,7 @@ use plotters::prelude::*;
 use s2n_quic_core::{
     packet::number::PacketNumberSpace,
     path::MINIMUM_MTU,
+    random,
     recovery::{CongestionController, CubicCongestionController, RttEstimator},
     time::{Clock, NoopClock, Timestamp},
 };
@@ -215,15 +216,30 @@ fn minimum_window<CC: CongestionController>(
 ) -> Simulation {
     let time_zero = NoopClock.get_time();
     let rtt_estimator = RttEstimator::new(Duration::from_millis(0));
+    let random = &mut random::testing::Generator::default();
 
     let packet_info =
         congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize, &rtt_estimator);
     // Experience persistent congestion to drop to the minimum window
-    congestion_controller.on_packet_lost(MINIMUM_MTU as u32, packet_info, true, false, time_zero);
+    congestion_controller.on_packet_lost(
+        MINIMUM_MTU as u32,
+        packet_info,
+        true,
+        false,
+        random,
+        time_zero,
+    );
     let packet_info =
         congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize, &rtt_estimator);
     // Lose a packet to exit slow start
-    congestion_controller.on_packet_lost(MINIMUM_MTU as u32, packet_info, false, false, time_zero);
+    congestion_controller.on_packet_lost(
+        MINIMUM_MTU as u32,
+        packet_info,
+        false,
+        false,
+        random,
+        time_zero,
+    );
 
     Simulation {
         name: "Minimum Window",
@@ -262,6 +278,7 @@ fn simulate_constant_rtt<CC: CongestionController>(
 ) -> Vec<Round> {
     let time_zero = NoopClock.get_time();
     let mut rtt_estimator = RttEstimator::new(Duration::from_millis(0));
+    let random = &mut random::testing::Generator::default();
 
     // Update the rtt with 200 ms
     rtt_estimator.update_rtt(
@@ -297,6 +314,7 @@ fn simulate_constant_rtt<CC: CongestionController>(
                 packet_info,
                 false,
                 false,
+                random,
                 round_start,
             );
             drop_index += 1;
@@ -324,6 +342,7 @@ fn send_and_ack<CC: CongestionController>(
     timestamp: Timestamp,
     bytes: usize,
 ) {
+    let random = &mut random::testing::Generator::default();
     let mut remaining = bytes;
 
     let mut packet_info = None;
@@ -347,6 +366,7 @@ fn send_and_ack<CC: CongestionController>(
             bytes_sent,
             packet_info.unwrap(),
             rtt_estimator,
+            random,
             ack_receive_time,
         );
         remaining -= bytes_sent;

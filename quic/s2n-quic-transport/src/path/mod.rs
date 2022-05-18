@@ -1119,6 +1119,7 @@ mod tests {
             DEFAULT_MAX_MTU,
         );
         let now = NoopClock.get_time();
+        let random = &mut random::testing::Generator::default();
         path.on_validated();
 
         assert_eq!(
@@ -1140,7 +1141,7 @@ mod tests {
 
         // Lose a byte to enter recovery
         path.congestion_controller
-            .on_packet_lost(1, packet_info, false, false, now);
+            .on_packet_lost(1, packet_info, false, false, random, now);
         path.congestion_controller.requires_fast_retransmission = true;
 
         assert_eq!(
@@ -1154,6 +1155,7 @@ mod tests {
             packet_info,
             false,
             false,
+            random,
             now,
         );
         path.congestion_controller.requires_fast_retransmission = false;
