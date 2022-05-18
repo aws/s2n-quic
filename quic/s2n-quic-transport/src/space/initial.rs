@@ -314,6 +314,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         handshake_status: &HandshakeStatus,
         path_id: path::Id,
         path_manager: &mut path::Manager<Config>,
+        random_generator: &mut Config::RandomGenerator,
         timestamp: Timestamp,
         publisher: &mut Pub,
     ) {
@@ -321,7 +322,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
 
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, path_id, path_manager);
-        recovery_manager.on_timeout(timestamp, &mut context, publisher);
+        recovery_manager.on_timeout(timestamp, random_generator, &mut context, publisher);
     }
 
     /// Called before the Initial packet space is discarded
@@ -648,11 +649,12 @@ impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
         path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
         _local_id_registry: &mut connection::LocalIdRegistry,
+        random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, path_id, path_manager);
-        recovery_manager.on_ack_frame(timestamp, frame, &mut context, publisher)
+        recovery_manager.on_ack_frame(timestamp, frame, random_generator, &mut context, publisher)
     }
 
     fn handle_connection_close_frame(

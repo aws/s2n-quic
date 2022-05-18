@@ -3,6 +3,7 @@
 
 use crate::{
     counter::Counter,
+    random,
     recovery::{
         congestion_controller::{self, CongestionController},
         cubic::{FastRetransmission::*, State::*},
@@ -239,12 +240,13 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
-    fn on_ack(
+    fn on_ack<Rnd: random::Generator>(
         &mut self,
         newest_acked_time_sent: Timestamp,
         bytes_acknowledged: usize,
         _newest_acked_packet_info: Self::PacketInfo,
         rtt_estimator: &RttEstimator,
+        _random_generator: &mut Rnd,
         ack_receive_time: Timestamp,
     ) {
         self.bytes_in_flight
@@ -322,12 +324,13 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
-    fn on_packet_lost(
+    fn on_packet_lost<Rnd: random::Generator>(
         &mut self,
         lost_bytes: u32,
         _packet_info: Self::PacketInfo,
         persistent_congestion: bool,
         _new_loss_burst: bool,
+        _random_generator: &mut Rnd,
         timestamp: Timestamp,
     ) {
         debug_assert!(lost_bytes > 0);

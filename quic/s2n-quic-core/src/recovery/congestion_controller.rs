@@ -5,6 +5,7 @@ use crate::{
     event::{api::SocketAddress, IntoEvent},
     inet,
     path::MINIMUM_MTU,
+    random,
     recovery::RttEstimator,
     time::Timestamp,
 };
@@ -82,12 +83,13 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
     /// it is possible this method may be called multiple times for one acknowledgement. In either
     /// case, `newest_acked_time_sent` and `newest_acked_packet_info` represent the newest acknowledged
     /// packet contributing to `bytes_acknowledged`.
-    fn on_ack(
+    fn on_ack<Rnd: random::Generator>(
         &mut self,
         newest_acked_time_sent: Timestamp,
         bytes_acknowledged: usize,
         newest_acked_packet_info: Self::PacketInfo,
         rtt_estimator: &RttEstimator,
+        random_generator: &mut Rnd,
         ack_receive_time: Timestamp,
     );
 
@@ -96,12 +98,13 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
     /// `new_loss_burst` is true if the lost packet is the first in a
     /// contiguous series of lost packets. This can be used for measuring or
     /// filtering out noise from burst losses.
-    fn on_packet_lost(
+    fn on_packet_lost<Rnd: random::Generator>(
         &mut self,
         lost_bytes: u32,
         packet_info: Self::PacketInfo,
         persistent_congestion: bool,
         new_loss_burst: bool,
+        random_generator: &mut Rnd,
         timestamp: Timestamp,
     );
 
@@ -185,22 +188,24 @@ pub mod testing {
 
             fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RttEstimator) {}
 
-            fn on_ack(
+            fn on_ack<Rnd: random::Generator>(
                 &mut self,
                 _newest_acked_time_sent: Timestamp,
                 _sent_bytes: usize,
                 _newest_acked_packet_info: Self::PacketInfo,
                 _rtt_estimator: &RttEstimator,
+                _random_generator: &mut Rnd,
                 _ack_receive_time: Timestamp,
             ) {
             }
 
-            fn on_packet_lost(
+            fn on_packet_lost<Rnd: random::Generator>(
                 &mut self,
                 _lost_bytes: u32,
                 _packet_info: Self::PacketInfo,
                 _persistent_congestion: bool,
                 _new_loss_burst: bool,
+                _random_generator: &mut Rnd,
                 _timestamp: Timestamp,
             ) {
             }
@@ -300,23 +305,25 @@ pub mod testing {
                 self.on_rtt_update += 1
             }
 
-            fn on_ack(
+            fn on_ack<Rnd: random::Generator>(
                 &mut self,
                 _newest_acked_time_sent: Timestamp,
                 _sent_bytes: usize,
                 _newest_acked_packet_info: Self::PacketInfo,
                 _rtt_estimator: &RttEstimator,
+                _random_generator: &mut Rnd,
                 _ack_receive_time: Timestamp,
             ) {
                 self.on_packet_ack += 1;
             }
 
-            fn on_packet_lost(
+            fn on_packet_lost<Rnd: random::Generator>(
                 &mut self,
                 lost_bytes: u32,
                 _packet_info: Self::PacketInfo,
                 persistent_congestion: bool,
                 new_loss_burst: bool,
+                _random_generator: &mut Rnd,
                 _timestamp: Timestamp,
             ) {
                 self.bytes_in_flight = self.bytes_in_flight.saturating_sub(lost_bytes);

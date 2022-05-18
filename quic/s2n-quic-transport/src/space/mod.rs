@@ -243,6 +243,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         &mut self,
         local_id_registry: &mut connection::LocalIdRegistry,
         path_manager: &mut path::Manager<Config>,
+        random_generator: &mut Config::RandomGenerator,
         timestamp: Timestamp,
         publisher: &mut Pub,
     ) {
@@ -257,6 +258,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 handshake_status,
                 path_id,
                 path_manager,
+                random_generator,
                 timestamp,
                 publisher,
             )
@@ -266,6 +268,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 handshake_status,
                 path_id,
                 path_manager,
+                random_generator,
                 timestamp,
                 publisher,
             )
@@ -275,6 +278,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 path_manager,
                 handshake_status,
                 local_id_registry,
+                random_generator,
                 timestamp,
                 publisher,
             )
@@ -451,6 +455,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         path_id: path::Id,
         path_manager: &mut path::Manager<Config>,
         local_id_registry: &mut connection::LocalIdRegistry,
+        random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         debug_assert!(
@@ -470,6 +475,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 path_manager,
                 handshake_status,
                 local_id_registry,
+                random_generator,
                 publisher,
             )?;
         }
@@ -583,6 +589,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
+        random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error>;
 
@@ -783,6 +790,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                         path_manager,
                         handshake_status,
                         local_id_registry,
+                        random_generator,
                         publisher,
                     )
                     .map_err(on_error)?;

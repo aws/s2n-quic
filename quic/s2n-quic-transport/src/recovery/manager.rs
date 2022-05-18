@@ -148,12 +148,18 @@ impl<Config: endpoint::Config> Manager<Config> {
     pub fn on_timeout<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         timestamp: Timestamp,
+        random_generator: &mut Config::RandomGenerator,
         context: &mut Ctx,
         publisher: &mut Pub,
     ) {
         if self.loss_timer.is_armed() {
             if self.loss_timer.poll_expiration(timestamp).is_ready() {
-                self.detect_and_remove_lost_packets(timestamp, context, publisher);
+                self.detect_and_remove_lost_packets(
+                    timestamp,
+                    random_generator,
+                    context,
+                    publisher,
+                );
             }
         } else {
             let pto_expired = self
@@ -312,6 +318,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         &mut self,
         timestamp: Timestamp,
         pending_ack_ranges: &mut PendingAckRanges,
+        random_generator: &mut Config::RandomGenerator,
         context: &mut Ctx,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
@@ -329,6 +336,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             largest_acked_packet_number,
             pending_ack_ranges.ack_delay(),
             pending_ack_ranges.ecn_counts(),
+            random_generator,
             context,
             publisher,
         );
@@ -353,6 +361,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         &mut self,
         timestamp: Timestamp,
         frame: frame::Ack<A>,
+        random_generator: &mut Config::RandomGenerator,
         context: &mut Ctx,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
@@ -367,6 +376,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             largest_acked_packet_number,
             frame.ack_delay(),
             frame.ecn_counts,
+            random_generator,
             context,
             publisher,
         )?;
@@ -383,6 +393,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         largest_acked_packet_number: PacketNumber,
         ack_delay: Duration,
         ecn_counts: Option<EcnCounts>,
+        random_generator: &mut Config::RandomGenerator,
         context: &mut Ctx,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
@@ -430,6 +441,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 acked_new_largest_packet,
                 timestamp,
                 ecn_counts,
+                random_generator,
                 context,
                 publisher,
             );
@@ -560,6 +572,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         new_largest_packet: bool,
         timestamp: Timestamp,
         ecn_counts: Option<EcnCounts>,
+        random_generator: &mut Config::RandomGenerator,
         context: &mut Ctx,
         publisher: &mut Pub,
     ) {
@@ -567,7 +580,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         //# Once a later packet within the same packet number space has been
         //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
         //# was sent a threshold amount of time in the past.
-        self.detect_and_remove_lost_packets(timestamp, context, publisher);
+        self.detect_and_remove_lost_packets(timestamp, random_generator, context, publisher);
 
         let current_path_id = context.path_id();
         let is_handshake_confirmed = context.is_handshake_confirmed();
@@ -588,6 +601,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     sent_bytes,
                     acked_packet_info.cc_packet_info,
                     &path.rtt_estimator,
+                    random_generator,
                     timestamp,
                 );
             }
@@ -640,6 +654,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 current_path_acked_bytes,
                 largest_newly_acked.cc_packet_info,
                 &path.rtt_estimator,
+                random_generator,
                 timestamp,
             );
 
@@ -732,6 +747,7 @@ impl<Config: endpoint::Config> Manager<Config> {
     fn detect_and_remove_lost_packets<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         now: Timestamp,
+        random_generator: &mut Config::RandomGenerator,
         context: &mut Ctx,
         publisher: &mut Pub,
     ) {
@@ -746,6 +762,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             now,
             persistent_congestion_duration,
             sent_packets_to_remove,
+            random_generator,
             context,
             publisher,
         );
@@ -851,6 +868,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         now: Timestamp,
         persistent_congestion_duration: Duration,
         sent_packets_to_remove: Vec<PacketDetails<packet_info_type!()>>,
+        random_generator: &mut Config::RandomGenerator,
         context: &mut Ctx,
         publisher: &mut Pub,
     ) {
@@ -898,6 +916,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     sent_info.cc_packet_info,
                     persistent_congestion,
                     new_loss_burst,
+                    random_generator,
                     now,
                 );
                 is_mtu_probe = false;
