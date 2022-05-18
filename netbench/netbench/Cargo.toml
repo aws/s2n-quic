@@ -21,8 +21,8 @@ num-traits = "0.2"
 openssl = "0.10"
 probe = "0.3"
 rcgen = "0.9"
-s2n-quic-core = { version = "0.2", path = "../../quic/s2n-quic-core", features = ["testing"] }
-s2n-quic = { version = "1", path = "../../quic/s2n-quic", optional = true }
+s2n-quic-core = { path = "../../quic/s2n-quic-core", features = ["testing"] }
+s2n-quic = { path = "../../quic/s2n-quic", optional = true }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 sha2 = "0.10"
