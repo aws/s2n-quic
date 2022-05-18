@@ -54,6 +54,7 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
                     path_manager,
                     recovery_manager,
                     datagram_manager,
+                    prioritize_datagrams: false,
                 })
             }
             Mode::MtuProbing => transmission::application::Payload::MtuProbe(MtuProbe {
@@ -109,6 +110,7 @@ pub struct Normal<'a, S: Stream, Config: endpoint::Config> {
     path_manager: &'a mut path::Manager<Config>,
     recovery_manager: &'a mut recovery::Manager<Config>,
     datagram_manager: &'a mut datagram::Manager<Config>,
+    prioritize_datagrams: bool,
 }
 
 impl<'a, S: Stream, Config: endpoint::Config> Normal<'a, S, Config> {
@@ -123,22 +125,27 @@ impl<'a, S: Stream, Config: endpoint::Config> Normal<'a, S, Config> {
             // soon as possible
             self.handshake_status.on_transmit(context);
 
-            //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2
-            //# An endpoint MAY include other frames with the PATH_CHALLENGE and
-            //# PATH_RESPONSE frames used for path validation.
-            // prioritize PATH_CHALLENGE and PATH_RESPONSE frames higher than app data
-            self.path_manager.active_path_mut().on_transmit(context);
-
-            self.local_id_registry.on_transmit(context);
-
-            self.path_manager.on_transmit(context);
+            //= https://www.rfc-editor.org/rfc/rfc9221#section-5
+            //# DATAGRAM frames cannot be fragmented;
+            //
+            // We alternate between prioritizing filling the packet with datagrams
+            // and control frames. Datagrams cannot be fragmented across packets,
+            // so every other packet we give as much space as we can to send large datagrams.
+            if self.prioritize_datagrams {
+                self.datagram_manager
+                    .on_transmit(context, self.stream_manager);
+                self.transmit_control_data(context);
+                self.prioritize_datagrams = false;
+            } else {
+                self.transmit_control_data(context);
+                self.datagram_manager
+                    .on_transmit(context, self.stream_manager);
+                self.prioritize_datagrams = true;
+            }
 
             // The default sending behavior is to alternate between sending datagrams
             // and sending stream data. This can be configured by implementing a
             // custom datagram sender and choosing when to cede packet space for stream data.
-            self.datagram_manager
-                .on_transmit(context, self.stream_manager);
-
             let _ = self.stream_manager.on_transmit(context);
 
             // send PINGs last, since they might not actually be needed if there's an ack-eliciting
@@ -151,6 +158,19 @@ impl<'a, S: Stream, Config: endpoint::Config> Normal<'a, S, Config> {
             // inform the ack manager the packet is populated
             self.ack_manager.on_transmit_complete(context);
         }
+    }
+
+    // Sends control data frames
+    fn transmit_control_data<W: WriteContext>(&mut self, context: &mut W) {
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2
+        //# An endpoint MAY include other frames with the PATH_CHALLENGE and
+        //# PATH_RESPONSE frames used for path validation.
+        // prioritize PATH_CHALLENGE and PATH_RESPONSE frames higher than app data
+        self.path_manager.active_path_mut().on_transmit(context);
+
+        self.local_id_registry.on_transmit(context);
+
+        self.path_manager.on_transmit(context);
     }
 }
 
