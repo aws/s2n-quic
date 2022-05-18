@@ -115,32 +115,31 @@ pub struct Normal<'a, S: Stream, Config: endpoint::Config> {
 
 impl<'a, S: Stream, Config: endpoint::Config> Normal<'a, S, Config> {
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        let can_transmit = context.transmission_constraint().can_transmit()
+            || context.transmission_constraint().can_retransmit();
+
+        //= https://www.rfc-editor.org/rfc/rfc9221#section-5
+        //# DATAGRAM frames cannot be fragmented;
+        //
+        // We alternate between prioritizing filling the packet with datagrams
+        // and filling the packet with other frames. This is because datagrams
+        // cannot be fragmented across packets and we want to do the most to send
+        // large datagrams.
+        if self.prioritize_datagrams && can_transmit {
+            self.datagram_manager
+                .on_transmit(context, self.stream_manager);
+        }
         let did_send_ack = self.ack_manager.on_transmit(context);
 
         // Payloads can only transmit and retransmit
-        if context.transmission_constraint().can_transmit()
-            || context.transmission_constraint().can_retransmit()
-        {
-            // send HANDSHAKE_DONE frames first, if needed, to ensure the handshake is confirmed as
-            // soon as possible
-            self.handshake_status.on_transmit(context);
+        if can_transmit {
+            self.transmit_control_data(context);
 
-            //= https://www.rfc-editor.org/rfc/rfc9221#section-5
-            //# DATAGRAM frames cannot be fragmented;
-            //
-            // We alternate between prioritizing filling the packet with datagrams
-            // and control frames. Datagrams cannot be fragmented across packets,
-            // so every other packet we give as much space as we can to send large datagrams.
-            if self.prioritize_datagrams {
+            // If we did not prioritize datagrams in this packet, we send them just
+            // before we send stream data.
+            if !self.prioritize_datagrams {
                 self.datagram_manager
                     .on_transmit(context, self.stream_manager);
-                self.transmit_control_data(context);
-                self.prioritize_datagrams = false;
-            } else {
-                self.transmit_control_data(context);
-                self.datagram_manager
-                    .on_transmit(context, self.stream_manager);
-                self.prioritize_datagrams = true;
             }
 
             // The default sending behavior is to alternate between sending datagrams
@@ -158,10 +157,17 @@ impl<'a, S: Stream, Config: endpoint::Config> Normal<'a, S, Config> {
             // inform the ack manager the packet is populated
             self.ack_manager.on_transmit_complete(context);
         }
+
+        // Alternate between prioritizing datagrams or not each packet
+        self.prioritize_datagrams = !self.prioritize_datagrams;
     }
 
     // Sends control data frames
     fn transmit_control_data<W: WriteContext>(&mut self, context: &mut W) {
+        // send HANDSHAKE_DONE frames first, if needed, to ensure the handshake is confirmed as
+        // soon as possible
+        self.handshake_status.on_transmit(context);
+
         //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2
         //# An endpoint MAY include other frames with the PATH_CHALLENGE and
         //# PATH_RESPONSE frames used for path validation.
