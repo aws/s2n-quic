@@ -11,7 +11,7 @@ use s2n_tls::raw::{
 use s2n_tls_tokio::{TlsConnector, TlsStream};
 use std::{collections::HashSet, future::Future, net::SocketAddr, pin::Pin, sync::Arc};
 use structopt::StructOpt;
-use tokio::{io::AsyncWriteExt, net::TcpStream};
+use tokio::net::TcpStream;
 
 #[global_allocator]
 static ALLOCATOR: Allocator = Allocator::new();
@@ -44,7 +44,7 @@ impl Client {
 
     fn client(&self) -> Result<ClientImpl> {
         let connector = TlsConnector::new(self.config()?.build()?);
-        let connector: s2n_tls_tokio::TlsConnector = connector.into();
+        let connector: s2n_tls_tokio::TlsConnector<Config> = connector.into();
         let connector = Arc::new(connector);
 
         let config = multiplex::Config::default();
@@ -74,7 +74,7 @@ type Connection<'a> = netbench::Driver<'a, multiplex::Connection<TlsStream<TcpSt
 #[derive(Clone)]
 struct ClientImpl {
     config: multiplex::Config,
-    connector: Arc<s2n_tls_tokio::TlsConnector>,
+    connector: Arc<s2n_tls_tokio::TlsConnector<Config>>,
     id: u64,
 }
 
@@ -94,7 +94,7 @@ impl<'a> netbench::client::Client<'a> for ClientImpl {
         &mut self,
         addr: SocketAddr,
         server_name: &str,
-        server_conn_id: u64,
+        _server_conn_id: u64,
         scenario: &'a Arc<scenario::Connection>,
     ) -> Self::Connect {
         let id = self.id();
@@ -104,10 +104,7 @@ impl<'a> netbench::client::Client<'a> for ClientImpl {
 
         let fut = async move {
             let conn = TcpStream::connect(addr).await?;
-            let mut conn = connector.connect(&server_name, conn).await?;
-
-            conn.write_u64(server_conn_id).await?;
-
+            let conn = connector.connect(&server_name, conn).await?;
             let conn = Box::pin(conn);
             let conn = multiplex::Connection::new(id, conn, config);
             let conn: Connection = netbench::Driver::new(scenario, conn);

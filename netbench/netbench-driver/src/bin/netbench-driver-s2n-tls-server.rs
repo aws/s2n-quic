@@ -12,7 +12,6 @@ use s2n_tls_tokio::TlsAcceptor;
 use std::{collections::HashSet, sync::Arc};
 use structopt::StructOpt;
 use tokio::{
-    io::AsyncReadExt,
     net::{TcpListener, TcpStream},
     spawn,
 };
@@ -39,7 +38,7 @@ impl Server {
 
         let trace = self.opts.trace();
         let acceptor = TlsAcceptor::new(self.config()?.build()?);
-        let acceptor: s2n_tls_tokio::TlsAcceptor = acceptor.into();
+        let acceptor: s2n_tls_tokio::TlsAcceptor<Config> = acceptor.into();
         let acceptor = Arc::new(acceptor);
 
         let config = netbench::multiplex::Config::default();
@@ -63,19 +62,18 @@ impl Server {
         }
 
         async fn handle_connection(
-            acceptor: Arc<s2n_tls_tokio::TlsAcceptor>,
+            acceptor: Arc<s2n_tls_tokio::TlsAcceptor<Config>>,
             connection: TcpStream,
             conn_id: u64,
             scenario: Arc<scenario::Server>,
             mut trace: impl netbench::Trace,
             config: multiplex::Config,
         ) -> Result<()> {
-            let mut connection = acceptor.accept(connection).await?;
-            let server_idx = connection.read_u64().await?;
-            let scenario = scenario
-                .connections
-                .get(server_idx as usize)
-                .ok_or("invalid connection id")?;
+            let connection = acceptor.accept(connection).await?;
+            let server_name =
+                connection.get_ref().server_name().ok_or("missing server name")?;
+            let scenario = scenario.on_server_name(&server_name)?;
+
             let connection = Box::pin(connection);
 
             let conn = netbench::Driver::new(
