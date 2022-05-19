@@ -106,7 +106,7 @@ pub(crate) struct State {
     /// True if the rate samples reflect bandwidth probing
     bw_probe_samples: bool,
     /// Time of this cycle phase start
-    cycle_stamp: Option<Timestamp>,
+    cycle_start_timestamp: Option<Timestamp>,
 }
 
 impl State {
@@ -122,7 +122,7 @@ impl State {
             bw_probe_up_acks: 0,
             bw_probe_up_rounds: 0,
             bw_probe_samples: false,
-            cycle_stamp: None,
+            cycle_start_timestamp: None,
         }
     }
 
@@ -192,7 +192,7 @@ impl State {
 
     /// True if the given `interval` duration has elapsed since the current cycle phase began
     fn has_elapsed_in_phase(&self, interval: Duration, now: Timestamp) -> bool {
-        self.cycle_stamp
+        self.cycle_start_timestamp
             .map_or(false, |cycle_stamp| now > cycle_stamp + interval)
     }
 
@@ -232,7 +232,7 @@ impl State {
         self.bw_probe_samples = true;
         self.ack_phase = AckPhase::ProbeStarting;
         round_counter.set_round_end(delivered_bytes);
-        self.cycle_stamp = Some(now);
+        self.cycle_start_timestamp = Some(now);
         self.cycle_phase = CyclePhase::Up;
         self.raise_inflight_hi_slope(cwnd, max_data_size);
     }
@@ -270,7 +270,7 @@ impl State {
         congestion_state.reset();
         self.bw_probe_up_cnt = u32::MAX;
         self.pick_probe_wait(random_generator);
-        self.cycle_stamp = Some(now);
+        self.cycle_start_timestamp = Some(now);
         self.ack_phase = AckPhase::ProbeStopping;
         round_counter.set_round_end(delivered_bytes);
         self.cycle_phase = CyclePhase::Down;
@@ -542,7 +542,7 @@ mod tests {
         assert_eq!(0, state.bw_probe_up_acks);
         assert_eq!(0, state.bw_probe_up_rounds);
         assert!(!state.bw_probe_samples);
-        assert_eq!(None, state.cycle_stamp);
+        assert_eq!(None, state.cycle_start_timestamp);
     }
 
     #[test]
@@ -553,7 +553,7 @@ mod tests {
         // cycle_stamp hasn't been set yet
         assert!(!state.check_time_to_probe_bw(12000, 1200, now));
 
-        state.cycle_stamp = Some(now);
+        state.cycle_start_timestamp = Some(now);
         let bw_probe_wait = Duration::from_millis(500);
         state.bw_probe_wait = bw_probe_wait;
         // not ready to probe yet
@@ -658,7 +658,7 @@ mod tests {
         assert_eq!(CyclePhase::Up, state.cycle_phase());
         assert!(state.bw_probe_samples);
         assert_eq!(AckPhase::ProbeStarting, state.ack_phase);
-        assert_eq!(Some(now), state.cycle_stamp);
+        assert_eq!(Some(now), state.cycle_start_timestamp);
 
         // raise_inflight_hi_slope is called
         assert_eq!(1, state.bw_probe_up_rounds);
@@ -728,7 +728,7 @@ mod tests {
             state.bw_probe_wait >= Duration::from_secs(2)
                 && state.bw_probe_wait <= Duration::from_secs(3)
         );
-        assert_eq!(Some(now), state.cycle_stamp);
+        assert_eq!(Some(now), state.cycle_start_timestamp);
         assert_eq!(AckPhase::ProbeStopping, state.ack_phase);
 
         // verify congestion state is reset
