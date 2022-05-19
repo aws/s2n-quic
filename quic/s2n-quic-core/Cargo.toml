@@ -73,3 +73,4 @@ harness = false
 [[test]]
 name = "recovery-simulation"
 path = "tests/recovery/simulation.rs"
+required-features = ["testing"]

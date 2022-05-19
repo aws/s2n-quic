@@ -327,6 +327,7 @@ fn congestion_avoidance_after_idle_period() {
     let mut cc = CubicCongestionController::new(1000);
     let now = NoopClock.get_time();
     let rtt_estimator = &RttEstimator::new(Duration::from_secs(0));
+    let random = &mut random::testing::Generator::default();
 
     cc.congestion_window = 6000.0;
     cc.bytes_in_flight = BytesInFlight::new(0);
@@ -348,7 +349,14 @@ fn congestion_avoidance_after_idle_period() {
     assert_eq!(cc.bytes_in_flight, 2000);
 
     // t16: Ack a packet in Congestion Avoidance
-    cc.on_ack(now, 1000, (), rtt_estimator, now + Duration::from_secs(16));
+    cc.on_ack(
+        now,
+        1000,
+        (),
+        rtt_estimator,
+        random,
+        now + Duration::from_secs(16),
+    );
     // Verify the app limited time is set
     assert_eq!(
         cc.state,
@@ -369,7 +377,14 @@ fn congestion_avoidance_after_idle_period() {
     assert!(!cc.is_congestion_window_under_utilized());
 
     // t25: Ack a packet in Congestion Avoidance
-    cc.on_ack(now, 1000, (), rtt_estimator, now + Duration::from_secs(25));
+    cc.on_ack(
+        now,
+        1000,
+        (),
+        rtt_estimator,
+        random,
+        now + Duration::from_secs(25),
+    );
 
     // Verify congestion avoidance start time was moved from t10 to t16 to account
     // for the 6 seconds of under utilized time and the app_limited_time was reset
@@ -395,11 +410,12 @@ fn congestion_avoidance_after_fast_convergence() {
     let max_datagram_size = 1200;
     let mut cc = CubicCongestionController::new(max_datagram_size);
     let now = NoopClock.get_time();
+    let random = &mut random::testing::Generator::default();
     cc.bytes_in_flight = BytesInFlight::new(100);
     cc.congestion_window = 80_000.0;
     cc.cubic.w_last_max = bytes_to_packets(100_000.0, max_datagram_size);
 
-    cc.on_packet_lost(100, (), false, false, now);
+    cc.on_packet_lost(100, (), false, false, random, now);
     assert_delta!(cc.congestion_window, 80_000.0 * BETA_CUBIC, 0.001);
 
     // Window max was less than the last max, so fast convergence applies
@@ -466,11 +482,12 @@ fn congestion_avoidance_with_small_min_rtt() {
 fn on_packet_lost() {
     let mut cc = CubicCongestionController::new(1000);
     let now = NoopClock.get_time();
+    let random = &mut random::testing::Generator::default();
     cc.congestion_window = 100_000.0;
     cc.bytes_in_flight = BytesInFlight::new(100_000);
     cc.state = SlowStart;
 
-    cc.on_packet_lost(100, (), false, false, now + Duration::from_secs(10));
+    cc.on_packet_lost(100, (), false, false, random, now + Duration::from_secs(10));
 
     assert_eq!(cc.bytes_in_flight, 100_000u32 - 100);
     //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.1
@@ -496,11 +513,12 @@ fn on_packet_lost() {
 fn on_packet_lost_below_minimum_window() {
     let mut cc = CubicCongestionController::new(1000);
     let now = NoopClock.get_time();
+    let random = &mut random::testing::Generator::default();
     cc.congestion_window = cc.cubic.minimum_window();
     cc.bytes_in_flight = BytesInFlight::new(cc.congestion_window());
     cc.state = State::congestion_avoidance(now);
 
-    cc.on_packet_lost(100, (), false, false, now + Duration::from_secs(10));
+    cc.on_packet_lost(100, (), false, false, random, now + Duration::from_secs(10));
 
     assert_delta!(cc.congestion_window, cc.cubic.minimum_window(), 0.001);
 }
@@ -509,14 +527,15 @@ fn on_packet_lost_below_minimum_window() {
 fn on_packet_lost_already_in_recovery() {
     let mut cc = CubicCongestionController::new(1000);
     let now = NoopClock.get_time();
+    let random = &mut random::testing::Generator::default();
     cc.congestion_window = 10000.0;
     cc.bytes_in_flight = BytesInFlight::new(1000);
     cc.state = Recovery(now, Idle);
 
     // break up on_packet_loss into two call to confirm double call
     // behavior is valid (50 + 50 = 100 lost bytes)
-    cc.on_packet_lost(50, (), false, false, now);
-    cc.on_packet_lost(50, (), false, false, now);
+    cc.on_packet_lost(50, (), false, false, random, now);
+    cc.on_packet_lost(50, (), false, false, random, now);
 
     // No change to the congestion window
     assert_delta!(cc.congestion_window, 10000.0, 0.001);
@@ -532,11 +551,12 @@ fn on_packet_lost_already_in_recovery() {
 fn on_packet_lost_persistent_congestion() {
     let mut cc = CubicCongestionController::new(1000);
     let now = NoopClock.get_time();
+    let random = &mut random::testing::Generator::default();
     cc.congestion_window = 10000.0;
     cc.bytes_in_flight = BytesInFlight::new(1000);
     cc.state = Recovery(now, Idle);
 
-    cc.on_packet_lost(100, (), true, false, now);
+    cc.on_packet_lost(100, (), true, false, random, now);
 
     assert_eq!(cc.state, SlowStart);
     assert_delta!(cc.congestion_window, cc.cubic.minimum_window(), 0.001);
@@ -629,18 +649,33 @@ fn on_packet_discarded() {
 fn on_packet_ack_limited() {
     let mut cc = CubicCongestionController::new(5000);
     let now = NoopClock.get_time();
+    let random = &mut random::testing::Generator::default();
     cc.congestion_window = 100_000.0;
     cc.bytes_in_flight = BytesInFlight::new(10000);
     cc.under_utilized = true;
     cc.state = SlowStart;
 
-    cc.on_ack(now, 1, (), &RttEstimator::new(Duration::from_secs(0)), now);
+    cc.on_ack(
+        now,
+        1,
+        (),
+        &RttEstimator::new(Duration::from_secs(0)),
+        random,
+        now,
+    );
 
     assert_delta!(cc.congestion_window, 100_000.0, 0.001);
 
     cc.state = State::congestion_avoidance(now);
 
-    cc.on_ack(now, 1, (), &RttEstimator::new(Duration::from_secs(0)), now);
+    cc.on_ack(
+        now,
+        1,
+        (),
+        &RttEstimator::new(Duration::from_secs(0)),
+        random,
+        now,
+    );
 
     assert_delta!(cc.congestion_window, 100_000.0, 0.001);
 }
@@ -651,12 +686,13 @@ fn on_packet_ack_timestamp_regression() {
     let mut cc = CubicCongestionController::new(5000);
     let now = NoopClock.get_time() + Duration::from_secs(1);
     let rtt_estimator = RttEstimator::new(Duration::from_secs(0));
+    let random = &mut random::testing::Generator::default();
     cc.congestion_window = 100_000.0;
     cc.bytes_in_flight = BytesInFlight::new(10000);
     cc.under_utilized = true;
     cc.state = State::congestion_avoidance(now);
 
-    cc.on_ack(now, 1, (), &rtt_estimator, now);
+    cc.on_ack(now, 1, (), &rtt_estimator, random, now);
 
     assert_eq!(
         State::CongestionAvoidance(CongestionAvoidanceTiming {
@@ -667,7 +703,14 @@ fn on_packet_ack_timestamp_regression() {
         cc.state
     );
 
-    cc.on_ack(now, 1, (), &rtt_estimator, now - Duration::from_secs(1));
+    cc.on_ack(
+        now,
+        1,
+        (),
+        &rtt_estimator,
+        random,
+        now - Duration::from_secs(1),
+    );
 }
 
 #[test]
@@ -675,6 +718,7 @@ fn on_packet_ack_utilized_then_under_utilized() {
     let mut cc = CubicCongestionController::new(5000);
     let now = NoopClock.get_time();
     let mut rtt_estimator = RttEstimator::new(Duration::from_secs(0));
+    let random = &mut random::testing::Generator::default();
     rtt_estimator.update_rtt(
         Duration::from_secs(0),
         Duration::from_millis(200),
@@ -686,7 +730,7 @@ fn on_packet_ack_utilized_then_under_utilized() {
     cc.state = SlowStart;
 
     cc.on_packet_sent(now, 60_000, &rtt_estimator);
-    cc.on_ack(now, 50_000, (), &rtt_estimator, now);
+    cc.on_ack(now, 50_000, (), &rtt_estimator, random, now);
     let cwnd = cc.congestion_window();
 
     assert!(!cc.under_utilized);
@@ -699,6 +743,7 @@ fn on_packet_ack_utilized_then_under_utilized() {
         1200,
         (),
         &rtt_estimator,
+        random,
         now + Duration::from_millis(100),
     );
     assert!(cc.congestion_window() > cwnd);
@@ -714,6 +759,7 @@ fn on_packet_ack_utilized_then_under_utilized() {
         1200,
         (),
         &rtt_estimator,
+        random,
         now + Duration::from_millis(201),
     );
     assert_eq!(cc.congestion_window(), cwnd);
@@ -725,6 +771,7 @@ fn on_packet_ack_utilized_then_under_utilized() {
 fn on_packet_ack_recovery_to_congestion_avoidance() {
     let mut cc = CubicCongestionController::new(5000);
     let now = NoopClock.get_time();
+    let random = &mut random::testing::Generator::default();
 
     cc.cubic.w_max = bytes_to_packets(25000.0, 5000);
     cc.state = Recovery(now, Idle);
@@ -736,6 +783,7 @@ fn on_packet_ack_recovery_to_congestion_avoidance() {
         1,
         (),
         &RttEstimator::new(Duration::from_secs(0)),
+        random,
         now + Duration::from_millis(2),
     );
 
@@ -751,6 +799,7 @@ fn on_packet_ack_recovery_to_congestion_avoidance() {
 fn on_packet_ack_slow_start_to_congestion_avoidance() {
     let mut cc = CubicCongestionController::new(5000);
     let now = NoopClock.get_time();
+    let random = &mut random::testing::Generator::default();
 
     cc.state = SlowStart;
     cc.congestion_window = 10000.0;
@@ -763,6 +812,7 @@ fn on_packet_ack_slow_start_to_congestion_avoidance() {
         100,
         (),
         &RttEstimator::new(Duration::from_secs(0)),
+        random,
         now + Duration::from_millis(2),
     );
 
@@ -783,6 +833,7 @@ fn on_packet_ack_slow_start_to_congestion_avoidance() {
 fn on_packet_ack_recovery() {
     let mut cc = CubicCongestionController::new(5000);
     let now = NoopClock.get_time();
+    let random = &mut random::testing::Generator::default();
 
     cc.state = Recovery(now, Idle);
     cc.congestion_window = 10000.0;
@@ -793,6 +844,7 @@ fn on_packet_ack_recovery() {
         100,
         (),
         &RttEstimator::new(Duration::from_secs(0)),
+        random,
         now + Duration::from_millis(2),
     );
 
@@ -807,6 +859,7 @@ fn on_packet_ack_congestion_avoidance() {
     let mut cc = CubicCongestionController::new(max_datagram_size);
     let mut cc2 = CubicCongestionController::new(max_datagram_size);
     let now = NoopClock.get_time();
+    let random = &mut random::testing::Generator::default();
 
     cc.state = State::congestion_avoidance(now + Duration::from_millis(3300));
     cc.congestion_window = 10000.0;
@@ -832,6 +885,7 @@ fn on_packet_ack_congestion_avoidance() {
         1000,
         (),
         &rtt_estimator,
+        random,
         now + Duration::from_millis(4750),
     );
 

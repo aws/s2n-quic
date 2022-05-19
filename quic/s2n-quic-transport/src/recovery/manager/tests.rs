@@ -1331,6 +1331,7 @@ fn detect_and_remove_lost_packets() {
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
     let mut publisher = Publisher::snapshot();
+    let random = &mut random::testing::Generator::default();
 
     manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
 
@@ -1414,7 +1415,7 @@ fn detect_and_remove_lost_packets() {
     assert_eq!(bytes_in_flight, 4);
 
     let now = time_sent;
-    manager.detect_and_remove_lost_packets(now, &mut context, &mut publisher);
+    manager.detect_and_remove_lost_packets(now, random, &mut context, &mut publisher);
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
     //= type=test
@@ -1605,6 +1606,7 @@ fn remove_lost_packets_persistent_congestion_path_aware() {
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
     let mut now = s2n_quic_platform::time::now();
+    let random = &mut random::testing::Generator::default();
 
     assert_eq!(
         context
@@ -1687,6 +1689,7 @@ fn remove_lost_packets_persistent_congestion_path_aware() {
         now,
         Duration::from_secs(20),
         sent_packets_to_remove,
+        random,
         &mut context,
         &mut publisher,
     );
@@ -1727,6 +1730,7 @@ fn detect_and_remove_lost_packets_nothing_lost() {
     let mut context = MockContext::new(&mut path_manager);
     manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
     let mut publisher = Publisher::snapshot();
+    let random = &mut random::testing::Generator::default();
 
     let time_sent = s2n_quic_platform::time::now();
     let outcome = transmission::Outcome {
@@ -1747,7 +1751,7 @@ fn detect_and_remove_lost_packets_nothing_lost() {
         &mut publisher,
     );
 
-    manager.detect_and_remove_lost_packets(time_sent, &mut context, &mut publisher);
+    manager.detect_and_remove_lost_packets(time_sent, random, &mut context, &mut publisher);
 
     // Verify no lost bytes are sent to the congestion controller and
     // on_packets_lost is not called
@@ -1777,6 +1781,7 @@ fn detect_and_remove_lost_packets_mtu_probe() {
     let mut context = MockContext::new(&mut path_manager);
     manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
     let mut publisher = Publisher::snapshot();
+    let random = &mut random::testing::Generator::default();
 
     let time_sent = s2n_quic_platform::time::now();
     let outcome = transmission::Outcome {
@@ -1801,7 +1806,7 @@ fn detect_and_remove_lost_packets_mtu_probe() {
         MINIMUM_MTU as u32 + 1
     );
 
-    manager.detect_and_remove_lost_packets(time_sent, &mut context, &mut publisher);
+    manager.detect_and_remove_lost_packets(time_sent, random, &mut context, &mut publisher);
 
     // Verify no lost bytes are sent to the congestion controller and
     // on_packets_lost is not called, but bytes_in_flight is reduced
@@ -2455,12 +2460,13 @@ fn on_timeout() {
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
     let mut publisher = Publisher::snapshot();
+    let random = &mut random::testing::Generator::default();
 
     let mut expected_pto_backoff = context.path().pto_backoff;
 
     // Loss timer is armed but not expired yet, nothing happens
     manager.loss_timer.set(now + Duration::from_secs(10));
-    manager.on_timeout(now, &mut context, &mut publisher);
+    manager.on_timeout(now, random, &mut context, &mut publisher);
     assert_eq!(context.on_packet_loss_count, 0);
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
     //= type=test
@@ -2486,7 +2492,7 @@ fn on_timeout() {
 
     // Loss timer is armed and expired, on_packet_loss is called
     manager.loss_timer.set(now - Duration::from_secs(1));
-    manager.on_timeout(now, &mut context, &mut publisher);
+    manager.on_timeout(now, random, &mut context, &mut publisher);
     assert_eq!(context.on_packet_loss_count, 1);
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
     //= type=test
@@ -2497,19 +2503,19 @@ fn on_timeout() {
 
     // Loss timer is not armed, pto timer is not armed
     manager.loss_timer.cancel();
-    manager.on_timeout(now, &mut context, &mut publisher);
+    manager.on_timeout(now, random, &mut context, &mut publisher);
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
     // Loss timer is not armed, pto timer is armed but not expired
     manager.loss_timer.cancel();
     manager.pto.timer.set(now + Duration::from_secs(5));
-    manager.on_timeout(now, &mut context, &mut publisher);
+    manager.on_timeout(now, random, &mut context, &mut publisher);
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
     // Loss timer is not armed, pto timer is expired without bytes in flight
     expected_pto_backoff *= 2;
     manager.pto.timer.set(now - Duration::from_secs(5));
-    manager.on_timeout(now, &mut context, &mut publisher);
+    manager.on_timeout(now, random, &mut context, &mut publisher);
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
     assert_eq!(manager.pto.state, RequiresTransmission(1));
 
@@ -2533,7 +2539,7 @@ fn on_timeout() {
         ),
     );
     manager.pto.timer.set(now - Duration::from_secs(5));
-    manager.on_timeout(now, &mut context, &mut publisher);
+    manager.on_timeout(now, random, &mut context, &mut publisher);
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
@@ -2688,6 +2694,7 @@ fn helper_ack_packets_on_path(
         .path(&remote_address)
         .expect("missing path");
     context.path_id = id;
+    let random = &mut random::testing::Generator::default();
 
     let acked_packets = PacketNumberRange::new(
         manager
@@ -2718,7 +2725,7 @@ fn helper_ack_packets_on_path(
         ecn_counts,
     };
 
-    let _ = manager.on_ack_frame(datagram.timestamp, frame, context, publisher);
+    let _ = manager.on_ack_frame(datagram.timestamp, frame, random, context, publisher);
 
     for packet in acked_packets {
         assert!(manager.sent_packets.get(packet).is_none());
@@ -2870,6 +2877,7 @@ fn packet_declared_lost_less_than_1_ms_from_loss_threshold() {
         bytes_sent: 100,
         bytes_progressed: 0,
     };
+    let random = &mut random::testing::Generator::default();
     manager.on_packet_sent(
         space.new_packet_number(VarInt::from_u8(1)),
         outcome,
@@ -2884,6 +2892,7 @@ fn packet_declared_lost_less_than_1_ms_from_loss_threshold() {
 
     manager.detect_and_remove_lost_packets(
         sent_time + loss_time_threshold - Duration::from_micros(999),
+        random,
         &mut context,
         &mut publisher,
     );

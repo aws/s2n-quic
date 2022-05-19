@@ -102,6 +102,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     /// Process pendings ACKs for the `Connection`.
     fn on_pending_ack_ranges(
         &mut self,
+        random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         timestamp: Timestamp,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), connection::Error>;
