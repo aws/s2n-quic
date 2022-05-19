@@ -8,7 +8,6 @@ use crate::{
         bandwidth, bandwidth::Bandwidth, bbr::probe_bw::CyclePhase, CongestionController,
         RttEstimator,
     },
-    recovery::{bandwidth, CongestionController, RttEstimator},
     time::Timestamp,
 };
 use core::{
@@ -129,7 +128,7 @@ impl CongestionController for BbrCongestionController {
         bytes_acknowledged: usize,
         newest_acked_packet_info: Self::PacketInfo,
         _rtt_estimator: &RttEstimator,
-        _random_generator: &mut Rnd,
+        random_generator: &mut Rnd,
         ack_receive_time: Timestamp,
     ) {
         self.bw_estimator.on_ack(
@@ -168,10 +167,11 @@ impl CongestionController for BbrCongestionController {
             self.adapt_upper_bounds(
                 self.bw_estimator.rate_sample(),
                 bytes_acknowledged,
+                random_generator,
                 ack_receive_time,
             );
             // TODO: if self.state == State::Probe_BW
-            self.update_probe_bw_cycle_phase(ack_receive_time);
+            self.update_probe_bw_cycle_phase(random_generator, ack_receive_time);
         }
         self.congestion_state
             .advance(self.bw_estimator.rate_sample());

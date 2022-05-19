@@ -3,6 +3,7 @@
 
 use crate::{
     counter::{Counter, Saturating},
+    random,
     recovery::{
         bandwidth::RateSample,
         bbr,
@@ -258,28 +259,42 @@ impl State {
     }
 
     /// Start the `Down` cycle phase
-    fn start_down(
+    fn start_down<Rnd: random::Generator>(
         &mut self,
         congestion_state: &mut congestion::State,
         round_counter: &mut round::Counter,
         delivered_bytes: u64,
+        random_generator: &mut Rnd,
         now: Timestamp,
     ) {
         congestion_state.reset();
         self.bw_probe_up_cnt = u32::MAX;
-        self.rounds_since_bw_probe = Counter::default(); // TODO: BBRPickProbeWait
-        self.bw_probe_wait = Duration::from_secs(2); // TODO: BBRPickProbeWait
+        self.pick_probe_wait(random_generator);
         self.cycle_stamp = Some(now);
         self.ack_phase = AckPhase::ProbeStopping;
         round_counter.set_round_end(delivered_bytes);
         self.cycle_phase = CyclePhase::Down;
+    }
+
+    fn pick_probe_wait<Rnd: random::Generator>(&mut self, _random_generator: &mut Rnd) {
+        // TODO:
+        //     /* Decide random round-trip bound for wait: */
+        //     BBR.rounds_since_bw_probe = random_int_between(0, 1); /* 0 or 1 */
+        //     /* Decide the random wall clock bound for wait: */
+        //     BBR.bw_probe_wait = 2sec + random_float_between(0.0, 1.0) /* 0..1 sec */
+        self.rounds_since_bw_probe = Counter::default();
+        self.bw_probe_wait = Duration::from_secs(2);
     }
 }
 
 /// Methods related to the ProbeBW state
 impl BbrCongestionController {
     /// Transition the current Probe BW cycle phase if necessary
-    pub fn update_probe_bw_cycle_phase(&mut self, now: Timestamp) {
+    pub fn update_probe_bw_cycle_phase<Rnd: random::Generator>(
+        &mut self,
+        random_generator: &mut Rnd,
+        now: Timestamp,
+    ) {
         debug_assert!(
             self.full_pipe_estimator.filled_pipe(),
             "only handling steady-state behavior here"
@@ -337,6 +352,7 @@ impl BbrCongestionController {
                         &mut self.congestion_state,
                         &mut self.round_counter,
                         self.bw_estimator.delivered_bytes(),
+                        random_generator,
                         now,
                     );
                 }
@@ -345,10 +361,11 @@ impl BbrCongestionController {
     }
 
     /// Adapt the upper bounds lower or higher depending on the loss rate
-    pub fn adapt_upper_bounds(
+    pub fn adapt_upper_bounds<Rnd: random::Generator>(
         &mut self,
         rate_sample: RateSample,
         bytes_acknowledged: usize,
+        random_generator: &mut Rnd,
         now: Timestamp,
     ) {
         debug_assert!(
@@ -368,6 +385,7 @@ impl BbrCongestionController {
                     rate_sample.is_app_limited,
                     rate_sample.bytes_in_flight,
                     self.target_inflight(),
+                    random_generator,
                     now,
                 );
             }
@@ -429,11 +447,12 @@ impl BbrCongestionController {
     }
 
     /// Called when loss indicates the current inflight amount is too high
-    pub fn on_inflight_too_high(
+    pub fn on_inflight_too_high<Rnd: random::Generator>(
         &mut self,
         is_app_limited: bool,
         bytes_in_flight: u32,
         target_inflight: u32,
+        random_generator: &mut Rnd,
         now: Timestamp,
     ) {
         self.probe_bw_state.bw_probe_samples = false; // only react once per bw probe
@@ -449,6 +468,7 @@ impl BbrCongestionController {
                 &mut self.congestion_state,
                 &mut self.round_counter,
                 self.bw_estimator.delivered_bytes(),
+                random_generator,
                 now,
             );
         }
@@ -689,6 +709,7 @@ mod tests {
         let mut round_counter = round::Counter::default();
         let delivered_bytes = 100;
         let now = NoopClock.get_time();
+        let random = &mut random::testing::Generator::default();
 
         state.cycle_phase = CyclePhase::Up;
 
@@ -696,13 +717,17 @@ mod tests {
             &mut congestion_state,
             &mut round_counter,
             delivered_bytes,
+            random,
             now,
         );
 
         assert_eq!(CyclePhase::Down, state.cycle_phase());
         assert_eq!(u32::MAX, state.bw_probe_up_cnt);
-        assert_eq!(Counter::new(0), state.rounds_since_bw_probe); // TODO: BBRPickProbeWait
-        assert_eq!(Duration::from_secs(2), state.bw_probe_wait); // TODO: BBRPickProbeWait
+        assert!(state.rounds_since_bw_probe >= 0 && state.rounds_since_bw_probe <= 1);
+        assert!(
+            state.bw_probe_wait >= Duration::from_secs(2)
+                && state.bw_probe_wait <= Duration::from_secs(3)
+        );
         assert_eq!(Some(now), state.cycle_stamp);
         assert_eq!(AckPhase::ProbeStopping, state.ack_phase);
 
