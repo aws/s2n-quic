@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::ack::ack_ranges::AckRanges;
+use crate::ack::ack_ranges::{AckRanges, AckRangesError};
 use core::time::Duration;
 use s2n_quic_core::{
     frame::ack::EcnCounts,
@@ -46,9 +46,18 @@ impl PendingAckRanges {
         self.ack_delay = self.ack_delay.max(ack_delay);
 
         let mut did_insert = true;
-        // TODO: add metrics if ack ranges are being dropped
         for range in acked_packets {
-            did_insert &= self.ack_ranges.insert_packet_number_range(range).is_ok()
+            if let Err(err) = self.ack_ranges.insert_packet_number_range(range) {
+                match err {
+                    AckRangesError::RangeInsertionFailed { min: _, max: _ }
+                    | AckRangesError::LowestRangeDropped { min: _, max: _ } => {
+                        // TODO: add metrics since ack ranges are being dropped
+                    }
+                }
+
+                // continue and attempt to insert the other ranges
+                did_insert = false;
+            }
         }
 
         match did_insert {

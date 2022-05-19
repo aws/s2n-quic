@@ -366,6 +366,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
+        random_generator: &mut Config::RandomGenerator,
         timestamp: Timestamp,
         publisher: &mut Pub,
     ) {
@@ -379,7 +380,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             path_manager,
         );
 
-        recovery_manager.on_timeout(timestamp, &mut context, publisher);
+        recovery_manager.on_timeout(timestamp, random_generator, &mut context, publisher);
 
         self.stream_manager.on_timeout(timestamp);
 
@@ -568,6 +569,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         pending_ack_ranges.extend(range, frame.ecn_counts, frame.ack_delay())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn on_pending_ack_ranges<Pub: event::ConnectionPublisher>(
         &mut self,
         timestamp: Timestamp,
@@ -575,6 +577,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
+        random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         debug_assert!(
@@ -587,6 +590,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         recovery_manager.on_pending_ack_ranges(
             timestamp,
             pending_ack_ranges,
+            random_generator,
             &mut context,
             publisher,
         )
@@ -743,6 +747,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
+        random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         let path = &mut path_manager[path_id];
@@ -754,7 +759,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         // the ACKs immediately if insertion into PendingAckRanges fails
         //
         // self.update_pending_acks(&frame, &mut self.pending_ack_ranges)
-        recovery_manager.on_ack_frame(timestamp, frame, &mut context, publisher)
+        recovery_manager.on_ack_frame(timestamp, frame, random_generator, &mut context, publisher)
     }
 
     fn handle_connection_close_frame(
@@ -967,11 +972,18 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         Ok(())
     }
 
-    fn on_processed_packet(
+    fn on_processed_packet<Pub: event::ConnectionPublisher>(
         &mut self,
         processed_packet: ProcessedPacket,
+        path_id: path::Id,
+        path: &Path<Config>,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        self.ack_manager.on_processed_packet(&processed_packet);
+        self.ack_manager.on_processed_packet(
+            &processed_packet,
+            path_event!(path, path_id),
+            publisher,
+        );
         self.processed_packet_numbers
             .insert(processed_packet.packet_number)
             .expect("packet number was already checked");

@@ -127,6 +127,7 @@ impl connection::Trait for TestConnection {
 
     fn on_pending_ack_ranges(
         &mut self,
+        _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _timestamp: Timestamp,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), connection::Error> {

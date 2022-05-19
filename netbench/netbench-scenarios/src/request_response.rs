@@ -16,6 +16,9 @@ config!({
     /// The number of requests to make
     let count: u64 = 1;
 
+    /// The number of separate connections to create
+    let connections: u64 = 1;
+
     /// Specifies if the requests should be performed in parallel
     let parallel: bool = false;
 
@@ -40,6 +43,7 @@ pub fn scenario(config: Config) -> Scenario {
         request_size,
         response_size,
         count,
+        connections,
         parallel,
         client_send_rate,
         client_receive_rate,
@@ -106,22 +110,24 @@ pub fn scenario(config: Config) -> Scenario {
         let server = scenario.create_server();
 
         scenario.create_client(|client| {
-            client.connect_to(server, |conn| {
-                if parallel {
-                    conn.scope(|scope| {
-                        let mut prev_checkpoint = None;
+            for _ in 0..connections {
+                client.connect_to(&server, |conn| {
+                    if parallel {
+                        conn.scope(|scope| {
+                            let mut prev_checkpoint = None;
+                            for _ in 0..count {
+                                scope.spawn(|conn| {
+                                    request(conn, &mut prev_checkpoint);
+                                });
+                            }
+                        });
+                    } else {
                         for _ in 0..count {
-                            scope.spawn(|conn| {
-                                request(conn, &mut prev_checkpoint);
-                            });
+                            request(conn, &mut None);
                         }
-                    });
-                } else {
-                    for _ in 0..count {
-                        request(conn, &mut None);
                     }
-                }
-            });
+                });
+            }
         });
     })
 }

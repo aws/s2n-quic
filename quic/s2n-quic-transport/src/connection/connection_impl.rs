@@ -986,6 +986,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         self.space_manager.on_timeout(
             &mut self.local_id_registry,
             &mut self.path_manager,
+            random_generator,
             timestamp,
             &mut publisher,
         );
@@ -1051,6 +1052,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     /// Process ACKs for the `Connection`.
     fn on_pending_ack_ranges(
         &mut self,
+        random_generator: &mut Config::RandomGenerator,
         timestamp: Timestamp,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), connection::Error> {
@@ -1066,6 +1068,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 path_id,
                 &mut self.path_manager,
                 &mut self.local_id_registry,
+                random_generator,
                 &mut publisher,
             )
             .map_err(|err| {

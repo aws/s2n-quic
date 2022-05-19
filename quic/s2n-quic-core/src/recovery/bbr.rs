@@ -3,10 +3,12 @@
 
 use crate::{
     counter::Counter,
+    random,
     recovery::{
         bandwidth, bandwidth::Bandwidth, bbr::probe_bw::CyclePhase, CongestionController,
         RttEstimator,
     },
+    recovery::{bandwidth, CongestionController, RttEstimator},
     time::Timestamp,
 };
 use core::{
@@ -121,12 +123,13 @@ impl CongestionController for BbrCongestionController {
         todo!()
     }
 
-    fn on_ack(
+    fn on_ack<Rnd: random::Generator>(
         &mut self,
         newest_acked_time_sent: Timestamp,
         bytes_acknowledged: usize,
         newest_acked_packet_info: Self::PacketInfo,
         _rtt_estimator: &RttEstimator,
+        _random_generator: &mut Rnd,
         ack_receive_time: Timestamp,
     ) {
         self.bw_estimator.on_ack(
@@ -174,12 +177,13 @@ impl CongestionController for BbrCongestionController {
             .advance(self.bw_estimator.rate_sample());
     }
 
-    fn on_packet_lost(
+    fn on_packet_lost<Rnd: random::Generator>(
         &mut self,
         lost_bytes: u32,
         _packet_info: Self::PacketInfo,
         _persistent_congestion: bool,
         new_loss_burst: bool,
+        _random_generator: &mut Rnd,
         timestamp: Timestamp,
     ) {
         self.bw_estimator.on_loss(lost_bytes as usize);

@@ -243,6 +243,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         &mut self,
         local_id_registry: &mut connection::LocalIdRegistry,
         path_manager: &mut path::Manager<Config>,
+        random_generator: &mut Config::RandomGenerator,
         timestamp: Timestamp,
         publisher: &mut Pub,
     ) {
@@ -257,6 +258,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 handshake_status,
                 path_id,
                 path_manager,
+                random_generator,
                 timestamp,
                 publisher,
             )
@@ -266,6 +268,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 handshake_status,
                 path_id,
                 path_manager,
+                random_generator,
                 timestamp,
                 publisher,
             )
@@ -275,6 +278,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 path_manager,
                 handshake_status,
                 local_id_registry,
+                random_generator,
                 timestamp,
                 publisher,
             )
@@ -451,6 +455,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         path_id: path::Id,
         path_manager: &mut path::Manager<Config>,
         local_id_registry: &mut connection::LocalIdRegistry,
+        random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         debug_assert!(
@@ -470,6 +475,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 path_manager,
                 handshake_status,
                 local_id_registry,
+                random_generator,
                 publisher,
             )?;
         }
@@ -583,6 +589,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
+        random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error>;
 
@@ -679,9 +686,12 @@ pub trait PacketSpace<Config: endpoint::Config> {
     default_frame_handler!(handle_streams_blocked_frame, StreamsBlocked);
     default_frame_handler!(handle_new_token_frame, NewToken);
 
-    fn on_processed_packet(
+    fn on_processed_packet<Pub: event::ConnectionPublisher>(
         &mut self,
         processed_packet: ProcessedPacket,
+        path_id: path::Id,
+        path: &Path<Config>,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error>;
 
     // TODO: Reduce arguments, https://github.com/aws/s2n-quic/issues/312
@@ -783,6 +793,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                         path_manager,
                         handshake_status,
                         local_id_registry,
+                        random_generator,
                         publisher,
                     )
                     .map_err(on_error)?;
@@ -925,7 +936,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         //# receipt by sending one or more ACK frames containing the packet
         //# number of the received packet.
 
-        self.on_processed_packet(processed_packet)?;
+        self.on_processed_packet(processed_packet, path_id, &path_manager[path_id], publisher)?;
 
         Ok(processed_packet)
     }

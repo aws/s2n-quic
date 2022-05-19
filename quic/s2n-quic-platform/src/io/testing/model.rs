@@ -229,14 +229,7 @@ impl Network for Model {
             let mut transmit_time = *transmit_time;
 
             if !network_jitter.is_zero() {
-                let jitter = gen_jitter(network_jitter);
-
-                // randomly add or subtract the network jitter
-                if super::rand::gen() {
-                    transmit_time += jitter;
-                } else {
-                    transmit_time = transmit_time.checked_sub(jitter).unwrap_or(now);
-                }
+                transmit_time += gen_jitter(network_jitter);
             }
 
             // reverse the addresses so the dst/src are correct for the receiver
