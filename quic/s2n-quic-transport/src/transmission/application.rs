@@ -54,6 +54,7 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
                     path_manager,
                     recovery_manager,
                     datagram_manager,
+                    prioritize_datagrams: false,
                 })
             }
             Mode::MtuProbing => transmission::application::Payload::MtuProbe(MtuProbe {
@@ -109,36 +110,41 @@ pub struct Normal<'a, S: Stream, Config: endpoint::Config> {
     path_manager: &'a mut path::Manager<Config>,
     recovery_manager: &'a mut recovery::Manager<Config>,
     datagram_manager: &'a mut datagram::Manager<Config>,
+    prioritize_datagrams: bool,
 }
 
 impl<'a, S: Stream, Config: endpoint::Config> Normal<'a, S, Config> {
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        let can_transmit = context.transmission_constraint().can_transmit()
+            || context.transmission_constraint().can_retransmit();
+
+        //= https://www.rfc-editor.org/rfc/rfc9221#section-5
+        //# DATAGRAM frames cannot be fragmented;
+        //
+        // We alternate between prioritizing filling the packet with datagrams
+        // and filling the packet with other frames. This is because datagrams
+        // cannot be fragmented across packets and we want to do the most to send
+        // large datagrams.
+        if self.prioritize_datagrams && can_transmit {
+            self.datagram_manager
+                .on_transmit(context, self.stream_manager);
+        }
         let did_send_ack = self.ack_manager.on_transmit(context);
 
         // Payloads can only transmit and retransmit
-        if context.transmission_constraint().can_transmit()
-            || context.transmission_constraint().can_retransmit()
-        {
-            // send HANDSHAKE_DONE frames first, if needed, to ensure the handshake is confirmed as
-            // soon as possible
-            self.handshake_status.on_transmit(context);
+        if can_transmit {
+            self.transmit_control_data(context);
 
-            //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2
-            //# An endpoint MAY include other frames with the PATH_CHALLENGE and
-            //# PATH_RESPONSE frames used for path validation.
-            // prioritize PATH_CHALLENGE and PATH_RESPONSE frames higher than app data
-            self.path_manager.active_path_mut().on_transmit(context);
-
-            self.local_id_registry.on_transmit(context);
-
-            self.path_manager.on_transmit(context);
+            // If we did not prioritize datagrams in this packet, we send them just
+            // before we send stream data.
+            if !self.prioritize_datagrams {
+                self.datagram_manager
+                    .on_transmit(context, self.stream_manager);
+            }
 
             // The default sending behavior is to alternate between sending datagrams
             // and sending stream data. This can be configured by implementing a
             // custom datagram sender and choosing when to cede packet space for stream data.
-            self.datagram_manager
-                .on_transmit(context, self.stream_manager);
-
             let _ = self.stream_manager.on_transmit(context);
 
             // send PINGs last, since they might not actually be needed if there's an ack-eliciting
@@ -151,6 +157,26 @@ impl<'a, S: Stream, Config: endpoint::Config> Normal<'a, S, Config> {
             // inform the ack manager the packet is populated
             self.ack_manager.on_transmit_complete(context);
         }
+
+        // Alternate between prioritizing datagrams or not each packet
+        self.prioritize_datagrams = !self.prioritize_datagrams;
+    }
+
+    // Sends control data frames
+    fn transmit_control_data<W: WriteContext>(&mut self, context: &mut W) {
+        // send HANDSHAKE_DONE frames first, if needed, to ensure the handshake is confirmed as
+        // soon as possible
+        self.handshake_status.on_transmit(context);
+
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2
+        //# An endpoint MAY include other frames with the PATH_CHALLENGE and
+        //# PATH_RESPONSE frames used for path validation.
+        // prioritize PATH_CHALLENGE and PATH_RESPONSE frames higher than app data
+        self.path_manager.active_path_mut().on_transmit(context);
+
+        self.local_id_registry.on_transmit(context);
+
+        self.path_manager.on_transmit(context);
     }
 }
 
