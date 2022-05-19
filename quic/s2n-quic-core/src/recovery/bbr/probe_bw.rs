@@ -136,7 +136,7 @@ impl State {
     }
 
     /// Returns true if enough time has passed to transition the cycle phase
-    pub fn check_time_to_probe_bw(
+    pub fn is_time_to_probe_bw(
         &self,
         target_inflight: u32,
         max_data_size: u16,
@@ -339,7 +339,7 @@ impl BbrCongestionController {
 
         match self.probe_bw_state.cycle_phase {
             CyclePhase::Down | CyclePhase::Cruise => {
-                if self.probe_bw_state.check_time_to_probe_bw(
+                if self.probe_bw_state.is_time_to_probe_bw(
                     target_inflight,
                     self.max_datagram_size,
                     now,
@@ -351,7 +351,7 @@ impl BbrCongestionController {
                         self.bw_estimator.delivered_bytes(),
                     );
                 } else if self.probe_bw_state.cycle_phase == CyclePhase::Down
-                    && self.check_time_to_cruise()
+                    && self.is_time_to_cruise()
                 {
                     self.probe_bw_state.start_cruise();
                 }
@@ -514,7 +514,7 @@ impl BbrCongestionController {
     }
 
     /// Returns true if it is time to transition from `Down` to `Cruise`
-    fn check_time_to_cruise(&self) -> bool {
+    fn is_time_to_cruise(&self) -> bool {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRCheckTimeToCruise())
 
@@ -588,20 +588,20 @@ mod tests {
     }
 
     #[test]
-    fn check_time_to_probe_bw() {
+    fn is_time_to_probe_bw() {
         let mut state = State::new();
         let now = NoopClock.get_time();
 
         // cycle_stamp hasn't been set yet
-        assert!(!state.check_time_to_probe_bw(12000, 1200, now));
+        assert!(!state.is_time_to_probe_bw(12000, 1200, now));
 
         state.cycle_start_timestamp = Some(now);
         let bw_probe_wait = Duration::from_millis(500);
         state.bw_probe_wait = bw_probe_wait;
         // not ready to probe yet
-        assert!(!state.check_time_to_probe_bw(12000, 1200, now + bw_probe_wait));
+        assert!(!state.is_time_to_probe_bw(12000, 1200, now + bw_probe_wait));
         // now we're ready to probe
-        assert!(state.check_time_to_probe_bw(
+        assert!(state.is_time_to_probe_bw(
             100,
             1200,
             now + bw_probe_wait + Duration::from_millis(1)
@@ -609,15 +609,15 @@ mod tests {
 
         state.rounds_since_bw_probe = Counter::new(10);
         // 13200 / 1200 = 11 reno rounds, not in reno coexistence probe time
-        assert!(!state.check_time_to_probe_bw(13200, 1200, now));
+        assert!(!state.is_time_to_probe_bw(13200, 1200, now));
         // 12000 / 1200 = 10 reno rounds, now we are in reno coexistence probe time
-        assert!(state.check_time_to_probe_bw(12000, 1200, now));
+        assert!(state.is_time_to_probe_bw(12000, 1200, now));
 
         // At high BDPs, we probe when MAX_BW_PROBE_ROUNDS is reached
         state.rounds_since_bw_probe = Counter::new(MAX_BW_PROBE_ROUNDS - 1);
-        assert!(!state.check_time_to_probe_bw(u32::MAX, 1200, now));
+        assert!(!state.is_time_to_probe_bw(u32::MAX, 1200, now));
         state.rounds_since_bw_probe = Counter::new(MAX_BW_PROBE_ROUNDS);
-        assert!(state.check_time_to_probe_bw(u32::MAX, 1200, now));
+        assert!(state.is_time_to_probe_bw(u32::MAX, 1200, now));
     }
 
     #[test]
