@@ -142,6 +142,9 @@ impl State {
         max_data_size: u16,
         now: Timestamp,
     ) -> bool {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.5.3
+        //# BBRCheckTimeToProbeBW()
+
         debug_assert!(
             self.cycle_phase == CyclePhase::Down || self.cycle_phase == CyclePhase::Cruise
         );
@@ -163,6 +166,9 @@ impl State {
         max_data_size: u16,
         round_start: bool,
     ) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
+        //# BBRProbeInflightHiUpward()
+
         self.bw_probe_up_acks += bytes_acknowledged as u32;
         // Increase inflight_hi by the number of bw_probe_up_cnt bytes within bw_probe_up_acks
         if self.bw_probe_up_acks >= self.bw_probe_up_cnt {
@@ -179,6 +185,9 @@ impl State {
 
     /// Raise inflight_hi slope if appropriate
     fn raise_inflight_hi_slope(&mut self, cwnd: u32, max_data_size: u16) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
+        //# BBRRaiseInflightHiSlope()
+
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.4
         //# BBR takes an approach where the additive increase to BBR.inflight_hi
         //# exponentially doubles each round trip
@@ -192,6 +201,9 @@ impl State {
 
     /// True if the given `interval` duration has elapsed since the current cycle phase began
     fn has_elapsed_in_phase(&self, interval: Duration, now: Timestamp) -> bool {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
+        //# BBRHasElapsedInPhase(interval)
+
         self.cycle_start_timestamp
             .map_or(false, |cycle_stamp| now > cycle_stamp + interval)
     }
@@ -203,6 +215,9 @@ impl State {
     /// flow. We count packet-timed round trips directly, since measured RTT can
     /// vary widely, and Reno is driven by packet-timed round trips.
     fn is_reno_coexistence_probe_time(&self, target_inflight: u32, max_data_size: u16) -> bool {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.5.3
+        //# BBRIsRenoCoexistenceProbeTime()
+
         let reno_rounds = target_inflight / max_data_size as u32;
         let rounds = reno_rounds
             .try_into()
@@ -213,6 +228,9 @@ impl State {
 
     /// Start the `Cruise` cycle phase
     fn start_cruise(&mut self) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
+        //# BBRStartProbeBW_CRUISE()
+
         debug_assert_eq!(self.cycle_phase, CyclePhase::Down);
 
         self.cycle_phase = CyclePhase::Cruise
@@ -227,6 +245,9 @@ impl State {
         max_data_size: u16,
         now: Timestamp,
     ) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
+        //# BBRStartProbeBW_UP()
+
         debug_assert_eq!(self.cycle_phase, CyclePhase::Refill);
 
         self.bw_probe_samples = true;
@@ -245,6 +266,9 @@ impl State {
         round_counter: &mut round::Counter,
         delivered_bytes: u64,
     ) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
+        //# BBRStartProbeBW_REFILL()
+
         debug_assert!(
             self.cycle_phase == CyclePhase::Down || self.cycle_phase == CyclePhase::Cruise
         );
@@ -267,6 +291,9 @@ impl State {
         random_generator: &mut Rnd,
         now: Timestamp,
     ) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
+        //# BBRStartProbeBW_DOWN()
+
         congestion_state.reset();
         self.bw_probe_up_cnt = u32::MAX;
         self.pick_probe_wait(random_generator);
@@ -277,6 +304,9 @@ impl State {
     }
 
     fn pick_probe_wait<Rnd: random::Generator>(&mut self, _random_generator: &mut Rnd) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.5.3
+        //# BBRPickProbeWait()
+
         // TODO:
         //     /* Decide random round-trip bound for wait: */
         //     BBR.rounds_since_bw_probe = random_int_between(0, 1); /* 0 or 1 */
@@ -295,6 +325,9 @@ impl BbrCongestionController {
         random_generator: &mut Rnd,
         now: Timestamp,
     ) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
+        //# BBRUpdateProbeBWCyclePhase()
+
         debug_assert!(
             self.full_pipe_estimator.filled_pipe(),
             "only handling steady-state behavior here"
@@ -368,6 +401,9 @@ impl BbrCongestionController {
         random_generator: &mut Rnd,
         now: Timestamp,
     ) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
+        //# BBRAdaptUpperBounds()
+
         debug_assert!(
             self.full_pipe_estimator.filled_pipe(),
             "only handling steady-state behavior here"
@@ -455,6 +491,9 @@ impl BbrCongestionController {
         random_generator: &mut Rnd,
         now: Timestamp,
     ) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
+        //# BBRHandleInflightTooHigh()
+
         self.probe_bw_state.bw_probe_samples = false; // only react once per bw probe
         if !is_app_limited {
             self.data_volume_model.update_upper_bound(
@@ -476,6 +515,9 @@ impl BbrCongestionController {
 
     /// Returns true if it is time to transition from `Down` to `Cruise`
     fn check_time_to_cruise(&self) -> bool {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
+        //# BBRCheckTimeToCruise())
+
         debug_assert_eq!(self.probe_bw_state.cycle_phase, CyclePhase::Down);
 
         if self.bytes_in_flight > self.inflight_with_headroom() {

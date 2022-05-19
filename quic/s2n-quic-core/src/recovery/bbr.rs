@@ -218,6 +218,9 @@ impl BbrCongestionController {
 
     /// Calculates a bandwidth-delay product using the supplied `Bandwidth` and `gain`
     fn bdp_multiple(&self, bw: Bandwidth, gain: Ratio<u64>) -> u64 {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
+        //# BBRBDPMultiple()
+
         if let Some(min_rtt) = self.data_volume_model.min_rtt() {
             (gain * (bw * min_rtt)).to_integer()
         } else {
@@ -229,14 +232,22 @@ impl BbrCongestionController {
     ///
     /// Based on the estimated BDP, unless congestion reduced the cwnd
     fn target_inflight(&self) -> u32 {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.5.3
+        //# BBRTargetInflight()
+
         self.bdp().min(self.cwnd as u64) as u32
     }
 
     /// The estimate of the volume of in-flight data required to fully utilize the bottleneck
-    /// bandwidth available to the flow, based on the BDP estimate (BBR.bdp), the aggregation
-    /// estimate (BBR.extra_acked), the offload budget (BBR.offload_budget), and BBRMinPipeCwnd.
+    /// bandwidth available to the flow
+    ///
+    /// Based on the BDP estimate (BBR.bdp), the aggregation estimate (BBR.extra_acked), the
+    /// offload budget (BBR.offload_budget), and BBRMinPipeCwnd.
     #[allow(dead_code)] // TODO: Remove when used
     fn max_inflight(&self) -> u64 {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
+        //# BBRUpdateMaxInflight()
+
         let cwnd_gain = Ratio::one(); // TODO: get cwnd_gain from State
         let bdp = self.bdp_multiple(self.data_rate_model.bw(), cwnd_gain);
         let inflight = bdp + self.data_volume_model.extra_acked();
@@ -245,6 +256,9 @@ impl BbrCongestionController {
 
     /// Inflight based on min RTT and the estimated bottleneck bandwidth
     fn inflight(&self, bw: Bandwidth, gain: Ratio<u64>) -> u32 {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
+        //# BBRInflight(gain)
+
         let inflight = self.bdp_multiple(bw, gain);
         self.quantization_budget(inflight)
             .try_into()
@@ -254,6 +268,9 @@ impl BbrCongestionController {
     /// The volume of data that tries to leave free headroom in the bottleneck buffer or link for
     /// other flows, for fairness convergence and lower RTTs and loss
     fn inflight_with_headroom(&self) -> u32 {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
+        //# BBRInflightWithHeadroom()
+
         if self.data_volume_model.inflight_hi() == u64::MAX {
             return u32::MAX;
         }
@@ -297,6 +314,9 @@ impl BbrCongestionController {
 
     /// True if the amount of `lost_bytes` exceeds the BBR loss threshold
     fn is_inflight_too_high(lost_bytes: u64, bytes_inflight: u32) -> bool {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
+        //# IsInflightTooHigh()
+
         lost_bytes > (LOSS_THRESH * bytes_inflight).to_integer() as u64
     }
 
