@@ -1,6 +1,6 @@
 [package]
 name = "s2n-quic-platform"
-version = "0.2.1"
+version = "0.3.0"
 description = "Internal crate used by s2n-quic"
 repository = "https://github.com/aws/s2n-quic"
 authors = ["AWS s2n"]
@@ -26,7 +26,7 @@ errno = "0.2"
 futures = { version = "0.3", default-features = false, features = ["async-await"], optional = true }
 lazy_static = { version = "1", optional = true }
 pin-project = { version = "1", optional = true }
-s2n-quic-core = { version = "=0.2.1", path = "../s2n-quic-core", default-features = false }
+s2n-quic-core = { version = "=0.3.0", path = "../s2n-quic-core", default-features = false }
 socket2 = { version = "0.4", features = ["all"], optional = true }
 tokio = { version = "1", default-features = false, features = ["macros", "net", "rt", "time"], optional = true }
 zeroize = { version = "1", default-features = false, optional = true }

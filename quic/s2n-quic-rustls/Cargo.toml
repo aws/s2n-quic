@@ -1,6 +1,6 @@
 [package]
 name = "s2n-quic-rustls"
-version = "0.2.1"
+version = "0.3.0"
 description = "Internal crate used by s2n-quic"
 repository = "https://github.com/aws/s2n-quic"
 authors = ["AWS s2n"]
@@ -14,8 +14,8 @@ bytes = { version = "1", default-features = false }
 rustls = { version = "0.20", features = ["quic"] }
 rustls-pemfile = "0.3"
 s2n-codec = { version = "=0.1.0", path = "../../common/s2n-codec", default-features = false }
-s2n-quic-core = { version = "=0.2.1", path = "../s2n-quic-core", default-features = false }
-s2n-quic-crypto = { version = "=0.2.0", path = "../s2n-quic-crypto", default-features = false }
+s2n-quic-core = { version = "=0.3.0", path = "../s2n-quic-core", default-features = false }
+s2n-quic-crypto = { version = "=0.3.0", path = "../s2n-quic-crypto", default-features = false }
 
 [dev-dependencies]
 insta = "1"
