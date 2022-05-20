@@ -18,11 +18,8 @@ pub struct Connection<T: AsyncRead + AsyncWrite> {
     id: u64,
     inner: Pin<Box<T>>,
     stream_opened: bool,
-    send_data: Vec<u8>,
-    to_send: u64,
+    send_buffer: Vec<u8>,
     read_buffer: [MaybeUninit<u8>; READ_BUFFER_SIZE],
-    buffered_offset: u64,
-    received_offset: u64,
 }
 
 impl<T: AsyncRead + AsyncWrite> Connection<T> {
@@ -31,11 +28,8 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
             id,
             inner,
             stream_opened: false,
-            send_data: vec![1; SEND_BUFFER_SIZE],
-            to_send: 0,
+            send_buffer: vec![1; SEND_BUFFER_SIZE],
             read_buffer: unsafe { MaybeUninit::uninit().assume_init() },
-            buffered_offset: 0,
-            received_offset: 0,
         }
     }
 
@@ -57,64 +51,19 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
         Ok(())
     }
 
-    fn write(&mut self, cx: &mut Context) -> Result<()> {
-        if self.to_send == 0 {
-            return Ok(());
-        }
-
-        let send_size = SEND_BUFFER_SIZE.min(self.to_send as usize);
-        let mut len = 0;
-
-        if self.inner.as_ref().is_write_vectored() {
-            let to_send = IoSlice::new(&self.send_data[0..send_size]);
-            if let Poll::Ready(result) = self.inner.as_mut().poll_write_vectored(cx, &[to_send]) {
-                len += result? as u64;
-                self.to_send -= len;
-            }
-        } else {
-            let to_send = &self.send_data[0..send_size];
-            if let Poll::Ready(result) = self.inner.as_mut().poll_write(cx, to_send) {
-                len += result? as u64;
-                self.to_send -= len;
-            }
-        }
-
-        if len > 0 {
-            cx.waker().wake_by_ref();
-        }
-
-        if let Poll::Ready(res) = self.inner.as_mut().poll_flush(cx) {
-            res?;
-        }
-
-        Ok(())
-    }
-
-    fn read(&mut self, cx: &mut Context) -> Poll<Result<()>> {
+    fn read(&mut self, cx: &mut Context) -> Poll<Result<u64>> {
         let mut buf = ReadBuf::uninit(&mut self.read_buffer);
-        let mut len = 0;
-        match self.inner.as_mut().poll_read(cx, &mut buf) {
-            Poll::Ready(_) => {
-                if buf.filled().is_empty() {
-                    if self.stream_opened {
-                        self.close_stream()?;
-                    }
-                    return Ok(()).into();
+        if let Poll::Ready(_) = self.inner.as_mut().poll_read(cx, &mut buf) {
+            if buf.filled().is_empty() {
+                if self.stream_opened {
+                    self.close_stream()?;
+                    return Ok(0).into();
                 }
-
-                len += buf.filled().len() as u64;
-                self.buffered_offset += len;
             }
-            Poll::Pending => {
-                return Poll::Pending;
-            }
+            return Ok(buf.filled().len() as u64).into();
         }
 
-        if len > 0 {
-            cx.waker().wake_by_ref();
-        }
-
-        Ok(()).into()
+        Poll::Pending
     }
 }
 
@@ -139,25 +88,25 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
         }
     }
 
-    fn poll_send(&mut self, _: Owner, _: u64, bytes: u64, _: &mut Context) -> Poll<Result<u64>> {
-        let to_add = bytes.min(SEND_BUFFER_SIZE as u64 - self.to_send);
-        if to_add == 0 {
-            return Poll::Pending;
+    fn poll_send(&mut self, _: Owner, _: u64, bytes: u64, cx: &mut Context) -> Poll<Result<u64>> {
+        let send_amount = SEND_BUFFER_SIZE.min(bytes as usize);
+        if self.inner.as_ref().is_write_vectored() {
+            let to_send = IoSlice::new(&self.send_buffer[0..send_amount]);
+            if let Poll::Ready(result) = self.inner.as_mut().poll_write_vectored(cx, &[to_send]) {
+                return Ok(result? as u64).into();
+            }
+        } else {
+            let to_send = &self.send_buffer[0..send_amount];
+            if let Poll::Ready(result) = self.inner.as_mut().poll_write(cx, to_send) {
+                return Ok(result? as u64).into();
+            }
         }
 
-        self.to_send += to_add;
-        Ok(to_add).into()
+        Poll::Pending
     }
 
-    fn poll_receive(&mut self, _: Owner, _: u64, bytes: u64, _: &mut Context) -> Poll<Result<u64>> {
-        let len = (self.buffered_offset - self.received_offset).min(bytes);
-
-        if len == 0 {
-            return Poll::Pending;
-        }
-
-        self.received_offset += len;
-        Ok(len).into()
+    fn poll_receive(&mut self, _: Owner, _: u64, _: u64, cx: &mut Context) -> Poll<Result<u64>> {
+        self.read(cx)
     }
 
     fn poll_send_finish(&mut self, _: Owner, _: u64, _: &mut Context) -> Poll<Result<()>> {
@@ -168,33 +117,15 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
         Ok(()).into()
     }
 
-    fn poll_progress(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        loop {
-            self.write(cx)?;
-            ready!(self.read(cx))?;
-
-            if !self.stream_opened {
-                return Ok(()).into();
-            }
-        }
+    fn poll_progress(&mut self, _: &mut Context) -> Poll<Result<()>> {
+        Ok(()).into()
     }
 
     fn poll_finish(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         if self.stream_opened {
-            self.write(cx)?;
-            if self.to_send > 0 {
-                return Poll::Pending;
-            }
-
             ready!(self.inner.as_mut().poll_shutdown(cx))?;
             self.close_stream()?;
         }
-
-        loop {
-            ready!(self.read(cx))?;
-            if !self.stream_opened {
-                return Ok(()).into();
-            }
-        }
+        Ok(()).into()
     }
 }
