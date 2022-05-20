@@ -81,7 +81,7 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
             match self.inner.as_mut().poll_write_vectored(cx, &[to_send]) {
                 Poll::Ready(result) => {
                     sent += result? as u64;
-                },
+                }
                 Poll::Pending => {
                     return Poll::Pending;
                 }
@@ -91,7 +91,7 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
             match self.inner.as_mut().poll_write(cx, to_send) {
                 Poll::Ready(result) => {
                     sent += result? as u64;
-                },
+                }
                 Poll::Pending => {
                     return Poll::Pending;
                 }
@@ -121,11 +121,9 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
                     cx.waker().wake_by_ref();
                 }
                 Ok(buf.filled().len() as u64).into()
-            },
-            Poll::Pending => {
-                Poll::Pending
-            },
-        }
+            }
+            Poll::Pending => Poll::Pending,
+        };
     }
 
     fn poll_send_finish(&mut self, _: Owner, _: u64, _: &mut Context) -> Poll<Result<()>> {
