@@ -108,9 +108,6 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
             }
         } else {
             let to_send = &self.send_buffer[0..send_amount];
-            if let Poll::Ready(result) = self.inner.as_mut().poll_write(cx, to_send) {
-                return Ok(result? as u64).into();
-            }
             match self.inner.as_mut().poll_write(cx, to_send) {
                 Poll::Ready(result) => {
                     sent += result? as u64;
