@@ -53,17 +53,22 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
 
     fn read(&mut self, cx: &mut Context) -> Poll<Result<u64>> {
         let mut buf = ReadBuf::uninit(&mut self.read_buffer);
-        if let Poll::Ready(_) = self.inner.as_mut().poll_read(cx, &mut buf) {
-            if buf.filled().is_empty() {
-                if self.stream_opened {
-                    self.close_stream()?;
-                    return Ok(0).into();
+        return match self.inner.as_mut().poll_read(cx, &mut buf) {
+            Poll::Ready(_) => {
+                if buf.filled().is_empty() {
+                    if self.stream_opened {
+                        self.close_stream()?;
+                        return Ok(0).into();
+                    }
+                } else {
+                    cx.waker().wake_by_ref();
                 }
-            }
-            return Ok(buf.filled().len() as u64).into();
+                Ok(buf.filled().len() as u64).into()
+            },
+            Poll::Pending => {
+                Poll::Pending
+            },
         }
-
-        Poll::Pending
     }
 }
 
@@ -90,19 +95,40 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
 
     fn poll_send(&mut self, _: Owner, _: u64, bytes: u64, cx: &mut Context) -> Poll<Result<u64>> {
         let send_amount = SEND_BUFFER_SIZE.min(bytes as usize);
+        let mut sent: u64 = 0;
         if self.inner.as_ref().is_write_vectored() {
             let to_send = IoSlice::new(&self.send_buffer[0..send_amount]);
-            if let Poll::Ready(result) = self.inner.as_mut().poll_write_vectored(cx, &[to_send]) {
-                return Ok(result? as u64).into();
+            match self.inner.as_mut().poll_write_vectored(cx, &[to_send]) {
+                Poll::Ready(result) => {
+                    sent += result? as u64;
+                },
+                Poll::Pending => {
+                    return Poll::Pending;
+                }
             }
         } else {
             let to_send = &self.send_buffer[0..send_amount];
             if let Poll::Ready(result) = self.inner.as_mut().poll_write(cx, to_send) {
                 return Ok(result? as u64).into();
             }
+            match self.inner.as_mut().poll_write(cx, to_send) {
+                Poll::Ready(result) => {
+                    sent += result? as u64;
+                },
+                Poll::Pending => {
+                    return Poll::Pending;
+                }
+            }
         }
 
-        Poll::Pending
+        if sent > 0 {
+            cx.waker().wake_by_ref();
+        }
+        if let Poll::Ready(res) = self.inner.as_mut().poll_flush(cx) {
+            res?;
+        }
+
+        Ok(sent).into()
     }
 
     fn poll_receive(&mut self, _: Owner, _: u64, _: u64, cx: &mut Context) -> Poll<Result<u64>> {
