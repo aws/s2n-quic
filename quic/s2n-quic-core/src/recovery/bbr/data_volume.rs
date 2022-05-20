@@ -73,27 +73,6 @@ impl Model {
         self.min_rtt_filter.min_rtt()
     }
 
-    /// The estimate of the volume of in-flight data required to fully utilize the bottleneck
-    /// bandwidth available to the flow, based on the BDP estimate (BBR.bdp), the aggregation
-    /// estimate (BBR.extra_acked), the offload budget (BBR.offload_budget), and BBRMinPipeCwnd.
-    pub fn max_inflight(
-        &self,
-        bdp: u64,
-        offload_budget: u64,
-        min_pipe_cwnd: u32,
-        probebw_up: bool,
-        max_datagram_size: u16,
-    ) -> u64 {
-        let inflight = bdp + self.extra_acked();
-        self.quantization_budget(
-            inflight,
-            offload_budget,
-            min_pipe_cwnd,
-            probebw_up,
-            max_datagram_size,
-        )
-    }
-
     /// The long-term maximum volume of in-flight data that the algorithm
     /// estimates will produce acceptable queue pressure
     pub fn inflight_hi(&self) -> u64 {
@@ -147,13 +126,9 @@ impl Model {
         self.extra_acked_filter.update(extra, round_count);
     }
 
-    /// Updates `inflight_hi` with the given `inflight_hi` if it exceeds the current `inflight_hi`
+    /// Updates `inflight_hi` with the given `inflight_hi`
     pub fn update_upper_bound(&mut self, inflight_hi: u64) {
-        if self.inflight_hi == u64::MAX {
-            self.inflight_hi = inflight_hi;
-        } else {
-            self.inflight_hi = inflight_hi.max(self.inflight_hi);
-        }
+        self.inflight_hi = inflight_hi;
     }
 
     /// Updates `inflight_lo` with the given `inflight_latest` if it exceeds
@@ -169,33 +144,6 @@ impl Model {
     /// Resets `inflight_lo` to its initial value
     pub fn reset_lower_bound(&mut self) {
         self.inflight_lo = u64::MAX
-    }
-
-    /// Calculates the quantization budget
-    pub fn quantization_budget(
-        &self,
-        inflight: u64,
-        offload_budget: u64,
-        min_pipe_cwnd: u32,
-        probebw_up: bool,
-        max_datagram_size: u16,
-    ) -> u64 {
-        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
-        //# BBRQuantizationBudget(inflight)
-        //#   BBRUpdateOffloadBudget()
-        //#   inflight = max(inflight, BBR.offload_budget)
-        //#   inflight = max(inflight, BBRMinPipeCwnd)
-        //#   if (BBR.state == ProbeBW && BBR.cycle_idx == ProbeBW_UP)
-        //#     inflight += 2
-        //#   return inflight
-
-        let mut inflight = inflight.max(offload_budget).max(min_pipe_cwnd as u64);
-
-        if probebw_up {
-            inflight += 2 * max_datagram_size as u64;
-        }
-
-        inflight
     }
 }
 
@@ -248,30 +196,6 @@ mod tests {
     }
 
     #[test]
-    fn update_upper_bound() {
-        let now = NoopClock.get_time();
-        let mut model = Model::new(now);
-
-        let inflight_hi = 100;
-
-        model.update_upper_bound(inflight_hi);
-
-        // We didn't have a valid inflight_hi value yet, so the first sample is used
-        assert_eq!(inflight_hi, model.inflight_hi());
-
-        model.update_upper_bound(50);
-
-        // The new sample is lower than inflight_hi, so don't update inflight_hi
-        assert_eq!(inflight_hi, model.inflight_hi());
-
-        let inflight_hi = 150;
-        model.update_upper_bound(inflight_hi);
-
-        // The new sample is higher than inflight_hi, so update inflight_hi
-        assert_eq!(inflight_hi, model.inflight_hi());
-    }
-
-    #[test]
     fn update_lower_bound() {
         let now = NoopClock.get_time();
         let mut model = Model::new(now);
@@ -297,6 +221,4 @@ mod tests {
         model.reset_lower_bound();
         assert_eq!(u64::MAX, model.inflight_lo());
     }
-
-    // TODO: add tests for max_inflight and quantization_budget
 }

@@ -75,6 +75,60 @@ impl State {
 }
 
 #[cfg(test)]
+pub mod testing {
+    use crate::{
+        recovery::{
+            bandwidth::{Bandwidth, PacketInfo, RateSample},
+            bbr::{congestion, data_rate, data_volume},
+        },
+        time::{Clock, NoopClock},
+    };
+    use std::time::Duration;
+
+    /// Asserts that the given `congestion::State` has been reset
+    pub(crate) fn assert_reset(state: congestion::State) {
+        assert!(!state.loss_in_round);
+        assert_eq!(Bandwidth::ZERO, state.bw_latest);
+        assert_eq!(0, state.inflight_latest);
+    }
+
+    /// Return congestion::State updated with data
+    pub(crate) fn test_state() -> congestion::State {
+        let mut state = congestion::State::default();
+
+        let now = NoopClock.get_time();
+        let packet_info = PacketInfo {
+            delivered_bytes: 100,
+            delivered_time: now,
+            lost_bytes: 0,
+            first_sent_time: now,
+            bytes_in_flight: 0,
+            is_app_limited: false,
+        };
+        let rate_sample = RateSample {
+            interval: Duration::from_millis(10),
+            delivered_bytes: 100,
+            lost_bytes: 50,
+            ..Default::default()
+        };
+        let mut data_rate_model = data_rate::Model::new();
+        let mut data_volume_model = data_volume::Model::new(now);
+
+        state.update(
+            packet_info,
+            rate_sample,
+            500,
+            &mut data_rate_model,
+            &mut data_volume_model,
+            false,
+            100,
+        );
+
+        state
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::time::{Clock, NoopClock};

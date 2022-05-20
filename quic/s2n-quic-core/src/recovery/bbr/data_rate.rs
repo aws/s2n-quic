@@ -96,13 +96,9 @@ impl Model {
         }
     }
 
-    /// Updates `bw_hi` with the given `bw` if it exceeds the current `bw_hi`
+    /// Updates `bw_hi` with the given `bw`
     pub fn update_upper_bound(&mut self, bw: Bandwidth) {
-        if self.bw_hi == Bandwidth::MAX {
-            self.bw_hi = bw;
-        } else {
-            self.bw_hi = bw.max(self.bw_hi)
-        }
+        self.bw_hi = bw
     }
 
     /// Updates `bw_lo` with the given `bw` if it exceeds the current `bw_lo` * `bbr::BETA`
@@ -185,30 +181,6 @@ mod tests {
         // The sample is app limited so the max stays the same
         model.update_max_bw(rate_sample);
         assert_eq!(bw, model.max_bw());
-    }
-
-    #[test]
-    fn update_upper_bound() {
-        let mut model = Model::new();
-
-        let bw = Bandwidth::new(100, Duration::from_millis(10));
-
-        model.update_upper_bound(bw);
-
-        // We didn't have a valid bw_hi value yet, so the first sample is used
-        assert_eq!(bw, model.bw_hi());
-
-        let lower_bw = Bandwidth::new(50, Duration::from_millis(10));
-        model.update_upper_bound(lower_bw);
-
-        // The new sample is lower than bw_hi, so don't update bw_hi
-        assert_eq!(bw, model.bw_hi());
-
-        let higher_bw = Bandwidth::new(150, Duration::from_millis(10));
-        model.update_upper_bound(higher_bw);
-
-        // The new sample is higher than bw_hi, so update bw_hi
-        assert_eq!(higher_bw, model.bw_hi());
     }
 
     #[test]
