@@ -50,26 +50,6 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
         self.stream_opened = false;
         Ok(())
     }
-
-    fn read(&mut self, cx: &mut Context) -> Poll<Result<u64>> {
-        let mut buf = ReadBuf::uninit(&mut self.read_buffer);
-        return match self.inner.as_mut().poll_read(cx, &mut buf) {
-            Poll::Ready(_) => {
-                if buf.filled().is_empty() {
-                    if self.stream_opened {
-                        self.close_stream()?;
-                        return Ok(0).into();
-                    }
-                } else {
-                    cx.waker().wake_by_ref();
-                }
-                Ok(buf.filled().len() as u64).into()
-            },
-            Poll::Pending => {
-                Poll::Pending
-            },
-        }
-    }
 }
 
 impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
@@ -129,7 +109,23 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
     }
 
     fn poll_receive(&mut self, _: Owner, _: u64, _: u64, cx: &mut Context) -> Poll<Result<u64>> {
-        self.read(cx)
+        let mut buf = ReadBuf::uninit(&mut self.read_buffer);
+        return match self.inner.as_mut().poll_read(cx, &mut buf) {
+            Poll::Ready(_) => {
+                if buf.filled().is_empty() {
+                    if self.stream_opened {
+                        self.close_stream()?;
+                        return Ok(0).into();
+                    }
+                } else {
+                    cx.waker().wake_by_ref();
+                }
+                Ok(buf.filled().len() as u64).into()
+            },
+            Poll::Pending => {
+                Poll::Pending
+            },
+        }
     }
 
     fn poll_send_finish(&mut self, _: Owner, _: u64, _: &mut Context) -> Poll<Result<()>> {
