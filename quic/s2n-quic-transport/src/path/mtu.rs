@@ -125,7 +125,7 @@ impl Controller {
     /// The UDP header length and IP header length will be subtracted from `max_mtu` to
     /// determine the max_udp_payload used for limiting the payload length of probe packets.
     pub fn new(max_mtu: MaxMtu, peer_socket_address: &SocketAddress) -> Self {
-        let min_ip_header_len = match peer_socket_address {
+        let min_ip_header_len = match peer_socket_address.unmap() {
             SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
             SocketAddress::IpV6(_) => IPV6_MIN_HEADER_LEN,
         };
@@ -520,6 +520,26 @@ mod test {
         assert!(!controller.pmtu_raise_timer.is_armed());
         assert_eq!(
             ETHERNET_MTU - UDP_HEADER_LEN - IPV6_MIN_HEADER_LEN,
+            controller.probed_size
+        );
+    }
+
+    #[test]
+    fn new_ipv6_mapped() {
+        let addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
+        let addr: SocketAddress = addr.into();
+        let controller = Controller::new(1600.try_into().unwrap(), &addr.to_ipv6_mapped().into());
+
+        assert_eq!(
+            1600 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
+            controller.max_udp_payload
+        );
+        assert_eq!(
+            1600 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
+            controller.max_probe_size
+        );
+        assert_eq!(
+            ETHERNET_MTU - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
             controller.probed_size
         );
     }
