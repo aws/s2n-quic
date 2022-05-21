@@ -113,9 +113,23 @@ mod tests {
         }
     }
 
+    /// The most-significant 6 bits of the 8-bit traffic class field ECN markings are
+    /// read from are used for the differentiated services code point. This test
+    /// ensures we still parse ECN bits correctly even when the DSCP markings are present.
     #[test]
-    #[should_panic]
-    fn invalid_ecn() {
-        ExplicitCongestionNotification::new(4);
+    fn dscp_markings() {
+        for i in 0..u8::MAX {
+            for ecn in &[
+                ExplicitCongestionNotification::NotEct,
+                ExplicitCongestionNotification::Ect1,
+                ExplicitCongestionNotification::Ect0,
+                ExplicitCongestionNotification::Ce,
+            ] {
+                assert_eq!(
+                    *ecn,
+                    ExplicitCongestionNotification::new(i << 2 | *ecn as u8)
+                );
+            }
+        }
     }
 }
