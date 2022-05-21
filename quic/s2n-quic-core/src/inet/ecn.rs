@@ -77,12 +77,6 @@ impl Default for ExplicitCongestionNotification {
 impl ExplicitCongestionNotification {
     /// Create a ExplicitCongestionNotification from the ECN field in the IP header
     pub fn new(ecn_field: u8) -> Self {
-        debug_assert!(
-            ecn_field >> 2 == 0,
-            "{:#b} is not a valid ECN marking",
-            ecn_field
-        );
-
         match ecn_field & 0b11 {
             0b00 => ExplicitCongestionNotification::NotEct,
             0b01 => ExplicitCongestionNotification::Ect1,
