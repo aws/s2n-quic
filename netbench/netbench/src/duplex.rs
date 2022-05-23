@@ -7,7 +7,7 @@ use core::{
     task::{Context, Poll},
 };
 use futures::ready;
-use std::{io::IoSlice, mem::MaybeUninit};
+use std::mem::MaybeUninit;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 const READ_BUFFER_SIZE: usize = 100_000;
@@ -73,7 +73,13 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
         }
     }
 
-    fn poll_send(&mut self, _owner: Owner, _id: u64, bytes: u64, cx: &mut Context) -> Poll<Result<u64>> {
+    fn poll_send(
+        &mut self,
+        _owner: Owner,
+        _id: u64,
+        bytes: u64,
+        cx: &mut Context
+    ) -> Poll<Result<u64>> {
         let mut sent: u64 = 0;
         while sent < bytes {
             let to_send = (bytes - sent) as usize;
@@ -101,7 +107,13 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
         Ok(sent).into()
     }
 
-    fn poll_receive(&mut self, _owner: Owner, _id: u64, bytes: u64, cx: &mut Context) -> Poll<Result<u64>> {
+    fn poll_receive(
+        &mut self,
+        _owner: Owner,
+        _id: u64,
+        bytes: u64,
+        cx: &mut Context
+    ) -> Poll<Result<u64>> {
         let mut received: u64 = 0;
         while received < bytes {
             let mut buf = ReadBuf::uninit(&mut self.read_buffer);
