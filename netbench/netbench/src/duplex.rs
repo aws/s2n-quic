@@ -78,7 +78,7 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
         _owner: Owner,
         _id: u64,
         bytes: u64,
-        cx: &mut Context
+        cx: &mut Context,
     ) -> Poll<Result<u64>> {
         let mut sent: u64 = 0;
         while sent < bytes {
@@ -111,7 +111,7 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
         _owner: Owner,
         _id: u64,
         bytes: u64,
-        cx: &mut Context
+        cx: &mut Context,
     ) -> Poll<Result<u64>> {
         let mut received: u64 = 0;
         while received < bytes {
