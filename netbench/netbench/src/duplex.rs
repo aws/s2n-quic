@@ -73,34 +73,27 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
         }
     }
 
-    fn poll_send(&mut self, _: Owner, _: u64, bytes: u64, cx: &mut Context) -> Poll<Result<u64>> {
-        let send_amount = SEND_BUFFER_SIZE.min(bytes as usize);
+    fn poll_send(&mut self, _owner: Owner, _id: u64, bytes: u64, cx: &mut Context) -> Poll<Result<u64>> {
         let mut sent: u64 = 0;
-        if self.inner.as_ref().is_write_vectored() {
-            let to_send = IoSlice::new(&self.send_buffer[0..send_amount]);
-            match self.inner.as_mut().poll_write_vectored(cx, &[to_send]) {
-                Poll::Ready(result) => {
-                    sent += result? as u64;
-                }
-                Poll::Pending => {
-                    return Poll::Pending;
-                }
-            }
-        } else {
-            let to_send = &self.send_buffer[0..send_amount];
+        while sent < bytes {
+            let to_send = (bytes - sent) as usize;
+            let to_send = to_send.min(SEND_BUFFER_SIZE);
+            let to_send = &self.send_buffer[0..to_send];
             match self.inner.as_mut().poll_write(cx, to_send) {
                 Poll::Ready(result) => {
                     sent += result? as u64;
                 }
                 Poll::Pending => {
-                    return Poll::Pending;
+                    break;
                 }
             }
         }
 
-        if sent > 0 {
-            cx.waker().wake_by_ref();
+        if sent == 0 {
+            return Poll::Pending;
         }
+
+        cx.waker().wake_by_ref();
         if let Poll::Ready(res) = self.inner.as_mut().poll_flush(cx) {
             res?;
         }
@@ -108,22 +101,30 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
         Ok(sent).into()
     }
 
-    fn poll_receive(&mut self, _: Owner, _: u64, _: u64, cx: &mut Context) -> Poll<Result<u64>> {
-        let mut buf = ReadBuf::uninit(&mut self.read_buffer);
-        return match self.inner.as_mut().poll_read(cx, &mut buf) {
-            Poll::Ready(_) => {
-                if buf.filled().is_empty() {
-                    if self.stream_opened {
+    fn poll_receive(&mut self, _owner: Owner, _id: u64, bytes: u64, cx: &mut Context) -> Poll<Result<u64>> {
+        let mut received: u64 = 0;
+        while received < bytes {
+            let mut buf = ReadBuf::uninit(&mut self.read_buffer);
+            match self.inner.as_mut().poll_read(cx, &mut buf) {
+                Poll::Ready(_) => {
+                    if buf.filled().is_empty() && self.stream_opened {
                         self.close_stream()?;
                         return Ok(0).into();
                     }
-                } else {
-                    cx.waker().wake_by_ref();
+                    received += buf.filled().len() as u64;
                 }
-                Ok(buf.filled().len() as u64).into()
+                Poll::Pending => {
+                    break;
+                }
             }
-            Poll::Pending => Poll::Pending,
-        };
+        }
+
+        if received == 0 {
+            return Poll::Pending;
+        }
+
+        cx.waker().wake_by_ref();
+        Ok(received).into()
     }
 
     fn poll_send_finish(&mut self, _: Owner, _: u64, _: &mut Context) -> Poll<Result<()>> {
