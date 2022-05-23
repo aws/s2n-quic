@@ -113,9 +113,8 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
         bytes: u64,
         cx: &mut Context,
     ) -> Poll<Result<u64>> {
-        let mut buf: [MaybeUninit<u8>; READ_BUFFER_SIZE] = unsafe {
-            MaybeUninit::uninit().assume_init()
-        };
+        let mut buf: [MaybeUninit<u8>; READ_BUFFER_SIZE] =
+            unsafe { MaybeUninit::uninit().assume_init() };
 
         let mut received: u64 = 0;
         while received < bytes {
