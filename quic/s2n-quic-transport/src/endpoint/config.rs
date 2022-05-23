@@ -43,7 +43,7 @@ pub trait Config: 'static + Send + Sized + core::fmt::Debug {
     /// The packet_interceptor implementation for the endpoint
     type PacketInterceptor: packet::interceptor::Interceptor;
     /// The datagram implementation for the endpoint
-    type DatagramEndpoint: datagram::Endpoint;
+    type DatagramEndpoint: datagram::datagram::Endpoint;
 
     /// The type of the local endpoint
     const ENDPOINT_TYPE: endpoint::Type;

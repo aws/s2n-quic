@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::time::Timestamp;
+
 /// The datagram endpoint trait provides a way to implement custom unreliable datagram
 /// sending and receiving logic. The Sender type should be implemented for custom
 /// sending behavior, and the Receiver type should be implemented for custom
@@ -57,38 +59,13 @@ pub trait Packet {
     ///
     /// Use method to decide whether or not to cede the packet space to the stream data.
     fn has_pending_streams(&self) -> bool;
+
+    /// Returns the time that the packet is being written
+    fn current_time(&self) -> Timestamp;
 }
 
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum WriteError {
     DatagramIsTooLarge,
-}
-
-#[derive(Debug, Default)]
-pub struct Disabled;
-
-impl Endpoint for Disabled {
-    type Sender = DisabledSender;
-    type Receiver = DisabledReceiver;
-
-    fn create_connection(&mut self, _info: &ConnectionInfo) -> (Self::Sender, Self::Receiver) {
-        (DisabledSender, DisabledReceiver)
-    }
-}
-
-pub struct DisabledSender;
-pub struct DisabledReceiver;
-
-impl Sender for DisabledSender {
-    fn on_transmit<P: Packet>(&mut self, _packet: &mut P) {}
-
-    #[inline]
-    fn has_transmission_interest(&self) -> bool {
-        false
-    }
-}
-
-impl Receiver for DisabledReceiver {
-    fn on_datagram(&self, _datagram: &[u8]) {}
 }
