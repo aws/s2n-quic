@@ -10,6 +10,7 @@ use s2n_codec::EncoderValue;
 use s2n_quic_core::{
     datagram::datagram::{Endpoint, Receiver, Sender, WriteError},
     frame::{self, datagram::DatagramRef},
+    time::Timestamp,
     varint::VarInt,
 };
 
