@@ -18,7 +18,7 @@ use once_cell::sync::OnceCell;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{application::KeySet, limited, tls, CryptoSuite},
-    datagram::datagram::Endpoint,
+    datagram::unreliable_datagram::Endpoint,
     event::{self, ConnectionPublisher as _, IntoEvent},
     frame::{
         self, ack::AckRanges, crypto::CryptoRef, datagram::DatagramRef, stream::StreamRef, Ack,

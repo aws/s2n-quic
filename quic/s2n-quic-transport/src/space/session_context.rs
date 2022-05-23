@@ -20,7 +20,7 @@ use s2n_quic_core::{
     crypto,
     crypto::{tls, CryptoSuite, Key},
     ct::ConstantTimeEq,
-    datagram::datagram::{ConnectionInfo, Endpoint},
+    datagram::unreliable_datagram::{ConnectionInfo, Endpoint},
     event,
     event::IntoEvent,
     packet::number::PacketNumberSpace,

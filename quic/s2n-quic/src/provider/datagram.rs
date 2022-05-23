@@ -3,8 +3,8 @@
 
 //! Provides unreliable datagram support
 
-use s2n_quic_core::datagram::datagram::Endpoint;
-use s2n_quic_core::datagram::default::Disabled;
+use s2n_quic_core::datagram::{unreliable_datagram::Endpoint, default::Disabled};
+
 pub trait Provider {
     type Endpoint: Endpoint;
     type Error: 'static + core::fmt::Display;

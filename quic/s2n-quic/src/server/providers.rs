@@ -193,7 +193,7 @@ impl<
         Sync,
         Tls: crypto::tls::Endpoint,
         AddressToken: address_token::Format,
-        Datagram: s2n_quic_core::datagram::datagram::Endpoint,
+        Datagram: s2n_quic_core::datagram::unreliable_datagram::Endpoint,
     > core::fmt::Debug
     for EndpointConfig<
         CongestionController,
@@ -233,7 +233,7 @@ impl<
         Sync: 'static + Send,
         Tls: crypto::tls::Endpoint,
         AddressToken: address_token::Format,
-        Datagram: s2n_quic_core::datagram::datagram::Endpoint,
+        Datagram: s2n_quic_core::datagram::unreliable_datagram::Endpoint,
     > endpoint::Config
     for EndpointConfig<
         CongestionController,

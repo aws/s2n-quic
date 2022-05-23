@@ -4,7 +4,7 @@
 // s2n-quic's default implementation of the datagram component
 
 use crate::{
-    datagram::datagram::{ConnectionInfo, Endpoint, Packet, Receiver, Sender},
+    datagram::unreliable_datagram::{ConnectionInfo, Endpoint, Packet, Receiver, Sender},
     time::Timestamp,
 };
 use bytes::Bytes;
