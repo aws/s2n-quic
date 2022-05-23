@@ -99,6 +99,10 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
             return Poll::Pending;
         }
 
+        if let Poll::Ready(res) = self.inner.as_mut().poll_flush(cx) {
+            res?;
+        }
+
         Ok(sent).into()
     }
 
