@@ -17,6 +17,7 @@ testing = ["std", "generator", "s2n-codec/testing", "checked-counters", "insta",
 generator = ["bolero-generator"]
 checked-counters = []
 event-tracing = ["tracing"]
+event-bpf = ["probe"]
 
 [dependencies]
 bolero-generator = { version = "0.6", default-features = false, optional = true }
@@ -34,6 +35,7 @@ zerocopy = "=0.6.0"
 zerocopy-derive = "=0.3.0"
 futures-test = { version = "0.3", optional = true } # For testing Waker interactions
 once_cell = { version = "1", optional = true }
+probe = { version = "0.3", default-features = false, optional = true }
 
 [dev-dependencies]
 bolero = "0.6"

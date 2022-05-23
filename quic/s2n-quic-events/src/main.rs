@@ -18,6 +18,7 @@ struct Output {
     pub connection_publisher_subscriber: TokenStream,
     pub tuple_subscriber: TokenStream,
     pub tracing_subscriber: TokenStream,
+    pub bpf_subscriber: TokenStream,
     pub builders: TokenStream,
     pub api: TokenStream,
     pub testing_fields: TokenStream,
@@ -26,10 +27,89 @@ struct Output {
     pub endpoint_publisher_testing: TokenStream,
     pub connection_publisher_testing: TokenStream,
     pub extra: TokenStream,
+
+    // eBPF Rust repr_c structs
+    pub mode_rust_reprc: bool,
+    pub rust_bpf_reprc: TokenStream,
+    // eBPF C header file
+    pub mode_c_reprc: bool,
+    pub c_bpf_reprc: TokenStream,
+}
+
+impl Output {
+    fn to_tokens_c_reprc(&self, tokens: &mut TokenStream) {
+        let Output {
+            subscriber: _,
+            endpoint_publisher: _,
+            endpoint_publisher_subscriber: _,
+            connection_publisher: _,
+            connection_publisher_subscriber: _,
+            tuple_subscriber: _,
+            tracing_subscriber: _,
+            bpf_subscriber: _,
+            builders: _,
+            api: _,
+            testing_fields: _,
+            testing_fields_init: _,
+            subscriber_testing: _,
+            endpoint_publisher_testing: _,
+            connection_publisher_testing: _,
+            extra: _,
+            mode_rust_reprc: _,
+            rust_bpf_reprc: _,
+            mode_c_reprc: _,
+            c_bpf_reprc,
+        } = self;
+
+        tokens.extend(quote!(
+            #c_bpf_reprc
+        ));
+    }
+
+    fn to_tokens_rust_reprc(&self, tokens: &mut TokenStream) {
+        let Output {
+            subscriber: _,
+            endpoint_publisher: _,
+            endpoint_publisher_subscriber: _,
+            connection_publisher: _,
+            connection_publisher_subscriber: _,
+            tuple_subscriber: _,
+            tracing_subscriber: _,
+            bpf_subscriber: _,
+            builders: _,
+            api: _,
+            testing_fields: _,
+            testing_fields_init: _,
+            subscriber_testing: _,
+            endpoint_publisher_testing: _,
+            connection_publisher_testing: _,
+            extra: _,
+            mode_rust_reprc: _,
+            rust_bpf_reprc,
+            mode_c_reprc: _,
+            c_bpf_reprc: _,
+        } = self;
+
+        tokens.extend(quote!(
+            use super::{api, bpf::IntoBpf};
+
+            #rust_bpf_reprc
+        ));
+    }
 }
 
 impl ToTokens for Output {
     fn to_tokens(&self, tokens: &mut TokenStream) {
+        if self.mode_c_reprc {
+            self.to_tokens_c_reprc(tokens);
+            return;
+        }
+
+        if self.mode_rust_reprc {
+            self.to_tokens_rust_reprc(tokens);
+            return;
+        }
+
         let Output {
             subscriber,
             endpoint_publisher,
@@ -38,6 +118,7 @@ impl ToTokens for Output {
             connection_publisher_subscriber,
             tuple_subscriber,
             tracing_subscriber,
+            bpf_subscriber,
             builders,
             api,
             testing_fields,
@@ -46,6 +127,10 @@ impl ToTokens for Output {
             endpoint_publisher_testing,
             connection_publisher_testing,
             extra,
+            mode_rust_reprc: _,
+            rust_bpf_reprc: _,
+            mode_c_reprc: _,
+            c_bpf_reprc: _,
         } = self;
 
         tokens.extend(quote!(
@@ -103,6 +188,29 @@ impl ToTokens for Output {
                     }
 
                     #tracing_subscriber
+                }
+            }
+
+            #[cfg(all(s2n_quic_unstable, feature = "event-bpf"))]
+            pub mod bpf {
+                //! This module contains event integration with [`tracing`](https://docs.rs/tracing)
+                use super::api;
+                use probe::probe;
+                use crate::event::bpf::{ IntoBpf};
+                use crate::event::generated_bpf;
+
+                /// Emits events with [`tracing`](https://docs.rs/tracing)
+                #[derive(Clone, Debug, Default)]
+                pub struct Subscriber;
+
+                impl super::Subscriber for Subscriber {
+                    type ConnectionContext = ();
+
+                    fn create_connection_context(&mut self, meta: &api::ConnectionMeta, _info: &api::ConnectionInfo) -> Self::ConnectionContext {
+                        probe!(s2n_quic, create_connection_context, meta.id);
+                    }
+
+                    #bpf_subscriber
                 }
             }
 
@@ -678,6 +786,14 @@ fn main() -> Result<()> {
         file.to_tokens(&mut output);
     }
 
+    generate_events(&output)?;
+    generate_c_bpf(&mut output)?;
+    generate_rust_bpf(&mut output)?;
+
+    Ok(())
+}
+
+fn generate_events(output: &Output) -> Result<()> {
     let generated = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../s2n-quic-core/src/event/generated.rs"
@@ -707,6 +823,82 @@ fn main() -> Result<()> {
         .wait()?;
 
     assert!(status.success());
+    Ok(())
+}
 
+fn generate_rust_bpf(output: &mut Output) -> Result<()> {
+    output.mode_rust_reprc = true;
+    let generated = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../s2n-quic-core/src/event/generated_bpf.rs"
+    );
+
+    let mut o = std::fs::File::create(generated)?;
+
+    macro_rules! put {
+        ($($arg:tt)*) => {{
+            use std::io::Write;
+            writeln!(o, $($arg)*)?;
+        }}
+    }
+
+    put!("// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.");
+    put!("// SPDX-License-Identifier: Apache-2.0");
+    put!();
+    put!("// DO NOT MODIFY THIS FILE");
+    put!("// This file was generated with the `s2n-quic-events` crate and any required");
+    put!("// changes should be made there.");
+    put!();
+    put!("{}", output.to_token_stream());
+
+    let status = std::process::Command::new("rustfmt")
+        .arg(generated)
+        .spawn()?
+        .wait()?;
+
+    assert!(status.success());
+    output.mode_rust_reprc = false;
+    Ok(())
+}
+
+fn generate_c_bpf(output: &mut Output) -> Result<()> {
+    output.mode_c_reprc = true;
+    let generated = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../s2n-quic-core/src/event/generated_s2n_quic_bpf_events.h"
+    );
+
+    let mut o = std::fs::File::create(generated)?;
+
+    macro_rules! put {
+        ($($arg:tt)*) => {{
+            use std::io::Write;
+            writeln!(o, $($arg)*)?;
+        }}
+    }
+
+    put!("/*");
+    put!(" * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.");
+    put!(" * SPDX-License-Identifier: Apache-2.0");
+    put!(" */");
+    put!();
+    put!("/* DO NOT MODIFY THIS FILE");
+    put!(" * This file was generated with the `s2n-quic-events` crate and any required");
+    put!(" * changes should be made there.");
+    put!(" */");
+    put!();
+    put!("#include <linux/path.h>");
+    put!();
+    put!("{}", output.to_token_stream());
+
+    let status = std::process::Command::new("clang-format")
+        .arg("-i")
+        .arg(generated)
+        .spawn()?
+        .wait()?;
+
+    assert!(status.success());
+
+    output.mode_c_reprc = false;
     Ok(())
 }

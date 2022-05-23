@@ -1872,6 +1872,450 @@ pub mod tracing {
         }
     }
 }
+#[cfg(all(s2n_quic_unstable, feature = "event-bpf"))]
+pub mod bpf {
+    #![doc = r" This module contains event integration with [`tracing`](https://docs.rs/tracing)"]
+    use super::api;
+    use crate::event::{bpf::IntoBpf, generated_bpf};
+    use probe::probe;
+    #[doc = r" Emits events with [`tracing`](https://docs.rs/tracing)"]
+    #[derive(Clone, Debug, Default)]
+    pub struct Subscriber;
+    impl super::Subscriber for Subscriber {
+        type ConnectionContext = ();
+        fn create_connection_context(
+            &mut self,
+            meta: &api::ConnectionMeta,
+            _info: &api::ConnectionInfo,
+        ) -> Self::ConnectionContext {
+            probe!(s2n_quic, create_connection_context, meta.id);
+        }
+        #[inline]
+        fn on_application_protocol_information(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::ApplicationProtocolInformation,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_application_protocol_information, id);
+        }
+        #[inline]
+        fn on_server_name_information(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::ServerNameInformation,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_server_name_information, id);
+        }
+        #[inline]
+        fn on_packet_sent(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::PacketSent,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_packet_sent, id);
+        }
+        #[inline]
+        fn on_packet_received(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::PacketReceived,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_packet_received, id);
+        }
+        #[inline]
+        fn on_active_path_updated(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::ActivePathUpdated,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_active_path_updated, id);
+        }
+        #[inline]
+        fn on_path_created(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::PathCreated,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_path_created, id);
+        }
+        #[inline]
+        fn on_frame_sent(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::FrameSent,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_frame_sent, id);
+        }
+        #[inline]
+        fn on_frame_received(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::FrameReceived,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_frame_received, id);
+        }
+        #[inline]
+        fn on_packet_lost(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::PacketLost,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_packet_lost, id);
+        }
+        #[inline]
+        fn on_recovery_metrics(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::RecoveryMetrics,
+        ) {
+            let id = meta.id;
+            let m = event.as_bpf();
+            let ptr = &m as *const generated_bpf::RecoveryMetrics;
+            probe!(s2n_quic, on_recovery_metrics, id, ptr);
+        }
+        #[inline]
+        fn on_congestion(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::Congestion,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_congestion, id);
+        }
+        #[inline]
+        fn on_ack_processed(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::AckProcessed,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_ack_processed, id);
+        }
+        #[inline]
+        fn on_packet_dropped(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::PacketDropped,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_packet_dropped, id);
+        }
+        #[inline]
+        fn on_key_update(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::KeyUpdate,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_key_update, id);
+        }
+        #[inline]
+        fn on_key_space_discarded(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::KeySpaceDiscarded,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_key_space_discarded, id);
+        }
+        #[inline]
+        fn on_connection_started(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::ConnectionStarted,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_connection_started, id);
+        }
+        #[inline]
+        fn on_connection_closed(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::ConnectionClosed,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_connection_closed, id);
+        }
+        #[inline]
+        fn on_duplicate_packet(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::DuplicatePacket,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_duplicate_packet, id);
+        }
+        #[inline]
+        fn on_transport_parameters_received(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::TransportParametersReceived,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_transport_parameters_received, id);
+        }
+        #[inline]
+        fn on_datagram_sent(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::DatagramSent,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_datagram_sent, id);
+        }
+        #[inline]
+        fn on_datagram_received(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::DatagramReceived,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_datagram_received, id);
+        }
+        #[inline]
+        fn on_datagram_dropped(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::DatagramDropped,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_datagram_dropped, id);
+        }
+        #[inline]
+        fn on_connection_id_updated(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::ConnectionIdUpdated,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_connection_id_updated, id);
+        }
+        #[inline]
+        fn on_ecn_state_changed(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::EcnStateChanged,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_ecn_state_changed, id);
+        }
+        #[inline]
+        fn on_connection_migration_denied(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::ConnectionMigrationDenied,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_connection_migration_denied, id);
+        }
+        #[inline]
+        fn on_handshake_status_updated(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::HandshakeStatusUpdated,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_handshake_status_updated, id);
+        }
+        #[inline]
+        fn on_path_challenge_updated(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::PathChallengeUpdated,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_path_challenge_updated, id);
+        }
+        #[inline]
+        fn on_tls_client_hello(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::TlsClientHello,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_tls_client_hello, id);
+        }
+        #[inline]
+        fn on_tls_server_hello(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::TlsServerHello,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_tls_server_hello, id);
+        }
+        #[inline]
+        fn on_rx_stream_progress(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::RxStreamProgress,
+        ) {
+            let id = meta.id;
+            let m = event.as_bpf();
+            let ptr = &m as *const generated_bpf::RxStreamProgress;
+            probe!(s2n_quic, on_rx_stream_progress, id, ptr);
+        }
+        #[inline]
+        fn on_tx_stream_progress(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::TxStreamProgress,
+        ) {
+            let id = meta.id;
+            let m = event.as_bpf();
+            let ptr = &m as *const generated_bpf::TxStreamProgress;
+            probe!(s2n_quic, on_tx_stream_progress, id, ptr);
+        }
+        #[inline]
+        fn on_keep_alive_timer_expired(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            _event: &api::KeepAliveTimerExpired,
+        ) {
+            let id = meta.id;
+            probe!(s2n_quic, on_keep_alive_timer_expired, id);
+        }
+        #[inline]
+        fn on_version_information(
+            &mut self,
+            _meta: &api::EndpointMeta,
+            _event: &api::VersionInformation,
+        ) {
+            probe!(s2n_quic, on_version_information);
+        }
+        #[inline]
+        fn on_endpoint_packet_sent(
+            &mut self,
+            _meta: &api::EndpointMeta,
+            _event: &api::EndpointPacketSent,
+        ) {
+            probe!(s2n_quic, on_endpoint_packet_sent);
+        }
+        #[inline]
+        fn on_endpoint_packet_received(
+            &mut self,
+            _meta: &api::EndpointMeta,
+            _event: &api::EndpointPacketReceived,
+        ) {
+            probe!(s2n_quic, on_endpoint_packet_received);
+        }
+        #[inline]
+        fn on_endpoint_datagram_sent(
+            &mut self,
+            _meta: &api::EndpointMeta,
+            _event: &api::EndpointDatagramSent,
+        ) {
+            probe!(s2n_quic, on_endpoint_datagram_sent);
+        }
+        #[inline]
+        fn on_endpoint_datagram_received(
+            &mut self,
+            _meta: &api::EndpointMeta,
+            event: &api::EndpointDatagramReceived,
+        ) {
+            let m = event.as_bpf();
+            let ptr = &m as *const generated_bpf::EndpointDatagramReceived;
+            probe!(s2n_quic, on_endpoint_datagram_received, ptr);
+        }
+        #[inline]
+        fn on_endpoint_datagram_dropped(
+            &mut self,
+            _meta: &api::EndpointMeta,
+            _event: &api::EndpointDatagramDropped,
+        ) {
+            probe!(s2n_quic, on_endpoint_datagram_dropped);
+        }
+        #[inline]
+        fn on_endpoint_connection_attempt_failed(
+            &mut self,
+            _meta: &api::EndpointMeta,
+            _event: &api::EndpointConnectionAttemptFailed,
+        ) {
+            probe!(s2n_quic, on_endpoint_connection_attempt_failed);
+        }
+        #[inline]
+        fn on_platform_tx(&mut self, _meta: &api::EndpointMeta, _event: &api::PlatformTx) {
+            probe!(s2n_quic, on_platform_tx);
+        }
+        #[inline]
+        fn on_platform_tx_error(
+            &mut self,
+            _meta: &api::EndpointMeta,
+            _event: &api::PlatformTxError,
+        ) {
+            probe!(s2n_quic, on_platform_tx_error);
+        }
+        #[inline]
+        fn on_platform_rx(&mut self, _meta: &api::EndpointMeta, _event: &api::PlatformRx) {
+            probe!(s2n_quic, on_platform_rx);
+        }
+        #[inline]
+        fn on_platform_rx_error(
+            &mut self,
+            _meta: &api::EndpointMeta,
+            _event: &api::PlatformRxError,
+        ) {
+            probe!(s2n_quic, on_platform_rx_error);
+        }
+        #[inline]
+        fn on_platform_feature_configured(
+            &mut self,
+            _meta: &api::EndpointMeta,
+            _event: &api::PlatformFeatureConfigured,
+        ) {
+            probe!(s2n_quic, on_platform_feature_configured);
+        }
+        #[inline]
+        fn on_platform_event_loop_wakeup(
+            &mut self,
+            _meta: &api::EndpointMeta,
+            _event: &api::PlatformEventLoopWakeup,
+        ) {
+            probe!(s2n_quic, on_platform_event_loop_wakeup);
+        }
+    }
+}
 pub mod builder {
     use super::*;
     #[derive(Clone, Debug)]

@@ -37,6 +37,15 @@ cfg_if! {
     }
 }
 
+cfg_if! {
+    if #[cfg(all(
+        s2n_quic_unstable,
+        feature = "unstable-provider-event-bpf"
+    ))] {
+        pub mod bpf;
+    }
+}
+
 pub use default::Provider as Default;
 
 impl<S> Provider for S

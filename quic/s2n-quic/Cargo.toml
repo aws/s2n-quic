@@ -40,6 +40,8 @@ unstable-provider-io-testing = ["s2n-quic-platform/io-testing"]
 unstable-provider-packet-interceptor = []
 # This feature enables the random provider
 unstable-provider-random = []
+# This feature enables the bpf event provider. Requires rust_toolchain >= 1.59
+unstable-provider-event-bpf = ["s2n-quic-core/event-bpf"]
 
 [dependencies]
 bytes = { version = "1", default-features = false }

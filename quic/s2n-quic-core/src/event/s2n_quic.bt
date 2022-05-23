@@ -1,0 +1,58 @@
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+ #include "quic/s2n-quic-core/src/event/generated_s2n_quic_bpf_events.h"
+
+BEGIN {
+  printf("s2n-quic");
+}
+
+usdt:./target/debug/s2n-quic-qns:on_connection_started
+{
+    /* arg0 is `id` for connection level events */
+    printf("starting connection %d\n", arg0);
+    @cs++;
+}
+
+usdt:./target/debug/s2n-quic-qns:on_connection_closed
+{
+    /* arg0 is `id` for connection level events */
+    printf("closing connection %dn", arg0); // arg0 is `id`
+    @cs--;
+}
+
+usdt:./target/debug/s2n-quic-qns:on_recovery_metrics
+{
+    $m = (struct RecoveryMetrics *) arg1;
+    @rm_cw = hist($m->congestion_window);
+    @rm_srtt[arg0] = hist($m->smoothed_rtt);
+}
+
+usdt:./target/debug/s2n-quic-qns:on_rx_stream_progress
+{
+    $m = (struct RxStreamProgress *) arg1;
+    @rxs = hist($m->bytes);
+}
+
+usdt:./target/debug/s2n-quic-qns:on_tx_stream_progress
+{
+    $m = (struct TxStreamProgress *) arg1;
+    @txs = hist($m->bytes);
+}
+
+/* print statistics about the process once every 1000 ms */
+i:ms:1000 {
+  printf("Total connections: %d\n", @cs);
+
+  /* print and clear congestion_window at each interval */
+  print(@rm_cw);
+  clear(@rm_cw);
+
+  /* print the total smoothed_rtt histogram at the end of the process */
+  /* print(@rm_srtt); */
+  /* clear(@rm_srtt); */
+
+  print("===");
+}

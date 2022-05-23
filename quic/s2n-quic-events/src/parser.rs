@@ -186,6 +186,52 @@ impl Struct {
                         }
                     ));
 
+                    // endpoint level events
+                    if attrs.bpf {
+                        // eBPF Rust repr_c structs
+                        output.rust_bpf_reprc.extend(quote!(
+                            #[repr(C)]
+                            #[derive(Debug)]
+                            pub(super) struct #ident {
+                                #(pub #destructure_fields: u64,) *
+                            }
+
+                            impl #generics IntoBpf<#ident> for api::#ident #generics {
+                                #[inline]
+                                fn as_bpf(&self) -> #ident {
+                                    #ident {
+                                        #(#destructure_fields: self.#destructure_fields.as_bpf(),) *
+                                    }
+                                }
+                            }
+                        ));
+                        // eBPF C header file
+                        output.c_bpf_reprc.extend(quote!(
+                            struct #ident {
+                                #(uint64_t #destructure_fields;) *
+                            };
+
+                        ));
+
+                        output.bpf_subscriber.extend(quote!(
+                            #[inline]
+                            #allow_deprecated
+                            fn #function(&mut self, _meta: &api::EndpointMeta, event: &api::#ident) {
+                                let m = event.as_bpf();
+                                let ptr = &m as *const generated_bpf::#ident;
+                                probe!(s2n_quic, #function, ptr);
+                            }
+                        ));
+                    } else {
+                        output.bpf_subscriber.extend(quote!(
+                            #[inline]
+                            #allow_deprecated
+                            fn #function(&mut self, _meta: &api::EndpointMeta, _event: &api::#ident) {
+                                probe!(s2n_quic, #function);
+                            }
+                        ));
+                    }
+
                     output.endpoint_publisher.extend(quote!(
                         #[doc = #publisher_doc]
                         fn #function(&mut self, event: builder::#ident);
@@ -249,6 +295,54 @@ impl Struct {
                             tracing::event!(target: #snake, parent: id, tracing::Level::DEBUG, #(#destructure_fields = tracing::field::debug(#destructure_fields)),*);
                         }
                     ));
+
+                    // connection level events
+                    if attrs.bpf {
+                        // eBPF Rust repr_c structs
+                        output.rust_bpf_reprc.extend(quote!(
+                            #[repr(C)]
+                            #[derive(Debug)]
+                            pub(super) struct #ident {
+                                #(pub #destructure_fields: u64,) *
+                            }
+
+                            impl #generics IntoBpf<#ident> for api::#ident #generics {
+                                #[inline]
+                                fn as_bpf(&self) -> #ident {
+                                    #ident {
+                                        #(#destructure_fields: self.#destructure_fields.as_bpf(),) *
+                                    }
+                                }
+                            }
+                        ));
+                        // eBPF C header file
+                        output.c_bpf_reprc.extend(quote!(
+                            struct #ident {
+                                #(uint64_t #destructure_fields;) *
+                            };
+
+                        ));
+
+                        output.bpf_subscriber.extend(quote!(
+                            #[inline]
+                            #allow_deprecated
+                            fn #function(&mut self, _context: &mut Self::ConnectionContext, meta: &api::ConnectionMeta, event: &api::#ident) {
+                                let id = meta.id;
+                                let m = event.as_bpf();
+                                let ptr = &m as *const generated_bpf::#ident;
+                                probe!(s2n_quic, #function, id, ptr);
+                            }
+                        ));
+                    } else {
+                        output.bpf_subscriber.extend(quote!(
+                            #[inline]
+                            #allow_deprecated
+                            fn #function(&mut self, _context: &mut Self::ConnectionContext, meta: &api::ConnectionMeta, _event: &api::#ident) {
+                                let id = meta.id;
+                                probe!(s2n_quic, #function, id);
+                            }
+                        ));
+                    }
 
                     output.connection_publisher.extend(quote!(
                         #[doc = #publisher_doc]
@@ -380,6 +474,7 @@ struct ContainerAttrs {
     subject: Subject,
     exhaustive: bool,
     derive: bool,
+    bpf: bool,
     derive_attrs: TokenStream,
     extra: TokenStream,
 }
@@ -396,6 +491,7 @@ impl ContainerAttrs {
             // default to #[non_exhaustive]
             exhaustive: false,
             derive: true,
+            bpf: false,
             derive_attrs: quote!(),
             extra: quote!(),
         };
@@ -416,6 +512,8 @@ impl ContainerAttrs {
             } else if attr.path.is_ident("derive") {
                 v.derive = false;
                 attr.to_tokens(&mut v.derive_attrs);
+            } else if attr.path.is_ident("bpf") {
+                v.bpf = true;
             } else {
                 attr.to_tokens(&mut v.extra)
             }

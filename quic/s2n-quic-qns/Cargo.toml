@@ -38,3 +38,7 @@ normal = [ "openssl-sys" ]
 # Use unstable s2n-quic features
 [target.'cfg(s2n_quic_unstable)'.dependencies]
 s2n-quic = { path = "../s2n-quic", features = ["unstable_client_hello"] }
+
+# Use unstable s2n-quic features. Requires rust_toolchain >= 1.59
+[target.'cfg(all(s2n_quic_unstable, unstable_provider_event_bpf))'.dependencies]
+s2n-quic = { path = "../s2n-quic", features = ["unstable-provider-event-bpf"] }

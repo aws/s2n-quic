@@ -46,6 +46,7 @@ struct EndpointDatagramSent {
 
 #[event("transport:datagram_received")]
 #[subject(endpoint)]
+#[bpf]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.11
 /// Datagram received by the endpoint
 struct EndpointDatagramReceived {

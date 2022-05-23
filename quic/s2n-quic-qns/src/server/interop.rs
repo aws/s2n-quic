@@ -61,6 +61,7 @@ impl Interop {
 
         let www_dir: Arc<Path> = Arc::from(self.www_dir.as_path());
 
+        println!("listening on {}", server.local_addr().unwrap());
         while let Some(connection) = server.accept().await {
             let unspecified: std::net::SocketAddr = ([0, 0, 0, 0], 0).into();
             println!(
@@ -106,11 +107,25 @@ impl Interop {
 
         let server = Server::builder()
             .with_io(io)?
-            .with_endpoint_limits(limits)?
-            .with_event((
-                EventSubscriber(1),
-                s2n_quic::provider::event::tracing::Subscriber::default(),
-            ))?;
+            .with_endpoint_limits(limits)?;
+
+        cfg_if::cfg_if! {
+            if #[cfg(all(
+                s2n_quic_unstable,
+                unstable_provider_event_bpf
+            ))] {
+                println!("bpf events enabled------------------");
+                let server = server.with_event(
+                    s2n_quic::provider::event::bpf::Subscriber::default()
+                )?;
+            } else {
+                let server = server.with_event((
+                    EventSubscriber(1),
+                    s2n_quic::provider::event::tracing::Subscriber::default(),
+                ))?;
+            }
+        };
+
         let server = match self.tls {
             #[cfg(unix)]
             TlsProviders::S2N => {

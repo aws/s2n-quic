@@ -81,6 +81,7 @@ struct PacketLost<'a> {
 }
 
 #[event("recovery:metrics_updated")]
+#[bpf]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.4.2
 /// Recovery metrics updated
 struct RecoveryMetrics<'a> {
@@ -231,11 +232,13 @@ struct TlsServerHello<'a> {
 }
 
 #[event("transport:rx_stream_progress")]
+#[bpf]
 struct RxStreamProgress {
     bytes: usize,
 }
 
 #[event("transport:tx_stream_progress")]
+#[bpf]
 struct TxStreamProgress {
     bytes: usize,
 }

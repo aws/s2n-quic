@@ -7,6 +7,11 @@ use core::{ops::RangeInclusive, time::Duration};
 mod generated;
 pub use generated::*;
 
+#[cfg(all(s2n_quic_unstable, feature = "event-bpf"))]
+pub mod bpf;
+#[cfg(all(s2n_quic_unstable, feature = "event-bpf"))]
+mod generated_bpf;
+
 /// All event types which can be emitted from this library.
 pub trait Event: core::fmt::Debug {
     const NAME: &'static str;

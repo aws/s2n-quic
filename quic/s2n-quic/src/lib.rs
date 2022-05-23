@@ -82,6 +82,7 @@ mod tests;
             feature = "unstable-provider-io-testing",
             feature = "unstable-provider-packet-interceptor",
             feature = "unstable-provider-random",
+            feature = "unstable-provider-event-bpf",
         ),
         // any unstable features requires at least one of the following conditions
         not(any(
