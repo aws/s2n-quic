@@ -19,7 +19,6 @@ pub struct Connection<T: AsyncRead + AsyncWrite> {
     inner: Pin<Box<T>>,
     stream_opened: bool,
     send_buffer: Vec<u8>,
-    read_buffer: [MaybeUninit<u8>; READ_BUFFER_SIZE],
 }
 
 impl<T: AsyncRead + AsyncWrite> Connection<T> {
@@ -29,7 +28,6 @@ impl<T: AsyncRead + AsyncWrite> Connection<T> {
             inner,
             stream_opened: false,
             send_buffer: vec![1; SEND_BUFFER_SIZE],
-            read_buffer: unsafe { MaybeUninit::uninit().assume_init() },
         }
     }
 
@@ -113,9 +111,14 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
         bytes: u64,
         cx: &mut Context,
     ) -> Poll<Result<u64>> {
+        let mut buf: [MaybeUninit<u8>; READ_BUFFER_SIZE] = unsafe {
+            MaybeUninit::uninit().assume_init()
+        };
+
         let mut received: u64 = 0;
         while received < bytes {
-            let mut buf = ReadBuf::uninit(&mut self.read_buffer);
+            let mut buf = ReadBuf::uninit(&mut buf);
+
             match self.inner.as_mut().poll_read(cx, &mut buf) {
                 Poll::Ready(_) => {
                     if buf.filled().is_empty() && self.stream_opened {
