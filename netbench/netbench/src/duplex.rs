@@ -99,7 +99,6 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
             return Poll::Pending;
         }
 
-        cx.waker().wake_by_ref();
         if let Poll::Ready(res) = self.inner.as_mut().poll_flush(cx) {
             res?;
         }
@@ -135,7 +134,6 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
             return Poll::Pending;
         }
 
-        cx.waker().wake_by_ref();
         Ok(received).into()
     }
 
