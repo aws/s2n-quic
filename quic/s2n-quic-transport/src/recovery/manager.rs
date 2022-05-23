@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    ack::pending_ack_ranges::PendingAckRanges,
     contexts::WriteContext,
     endpoint,
     path::{self, ecn::ValidationOutcome, path_event, Path},
@@ -308,75 +307,8 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// Process pending ACK information.
     ///
     /// Update congestion controller, timers and meta data around acked packet ranges.
-    pub fn on_pending_ack_ranges<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
-        &mut self,
-        timestamp: Timestamp,
-        pending_ack_ranges: &mut PendingAckRanges,
-        context: &mut Ctx,
-        publisher: &mut Pub,
-    ) -> Result<(), transport::Error> {
-        debug_assert!(
-            !pending_ack_ranges.is_empty(),
-            "pending_ack_ranges should be non-empty since connection indicated ack interest"
-        );
-
-        let largest_acked_packet_number = pending_ack_ranges
-            .max_value()
-            .expect("pending range should not be empty");
-        let result = self.process_acks(
-            timestamp,
-            pending_ack_ranges.iter(),
-            largest_acked_packet_number,
-            pending_ack_ranges.ack_delay(),
-            pending_ack_ranges.ecn_counts(),
-            context,
-            publisher,
-        );
-
-        // reset pending ack information after processing
-        //
-        // If there was an error during processing, the connection is closed
-        // so it should not matter if the queue is cleared.
-        pending_ack_ranges.reset_aggregate_info();
-
-        result
-    }
-
-    /// Process ACK frame.
-    ///
-    /// Update congestion controller, timers and meta data around acked packet ranges.
-    pub fn on_ack_frame<
-        A: frame::ack::AckRanges,
-        Ctx: Context<Config>,
-        Pub: event::ConnectionPublisher,
-    >(
-        &mut self,
-        timestamp: Timestamp,
-        frame: frame::Ack<A>,
-        context: &mut Ctx,
-        publisher: &mut Pub,
-    ) -> Result<(), transport::Error> {
-        let space = self.space;
-        let largest_acked_packet_number = space.new_packet_number(frame.largest_acknowledged());
-        self.process_acks(
-            timestamp,
-            frame.ack_ranges().map(|ack_range| {
-                let (start, end) = ack_range.into_inner();
-                PacketNumberRange::new(space.new_packet_number(start), space.new_packet_number(end))
-            }),
-            largest_acked_packet_number,
-            frame.ack_delay(),
-            frame.ecn_counts,
-            context,
-            publisher,
-        )?;
-
-        Ok(())
-    }
-
-    /// Generic interface for processing ACK ranges.
     #[allow(clippy::too_many_arguments)]
-    fn process_acks<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
+    pub fn process_acks<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         timestamp: Timestamp,
         ranges: impl Iterator<Item = PacketNumberRange>,

@@ -504,7 +504,18 @@ impl<Config: endpoint::Config> PacketSpace<Config> for HandshakeSpace<Config> {
         path.on_peer_validated();
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, path_id, path_manager);
-        recovery_manager.on_ack_frame(timestamp, frame, &mut context, publisher)
+
+        let space = PacketNumberSpace::Handshake;
+        let largest_acked_packet_number = space.new_packet_number(frame.largest_acknowledged());
+        recovery_manager.process_acks(
+            timestamp,
+            frame.pn_range_iter(space),
+            largest_acked_packet_number,
+            frame.ack_delay(),
+            frame.ecn_counts,
+            &mut context,
+            publisher,
+        )
     }
 
     fn handle_connection_close_frame(

@@ -1,7 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{frame::Tag, inet::ExplicitCongestionNotification, number::CheckedSub, varint::VarInt};
+use crate::{
+    frame::Tag,
+    inet::ExplicitCongestionNotification,
+    number::CheckedSub,
+    packet::number::{PacketNumberRange, PacketNumberSpace},
+    varint::VarInt,
+};
 use core::{
     convert::TryInto,
     ops::{RangeInclusive, SubAssign},
@@ -107,6 +113,16 @@ impl<A: AckRanges> Ack<A> {
 
     pub fn largest_acknowledged(&self) -> VarInt {
         self.ack_ranges.largest_acknowledged()
+    }
+
+    pub fn pn_range_iter(
+        &self,
+        space: PacketNumberSpace,
+    ) -> impl Iterator<Item = PacketNumberRange> {
+        self.ack_ranges().map(move |ack_range| {
+            let (start, end) = ack_range.into_inner();
+            PacketNumberRange::new(space.new_packet_number(start), space.new_packet_number(end))
+        })
     }
 }
 

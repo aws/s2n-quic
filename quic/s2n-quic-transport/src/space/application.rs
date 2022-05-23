@@ -589,12 +589,32 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 .expect("active path should be set"),
             path_manager,
         );
-        recovery_manager.on_pending_ack_ranges(
+
+        debug_assert!(
+            !pending_ack_ranges.is_empty(),
+            "pending_ack_ranges should be non-empty since connection indicated ack interest"
+        );
+
+        let largest_acked_packet_number = pending_ack_ranges
+            .max_value()
+            .expect("pending range should not be empty");
+        let result = recovery_manager.process_acks(
             timestamp,
-            pending_ack_ranges,
+            pending_ack_ranges.iter(),
+            largest_acked_packet_number,
+            pending_ack_ranges.ack_delay(),
+            pending_ack_ranges.ecn_counts(),
             &mut context,
             publisher,
-        )
+        );
+
+        // reset pending ack information after processing
+        //
+        // If there was an error during processing, the connection is closed
+        // so it should not matter if the queue is cleared.
+        pending_ack_ranges.reset_aggregate_info();
+
+        result
     }
 }
 
@@ -778,7 +798,17 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         let (recovery_manager, mut context, _pending_ack_ranges) =
             self.recovery(handshake_status, local_id_registry, path_id, path_manager);
 
-        recovery_manager.on_ack_frame(timestamp, frame, &mut context, publisher)
+        let space = PacketNumberSpace::ApplicationData;
+        let largest_acked_packet_number = space.new_packet_number(frame.largest_acknowledged());
+        recovery_manager.process_acks(
+            timestamp,
+            frame.pn_range_iter(space),
+            largest_acked_packet_number,
+            frame.ack_delay(),
+            frame.ecn_counts,
+            &mut context,
+            publisher,
+        )
     }
 
     fn handle_connection_close_frame(
