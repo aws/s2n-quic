@@ -19,7 +19,7 @@ checked-counters = []
 event-tracing = ["tracing"]
 
 [dependencies]
-bolero-generator = { version = "0.6", default-features = false, optional = true }
+bolero-generator = { version = "0.7", default-features = false, optional = true }
 byteorder = { version = "1", default-features = false }
 bytes = { version = "1", default-features = false }
 hex-literal = "0.3"
@@ -36,13 +36,18 @@ futures-test = { version = "0.3", optional = true } # For testing Waker interact
 once_cell = { version = "1", optional = true }
 
 [dev-dependencies]
-bolero = "0.6"
-bolero-generator = { version = "0.6", default-features = false }
+bolero = "0.7"
+bolero-generator = { version = "0.7", default-features = false }
 insta = "1"
 futures-test = "0.3"
 ip_network = "0.4"
 plotters = { version = "0.3", default-features = false, features = ["svg_backend", "line_series"] }
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
+
+# TODO remove this once this is fixed: https://github.com/model-checking/kani/issues/473
+[target.'cfg(kani)'.dependencies]
+bolero = "0.7"
+bolero-generator = "0.7"
 
 [[test]]
 name = "crypto"

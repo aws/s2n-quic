@@ -20,7 +20,7 @@ wipe = ["zeroize"]
 
 [dependencies]
 bach = { version = "0.0.6", optional = true }
-bolero-generator = { version = "0.6", default-features = false, optional = true }
+bolero-generator = { version = "0.7", default-features = false, optional = true }
 cfg-if = "1"
 errno = "0.2"
 futures = { version = "0.3", default-features = false, features = ["async-await"], optional = true }
@@ -36,8 +36,8 @@ libc = "0.2"
 
 [dev-dependencies]
 bach = { version = "0.0.6" }
-bolero = "0.6"
-bolero-generator = { version = "0.6", default-features = false }
+bolero = "0.7"
+bolero-generator = { version = "0.7", default-features = false }
 futures = { version = "0.3", features = ["std"] }
 insta = "1"
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
