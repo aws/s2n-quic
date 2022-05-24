@@ -34,7 +34,6 @@ use s2n_quic_core::{
         short::{CleartextShort, ProtectedShort, Short, SpinBit},
     },
     path::MaxMtu,
-    recovery::CongestionController,
     time::{timer, Timestamp},
     transport,
 };
@@ -450,15 +449,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     /// Sending is app limited if the application is not fully utilizing the available
     /// congestion window currently and there is no more application data remaining to send.
     fn is_app_limited(&self, path: &Path<Config>, bytes_sent: usize) -> bool {
-        let cwnd = path.congestion_controller.congestion_window();
-        let bytes_in_flight = path
-            .congestion_controller
-            .bytes_in_flight()
-            .saturating_add(bytes_sent as u32);
-        let mtu = path.mtu_controller.mtu() as u32;
-
-        let congestion_blocked = cwnd.saturating_sub(bytes_in_flight) < mtu;
-        !congestion_blocked && !self.has_transmission_interest()
+        !path.is_congestion_limited(bytes_sent) && !self.has_transmission_interest()
     }
 
     /// Validate packets in the Application packet space

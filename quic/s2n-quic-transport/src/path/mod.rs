@@ -538,6 +538,20 @@ impl<Config: endpoint::Config> Path<Config> {
         self.mtu_controller.max_mtu()
     }
 
+    /// Returns `true` if the congestion window does not have sufficient space for a packet of
+    /// size `mtu` considering the current bytes in flight and the additional `bytes_sent` provided
+    #[inline]
+    pub fn is_congestion_limited(&self, bytes_sent: usize) -> bool {
+        let cwnd = self.congestion_controller.congestion_window();
+        let bytes_in_flight = self
+            .congestion_controller
+            .bytes_in_flight()
+            .saturating_add(bytes_sent as u32);
+        let mtu = self.mtu(transmission::Mode::Normal) as u32;
+
+        cwnd.saturating_sub(bytes_in_flight) < mtu
+    }
+
     // Compare a Path based on its PathHandle.
     //
     // Currently the local_address on the Client connection is unknown and set to
@@ -1202,5 +1216,20 @@ mod tests {
                 assert_eq!(*tx_allowance, 0)
             }
         }
+    }
+
+    #[test]
+    fn is_congestion_limited() {
+        let mut path = testing::helper_path_client();
+        let mtu = path.mtu_controller.mtu() as u32;
+
+        path.congestion_controller.congestion_window = 12000;
+        path.congestion_controller.bytes_in_flight = 12000 - 500 - mtu;
+
+        // There is room for an MTU sized packet after including the 500 bytes, so the path is not congestion limited
+        assert!(!path.is_congestion_limited(500));
+
+        // There isn't room for an MTU sized packet after including the 501 bytes, so the path is congestion limited
+        assert!(path.is_congestion_limited(501));
     }
 }
