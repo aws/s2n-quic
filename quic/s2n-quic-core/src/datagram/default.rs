@@ -7,9 +7,9 @@ use crate::{
     datagram::unreliable_datagram::{ConnectionInfo, Endpoint, Packet, Receiver, Sender},
     time::Timestamp,
 };
+use alloc::collections::VecDeque;
 use bytes::Bytes;
 use core::time::Duration;
-use std::collections::VecDeque;
 
 #[derive(Debug, Default)]
 pub struct Disabled;
