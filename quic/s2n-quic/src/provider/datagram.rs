@@ -3,7 +3,7 @@
 
 //! Provides unreliable datagram support
 
-use s2n_quic_core::datagram::{default::Disabled, unreliable_datagram::Endpoint};
+use s2n_quic_core::datagram::{default::Disabled, traits::Endpoint};
 
 pub trait Provider {
     type Endpoint: Endpoint;

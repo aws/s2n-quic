@@ -8,9 +8,9 @@ use crate::{
 };
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{
-    datagram::unreliable_datagram::{Endpoint, Receiver, Sender, WriteError},
+    datagram::{Endpoint, Receiver, Sender, WriteError},
+    event::Timestamp,
     frame::{self, datagram::DatagramRef},
-    time::Timestamp,
     varint::VarInt,
 };
 
@@ -66,7 +66,7 @@ struct Packet<'a, C: WriteContext> {
     has_pending_streams: bool,
 }
 
-impl<'a, C: WriteContext> s2n_quic_core::datagram::unreliable_datagram::Packet for Packet<'a, C> {
+impl<'a, C: WriteContext> s2n_quic_core::datagram::Packet for Packet<'a, C> {
     /// Returns the remaining space in the packet
     fn remaining_capacity(&self) -> usize {
         let space = self.context.remaining_capacity();
@@ -104,6 +104,6 @@ impl<'a, C: WriteContext> s2n_quic_core::datagram::unreliable_datagram::Packet f
 
     /// Returns the current point of time
     fn current_time(&self) -> Timestamp {
-        self.context.current_time()
+        s2n_quic_core::event::IntoEvent::into_event(self.context.current_time())
     }
 }

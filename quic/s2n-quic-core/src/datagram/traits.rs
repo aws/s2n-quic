@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::time::Timestamp;
+use crate::event::Timestamp;
 
 /// The datagram endpoint trait provides a way to implement custom unreliable datagram
 /// sending and receiving logic. The Sender type should be implemented for custom
