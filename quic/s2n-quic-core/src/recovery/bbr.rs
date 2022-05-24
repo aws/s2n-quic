@@ -103,12 +103,6 @@ impl CongestionController for BbrCongestionController {
         app_limited: Option<bool>,
         _rtt_estimator: &RttEstimator,
     ) -> Self::PacketInfo {
-        let packet_info = self.bw_estimator.on_packet_sent(
-            *self.bytes_in_flight,
-            app_limited.unwrap_or(false),
-            time_sent,
-        ); // TODO: fix app limited
-
         if sent_bytes > 0 {
             self.recovery_state.on_packet_sent();
 
@@ -117,7 +111,8 @@ impl CongestionController for BbrCongestionController {
                 .expect("sent_bytes should not exceed u32::MAX");
         }
 
-        packet_info
+        self.bw_estimator
+            .on_packet_sent(*self.bytes_in_flight, app_limited, time_sent)
     }
 
     fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RttEstimator) {
