@@ -206,6 +206,11 @@ impl CongestionController for CubicCongestionController {
             .expect("bytes sent should not exceed u32::MAX");
 
         if let Some(app_limited) = app_limited {
+            // We check both the given `app_limited` value and is_congestion_window_under_utilized()
+            // as is_congestion_window_under_utilized() is more lenient with respect to the utilization
+            // of the congestion window than the app_limited check. is_congestion_window_under_utilized()
+            // returns true if there are more than 3 MTU's of space left in the cwnd, or less than
+            // half the cwnd is utilized in slow start.
             self.under_utilized = app_limited && self.is_congestion_window_under_utilized();
         }
 
