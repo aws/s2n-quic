@@ -100,12 +100,14 @@ impl CongestionController for BbrCongestionController {
         &mut self,
         time_sent: Timestamp,
         sent_bytes: usize,
+        app_limited: Option<bool>,
         _rtt_estimator: &RttEstimator,
     ) -> Self::PacketInfo {
-        let is_app_limited = false; // TODO: determine if app limited
-        let packet_info =
-            self.bw_estimator
-                .on_packet_sent(*self.bytes_in_flight, is_app_limited, time_sent);
+        let packet_info = self.bw_estimator.on_packet_sent(
+            *self.bytes_in_flight,
+            app_limited.unwrap_or(false),
+            time_sent,
+        ); // TODO: fix app limited
 
         if sent_bytes > 0 {
             self.recovery_state.on_packet_sent();

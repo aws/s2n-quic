@@ -219,7 +219,7 @@ fn minimum_window<CC: CongestionController>(
     let random = &mut random::testing::Generator::default();
 
     let packet_info =
-        congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize, &rtt_estimator);
+        congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize, None, &rtt_estimator);
     // Experience persistent congestion to drop to the minimum window
     congestion_controller.on_packet_lost(
         MINIMUM_MTU as u32,
@@ -230,7 +230,7 @@ fn minimum_window<CC: CongestionController>(
         time_zero,
     );
     let packet_info =
-        congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize, &rtt_estimator);
+        congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize, None, &rtt_estimator);
     // Lose a packet to exit slow start
     congestion_controller.on_packet_lost(
         MINIMUM_MTU as u32,
@@ -307,6 +307,7 @@ fn simulate_constant_rtt<CC: CongestionController>(
             let packet_info = congestion_controller.on_packet_sent(
                 round_start,
                 MINIMUM_MTU as usize,
+                None,
                 &rtt_estimator,
             );
             congestion_controller.on_packet_lost(
@@ -320,7 +321,7 @@ fn simulate_constant_rtt<CC: CongestionController>(
             drop_index += 1;
         } else {
             let send_bytes = (congestion_controller.congestion_window() as usize)
-                .min(app_limit.unwrap_or(usize::max_value()));
+                .min(app_limit.unwrap_or(usize::MAX));
 
             // Send and ack the full congestion window
             send_and_ack(
@@ -349,8 +350,13 @@ fn send_and_ack<CC: CongestionController>(
 
     while remaining > 0 {
         let bytes_sent = remaining.min(MINIMUM_MTU as usize);
-        packet_info =
-            Some(congestion_controller.on_packet_sent(timestamp, bytes_sent, rtt_estimator));
+        let app_limited = remaining - bytes_sent == 0;
+        packet_info = Some(congestion_controller.on_packet_sent(
+            timestamp,
+            bytes_sent,
+            Some(app_limited),
+            rtt_estimator,
+        ));
         remaining -= bytes_sent;
     }
 
