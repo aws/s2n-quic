@@ -12,6 +12,7 @@ use crate::{
     stream::AbstractStreamManager,
     sync::flag,
     transmission,
+    transmission::interest::Provider,
 };
 use core::{convert::TryInto, fmt, marker::PhantomData};
 use once_cell::sync::OnceCell;
@@ -215,6 +216,8 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         outcome.bytes_progressed +=
             (self.stream_manager.outgoing_bytes_progressed() - bytes_progressed).as_u64() as usize;
 
+        let app_limited = self.is_app_limited(context.path(), outcome.bytes_sent);
+
         let (recovery_manager, mut recovery_context, _) = self.recovery(
             handshake_status,
             context.local_id_registry,
@@ -226,6 +229,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             outcome,
             context.timestamp,
             context.ecn,
+            Some(app_limited),
             &mut recovery_context,
             context.publisher,
         );
@@ -438,6 +442,14 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             },
             &mut self.pending_ack_ranges,
         )
+    }
+
+    /// Returns `true` if sending is limited by the application and not the congestion controller
+    ///
+    /// Sending is app limited if the application is not fully utilizing the available
+    /// congestion window currently and there is no more application data remaining to send.
+    fn is_app_limited(&self, path: &Path<Config>, bytes_sent: usize) -> bool {
+        !path.is_congestion_limited(bytes_sent) && !self.has_transmission_interest()
     }
 
     /// Validate packets in the Application packet space

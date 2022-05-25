@@ -63,6 +63,9 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
     /// the packet is acknowledged and the packet was the newest acknowledged in the ACK frame,
     /// or to `on_packet_lost` if the packet was declared lost.
     ///
+    /// `app_limited` indicates whether the application has enough data to send to fill the
+    /// congestion window. This value will be `None` for Initial and Handshake packets.
+    ///
     /// Note: Sent bytes may be 0 in the case the packet being sent contains only ACK frames.
     /// These pure ACK packets are not congestion-controlled to ensure congestion control
     /// does not impede congestion feedback.
@@ -70,6 +73,7 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
         &mut self,
         time_sent: Timestamp,
         sent_bytes: usize,
+        app_limited: Option<bool>,
         rtt_estimator: &RttEstimator,
     ) -> Self::PacketInfo;
 
@@ -182,6 +186,7 @@ pub mod testing {
                 &mut self,
                 _time_sent: Timestamp,
                 _bytes_sent: usize,
+                _app_limited: Option<bool>,
                 _rtt_estimator: &RttEstimator,
             ) {
             }
@@ -252,6 +257,7 @@ pub mod testing {
             pub congestion_events: u32,
             pub requires_fast_retransmission: bool,
             pub loss_bursts: u32,
+            pub app_limited: Option<bool>,
         }
 
         impl Default for CongestionController {
@@ -268,6 +274,7 @@ pub mod testing {
                     congestion_events: 0,
                     requires_fast_retransmission: false,
                     loss_bursts: 0,
+                    app_limited: None,
                 }
             }
         }
@@ -295,10 +302,12 @@ pub mod testing {
                 &mut self,
                 _time_sent: Timestamp,
                 bytes_sent: usize,
+                app_limited: Option<bool>,
                 _rtt_estimator: &RttEstimator,
             ) {
                 self.bytes_in_flight += bytes_sent as u32;
                 self.requires_fast_retransmission = false;
+                self.app_limited = app_limited;
             }
 
             fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RttEstimator) {

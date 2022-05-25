@@ -84,7 +84,7 @@ fn on_packet_sent_timestamp_initialization() {
     let mut bw_estimator = Estimator::default();
 
     // Test that first_sent_time and delivered_time are updated on the first sent packet
-    let packet_info = bw_estimator.on_packet_sent(0, false, t0);
+    let packet_info = bw_estimator.on_packet_sent(0, None, t0);
     assert_eq!(t0, packet_info.first_sent_time);
     assert_eq!(t0, packet_info.delivered_time);
     assert_eq!(Some(t0), bw_estimator.first_sent_time);
@@ -92,7 +92,7 @@ fn on_packet_sent_timestamp_initialization() {
 
     // Test that first_sent_time and delivered_time are not updated if packets are in flight
     let t1 = t0 + Duration::from_secs(1);
-    let packet_info = bw_estimator.on_packet_sent(1500, false, t1);
+    let packet_info = bw_estimator.on_packet_sent(1500, None, t1);
     assert_eq!(t0, packet_info.first_sent_time);
     assert_eq!(t0, packet_info.delivered_time);
     assert_eq!(Some(t0), bw_estimator.first_sent_time);
@@ -100,7 +100,7 @@ fn on_packet_sent_timestamp_initialization() {
 
     // Test that first_sent_time and delivered_time are updated after an idle period
     let t2 = t0 + Duration::from_secs(2);
-    let packet_info = bw_estimator.on_packet_sent(0, false, t2);
+    let packet_info = bw_estimator.on_packet_sent(0, None, t2);
     assert_eq!(t2, packet_info.first_sent_time);
     assert_eq!(t2, packet_info.delivered_time);
     assert_eq!(Some(t2), bw_estimator.first_sent_time);
@@ -116,16 +116,66 @@ fn on_packet_sent() {
         delivered_time: Some(delivered_time),
         lost_bytes: 100,
         first_sent_time: Some(first_sent_time),
+        app_limited_delivered_bytes: None,
         rate_sample: Default::default(),
     };
 
-    let packet_info = bw_estimator.on_packet_sent(500, true, first_sent_time);
+    let packet_info = bw_estimator.on_packet_sent(500, Some(true), first_sent_time);
     assert_eq!(first_sent_time, packet_info.first_sent_time);
     assert_eq!(delivered_time, packet_info.delivered_time);
     assert_eq!(15000, packet_info.delivered_bytes);
     assert_eq!(100, packet_info.lost_bytes);
     assert!(packet_info.is_app_limited);
     assert_eq!(500, packet_info.bytes_in_flight);
+    assert_eq!(Some(500 + 15000), bw_estimator.app_limited_delivered_bytes);
+}
+
+#[test]
+fn app_limited() {
+    let first_sent_time = NoopClock.get_time();
+    let delivered_time = first_sent_time + Duration::from_secs(1);
+    let mut bw_estimator = Estimator {
+        delivered_bytes: 15000,
+        delivered_time: Some(delivered_time),
+        lost_bytes: 100,
+        first_sent_time: Some(first_sent_time),
+        app_limited_delivered_bytes: None,
+        rate_sample: Default::default(),
+    };
+
+    // Packet is sent while app-limited, starting the app limited period
+    let packet_info = bw_estimator.on_packet_sent(1500, Some(true), first_sent_time);
+    assert!(packet_info.is_app_limited);
+    assert_eq!(Some(1500 + 15000), bw_estimator.app_limited_delivered_bytes);
+
+    // Packet is sent while not app-limited, but the app limited continues until all previous bytes in flight have been acknowledged
+    let packet_info = bw_estimator.on_packet_sent(500, Some(false), first_sent_time);
+    assert!(packet_info.is_app_limited);
+    assert_eq!(Some(1500 + 15000), bw_estimator.app_limited_delivered_bytes);
+
+    // Packet is sent while app-limited is not determined, but the app limited continues until all previous bytes in flight have been acknowledged
+    let packet_info = bw_estimator.on_packet_sent(500, None, first_sent_time);
+    assert!(packet_info.is_app_limited);
+    assert_eq!(Some(1500 + 15000), bw_estimator.app_limited_delivered_bytes);
+
+    let packet_info = PacketInfo {
+        delivered_bytes: bw_estimator.delivered_bytes,
+        delivered_time,
+        lost_bytes: 0,
+        first_sent_time,
+        bytes_in_flight: 1500,
+        is_app_limited: false,
+    };
+
+    // Acknowledge all the bytes that were inflight when the app-limited period began
+    bw_estimator.on_ack(1500, delivered_time, packet_info, delivered_time);
+    // Still app_limited, since we need bytes to be acknowledged after the app limited period
+    assert_eq!(Some(1500 + 15000), bw_estimator.app_limited_delivered_bytes);
+
+    // Acknowledge one more byte
+    bw_estimator.on_ack(1, delivered_time, packet_info, delivered_time);
+    // Now the app limited period is over
+    assert_eq!(None, bw_estimator.app_limited_delivered_bytes);
 }
 
 #[test]
@@ -137,11 +187,11 @@ fn on_packet_ack_rate_sample() {
 
     // Send three packets. In between each send, other packets were acknowledged, and thus the
     // delivered_bytes amount is increased.
-    let packet_1 = bw_estimator.on_packet_sent(0, false, t0);
+    let packet_1 = bw_estimator.on_packet_sent(0, Some(false), t0);
     bw_estimator.delivered_bytes = 100000;
-    let packet_2 = bw_estimator.on_packet_sent(1500, true, t1);
+    let packet_2 = bw_estimator.on_packet_sent(1500, Some(true), t1);
     bw_estimator.delivered_bytes = 200000;
-    let packet_3 = bw_estimator.on_packet_sent(3000, false, t2);
+    let packet_3 = bw_estimator.on_packet_sent(3000, Some(false), t2);
 
     let now = t0 + Duration::from_secs(10);
     let delivered_bytes = bw_estimator.delivered_bytes;
@@ -245,13 +295,13 @@ fn on_packet_ack_implausible_ack_rate() {
     let mut bw_estimator = Estimator::default();
 
     // A packet is sent and acknowledged 4 seconds later
-    let packet_info = bw_estimator.on_packet_sent(0, false, t0);
+    let packet_info = bw_estimator.on_packet_sent(0, Some(false), t0);
     let t4 = t0 + Duration::from_secs(4);
     bw_estimator.on_ack(1500, t0, packet_info, t4);
 
     // A packet is sent and acknowledged 1 second later
     let t5 = t0 + Duration::from_secs(5);
-    let packet_info = bw_estimator.on_packet_sent(1500, false, t5);
+    let packet_info = bw_estimator.on_packet_sent(1500, Some(false), t5);
     let now = t0 + Duration::from_secs(6);
     bw_estimator.on_ack(1500, t0 + Duration::from_secs(5), packet_info, now);
 

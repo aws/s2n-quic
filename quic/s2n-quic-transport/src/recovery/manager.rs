@@ -188,12 +188,14 @@ impl<Config: endpoint::Config> Manager<Config> {
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-A.5
     //# After a packet is sent, information about the packet is stored.
+    #[allow(clippy::too_many_arguments)]
     pub fn on_packet_sent<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         packet_number: PacketNumber,
         outcome: transmission::Outcome,
         time_sent: Timestamp,
         ecn: ExplicitCongestionNotification,
+        app_limited: Option<bool>,
         context: &mut Ctx,
         publisher: &mut Pub,
     ) {
@@ -217,6 +219,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         let cc_packet_info = path.congestion_controller.on_packet_sent(
             time_sent,
             congestion_controlled_bytes,
+            app_limited,
             &path.rtt_estimator,
         );
 
