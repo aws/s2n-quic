@@ -63,7 +63,7 @@ zerocopy-derive = { version = "=0.3.0", optional = true }
 zeroize = { version = "1", optional = true, default-features = false }
 
 [dev-dependencies]
-bolero = { version = "0.6" }
+bolero = { version = "0.7" }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing", "event-tracing"] }
 s2n-quic-platform = { path = "../s2n-quic-platform", features = ["testing"] }
 tokio = { version = "1", features = ["full"] }
