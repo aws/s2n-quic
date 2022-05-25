@@ -1,13 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{tls, tls::TlsProviders, Result};
+use crate::{perf, tls, Result};
 use futures::future::try_join_all;
-use s2n_quic::{
-    client,
-    provider::{event, io},
-    Client, Connection,
-};
+use s2n_quic::{client, provider::io, Client, Connection};
 use std::path::PathBuf;
 use structopt::StructOpt;
 
@@ -40,7 +36,17 @@ pub struct Perf {
     local_ip: std::net::IpAddr,
 
     #[structopt(long, default_value)]
-    tls: TlsProviders,
+    send: u64,
+
+    #[structopt(long, default_value)]
+    receive: u64,
+
+    #[structopt(flatten)]
+    limits: perf::Limits,
+
+    /// Logs statistics for the endpoint
+    #[structopt(long)]
+    stats: bool,
 }
 
 impl Perf {
@@ -60,7 +66,7 @@ impl Perf {
             }
             let connection = client.connect(connect).await?;
 
-            requests.push(handle_connection(connection));
+            requests.push(handle_connection(connection, self.send, self.receive));
         }
 
         try_join_all(requests).await?;
@@ -68,32 +74,35 @@ impl Perf {
 
         return Ok(());
 
-        async fn handle_connection(connection: Connection) -> Result<()> {
-            let (_handle, acceptor) = connection.split();
-            let (bidi, uni) = acceptor.split();
+        async fn handle_connection(
+            mut connection: Connection,
+            send: u64,
+            receive: u64,
+        ) -> Result<()> {
+            if send == 0 && receive == 0 {
+                return Ok(());
+            }
 
-            let bidi = tokio::spawn(async move {
-                let _ = bidi;
-                // TODO implement requests
+            let stream = connection.open_bidirectional_stream().await?;
+            let (receive_stream, mut send_stream) = stream.split();
+
+            let s = tokio::spawn(async move {
+                perf::write_stream_size(&mut send_stream, receive).await?;
+                perf::handle_send_stream(send_stream, send).await?;
                 <Result<()>>::Ok(())
             });
 
-            let uni = tokio::spawn(async move {
-                let _ = uni;
-                // TODO implement requests
-                <Result<()>>::Ok(())
-            });
+            let r = tokio::spawn(perf::handle_receive_stream(receive_stream));
 
-            let (bidi, uni) = futures::try_join!(bidi, uni)?;
-            bidi?;
-            uni?;
+            let (s, r) = tokio::try_join!(s, r)?;
+            s?;
+            r?;
 
             Ok(())
         }
     }
 
     fn client(&self) -> Result<Client> {
-        // TODO support specifying a local addr
         let mut io_builder =
             io::Default::builder().with_receive_address((self.local_ip, 0u16).into())?;
 
@@ -103,32 +112,29 @@ impl Perf {
 
         let io = io_builder.build()?;
 
+        let tls = s2n_quic::provider::tls::default::Client::builder()
+            .with_certificate(tls::default::ca(self.ca.as_ref())?)?
+            .with_application_protocols(self.application_protocols.iter().map(String::as_bytes))?
+            .build()?;
+
+        let subscriber = perf::Subscriber::default();
+
+        if self.stats {
+            subscriber.spawn(core::time::Duration::from_secs(1));
+        }
+
+        let subscriber = (
+            subscriber,
+            s2n_quic::provider::event::tracing::Subscriber::default(),
+        );
+
         let client = Client::builder()
+            .with_limits(self.limits.limits())?
             .with_io(io)?
-            .with_event(event::disabled::Provider)?;
-        let client = match self.tls {
-            #[cfg(unix)]
-            TlsProviders::S2N => {
-                let tls = s2n_quic::provider::tls::s2n_tls::Client::builder()
-                    .with_certificate(tls::s2n::ca(self.ca.as_ref())?)?
-                    .with_application_protocols(
-                        self.application_protocols.iter().map(String::as_bytes),
-                    )?
-                    .with_key_logging()?
-                    .build()?;
-                client.with_tls(tls)?.start().unwrap()
-            }
-            TlsProviders::Rustls => {
-                let tls = s2n_quic::provider::tls::rustls::Client::builder()
-                    .with_certificate(tls::rustls::ca(self.ca.as_ref())?)?
-                    .with_application_protocols(
-                        self.application_protocols.iter().map(String::as_bytes),
-                    )?
-                    .with_key_logging()?
-                    .build()?;
-                client.with_tls(tls)?.start().unwrap()
-            }
-        };
+            .with_event(subscriber)?
+            .with_tls(tls)?
+            .start()
+            .unwrap();
 
         Ok(client)
     }
