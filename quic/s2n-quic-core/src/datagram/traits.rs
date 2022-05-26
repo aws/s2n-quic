@@ -60,6 +60,12 @@ pub trait Packet {
     /// Use method to decide whether or not to cede the packet space to the stream data.
     fn has_pending_streams(&self) -> bool;
 
+    /// Returns whether or not datagrams are prioritized in this packet or not.
+    ///
+    /// Datagrams get prioritized every other packet, which gives the application the best
+    /// chance to send a large datagram.
+    fn datagrams_prioritized(&self) -> bool;
+
     /// Returns the time that the packet is being written
     fn current_time(&self) -> Timestamp;
 }

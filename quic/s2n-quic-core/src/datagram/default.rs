@@ -41,40 +41,39 @@ impl Receiver for DisabledReceiver {
 
 pub struct DefaultSender {
     queue: VecDeque<Datagram>,
-    prioritize_datagrams: bool,
+    datagram_expiration: Duration,
 }
 
 struct Datagram {
     data: Bytes,
-    creation_time: Timestamp,
+    creation_time: Option<Timestamp>,
 }
-
-// Expiration in ms of datagrams on the queue. If datagrams are older than 3 ms,
-// consider them expired and don't send them.
-const DATAGRAM_EXPIRATION: Duration = Duration::from_millis(3);
 
 impl Sender for DefaultSender {
     fn on_transmit<P: Packet>(&mut self, packet: &mut P) {
-        // Alternate between sending datagrams and ceding that space to pending
-        // stream data
-        let cede_space = packet.has_pending_streams() && !self.prioritize_datagrams;
-        self.prioritize_datagrams = !self.prioritize_datagrams;
-        if cede_space {
+        // Cede space to stream data when datagrams are not prioritized
+        if packet.has_pending_streams() && !packet.datagrams_prioritized() {
             return;
         }
 
         while packet.remaining_capacity() > 0 {
             if let Some(datagram) = self.queue.pop_front() {
-                let current_time = packet.current_time();
-                let elapsed_time = current_time.saturating_duration_since(datagram.creation_time);
-                // Ensure there is enough space in the packet to send a datagram and the datagram is not too old
-                if packet.remaining_capacity() >= datagram.data.len()
-                    && elapsed_time < DATAGRAM_EXPIRATION
-                {
+                // Ensure datagram is not too old
+                if let Some(creation_time) = datagram.creation_time {
+                    let current_time = packet.current_time();
+                    let elapsed_time = current_time.saturating_duration_since(creation_time);
+                    if elapsed_time > self.datagram_expiration {
+                        // TODO emit datagram dropped event
+                        continue;
+                    }
+                }
+
+                // Ensure there is enough space in the packet to send a datagram
+                if packet.remaining_capacity() >= datagram.data.len() {
                     match packet.write_datagram(&datagram.data) {
                         Ok(()) => continue,
                         Err(_error) => {
-                            //TODO emit datagram dropped event
+                            // TODO emit datagram dropped event
                             continue;
                         }
                     }
@@ -89,5 +88,53 @@ impl Sender for DefaultSender {
     #[inline]
     fn has_transmission_interest(&self) -> bool {
         !self.queue.is_empty()
+    }
+}
+
+impl DefaultSender {
+    /// Creates a builder for the default datagram sender
+    pub fn builder() -> Builder {
+        Builder::default()
+    }
+}
+
+/// A builder for the default datagram sender
+///
+/// Use to configure a datagram expiration time and send queue size
+#[derive(Debug)]
+pub struct Builder {
+    datagram_expiration: Duration,
+    queue_capacity: usize,
+}
+
+impl Default for Builder {
+    fn default() -> Self {
+        Self {
+            // Todo!
+            datagram_expiration: Duration::from_millis(0),
+            queue_capacity: 0,
+        }
+    }
+}
+
+impl Builder {
+    /// Sets the capacity of the datagram sender queue
+    pub fn with_capacity(mut self, capacity: usize) -> Self {
+        self.queue_capacity = capacity;
+        self
+    }
+
+    /// Sets the expiration time of a datagram
+    pub fn with_lifetime(mut self, expiration: Duration) -> Self {
+        self.datagram_expiration = expiration;
+        self
+    }
+
+    /// Builds the datagram sender into a provider
+    pub fn build(self) -> Result<DefaultSender, core::convert::Infallible> {
+        Ok(DefaultSender {
+            queue: VecDeque::with_capacity(self.queue_capacity),
+            datagram_expiration: self.datagram_expiration,
+        })
     }
 }

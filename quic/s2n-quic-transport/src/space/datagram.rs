@@ -36,10 +36,12 @@ impl<Config: endpoint::Config> Manager<Config> {
         &mut self,
         context: &mut W,
         stream_manager: &mut AbstractStreamManager<S>,
+        datagrams_prioritized: bool,
     ) {
         let mut packet = Packet {
             context,
             has_pending_streams: stream_manager.has_pending_streams(),
+            datagrams_prioritized,
         };
         self.sender.on_transmit(&mut packet);
     }
@@ -64,6 +66,7 @@ impl<Config: endpoint::Config> interest::Provider for Manager<Config> {
 struct Packet<'a, C: WriteContext> {
     context: &'a mut C,
     has_pending_streams: bool,
+    datagrams_prioritized: bool,
 }
 
 impl<'a, C: WriteContext> s2n_quic_core::datagram::Packet for Packet<'a, C> {
@@ -102,7 +105,12 @@ impl<'a, C: WriteContext> s2n_quic_core::datagram::Packet for Packet<'a, C> {
         self.has_pending_streams
     }
 
-    /// Returns the current point of time
+    /// Returns whether or not datagrams are prioritized in this packet or not
+    fn datagrams_prioritized(&self) -> bool {
+        self.datagrams_prioritized
+    }
+
+    /// Returns the current point in time
     fn current_time(&self) -> Timestamp {
         s2n_quic_core::event::IntoEvent::into_event(self.context.current_time())
     }
