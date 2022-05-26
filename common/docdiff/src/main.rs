@@ -79,14 +79,14 @@ impl fmt::Display for Dump {
 
 impl Dump {
     fn new(crate_name: &str) -> Result<Self> {
-        cmd!("cargo", "doc", "--all-features", "--workspace")
+        cmd!("cargo", "doc", "--all-features", "--workspace", "--target-dir", "target/docdiff")
             .env("RUSTFLAGS", "--cfg docdiff")
             .env("RUSTDOCFLAGS", "--cfg docdiff")
             .stdout_path("/dev/null")
             .run()?;
 
         let paths = glob(&format!(
-            "target/doc/{}/**/*.html",
+            "target/docdiff/doc/{}/**/*.html",
             crate_name.replace('-', "_")
         ))?
         .collect::<Vec<_>>();
