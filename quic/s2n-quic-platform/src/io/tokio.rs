@@ -523,11 +523,12 @@ impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
                 return Ok(());
             };
 
+            let wakeup_timestamp = clock.get_time();
             let subscriber = endpoint.subscriber();
             let mut publisher = event::EndpointPublisherSubscriber::new(
                 event::builder::EndpointMeta {
                     endpoint_type: E::ENDPOINT_TYPE,
-                    timestamp: clock.get_time(),
+                    timestamp: wakeup_timestamp,
                 },
                 None,
                 subscriber,
@@ -555,9 +556,29 @@ impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
 
             endpoint.transmit(&mut tx.tx_queue(), &clock);
 
-            if let Some(delay) = endpoint.timeout() {
-                timer.update(delay);
+            let timeout = endpoint.timeout();
+
+            if let Some(timeout) = timeout {
+                timer.update(timeout);
             }
+
+            let timestamp = clock.get_time();
+            let subscriber = endpoint.subscriber();
+            let mut publisher = event::EndpointPublisherSubscriber::new(
+                event::builder::EndpointMeta {
+                    endpoint_type: E::ENDPOINT_TYPE,
+                    timestamp,
+                },
+                None,
+                subscriber,
+            );
+
+            // notify the application that we're going to sleep
+            let timeout = timeout.map(|t| t.saturating_duration_since(timestamp));
+            publisher.on_platform_event_loop_sleep(event::builder::PlatformEventLoopSleep {
+                timeout,
+                processing_duration: timestamp.saturating_duration_since(wakeup_timestamp),
+            });
         }
     }
 }
