@@ -110,9 +110,8 @@ pub struct Builder {
 impl Default for Builder {
     fn default() -> Self {
         Self {
-            // Todo!
-            datagram_expiration: Duration::from_millis(0),
-            queue_capacity: 0,
+            datagram_expiration: Duration::from_millis(3),
+            queue_capacity: 200,
         }
     }
 }
