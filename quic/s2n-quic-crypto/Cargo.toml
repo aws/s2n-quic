@@ -22,7 +22,7 @@ lazy_static = "1"
 ghash = { version = "0.4", optional = true }
 ring = { version = "0.16", default-features = false }
 s2n-codec = { path = "../../common/s2n-codec", default-features = false, version = "=0.1.0" }
-s2n-quic-core = { path = "../s2n-quic-core", default-features = false, version = "=0.4.0" }
+s2n-quic-core = { path = "../s2n-quic-core", default-features = false, version = "=0.5.0" }
 zeroize = { version = "1", default-features = false, features = ["zeroize_derive"] }
 
 [dev-dependencies]
