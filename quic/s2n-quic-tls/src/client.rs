@@ -13,6 +13,7 @@ use s2n_tls::raw::{
     config::{self, Config},
     error::Error,
     ffi::s2n_cert_auth_type,
+    enums::ClientAuthType,
 };
 use std::sync::Arc;
 
@@ -115,7 +116,7 @@ impl Builder {
                 .expect("pem is currently the only certificate format supported"),
         )?;
         self.config
-            .set_client_auth_type(s2n_cert_auth_type::REQUIRED)?;
+            .set_client_auth_type(ClientAuthType::Required)?;
         Ok(self)
     }
 
