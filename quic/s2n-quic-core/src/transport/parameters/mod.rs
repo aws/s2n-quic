@@ -1111,6 +1111,10 @@ impl InitialStreamLimits {
     }
 }
 
+pub struct DatagramLimits {
+    pub max_datagram_payload: u64,
+}
+
 impl<
         OriginalDestinationConnectionId,
         StatelessResetToken,
@@ -1167,6 +1171,30 @@ impl<
             max_ack_delay: max_ack_delay.as_duration(),
             ack_delay_exponent: **ack_delay_exponent,
             ..Default::default()
+        }
+    }
+
+    // Calculates the maximum datagram payload size
+    pub fn datagram_limits(&self) -> DatagramLimits {
+        // Remove the datagram frame type length and the maximum length value
+        let max_datagram_header_len =
+            crate::frame::datagram::DATAGRAM_TAG.encoding_size() + VarInt::MAX.encoding_size();
+        let max_datagram_payload = self
+            .max_datagram_frame_size
+            .as_u64()
+            .saturating_sub(max_datagram_header_len as u64);
+
+        // We also factor in the received max_udp_payload_size since technically it
+        // can be smaller than the received max_datagram_frame_size.
+        let max_udp_payload = self
+            .max_udp_payload_size
+            .as_u64()
+            .saturating_sub(crate::packet::short::ENCODING_TAG.encoding_size() as u64)
+            .saturating_sub(crate::packet::long::DESTINATION_CONNECTION_ID_MAX_LEN as u64)
+            .saturating_sub(crate::packet::number::PacketNumberLen::MAX_LEN as u64)
+            .saturating_sub(max_datagram_header_len as u64);
+        DatagramLimits {
+            max_datagram_payload: max_datagram_payload.min(max_udp_payload),
         }
     }
 }

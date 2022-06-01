@@ -7,11 +7,13 @@ use crate::datagram::{Packet, Sender};
 use alloc::collections::VecDeque;
 use bytes::Bytes;
 
+#[derive(Debug, Default)]
 pub struct DefaultSender {
     queue: VecDeque<Datagram>,
 }
 
-struct Datagram {
+#[derive(Debug)]
+pub struct Datagram {
     data: Bytes,
 }
 
@@ -49,16 +51,44 @@ impl Sender for DefaultSender {
     }
 }
 
+#[non_exhaustive]
+#[derive(Debug)]
+pub enum SendDatagramError {
+    DatagramIsTooLarge,
+}
+
 impl DefaultSender {
     /// Creates a builder for the default datagram sender
     pub fn builder() -> Builder {
         Builder::default()
     }
+
+    /// Adds datagrams on the queue to be sent
+    pub fn send_datagram(&mut self, data: bytes::Bytes) -> Result<(), SendDatagramError> {
+        // Pop oldest datagram off the queue if it is at capacity
+        if self.queue.capacity() == 0 {
+            self.queue.pop_front();
+            // TODO emit datagram dropped event
+        }
+
+        let datagram = Datagram { data };
+        self.queue.push_back(datagram);
+        Ok(())
+    }
+
+    /// Filter through the datagrams in the send queue and only keep those that
+    /// match a predicate
+    pub fn retain_datagrams<F>(&mut self, f: F)
+    where
+        F: FnMut(&Datagram) -> bool,
+    {
+        self.queue.retain(f);
+    }
 }
 
 /// A builder for the default datagram sender
 ///
-/// Use to configure a datagram expiration time and send queue size
+/// Use to configure a datagram send queue size
 #[derive(Debug)]
 pub struct Builder {
     queue_capacity: usize,
