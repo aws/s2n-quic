@@ -17,7 +17,7 @@ std = ["futures-channel/std"]
 bytes = { version = "1", default-features = false }
 futures-channel = { version = "0.3", default-features = false, features = ["alloc"] }
 futures-core = { version = "0.3", default-features = false, features = ["alloc"] }
-hashbrown = "0.11"
+hashbrown = "0.12"
 intrusive-collections = "0.9"
 once_cell = "1"
 s2n-codec = { version = "=0.1.0", path = "../../common/s2n-codec", features = ["bytes"], default-features = false }
