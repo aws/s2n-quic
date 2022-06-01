@@ -11,14 +11,18 @@ use crate::{
 use core::time::Duration;
 use s2n_quic_core::{
     ack,
+    counter::{self, Counter},
     stream::StreamId,
     time::{timer, Timer, Timestamp},
 };
 
-// The default period for synchronizing the value. This value is only used prior to a more
-// precise value calculated based on idle timeout and current RTT estimates and provided
-// in the `update_sync_period` method.
-pub const DEFAULT_SYNC_PERIOD: Duration = Duration::from_secs(10);
+/// The default period for synchronizing the value. This value is only used prior to a more
+/// precise value calculated based on idle timeout and current RTT estimates and provided
+/// in the `update_sync_period` method. The value is based on 3 * DEFAULT_INITIAL_RTT
+pub const DEFAULT_SYNC_PERIOD: Duration = Duration::from_millis(999);
+
+/// The initial backoff value for transmission
+const INITIAL_BACKOFF: u16 = 1;
 
 /// Synchronizes a monotonically increasing value of type `T` periodically towards the remote peer.
 ///
@@ -34,6 +38,7 @@ pub struct PeriodicSync<T, S> {
     delivery: DeliveryState<T>,
     writer: S,
     delivered: bool,
+    transmission_backoff: Counter<u16, counter::Saturating>,
 }
 
 impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWriter<T>>
@@ -49,6 +54,7 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
             delivery: DeliveryState::NotRequested,
             writer: S::default(),
             delivered: false,
+            transmission_backoff: Counter::new(INITIAL_BACKOFF),
         }
     }
 
@@ -73,9 +79,13 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
         match self.delivery {
             DeliveryState::Requested(_) | DeliveryState::Lost(_) => {
                 self.delivery = DeliveryState::NotRequested;
-                self.delivery_timer.set(now + self.sync_period)
+                self.transmission_backoff *= 2u16;
+                self.update_timer(now);
             }
-            DeliveryState::Delivered(_) => self.delivery_timer.set(now + self.sync_period),
+            DeliveryState::Delivered(_) => {
+                self.transmission_backoff *= 2u16;
+                self.update_timer(now);
+            }
             _ => {}
         }
     }
@@ -92,6 +102,7 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
         self.delivery_timer.cancel();
         self.delivery.cancel();
         self.delivered = false;
+        self.transmission_backoff.set(INITIAL_BACKOFF);
     }
 
     /// This method gets called when a packet delivery got acknowledged
@@ -101,8 +112,7 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
         if let DeliveryState::InFlight(in_flight) = self.delivery {
             if ack_set.contains(in_flight.packet.packet_nr) {
                 self.delivered = true;
-                self.delivery_timer
-                    .set(in_flight.packet.timestamp + self.sync_period);
+                self.update_timer(in_flight.packet.timestamp);
                 self.delivery = DeliveryState::Delivered(in_flight.value);
             }
         }
@@ -152,6 +162,8 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
                 },
                 value,
             });
+
+            self.transmission_backoff *= 2u16;
         }
 
         Ok(())
@@ -162,6 +174,15 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
     #[inline]
     pub fn has_delivered(&self) -> bool {
         self.delivered
+    }
+
+    fn update_timer(&mut self, now: Timestamp) {
+        self.delivery_timer.set(now + self.sync_period());
+    }
+
+    fn sync_period(&self) -> Duration {
+        // exponentially back off on the sync period so we don't overwhelm the receiver
+        self.sync_period * *self.transmission_backoff as _
     }
 }
 
@@ -180,5 +201,16 @@ impl<T, S> transmission::interest::Provider for PeriodicSync<T, S> {
         query: &mut Q,
     ) -> transmission::interest::Result {
         self.delivery.transmission_interest(query)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use s2n_quic_core::recovery::DEFAULT_INITIAL_RTT;
+
+    #[test]
+    fn default_period() {
+        assert_eq!(DEFAULT_INITIAL_RTT * 3, DEFAULT_SYNC_PERIOD);
     }
 }
