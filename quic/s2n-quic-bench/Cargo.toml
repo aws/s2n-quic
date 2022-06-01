@@ -3,7 +3,7 @@ name = "s2n-quic-bench"
 # this in an unpublished internal crate so the version should not be changed
 version = "0.1.0"
 authors = ["AWS s2n"]
-edition = "2018"
+edition = "2021"
 license = "Apache-2.0"
 # this only contains internal tests and should not be published
 publish = false

@@ -108,11 +108,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 `s2n-quic` will maintain a rolling MSRV (minimum supported rust version) policy of at least 6 months. The current s2n-quic version is not guaranteed to build on Rust versions earlier than the MSRV.
 
-The current MSRV is [1.53.0][msrv-url].
+The current MSRV is [1.56.1][msrv-url].
 
 ## Security issue notifications
 If you discover a potential security issue in s2n-quic we ask that you notify
-AWS Security via our [vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/). Please do **not** create a public github issue. 
+AWS Security via our [vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/). Please do **not** create a public github issue.
 
 If you package or distribute s2n-quic, or use s2n-quic as part of a large multi-user service, you may be eligible for pre-notification of future s2n-quic releases. Please contact s2n-pre-notification@amazon.com.
 
@@ -130,5 +130,5 @@ This project is licensed under the [Apache-2.0 License][license-url].
 [docs-url]: https://docs.rs/s2n-quic
 [dependencies-badge]: https://img.shields.io/librariesio/release/cargo/s2n-quic.svg
 [dependencies-url]: https://crates.io/crates/s2n-quic/dependencies
-[msrv-badge]: https://img.shields.io/badge/MSRV-1.53.0-green
-[msrv-url]: https://blog.rust-lang.org/2021/06/17/Rust-1.53.0.html
+[msrv-badge]: https://img.shields.io/badge/MSRV-1.56.1-green
+[msrv-url]: https://blog.rust-lang.org/2021/11/01/Rust-1.56.1.html

@@ -83,16 +83,13 @@ macro_rules! impl_providers_state {
         #[doc(hidden)]
         impl<$($field_ty: $field::Provider,)*> $trait for Providers<$($field_ty,)*> {
             $(
-                #[doc(hidden)]
                 type $field_ty = $field_ty;
             )*
 
-            #[doc(hidden)]
             fn build(self) -> Providers<$(Self::$field_ty,)*> {
                 self
             }
 
-            #[doc(hidden)]
             fn as_ref(&self) -> Providers<$(&Self::$field_ty,)*> {
                 Providers {
                     $(
@@ -101,7 +98,6 @@ macro_rules! impl_providers_state {
                 }
             }
 
-            #[doc(hidden)]
             fn as_mut(&mut self) -> Providers<$(&mut Self::$field_ty,)*> {
                 Providers {
                     $(
@@ -123,16 +119,13 @@ macro_rules! impl_providers_state {
         #[doc(hidden)]
         impl $trait for DefaultProviders {
             $(
-                #[doc(hidden)]
                 type $field_ty = $field::Default;
             )*
 
-            #[doc(hidden)]
             fn build(self) -> Providers<$(Self::$field_ty,)*> {
                 self.providers
             }
 
-            #[doc(hidden)]
             fn as_ref(&self) -> Providers<$(&Self::$field_ty,)*> {
                 Providers {
                     $(
@@ -141,7 +134,6 @@ macro_rules! impl_providers_state {
                 }
             }
 
-            #[doc(hidden)]
             fn as_mut(&mut self) -> Providers<$(&mut Self::$field_ty,)*> {
                 Providers {
                     $(
