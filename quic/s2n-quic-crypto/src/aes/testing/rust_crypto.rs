@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::aes::testing::{for_each_block, Aes};
-use aes::{
-    cipher::{BlockDecrypt, BlockEncrypt as _, KeyInit as _},
-    Aes128, Aes256,
-};
+use aes::{Aes128, Aes256, BlockDecrypt, BlockEncrypt as _, NewBlockCipher as _};
 
 macro_rules! impl_aes {
     ($name:ident, $lower:ident) => {
