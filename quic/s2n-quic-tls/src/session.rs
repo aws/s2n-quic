@@ -13,9 +13,9 @@ use s2n_quic_crypto::Suite;
 use s2n_tls::raw::{
     config::Config,
     connection::{self, Connection},
+    enums::{Blinding, Mode},
     error::Error,
     ffi::s2n_blinding,
-    enums::{Mode, Blinding},
 };
 
 #[derive(Debug)]

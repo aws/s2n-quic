@@ -11,9 +11,9 @@ use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls, endpoint};
 use s2n_tls::raw::{
     config::{self, Config},
+    enums::ClientAuthType,
     error::Error,
     ffi::s2n_cert_auth_type,
-    enums::ClientAuthType,
 };
 use std::sync::Arc;
 
@@ -115,8 +115,7 @@ impl Builder {
                 .as_pem()
                 .expect("pem is currently the only certificate format supported"),
         )?;
-        self.config
-            .set_client_auth_type(ClientAuthType::Required)?;
+        self.config.set_client_auth_type(ClientAuthType::Required)?;
         Ok(self)
     }
 
