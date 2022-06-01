@@ -185,8 +185,6 @@ pub struct StreamManagerState<S> {
     /// Limits for the Stream manager. Since only Stream limits are utilized at
     /// the moment we only store those
     stream_limits: stream::Limits,
-    /// The duration after which an idle connection may be closed.
-    pub(super) max_idle_timeout: Option<Duration>,
 }
 
 impl<S: StreamTrait> StreamManagerState<S> {
@@ -434,7 +432,6 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
                 close_reason: None,
                 accept_state: AcceptState::new(local_endpoint_type),
                 stream_limits: connection_limits.stream_limits(),
-                max_idle_timeout: connection_limits.max_idle_timeout(),
             },
         }
     }
@@ -751,33 +748,18 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
         //# has no ack-eliciting packets in flight.
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#section-10.1
-        //# To avoid excessively small idle timeout periods, endpoints MUST
-        //# increase the idle timeout period to be at least three times the
-        //# current Probe Timeout (PTO).  This allows for multiple PTOs to
-        //# expire, and therefore multiple probes to be sent and lost, prior to
-        //# idle timeout.
-
         // STREAMS_BLOCKED, DATA_BLOCKED, and STREAM_DATA_BLOCKED frames are
         // sent to prevent the connection from closing due to an idle timeout
-        // when we are blocked from opening or sending on streams. Therefore, the
-        // ideal period for sending these frames would be just before the peer's
-        // idle timer expires. The peer's idle timer is also adjusted by the PTO
-        // period as described in the citation above. Since we cannot assume any
-        // of the peer's packets have been lost, we use a pto backoff of 1.
+        // when we are blocked from opening or sending on streams. We use a pto count
+        // of 1 so the periodic components can track backoff independently.
 
         // For extremely low RTT networks, this will ensure we do not send blocked
         // frames too frequently.
-        const MIN_BLOCKED_SYNC_PERIOD: Duration = Duration::from_millis(10);
+        const MIN_BLOCKED_SYNC_PERIOD: Duration = Duration::from_millis(5);
 
-        let idle_timeout = self
-            .inner
-            .max_idle_timeout
-            .unwrap_or_default()
-            .max(3 * rtt_estimator.pto_period(1, PacketNumberSpace::ApplicationData));
+        let pto = rtt_estimator.pto_period(1, PacketNumberSpace::ApplicationData);
 
-        // Subtract 1 RTT from the idle timeout so the blocked frames are received in time
-        (idle_timeout - rtt_estimator.smoothed_rtt()).max(MIN_BLOCKED_SYNC_PERIOD)
+        pto.max(MIN_BLOCKED_SYNC_PERIOD)
     }
 
     // Frame reception
