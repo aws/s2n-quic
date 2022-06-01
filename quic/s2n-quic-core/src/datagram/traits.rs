@@ -1,8 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::event::Timestamp;
-
 /// The datagram endpoint trait provides a way to implement custom unreliable datagram
 /// sending and receiving logic. The Sender type should be implemented for custom
 /// sending behavior, and the Receiver type should be implemented for custom
@@ -65,9 +63,6 @@ pub trait Packet {
     /// Datagrams get prioritized every other packet, which gives the application the best
     /// chance to send a large datagram.
     fn datagrams_prioritized(&self) -> bool;
-
-    /// Returns the time that the packet is being written
-    fn current_time(&self) -> Timestamp;
 }
 
 #[non_exhaustive]

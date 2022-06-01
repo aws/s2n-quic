@@ -9,7 +9,6 @@ use crate::{
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{
     datagram::{Endpoint, Receiver, Sender, WriteError},
-    event::Timestamp,
     frame::{self, datagram::DatagramRef},
     varint::VarInt,
 };
@@ -108,10 +107,5 @@ impl<'a, C: WriteContext> s2n_quic_core::datagram::Packet for Packet<'a, C> {
     /// Returns whether or not datagrams are prioritized in this packet or not
     fn datagrams_prioritized(&self) -> bool {
         self.datagrams_prioritized
-    }
-
-    /// Returns the current point in time
-    fn current_time(&self) -> Timestamp {
-        s2n_quic_core::event::IntoEvent::into_event(self.context.current_time())
     }
 }

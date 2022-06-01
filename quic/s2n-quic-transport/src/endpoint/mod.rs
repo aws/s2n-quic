@@ -1166,7 +1166,7 @@ pub mod testing {
         type EventSubscriber = Subscriber;
         type PathMigrationValidator = path::migration::default::Validator;
         type PacketInterceptor = s2n_quic_core::packet::interceptor::Disabled;
-        type DatagramEndpoint = s2n_quic_core::datagram::default::Disabled;
+        type DatagramEndpoint = s2n_quic_core::datagram::Disabled;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()
@@ -1196,7 +1196,7 @@ pub mod testing {
         type EventSubscriber = Subscriber;
         type PathMigrationValidator = path::migration::default::Validator;
         type PacketInterceptor = s2n_quic_core::packet::interceptor::Disabled;
-        type DatagramEndpoint = s2n_quic_core::datagram::default::Disabled;
+        type DatagramEndpoint = s2n_quic_core::datagram::Disabled;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()

@@ -3,50 +3,16 @@
 
 // s2n-quic's default implementation of the datagram component
 
-use crate::{
-    datagram::{ConnectionInfo, Endpoint, Packet, Receiver, Sender},
-    event::Timestamp,
-};
+use crate::datagram::{Packet, Sender};
 use alloc::collections::VecDeque;
 use bytes::Bytes;
-use core::time::Duration;
-
-#[derive(Debug, Default)]
-pub struct Disabled;
-
-impl Endpoint for Disabled {
-    type Sender = DisabledSender;
-    type Receiver = DisabledReceiver;
-
-    fn create_connection(&mut self, _info: &ConnectionInfo) -> (Self::Sender, Self::Receiver) {
-        (DisabledSender, DisabledReceiver)
-    }
-}
-
-pub struct DisabledSender;
-pub struct DisabledReceiver;
-
-impl Sender for DisabledSender {
-    fn on_transmit<P: Packet>(&mut self, _packet: &mut P) {}
-
-    #[inline]
-    fn has_transmission_interest(&self) -> bool {
-        false
-    }
-}
-
-impl Receiver for DisabledReceiver {
-    fn on_datagram(&self, _datagram: &[u8]) {}
-}
 
 pub struct DefaultSender {
     queue: VecDeque<Datagram>,
-    datagram_expiration: Duration,
 }
 
 struct Datagram {
     data: Bytes,
-    creation_time: Option<Timestamp>,
 }
 
 impl Sender for DefaultSender {
@@ -58,16 +24,6 @@ impl Sender for DefaultSender {
 
         while packet.remaining_capacity() > 0 {
             if let Some(datagram) = self.queue.pop_front() {
-                // Ensure datagram is not too old
-                if let Some(creation_time) = datagram.creation_time {
-                    let current_time = packet.current_time();
-                    let elapsed_time = current_time.saturating_duration_since(creation_time);
-                    if elapsed_time > self.datagram_expiration {
-                        // TODO emit datagram dropped event
-                        continue;
-                    }
-                }
-
                 // Ensure there is enough space in the packet to send a datagram
                 if packet.remaining_capacity() >= datagram.data.len() {
                     match packet.write_datagram(&datagram.data) {
@@ -77,6 +33,8 @@ impl Sender for DefaultSender {
                             continue;
                         }
                     }
+                } else {
+                    // TODO emit datagram dropped event
                 }
             } else {
                 // If there are no datagrams on the queue we return
@@ -103,14 +61,12 @@ impl DefaultSender {
 /// Use to configure a datagram expiration time and send queue size
 #[derive(Debug)]
 pub struct Builder {
-    datagram_expiration: Duration,
     queue_capacity: usize,
 }
 
 impl Default for Builder {
     fn default() -> Self {
         Self {
-            datagram_expiration: Duration::from_millis(3),
             queue_capacity: 200,
         }
     }
@@ -122,18 +78,10 @@ impl Builder {
         self.queue_capacity = capacity;
         self
     }
-
-    /// Sets the expiration time of a datagram
-    pub fn with_lifetime(mut self, expiration: Duration) -> Self {
-        self.datagram_expiration = expiration;
-        self
-    }
-
     /// Builds the datagram sender into a provider
     pub fn build(self) -> Result<DefaultSender, core::convert::Infallible> {
         Ok(DefaultSender {
             queue: VecDeque::with_capacity(self.queue_capacity),
-            datagram_expiration: self.datagram_expiration,
         })
     }
 }
