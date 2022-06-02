@@ -93,10 +93,14 @@ impl AckManager {
 
     /// Called when an outgoing packet is being assembled
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> bool {
-        if !self
+        let constraint = context.transmission_constraint();
+        let mode = context.transmission_mode();
+        let has_ranges = !self.ack_ranges.is_empty();
+        let should_transmit = self
             .transmission_state
-            .should_transmit(context.transmission_constraint())
-        {
+            .should_transmit(constraint, mode, has_ranges);
+
+        if !should_transmit {
             return false;
         }
 
@@ -118,8 +122,11 @@ impl AckManager {
     /// Called after an outgoing packet is assembled and `on_transmit` returned `true`
     pub fn on_transmit_complete<W: WriteContext>(&mut self, context: &mut W) {
         debug_assert!(
-            self.transmission_state
-                .should_transmit(context.transmission_constraint()),
+            self.transmission_state.should_transmit(
+                context.transmission_constraint(),
+                context.transmission_mode(),
+                !self.ack_ranges.is_empty()
+            ),
             "`on_transmit_complete` was called when `should_transmit` is false"
         );
 
@@ -161,7 +168,8 @@ impl AckManager {
         }
 
         // record a transmission
-        self.transmission_state.on_transmit();
+        self.transmission_state
+            .on_transmit(!self.ack_ranges.is_empty());
 
         // reset the number of packets since transmission
         self.processed_packets_since_transmission = Counter::new(0);
@@ -247,7 +255,6 @@ impl AckManager {
                     });
                 }
             };
-            return;
         }
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-13.4.1

@@ -37,8 +37,18 @@ impl AckTransmissionState {
     }
 
     /// Returns `true` if ACK frames should be transmitted, either actively or passively
-    pub fn should_transmit(&self, constraint: transmission::Constraint) -> bool {
+    pub fn should_transmit(
+        &self,
+        constraint: transmission::Constraint,
+        mode: transmission::Mode,
+        has_ranges: bool,
+    ) -> bool {
         match self {
+            // If we don't have any ranges to transmit, then we can't do anything
+            _ if !has_ranges => false,
+            // Transmitting ACK frames in probes can help the peer recover faster. Since we're sending
+            // a packet here, we might as well bundle it.
+            _ if !mode.is_normal() => true,
             Self::Disabled => false,
             // Only transmit acks in Passive mode if we can transmit other frames as well
             Self::Passive { .. } => constraint.can_transmit() || constraint.can_retransmit(),
@@ -94,6 +104,11 @@ impl AckTransmissionState {
         const RANGE_SCALE: usize = 10;
         new_retransmissions += ack_ranges.spread() / RANGE_SCALE;
 
+        /// We shouldn't retransmit too many redundant ACK frames so we'll cap it
+        const MAX_RETRANSMISSIONS: usize = 10;
+
+        new_retransmissions = new_retransmissions.min(MAX_RETRANSMISSIONS);
+
         match self {
             Self::Active { retransmissions } => {
                 *retransmissions = new_retransmissions;
@@ -112,7 +127,12 @@ impl AckTransmissionState {
     }
 
     /// Notifies the transmission state that a transmission occurred
-    pub fn on_transmit(&mut self) -> &mut Self {
+    pub fn on_transmit(&mut self, has_ranges: bool) -> &mut Self {
+        debug_assert!(
+            has_ranges,
+            "ACKs can only be sent when there are ranges to send"
+        );
+
         match *self {
             Self::Active { retransmissions } | Self::Passive { retransmissions } => {
                 if let Some(retransmissions) = retransmissions.checked_sub(1) {
@@ -122,7 +142,10 @@ impl AckTransmissionState {
                 }
             }
             Self::Disabled => {
-                debug_assert!(false, "ACKs should not be transmitted in `Disabled` state");
+                debug_assert!(
+                    has_ranges,
+                    "ACKs should not be transmitted in `Disabled` state"
+                );
             }
         }
 
@@ -150,39 +173,43 @@ impl transmission::interest::Provider for AckTransmissionState {
 #[cfg(test)]
 mod tests {
     use super::{super::tests::packet_numbers_iter, *};
+    use insta::assert_debug_snapshot;
 
     #[test]
     fn should_transmit_test() {
-        for constraint in &[
-            transmission::Constraint::None,
-            transmission::Constraint::AmplificationLimited,
-            transmission::Constraint::CongestionLimited,
-            transmission::Constraint::RetransmissionOnly,
+        let mut results = vec![];
+        for state in &[
+            AckTransmissionState::Disabled,
+            AckTransmissionState::Passive { retransmissions: 1 },
+            AckTransmissionState::Active { retransmissions: 1 },
         ] {
-            assert!(
-                !AckTransmissionState::Disabled.should_transmit(*constraint),
-                "disabled state should not transmit"
-            );
-
-            if constraint.can_transmit() || constraint.can_retransmit() {
-                assert!(
-                    AckTransmissionState::Passive { retransmissions: 1 }
-                        .should_transmit(*constraint),
-                    "passive state should transmit if not constrained"
-                );
-            } else {
-                assert!(
-                    !AckTransmissionState::Passive { retransmissions: 1 }
-                        .should_transmit(*constraint),
-                    "passive state should not transmit if constrained"
-                );
+            for constraint in &[
+                transmission::Constraint::None,
+                transmission::Constraint::AmplificationLimited,
+                transmission::Constraint::CongestionLimited,
+                transmission::Constraint::RetransmissionOnly,
+            ] {
+                for mode in &[
+                    transmission::Mode::Normal,
+                    transmission::Mode::MtuProbing,
+                    transmission::Mode::PathValidationOnly,
+                    transmission::Mode::LossRecoveryProbing,
+                ] {
+                    for has_ranges in &[true, false] {
+                        let res = (
+                            state,
+                            *constraint,
+                            *mode,
+                            *has_ranges,
+                            state.should_transmit(*constraint, *mode, *has_ranges),
+                        );
+                        results.push(res);
+                    }
+                }
             }
-
-            assert!(
-                AckTransmissionState::Active { retransmissions: 1 }.should_transmit(*constraint),
-                "active state should transmit"
-            );
         }
+
+        assert_debug_snapshot!("should_transmit", results);
     }
 
     #[test]
@@ -208,21 +235,27 @@ mod tests {
     #[test]
     #[should_panic]
     fn disabled_transmission_test() {
-        AckTransmissionState::Disabled.on_transmit();
+        AckTransmissionState::Disabled.on_transmit(false);
     }
 
     #[test]
     fn transmission_test() {
         assert_eq!(
-            *AckTransmissionState::Passive { retransmissions: 0 }.on_transmit(),
+            *AckTransmissionState::Passive { retransmissions: 0 }.on_transmit(true),
             AckTransmissionState::Disabled,
             "transmitting should transition to Disabled"
         );
 
         assert_eq!(
-            *AckTransmissionState::Passive { retransmissions: 1 }.on_transmit(),
+            *AckTransmissionState::Passive { retransmissions: 1 }.on_transmit(true),
             AckTransmissionState::Passive { retransmissions: 0 },
             "transmitting should decrement and stay in the same state"
+        );
+
+        assert_eq!(
+            *AckTransmissionState::Disabled.on_transmit(true),
+            AckTransmissionState::Disabled,
+            "transmitting when disabled should continue to be disabled"
         );
     }
 
