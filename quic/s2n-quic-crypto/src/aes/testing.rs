@@ -32,7 +32,7 @@ macro_rules! aes_impl {
                     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                     crate::aes::x86::testing::$name::implementations(&mut impls);
 
-                    #[cfg(any(test, feature = "aes"))]
+                    #[cfg(test)]
                     super::rust_crypto::$name::implementations(&mut impls);
 
                     impls
@@ -66,5 +66,5 @@ pub fn for_each_block<F: FnMut(&mut [u8; BLOCK_LEN])>(input: &mut [u8], mut f: F
     }
 }
 
-#[cfg(any(test, feature = "aes"))]
+#[cfg(test)]
 mod rust_crypto;
