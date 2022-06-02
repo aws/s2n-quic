@@ -34,7 +34,7 @@ use s2n_quic_core::{
     },
     inet::{datagram, DatagramInfo},
     io::{rx, tx},
-    packet::{initial::ProtectedInitial, ProtectedPacket},
+    packet::{initial::ProtectedInitial, interceptor::Interceptor, ProtectedPacket},
     path,
     path::{Handle as _, MaxMtu},
     random::Generator as _,
@@ -443,6 +443,23 @@ impl<Cfg: Config> Endpoint<Cfg> {
         // Try to decode the first packet in the datagram
         let payload_len = payload.len();
         let buffer = DecoderBufferMut::new(payload);
+
+        let buffer = {
+            let subject = event::builder::Subject::Endpoint {}.into_event();
+            let remote_address = header.path.remote_address();
+            let local_address = header.path.local_address();
+
+            let datagram = s2n_quic_core::packet::interceptor::Datagram {
+                remote_address: remote_address.into_event(),
+                local_address: local_address.into_event(),
+                timestamp,
+            };
+
+            endpoint_context
+                .packet_interceptor
+                .intercept_rx_datagram(&subject, &datagram, buffer)
+        };
+
         let connection_info = ConnectionInfo::new(&remote_address);
         let (packet, remaining) = if let Ok((packet, remaining)) = ProtectedPacket::decode(
             buffer,

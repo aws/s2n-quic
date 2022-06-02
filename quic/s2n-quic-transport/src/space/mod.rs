@@ -719,8 +719,8 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
             // intercept the payload after it is decrypted, but before we process the frames
             packet_interceptor.intercept_rx_payload(
-                publisher.subject(),
-                Packet {
+                &publisher.subject(),
+                &Packet {
                     number: packet_number,
                     timestamp: datagram.timestamp,
                 },
