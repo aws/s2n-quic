@@ -53,9 +53,7 @@ impl Sender for DefaultSender {
 
 #[non_exhaustive]
 #[derive(Debug)]
-pub enum SendDatagramError {
-    DatagramIsTooLarge,
-}
+pub enum SendDatagramError {}
 
 impl DefaultSender {
     /// Creates a builder for the default datagram sender
