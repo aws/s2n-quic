@@ -13,8 +13,8 @@ use s2n_quic_core::{application::ServerName, crypto::tls, endpoint};
 use s2n_tls::raw::config::ClientHelloHandler;
 use s2n_tls::raw::{
     config::{self, Config, VerifyClientCertificateHandler},
+    enums::ClientAuthType,
     error::Error,
-    ffi::s2n_cert_auth_type,
 };
 use std::sync::Arc;
 
@@ -128,8 +128,7 @@ impl Builder {
 
     /// Configures this server instance to require client authentication (mutual TLS).
     pub fn with_client_authentication(mut self) -> Result<Self, Error> {
-        self.config
-            .set_client_auth_type(s2n_cert_auth_type::REQUIRED)?;
+        self.config.set_client_auth_type(ClientAuthType::Required)?;
         Ok(self)
     }
 
