@@ -44,7 +44,7 @@ impl Client {
 
     fn client(&self) -> Result<ClientImpl> {
         let connector = TlsConnector::new(self.config()?.build()?);
-        let connector: s2n_tls_tokio::TlsConnector<Config> = connector.into();
+        let connector: s2n_tls_tokio::TlsConnector<Config> = connector;
         let connector = Arc::new(connector);
 
         let config = multiplex::Config::default();

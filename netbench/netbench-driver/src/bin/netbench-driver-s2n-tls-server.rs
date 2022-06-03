@@ -38,7 +38,7 @@ impl Server {
 
         let trace = self.opts.trace();
         let acceptor = TlsAcceptor::new(self.config()?.build()?);
-        let acceptor: s2n_tls_tokio::TlsAcceptor<Config> = acceptor.into();
+        let acceptor: s2n_tls_tokio::TlsAcceptor<Config> = acceptor;
         let acceptor = Arc::new(acceptor);
 
         let config = netbench::multiplex::Config::default();
@@ -70,9 +70,11 @@ impl Server {
             config: multiplex::Config,
         ) -> Result<()> {
             let connection = acceptor.accept(connection).await?;
-            let server_name =
-                connection.get_ref().server_name().ok_or("missing server name")?;
-            let scenario = scenario.on_server_name(&server_name)?;
+            let server_name = connection
+                .get_ref()
+                .server_name()
+                .ok_or("missing server name")?;
+            let scenario = scenario.on_server_name(server_name)?;
 
             let connection = Box::pin(connection);
 
