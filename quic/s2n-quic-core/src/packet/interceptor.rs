@@ -10,6 +10,7 @@ use crate::{
 use s2n_codec::{DecoderBufferMut, EncoderBuffer};
 
 pub mod loss;
+pub use loss::Loss;
 
 /// TODO add `non_exhaustive` once/if this feature is stable
 #[derive(Debug)]

@@ -573,7 +573,7 @@ impl<'a, R> frame::ack::AckRanges for AckRanges<'a, R> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
 

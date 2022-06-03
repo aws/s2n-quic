@@ -2,102 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    client::Connect,
     provider::{
-        event,
-        io::testing::{primary, spawn, test, time::delay, Handle, Model, Result},
+        io::testing::{spawn, test, time::delay, Model},
+        packet_interceptor::Loss,
     },
-    Client, Server,
+    Server,
 };
-use s2n_quic_core::{crypto::tls::testing::certificates, stream::testing::Data};
-use std::{net::SocketAddr, time::Duration};
+use std::time::Duration;
 
-fn events() -> event::tracing::Provider {
-    use std::sync::Once;
-
-    static TRACING: Once = Once::new();
-
-    // make sure this only gets initialized once
-    TRACING.call_once(|| {
-        let format = tracing_subscriber::fmt::format()
-            .with_level(false) // don't include levels in formatted output
-            .with_timer(tracing_subscriber::fmt::time::uptime())
-            .with_ansi(false)
-            .compact(); // Use a less verbose output format.
-
-        tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::new("debug"))
-            .event_format(format)
-            .with_test_writer()
-            .init();
-    });
-
-    event::tracing::Provider::default()
-}
-
-fn server(handle: &Handle) -> Result<SocketAddr> {
-    let mut server = Server::builder()
-        .with_io(handle.builder().build().unwrap())?
-        .with_tls((certificates::CERT_PEM, certificates::KEY_PEM))?
-        .with_event(events())?
-        .start()?;
-    let server_addr = server.local_addr()?;
-
-    // accept connections and echo back
-    spawn(async move {
-        while let Some(mut connection) = server.accept().await {
-            spawn(async move {
-                while let Ok(Some(mut stream)) = connection.accept_bidirectional_stream().await {
-                    spawn(async move {
-                        while let Ok(Some(chunk)) = stream.receive().await {
-                            let _ = stream.send(chunk).await;
-                        }
-                    });
-                }
-            });
-        }
-    });
-
-    Ok(server_addr)
-}
-
-fn client(handle: &Handle, server_addr: SocketAddr) -> Result {
-    let client = Client::builder()
-        .with_io(handle.builder().build().unwrap())?
-        .with_tls(certificates::CERT_PEM)?
-        .with_event(events())?
-        .start()?;
-
-    primary::spawn(async move {
-        let connect = Connect::new(server_addr).with_server_name("localhost");
-        let mut connection = client.connect(connect).await.unwrap();
-
-        let stream = connection.open_bidirectional_stream().await.unwrap();
-        let (mut recv, mut send) = stream.split();
-
-        let mut send_data = Data::new(10_000);
-
-        let mut recv_data = send_data;
-        primary::spawn(async move {
-            while let Some(chunk) = recv.receive().await.unwrap() {
-                recv_data.receive(&[chunk]);
-            }
-            assert!(recv_data.is_finished());
-        });
-
-        while let Some(chunk) = send_data.send_one(usize::MAX) {
-            send.send(chunk).await.unwrap();
-        }
-    });
-
-    Ok(())
-}
-
-fn client_server(handle: &Handle) -> Result<SocketAddr> {
-    let addr = server(handle)?;
-    client(handle, addr)?;
-    Ok(addr)
-}
+mod setup;
+use setup::*;
 
 #[test]
 fn client_server_test() {
@@ -146,4 +60,42 @@ fn blackhole_failure_test() {
     // setting the blackhole time to `network_delay / 2 + 1` causes the connection to fail
     let blackhole_duration = network_delay / 2 + Duration::from_millis(1);
     blackhole(model, blackhole_duration);
+}
+
+fn intercept_loss(loss: Loss<Random>) {
+    let model = Model::default();
+    test(model, |handle| {
+        let server = server_with(handle, |io| {
+            Ok(Server::builder()
+                .with_io(io)?
+                .with_tls(SERVER_CERTS)?
+                .with_event(events())?
+                .with_packet_interceptor(loss)?
+                .start()?)
+        })?;
+
+        client(handle, server)
+    })
+    .unwrap();
+}
+
+#[test]
+fn interceptor_success_test() {
+    intercept_loss(
+        Loss::builder(Random::with_seed(123))
+            .with_rx_loss(0..20)
+            .with_rx_pass(1..5)
+            .build(),
+    )
+}
+
+#[test]
+#[should_panic]
+fn interceptor_failure_test() {
+    intercept_loss(
+        Loss::builder(Random::with_seed(123))
+            .with_rx_loss(0..20)
+            .with_rx_pass(1..4)
+            .build(),
+    )
 }
