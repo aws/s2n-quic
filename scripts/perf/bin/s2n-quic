@@ -12,18 +12,16 @@ case "$PS" in
           ../../target/release/s2n-quic-qns \
             perf \
             server \
-            --port $SERVER_PORT \
-            --tls "${TLS}"
+            --port $SERVER_PORT
         ;;
     client*)
           ../../target/release/s2n-quic-qns \
             perf \
             client \
-            --download-size "${DOWNLOAD_BYTES}b" \
-            --upload-size "${UPLOAD_BYTES}b" \
-            --duration "${DURATION}s" \
-            --tls "${TLS}" \
+            --receive "${DOWNLOAD_BYTES}" \
+            --send "${UPLOAD_BYTES}" \
             --port $SERVER_PORT \
-            --hostname localhost
+            --server-name localhost \
+            --stats
         ;;
 esac

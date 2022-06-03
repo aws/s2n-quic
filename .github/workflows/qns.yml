@@ -583,9 +583,10 @@ jobs:
     needs: [quinn, s2n-quic-qns]
     strategy:
       matrix:
-        tls: ["s2n-tls", "rustls"]
         include:
           - client: "quinn"
+            server: "s2n-quic"
+          - client: "s2n-quic"
             server: "s2n-quic"
 
     steps:
@@ -637,11 +638,11 @@ jobs:
         run: |
           set -e
           mkdir -p target/perf/results
-          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 1000 0 ${{ matrix.server }} ${{ matrix.client }} ${{ matrix.tls }}
-          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 750 250 ${{ matrix.server }} ${{ matrix.client }} ${{ matrix.tls }}
-          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 500 500 ${{ matrix.server }} ${{ matrix.client }} ${{ matrix.tls }}
-          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 250 750 ${{ matrix.server }} ${{ matrix.client }} ${{ matrix.tls }}
-          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 0 1000 ${{ matrix.server }} ${{ matrix.client }} ${{ matrix.tls }}
+          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 1000 0 ${{ matrix.server }} ${{ matrix.client }}
+          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 750 250 ${{ matrix.server }} ${{ matrix.client }}
+          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 500 500 ${{ matrix.server }} ${{ matrix.client }}
+          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 250 750 ${{ matrix.server }} ${{ matrix.client }}
+          sudo env "PATH=$PATH" "SHELL=$SHELL" ./scripts/perf/test 0 1000 ${{ matrix.server }} ${{ matrix.client }}
           sudo chown -R $(whoami) target/perf/results
 
       - name: Prepare artifacts
@@ -652,7 +653,7 @@ jobs:
 
       - uses: actions/upload-artifact@v3
         with:
-          name: perf-${{ matrix.tls }}
+          name: perf-results-${{ matrix.server }}-${{ matrix.client }}
           path: target/perf/results
 
   perf-report:
@@ -661,15 +662,15 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      # add any additional perf tests here
       - uses: actions/download-artifact@v3
         with:
-          name: perf-rustls
-          path: ./perf-results/rustls
-
+          name: perf-results-s2n-quic-quinn
+          path: perf-results/
       - uses: actions/download-artifact@v3
         with:
-          name: perf-s2n-tls
-          path: ./perf-results/s2n-tls
+          name: perf-results-s2n-quic-s2n-quic
+          path: perf-results/
 
       - name: Generate report
         run: |
