@@ -88,17 +88,17 @@ where
     count
 }
 
-#[cfg(test)]
+#[cfg(any(test, kani))]
 mod tests {
     use super::*;
+    use bolero::{check, generator::*};
 
-    fn assert_eq_slices<A, B, T>(a: &[A], b: &[B]) -> usize
+    fn assert_eq_slices<A, B, T>(a: &[A], b: &[B])
     where
         A: Deref<Target = [T]>,
         B: Deref<Target = [T]>,
         T: PartialEq + core::fmt::Debug,
     {
-        let mut len = 0;
         let a = a.iter().flat_map(|a| a.iter());
         let b = b.iter().flat_map(|b| b.iter());
 
@@ -107,10 +107,7 @@ mod tests {
         // Note: this doesn't use Iterator::eq, as the slice lengths may be different
         for (a, b) in a.zip(b) {
             assert_eq!(a, b);
-            len += 1;
         }
-
-        len
     }
 
     #[test]
@@ -127,15 +124,43 @@ mod tests {
             let mut to = vec![vec![0; 2]; len];
             let copied_len = vectored_copy(&from, &mut to);
             assert_eq!(copied_len, len * 2);
-            assert_eq!(assert_eq_slices(&from, &to), len * 2);
+            assert_eq_slices(&from, &to);
         }
     }
 
-    #[cfg(not(miri))] // bolero doesn't currently work with miri
-    #[test]
+    #[derive(Clone, Copy, Debug, TypeGenerator)]
+    struct InlineVec<T, const LEN: usize> {
+        values: [T; LEN],
+
+        #[generator(_code = "0..LEN")]
+        len: usize,
+    }
+
+    impl<T, const LEN: usize> core::ops::Deref for InlineVec<T, LEN> {
+        type Target = [T];
+
+        fn deref(&self) -> &Self::Target {
+            &self.values[..self.len]
+        }
+    }
+
+    impl<T, const LEN: usize> core::ops::DerefMut for InlineVec<T, LEN> {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.values[..self.len]
+        }
+    }
+
+    const LEN: usize = if cfg!(kani) { 2 } else { 32 };
+
+    #[cfg_attr(not(kani), test)]
+    #[cfg_attr(kani, kani::proof)]
+    #[cfg_attr(kani, kani::unwind(5))]
     fn vectored_copy_fuzz_test() {
-        bolero::check!()
-            .with_type::<(Vec<Vec<u8>>, Vec<Vec<u8>>)>()
+        check!()
+            .with_type::<(
+                InlineVec<InlineVec<u8, LEN>, LEN>,
+                InlineVec<InlineVec<u8, LEN>, LEN>,
+            )>()
             .cloned()
             .for_each(|(from, mut to)| {
                 vectored_copy(&from, &mut to);
