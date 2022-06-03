@@ -212,7 +212,6 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             outcome,
             time_sent,
             context.ecn,
-            None,
             &mut recovery_context,
             context.publisher,
         );
