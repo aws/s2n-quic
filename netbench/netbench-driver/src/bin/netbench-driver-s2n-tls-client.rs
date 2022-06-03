@@ -62,9 +62,6 @@ impl Client {
         for ca in self.opts.certificate_authorities() {
             builder.trust_pem(ca.pem.as_bytes())?;
         }
-        unsafe {
-            builder.disable_x509_verification()?;
-        }
         Ok(builder)
     }
 }
