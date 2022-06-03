@@ -1,0 +1,806 @@
+---
+source: quic/s2n-quic-transport/src/ack/ack_transmission_state.rs
+expression: results
+---
+[
+    (
+        Disabled,
+        None,
+        Normal,
+        true,
+        false,
+    ),
+    (
+        Disabled,
+        None,
+        Normal,
+        false,
+        false,
+    ),
+    (
+        Disabled,
+        None,
+        MtuProbing,
+        true,
+        true,
+    ),
+    (
+        Disabled,
+        None,
+        MtuProbing,
+        false,
+        false,
+    ),
+    (
+        Disabled,
+        None,
+        PathValidationOnly,
+        true,
+        true,
+    ),
+    (
+        Disabled,
+        None,
+        PathValidationOnly,
+        false,
+        false,
+    ),
+    (
+        Disabled,
+        None,
+        LossRecoveryProbing,
+        true,
+        true,
+    ),
+    (
+        Disabled,
+        None,
+        LossRecoveryProbing,
+        false,
+        false,
+    ),
+    (
+        Disabled,
+        AmplificationLimited,
+        Normal,
+        true,
+        false,
+    ),
+    (
+        Disabled,
+        AmplificationLimited,
+        Normal,
+        false,
+        false,
+    ),
+    (
+        Disabled,
+        AmplificationLimited,
+        MtuProbing,
+        true,
+        true,
+    ),
+    (
+        Disabled,
+        AmplificationLimited,
+        MtuProbing,
+        false,
+        false,
+    ),
+    (
+        Disabled,
+        AmplificationLimited,
+        PathValidationOnly,
+        true,
+        true,
+    ),
+    (
+        Disabled,
+        AmplificationLimited,
+        PathValidationOnly,
+        false,
+        false,
+    ),
+    (
+        Disabled,
+        AmplificationLimited,
+        LossRecoveryProbing,
+        true,
+        true,
+    ),
+    (
+        Disabled,
+        AmplificationLimited,
+        LossRecoveryProbing,
+        false,
+        false,
+    ),
+    (
+        Disabled,
+        CongestionLimited,
+        Normal,
+        true,
+        false,
+    ),
+    (
+        Disabled,
+        CongestionLimited,
+        Normal,
+        false,
+        false,
+    ),
+    (
+        Disabled,
+        CongestionLimited,
+        MtuProbing,
+        true,
+        true,
+    ),
+    (
+        Disabled,
+        CongestionLimited,
+        MtuProbing,
+        false,
+        false,
+    ),
+    (
+        Disabled,
+        CongestionLimited,
+        PathValidationOnly,
+        true,
+        true,
+    ),
+    (
+        Disabled,
+        CongestionLimited,
+        PathValidationOnly,
+        false,
+        false,
+    ),
+    (
+        Disabled,
+        CongestionLimited,
+        LossRecoveryProbing,
+        true,
+        true,
+    ),
+    (
+        Disabled,
+        CongestionLimited,
+        LossRecoveryProbing,
+        false,
+        false,
+    ),
+    (
+        Disabled,
+        RetransmissionOnly,
+        Normal,
+        true,
+        false,
+    ),
+    (
+        Disabled,
+        RetransmissionOnly,
+        Normal,
+        false,
+        false,
+    ),
+    (
+        Disabled,
+        RetransmissionOnly,
+        MtuProbing,
+        true,
+        true,
+    ),
+    (
+        Disabled,
+        RetransmissionOnly,
+        MtuProbing,
+        false,
+        false,
+    ),
+    (
+        Disabled,
+        RetransmissionOnly,
+        PathValidationOnly,
+        true,
+        true,
+    ),
+    (
+        Disabled,
+        RetransmissionOnly,
+        PathValidationOnly,
+        false,
+        false,
+    ),
+    (
+        Disabled,
+        RetransmissionOnly,
+        LossRecoveryProbing,
+        true,
+        true,
+    ),
+    (
+        Disabled,
+        RetransmissionOnly,
+        LossRecoveryProbing,
+        false,
+        false,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        None,
+        Normal,
+        true,
+        true,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        None,
+        Normal,
+        false,
+        false,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        None,
+        MtuProbing,
+        true,
+        true,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        None,
+        MtuProbing,
+        false,
+        false,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        None,
+        PathValidationOnly,
+        true,
+        true,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        None,
+        PathValidationOnly,
+        false,
+        false,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        None,
+        LossRecoveryProbing,
+        true,
+        true,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        None,
+        LossRecoveryProbing,
+        false,
+        false,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        AmplificationLimited,
+        Normal,
+        true,
+        false,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        AmplificationLimited,
+        Normal,
+        false,
+        false,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        AmplificationLimited,
+        MtuProbing,
+        true,
+        true,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        AmplificationLimited,
+        MtuProbing,
+        false,
+        false,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        AmplificationLimited,
+        PathValidationOnly,
+        true,
+        true,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        AmplificationLimited,
+        PathValidationOnly,
+        false,
+        false,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        AmplificationLimited,
+        LossRecoveryProbing,
+        true,
+        true,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        AmplificationLimited,
+        LossRecoveryProbing,
+        false,
+        false,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        CongestionLimited,
+        Normal,
+        true,
+        false,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        CongestionLimited,
+        Normal,
+        false,
+        false,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        CongestionLimited,
+        MtuProbing,
+        true,
+        true,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        CongestionLimited,
+        MtuProbing,
+        false,
+        false,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        CongestionLimited,
+        PathValidationOnly,
+        true,
+        true,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        CongestionLimited,
+        PathValidationOnly,
+        false,
+        false,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        CongestionLimited,
+        LossRecoveryProbing,
+        true,
+        true,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        CongestionLimited,
+        LossRecoveryProbing,
+        false,
+        false,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        RetransmissionOnly,
+        Normal,
+        true,
+        true,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        RetransmissionOnly,
+        Normal,
+        false,
+        false,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        RetransmissionOnly,
+        MtuProbing,
+        true,
+        true,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        RetransmissionOnly,
+        MtuProbing,
+        false,
+        false,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        RetransmissionOnly,
+        PathValidationOnly,
+        true,
+        true,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        RetransmissionOnly,
+        PathValidationOnly,
+        false,
+        false,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        RetransmissionOnly,
+        LossRecoveryProbing,
+        true,
+        true,
+    ),
+    (
+        Passive {
+            retransmissions: 1,
+        },
+        RetransmissionOnly,
+        LossRecoveryProbing,
+        false,
+        false,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        None,
+        Normal,
+        true,
+        true,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        None,
+        Normal,
+        false,
+        false,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        None,
+        MtuProbing,
+        true,
+        true,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        None,
+        MtuProbing,
+        false,
+        false,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        None,
+        PathValidationOnly,
+        true,
+        true,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        None,
+        PathValidationOnly,
+        false,
+        false,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        None,
+        LossRecoveryProbing,
+        true,
+        true,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        None,
+        LossRecoveryProbing,
+        false,
+        false,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        AmplificationLimited,
+        Normal,
+        true,
+        true,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        AmplificationLimited,
+        Normal,
+        false,
+        false,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        AmplificationLimited,
+        MtuProbing,
+        true,
+        true,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        AmplificationLimited,
+        MtuProbing,
+        false,
+        false,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        AmplificationLimited,
+        PathValidationOnly,
+        true,
+        true,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        AmplificationLimited,
+        PathValidationOnly,
+        false,
+        false,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        AmplificationLimited,
+        LossRecoveryProbing,
+        true,
+        true,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        AmplificationLimited,
+        LossRecoveryProbing,
+        false,
+        false,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        CongestionLimited,
+        Normal,
+        true,
+        true,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        CongestionLimited,
+        Normal,
+        false,
+        false,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        CongestionLimited,
+        MtuProbing,
+        true,
+        true,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        CongestionLimited,
+        MtuProbing,
+        false,
+        false,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        CongestionLimited,
+        PathValidationOnly,
+        true,
+        true,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        CongestionLimited,
+        PathValidationOnly,
+        false,
+        false,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        CongestionLimited,
+        LossRecoveryProbing,
+        true,
+        true,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        CongestionLimited,
+        LossRecoveryProbing,
+        false,
+        false,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        RetransmissionOnly,
+        Normal,
+        true,
+        true,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        RetransmissionOnly,
+        Normal,
+        false,
+        false,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        RetransmissionOnly,
+        MtuProbing,
+        true,
+        true,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        RetransmissionOnly,
+        MtuProbing,
+        false,
+        false,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        RetransmissionOnly,
+        PathValidationOnly,
+        true,
+        true,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        RetransmissionOnly,
+        PathValidationOnly,
+        false,
+        false,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        RetransmissionOnly,
+        LossRecoveryProbing,
+        true,
+        true,
+    ),
+    (
+        Active {
+            retransmissions: 1,
+        },
+        RetransmissionOnly,
+        LossRecoveryProbing,
+        false,
+        false,
+    ),
+]
