@@ -15,6 +15,7 @@ skip-tree = [
     { name = "cuckoofilter" },
 
     # all of these are going to be just test dependencies
+    { name = "aes-gcm" },
     { name = "bolero" },
     { name = "criterion" },
     { name = "insta" },
