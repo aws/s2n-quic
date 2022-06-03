@@ -56,6 +56,13 @@ impl FromStr for TlsProviders {
     }
 }
 
+pub mod default {
+    #[cfg(not(unix))]
+    pub use super::rustls::*;
+    #[cfg(unix)]
+    pub use super::s2n::*;
+}
+
 #[cfg(unix)]
 pub mod s2n {
     use super::*;

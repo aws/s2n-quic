@@ -1,10 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{perf, tls, tls::TlsProviders, Result};
+use crate::{perf, tls, Result};
 use futures::future::try_join_all;
 use s2n_quic::{
-    provider::{event, io},
+    provider::io,
     stream::{BidirectionalStream, ReceiveStream, SendStream},
     Connection, Server,
 };
@@ -37,8 +37,12 @@ pub struct Perf {
     #[structopt(long)]
     disable_gso: bool,
 
-    #[structopt(long, default_value)]
-    tls: TlsProviders,
+    #[structopt(flatten)]
+    limits: perf::Limits,
+
+    /// Logs statistics for the endpoint
+    #[structopt(long)]
+    stats: bool,
 }
 
 impl Perf {
@@ -171,44 +175,32 @@ impl Perf {
 
         let io = io_builder.build()?;
 
+        let tls = s2n_quic::provider::tls::default::Server::builder()
+            .with_certificate(
+                tls::default::ca(self.certificate.as_ref())?,
+                tls::default::private_key(self.private_key.as_ref())?,
+            )?
+            .with_application_protocols(self.application_protocols.iter().map(String::as_bytes))?
+            .build()?;
+
+        let subscriber = perf::Subscriber::default();
+
+        if self.stats {
+            subscriber.spawn(core::time::Duration::from_secs(1));
+        }
+
+        let subscriber = (
+            subscriber,
+            s2n_quic::provider::event::tracing::Subscriber::default(),
+        );
+
         let server = Server::builder()
+            .with_limits(self.limits.limits())?
             .with_io(io)?
-            .with_event(event::disabled::Provider)?;
-        let server = match self.tls {
-            #[cfg(unix)]
-            TlsProviders::S2N => {
-                // The server builder defaults to a chain because this allows certs to just work, whether
-                // the PEM contains a single cert or a chain
-                let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
-                    .with_certificate(
-                        tls::s2n::ca(self.certificate.as_ref())?,
-                        tls::s2n::private_key(self.private_key.as_ref())?,
-                    )?
-                    .with_application_protocols(
-                        self.application_protocols.iter().map(String::as_bytes),
-                    )?
-                    .with_key_logging()?
-                    .build()?;
-
-                server.with_tls(tls)?.start().unwrap()
-            }
-            TlsProviders::Rustls => {
-                // The server builder defaults to a chain because this allows certs to just work, whether
-                // the PEM contains a single cert or a chain
-                let tls = s2n_quic::provider::tls::rustls::Server::builder()
-                    .with_certificate(
-                        tls::rustls::ca(self.certificate.as_ref())?,
-                        tls::rustls::private_key(self.private_key.as_ref())?,
-                    )?
-                    .with_application_protocols(
-                        self.application_protocols.iter().map(String::as_bytes),
-                    )?
-                    .with_key_logging()?
-                    .build()?;
-
-                server.with_tls(tls)?.start().unwrap()
-            }
-        };
+            .with_event(subscriber)?
+            .with_tls(tls)?
+            .start()
+            .unwrap();
 
         eprintln!("Server listening on port {}", self.port);
 

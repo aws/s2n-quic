@@ -141,7 +141,7 @@ impl Interop {
 
         let client = Client::builder()
             .with_io(io)?
-            .with_event(event::tracing::Provider::default())?;
+            .with_event(event::tracing::Subscriber::default())?;
         let client = match self.tls {
             #[cfg(unix)]
             TlsProviders::S2N => {
