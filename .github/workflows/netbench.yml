@@ -150,6 +150,7 @@ jobs:
           - s2n-quic
           - native-tls
           - tcp
+          - s2n-tls
         scenario: ${{ fromJson(needs.build.outputs.scenarios) }}
     env:
       SCENARIO: scenarios/${{ matrix.scenario }}.json
