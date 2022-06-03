@@ -18,16 +18,8 @@ mod tls;
 /// Do not change it without updating it elsewhere
 const CRASH_ERROR_MESSAGE: &str = "The s2n-quic-qns application shut down unexpectedly";
 
-#[cfg(feature = "dhat")]
-#[global_allocator]
-static ALLOCATOR: dhat::DhatAlloc = dhat::DhatAlloc;
-
 #[tokio::main()]
 async fn main() {
-    // setup heap profiling if enabled
-    #[cfg(feature = "dhat")]
-    let _dhat = dhat::Dhat::start_heap_profiling();
-
     let format = tracing_subscriber::fmt::format()
         .with_level(false) // don't include levels in formatted output
         .with_timer(tracing_subscriber::fmt::time::uptime())

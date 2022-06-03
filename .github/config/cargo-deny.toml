@@ -11,9 +11,13 @@ ignore = [
 multiple-versions = "deny"
 
 skip-tree = [
-    { name = "bolero" }, # bolero is always going to be just a test dependency
-    { name = "criterion" }, # criterion is always going to be just a test dependency
-    { name = "cuckoofilter" }, # This dependency needs to be updated or removed (see https://github.com/axiomhq/rust-cuckoofilter/pull/53)
+    # This dependency needs to be updated or removed (see https://github.com/axiomhq/rust-cuckoofilter/pull/53)
+    { name = "cuckoofilter" },
+
+    # all of these are going to be just test dependencies
+    { name = "bolero" },
+    { name = "criterion" },
+    { name = "insta" },
 ]
 
 [sources]

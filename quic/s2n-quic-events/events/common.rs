@@ -469,7 +469,7 @@ enum StreamType {
     Unidirectional,
 }
 
-impl<'a> IntoEvent<builder::StreamType> for &crate::stream::StreamType {
+impl IntoEvent<builder::StreamType> for &crate::stream::StreamType {
     fn into_event(self) -> builder::StreamType {
         match self {
             crate::stream::StreamType::Bidirectional => builder::StreamType::Bidirectional {},
