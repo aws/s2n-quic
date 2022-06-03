@@ -193,7 +193,6 @@ impl CongestionController for CubicCongestionController {
         &mut self,
         time_sent: Timestamp,
         bytes_sent: usize,
-        app_limited: Option<bool>,
         rtt_estimator: &RttEstimator,
     ) {
         if bytes_sent == 0 {
@@ -205,14 +204,7 @@ impl CongestionController for CubicCongestionController {
             .try_add(bytes_sent)
             .expect("bytes sent should not exceed u32::MAX");
 
-        if let Some(app_limited) = app_limited {
-            // We check both the given `app_limited` value and is_congestion_window_under_utilized()
-            // as is_congestion_window_under_utilized() is more lenient with respect to the utilization
-            // of the congestion window than the app_limited check. is_congestion_window_under_utilized()
-            // returns true if there are more than 3 MTU's of space left in the cwnd, or less than
-            // half the cwnd is utilized in slow start.
-            self.under_utilized = app_limited && self.is_congestion_window_under_utilized();
-        }
+        self.under_utilized = self.is_congestion_window_under_utilized();
 
         if let Recovery(recovery_start_time, RequiresTransmission) = self.state {
             // A packet has been sent since we entered recovery (fast retransmission)
