@@ -4,7 +4,7 @@
 use crate::{stats, Result};
 use indicatif::{ParallelProgressIterator, ProgressBar};
 use rayon::prelude::*;
-use s2n_quic::provider::io::testing::{task, test_seed, time, Model};
+use s2n_quic::provider::io::testing::{test_seed, Model};
 use structopt::StructOpt;
 
 mod config;
@@ -71,19 +71,6 @@ impl Run {
                         stream_data,
                     )?;
                 }
-
-                task::spawn(async move {
-                    let delay = network.delay();
-                    let max_inflight = network.max_inflight();
-                    loop {
-                        time::delay(delay * 9).await;
-                        network.set_delay(delay * 19 / 8);
-                        network.set_max_inflight(max_inflight / 4);
-                        time::delay(delay * 4).await;
-                        network.set_delay(delay);
-                        network.set_max_inflight(max_inflight);
-                    }
-                });
 
                 Ok(())
             })

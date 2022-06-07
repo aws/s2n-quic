@@ -49,11 +49,6 @@ pub fn client(
     stream_data: CliRange<u64>,
 ) -> Result {
     let client = Client::builder()
-        .with_limits(
-            s2n_quic::provider::limits::Limits::default()
-                .with_data_window(50000)
-                .unwrap(),
-        )?
         .with_io(handle.builder().build().unwrap())?
         .with_tls(certificates::CERT_PEM)?
         .with_event((events, Tracing::default()))?
