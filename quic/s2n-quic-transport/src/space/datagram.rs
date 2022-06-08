@@ -83,11 +83,7 @@ impl<'a, C: WriteContext> s2n_quic_core::datagram::Packet for Packet<'a, C> {
         // Remove the frame type length and the maximum length value
         space
             .saturating_sub(frame::datagram::DATAGRAM_TAG.encoding_size())
-            .saturating_sub(
-                VarInt::new(space as u64)
-                    .unwrap_or(VarInt::MAX)
-                    .encoding_size(),
-            )
+            .saturating_sub(VarInt::MAX.encoding_size())
     }
 
     /// Writes a single datagram to a packet
@@ -119,4 +115,46 @@ impl<'a, C: WriteContext> s2n_quic_core::datagram::Packet for Packet<'a, C> {
     fn datagrams_prioritized(&self) -> bool {
         self.datagrams_prioritized
     }
+}
+
+#[test]
+// Check that our default on_transmit function doesn't continue to pop datagrams
+// off the send queue if the remaining packet space is too small to send datagrams.
+fn has_written_test() {
+    use crate::contexts::testing::{MockWriteContext, OutgoingFrameBuffer};
+    use s2n_quic_core::transmission;
+
+    let mut default_sender = s2n_quic_core::datagram::default::DefaultSender::builder()
+        .build()
+        .unwrap();
+    let datagram_0 = bytes::Bytes::from_static(&[1, 2, 3]);
+    let datagram_1 = bytes::Bytes::from_static(&[4, 5, 6]);
+    default_sender.send_datagram(datagram_0);
+    default_sender.send_datagram(datagram_1);
+
+    let mut frame_buffer = OutgoingFrameBuffer::new();
+    // Packet size is just enough to write the first datagram with some
+    // room left over, but not enough to write the second.
+    frame_buffer.set_max_packet_size(Some(15));
+    let mut context = MockWriteContext::new(
+        s2n_quic_platform::time::now(),
+        &mut frame_buffer,
+        transmission::Constraint::None,
+        transmission::Mode::Normal,
+        endpoint::Type::Server,
+    );
+    let mut packet = Packet {
+        context: &mut context,
+        has_pending_streams: false,
+        datagrams_prioritized: false,
+        max_datagram_payload: 100,
+    };
+    default_sender.on_transmit(&mut packet);
+
+    // Successfully wrote one datagram to the packet
+    assert_eq!(packet.context.frame_buffer.frames.len(), 1);
+    // Packet technically still has capacity to write datagrams
+    assert!(s2n_quic_core::datagram::Packet::remaining_capacity(&packet) > 0);
+    // Send queue is not completely depleted
+    assert!(!default_sender.queue.is_empty());
 }

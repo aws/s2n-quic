@@ -3,18 +3,21 @@
 
 // s2n-quic's default implementation of the datagram component
 
+//use core::task::{Context, Poll};
+
 use crate::datagram::{Packet, Sender};
 use alloc::collections::VecDeque;
 use bytes::Bytes;
 
 #[derive(Debug, Default)]
 pub struct DefaultSender {
-    queue: VecDeque<Datagram>,
+    pub queue: VecDeque<Datagram>,
+    capacity: usize,
 }
 
 #[derive(Debug)]
 pub struct Datagram {
-    data: Bytes,
+    pub data: Bytes,
 }
 
 impl Sender for DefaultSender {
@@ -24,19 +27,27 @@ impl Sender for DefaultSender {
             return;
         }
 
+        let mut has_written = false;
         while packet.remaining_capacity() > 0 {
             if let Some(datagram) = self.queue.pop_front() {
                 // Ensure there is enough space in the packet to send a datagram
                 if packet.remaining_capacity() >= datagram.data.len() {
                     match packet.write_datagram(&datagram.data) {
-                        Ok(()) => continue,
+                        Ok(()) => has_written = true,
                         Err(_error) => {
                             // TODO emit datagram dropped event
                             continue;
                         }
                     }
                 } else {
-                    // TODO emit datagram dropped event
+                    // This check keeps us from popping all the datagrams off the
+                    // queue when packet space remaining is smaller than the datagram.
+                    if has_written {
+                        self.queue.push_front(datagram);
+                        return;
+                    } else {
+                        // TODO emit datagram dropped event
+                    }
                 }
             } else {
                 // If there are no datagrams on the queue we return
@@ -53,7 +64,9 @@ impl Sender for DefaultSender {
 
 #[non_exhaustive]
 #[derive(Debug)]
-pub enum SendDatagramError {}
+pub enum SendDatagramError {
+    QueueAtCapacity,
+}
 
 impl DefaultSender {
     /// Creates a builder for the default datagram sender
@@ -61,12 +74,56 @@ impl DefaultSender {
         Builder::default()
     }
 
+    /// Enqueues a datagram for sending it towards the peer.
+    ///
+    /// # Return value
+    ///
+    /// The function returns:
+    ///
+    /// - `Poll::Pending` if the datagram's send buffer capacity is currently exhausted. In this case,
+    ///   the caller should retry sending after the [`Waker`](core::task::Waker) on the provided
+    ///   [`Context`](core::task::Context) is notified.
+    /// - `Poll::Ready(Ok(()))` if the datagram was enqueued for sending.
+    /// - `Poll::Ready(Err(e))` if the stream encountered a [`stream::Error`](crate::stream::Error).
+    // pub fn poll_send_datagram(
+    //     &mut self,
+    //     data: bytes::Bytes,
+    //     cx: &mut Context,
+    // ) -> Poll<Result<(), ()>> {
+    //     if self.queue.len() == self.capacity {
+    //         cx.waker().wake_by_ref();
+    //         return Poll::Pending;
+    //     }
+
+    //     let datagram = Datagram { data };
+    //     self.queue.push_back(datagram);
+    //     Poll::Ready(Ok(()))
+    // }
+
     /// Adds datagrams on the queue to be sent
-    pub fn send_datagram(&mut self, data: bytes::Bytes) -> Result<(), SendDatagramError> {
+    ///
+    /// If the datagram queue is at capacity the oldest datagram will be popped
+    /// off the queue and returned to make space for the newest datagram.
+    pub fn send_datagram(&mut self, data: bytes::Bytes) -> Option<Datagram> {
         // Pop oldest datagram off the queue if it is at capacity
-        if self.queue.capacity() == 0 {
-            self.queue.pop_front();
-            // TODO emit datagram dropped event
+        if self.queue.len() == self.capacity {
+            return self.queue.pop_front();
+        }
+
+        let datagram = Datagram { data };
+        self.queue.push_back(datagram);
+        None
+    }
+
+    /// Adds datagrams on the queue to be sent
+    ///
+    /// If the queue is full the newest datagram is not added and an error is returned.
+    pub fn send_datagram_with_error(
+        &mut self,
+        data: bytes::Bytes,
+    ) -> Result<(), SendDatagramError> {
+        if self.queue.len() == self.capacity {
+            return Err(SendDatagramError::QueueAtCapacity);
         }
 
         let datagram = Datagram { data };
@@ -110,6 +167,7 @@ impl Builder {
     pub fn build(self) -> Result<DefaultSender, core::convert::Infallible> {
         Ok(DefaultSender {
             queue: VecDeque::with_capacity(self.queue_capacity),
+            capacity: self.queue_capacity,
         })
     }
 }
