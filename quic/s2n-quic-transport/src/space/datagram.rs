@@ -122,15 +122,17 @@ impl<'a, C: WriteContext> s2n_quic_core::datagram::Packet for Packet<'a, C> {
 // off the send queue if the remaining packet space is too small to send datagrams.
 fn has_written_test() {
     use crate::contexts::testing::{MockWriteContext, OutgoingFrameBuffer};
-    use s2n_quic_core::transmission;
+    use s2n_quic_core::{datagram::ConnectionInfo, transmission};
 
+    let conn_info = ConnectionInfo::new(100);
     let mut default_sender = s2n_quic_core::datagram::default::DefaultSender::builder()
+        .with_connection_info(conn_info)
         .build()
         .unwrap();
     let datagram_0 = bytes::Bytes::from_static(&[1, 2, 3]);
     let datagram_1 = bytes::Bytes::from_static(&[4, 5, 6]);
-    default_sender.send_datagram(datagram_0);
-    default_sender.send_datagram(datagram_1);
+    assert_eq!(default_sender.send_datagram(datagram_0), Ok(None));
+    assert_eq!(default_sender.send_datagram(datagram_1), Ok(None));
 
     let mut frame_buffer = OutgoingFrameBuffer::new();
     // Packet size is just enough to write the first datagram with some
@@ -164,10 +166,12 @@ fn waker_test() {
     use crate::contexts::testing::{MockWriteContext, OutgoingFrameBuffer};
     use core::task::{Context, Poll};
     use futures_test::task::new_count_waker;
-    use s2n_quic_core::transmission;
+    use s2n_quic_core::{datagram::ConnectionInfo, transmission};
 
+    let conn_info = ConnectionInfo::new(100);
     let mut default_sender = s2n_quic_core::datagram::default::DefaultSender::builder()
         .with_capacity(2)
+        .with_connection_info(conn_info)
         .build()
         .unwrap();
     let datagram_0 = bytes::Bytes::from_static(&[1, 2, 3]);

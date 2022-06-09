@@ -17,6 +17,7 @@ pub trait Endpoint: 'static + Send {
 ///
 /// Sending a datagram larger than this will result in an error
 #[non_exhaustive]
+#[derive(Debug)]
 pub struct ConnectionInfo {
     pub max_datagram_payload: u64,
 }

@@ -5,7 +5,7 @@
 
 use core::task::{Context, Poll, Waker};
 
-use crate::datagram::{Packet, Sender};
+use crate::datagram::{ConnectionInfo, Packet, Sender};
 use alloc::collections::VecDeque;
 use bytes::Bytes;
 
@@ -17,6 +17,7 @@ pub struct DefaultSender {
     max_packet_space: usize,
     smoothed_packet_size: f64,
     waker: Option<Waker>,
+    max_datagram_payload: u64,
 }
 
 #[derive(Debug, PartialEq)]
@@ -28,6 +29,7 @@ pub struct Datagram {
 #[derive(Debug, PartialEq)]
 pub enum SendDatagramError {
     QueueAtCapacity,
+    DataLengthExceedsPeerLimits,
 }
 
 impl DefaultSender {
@@ -47,11 +49,17 @@ impl DefaultSender {
     ///   retry sending after the [`Waker`](core::task::Waker) on the provided
     ///   [`Context`](core::task::Context) is notified.
     /// - `Poll::Ready(Ok(()))` if the datagram was enqueued for sending.
+    /// - `Poll::Ready(Err(SendDatagramError))` if an error occurred while trying
+    ///   to send the datagram
     pub fn poll_send_datagram(
         &mut self,
         data: bytes::Bytes,
         cx: &mut Context,
-    ) -> Poll<Result<(), ()>> {
+    ) -> Poll<Result<(), SendDatagramError>> {
+        if data.len() as u64 > self.max_datagram_payload {
+            return Poll::Ready(Err(SendDatagramError::DataLengthExceedsPeerLimits));
+        }
+
         if self.queue.len() == self.capacity {
             self.waker = Some(cx.waker().clone());
             return Poll::Pending;
@@ -66,7 +74,14 @@ impl DefaultSender {
     ///
     /// If the datagram queue is at capacity the oldest datagram will be popped
     /// off the queue and returned to make space for the newest datagram.
-    pub fn send_datagram(&mut self, data: bytes::Bytes) -> Option<Datagram> {
+    pub fn send_datagram(
+        &mut self,
+        data: bytes::Bytes,
+    ) -> Result<Option<Datagram>, SendDatagramError> {
+        if data.len() as u64 > self.max_datagram_payload {
+            return Err(SendDatagramError::DataLengthExceedsPeerLimits);
+        }
+
         // Pop oldest datagram off the queue if it is at capacity
         let mut oldest = None;
         if self.queue.len() == self.capacity {
@@ -75,7 +90,7 @@ impl DefaultSender {
 
         let datagram = Datagram { data };
         self.queue.push_back(datagram);
-        oldest
+        Ok(oldest)
     }
 
     /// Adds datagrams on the queue to be sent
@@ -85,6 +100,10 @@ impl DefaultSender {
         &mut self,
         data: bytes::Bytes,
     ) -> Result<(), SendDatagramError> {
+        if data.len() as u64 > self.max_datagram_payload {
+            return Err(SendDatagramError::DataLengthExceedsPeerLimits);
+        }
+
         if self.queue.len() == self.capacity {
             return Err(SendDatagramError::QueueAtCapacity);
         }
@@ -195,12 +214,14 @@ impl Sender for DefaultSender {
 #[derive(Debug)]
 pub struct Builder {
     queue_capacity: usize,
+    connection_info: ConnectionInfo,
 }
 
 impl Default for Builder {
     fn default() -> Self {
         Self {
             queue_capacity: 200,
+            connection_info: ConnectionInfo::default(),
         }
     }
 }
@@ -211,11 +232,19 @@ impl Builder {
         self.queue_capacity = capacity;
         self
     }
+
+    /// Gives the default sender relevant connection info
+    pub fn with_connection_info(mut self, connection_info: ConnectionInfo) -> Self {
+        self.connection_info = connection_info;
+        self
+    }
+
     /// Builds the datagram sender into a provider
     pub fn build(self) -> Result<DefaultSender, core::convert::Infallible> {
         Ok(DefaultSender {
             queue: VecDeque::with_capacity(self.queue_capacity),
             capacity: self.queue_capacity,
+            max_datagram_payload: self.connection_info.max_datagram_payload,
             max_packet_space: 0,
             min_packet_space: 0,
             smoothed_packet_size: 0.0,
@@ -226,14 +255,28 @@ impl Builder {
 
 #[test]
 fn send_datagram() {
+    let connection_info = ConnectionInfo {
+        max_datagram_payload: 100,
+    };
     // Create a default sender queue that only holds two elements
-    let mut default_sender = DefaultSender::builder().with_capacity(2).build().unwrap();
+    let mut default_sender = DefaultSender::builder()
+        .with_capacity(2)
+        .with_connection_info(connection_info)
+        .build()
+        .unwrap();
     let datagram_0 = bytes::Bytes::from_static(&[1, 2, 3]);
     let datagram_1 = bytes::Bytes::from_static(&[4, 5, 6]);
     let datagram_2 = bytes::Bytes::from_static(&[7, 8, 9]);
-    default_sender.send_datagram(datagram_0);
-    default_sender.send_datagram(datagram_1);
-    default_sender.send_datagram(datagram_2);
+    assert_eq!(default_sender.send_datagram(datagram_0), Ok(None));
+    assert_eq!(default_sender.send_datagram(datagram_1), Ok(None));
+    // Queue has reached capacity so oldest datagram is returned
+    let result = default_sender.send_datagram(datagram_2);
+    assert_eq!(
+        result,
+        Ok(Some(Datagram {
+            data: bytes::Bytes::from_static(&[1, 2, 3])
+        }))
+    );
 
     // Oldest datagram has been bumped off the queue and the newest two datagrams
     // are there
@@ -246,13 +289,20 @@ fn send_datagram() {
 
 #[test]
 fn send_datagram_with_error() {
+    let conn_info = ConnectionInfo {
+        max_datagram_payload: 100,
+    };
     // Create a default sender queue that only holds two elements
-    let mut default_sender = DefaultSender::builder().with_capacity(2).build().unwrap();
+    let mut default_sender = DefaultSender::builder()
+        .with_capacity(2)
+        .with_connection_info(conn_info)
+        .build()
+        .unwrap();
     let datagram_0 = bytes::Bytes::from_static(&[1, 2, 3]);
     let datagram_1 = bytes::Bytes::from_static(&[4, 5, 6]);
     let datagram_2 = bytes::Bytes::from_static(&[7, 8, 9]);
-    default_sender.send_datagram(datagram_0);
-    default_sender.send_datagram(datagram_1);
+    assert_eq!(default_sender.send_datagram(datagram_0), Ok(None));
+    assert_eq!(default_sender.send_datagram(datagram_1), Ok(None));
     // Attempting to send a third datagram will result in an error, since the queue
     // is at capacity
     assert_eq!(
@@ -272,8 +322,15 @@ fn send_datagram_with_error() {
 fn poll_send_datagram() {
     use futures_test::task::new_count_waker;
 
+    let conn_info = ConnectionInfo {
+        max_datagram_payload: 100,
+    };
     // Create a default sender queue that only holds two elements
-    let mut default_sender = DefaultSender::builder().with_capacity(2).build().unwrap();
+    let mut default_sender = DefaultSender::builder()
+        .with_capacity(2)
+        .with_connection_info(conn_info)
+        .build()
+        .unwrap();
     let datagram_0 = bytes::Bytes::from_static(&[1, 2, 3]);
     let datagram_1 = bytes::Bytes::from_static(&[4, 5, 6]);
     let datagram_2 = bytes::Bytes::from_static(&[7, 8, 9]);
@@ -311,14 +368,21 @@ fn poll_send_datagram() {
 
 #[test]
 fn retain_datagrams() {
+    let conn_info = ConnectionInfo {
+        max_datagram_payload: 100,
+    };
     // Create a default sender queue
-    let mut default_sender = DefaultSender::builder().with_capacity(2).build().unwrap();
+    let mut default_sender = DefaultSender::builder()
+        .with_capacity(3)
+        .with_connection_info(conn_info)
+        .build()
+        .unwrap();
     let datagram_0 = bytes::Bytes::from_static(&[1, 2, 3]);
     let datagram_1 = bytes::Bytes::from_static(&[4, 5, 6]);
     let datagram_2 = bytes::Bytes::from_static(&[7, 8, 9]);
-    default_sender.send_datagram(datagram_0);
-    default_sender.send_datagram(datagram_1);
-    default_sender.send_datagram(datagram_2);
+    assert_eq!(default_sender.send_datagram(datagram_0), Ok(None));
+    assert_eq!(default_sender.send_datagram(datagram_1), Ok(None));
+    assert_eq!(default_sender.send_datagram(datagram_2), Ok(None));
 
     // Keep only the third datagram
     default_sender.retain_datagrams(|datagram| datagram.data[..] == [7, 8, 9]);
