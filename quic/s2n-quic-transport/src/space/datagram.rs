@@ -158,3 +158,65 @@ fn has_written_test() {
     // Send queue is not completely depleted
     assert!(!default_sender.queue.is_empty());
 }
+
+#[test]
+fn waker_test() {
+    use crate::contexts::testing::{MockWriteContext, OutgoingFrameBuffer};
+    use core::task::{Context, Poll};
+    use futures_test::task::new_count_waker;
+    use s2n_quic_core::transmission;
+
+    let mut default_sender = s2n_quic_core::datagram::default::DefaultSender::builder()
+        .with_capacity(2)
+        .build()
+        .unwrap();
+    let datagram_0 = bytes::Bytes::from_static(&[1, 2, 3]);
+    let datagram_1 = bytes::Bytes::from_static(&[4, 5, 6]);
+    let datagram_2 = bytes::Bytes::from_static(&[7, 8, 9]);
+
+    let (waker, wake_count) = new_count_waker();
+    let mut cx = Context::from_waker(&waker);
+
+    assert_eq!(
+        default_sender.poll_send_datagram(datagram_0, &mut cx),
+        Poll::Ready(Ok(()))
+    );
+
+    assert_eq!(
+        default_sender.poll_send_datagram(datagram_1, &mut cx),
+        Poll::Ready(Ok(()))
+    );
+
+    // Reached the capacity of the queue
+    assert_eq!(
+        default_sender.poll_send_datagram(datagram_2, &mut cx),
+        Poll::Pending
+    );
+
+    let mut frame_buffer = OutgoingFrameBuffer::new();
+
+    let mut context = MockWriteContext::new(
+        s2n_quic_platform::time::now(),
+        &mut frame_buffer,
+        transmission::Constraint::None,
+        transmission::Mode::Normal,
+        endpoint::Type::Server,
+    );
+    let mut packet = Packet {
+        context: &mut context,
+        has_pending_streams: false,
+        datagrams_prioritized: false,
+        max_datagram_payload: 100,
+    };
+    default_sender.on_transmit(&mut packet);
+
+    // Waker was called
+    assert_eq!(wake_count, 1);
+
+    // Now datagrams can be added to the queue as there is space
+    let datagram_3 = bytes::Bytes::from_static(&[10, 11, 12]);
+    assert_eq!(
+        default_sender.poll_send_datagram(datagram_3, &mut cx),
+        Poll::Ready(Ok(()))
+    );
+}

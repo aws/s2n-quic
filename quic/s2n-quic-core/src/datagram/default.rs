@@ -3,6 +3,8 @@
 
 // s2n-quic's default implementation of the datagram component
 
+use core::task::{Context, Poll, Waker};
+
 use crate::datagram::{Packet, Sender};
 use alloc::collections::VecDeque;
 use bytes::Bytes;
@@ -14,53 +16,12 @@ pub struct DefaultSender {
     min_packet_space: usize,
     max_packet_space: usize,
     smoothed_packet_size: f64,
+    waker: Option<Waker>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Datagram {
     pub data: Bytes,
-}
-
-impl Sender for DefaultSender {
-    fn on_transmit<P: Packet>(&mut self, packet: &mut P) {
-        // Cede space to stream data when datagrams are not prioritized
-        if packet.has_pending_streams() && !packet.datagrams_prioritized() {
-            return;
-        }
-        DefaultSender::record_capacity_stats(self, packet.remaining_capacity());
-        let mut has_written = false;
-        while packet.remaining_capacity() > 0 {
-            if let Some(datagram) = self.queue.pop_front() {
-                // Ensure there is enough space in the packet to send a datagram
-                if packet.remaining_capacity() >= datagram.data.len() {
-                    match packet.write_datagram(&datagram.data) {
-                        Ok(()) => has_written = true,
-                        Err(_error) => {
-                            // TODO emit datagram dropped event
-                            continue;
-                        }
-                    }
-                } else {
-                    // This check keeps us from popping all the datagrams off the
-                    // queue when packet space remaining is smaller than the datagram.
-                    if has_written {
-                        self.queue.push_front(datagram);
-                        return;
-                    } else {
-                        // TODO emit datagram dropped event
-                    }
-                }
-            } else {
-                // If there are no datagrams on the queue we return
-                return;
-            }
-        }
-    }
-
-    #[inline]
-    fn has_transmission_interest(&self) -> bool {
-        !self.queue.is_empty()
-    }
 }
 
 #[non_exhaustive]
@@ -81,24 +42,25 @@ impl DefaultSender {
     ///
     /// The function returns:
     ///
-    /// - `Poll::Pending` if the datagram's send buffer capacity is currently exhausted. In this case,
-    ///   the caller should retry sending after the [`Waker`](core::task::Waker) on the provided
+    /// - `Poll::Pending` if the datagram's send buffer capacity is currently exhausted
+    ///   and the datagram was not added to the queue. In this case, the caller should
+    ///   retry sending after the [`Waker`](core::task::Waker) on the provided
     ///   [`Context`](core::task::Context) is notified.
     /// - `Poll::Ready(Ok(()))` if the datagram was enqueued for sending.
-    // pub fn poll_send_datagram(
-    //     &mut self,
-    //     data: bytes::Bytes,
-    //     cx: &mut Context,
-    // ) -> Poll<Result<(), ()>> {
-    //     if self.queue.len() == self.capacity {
-    //         self.waker = Some(cx.waker());
-    //         return Poll::Pending;
-    //     }
+    pub fn poll_send_datagram(
+        &mut self,
+        data: bytes::Bytes,
+        cx: &mut Context,
+    ) -> Poll<Result<(), ()>> {
+        if self.queue.len() == self.capacity {
+            self.waker = Some(cx.waker().clone());
+            return Poll::Pending;
+        }
 
-    //     let datagram = Datagram { data };
-    //     self.queue.push_back(datagram);
-    //     Poll::Ready(Ok(()))
-    // }
+        let datagram = Datagram { data };
+        self.queue.push_back(datagram);
+        Poll::Ready(Ok(()))
+    }
 
     /// Adds datagrams on the queue to be sent
     ///
@@ -179,6 +141,54 @@ impl DefaultSender {
     }
 }
 
+impl Sender for DefaultSender {
+    fn on_transmit<P: Packet>(&mut self, packet: &mut P) {
+        // Cede space to stream data when datagrams are not prioritized
+        if packet.has_pending_streams() && !packet.datagrams_prioritized() {
+            return;
+        }
+        DefaultSender::record_capacity_stats(self, packet.remaining_capacity());
+        let mut has_written = false;
+        while packet.remaining_capacity() > 0 {
+            if let Some(datagram) = self.queue.pop_front() {
+                // Ensure there is enough space in the packet to send a datagram
+                if packet.remaining_capacity() >= datagram.data.len() {
+                    match packet.write_datagram(&datagram.data) {
+                        Ok(()) => has_written = true,
+                        Err(_error) => {
+                            // TODO emit datagram dropped event
+                            continue;
+                        }
+                    }
+                    // Since a datagram was popped off the queue, wake the
+                    // stored waker if we have one to let the application know
+                    // that there is space on the queue for more datagrams.
+                    if let Some(w) = self.waker.take() {
+                        w.wake();
+                    }
+                } else {
+                    // This check keeps us from popping all the datagrams off the
+                    // queue when packet space remaining is smaller than the datagram.
+                    if has_written {
+                        self.queue.push_front(datagram);
+                        return;
+                    } else {
+                        // TODO emit datagram dropped event
+                    }
+                }
+            } else {
+                // If there are no datagrams on the queue we return
+                return;
+            }
+        }
+    }
+
+    #[inline]
+    fn has_transmission_interest(&self) -> bool {
+        !self.queue.is_empty()
+    }
+}
+
 /// A builder for the default datagram sender
 ///
 /// Use to configure a datagram send queue size
@@ -209,6 +219,7 @@ impl Builder {
             max_packet_space: 0,
             min_packet_space: 0,
             smoothed_packet_size: 0.0,
+            waker: None,
         })
     }
 }
@@ -258,6 +269,47 @@ fn send_datagram_with_error() {
 }
 
 #[test]
+fn poll_send_datagram() {
+    use futures_test::task::new_count_waker;
+
+    // Create a default sender queue that only holds two elements
+    let mut default_sender = DefaultSender::builder().with_capacity(2).build().unwrap();
+    let datagram_0 = bytes::Bytes::from_static(&[1, 2, 3]);
+    let datagram_1 = bytes::Bytes::from_static(&[4, 5, 6]);
+    let datagram_2 = bytes::Bytes::from_static(&[7, 8, 9]);
+
+    let (waker, _counter) = new_count_waker();
+    let mut cx = Context::from_waker(&waker);
+
+    assert_eq!(
+        default_sender.poll_send_datagram(datagram_0, &mut cx),
+        Poll::Ready(Ok(()))
+    );
+
+    assert_eq!(
+        default_sender.poll_send_datagram(datagram_1, &mut cx),
+        Poll::Ready(Ok(()))
+    );
+
+    // Waker has not been set up yet because queue is not yet at capacity
+    assert!(default_sender.waker.is_none());
+    assert_eq!(
+        default_sender.poll_send_datagram(datagram_2, &mut cx),
+        Poll::Pending
+    );
+
+    // Since queue is at capacity default_sender is now storing a waker that will
+    // alert when the queue has more space
+    assert!(default_sender.waker.is_some());
+
+    // Check that the first two datagrams are on the queue
+    let first = default_sender.queue.pop_front().unwrap();
+    assert_eq!(first.data[..], [1, 2, 3]);
+    let second = default_sender.queue.pop_front().unwrap();
+    assert_eq!(second.data[..], [4, 5, 6]);
+}
+
+#[test]
 fn retain_datagrams() {
     // Create a default sender queue
     let mut default_sender = DefaultSender::builder().with_capacity(2).build().unwrap();
@@ -287,7 +339,7 @@ fn record_capacity_stats() {
     assert_eq!(default_sender.max_packet_space(), 500);
     assert_eq!(default_sender.min_packet_space(), 100);
 
-    // There's no test for a correct calculation of a weighted average, but we
+    // There's not a great test for a correct weighted average, but we
     // can at least check our output isn't zero
     assert!(default_sender.smoothed_packet_space() > 0.0);
 }
