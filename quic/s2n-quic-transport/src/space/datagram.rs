@@ -153,7 +153,7 @@ fn has_written_test() {
 
     // Successfully wrote one datagram to the packet
     assert_eq!(packet.context.frame_buffer.frames.len(), 1);
-    // Packet technically still has capacity to write datagrams
+    // Packet still has capacity to write datagrams
     assert!(s2n_quic_core::datagram::Packet::remaining_capacity(&packet) > 0);
     // Send queue is not completely depleted
     assert!(!default_sender.queue.is_empty());
