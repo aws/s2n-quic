@@ -68,9 +68,11 @@ public class NetbenchAutoApp {
         
         // Stack instantiation
         ReportStack reportStack = new ReportStack(app, "ReportStack", StackProps.builder()
+            .env(makeEnv(awsAccount, clientRegion))
             .build());
 
         ClientStack clientStack = new ClientStack(app, "ClientStack", reportStack.getBucket(),
+            ec2InstanceType,
             StackProps.builder()
                 .env(makeEnv(awsAccount, clientRegion))
                 .build());
