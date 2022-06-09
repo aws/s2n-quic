@@ -43,7 +43,7 @@ macro_rules! short_tag {
     };
 }
 
-pub const ENCODING_TAG: u8 = 0b0100_0000;
+const ENCODING_TAG: u8 = 0b0100_0000;
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-17.3.1
 //# Spin Bit:  The third most significant bit (0x20) of byte 0 is the
