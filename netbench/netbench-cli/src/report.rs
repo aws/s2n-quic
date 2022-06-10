@@ -237,7 +237,8 @@ impl Report {
 
         let mut stream_count_expr = "0".to_string();
         for (id, count) in stream_counts.iter().enumerate() {
-            stream_count_expr.push_str(&format!("+(pids[{}]?{}:0)", id, count));
+            use core::fmt::Write;
+            let _ = write!(stream_count_expr, "+(pids[{}]?{}:0)", id, count);
         }
 
         signals.push(json!({
