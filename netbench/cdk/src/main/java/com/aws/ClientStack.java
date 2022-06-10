@@ -1,3 +1,5 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 package com.aws;
 
 import software.constructs.Construct;
@@ -16,12 +18,11 @@ import software.amazon.awscdk.services.ec2.GatewayVpcEndpointAwsService;
 
 public class ClientStack extends Stack {
     public ClientStack(final Construct parent, final String id) {
-        this(parent, id, null, null, null);
+        this(parent, id, null);
     }
 
-    public ClientStack(final Construct parent, final String id, Bucket metricsBucket,
-        String instanceType, final StackProps props) {
+    public ClientStack(final Construct parent, final String id, final ClientStackProps props) {
         super(parent, id, props);
-
+        
     }
 }                                         

@@ -1,3 +1,5 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 package com.aws;
 
 import software.amazon.awscdk.App;
@@ -66,11 +68,11 @@ public class NetbenchAutoApp {
             .env(makeEnv(awsAccount, clientRegion))
             .build());
 
-        ClientStack clientStack = new ClientStack(app, "ClientStack", reportStack.getBucket(),
-            ec2InstanceType,
-            StackProps.builder()
-                .env(makeEnv(awsAccount, clientRegion))
-                .build());
+        ClientStack clientStack = new ClientStack(app, "ClientStack", ClientStackProps.builder()
+            .env(makeEnv(awsAccount, clientRegion))
+            .bucket(reportStack.getBucket())
+            .instanceType(ec2InstanceType)
+            .build());
 
         ServerStack serverStack = new ServerStack(app, "ServerStack", StackProps.builder()
             .env(makeEnv(awsAccount, serverRegion))
