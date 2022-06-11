@@ -163,19 +163,20 @@ impl Io {
         #[cfg(s2n_quic_platform_mtu_disc)]
         {
             use std::os::unix::io::AsRawFd;
-            if tx_addr.is_ipv4() {
-                // IP_PMTUDISC_PROBE setting will set the DF (Don't Fragment) flag
-                // while also ignoring the Path MTU. This means packets will not
-                // be fragmented, and the EMSGSIZE error will not be returned for
-                // packets larger than the Path MTU according to the kernel.
-                libc!(setsockopt(
-                    tx_socket.as_raw_fd(),
-                    libc::IPPROTO_IP,
-                    libc::IP_MTU_DISCOVER,
-                    &libc::IP_PMTUDISC_PROBE as *const _ as _,
-                    core::mem::size_of_val(&libc::IP_PMTUDISC_PROBE) as _,
-                ))?;
-            } else {
+
+            // IP_PMTUDISC_PROBE setting will set the DF (Don't Fragment) flag
+            // while also ignoring the Path MTU. This means packets will not
+            // be fragmented, and the EMSGSIZE error will not be returned for
+            // packets larger than the Path MTU according to the kernel.
+            libc!(setsockopt(
+                tx_socket.as_raw_fd(),
+                libc::IPPROTO_IP,
+                libc::IP_MTU_DISCOVER,
+                &libc::IP_PMTUDISC_PROBE as *const _ as _,
+                core::mem::size_of_val(&libc::IP_PMTUDISC_PROBE) as _,
+            ))?;
+
+            if tx_addr.is_ipv6() {
                 libc!(setsockopt(
                     tx_socket.as_raw_fd(),
                     libc::IPPROTO_IPV6,
