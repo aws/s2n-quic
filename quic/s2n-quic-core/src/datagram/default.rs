@@ -1,4 +1,4 @@
-// Copyright Amazon.com, Inc. or its affil&mut iates. All Rights Reserved.
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 // s2n-quic's default implementation of the datagram component
