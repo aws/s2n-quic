@@ -126,8 +126,11 @@ impl<'a, S: Stream, Config: endpoint::Config> Normal<'a, S, Config> {
         // cannot be fragmented across packets and we want to do the most to send
         // large datagrams.
         if self.prioritize_datagrams && can_transmit {
-            self.datagram_manager
-                .on_transmit(context, self.stream_manager);
+            self.datagram_manager.on_transmit(
+                context,
+                self.stream_manager,
+                self.prioritize_datagrams,
+            );
         }
         let did_send_ack = self.ack_manager.on_transmit(context);
 
@@ -138,8 +141,11 @@ impl<'a, S: Stream, Config: endpoint::Config> Normal<'a, S, Config> {
             // If we did not prioritize datagrams in this packet, we send them just
             // before we send stream data.
             if !self.prioritize_datagrams {
-                self.datagram_manager
-                    .on_transmit(context, self.stream_manager);
+                self.datagram_manager.on_transmit(
+                    context,
+                    self.stream_manager,
+                    self.prioritize_datagrams,
+                );
             }
 
             // The default sending behavior is to alternate between sending datagrams

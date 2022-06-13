@@ -2119,6 +2119,9 @@ module s2n_quic::provider::event::events exports struct:
   s2n_quic::provider::event::events::PathCreated
 
 module s2n_quic::provider::event::events exports struct:
+  s2n_quic::provider::event::events::PlatformEventLoopSleep
+
+module s2n_quic::provider::event::events exports struct:
   s2n_quic::provider::event::events::PlatformEventLoopWakeup
 
 module s2n_quic::provider::event::events exports enum:
@@ -4301,6 +4304,41 @@ struct s2n_quic::provider::event::events::PathCreated exports field:
 
 struct s2n_quic::provider::event::events::PathCreated exports constant:
   pub const NAME: &'static str
+
+struct s2n_quic::provider::event::events::PlatformEventLoopSleep is non-exhaustive
+
+struct s2n_quic::provider::event::events::PlatformEventLoopSleep implements trait:
+  impl core::clone::Clone for s2n_quic::provider::event::events::PlatformEventLoopSleep
+
+struct s2n_quic::provider::event::events::PlatformEventLoopSleep implements trait:
+  impl core::fmt::Debug for s2n_quic::provider::event::events::PlatformEventLoopSleep
+
+struct s2n_quic::provider::event::events::PlatformEventLoopSleep implements trait:
+  impl core::marker::Send for s2n_quic::provider::event::events::PlatformEventLoopSleep
+
+struct s2n_quic::provider::event::events::PlatformEventLoopSleep implements trait:
+  impl core::marker::Sync for s2n_quic::provider::event::events::PlatformEventLoopSleep
+
+struct s2n_quic::provider::event::events::PlatformEventLoopSleep implements trait:
+  impl core::marker::Unpin for s2n_quic::provider::event::events::PlatformEventLoopSleep
+
+struct s2n_quic::provider::event::events::PlatformEventLoopSleep implements trait:
+  impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::PlatformEventLoopSleep
+
+struct s2n_quic::provider::event::events::PlatformEventLoopSleep implements trait:
+  impl std::panic::RefUnwindSafe for s2n_quic::provider::event::events::PlatformEventLoopSleep
+
+struct s2n_quic::provider::event::events::PlatformEventLoopSleep implements trait:
+  impl std::panic::UnwindSafe for s2n_quic::provider::event::events::PlatformEventLoopSleep
+
+struct s2n_quic::provider::event::events::PlatformEventLoopSleep exports field:
+  processing_duration: core::time::Duration
+
+struct s2n_quic::provider::event::events::PlatformEventLoopSleep exports constant:
+  pub const NAME: &'static str
+
+struct s2n_quic::provider::event::events::PlatformEventLoopSleep exports field:
+  timeout: core::option::Option<core::time::Duration>
 
 struct s2n_quic::provider::event::events::PlatformEventLoopWakeup is non-exhaustive
 

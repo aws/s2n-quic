@@ -57,38 +57,16 @@ pub trait Packet {
     ///
     /// Use method to decide whether or not to cede the packet space to the stream data.
     fn has_pending_streams(&self) -> bool;
+
+    /// Returns whether or not datagrams are prioritized in this packet or not.
+    ///
+    /// Datagrams get prioritized every other packet, which gives the application the best
+    /// chance to send a large datagram.
+    fn datagrams_prioritized(&self) -> bool;
 }
 
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum WriteError {
     DatagramIsTooLarge,
-}
-
-#[derive(Debug, Default)]
-pub struct Disabled;
-
-impl Endpoint for Disabled {
-    type Sender = DisabledSender;
-    type Receiver = DisabledReceiver;
-
-    fn create_connection(&mut self, _info: &ConnectionInfo) -> (Self::Sender, Self::Receiver) {
-        (DisabledSender, DisabledReceiver)
-    }
-}
-
-pub struct DisabledSender;
-pub struct DisabledReceiver;
-
-impl Sender for DisabledSender {
-    fn on_transmit<P: Packet>(&mut self, _packet: &mut P) {}
-
-    #[inline]
-    fn has_transmission_interest(&self) -> bool {
-        false
-    }
-}
-
-impl Receiver for DisabledReceiver {
-    fn on_datagram(&self, _datagram: &[u8]) {}
 }

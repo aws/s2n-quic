@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::number::{
-    CheckedAddAssign, CheckedSubAssign, SaturatingAddAssign, SaturatingSubAssign, UpcastFrom,
+    CheckedAddAssign, CheckedMulAssign, CheckedSubAssign, SaturatingAddAssign, SaturatingMulAssign,
+    SaturatingSubAssign, UpcastFrom,
 };
 use core::{cmp::Ordering, convert::TryFrom, marker::PhantomData, ops};
 
@@ -35,6 +36,11 @@ impl<T, Behavior> Counter<T, Behavior> {
     #[inline]
     pub const fn new(value: T) -> Self {
         Self(value, PhantomData)
+    }
+
+    #[inline]
+    pub fn set(&mut self, value: T) {
+        self.0 = value;
     }
 
     /// Tries to convert V to T and add it to the current counter value
@@ -116,6 +122,15 @@ assign_trait!(
     saturating_sub_assign,
     CheckedSubAssign,
     checked_sub_assign
+);
+
+assign_trait!(
+    MulAssign,
+    mul_assign,
+    SaturatingMulAssign,
+    saturating_mul_assign,
+    CheckedMulAssign,
+    checked_mul_assign
 );
 
 impl<T, B> UpcastFrom<Counter<T, B>> for T {

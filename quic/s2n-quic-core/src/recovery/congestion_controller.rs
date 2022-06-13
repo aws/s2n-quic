@@ -163,8 +163,12 @@ pub mod testing {
         #[derive(Clone, Copy, Debug, Default, PartialEq)]
         pub struct CongestionController {}
 
+        /// Returning this instead of a `()` ensures the information gets passed back in testing
+        #[derive(Clone, Copy, Debug, Default)]
+        pub struct PacketInfo(());
+
         impl super::CongestionController for CongestionController {
-            type PacketInfo = ();
+            type PacketInfo = PacketInfo;
 
             fn congestion_window(&self) -> u32 {
                 u32::max_value()
@@ -188,7 +192,8 @@ pub mod testing {
                 _bytes_sent: usize,
                 _app_limited: Option<bool>,
                 _rtt_estimator: &RttEstimator,
-            ) {
+            ) -> PacketInfo {
+                PacketInfo(())
             }
 
             fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RttEstimator) {}
@@ -244,6 +249,10 @@ pub mod testing {
             }
         }
 
+        /// Returning this instead of a `()` ensures the information gets passed back in testing
+        #[derive(Clone, Copy, Debug, Default)]
+        pub struct PacketInfo(());
+
         #[derive(Clone, Copy, Debug, PartialEq)]
         pub struct CongestionController {
             pub bytes_in_flight: u32,
@@ -280,7 +289,7 @@ pub mod testing {
         }
 
         impl super::CongestionController for CongestionController {
-            type PacketInfo = ();
+            type PacketInfo = PacketInfo;
 
             fn congestion_window(&self) -> u32 {
                 self.congestion_window
@@ -304,10 +313,11 @@ pub mod testing {
                 bytes_sent: usize,
                 app_limited: Option<bool>,
                 _rtt_estimator: &RttEstimator,
-            ) {
+            ) -> PacketInfo {
                 self.bytes_in_flight += bytes_sent as u32;
                 self.requires_fast_retransmission = false;
                 self.app_limited = app_limited;
+                PacketInfo(())
             }
 
             fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RttEstimator) {

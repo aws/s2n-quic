@@ -44,7 +44,7 @@ use s2n_quic_core::{
         Timestamp,
     },
     transport::{
-        parameters::{InitialFlowControlLimits, InitialStreamLimits, MaxIdleTimeout},
+        parameters::{InitialFlowControlLimits, InitialStreamLimits},
         Error as TransportError,
     },
     varint::VarInt,
@@ -863,7 +863,9 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
             manager.get_transmission_interest()
         );
 
-        let expected_next_stream_blocked_time = write_context.current_time + DEFAULT_SYNC_PERIOD;
+        let expected_transmission_backoff = 4;
+        let expected_next_stream_blocked_time =
+            write_context.current_time + DEFAULT_SYNC_PERIOD * expected_transmission_backoff;
         assert_eq!(
             Some(expected_next_stream_blocked_time),
             manager.next_expiration()
@@ -946,7 +948,6 @@ fn streams_blocked_period() {
             }
         };
 
-        assert_blocked_frame_based_on_max_idle_timeout(block_func);
         assert_blocked_frame_based_on_pto(block_func);
     }
 }
@@ -967,11 +968,10 @@ fn data_blocked_period() {
         });
     };
 
-    assert_blocked_frame_based_on_max_idle_timeout(blocked_func);
     assert_blocked_frame_based_on_pto(blocked_func);
 }
 
-fn assert_blocked_frame_based_on_max_idle_timeout<F>(mut block_func: F)
+fn assert_blocked_frame_based_on_pto<F>(mut block_func: F)
 where
     F: FnMut(&mut AbstractStreamManager<MockStream>),
 {
@@ -994,51 +994,14 @@ where
     manager.on_rtt_update(&rtt_estimator);
     manager.on_packet_ack(&PacketNumberRange::new(packet_number, packet_number));
 
+    let expected_transmission_backoff = 2;
+
     let expected_next_blocked_time = write_context.current_time
-        + MaxIdleTimeout::RECOMMENDED.as_duration().unwrap()
-        - rtt_estimator.smoothed_rtt();
+        + rtt_estimator.pto_period(
+            expected_transmission_backoff,
+            PacketNumberSpace::ApplicationData,
+        );
     assert_eq!(Some(expected_next_blocked_time), manager.next_expiration());
-}
-
-fn assert_blocked_frame_based_on_pto<F>(mut block_func: F)
-where
-    F: FnMut(&mut AbstractStreamManager<MockStream>),
-{
-    let mut manager = create_stream_manager(endpoint::Type::Server);
-
-    block_func(&mut manager);
-
-    let mut frame_buffer = OutgoingFrameBuffer::new();
-    let mut write_context = MockWriteContext::new(
-        s2n_quic_platform::time::now(),
-        &mut frame_buffer,
-        transmission::Constraint::None,
-        transmission::Mode::Normal,
-        endpoint::Type::Server,
-    );
-    let packet_number = write_context.packet_number();
-    assert!(manager.on_transmit(&mut write_context).is_ok());
-
-    let mut rtt_estimator = RttEstimator::new(Duration::from_millis(100));
-    // Update the RTT estimate with a large value to ensure 3 * PTO is larger than the max idle timeout
-    rtt_estimator.update_rtt(
-        Duration::from_millis(0),
-        Duration::from_secs(20),
-        write_context.current_time,
-        true,
-        PacketNumberSpace::ApplicationData,
-    );
-    manager.on_rtt_update(&rtt_estimator);
-    manager.on_packet_ack(&PacketNumberRange::new(packet_number, packet_number));
-
-    let expected_blocked_sync_period = 3 * rtt_estimator
-        .pto_period(1, PacketNumberSpace::ApplicationData)
-        - rtt_estimator.smoothed_rtt();
-
-    assert_eq!(
-        Some(write_context.current_time + expected_blocked_sync_period),
-        manager.next_expiration()
-    );
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-4.1
@@ -1128,7 +1091,9 @@ fn send_data_blocked_frame_when_blocked_by_connection_flow_limits() {
         manager.get_transmission_interest()
     );
 
-    let expected_next_data_blocked_time = write_context.current_time + DEFAULT_SYNC_PERIOD;
+    let expected_transmission_backoff = 4;
+    let expected_next_data_blocked_time =
+        write_context.current_time + DEFAULT_SYNC_PERIOD * expected_transmission_backoff;
     assert_eq!(
         Some(expected_next_data_blocked_time),
         manager.next_expiration()

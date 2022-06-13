@@ -163,19 +163,20 @@ impl Io {
         #[cfg(s2n_quic_platform_mtu_disc)]
         {
             use std::os::unix::io::AsRawFd;
-            if tx_addr.is_ipv4() {
-                // IP_PMTUDISC_PROBE setting will set the DF (Don't Fragment) flag
-                // while also ignoring the Path MTU. This means packets will not
-                // be fragmented, and the EMSGSIZE error will not be returned for
-                // packets larger than the Path MTU according to the kernel.
-                libc!(setsockopt(
-                    tx_socket.as_raw_fd(),
-                    libc::IPPROTO_IP,
-                    libc::IP_MTU_DISCOVER,
-                    &libc::IP_PMTUDISC_PROBE as *const _ as _,
-                    core::mem::size_of_val(&libc::IP_PMTUDISC_PROBE) as _,
-                ))?;
-            } else {
+
+            // IP_PMTUDISC_PROBE setting will set the DF (Don't Fragment) flag
+            // while also ignoring the Path MTU. This means packets will not
+            // be fragmented, and the EMSGSIZE error will not be returned for
+            // packets larger than the Path MTU according to the kernel.
+            libc!(setsockopt(
+                tx_socket.as_raw_fd(),
+                libc::IPPROTO_IP,
+                libc::IP_MTU_DISCOVER,
+                &libc::IP_PMTUDISC_PROBE as *const _ as _,
+                core::mem::size_of_val(&libc::IP_PMTUDISC_PROBE) as _,
+            ))?;
+
+            if tx_addr.is_ipv6() {
                 libc!(setsockopt(
                     tx_socket.as_raw_fd(),
                     libc::IPPROTO_IPV6,
@@ -523,11 +524,12 @@ impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
                 return Ok(());
             };
 
+            let wakeup_timestamp = clock.get_time();
             let subscriber = endpoint.subscriber();
             let mut publisher = event::EndpointPublisherSubscriber::new(
                 event::builder::EndpointMeta {
                     endpoint_type: E::ENDPOINT_TYPE,
-                    timestamp: clock.get_time(),
+                    timestamp: wakeup_timestamp,
                 },
                 None,
                 subscriber,
@@ -555,9 +557,29 @@ impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
 
             endpoint.transmit(&mut tx.tx_queue(), &clock);
 
-            if let Some(delay) = endpoint.timeout() {
-                timer.update(delay);
+            let timeout = endpoint.timeout();
+
+            if let Some(timeout) = timeout {
+                timer.update(timeout);
             }
+
+            let timestamp = clock.get_time();
+            let subscriber = endpoint.subscriber();
+            let mut publisher = event::EndpointPublisherSubscriber::new(
+                event::builder::EndpointMeta {
+                    endpoint_type: E::ENDPOINT_TYPE,
+                    timestamp,
+                },
+                None,
+                subscriber,
+            );
+
+            // notify the application that we're going to sleep
+            let timeout = timeout.map(|t| t.saturating_duration_since(timestamp));
+            publisher.on_platform_event_loop_sleep(event::builder::PlatformEventLoopSleep {
+                timeout,
+                processing_duration: timestamp.saturating_duration_since(wakeup_timestamp),
+            });
         }
     }
 }

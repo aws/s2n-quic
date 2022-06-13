@@ -52,8 +52,10 @@ if [ "$QNS_MODE" == "interop" ]; then
     fi
 fi
 
-SERVER_PARAMS+=" --tls $TLS"
-CLIENT_PARAMS+=" --tls $TLS"
+if [ "$QNS_MODE" == "interop" ]; then
+    SERVER_PARAMS+=" --tls $TLS"
+    CLIENT_PARAMS+=" --tls $TLS"
+fi
 
 if [ "$TEST_TYPE" == "MEASUREMENT" ] && [ -x "$(command -v s2n-quic-qns-release)" ]; then
     echo "using optimized build"

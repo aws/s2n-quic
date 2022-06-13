@@ -1284,7 +1284,7 @@ macro_rules! impl_transport_parameters {
             ),*
         }
 
-        impl<'a, $($server_param),*> Default for TransportParameters<$($server_param),*>
+        impl<$($server_param),*> Default for TransportParameters<$($server_param),*>
         where
             $(
                 $server_param: TransportParameter,
@@ -1299,7 +1299,7 @@ macro_rules! impl_transport_parameters {
             }
         }
 
-        impl<'a, $($server_param),*> EncoderValue for TransportParameters<$($server_param),*>
+        impl<$($server_param),*> EncoderValue for TransportParameters<$($server_param),*>
         where
             $(
                 $server_param: TransportParameter,

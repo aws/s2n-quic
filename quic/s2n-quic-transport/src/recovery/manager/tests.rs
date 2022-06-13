@@ -1698,7 +1698,7 @@ fn remove_lost_packets_persistent_congestion_path_aware() {
                 AckElicitation::Eliciting,
                 first_path_id,
                 ecn,
-                (),
+                Default::default(),
             ),
         ),
         (
@@ -1710,7 +1710,7 @@ fn remove_lost_packets_persistent_congestion_path_aware() {
                 AckElicitation::Eliciting,
                 second_path_id,
                 ecn,
-                (),
+                Default::default(),
             ),
         ),
     ];
@@ -2589,7 +2589,7 @@ fn on_timeout() {
             AckElicitation::Eliciting,
             unsafe { path::Id::new(0) },
             ecn,
-            (),
+            Default::default(),
         ),
     );
     manager.pto.timer.set(now - Duration::from_secs(5));

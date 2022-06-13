@@ -2,7 +2,7 @@
 name = "rustls-provider"
 version = "0.1.0"
 authors = ["AWS s2n"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 # Remove the `provider-tls-default` feature and add `provider-tls-rustls`

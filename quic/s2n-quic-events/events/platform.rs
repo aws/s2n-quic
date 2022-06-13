@@ -76,3 +76,12 @@ struct PlatformEventLoopWakeup {
     tx_ready: bool,
     application_wakeup: bool,
 }
+
+#[event("platform:event_loop_sleep")]
+#[subject(endpoint)]
+struct PlatformEventLoopSleep {
+    /// The next time at which the event loop will wake
+    timeout: Option<core::time::Duration>,
+    /// The amount of time spent processing endpoint events in a single event loop
+    processing_duration: core::time::Duration,
+}

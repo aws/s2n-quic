@@ -1,39 +1,35 @@
 [package]
 name = "s2n-quic-crypto"
-version = "0.3.0"
+version = "0.5.0"
 description = "Internal crate used by s2n-quic"
 repository = "https://github.com/aws/s2n-quic"
 authors = ["AWS s2n"]
-edition = "2018"
+edition = "2021"
 license = "Apache-2.0"
 # Exclude corpus files when publishing to crates.io
 exclude = ["corpus.tar.gz"]
 
 [features]
 default = []
-testing = ["testing-oracles"]
-testing-oracles = ["aes", "aes-gcm", "ghash"]
+testing = []
 
 [dependencies]
-aes = { version = "0.7", optional = true }
-aes-gcm = { version = "0.9", optional = true }
 cfg-if = "1"
 lazy_static = "1"
-ghash = { version = "0.4", optional = true }
 ring = { version = "0.16", default-features = false }
 s2n-codec = { path = "../../common/s2n-codec", default-features = false, version = "=0.1.0" }
-s2n-quic-core = { path = "../s2n-quic-core", default-features = false, version = "=0.3.0" }
+s2n-quic-core = { path = "../s2n-quic-core", default-features = false, version = "=0.5.0" }
 zeroize = { version = "1", default-features = false, features = ["zeroize_derive"] }
 
 [dev-dependencies]
-aes = "0.7"
+aes = "0.8"
 aes-gcm = "0.9"
-bolero = "0.6"
-ctr = "0.8"
+bolero = "0.7"
+ctr = "0.9"
 ghash = "0.4"
 hex-literal = "0.3"
 insta = "1"
-pretty-hex = "0.2"
+pretty-hex = "0.3"
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
 
 [[test]]

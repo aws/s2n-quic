@@ -3,7 +3,8 @@
 
 //! Provides unreliable datagram support
 
-use s2n_quic_core::datagram::{Disabled, Endpoint};
+use s2n_quic_core::datagram::{traits::Endpoint, Disabled};
+
 pub trait Provider {
     type Endpoint: Endpoint;
     type Error: 'static + core::fmt::Display;
