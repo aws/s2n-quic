@@ -324,6 +324,67 @@ mod tests {
     }
 
     #[test]
+    fn poll_send_datagram() {
+        let conn_info = ConnectionInfo::new(100);
+        let mut default_sender = DefaultSender::builder()
+            .with_capacity(2)
+            .with_connection_info(&conn_info)
+            .build()
+            .unwrap();
+        let mut datagram_0 = bytes::Bytes::from_static(&[1, 2, 3]);
+        let mut datagram_1 = bytes::Bytes::from_static(&[4, 5, 6]);
+        let mut datagram_2 = bytes::Bytes::from_static(&[7, 8, 9]);
+
+        let (waker, wake_count) = new_count_waker();
+        let mut cx = Context::from_waker(&waker);
+
+        assert_eq!(
+            default_sender.poll_send_datagram(&mut datagram_0, &mut cx),
+            Poll::Ready(Ok(()))
+        );
+
+        assert_eq!(
+            default_sender.poll_send_datagram(&mut datagram_1, &mut cx),
+            Poll::Ready(Ok(()))
+        );
+
+        // Waker has not been set up yet
+        assert!(default_sender.waker.is_none());
+
+        // Queue is at capacity
+        assert_eq!(
+            default_sender.poll_send_datagram(&mut datagram_2, &mut cx),
+            Poll::Pending
+        );
+
+        // Since queue is at capacity default_sender is now storing a waker that will
+        // alert when the queue has more space
+        assert!(default_sender.waker.is_some());
+
+        let mut packet = MockPacket {
+            remaining_capacity: 10,
+            has_pending_streams: false,
+            datagrams_prioritized: false,
+        };
+        default_sender.on_transmit(&mut packet);
+
+        // Waker was called
+        assert_eq!(wake_count, 1);
+
+        // Now datagrams can be added to the queue as there is space
+        let mut datagram_3 = bytes::Bytes::from_static(&[10, 11, 12]);
+        assert_eq!(
+            default_sender.poll_send_datagram(&mut datagram_3, &mut cx),
+            Poll::Ready(Ok(()))
+        );
+
+        // Check that all datagrams we expect are on the queue
+        let datagram = default_sender.queue.pop_front().unwrap();
+        assert_eq!(datagram.data[..], [10, 11, 12]);
+        assert!(default_sender.queue.is_empty());
+    }
+
+    #[test]
     fn retain_datagrams() {
         let conn_info = ConnectionInfo {
             max_datagram_payload: 100,
@@ -392,68 +453,6 @@ mod tests {
         assert!(packet.remaining_capacity > 0);
         // Send queue is not completely depleted
         assert!(!default_sender.queue.is_empty());
-    }
-
-    #[test]
-    // Tests that the waker will wake up when datagrams are popped off the queue
-    fn poll_send_datagram() {
-        let conn_info = ConnectionInfo::new(100);
-        let mut default_sender = DefaultSender::builder()
-            .with_capacity(2)
-            .with_connection_info(&conn_info)
-            .build()
-            .unwrap();
-        let mut datagram_0 = bytes::Bytes::from_static(&[1, 2, 3]);
-        let mut datagram_1 = bytes::Bytes::from_static(&[4, 5, 6]);
-        let mut datagram_2 = bytes::Bytes::from_static(&[7, 8, 9]);
-
-        let (waker, wake_count) = new_count_waker();
-        let mut cx = Context::from_waker(&waker);
-
-        assert_eq!(
-            default_sender.poll_send_datagram(&mut datagram_0, &mut cx),
-            Poll::Ready(Ok(()))
-        );
-
-        assert_eq!(
-            default_sender.poll_send_datagram(&mut datagram_1, &mut cx),
-            Poll::Ready(Ok(()))
-        );
-
-        // Waker has not been set up yet
-        assert!(default_sender.waker.is_none());
-
-        // Queue is at capacity
-        assert_eq!(
-            default_sender.poll_send_datagram(&mut datagram_2, &mut cx),
-            Poll::Pending
-        );
-
-        // Since queue is at capacity default_sender is now storing a waker that will
-        // alert when the queue has more space
-        assert!(default_sender.waker.is_some());
-
-        let mut packet = MockPacket {
-            remaining_capacity: 10,
-            has_pending_streams: false,
-            datagrams_prioritized: false,
-        };
-        default_sender.on_transmit(&mut packet);
-
-        // Waker was called
-        assert_eq!(wake_count, 1);
-
-        // Now datagrams can be added to the queue as there is space
-        let mut datagram_3 = bytes::Bytes::from_static(&[10, 11, 12]);
-        assert_eq!(
-            default_sender.poll_send_datagram(&mut datagram_3, &mut cx),
-            Poll::Ready(Ok(()))
-        );
-
-        // Check that all datagrams we expect are on the queue
-        let datagram = default_sender.queue.pop_front().unwrap();
-        assert_eq!(datagram.data[..], [10, 11, 12]);
-        assert!(default_sender.queue.is_empty());
     }
 
     // The MockPacket mocks writing datagrams to a packet, but is not
