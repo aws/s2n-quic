@@ -159,8 +159,12 @@ pub mod testing {
         #[derive(Clone, Copy, Debug, Default, PartialEq)]
         pub struct CongestionController {}
 
+        /// Returning this instead of a `()` ensures the information gets passed back in testing
+        #[derive(Clone, Copy, Debug, Default)]
+        pub struct PacketInfo(());
+
         impl super::CongestionController for CongestionController {
-            type PacketInfo = ();
+            type PacketInfo = PacketInfo;
 
             fn congestion_window(&self) -> u32 {
                 u32::max_value()
@@ -183,7 +187,8 @@ pub mod testing {
                 _time_sent: Timestamp,
                 _bytes_sent: usize,
                 _rtt_estimator: &RttEstimator,
-            ) {
+            ) -> PacketInfo {
+                PacketInfo(())
             }
 
             fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RttEstimator) {}
@@ -239,6 +244,10 @@ pub mod testing {
             }
         }
 
+        /// Returning this instead of a `()` ensures the information gets passed back in testing
+        #[derive(Clone, Copy, Debug, Default)]
+        pub struct PacketInfo(());
+
         #[derive(Clone, Copy, Debug, PartialEq)]
         pub struct CongestionController {
             pub bytes_in_flight: u32,
@@ -273,7 +282,7 @@ pub mod testing {
         }
 
         impl super::CongestionController for CongestionController {
-            type PacketInfo = ();
+            type PacketInfo = PacketInfo;
 
             fn congestion_window(&self) -> u32 {
                 self.congestion_window
@@ -296,9 +305,10 @@ pub mod testing {
                 _time_sent: Timestamp,
                 bytes_sent: usize,
                 _rtt_estimator: &RttEstimator,
-            ) {
+            ) -> PacketInfo {
                 self.bytes_in_flight += bytes_sent as u32;
                 self.requires_fast_retransmission = false;
+                PacketInfo(())
             }
 
             fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RttEstimator) {

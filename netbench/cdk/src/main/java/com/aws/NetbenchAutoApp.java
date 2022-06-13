@@ -64,7 +64,7 @@ public class NetbenchAutoApp {
             : ec2InstanceType.toLowerCase();
         
         // Stack instantiation
-        ReportStack reportStack = new ReportStack(app, "ReportStack", StackProps.builder()
+       ReportStack reportStack = new ReportStack(app, "ReportStack", StackProps.builder()
             .env(makeEnv(awsAccount, serverRegion))
             .build());
 
@@ -93,7 +93,7 @@ public class NetbenchAutoApp {
             .VpcClient(clientStack.getVpc())
             .VpcServer(serverStack.getVpc())
             .build());
-
+      
         app.synth();
     }
 }
