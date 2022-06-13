@@ -65,20 +65,33 @@ public class NetbenchAutoApp {
         
         // Stack instantiation
         ReportStack reportStack = new ReportStack(app, "ReportStack", StackProps.builder()
-            .env(makeEnv(awsAccount, clientRegion))
-            .build());
-
-        ClientStack clientStack = new ClientStack(app, "ClientStack", ClientStackProps.builder()
-            .env(makeEnv(awsAccount, clientRegion))
-            .bucket(reportStack.getBucket())
-            .instanceType(ec2InstanceType)
-            .build());
-
-        ServerStack serverStack = new ServerStack(app, "ServerStack", StackProps.builder()
             .env(makeEnv(awsAccount, serverRegion))
             .build());
 
+        ClientServerStack clientStack = new ClientServerStack(app, "ClientStack", ClientServerStackProps.builder()
+            .env(makeEnv(awsAccount, clientRegion))
+            .bucket(reportStack.getBucket())
+            .instanceType(ec2InstanceType)
+            .cidr("10.0.0.0/16")
+            .stackType("client")
+            .build());
+
+        ClientServerStack serverStack = new ClientServerStack(app, "ServerStack", ClientServerStackProps.builder()
+            .env(makeEnv(awsAccount, serverRegion))
+            .bucket(reportStack.getBucket())
+            .instanceType(ec2InstanceType)
+            .cidr("11.0.0.0/16")
+            .stackType("server")
+            .build());
+
         StateMachineStack stateMachineStack = new StateMachineStack(app, "StateMachineStack", StackProps.builder()
+            .build());
+
+        PeeringConnectionStack peeringConnStack = new PeeringConnectionStack(app, "PeerConnStack",
+            PeeringStackProps.builder()
+            .env(makeEnv(awsAccount, clientRegion))
+            .VpcClient(clientStack.getVpc())
+            .VpcServer(serverStack.getVpc())
             .build());
 
         app.synth();

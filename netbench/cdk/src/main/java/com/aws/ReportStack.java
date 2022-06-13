@@ -8,6 +8,7 @@ import software.amazon.awscdk.StackProps;
 import software.amazon.awscdk.services.s3.Bucket;
 import software.amazon.awscdk.RemovalPolicy;
 import software.amazon.awscdk.Environment;
+import software.amazon.awscdk.PhysicalName;
 
 
 public class ReportStack extends Stack {
@@ -20,8 +21,8 @@ public class ReportStack extends Stack {
     public ReportStack(final Construct parent, final String id, final StackProps props) {
         super(parent, id, props);
 
-        //Environment env = props.getEnv();
         metricsBucket = Bucket.Builder.create(this, "MetricsReportBucket")
+            .bucketName(PhysicalName.GENERATE_IF_NEEDED)
             .removalPolicy(RemovalPolicy.DESTROY)
             .autoDeleteObjects(true)
             .build();
