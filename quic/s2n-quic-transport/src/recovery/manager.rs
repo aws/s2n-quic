@@ -898,8 +898,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 packet_number.checked_distance(prev) != Some(1)
             });
 
-            let mut is_mtu_probe = false;
-            if sent_info.sent_bytes as usize > path.mtu_controller.mtu() {
+            if sent_info.transmission_mode.is_mtu_probing() {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-14.4
                 //# Loss of a QUIC packet that is carried in a PMTU probe is therefore not a
                 //# reliable indication of congestion and SHOULD NOT trigger a congestion
@@ -912,7 +911,6 @@ impl<Config: endpoint::Config> Manager<Config> {
                 //# unnecessary reduction of the sending rate.
                 path.congestion_controller
                     .on_packet_discarded(sent_info.sent_bytes as usize);
-                is_mtu_probe = true;
             } else if sent_info.sent_bytes > 0 {
                 path.congestion_controller.on_packet_lost(
                     sent_info.sent_bytes as u32,
@@ -922,7 +920,6 @@ impl<Config: endpoint::Config> Manager<Config> {
                     random_generator,
                     now,
                 );
-                is_mtu_probe = false;
                 is_congestion_event = true;
             }
 
@@ -933,7 +930,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 ),
                 path: path_event!(path, current_path_id),
                 bytes_lost: sent_info.sent_bytes,
-                is_mtu_probe,
+                is_mtu_probe: sent_info.transmission_mode.is_mtu_probing(),
             });
 
             // Notify the MTU controller of packet loss even if it wasn't a probe since it uses
