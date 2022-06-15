@@ -64,7 +64,7 @@ public class NetbenchAutoApp {
             : ec2InstanceType.toLowerCase();
         
         // Stack instantiation
-        ReportStack reportStack = new ReportStack(app, "ReportStack", StackProps.builder()
+       ReportStack reportStack = new ReportStack(app, "ReportStack", StackProps.builder()
             .env(makeEnv(awsAccount, serverRegion))
             .build());
 
@@ -107,7 +107,7 @@ public class NetbenchAutoApp {
             .ref(serverPeeringConnStack.getRef())
             .region(serverRegion)
             .build());
-
+      
         app.synth();
     }
 }
