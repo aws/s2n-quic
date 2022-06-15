@@ -87,11 +87,25 @@ public class NetbenchAutoApp {
         StateMachineStack stateMachineStack = new StateMachineStack(app, "StateMachineStack", StackProps.builder()
             .build());
 
-        PeeringConnectionStack peeringConnStack = new PeeringConnectionStack(app, "PeerConnStack",
+        PeeringConnectionStack serverPeeringConnStack = new PeeringConnectionStack(app, "ServerPeerConnStack",
+            PeeringStackProps.builder()
+            .env(makeEnv(awsAccount, serverRegion))
+            .VpcClient(clientStack.getVpc())
+            .VpcServer(serverStack.getVpc())
+            .cidr(clientStack.getCidr())
+            .stackType("server")
+            .region(clientRegion)
+            .build());
+
+        PeeringConnectionStack clientPeeringConnStack = new PeeringConnectionStack(app, "ClientPeerConnStack",
             PeeringStackProps.builder()
             .env(makeEnv(awsAccount, clientRegion))
             .VpcClient(clientStack.getVpc())
             .VpcServer(serverStack.getVpc())
+            .cidr(serverStack.getCidr())
+            .stackType("client")
+            .ref(serverPeeringConnStack.getRef())
+            .region(serverRegion)
             .build());
 
         app.synth();

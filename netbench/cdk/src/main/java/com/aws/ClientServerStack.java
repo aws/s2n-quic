@@ -14,6 +14,10 @@ import software.amazon.awscdk.services.ec2.InstanceType;
 import software.amazon.awscdk.services.ec2.GatewayVpcEndpoint;
 import software.amazon.awscdk.services.ec2.GatewayVpcEndpointOptions;
 import software.amazon.awscdk.services.ec2.GatewayVpcEndpointAwsService;
+import software.amazon.awscdk.services.ec2.BastionHostLinux;
+import software.amazon.awscdk.services.ec2.*;
+import software.amazon.awscdk.services.ssm.StringParameter;
+
 
 import software.amazon.awscdk.services.apigateway.LambdaRestApi;
 import software.amazon.awscdk.services.lambda.Code;
@@ -25,7 +29,9 @@ import java.util.HashMap;
 
 
 public class ClientServerStack extends Stack {
+    private String cidr;
     private Vpc vpc;
+
     public ClientServerStack(final Construct parent, final String id) {
         this(parent, id, null);
     }
@@ -41,11 +47,25 @@ public class ClientServerStack extends Stack {
             .cidr(props.getCidr())
             .build();
 
-        GatewayVpcEndpoint s3Endpoint = vpc.addGatewayEndpoint("s3-endpoint",
+        SecurityGroup.fromSecurityGroupId(this, "vpc-sec-group", this.vpc.getVpcDefaultSecurityGroup())
+            .addIngressRule(Peer.anyIpv4(), Port.icmpPing(), "Allow ping anywhere.");
+
+        GatewayVpcEndpoint s3Endpoint = this.vpc.addGatewayEndpoint("s3-endpoint",
             GatewayVpcEndpointOptions.builder()
             .service(GatewayVpcEndpointAwsService.S3)
             .build());
 
+        StringParameter.Builder.create(this, stackType + "-vpc-id")
+            .parameterName(stackType + "-vpc-id")
+            .stringValue(this.vpc.getVpcId())
+            .build();
+
+        StringParameter.Builder.create(this, stackType + "-cidr")
+            .parameterName(stackType + "-cidr")
+            .stringValue(this.vpc.getVpcCidrBlock())
+            .build();
+
+        /*
         Bucket metricsBucket = props.getBucket();
 
         Cluster cluster = Cluster.Builder.create(this, stackType + "-cluster")
@@ -64,6 +84,31 @@ public class ClientServerStack extends Stack {
             .build();
         
         cluster.addAsgCapacityProvider(asgProvider);
+        */
+
+        BastionHostLinux testInstance = BastionHostLinux.Builder.create(this, "testInstance")
+            .vpc(vpc)
+            .securityGroup(SecurityGroup.fromSecurityGroupId(this, stackType + "vpc-sec-group", this.vpc.getVpcDefaultSecurityGroup()))
+            .build();
+        
+        
+        /*
+        final HashMap<String, String> environment = new HashMap<>();
+        environment.put("BUCKET_NAME", testBucket.getBucketName());
+        final Function test = Function.Builder.create(this, "testLambda")
+            .vpc(vpc)
+            .runtime(Runtime.NODEJS_14_X)    // execution environment
+            .code(Code.fromAsset("lambda"))  // code loaded from the "lambda" directory
+            .handler("bucket.handler")        // file is "hello", function is "handler"
+            .environment(environment)
+            .build();
+
+        testBucket.grantReadWrite(test);        
+
+        LambdaRestApi.Builder.create(this, "Endpoint")
+            .handler(test)
+            .build();
+        */
 
         /* Docker image not yet generated
         Ec2TaskDefinition task = Ec2TaskDefinition.Builder
@@ -80,6 +125,10 @@ public class ClientServerStack extends Stack {
 
     public Vpc getVpc() {
         return this.vpc;
+    }
+
+    public String getCidr() {
+        return this.cidr;
     }
 
 }                                         
