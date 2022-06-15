@@ -188,12 +188,14 @@ impl<Config: endpoint::Config> Manager<Config> {
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-A.5
     //# After a packet is sent, information about the packet is stored.
+    #[allow(clippy::too_many_arguments)]
     pub fn on_packet_sent<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         packet_number: PacketNumber,
         outcome: transmission::Outcome,
         time_sent: Timestamp,
         ecn: ExplicitCongestionNotification,
+        transmission_mode: transmission::Mode,
         context: &mut Ctx,
         publisher: &mut Pub,
     ) {
@@ -229,6 +231,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 outcome.ack_elicitation,
                 path_id,
                 ecn,
+                transmission_mode,
                 cc_packet_info,
             ),
         );
