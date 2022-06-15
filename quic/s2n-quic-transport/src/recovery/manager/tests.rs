@@ -2305,6 +2305,89 @@ fn persistent_congestion_not_ack_eliciting() {
     );
 }
 
+//= https://www.rfc-editor.org/rfc/rfc9000#section-14.4
+//= type=test
+//# Loss of a QUIC packet that is carried in a PMTU probe is therefore not a
+//# reliable indication of congestion and SHOULD NOT trigger a congestion
+//# control reaction; see Item 7 in Section 3 of [DPLPMTUD].
+#[test]
+fn persistent_congestion_mtu_probe() {
+    let space = PacketNumberSpace::ApplicationData;
+    let mut manager = Manager::new(space);
+    let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+    let ecn = ExplicitCongestionNotification::default();
+    let mut context = MockContext::new(&mut path_manager);
+    let mut publisher = Publisher::snapshot();
+
+    let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    context.path_mut().rtt_estimator.update_rtt(
+        Duration::from_millis(10),
+        Duration::from_millis(700),
+        s2n_quic_platform::time::now(),
+        true,
+        space,
+    );
+
+    let outcome = transmission::Outcome {
+        ack_elicitation: AckElicitation::Eliciting,
+        is_congestion_controlled: true,
+        bytes_sent: 1,
+        bytes_progressed: 0,
+    };
+
+    // t=0: Send packet #1 (app data)
+    manager.on_packet_sent(
+        space.new_packet_number(VarInt::from_u8(1)),
+        outcome,
+        time_zero,
+        ecn,
+        transmission::Mode::MtuProbing,
+        &mut context,
+        &mut publisher,
+    );
+
+    // t=10: Send packet #2 (app data)
+    manager.on_packet_sent(
+        space.new_packet_number(VarInt::from_u8(2)),
+        outcome,
+        time_zero + Duration::from_secs(10),
+        ecn,
+        transmission::Mode::Normal,
+        &mut context,
+        &mut publisher,
+    );
+
+    // t=20: Send packet #3 (app data)
+    manager.on_packet_sent(
+        space.new_packet_number(VarInt::from_u8(3)),
+        outcome,
+        time_zero + Duration::from_secs(20),
+        ecn,
+        transmission::Mode::Normal,
+        &mut context,
+        &mut publisher,
+    );
+
+    // t=20.1: Recv acknowledgement of #3
+    ack_packets(
+        3..=3,
+        time_zero + Duration::from_millis(20_100),
+        &mut context,
+        &mut manager,
+        None,
+        &mut publisher,
+    );
+
+    // There is no persistent congestion because the first packet in the potential
+    // persistent congestion period was an MTU probe and the remaining packets are
+    // not a long enough period to be considered persistent congestion.
+    assert_eq!(context.path().congestion_controller.on_packets_lost, 1);
+    assert_eq!(
+        context.path().congestion_controller.persistent_congestion,
+        Some(false)
+    );
+}
+
 //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
 //= type=test
 #[test]
