@@ -53,8 +53,8 @@ impl State {
 
 impl Drop for State {
     fn drop(&mut self) {
-        let is_rx_open = self.rx.is_open();
-        let is_tx_open = self.tx.is_open();
+        let is_rx_open = !self.rx.is_closed();
+        let is_tx_open = !self.tx.is_closed();
 
         if is_rx_open || is_tx_open {
             let mut request = self.request();
@@ -63,14 +63,16 @@ impl Drop for State {
                 // Dropping a send stream will automatically finish the stream
                 //
                 // This is to stay consistent with std::net::TcpStream
-                request.finish();
+                request.finish().detach_tx();
             }
 
             if is_rx_open {
                 // Send a STOP_SENDING message on the receiving half of the `Stream`,
                 // for the case the application did not consume all data.
                 // If that already happened, this will be a noop.
-                request.stop_sending(application::Error::UNKNOWN);
+                request
+                    .stop_sending(application::Error::UNKNOWN)
+                    .detach_rx();
             }
 
             let _ = request.poll(None);
@@ -532,6 +534,16 @@ pub struct Request<'state, 'chunks> {
 impl<'state, 'chunks> Request<'state, 'chunks> {
     tx_request_apis!();
     rx_request_apis!();
+
+    fn detach_tx(&mut self) -> &mut Self {
+        self.request.detach_tx();
+        self
+    }
+
+    fn detach_rx(&mut self) -> &mut Self {
+        self.request.detach_rx();
+        self
+    }
 
     pub fn poll(&mut self, context: Option<&Context>) -> Result<ops::Response, StreamError> {
         if self.state.rx.is_finished() && self.state.tx.is_finished() {

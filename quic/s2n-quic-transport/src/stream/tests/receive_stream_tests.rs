@@ -150,7 +150,7 @@ fn receive_more_data_unblocks_reader() {
 
     test_env.assert_receive_data(&[7]);
     assert_eq!(
-        stream_interests(&[]),
+        stream_interests(&["fin"]),
         test_env.stream.get_stream_interests()
     );
     test_env.assert_end_of_stream();
@@ -209,7 +209,7 @@ fn receive_data_with_fin() {
 
     test_env.assert_receive_data(&[4, 5, 6]);
     assert_eq!(
-        stream_interests(&[]),
+        stream_interests(&["fin"]),
         test_env.stream.get_stream_interests()
     );
     test_env.assert_end_of_stream();
@@ -350,7 +350,7 @@ fn receive_fin_with_gap() {
 
     test_env.assert_receive_data(&[0, 1, 2, 3, 4, 5]);
     assert_eq!(
-        stream_interests(&[]),
+        stream_interests(&["fin"]),
         test_env.stream.get_stream_interests()
     );
     test_env.assert_end_of_stream();
@@ -599,7 +599,7 @@ fn reset_has_no_impact_if_all_data_had_been_received() {
         if !*data_is_consumed {
             test_env.assert_receive_data(&[0, 1, 2, 3]);
             assert_eq!(
-                stream_interests(&[]),
+                stream_interests(&["fin"]),
                 test_env.stream.get_stream_interests()
             );
         }
@@ -652,7 +652,7 @@ fn exceed_stream_flow_control_window() {
         .on_internal_reset(connection::Error::unspecified().into(), &mut events);
 
     assert_eq!(
-        stream_interests(&["fin"]),
+        stream_interests(&[]),
         test_env.stream.get_stream_interests()
     );
     test_env.assert_pop_error();
@@ -696,7 +696,7 @@ fn exceed_connection_flow_control_window() {
         .on_internal_reset(connection::Error::unspecified().into(), &mut events);
 
     assert_eq!(
-        stream_interests(&["fin"]),
+        stream_interests(&[]),
         test_env.stream.get_stream_interests()
     );
     test_env.assert_pop_error();
@@ -1806,7 +1806,7 @@ fn stop_sending_will_trigger_a_stop_sending_frame() {
 
             // Nothing new to write; the stream should be finished
             assert_eq!(
-                stream_interests(&["fin"]),
+                stream_interests(&[]),
                 test_env.stream.get_stream_interests()
             );
             test_env.assert_write_frames(0);
@@ -1861,9 +1861,8 @@ fn do_not_retransmit_stop_sending_if_requested_twice() {
                     .stream
                     .on_packet_ack(&sent_frame.packet_nr, &mut events);
 
-                // Finalize the stream after ACKing the STOP_SENDING frame
                 assert_eq!(
-                    stream_interests(&["fin"]),
+                    stream_interests(&[]),
                     test_env.stream.get_stream_interests()
                 );
             }
@@ -1875,7 +1874,7 @@ fn do_not_retransmit_stop_sending_if_requested_twice() {
             // Nothing new to write
             if *ack_packet {
                 assert_eq!(
-                    stream_interests(&["fin"]),
+                    stream_interests(&[]),
                     test_env.stream.get_stream_interests()
                 );
             } else {
@@ -1939,7 +1938,7 @@ fn stop_sending_is_cancelled_if_stream_is_reset_after_having_been_initiated() {
     assert!(test_env.stream.on_reset(&reset_frame, &mut events).is_ok());
 
     assert_eq!(
-        stream_interests(&[]),
+        stream_interests(&["fin"]),
         test_env.stream.get_stream_interests()
     );
     test_env.assert_write_frames(0);
@@ -2037,10 +2036,13 @@ fn stop_sending_can_be_sent_if_size_is_known_but_data_is_still_missing() {
         }
 
         test_env.ack_packet(sent_frame.packet_nr, ExpectWakeup(Some(false)));
-        assert_eq!(
-            stream_interests(&["fin"]),
-            test_env.stream.get_stream_interests()
-        );
+
+        if !*send_missing_data_before_ack {
+            assert_eq!(
+                stream_interests(&[]),
+                test_env.stream.get_stream_interests()
+            );
+        }
 
         test_env.assert_write_frames(0);
     }
@@ -2235,7 +2237,7 @@ fn stop_sending_frames_are_retransmitted_on_loss() {
     // Acknowledge the second packet and we are done
     test_env.ack_packet(packet_nr_2, ExpectWakeup(Some(false)));
     assert_eq!(
-        stream_interests(&["fin"]),
+        stream_interests(&[]),
         test_env.stream.get_stream_interests()
     );
     test_env.assert_write_frames(0);

@@ -113,6 +113,18 @@ impl<'a> Request<'a> {
         self
     }
 
+    pub fn detach_tx(&mut self) -> &mut Self {
+        let tx = self.tx_mut();
+        tx.detached = true;
+        self
+    }
+
+    pub fn detach_rx(&mut self) -> &mut Self {
+        let rx = self.rx_mut();
+        rx.detached = true;
+        self
+    }
+
     /// Lazily creates and returns the `tx` request
     fn tx_mut(&mut self) -> &mut tx::Request<'a> {
         if self.tx.is_none() {
@@ -180,6 +192,10 @@ pub mod tx {
 
         /// Marks the tx stream as finished (e.g. no more data will be sent)
         pub finish: bool,
+
+        /// Marks the tx stream as detached, which makes the stream make progress, regardless of
+        /// application observations.
+        pub detached: bool,
     }
 
     /// The result of a tx request
@@ -254,6 +270,10 @@ pub mod rx {
 
         /// Optionally requests the peer to stop sending data with an error
         pub stop_sending: Option<application::Error>,
+
+        /// Marks the tx stream as detached, which makes the stream make progress, regardless of
+        /// application observations.
+        pub detached: bool,
     }
 
     impl<'a> Default for Request<'a> {
@@ -263,6 +283,7 @@ pub mod rx {
                 low_watermark: 0,
                 high_watermark: core::usize::MAX,
                 stop_sending: None,
+                detached: false,
             }
         }
     }
@@ -490,12 +511,14 @@ mod tests {
                     finish: true,
                     flush: true,
                     reset: Some(reset),
+                    detached: false,
                 }),
                 rx: Some(rx::Request {
                     chunks: Some(rx_chunks),
                     low_watermark: 5,
                     high_watermark: 10,
-                    stop_sending: Some(stop_sending)
+                    stop_sending: Some(stop_sending),
+                    detached: false,
                 })
             } if reset == application::Error::new(1).unwrap()
               && stop_sending == application::Error::new(2).unwrap()
