@@ -499,6 +499,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     packet_number,
                     acked_packet_info.sent_bytes,
                     &mut path.congestion_controller,
+                    publisher,
                 );
                 path.ecn_controller
                     .on_packet_ack(acked_packet_info.time_sent, acked_packet_info.ecn);
@@ -940,6 +941,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 sent_info.sent_bytes,
                 now,
                 &mut path.congestion_controller,
+                publisher,
             );
 
             let path_id = sent_info.path_id;
