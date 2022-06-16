@@ -103,9 +103,13 @@ pub mod api {
         #[non_exhaustive]
         Ack {},
         #[non_exhaustive]
-        ResetStream {},
+        ResetStream {
+            id: u64,
+            error_code: u64,
+            final_size: u64,
+        },
         #[non_exhaustive]
-        StopSending {},
+        StopSending { id: u64, error_code: u64 },
         #[non_exhaustive]
         Crypto { offset: u64, len: u16 },
         #[non_exhaustive]
@@ -118,11 +122,15 @@ pub mod api {
             is_fin: bool,
         },
         #[non_exhaustive]
-        MaxData {},
+        MaxData { value: u64 },
         #[non_exhaustive]
-        MaxStreamData {},
+        MaxStreamData {
+            stream_type: StreamType,
+            id: u64,
+            value: u64,
+        },
         #[non_exhaustive]
-        MaxStreams { stream_type: StreamType },
+        MaxStreams { stream_type: StreamType, value: u64 },
         #[non_exhaustive]
         DataBlocked {},
         #[non_exhaustive]
@@ -1102,12 +1110,19 @@ pub mod api {
     }
     impl IntoEvent<builder::Frame> for &crate::frame::ResetStream {
         fn into_event(self) -> builder::Frame {
-            builder::Frame::ResetStream {}
+            builder::Frame::ResetStream {
+                id: self.stream_id.as_u64(),
+                error_code: self.application_error_code.as_u64(),
+                final_size: self.final_size.as_u64(),
+            }
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::StopSending {
         fn into_event(self) -> builder::Frame {
-            builder::Frame::ResetStream {}
+            builder::Frame::StopSending {
+                id: self.stream_id.as_u64(),
+                error_code: self.application_error_code.as_u64(),
+            }
         }
     }
     impl<'a> IntoEvent<builder::Frame> for &crate::frame::NewToken<'a> {
@@ -1117,18 +1132,27 @@ pub mod api {
     }
     impl IntoEvent<builder::Frame> for &crate::frame::MaxData {
         fn into_event(self) -> builder::Frame {
-            builder::Frame::MaxData {}
+            builder::Frame::MaxData {
+                value: self.maximum_data.as_u64(),
+            }
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::MaxStreamData {
         fn into_event(self) -> builder::Frame {
-            builder::Frame::MaxStreamData {}
+            builder::Frame::MaxStreamData {
+                id: self.stream_id.as_u64(),
+                stream_type: crate::stream::StreamId::from_varint(self.stream_id)
+                    .stream_type()
+                    .into_event(),
+                value: self.maximum_stream_data.as_u64(),
+            }
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::MaxStreams {
         fn into_event(self) -> builder::Frame {
             builder::Frame::MaxStreams {
                 stream_type: self.stream_type.into_event(),
+                value: self.maximum_streams.as_u64(),
             }
         }
     }
@@ -2128,8 +2152,15 @@ pub mod builder {
         Padding,
         Ping,
         Ack,
-        ResetStream,
-        StopSending,
+        ResetStream {
+            id: u64,
+            error_code: u64,
+            final_size: u64,
+        },
+        StopSending {
+            id: u64,
+            error_code: u64,
+        },
         Crypto {
             offset: u64,
             len: u16,
@@ -2141,10 +2172,17 @@ pub mod builder {
             len: u16,
             is_fin: bool,
         },
-        MaxData,
-        MaxStreamData,
+        MaxData {
+            value: u64,
+        },
+        MaxStreamData {
+            stream_type: StreamType,
+            id: u64,
+            value: u64,
+        },
         MaxStreams {
             stream_type: StreamType,
+            value: u64,
         },
         DataBlocked,
         StreamDataBlocked,
@@ -2169,8 +2207,19 @@ pub mod builder {
                 Self::Padding => Padding {},
                 Self::Ping => Ping {},
                 Self::Ack => Ack {},
-                Self::ResetStream => ResetStream {},
-                Self::StopSending => StopSending {},
+                Self::ResetStream {
+                    id,
+                    error_code,
+                    final_size,
+                } => ResetStream {
+                    id: id.into_event(),
+                    error_code: error_code.into_event(),
+                    final_size: final_size.into_event(),
+                },
+                Self::StopSending { id, error_code } => StopSending {
+                    id: id.into_event(),
+                    error_code: error_code.into_event(),
+                },
                 Self::Crypto { offset, len } => Crypto {
                     offset: offset.into_event(),
                     len: len.into_event(),
@@ -2187,10 +2236,21 @@ pub mod builder {
                     len: len.into_event(),
                     is_fin: is_fin.into_event(),
                 },
-                Self::MaxData => MaxData {},
-                Self::MaxStreamData => MaxStreamData {},
-                Self::MaxStreams { stream_type } => MaxStreams {
+                Self::MaxData { value } => MaxData {
+                    value: value.into_event(),
+                },
+                Self::MaxStreamData {
+                    stream_type,
+                    id,
+                    value,
+                } => MaxStreamData {
                     stream_type: stream_type.into_event(),
+                    id: id.into_event(),
+                    value: value.into_event(),
+                },
+                Self::MaxStreams { stream_type, value } => MaxStreams {
+                    stream_type: stream_type.into_event(),
+                    value: value.into_event(),
                 },
                 Self::DataBlocked => DataBlocked {},
                 Self::StreamDataBlocked => StreamDataBlocked {},
