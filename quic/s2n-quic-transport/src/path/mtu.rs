@@ -11,7 +11,9 @@ use core::time::Duration;
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{
     counter::{Counter, Saturating},
-    event, frame,
+    event,
+    event::IntoEvent,
+    frame,
     inet::SocketAddress,
     packet::number::PacketNumber,
     path::{IPV4_MIN_HEADER_LEN, IPV6_MIN_HEADER_LEN, UDP_HEADER_LEN},
@@ -209,6 +211,11 @@ impl Controller {
                 // A new MTU has been confirmed, notify the congestion controller
                 congestion_controller.on_mtu_update(self.plpmtu);
 
+                publisher.on_mtu_updated(event::builder::MtuUpdated {
+                    path_id: path_id.into_event(),
+                    mtu: self.plpmtu,
+                });
+
                 self.update_probed_size();
 
                 //= https://www.rfc-editor.org/rfc/rfc8899#section-8
@@ -385,6 +392,11 @@ impl Controller {
         self.state = State::SearchComplete;
         // Arm the PMTU raise timer to try a larger MTU again after a cooling off period
         self.arm_pmtu_raise_timer(now + BLACK_HOLE_COOL_OFF_DURATION);
+
+        publisher.on_mtu_updated(event::builder::MtuUpdated {
+            path_id: path_id.into_event(),
+            mtu: self.plpmtu,
+        })
     }
 
     /// Arm the PMTU Raise Timer if there is still room to increase the
