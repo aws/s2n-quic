@@ -377,6 +377,24 @@ macro_rules! impl_handle_api {
 
             query.into()
         }
+
+        pub fn datagram_sender<Query, EventContext, Outcome>(
+            &mut self,
+            query: Query,
+        ) -> core::result::Result<Outcome, s2n_quic_core::event::query::Error>
+        where
+            Query: FnOnce(&mut EventContext) -> Outcome,
+            EventContext: 'static,
+        {
+            use s2n_quic_core::event::query;
+            let mut query = query::Once::new_mut(query);
+
+            self.0
+                .datagram_sender(&mut query)
+                .map_err(|_| query::Error::ConnectionLockPoisoned)?;
+
+            query.into()
+        }
     };
 }
 

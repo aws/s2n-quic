@@ -5,8 +5,10 @@ edition = "2021"
 
 [dependencies]
 s2n-quic = { version = "1", path = "../../quic/s2n-quic", features = ["unstable-provider-datagram"]}
-s2n-quic-core = { version = "0.4.0", path = "../../quic/s2n-quic-core" }
+s2n-quic-core = { version = "0.5.0", path = "../../quic/s2n-quic-core" }
 tokio = { version = "1", features = ["full"] }
+bytes = { version = "1", default-features = false }
+
 
 [workspace]
 members = ["."]

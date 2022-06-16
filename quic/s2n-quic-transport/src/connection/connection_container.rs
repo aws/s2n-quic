@@ -355,6 +355,14 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
             Ok(())
         })
     }
+
+    #[inline]
+    fn datagram_sender(&self, query: &mut dyn QueryMut) -> Result<(), connection::Error> {
+        self.api_write_call(|conn| {
+            conn.datagram_sender(query);
+            Ok(())
+        })
+    }
 }
 
 /// Contains all secondary lists of Connections.

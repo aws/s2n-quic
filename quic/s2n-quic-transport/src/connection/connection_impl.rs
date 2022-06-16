@@ -1861,6 +1861,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         );
     }
 
+    #[inline]
+    fn datagram_sender(&mut self, _query: &mut dyn event::query::QueryMut) {
+        if let Some((_space, _)) = self.space_manager.application_mut() {
+            todo!();
+        }
+    }
+
     fn with_event_publisher<F>(
         &mut self,
         timestamp: Timestamp,

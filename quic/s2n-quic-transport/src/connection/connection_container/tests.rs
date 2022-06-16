@@ -322,6 +322,10 @@ impl connection::Trait for TestConnection {
         todo!()
     }
 
+    fn datagram_sender(&mut self, _query: &mut dyn event::query::QueryMut) {
+        todo!()
+    }
+
     fn with_event_publisher<F>(
         &mut self,
         _timestamp: Timestamp,

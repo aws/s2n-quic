@@ -211,4 +211,9 @@ impl Connection {
     ) -> Result<(), connection::Error> {
         self.api.query_event_context_mut(query)
     }
+
+    #[inline]
+    pub fn datagram_sender(&self, query: &mut dyn QueryMut) -> Result<(), connection::Error> {
+        self.api.datagram_sender(query)
+    }
 }
