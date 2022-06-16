@@ -121,8 +121,8 @@ impl<'a, 'sub, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
 
                 // intercept the payload before it is encrypted
                 self.packet_interceptor.intercept_tx_payload(
-                    self.publisher.subject(),
-                    Packet {
+                    &self.publisher.subject(),
+                    &Packet {
                         number: self.packet_number,
                         timestamp: self.timestamp,
                     },

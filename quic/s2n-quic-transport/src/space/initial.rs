@@ -212,6 +212,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             outcome,
             time_sent,
             context.ecn,
+            context.transmission_mode,
             None,
             &mut recovery_context,
             context.publisher,
