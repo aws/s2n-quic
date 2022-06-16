@@ -455,6 +455,8 @@ pub struct SendStream {
     pub(super) write_waiter: Option<(Waker, bool)>,
     /// Whether the final state had already been observed by the application
     final_state_observed: bool,
+    /// Marks the stream as detached from the application
+    detached: bool,
 }
 
 impl SendStream {
@@ -482,6 +484,7 @@ impl SendStream {
             reset_sync: OnceSync::new(),
             write_waiter: None,
             final_state_observed: is_closed,
+            detached: is_closed,
         };
 
         if is_closed {
@@ -524,9 +527,7 @@ impl SendStream {
             if self.data_sender.available_buffer_space() > 0
                 && self.data_sender.state() == data_sender::State::Sending
             {
-                if let Some((waker, _should_flush)) = self.write_waiter.take() {
-                    events.store_write_waker(waker);
-                }
+                self.wake(events);
             }
         }
 
@@ -570,9 +571,7 @@ impl SendStream {
         {
             // Return the waker to wake up potential users of the stream.
             // If the Stream got reset, then blocked writers need to get woken up.
-            if let Some((waker, _should_flush)) = self.write_waiter.take() {
-                events.store_write_waker(waker);
-            }
+            self.wake(events);
         }
 
         Ok(())
@@ -590,56 +589,51 @@ impl SendStream {
         self.data_sender
             .flow_controller_mut()
             .on_packet_ack(ack_set);
-        if let SendStreamState::Sending = self.state {
-            match self.data_sender.state() {
-                data_sender::State::Sending if should_flush => {
-                    // In this state, the application wanted to ensure the peer has received
-                    // all of the data in the stream before continuing (flushed the stream).
-                    should_wake = self.data_sender.is_empty() && self.can_push();
-                }
-                data_sender::State::Sending => {
-                    // In this state we have to wake up the user if the they can
-                    // queue more data for transmission. This is possible if
-                    // acknowledging packets removed them from the send queue and
-                    // we got additional space in the send queue.
-                    should_wake = self.can_push();
-                }
-                data_sender::State::Finishing(f) => {
-                    should_wake = self.data_sender.is_empty() && f.is_acknowledged();
-                }
-                data_sender::State::Finished => {
-                    // If we have already sent a fin and just waiting for it to be
-                    // acknowledged, `on_packet_ack` might have moved us into the
-                    // final state due.
-                    //
-                    // In this state we also wake up the application,
-                    // since the finish operation has been confirmed.
-                    should_wake = true;
 
-                    if self.write_waiter.is_none() {
-                        // The application was not waiting on confirmation of the finish operation,
-                        // so we'll consider the final state to be implicitly observed.
-                        self.final_state_observed = true;
+        match self.state {
+            SendStreamState::Sending => {
+                match self.data_sender.state() {
+                    data_sender::State::Sending if should_flush => {
+                        // In this state, the application wanted to ensure the peer has received
+                        // all of the data in the stream before continuing (flushed the stream).
+                        should_wake = self.data_sender.is_empty() && self.can_push();
                     }
+                    data_sender::State::Sending => {
+                        // In this state we have to wake up the user if the they can
+                        // queue more data for transmission. This is possible if
+                        // acknowledging packets removed them from the send queue and
+                        // we got additional space in the send queue.
+                        should_wake = self.can_push();
+                    }
+                    data_sender::State::Finishing(f) => {
+                        should_wake = self.data_sender.is_empty() && f.is_acknowledged();
+                    }
+                    data_sender::State::Finished => {
+                        // If we have already sent a fin and just waiting for it to be
+                        // acknowledged, `on_packet_ack` might have moved us into the
+                        // final state due.
+                        //
+                        // In this state we also wake up the application,
+                        // since the finish operation has been confirmed.
+                        should_wake = true;
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
-        }
+            SendStreamState::ResetSent(error_code) => {
+                if self.reset_sync.on_packet_ack(ack_set).is_ready() {
+                    // A reset had been acknowledged. Enter the terminal state.
+                    self.state = SendStreamState::ResetAcknowledged(error_code);
 
-        if let SendStreamState::ResetSent(error_code) = self.state {
-            if self.reset_sync.on_packet_ack(ack_set).is_ready() {
-                // A reset had been acknowledged. Enter the terminal state.
-                self.state = SendStreamState::ResetAcknowledged(error_code);
-
-                // notify the waiter if it wanted to flush the reset
-                should_wake = should_flush;
+                    // notify the waiter that the stream is finalized
+                    should_wake = true;
+                }
             }
+            _ => {}
         }
 
         if should_wake {
-            if let Some((waker, _should_flush)) = self.write_waiter.take() {
-                events.store_write_waker(waker);
-            }
+            self.wake(events);
         }
     }
 
@@ -688,12 +682,7 @@ impl SendStream {
 
         // Return the waker to wake up potential users of the stream.
         // If the Stream got reset, then blocked writers need to get woken up.
-        if let Some((waker, _should_flush)) = self.write_waiter.take() {
-            events.store_write_waker(waker);
-        } else {
-            // There aren't any wakers associated with this stream so finalize it
-            self.final_state_observed = true;
-        }
+        self.wake(events);
     }
 
     pub fn on_flush(&mut self, error: StreamError, events: &mut StreamEvents) {
@@ -716,6 +705,22 @@ impl SendStream {
             self.data_sender
                 .flow_controller_mut()
                 .try_acquire_connection_window();
+        }
+    }
+
+    /// Wakes up the application on progress updates
+    ///
+    /// If there is not a registered waker and the stream is in a terminal state,
+    /// the stream will be finalized.
+    fn wake(&mut self, events: &mut StreamEvents) {
+        if let Some((waker, _should_flush)) = self.write_waiter.take() {
+            events.store_write_waker(waker);
+            return;
+        }
+
+        // If the stream is detached from the application, try to make progress
+        if self.detached {
+            self.detach();
         }
     }
 
@@ -745,6 +750,10 @@ impl SendStream {
         context: Option<&Context>,
     ) -> Result<ops::tx::Response, StreamError> {
         let mut response = ops::tx::Response::default();
+
+        if request.detached {
+            self.detach();
+        }
 
         macro_rules! store_waker {
             ($should_flush:expr) => {
@@ -894,6 +903,24 @@ impl SendStream {
         Ok(response)
     }
 
+    fn detach(&mut self) {
+        self.detached = true;
+        self.write_waiter = None;
+
+        match &self.state {
+            // if the RESET_STREAM frame has been ACKed then we can finalize the stream
+            SendStreamState::ResetAcknowledged(_) => {
+                self.final_state_observed = true;
+            }
+            // If we are finished sending and the application isn't subscribed to updates
+            SendStreamState::Sending => {
+                self.final_state_observed |=
+                    matches!(self.data_sender.state(), data_sender::State::Finished);
+            }
+            _ => {}
+        }
+    }
+
     /// Returns true if the caller can push additional data
     fn can_push(&self) -> bool {
         // We accept the data if there is at least 1 byte of space
@@ -947,7 +974,7 @@ impl SendStream {
         // final state
         if reason.is_local_application() {
             self.final_state_observed = true;
-        };
+        }
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-3.1
         //# An endpoint MAY send a RESET_STREAM as the first frame that mentions

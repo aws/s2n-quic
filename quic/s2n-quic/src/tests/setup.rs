@@ -105,6 +105,14 @@ pub fn client(handle: &Handle, server_addr: SocketAddr) -> Result {
     Ok(())
 }
 
+pub fn build_client(handle: &Handle) -> Result<Client> {
+    Ok(Client::builder()
+        .with_io(handle.builder().build().unwrap())?
+        .with_tls(certificates::CERT_PEM)?
+        .with_event(events())?
+        .start()?)
+}
+
 pub fn client_server(handle: &Handle) -> Result<SocketAddr> {
     let addr = server(handle)?;
     client(handle, addr)?;
