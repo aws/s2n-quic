@@ -226,6 +226,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             outcome,
             context.timestamp,
             context.ecn,
+            context.transmission_mode,
             &mut recovery_context,
             context.publisher,
         );
