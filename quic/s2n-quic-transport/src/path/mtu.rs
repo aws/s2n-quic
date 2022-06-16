@@ -3,6 +3,7 @@
 
 use crate::{
     contexts::WriteContext,
+    path,
     path::{MaxMtu, MINIMUM_MTU},
     transmission,
 };
@@ -184,6 +185,7 @@ impl Controller {
         packet_number: PacketNumber,
         sent_bytes: u16,
         congestion_controller: &mut CC,
+        path_id: path::Id,
         publisher: &mut Pub,
     ) {
         if self.state == State::Disabled || !packet_number.space().is_application_data() {
@@ -232,6 +234,7 @@ impl Controller {
         lost_bytes: u16,
         now: Timestamp,
         congestion_controller: &mut CC,
+        path_id: path::Id,
         publisher: &mut Pub,
     ) {
         // MTU probes are only sent in application data space
@@ -266,7 +269,7 @@ impl Controller {
                 }
 
                 if self.black_hole_counter > BLACK_HOLE_THRESHOLD {
-                    self.on_black_hole_detected(now, congestion_controller, publisher);
+                    self.on_black_hole_detected(now, congestion_controller, path_id, publisher);
                 }
             }
         }
@@ -370,6 +373,7 @@ impl Controller {
         &mut self,
         now: Timestamp,
         congestion_controller: &mut CC,
+        path_id: path::Id,
         publisher: &mut Pub,
     ) {
         self.black_hole_counter = Default::default();
@@ -563,7 +567,13 @@ mod test {
         controller.probed_size = BASE_PLPMTU;
         controller.max_probe_size = BASE_PLPMTU + PROBE_THRESHOLD * 2 - 1;
 
-        controller.on_packet_ack(pn, BASE_PLPMTU, &mut cc, &mut publisher);
+        controller.on_packet_ack(
+            pn,
+            BASE_PLPMTU,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
 
         assert_eq!(
             BASE_PLPMTU + (max_udp_payload - BASE_PLPMTU) / 2,
@@ -598,7 +608,13 @@ mod test {
         let mut publisher = Publisher::snapshot();
         controller.state = State::Searching(pn, now);
 
-        controller.on_packet_ack(pn, controller.probed_size, &mut cc, &mut publisher);
+        controller.on_packet_ack(
+            pn,
+            controller.probed_size,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
 
         assert_eq!(1472 + (max_udp_payload - 1472) / 2, controller.probed_size);
         assert_eq!(1, cc.on_mtu_update);
@@ -626,7 +642,13 @@ mod test {
         let mut publisher = Publisher::snapshot();
         controller.state = State::Searching(pn, now);
 
-        controller.on_packet_ack(pn, controller.probed_size, &mut cc, &mut publisher);
+        controller.on_packet_ack(
+            pn,
+            controller.probed_size,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
 
         assert_eq!(1472 + (max_udp_payload - 1472) / 2, controller.probed_size);
         assert_eq!(1, cc.on_mtu_update);
@@ -644,12 +666,24 @@ mod test {
 
         controller.black_hole_counter += 1;
         // ack a packet smaller than the plpmtu
-        controller.on_packet_ack(pnum, controller.plpmtu - 1, &mut cc, &mut publisher);
+        controller.on_packet_ack(
+            pnum,
+            controller.plpmtu - 1,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
         assert_eq!(controller.black_hole_counter, 1);
         assert_eq!(None, controller.largest_acked_mtu_sized_packet);
 
         // ack a packet the size of the plpmtu
-        controller.on_packet_ack(pnum, controller.plpmtu, &mut cc, &mut publisher);
+        controller.on_packet_ack(
+            pnum,
+            controller.plpmtu,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
         assert_eq!(controller.black_hole_counter, 0);
         assert_eq!(Some(pnum), controller.largest_acked_mtu_sized_packet);
 
@@ -657,7 +691,13 @@ mod test {
 
         // ack an older packet
         let pnum_2 = pn(2);
-        controller.on_packet_ack(pnum_2, controller.plpmtu, &mut cc, &mut publisher);
+        controller.on_packet_ack(
+            pnum_2,
+            controller.plpmtu,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
         assert_eq!(controller.black_hole_counter, 1);
         assert_eq!(Some(pnum), controller.largest_acked_mtu_sized_packet);
     }
@@ -673,7 +713,13 @@ mod test {
         controller.largest_acked_mtu_sized_packet = Some(pnum);
 
         let pn = pn(10);
-        controller.on_packet_ack(pn, controller.plpmtu, &mut cc, &mut publisher);
+        controller.on_packet_ack(
+            pn,
+            controller.plpmtu,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
 
         assert_eq!(State::Disabled, controller.state);
         assert_eq!(controller.black_hole_counter, 1);
@@ -694,7 +740,13 @@ mod test {
         // on_packet_ack will be called with packet numbers from Initial and Handshake space,
         // so it should not fail in this scenario.
         let pn = PacketNumberSpace::Handshake.new_packet_number(VarInt::from_u8(10));
-        controller.on_packet_ack(pn, controller.plpmtu, &mut cc, &mut publisher);
+        controller.on_packet_ack(
+            pn,
+            controller.plpmtu,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
         assert_eq!(controller.black_hole_counter, 1);
         assert_eq!(Some(pnum), controller.largest_acked_mtu_sized_packet);
     }
@@ -715,7 +767,14 @@ mod test {
         controller.state = State::Searching(pn, now);
         let probed_size = controller.probed_size;
 
-        controller.on_packet_loss(pn, controller.probed_size, now, &mut cc, &mut publisher);
+        controller.on_packet_loss(
+            pn,
+            controller.probed_size,
+            now,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
 
         assert_eq!(0, cc.on_mtu_update);
         assert_eq!(max_udp_payload, controller.max_probe_size);
@@ -735,7 +794,14 @@ mod test {
         controller.probe_count = MAX_PROBES;
         assert_eq!(max_udp_payload, controller.max_probe_size);
 
-        controller.on_packet_loss(pn, controller.probed_size, now, &mut cc, &mut publisher);
+        controller.on_packet_loss(
+            pn,
+            controller.probed_size,
+            now,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
 
         assert_eq!(0, cc.on_mtu_update);
         assert_eq!(1472, controller.max_probe_size);
@@ -759,14 +825,35 @@ mod test {
             let pn = pn(i as usize);
 
             // Losing a packet the size of the BASE_PLPMTU should not increase the black_hole_counter
-            controller.on_packet_loss(pn, BASE_PLPMTU, now, &mut cc, &mut publisher);
+            controller.on_packet_loss(
+                pn,
+                BASE_PLPMTU,
+                now,
+                &mut cc,
+                path::Id::test_id(),
+                &mut publisher,
+            );
             assert_eq!(controller.black_hole_counter, i);
 
             // Losing a packet larger than the PLPMTU should not increase the black_hole_counter
-            controller.on_packet_loss(pn, controller.plpmtu + 1, now, &mut cc, &mut publisher);
+            controller.on_packet_loss(
+                pn,
+                controller.plpmtu + 1,
+                now,
+                &mut cc,
+                path::Id::test_id(),
+                &mut publisher,
+            );
             assert_eq!(controller.black_hole_counter, i);
 
-            controller.on_packet_loss(pn, BASE_PLPMTU + 1, now, &mut cc, &mut publisher);
+            controller.on_packet_loss(
+                pn,
+                BASE_PLPMTU + 1,
+                now,
+                &mut cc,
+                path::Id::test_id(),
+                &mut publisher,
+            );
             if i < BLACK_HOLE_THRESHOLD {
                 assert_eq!(controller.black_hole_counter, i + 1);
             }
@@ -793,7 +880,14 @@ mod test {
         for i in 0..BLACK_HOLE_THRESHOLD + 1 {
             let pn = pn(i as usize);
             assert_eq!(controller.black_hole_counter, 0);
-            controller.on_packet_loss(pn, BASE_PLPMTU + 1, now, &mut cc, &mut publisher);
+            controller.on_packet_loss(
+                pn,
+                BASE_PLPMTU + 1,
+                now,
+                &mut cc,
+                path::Id::test_id(),
+                &mut publisher,
+            );
         }
 
         assert_eq!(State::Disabled, controller.state);
@@ -819,7 +913,14 @@ mod test {
                 // on_packet_loss may be called with packet numbers from Initial and Handshake space
                 // so it should not fail in this scenario.
                 let pn = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(i));
-                controller.on_packet_loss(pn, BASE_PLPMTU + 1, now(), &mut cc, &mut publisher);
+                controller.on_packet_loss(
+                    pn,
+                    BASE_PLPMTU + 1,
+                    now(),
+                    &mut cc,
+                    path::Id::test_id(),
+                    &mut publisher,
+                );
                 assert_eq!(controller.black_hole_counter, 0);
                 assert_eq!(0, cc.on_mtu_update);
             }
