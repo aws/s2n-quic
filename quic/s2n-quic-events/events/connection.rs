@@ -244,3 +244,10 @@ struct TxStreamProgress {
 pub struct KeepAliveTimerExpired {
     timeout: Duration,
 }
+
+#[event("connectivity:mtu_updated")]
+/// The maximum transmission unit (MTU) for the path has changed
+struct MtuUpdated {
+    path_id: u64,
+    mtu: u16,
+}

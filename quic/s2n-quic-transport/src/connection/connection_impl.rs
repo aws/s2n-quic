@@ -593,6 +593,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             },
         });
 
+        publisher.on_mtu_updated(event::builder::MtuUpdated {
+            path_id: path_manager.active_path_id().into_event(),
+            mtu: path_manager.active_path().mtu_controller.mtu() as u16,
+        });
+
         let wakeup_handle = Arc::from(parameters.wakeup_handle);
         let waker = Waker::from(wakeup_handle.clone());
         let mut connection = Self {
