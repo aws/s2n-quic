@@ -36,8 +36,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         tokio::spawn(async move {
             eprintln!("Connection accepted from {:?}", connection.remote_addr());
 
-            /// Add datagrams to the send queue by passing in a closure that calls
-            /// the desired datagram send function
+            // Add datagrams to the send queue by passing in a closure that calls
+            // the desired datagram send function
             let send_func = |x: &mut DefaultSender| {
                 let _ = x.send_datagram(Bytes::from_static(&[1, 2, 3]));
             };
