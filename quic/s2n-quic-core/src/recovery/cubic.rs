@@ -44,16 +44,17 @@ use num_traits::Float as _;
 enum State {
     SlowStart,
     Recovery(Timestamp, FastRetransmission),
-    CongestionAvoidance(CongestionAvoidanceTiming),
+    CongestionAvoidance(CongestionAvoidanceInfo),
 }
 
 impl State {
-    /// Returns State::CongestionAvoidance initialized with the given `start_time`
-    fn congestion_avoidance(start_time: Timestamp) -> Self {
-        Self::CongestionAvoidance(CongestionAvoidanceTiming {
+    /// Returns State::CongestionAvoidance initialized with the given `start_time` and `bytes_in_flight`
+    fn congestion_avoidance(start_time: Timestamp, bytes_in_flight: BytesInFlight) -> Self {
+        Self::CongestionAvoidance(CongestionAvoidanceInfo {
             start_time,
             window_increase_time: start_time,
             app_limited_time: None,
+            bytes_in_flight_hi: bytes_in_flight,
         })
     }
 
@@ -88,16 +89,18 @@ enum FastRetransmission {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct CongestionAvoidanceTiming {
+struct CongestionAvoidanceInfo {
     // The time the congestion avoidance state was entered
     start_time: Timestamp,
     // The time the congestion window was last increased
     window_increase_time: Timestamp,
     // The last time the current congestion window was underutilized
     app_limited_time: Option<Timestamp>,
+    // The maximum number of bytes in flight during this Congestion Avoidance period
+    bytes_in_flight_hi: BytesInFlight,
 }
 
-impl CongestionAvoidanceTiming {
+impl CongestionAvoidanceInfo {
     //= https://www.rfc-editor.org/rfc/rfc8312#section-4.1
     //# t is the elapsed time from the beginning of the current congestion avoidance
     fn t(&self, timestamp: Timestamp) -> Duration {
@@ -108,7 +111,9 @@ impl CongestionAvoidanceTiming {
     ///
     /// Adjusts the start time by the period from the last window increase to the app limited time
     /// to avoid counting the app limited time period in W_cubic.
-    fn on_window_increase(&mut self, timestamp: Timestamp) {
+    ///
+    /// Also updates `bytes_in_flight_hi` if there is a new larger value.
+    fn on_window_increase(&mut self, timestamp: Timestamp, bytes_in_flight: BytesInFlight) {
         if let Some(app_limited_time) = self.app_limited_time.take() {
             //= https://www.rfc-editor.org/rfc/rfc8312#section-5.8
             //# CUBIC does not raise its congestion window size if the flow is
@@ -123,6 +128,7 @@ impl CongestionAvoidanceTiming {
         }
 
         self.window_increase_time = timestamp;
+        self.bytes_in_flight_hi = self.bytes_in_flight_hi.max(bytes_in_flight);
     }
 }
 
@@ -257,6 +263,7 @@ impl CongestionController for CubicCongestionController {
         _random_generator: &mut Rnd,
         ack_receive_time: Timestamp,
     ) {
+        let prev_bytes_in_flight = self.bytes_in_flight;
         self.bytes_in_flight
             .try_sub(bytes_acknowledged)
             .expect("bytes_acknowledged should not exceed u32::MAX");
@@ -279,7 +286,7 @@ impl CongestionController for CubicCongestionController {
                 //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
                 //# A recovery period ends and the sender enters congestion avoidance
                 //# when a packet sent during the recovery period is acknowledged.
-                self.state = State::congestion_avoidance(ack_receive_time)
+                self.state = State::congestion_avoidance(ack_receive_time, prev_bytes_in_flight)
             }
         };
 
@@ -301,19 +308,20 @@ impl CongestionController for CubicCongestionController {
                     //# t is the elapsed time since the beginning of the current congestion
                     //# avoidance, K is set to 0, and W_max is set to the congestion window
                     //# size at the beginning of the current congestion avoidance.
-                    self.state = State::congestion_avoidance(ack_receive_time);
+                    self.state =
+                        State::congestion_avoidance(ack_receive_time, prev_bytes_in_flight);
                     self.cubic.on_slow_start_exit(self.congestion_window);
                 }
             }
             Recovery(_, _) => {
                 // Don't increase the congestion window while in recovery
             }
-            CongestionAvoidance(ref mut timing) => {
-                timing.on_window_increase(ack_receive_time);
+            CongestionAvoidance(ref mut info) => {
+                info.on_window_increase(ack_receive_time, prev_bytes_in_flight);
 
                 //= https://www.rfc-editor.org/rfc/rfc8312#section-4.1
                 //# t is the elapsed time from the beginning of the current congestion avoidance
-                let t = timing.t(ack_receive_time);
+                let t = info.t(ack_receive_time);
 
                 //= https://www.rfc-editor.org/rfc/rfc8312#section-4.1
                 //# RTT is the weighted average RTT
@@ -324,7 +332,16 @@ impl CongestionController for CubicCongestionController {
                 //      investigation and testing to evaluate if smoothed_rtt would be a better input.
                 let rtt = rtt_estimator.min_rtt();
 
-                self.congestion_avoidance(t, rtt, bytes_acknowledged);
+                // The congestion window may continue to grow while app-limited due to pacing
+                // interrupting sending while momentarily not app-limited. To avoid the congestion
+                // window growing too far beyond bytes in flight, we limit the maximum cwnd to
+                // the highest bytes_in_flight value seen during this congestion avoidance period
+                // multiplied by 1.5 to still allow for some growth.
+                const MAX_CWND_MULTIPLIER: f32 = 1.5;
+
+                let max_cwnd = *info.bytes_in_flight_hi as f32 * MAX_CWND_MULTIPLIER;
+
+                self.congestion_avoidance(t, rtt, bytes_acknowledged, max_cwnd);
             }
         };
 
@@ -482,12 +499,23 @@ impl CubicCongestionController {
     }
 
     #[inline]
-    fn congestion_avoidance(&mut self, t: Duration, rtt: Duration, sent_bytes: usize) {
-        let w_cubic = self.cubic.w_cubic(t);
-        let w_est = self.cubic.w_est(t, rtt);
+    fn congestion_avoidance(
+        &mut self,
+        t: Duration,
+        rtt: Duration,
+        sent_bytes: usize,
+        max_cwnd: f32,
+    ) {
         // limit the window increase to half the acked bytes
         // as the Linux implementation of Cubic does.
-        let max_cwnd = self.congestion_window + sent_bytes as f32 / 2.0;
+        let max_cwnd = (self.congestion_window + sent_bytes as f32 / 2.0).min(max_cwnd);
+
+        if self.congestion_window >= max_cwnd {
+            return;
+        }
+
+        let w_cubic = self.cubic.w_cubic(t);
+        let w_est = self.cubic.w_est(t, rtt);
 
         if w_cubic < w_est {
             // TCP-Friendly Region
