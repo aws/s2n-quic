@@ -271,7 +271,7 @@ pub mod rx {
         /// Optionally requests the peer to stop sending data with an error
         pub stop_sending: Option<application::Error>,
 
-        /// Marks the tx stream as detached, which makes the stream make progress, regardless of
+        /// Marks the rx stream as detached, which makes the stream make progress, regardless of
         /// application observations.
         pub detached: bool,
     }
