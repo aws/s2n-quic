@@ -1,0 +1,5 @@
+---
+source: quic/s2n-quic-transport/src/path/mtu.rs
+expression: ""
+---
+MtuUpdated { path_id: 0, mtu: 1472 }
