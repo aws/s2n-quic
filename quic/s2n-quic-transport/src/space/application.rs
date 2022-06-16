@@ -18,7 +18,6 @@ use once_cell::sync::OnceCell;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{application::KeySet, limited, tls, CryptoSuite},
-    datagram::Endpoint,
     event::{self, ConnectionPublisher as _, IntoEvent},
     frame::{
         self, ack::AckRanges, crypto::CryptoRef, datagram::DatagramRef, stream::StreamRef, Ack,
@@ -91,8 +90,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         ack_manager: AckManager,
         keep_alive: KeepAlive,
         max_mtu: MaxMtu,
-        datagram_sender: <<Config as endpoint::Config>::DatagramEndpoint as Endpoint>::Sender,
-        datagram_receiver: <<Config as endpoint::Config>::DatagramEndpoint as Endpoint>::Receiver,
+        datagram_manager: datagram::Manager<Config>,
     ) -> Self {
         let key_set = KeySet::new(key, Self::key_limits(max_mtu));
 
@@ -108,7 +106,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             keep_alive,
             processed_packet_numbers: SlidingWindow::default(),
             recovery_manager: recovery::Manager::new(PacketNumberSpace::ApplicationData),
-            datagram_manager: datagram::Manager::new(datagram_sender, datagram_receiver),
+            datagram_manager,
         }
     }
 
