@@ -3,10 +3,63 @@
 
 // s2n-quic's default implementation of the datagram component
 
-use crate::datagram::{ConnectionInfo, Packet, Sender};
+use crate::datagram::{ConnectionInfo, Endpoint, Packet, Receiver, Sender};
 use alloc::collections::VecDeque;
 use bytes::Bytes;
 use core::task::{Context, Poll, Waker};
+
+#[derive(Debug, Default)]
+pub struct DatagramEndpoint {
+    send_queue_capacity: usize,
+}
+
+impl DatagramEndpoint {
+    /// Creates a builder for the default datagram endpoint
+    pub fn builder() -> EndpointBuilder {
+        EndpointBuilder::default()
+    }
+}
+
+/// A builder for the default datagram endpoint
+#[derive(Debug, Default)]
+pub struct EndpointBuilder {
+    send_queue_capacity: usize,
+}
+
+impl EndpointBuilder {
+    pub fn with_send_capacity(mut self, capacity: usize) -> Self {
+        self.send_queue_capacity = capacity;
+        self
+    }
+
+    pub fn build(self) -> Result<DatagramEndpoint, core::convert::Infallible> {
+        Ok(DatagramEndpoint {
+            send_queue_capacity: self.send_queue_capacity,
+        })
+    }
+}
+
+impl Endpoint for DatagramEndpoint {
+    type Sender = DefaultSender;
+    type Receiver = DefaultReceiver;
+
+    fn create_connection(&mut self, info: &ConnectionInfo) -> (Self::Sender, Self::Receiver) {
+        (
+            DefaultSender::builder()
+                .with_capacity(self.send_queue_capacity)
+                .with_connection_info(info)
+                .build()
+                .unwrap(),
+            DefaultReceiver(()),
+        )
+    }
+}
+
+pub struct DefaultReceiver(());
+
+impl Receiver for DefaultReceiver {
+    fn on_datagram(&self, _datagram: &[u8]) {}
+}
 
 #[derive(Debug)]
 pub struct DefaultSender {
@@ -19,6 +72,7 @@ pub struct DefaultSender {
     max_datagram_payload: u64,
 }
 
+#[non_exhaustive]
 #[derive(Debug, PartialEq)]
 pub struct Datagram {
     pub data: Bytes,

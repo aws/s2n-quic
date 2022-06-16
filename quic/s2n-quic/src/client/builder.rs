@@ -264,6 +264,14 @@ impl<Providers: ClientProviders> Builder<Providers> {
         ClientProviders
     );
 
+    #[cfg(all(not(docdiff), feature = "unstable-provider-datagram"))]
+    impl_provider_method!(
+        /// Sets the datagram provider for the [`Client`]
+        with_datagram,
+        datagram,
+        ClientProviders
+    );
+
     /// Starts the [`Client`] with the configured providers
     ///
     /// # Examples
