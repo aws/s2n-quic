@@ -100,6 +100,23 @@ public class ClientServerStack extends Stack {
             .securityGroup(SecurityGroup.fromSecurityGroupId(this, stackType + "vpc-sec-group", this.vpc.getVpcDefaultSecurityGroup()))
             .build();
 
+        Bucket metricsBucket = props.getBucket();
+        final HashMap<String, String> environment = new HashMap<>();
+        environment.put("BUCKET_NAME", metricsBucket.getBucketName());
+        final Function test = Function.Builder.create(this, "testLambda")
+            .vpc(vpc)
+            .runtime(Runtime.NODEJS_14_X)    // execution environment
+            .code(Code.fromAsset("lambda"))  // code loaded from the "lambda" directory
+            .handler("bucket.handler")        // file is "hello", function is "handler"
+            .environment(environment)
+            .build();
+
+        metricsBucket.grantReadWrite(test);        
+
+        LambdaRestApi.Builder.create(this, "Endpoint")
+            .handler(test)
+            .build();
+
     }
 
     public Vpc getVpc() {
