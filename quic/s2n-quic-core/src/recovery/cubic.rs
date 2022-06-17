@@ -215,6 +215,10 @@ impl CongestionController for CubicCongestionController {
             // returns true if there are more than 3 MTU's of space left in the cwnd, or less than
             // half the cwnd is utilized in slow start.
             self.under_utilized = app_limited && self.is_congestion_window_under_utilized();
+        } else {
+            // We don't externally determine `app_limited` in the Initial and Handshake packet
+            // spaces, so set under_utilized based on is_congestion_window_under_utilized alone
+            self.under_utilized = self.is_congestion_window_under_utilized();
         }
 
         if let Recovery(recovery_start_time, RequiresTransmission) = self.state {

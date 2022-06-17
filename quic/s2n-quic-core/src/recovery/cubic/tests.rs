@@ -311,6 +311,46 @@ fn on_packet_sent_application_limited() {
     assert!(!cc.under_utilized);
 }
 
+// Confirm `under_utilized` is set properly even when `app_limited` is `None`
+#[test]
+fn on_packet_sent_none_application_limited() {
+    let mut cc = CubicCongestionController::new(1000);
+    let rtt_estimator = RttEstimator::new(Duration::from_millis(0));
+    let now = NoopClock.get_time();
+
+    cc.congestion_window = 100_000.0;
+    cc.bytes_in_flight = BytesInFlight::new(92_500);
+    cc.state = SlowStart;
+
+    // t0: Send a packet in Slow Start
+    cc.on_packet_sent(now, 1000, None, &rtt_estimator);
+
+    assert_eq!(cc.bytes_in_flight, 93_500);
+    assert_eq!(cc.time_of_last_sent_packet, Some(now));
+
+    // t10: Enter Congestion Avoidance
+    cc.state = State::congestion_avoidance(now + Duration::from_secs(10));
+
+    assert!(!cc.under_utilized);
+
+    // t15: Send a packet in Congestion Avoidance
+    cc.on_packet_sent(now + Duration::from_secs(15), 1000, None, &rtt_estimator);
+
+    assert_eq!(cc.bytes_in_flight, 94_500);
+    assert_eq!(
+        cc.time_of_last_sent_packet,
+        Some(now + Duration::from_secs(15))
+    );
+    assert!(cc.under_utilized);
+
+    // t20: Send packets to fully utilize the congestion window
+    while cc.bytes_in_flight < cc.congestion_window() {
+        cc.on_packet_sent(now + Duration::from_secs(20), 1000, None, &rtt_estimator);
+    }
+
+    assert!(!cc.under_utilized);
+}
+
 #[test]
 fn on_packet_sent_fast_retransmission() {
     let mut cc = CubicCongestionController::new(1000);
