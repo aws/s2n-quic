@@ -302,7 +302,8 @@ impl CongestionController for CubicCongestionController {
             SlowStart => *self.bytes_in_flight_hi as f32 * SLOW_START_MAX_CWND_MULTIPLIER,
             Recovery(_, _) => self.congestion_window,
             CongestionAvoidance(_) => *self.bytes_in_flight_hi as f32 * MAX_CWND_MULTIPLIER,
-        };
+        }
+        .max(self.cubic.minimum_window());
 
         if self.congestion_window >= max_cwnd {
             // The window is already larger than the max, so we can return early
