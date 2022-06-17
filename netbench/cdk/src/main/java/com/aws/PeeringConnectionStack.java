@@ -28,18 +28,18 @@ class PeeringConnectionStack extends Stack {
             String serverVpcId = StringParameter.fromStringParameterName(this, "server-vpc-id",
                 "server-vpc-id").getStringValue();
 
+            /*
             new SSMParameterReader(this, "client-vpc-id-reader", SSMParameterReaderProps.builder()
                 .sdkCall("server-vpc-id", "us-east-1")
                 .policy()
                 .build());
 
-
-            /*
             String cidr = new SSMParameterReader(this, "client-cidr-reader", SSMParameterReaderProps.builder()
                 .sdkCall("client-cidr", props.getRegion())
                 .policy()
                 .build())
                 .getParameterValue();
+            */
             
             String clientVpcId = StringParameter.fromStringParameterName(this, "client-vpc-id",
                 "client-vpc-id").getStringValue();
@@ -70,7 +70,6 @@ class PeeringConnectionStack extends Stack {
             .parameterName("conn-ref")
             .stringValue(conn.getRef())
             .build();
-            */
         } else {
             String connRef = StringParameter.fromStringParameterName(this, "conn-ref",
                 "conn-ref").getStringValue();

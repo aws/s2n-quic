@@ -41,10 +41,11 @@ public class ClientServerStack extends Stack {
 
         String instanceType = props.getInstanceType();
         String stackType  = props.getStackType();
+        this.cidr = props.getCidr();
 
         this.vpc = Vpc.Builder.create(this, stackType + "-vpc")
             .maxAzs(1)
-            .cidr(props.getCidr())
+            .cidr(cidr)
             .build();
 
         SecurityGroup.fromSecurityGroupId(this, "vpc-sec-group", this.vpc.getVpcDefaultSecurityGroup())
@@ -66,8 +67,6 @@ public class ClientServerStack extends Stack {
             .build();
 
         /*
-        Bucket metricsBucket = props.getBucket();
-
         Cluster cluster = Cluster.Builder.create(this, stackType + "-cluster")
             .vpc(vpc)
             .build();
@@ -84,33 +83,7 @@ public class ClientServerStack extends Stack {
             .build();
         
         cluster.addAsgCapacityProvider(asgProvider);
-        */
 
-        BastionHostLinux testInstance = BastionHostLinux.Builder.create(this, "testInstance")
-            .vpc(vpc)
-            .securityGroup(SecurityGroup.fromSecurityGroupId(this, stackType + "vpc-sec-group", this.vpc.getVpcDefaultSecurityGroup()))
-            .build();
-        
-        
-        /*
-        final HashMap<String, String> environment = new HashMap<>();
-        environment.put("BUCKET_NAME", testBucket.getBucketName());
-        final Function test = Function.Builder.create(this, "testLambda")
-            .vpc(vpc)
-            .runtime(Runtime.NODEJS_14_X)    // execution environment
-            .code(Code.fromAsset("lambda"))  // code loaded from the "lambda" directory
-            .handler("bucket.handler")        // file is "hello", function is "handler"
-            .environment(environment)
-            .build();
-
-        testBucket.grantReadWrite(test);        
-
-        LambdaRestApi.Builder.create(this, "Endpoint")
-            .handler(test)
-            .build();
-        */
-
-        /* Docker image not yet generated
         Ec2TaskDefinition task = Ec2TaskDefinition.Builder
             .create(this, stackType + "-task")
             .build();
@@ -119,7 +92,13 @@ public class ClientServerStack extends Stack {
         Ec2Service.Builder.create(this, "ec2service-" + stackType)
             .cluster(cluster)
             .taskDefinition(task)
-            .build(); */
+            .build();
+        */
+
+        BastionHostLinux testInstance = BastionHostLinux.Builder.create(this, "testInstance")
+            .vpc(vpc)
+            .securityGroup(SecurityGroup.fromSecurityGroupId(this, stackType + "vpc-sec-group", this.vpc.getVpcDefaultSecurityGroup()))
+            .build();
 
     }
 
