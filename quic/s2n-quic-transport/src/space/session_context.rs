@@ -6,7 +6,8 @@ use crate::{
     connection::{self, limits::Limits},
     endpoint, path,
     space::{
-        keep_alive::KeepAlive, ApplicationSpace, HandshakeSpace, HandshakeStatus, InitialSpace,
+        datagram, keep_alive::KeepAlive, ApplicationSpace, HandshakeSpace, HandshakeStatus,
+        InitialSpace,
     },
     stream::AbstractStreamManager,
 };
@@ -28,8 +29,8 @@ use s2n_quic_core::{
     transport::{
         self,
         parameters::{
-            ActiveConnectionIdLimit, ClientTransportParameters, InitialFlowControlLimits,
-            InitialSourceConnectionId, ServerTransportParameters,
+            ActiveConnectionIdLimit, ClientTransportParameters, DatagramLimits,
+            InitialFlowControlLimits, InitialSourceConnectionId, ServerTransportParameters,
         },
     },
 };
@@ -62,7 +63,14 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
     fn on_server_params(
         &mut self,
         decoder: DecoderBuffer,
-    ) -> Result<(InitialFlowControlLimits, ActiveConnectionIdLimit), transport::Error> {
+    ) -> Result<
+        (
+            InitialFlowControlLimits,
+            ActiveConnectionIdLimit,
+            DatagramLimits,
+        ),
+        transport::Error,
+    > {
         debug_assert!(Config::ENDPOINT_TYPE.is_client());
 
         let (peer_parameters, remaining) =
@@ -171,15 +179,27 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
         let initial_flow_control_limits = peer_parameters.flow_control_limits();
         let active_connection_id_limit = peer_parameters.active_connection_id_limit;
+        let datagram_limits = peer_parameters.datagram_limits();
 
-        Ok((initial_flow_control_limits, active_connection_id_limit))
+        Ok((
+            initial_flow_control_limits,
+            active_connection_id_limit,
+            datagram_limits,
+        ))
     }
 
     // This is called by the server
     fn on_client_params(
         &mut self,
         decoder: DecoderBuffer,
-    ) -> Result<(InitialFlowControlLimits, ActiveConnectionIdLimit), transport::Error> {
+    ) -> Result<
+        (
+            InitialFlowControlLimits,
+            ActiveConnectionIdLimit,
+            DatagramLimits,
+        ),
+        transport::Error,
+    > {
         debug_assert!(Config::ENDPOINT_TYPE.is_server());
 
         let (peer_parameters, remaining) =
@@ -215,8 +235,13 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
         let initial_flow_control_limits = peer_parameters.flow_control_limits();
         let active_connection_id_limit = peer_parameters.active_connection_id_limit;
+        let datagram_limits = peer_parameters.datagram_limits();
 
-        Ok((initial_flow_control_limits, active_connection_id_limit))
+        Ok((
+            initial_flow_control_limits,
+            active_connection_id_limit,
+            datagram_limits,
+        ))
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9000#section-7.3
@@ -343,10 +368,11 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
         // Parse transport parameters
         let param_decoder = DecoderBuffer::new(application_parameters.transport_parameters);
-        let (peer_flow_control_limits, active_connection_id_limit) = match Config::ENDPOINT_TYPE {
-            endpoint::Type::Client => self.on_server_params(param_decoder)?,
-            endpoint::Type::Server => self.on_client_params(param_decoder)?,
-        };
+        let (peer_flow_control_limits, active_connection_id_limit, datagram_limits) =
+            match Config::ENDPOINT_TYPE {
+                endpoint::Type::Client => self.on_server_params(param_decoder)?,
+                endpoint::Type::Server => self.on_client_params(param_decoder)?,
+            };
 
         self.local_id_registry
             .set_active_connection_id_limit(active_connection_id_limit.as_u64());
@@ -368,8 +394,14 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             self.limits.max_keep_alive_period(),
         );
 
-        let conn_info = ConnectionInfo::new();
+        let conn_info = ConnectionInfo::new(datagram_limits.max_datagram_payload);
         let (datagram_sender, datagram_receiver) = self.datagram.create_connection(&conn_info);
+        let datagram_manager = datagram::Manager::new(
+            datagram_sender,
+            datagram_receiver,
+            datagram_limits.max_datagram_payload,
+        );
+
         let cipher_suite = key.cipher_suite().into_event();
         let max_mtu = self.path_manager.max_mtu();
         *self.application = Some(Box::new(ApplicationSpace::new(
@@ -380,8 +412,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             ack_manager,
             keep_alive,
             max_mtu,
-            datagram_sender,
-            datagram_receiver,
+            datagram_manager,
         )));
         self.publisher.on_key_update(event::builder::KeyUpdate {
             key_type: event::builder::KeyType::OneRtt { generation: 0 },
