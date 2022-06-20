@@ -13,6 +13,11 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
+import java.nio.file.FileSystem;
+import java.nio.file.Paths;
+import java.nio.file.Path;
+import java.nio.file.Files;
+
 public class NetbenchAutoApp {
 
     // Helper method to build an environment
@@ -62,18 +67,20 @@ public class NetbenchAutoApp {
         ec2InstanceType = (ec2InstanceType == null) 
             ? "c5n.xlarge" 
             : ec2InstanceType.toLowerCase();
+
+        String scenario = (String)app.getNode().tryGetContext("scenario");
+        ec2InstanceType = (ec2InstanceType == null) 
+            ? ""
+            : ec2InstanceType;
+
+        Path scenarioPath = Paths.get(scenario);
+        if (!Files.exists(scenarioPath)) {
+            throw new IllegalArgumentException("Scenario file not found.");
+        }
         
         // Stack instantiation
         ReportStack reportStack = new ReportStack(app, "ReportStack", StackProps.builder()
             .env(makeEnv(awsAccount, serverRegion))
-            .build());
-
-        ClientServerStack clientStack = new ClientServerStack(app, "ClientStack", ClientServerStackProps.builder()
-            .env(makeEnv(awsAccount, clientRegion))
-            .bucket(reportStack.getBucket())
-            .instanceType(ec2InstanceType)
-            .cidr("10.0.0.0/16")
-            .stackType("client")
             .build());
 
         ClientServerStack serverStack = new ClientServerStack(app, "ServerStack", ClientServerStackProps.builder()
@@ -84,8 +91,22 @@ public class NetbenchAutoApp {
             .stackType("server")
             .build());
 
+        serverStack.addDependency(reportStack);
+
+        ClientServerStack clientStack = new ClientServerStack(app, "ClientStack", ClientServerStackProps.builder()
+            .env(makeEnv(awsAccount, clientRegion))
+            .bucket(reportStack.getBucket())
+            .instanceType(ec2InstanceType)
+            .cidr("10.0.0.0/16")
+            .stackType("client")
+            .build());
+        
+        clientStack.addDependency(serverStack);
+        
+        /*
         StateMachineStack stateMachineStack = new StateMachineStack(app, "StateMachineStack", StackProps.builder()
             .build());
+        */
 
         PeeringConnectionStack serverPeeringConnStack = new PeeringConnectionStack(app, "ServerPeerConnStack",
             PeeringStackProps.builder()
@@ -96,6 +117,8 @@ public class NetbenchAutoApp {
             .stackType("server")
             .region(clientRegion)
             .build());
+        
+        serverPeeringConnStack.addDependency(clientStack);
 
         PeeringConnectionStack clientPeeringConnStack = new PeeringConnectionStack(app, "ClientPeerConnStack",
             PeeringStackProps.builder()
@@ -107,7 +130,8 @@ public class NetbenchAutoApp {
             .ref(serverPeeringConnStack.getRef())
             .region(serverRegion)
             .build());
-      
+
+        clientPeeringConnStack.addDependency(serverPeeringConnStack);
         app.synth();
     }
 }
