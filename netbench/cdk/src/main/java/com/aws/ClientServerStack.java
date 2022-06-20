@@ -6,19 +6,29 @@ import software.constructs.Construct;
 import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.StackProps;
 import software.amazon.awscdk.services.s3.Bucket;
-import software.amazon.awscdk.services.ecs.Cluster;
-import software.amazon.awscdk.services.ec2.Vpc;
-import software.amazon.awscdk.services.ecs.*;
 import software.amazon.awscdk.services.autoscaling.AutoScalingGroup;
+
+import software.amazon.awscdk.services.ecs.Cluster;
+import software.amazon.awscdk.services.ecs.ContainerImage;
+import software.amazon.awscdk.services.ecs.EcsOptimizedImage;
+import software.amazon.awscdk.services.ecs.AsgCapacityProvider;
+import software.amazon.awscdk.services.ecs.Ec2TaskDefinition;
+import software.amazon.awscdk.services.ecs.ContainerDefinitionOptions;
+import software.amazon.awscdk.services.ecs.Ec2Service;
+
+import software.amazon.awscdk.services.ecr.Repository;
+
+import software.amazon.awscdk.services.ec2.Vpc;
 import software.amazon.awscdk.services.ec2.InstanceType;
 import software.amazon.awscdk.services.ec2.GatewayVpcEndpoint;
 import software.amazon.awscdk.services.ec2.GatewayVpcEndpointOptions;
 import software.amazon.awscdk.services.ec2.GatewayVpcEndpointAwsService;
 import software.amazon.awscdk.services.ec2.BastionHostLinux;
-import software.amazon.awscdk.services.ec2.*;
+import software.amazon.awscdk.services.ec2.SecurityGroup;
+import software.amazon.awscdk.services.ec2.Peer;
+import software.amazon.awscdk.services.ec2.Port;
+
 import software.amazon.awscdk.services.ssm.StringParameter;
-
-
 import software.amazon.awscdk.services.apigateway.LambdaRestApi;
 import software.amazon.awscdk.services.lambda.Code;
 import software.amazon.awscdk.services.lambda.Function;
@@ -66,7 +76,6 @@ public class ClientServerStack extends Stack {
             .stringValue(this.vpc.getVpcCidrBlock())
             .build();
 
-        /*
         Cluster cluster = Cluster.Builder.create(this, stackType + "-cluster")
             .vpc(vpc)
             .build();
@@ -87,14 +96,24 @@ public class ClientServerStack extends Stack {
         Ec2TaskDefinition task = Ec2TaskDefinition.Builder
             .create(this, stackType + "-task")
             .build();
-        task.addContainer(); 
+
+        HashMap<String, String> ecrEnv = new HashMap<>();
+        ecrEnv.put("SCENARIO", "/usr/bin/scenario.json");
+        ecrEnv.put("PORT", "3000");
+
+        task.addContainer(stackType + "-driver", ContainerDefinitionOptions.builder()
+            .image(ContainerImage.fromRegistry("428467523746.dkr.ecr.us-west-2.amazonaws.com/s2n-quic-collector-server"))
+            .environment(ecrEnv)
+            .memoryLimitMiB(2048)
+            .build()); 
         
         Ec2Service.Builder.create(this, "ec2service-" + stackType)
             .cluster(cluster)
             .taskDefinition(task)
+            .desiredCount(1)
             .build();
-        */
-
+        
+        /*
         BastionHostLinux testInstance = BastionHostLinux.Builder.create(this, "testInstance")
             .vpc(vpc)
             .securityGroup(SecurityGroup.fromSecurityGroupId(this, stackType + "vpc-sec-group", this.vpc.getVpcDefaultSecurityGroup()))
@@ -116,6 +135,7 @@ public class ClientServerStack extends Stack {
         LambdaRestApi.Builder.create(this, "Endpoint")
             .handler(test)
             .build();
+        */
 
     }
 

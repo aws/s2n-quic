@@ -69,9 +69,9 @@ public class NetbenchAutoApp {
             : ec2InstanceType.toLowerCase();
 
         String scenario = (String)app.getNode().tryGetContext("scenario");
-        ec2InstanceType = (ec2InstanceType == null) 
+        scenario = (scenario == null) 
             ? ""
-            : ec2InstanceType;
+            : scenario;
 
         Path scenarioPath = Paths.get(scenario);
         if (!Files.exists(scenarioPath)) {
