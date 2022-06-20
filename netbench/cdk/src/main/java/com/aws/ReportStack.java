@@ -15,10 +15,6 @@ import software.amazon.awscdk.PhysicalName;
 public class ReportStack extends Stack {
     private Bucket metricsBucket;
 
-    public ReportStack(final Construct parent, final String id) {
-        this(parent, id, null);
-    }
-
     public ReportStack(final Construct parent, final String id, final StackProps props) {
         super(parent, id, props);
 

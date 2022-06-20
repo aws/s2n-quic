@@ -7,16 +7,13 @@ import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.StackProps;
 import software.amazon.awscdk.services.ec2.CfnVPCPeeringConnection;
 import software.amazon.awscdk.services.ec2.Vpc;
-import software.amazon.awscdk.services.ec2.*;
+import software.amazon.awscdk.services.ec2.ISubnet;
+import software.amazon.awscdk.services.ec2.CfnRoute;
 import software.amazon.awscdk.services.ssm.StringParameter;
 import software.amazon.awscdk.services.ssm.IStringParameter;
 
 class PeeringConnectionStack extends Stack {
     private String ref;
-
-    public PeeringConnectionStack(final Construct parent, final String id) {
-        this(parent, id, null);
-    }
 
     public PeeringConnectionStack(final Construct parent, final String id, final PeeringStackProps props) {
         super(parent, id, props);

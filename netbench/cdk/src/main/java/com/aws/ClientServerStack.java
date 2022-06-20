@@ -6,19 +6,29 @@ import software.constructs.Construct;
 import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.StackProps;
 import software.amazon.awscdk.services.s3.Bucket;
-import software.amazon.awscdk.services.ecs.Cluster;
-import software.amazon.awscdk.services.ec2.Vpc;
-import software.amazon.awscdk.services.ecs.*;
 import software.amazon.awscdk.services.autoscaling.AutoScalingGroup;
+
+import software.amazon.awscdk.services.ecs.Cluster;
+import software.amazon.awscdk.services.ecs.ContainerImage;
+import software.amazon.awscdk.services.ecs.EcsOptimizedImage;
+import software.amazon.awscdk.services.ecs.AsgCapacityProvider;
+import software.amazon.awscdk.services.ecs.Ec2TaskDefinition;
+import software.amazon.awscdk.services.ecs.ContainerDefinitionOptions;
+import software.amazon.awscdk.services.ecs.Ec2Service;
+
+import software.amazon.awscdk.services.ecr.Repository;
+
+import software.amazon.awscdk.services.ec2.Vpc;
 import software.amazon.awscdk.services.ec2.InstanceType;
 import software.amazon.awscdk.services.ec2.GatewayVpcEndpoint;
 import software.amazon.awscdk.services.ec2.GatewayVpcEndpointOptions;
 import software.amazon.awscdk.services.ec2.GatewayVpcEndpointAwsService;
 import software.amazon.awscdk.services.ec2.BastionHostLinux;
-import software.amazon.awscdk.services.ec2.*;
+import software.amazon.awscdk.services.ec2.SecurityGroup;
+import software.amazon.awscdk.services.ec2.Peer;
+import software.amazon.awscdk.services.ec2.Port;
+
 import software.amazon.awscdk.services.ssm.StringParameter;
-
-
 import software.amazon.awscdk.services.apigateway.LambdaRestApi;
 import software.amazon.awscdk.services.lambda.Code;
 import software.amazon.awscdk.services.lambda.Function;
@@ -29,12 +39,8 @@ import java.util.HashMap;
 
 
 public class ClientServerStack extends Stack {
-    private String cidr;
-    private Vpc vpc;
-
-    public ClientServerStack(final Construct parent, final String id) {
-        this(parent, id, null);
-    }
+    private final String cidr;
+    private final Vpc vpc;
 
     public ClientServerStack(final Construct parent, final String id, final ClientServerStackProps props) {
         super(parent, id, props);
