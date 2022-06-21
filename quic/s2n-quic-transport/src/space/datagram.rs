@@ -18,8 +18,8 @@ use s2n_quic_core::{
 // Used to call datagram callbacks during packet transmission and
 // packet processing.
 pub struct Manager<Config: endpoint::Config> {
-    sender: <<Config as endpoint::Config>::DatagramEndpoint as Endpoint>::Sender,
-    receiver: <<Config as endpoint::Config>::DatagramEndpoint as Endpoint>::Receiver,
+    pub sender: <<Config as endpoint::Config>::DatagramEndpoint as Endpoint>::Sender,
+    pub receiver: <<Config as endpoint::Config>::DatagramEndpoint as Endpoint>::Receiver,
     max_datagram_payload: u64,
 }
 

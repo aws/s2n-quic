@@ -1861,6 +1861,19 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         );
     }
 
+    #[inline]
+    fn datagram_mut(&mut self, query: &mut dyn event::query::QueryMut) {
+        if let Some((space, _)) = self.space_manager.application_mut() {
+            // Try to execute the query on the sender side. If that fails, try the receiver side.
+            match query.execute_mut(&mut space.datagram_manager.sender) {
+                event::query::ControlFlow::Continue => {
+                    query.execute_mut(&mut space.datagram_manager.receiver);
+                }
+                event::query::ControlFlow::Break => (),
+            }
+        }
+    }
+
     fn with_event_publisher<F>(
         &mut self,
         timestamp: Timestamp,

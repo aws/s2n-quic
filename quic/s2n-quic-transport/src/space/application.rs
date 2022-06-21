@@ -64,7 +64,7 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     keep_alive: KeepAlive,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager<Config>,
-    datagram_manager: datagram::Manager<Config>,
+    pub datagram_manager: datagram::Manager<Config>,
 }
 
 impl<Config: endpoint::Config> fmt::Debug for ApplicationSpace<Config> {

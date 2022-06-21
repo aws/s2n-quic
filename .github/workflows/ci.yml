@@ -430,6 +430,7 @@ jobs:
           - examples/event-framework
           - examples/post-quantum
           - examples/rustls-provider
+          - examples/unreliable-datagram
 
     steps:
       - uses: actions/checkout@v3
