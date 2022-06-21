@@ -16,6 +16,9 @@ import software.amazon.awscdk.services.ecs.Ec2TaskDefinition;
 import software.amazon.awscdk.services.ecs.ContainerDefinitionOptions;
 import software.amazon.awscdk.services.ecs.Ec2Service;
 import software.amazon.awscdk.services.ecs.CapacityProviderStrategy;
+import software.amazon.awscdk.services.ecs.NetworkMode;
+import software.amazon.awscdk.services.ecs.PortMapping;
+import software.amazon.awscdk.services.ecs.AddCapacityOptions;
 
 import software.amazon.awscdk.services.ecr.Repository;
 
@@ -38,7 +41,6 @@ import software.amazon.awscdk.RemovalPolicy;
 
 import java.util.HashMap;
 import java.util.List;
-
 
 public class ClientServerStack extends Stack {
     private String cidr;
@@ -87,6 +89,7 @@ public class ClientServerStack extends Stack {
             .instanceType(new InstanceType(instanceType))
             .machineImage(EcsOptimizedImage.amazonLinux2())
             .minCapacity(0)
+            .desiredCapacity(1)
             .build();
 
         AsgCapacityProvider asgProvider = AsgCapacityProvider.Builder.create(this, stackType + "-asg-provider")
@@ -97,16 +100,19 @@ public class ClientServerStack extends Stack {
 
         Ec2TaskDefinition task = Ec2TaskDefinition.Builder
             .create(this, stackType + "-task")
+            .networkMode(NetworkMode.AWS_VPC)
             .build();
 
         HashMap<String, String> ecrEnv = new HashMap<>();
         ecrEnv.put("SCENARIO", "/usr/bin/scenario.json");
-        ecrEnv.put("PORT", "3000");
+        ecrEnv.put("PORT", "3000");        
 
         task.addContainer(stackType + "-driver", ContainerDefinitionOptions.builder()
-            .image(ContainerImage.fromRegistry("428467523746.dkr.ecr.us-west-2.amazonaws.com/s2n-quic-collector-server"))
+            .image(ContainerImage.fromRegistry("public.ecr.aws/d2r9y8c2/s2n-quic-collector-server"))
             .environment(ecrEnv)
+            .cpu(4)
             .memoryLimitMiB(2048)
+            .portMappings(List.of(PortMapping.builder().containerPort(3000).build()))
             .build()); 
         
         Ec2Service.Builder.create(this, "ec2service-" + stackType)
