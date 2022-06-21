@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use bytes::Bytes;
-use s2n_quic::Server;
-use s2n_quic_core::datagram::default::{Endpoint, Sender};
+use s2n_quic::{
+    provider::datagram::{DefaultEndpoint, Sender},
+    Server,
+};
 use std::error::Error;
 
 /// NOTE: this certificate/key pair is to be used for demonstration purposes only!
@@ -19,7 +21,7 @@ pub static KEY_PEM: &str = include_str!(concat!(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // Create a datagram provider that has a send queue capacity
-    let datagram_provider = Endpoint::builder()
+    let datagram_provider = DefaultEndpoint::builder()
         .with_send_capacity(200)?
         .build()
         .unwrap();
