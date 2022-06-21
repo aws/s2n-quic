@@ -102,7 +102,7 @@ public class ClientServerStack extends Stack {
             .build();
         */
 
-        BastionHostLinux testInstance = BastionHostLinux.Builder.create(this, "testInstance")
+        BastionHostLinux bastion = BastionHostLinux.Builder.create(this, stackType + "-bastion")
             .vpc(vpc)
             .securityGroup(SecurityGroup.fromSecurityGroupId(this, stackType + "vpc-sec-group", this.vpc.getVpcDefaultSecurityGroup()))
             .build();
