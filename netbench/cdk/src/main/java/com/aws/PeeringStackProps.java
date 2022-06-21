@@ -9,7 +9,7 @@ import software.amazon.awscdk.services.ec2.Vpc;
 
 public interface PeeringStackProps extends StackProps {
 
-    public static Builder builder() {
+    static Builder builder() {
         return new Builder();
     }
 
@@ -25,22 +25,22 @@ public interface PeeringStackProps extends StackProps {
 
     String getRegion();
 
-    public static class Builder {
-        private Vpc VpcClient;
-        private Vpc VpcServer;
+    class Builder {
+        private Vpc vpcClient;
+        private Vpc vpcServer;
         private Environment env;
         private String stackType;
         private String ref;
         private String cidr;
         private String region;
 
-        public Builder VpcClient(Vpc VpcClient) {
-            this.VpcClient = VpcClient;
+        public Builder VpcClient(Vpc vpcClient) {
+            this.vpcClient = vpcClient;
             return this;
         }
 
-        public Builder VpcServer(Vpc VpcServer) {
-            this.VpcServer = VpcServer;
+        public Builder VpcServer(Vpc vpcServer) {
+            this.vpcServer = vpcServer;
             return this;
         }
 
@@ -69,16 +69,16 @@ public interface PeeringStackProps extends StackProps {
             return this;
         }
 
-        public PeeringStackProps build() {
+        public static PeeringStackProps build() {
             return new PeeringStackProps() {
                 @Override
                 public Vpc getVpcClient() {
-                    return VpcClient;
+                    return vpcClient;
                 }
 
                 @Override
                 public Vpc getVpcServer() {
-                    return VpcServer;
+                    return vpcServer;
                 }
 
                 @Override

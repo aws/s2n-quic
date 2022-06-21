@@ -48,7 +48,8 @@ public class ClientServerStack extends Stack {
         String instanceType = props.getInstanceType();
         String stackType  = props.getStackType();
         this.cidr = props.getCidr();
-
+        
+        //All construct names are for descriptive purposes only
         this.vpc = Vpc.Builder.create(this, stackType + "-vpc")
             .maxAzs(1)
             .cidr(cidr)
