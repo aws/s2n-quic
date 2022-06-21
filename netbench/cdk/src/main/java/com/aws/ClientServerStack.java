@@ -15,6 +15,7 @@ import software.amazon.awscdk.services.ecs.AsgCapacityProvider;
 import software.amazon.awscdk.services.ecs.Ec2TaskDefinition;
 import software.amazon.awscdk.services.ecs.ContainerDefinitionOptions;
 import software.amazon.awscdk.services.ecs.Ec2Service;
+import software.amazon.awscdk.services.ecs.CapacityProviderStrategy;
 
 import software.amazon.awscdk.services.ecr.Repository;
 
@@ -36,6 +37,7 @@ import software.amazon.awscdk.services.lambda.Runtime;
 import software.amazon.awscdk.RemovalPolicy;
 
 import java.util.HashMap;
+import java.util.List;
 
 
 public class ClientServerStack extends Stack {
@@ -110,6 +112,10 @@ public class ClientServerStack extends Stack {
         Ec2Service.Builder.create(this, "ec2service-" + stackType)
             .cluster(cluster)
             .taskDefinition(task)
+            .capacityProviderStrategies(List.of(CapacityProviderStrategy.builder()
+                 .capacityProvider(asgProvider.getCapacityProviderName())
+                 .weight(1)
+                 .build()))
             .desiredCount(1)
             .build();
         
