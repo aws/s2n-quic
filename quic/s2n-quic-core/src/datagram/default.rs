@@ -3,17 +3,20 @@
 
 // s2n-quic's default implementation of the datagram component
 
-use crate::datagram::{ConnectionInfo, Endpoint, Packet, Receiver, Sender};
+use crate::datagram::{ConnectionInfo, Packet};
 use alloc::collections::VecDeque;
 use bytes::Bytes;
-use core::task::{Context, Poll, Waker};
+use core::{
+    fmt,
+    task::{Context, Poll, Waker},
+};
 
 #[derive(Debug, Default)]
-pub struct DatagramEndpoint {
+pub struct Endpoint {
     send_queue_capacity: usize,
 }
 
-impl DatagramEndpoint {
+impl Endpoint {
     /// Creates a builder for the default datagram endpoint
     pub fn builder() -> EndpointBuilder {
         EndpointBuilder::default()
@@ -26,43 +29,64 @@ pub struct EndpointBuilder {
     send_queue_capacity: usize,
 }
 
+#[non_exhaustive]
+#[derive(Debug)]
+pub enum BuilderError {
+    ZeroCapacity,
+}
+
+impl std::error::Error for BuilderError {}
+
+impl fmt::Display for BuilderError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::ZeroCapacity { .. } => {
+                write!(f, "Cannot create a queue with zero capacity")
+            }
+        }
+    }
+}
+
 impl EndpointBuilder {
-    pub fn with_send_capacity(mut self, capacity: usize) -> Self {
+    pub fn with_send_capacity(mut self, capacity: usize) -> Result<Self, BuilderError> {
+        if capacity == 0 {
+            return Err(BuilderError::ZeroCapacity);
+        }
         self.send_queue_capacity = capacity;
-        self
+        Ok(self)
     }
 
-    pub fn build(self) -> Result<DatagramEndpoint, core::convert::Infallible> {
-        Ok(DatagramEndpoint {
+    pub fn build(self) -> Result<Endpoint, core::convert::Infallible> {
+        Ok(Endpoint {
             send_queue_capacity: self.send_queue_capacity,
         })
     }
 }
 
-impl Endpoint for DatagramEndpoint {
-    type Sender = DefaultSender;
-    type Receiver = DefaultReceiver;
+impl super::Endpoint for Endpoint {
+    type Sender = Sender;
+    type Receiver = Receiver;
 
     fn create_connection(&mut self, info: &ConnectionInfo) -> (Self::Sender, Self::Receiver) {
         (
-            DefaultSender::builder()
+            Sender::builder()
                 .with_capacity(self.send_queue_capacity)
                 .with_connection_info(info)
                 .build()
                 .unwrap(),
-            DefaultReceiver(()),
+            Receiver(()),
         )
     }
 }
 
-pub struct DefaultReceiver(());
+pub struct Receiver(());
 
-impl Receiver for DefaultReceiver {
+impl super::Receiver for Receiver {
     fn on_datagram(&self, _datagram: &[u8]) {}
 }
 
 #[derive(Debug)]
-pub struct DefaultSender {
+pub struct Sender {
     pub queue: VecDeque<Datagram>,
     capacity: usize,
     min_packet_space: usize,
@@ -85,7 +109,23 @@ pub enum SendDatagramError {
     ExceedsPeerTransportLimits,
 }
 
-impl DefaultSender {
+impl fmt::Display for SendDatagramError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::QueueAtCapacity { .. } => {
+                write!(f, "Queue does not have more room for datagrams.")
+            }
+            Self::ExceedsPeerTransportLimits { .. } => {
+                write!(
+                    f,
+                    "Datagram size is larger than peer's transport parameters."
+                )
+            }
+        }
+    }
+}
+
+impl Sender {
     /// Creates a builder for the default datagram sender
     pub fn builder() -> Builder {
         Builder::default()
@@ -212,7 +252,7 @@ impl DefaultSender {
     }
 }
 
-impl Sender for DefaultSender {
+impl super::Sender for Sender {
     fn on_transmit<P: Packet>(&mut self, packet: &mut P) {
         // Cede space to stream data when datagrams are not prioritized
         if packet.has_pending_streams() && !packet.datagrams_prioritized() {
@@ -292,8 +332,8 @@ impl Builder {
     }
 
     /// Builds the datagram sender into a provider
-    pub fn build(self) -> Result<DefaultSender, core::convert::Infallible> {
-        Ok(DefaultSender {
+    pub fn build(self) -> Result<Sender, core::convert::Infallible> {
+        Ok(Sender {
             queue: VecDeque::with_capacity(self.queue_capacity),
             capacity: self.queue_capacity,
             max_datagram_payload: self.max_datagram_payload,
@@ -308,7 +348,7 @@ impl Builder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::datagram::{ConnectionInfo, WriteError};
+    use crate::datagram::WriteError;
     use core::task::{Context, Poll};
     use futures_test::task::new_count_waker;
 
@@ -318,7 +358,7 @@ mod tests {
             max_datagram_payload: 100,
         };
         // Create a default sender queue that only holds two elements
-        let mut default_sender = DefaultSender::builder()
+        let mut default_sender = Sender::builder()
             .with_capacity(2)
             .with_connection_info(&conn_info)
             .build()
@@ -352,7 +392,7 @@ mod tests {
             max_datagram_payload: 100,
         };
         // Create a default sender queue that only holds two elements
-        let mut default_sender = DefaultSender::builder()
+        let mut default_sender = Sender::builder()
             .with_capacity(2)
             .with_connection_info(&conn_info)
             .build()
@@ -380,7 +420,7 @@ mod tests {
     #[test]
     fn poll_send_datagram() {
         let conn_info = ConnectionInfo::new(100);
-        let mut default_sender = DefaultSender::builder()
+        let mut default_sender = Sender::builder()
             .with_capacity(2)
             .with_connection_info(&conn_info)
             .build()
@@ -420,7 +460,7 @@ mod tests {
             has_pending_streams: false,
             datagrams_prioritized: false,
         };
-        default_sender.on_transmit(&mut packet);
+        crate::datagram::Sender::on_transmit(&mut default_sender, &mut packet);
 
         // Waker was called
         assert_eq!(wake_count, 1);
@@ -443,7 +483,7 @@ mod tests {
         let conn_info = ConnectionInfo {
             max_datagram_payload: 100,
         };
-        let mut default_sender = DefaultSender::builder()
+        let mut default_sender = Sender::builder()
             .with_capacity(3)
             .with_connection_info(&conn_info)
             .build()
@@ -466,7 +506,7 @@ mod tests {
     fn record_capacity_stats() {
         const SMOOTHED_PACKET_SPACE: f64 = 102.3193359375;
 
-        let mut default_sender = DefaultSender::builder().build().unwrap();
+        let mut default_sender = Sender::builder().build().unwrap();
         default_sender.record_capacity_stats(100);
         default_sender.record_capacity_stats(100);
         default_sender.record_capacity_stats(200);
@@ -485,7 +525,7 @@ mod tests {
     // off the send queue if the remaining packet space is too small to send datagrams.
     fn has_written_test() {
         let conn_info = ConnectionInfo::new(100);
-        let mut default_sender = DefaultSender::builder()
+        let mut default_sender = Sender::builder()
             .with_connection_info(&conn_info)
             .build()
             .unwrap();
@@ -501,7 +541,7 @@ mod tests {
             has_pending_streams: false,
             datagrams_prioritized: false,
         };
-        default_sender.on_transmit(&mut packet);
+        crate::datagram::Sender::on_transmit(&mut default_sender, &mut packet);
 
         // Packet still has capacity to write datagrams
         assert!(packet.remaining_capacity > 0);

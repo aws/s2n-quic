@@ -72,5 +72,5 @@ pub(crate) trait ConnectionApiProvider: Sync + Send {
 
     fn query_event_context_mut(&self, query: &mut dyn QueryMut) -> Result<(), connection::Error>;
 
-    fn datagram_sender(&self, query: &mut dyn QueryMut) -> Result<(), connection::Error>;
+    fn datagram_mut(&self, query: &mut dyn QueryMut) -> Result<(), connection::Error>;
 }

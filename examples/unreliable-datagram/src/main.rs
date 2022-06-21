@@ -3,7 +3,7 @@
 
 use bytes::Bytes;
 use s2n_quic::Server;
-use s2n_quic_core::datagram::default::{DatagramEndpoint, DefaultSender};
+use s2n_quic_core::datagram::default::{Endpoint, Sender};
 use std::error::Error;
 
 /// NOTE: this certificate/key pair is to be used for demonstration purposes only!
@@ -19,8 +19,8 @@ pub static KEY_PEM: &str = include_str!(concat!(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // Create a datagram provider that has a send queue capacity
-    let datagram_provider = DatagramEndpoint::builder()
-        .with_send_capacity(200)
+    let datagram_provider = Endpoint::builder()
+        .with_send_capacity(200)?
         .build()
         .unwrap();
 
@@ -38,10 +38,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             // Add datagrams to the send queue by passing in a closure that calls
             // the desired datagram send function
-            let send_func = |x: &mut DefaultSender| {
-                let _ = x.send_datagram(Bytes::from_static(&[1, 2, 3]));
+            let send_func = |x: &mut Sender| {
+                match x.send_datagram(Bytes::from_static(&[1, 2, 3])) {
+                    Ok(_) => {
+                        // The datagram was successfully inserted into the send queue
+                    }
+                    Err(err) => {
+                        eprintln!("{}", err);
+                        // An error was encountered while calling the send_datagram
+                        // method. Either the peer didn't advertise support for datagrams
+                        // or the send queue is at capacity.
+                    }
+                }
             };
-            let _ = connection.datagram_sender(send_func);
+            let _ = connection.datagram_mut(send_func);
         });
     }
 

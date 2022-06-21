@@ -357,9 +357,9 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
     }
 
     #[inline]
-    fn datagram_sender(&self, query: &mut dyn QueryMut) -> Result<(), connection::Error> {
+    fn datagram_mut(&self, query: &mut dyn QueryMut) -> Result<(), connection::Error> {
         self.api_write_call(|conn| {
-            conn.datagram_sender(query);
+            conn.datagram_mut(query);
             Ok(())
         })
     }

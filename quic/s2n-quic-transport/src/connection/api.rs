@@ -213,7 +213,7 @@ impl Connection {
     }
 
     #[inline]
-    pub fn datagram_sender(&self, query: &mut dyn QueryMut) -> Result<(), connection::Error> {
-        self.api.datagram_sender(query)
+    pub fn datagram_mut(&self, query: &mut dyn QueryMut) -> Result<(), connection::Error> {
+        self.api.datagram_mut(query)
     }
 }
