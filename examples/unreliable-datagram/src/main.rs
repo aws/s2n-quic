@@ -3,7 +3,7 @@
 
 use bytes::Bytes;
 use s2n_quic::{
-    provider::datagram::{DefaultEndpoint, Sender},
+    provider::datagram::{default::Endpoint, default::Sender},
     Server,
 };
 use std::error::Error;
@@ -21,7 +21,7 @@ pub static KEY_PEM: &str = include_str!(concat!(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // Create a datagram provider that has a send queue capacity
-    let datagram_provider = DefaultEndpoint::builder()
+    let datagram_provider = Endpoint::builder()
         .with_send_capacity(200)?
         .build()
         .unwrap();

@@ -1869,7 +1869,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 event::query::ControlFlow::Continue => {
                     query.execute_mut(&mut space.datagram_manager.receiver);
                 }
-                event::query::ControlFlow::Break => return,
+                event::query::ControlFlow::Break => (),
             }
         }
     }
