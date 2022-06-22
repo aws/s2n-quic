@@ -69,7 +69,8 @@ pub struct Client {
     #[structopt(long, default_value = "netbench")]
     pub application_protocols: Vec<String>,
 
-    #[structopt(short, long, default_value = "::")]
+    //#[structopt(short, long, default_value = "::")]
+    #[structopt(short, long, default_value = "::", env = "LOCAL_IP")]
     pub local_ip: IpAddr,
 
     #[structopt(long, default_value = "0", env = "CLIENT_ID")]

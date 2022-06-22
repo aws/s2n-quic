@@ -25,32 +25,25 @@ class PeeringConnectionStack extends Stack {
             String serverVpcId = StringParameter.fromStringParameterName(this, "server-vpc-id",
                 "server-vpc-id").getStringValue();
 
-            /*
-            new SSMParameterReader(this, "client-vpc-id-reader", SSMParameterReaderProps.builder()
-                .sdkCall("server-vpc-id", "us-east-1")
+            String clientVpcId = new SSMParameterReader(this, "client-vpc-id-reader", SSMParameterReaderProps.builder()
+                .sdkCall("client-vpc-id", props.getRegion())
                 .policy()
-                .build());
+                .build())
+                .getParameterValue();
 
+            
             String cidr = new SSMParameterReader(this, "client-cidr-reader", SSMParameterReaderProps.builder()
                 .sdkCall("client-cidr", props.getRegion())
                 .policy()
                 .build())
                 .getParameterValue();
-            */
             
-            String clientVpcId = StringParameter.fromStringParameterName(this, "client-vpc-id",
-                "client-vpc-id").getStringValue();
-            
-            
-            String cidr = StringParameter.fromStringParameterName(this, "client-cidr",
-                "client-cidr").getStringValue();
-            
-
             //Vpc peering connection between client-server vpc's
             CfnVPCPeeringConnection conn = CfnVPCPeeringConnection.Builder
                 .create(this, "vpc-peering-connection")
                 .vpcId(serverVpcId)
                 .peerVpcId(clientVpcId)
+                .peerRegion(props.getRegion())
                 .build();
 
             //Establishing server-to-client connections between private subnets
@@ -63,19 +56,29 @@ class PeeringConnectionStack extends Stack {
                 .build();
                 counter++;
             }
+
             StringParameter.Builder.create(this, "conn-ref")
-            .parameterName("conn-ref")
-            .stringValue(conn.getRef())
-            .build();
+                .parameterName("conn-ref")
+                .stringValue(conn.getRef())
+                .build();
         } else {
-            String connRef = StringParameter.fromStringParameterName(this, "conn-ref",
-                "conn-ref").getStringValue();
+            String cidr = new SSMParameterReader(this, "server-cidr-reader", SSMParameterReaderProps.builder()
+                .sdkCall("server-cidr", props.getRegion())
+                .policy()
+                .build())
+                .getParameterValue();
+
+            String connRef = new SSMParameterReader(this, "conn-ref-reader", SSMParameterReaderProps.builder()
+                .sdkCall("conn-ref", props.getRegion())
+                .policy()
+                .build())
+                .getParameterValue();
 
             //Establishing client-to-server connections between private subnets
             for (ISubnet subnet: props.getVpcClient().getPrivateSubnets()) {
                 CfnRoute.Builder.create(this, 
                 "client-to-server" + Integer.toString(counter))
-                .destinationCidrBlock(props.getCidr())
+                .destinationCidrBlock(cidr)
                 .routeTableId(subnet.getRouteTable().getRouteTableId())
                 .vpcPeeringConnectionId(connRef)
                 .build();

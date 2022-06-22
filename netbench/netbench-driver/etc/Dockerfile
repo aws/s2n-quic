@@ -79,7 +79,7 @@ RUN set -eux; \
     cargo build --bin $TARGET; \
     cp target/debug/$TARGET /app/bin; \
   fi; \
-  rm -rf target
+  rm -rf target;
 
 FROM debian:latest
 

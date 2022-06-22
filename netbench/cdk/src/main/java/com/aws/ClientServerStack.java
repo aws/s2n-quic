@@ -36,7 +36,7 @@ import software.amazon.awscdk.services.lambda.Runtime;
 import software.amazon.awscdk.RemovalPolicy;
 
 import java.util.HashMap;
-
+import java.util.List;
 
 public class ClientServerStack extends Stack {
     private final String cidr;
@@ -73,7 +73,6 @@ public class ClientServerStack extends Stack {
             .stringValue(this.vpc.getVpcCidrBlock())
             .build();
 
-        /*
         Cluster cluster = Cluster.Builder.create(this, stackType + "-cluster")
             .vpc(vpc)
             .build();
@@ -83,6 +82,7 @@ public class ClientServerStack extends Stack {
             .instanceType(new InstanceType(instanceType))
             .machineImage(EcsOptimizedImage.amazonLinux2())
             .minCapacity(0)
+            .desiredCapacity(1)
             .build();
 
         AsgCapacityProvider asgProvider = AsgCapacityProvider.Builder.create(this, stackType + "-asg-provider")
@@ -90,15 +90,33 @@ public class ClientServerStack extends Stack {
             .build();
         
         cluster.addAsgCapacityProvider(asgProvider);
-
+        
+        /*
         Ec2TaskDefinition task = Ec2TaskDefinition.Builder
             .create(this, stackType + "-task")
+            .networkMode(NetworkMode.AWS_VPC)
             .build();
-        task.addContainer(); 
+
+        HashMap<String, String> ecrEnv = new HashMap<>();
+        ecrEnv.put("SCENARIO", "/usr/bin/request_response.json");
+        ecrEnv.put("PORT", "3000");        
+
+        task.addContainer(stackType + "-driver", ContainerDefinitionOptions.builder()
+            .image(ContainerImage.fromRegistry("public.ecr.aws/d2r9y8c2/s2n-quic-collector-server-scenario"))
+            .environment(ecrEnv)
+            .cpu(4)
+            .memoryLimitMiB(2048)
+            .portMappings(List.of(PortMapping.builder().containerPort(3000).hostPort(3000).build()))
+            .build()); 
         
         Ec2Service.Builder.create(this, "ec2service-" + stackType)
             .cluster(cluster)
             .taskDefinition(task)
+            .capacityProviderStrategies(List.of(CapacityProviderStrategy.builder()
+                 .capacityProvider(asgProvider.getCapacityProviderName())
+                 .weight(1)
+                 .build()))
+            .desiredCount(1)
             .build();
         */
 
