@@ -89,6 +89,7 @@ public class NetbenchAutoApp {
             .instanceType(ec2InstanceType)
             .cidr("11.0.0.0/16")
             .stackType("server")
+            .protocol(protocol)
             .build());
 
         serverStack.addDependency(reportStack);
@@ -99,6 +100,7 @@ public class NetbenchAutoApp {
             .instanceType(ec2InstanceType)
             .cidr("10.0.0.0/16")
             .stackType("client")
+            .protocol(protocol)
             .build());
         
         clientStack.addDependency(serverStack);

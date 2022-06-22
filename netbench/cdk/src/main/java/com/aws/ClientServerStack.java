@@ -21,6 +21,7 @@ import software.amazon.awscdk.services.ecs.PortMapping;
 import software.amazon.awscdk.services.ecs.AddCapacityOptions;
 
 import software.amazon.awscdk.services.ecr.Repository;
+import software.amazon.awscdk.services.ecr.assets.DockerImageAsset;
 
 import software.amazon.awscdk.services.ec2.Vpc;
 import software.amazon.awscdk.services.ec2.InstanceType;
@@ -103,16 +104,29 @@ public class ClientServerStack extends Stack {
             .networkMode(NetworkMode.AWS_VPC)
             .build();
 
+        /*
+        HashMap<String, String> buildArgs = new HashMap<>();
+        buildArgs.put("ENDPOINT", "server");
+        buildArgs.put("DRIVER", props.getProtocol());
+
+        DockerImageAsset dockerAsset = DockerImageAsset.Builder.create(this, "x")
+            .directory("/Users/orrinni/Documents/s2n-quic-orrin")
+            .file("./netbench/netbench-driver/etc/Dockerfile")
+            .buildArgs(buildArgs)
+            .build();
+        */
+
         HashMap<String, String> ecrEnv = new HashMap<>();
-        ecrEnv.put("SCENARIO", "/usr/bin/scenario.json");
+        ecrEnv.put("SCENARIO", "/usr/bin/request_response.json");
         ecrEnv.put("PORT", "3000");        
 
         task.addContainer(stackType + "-driver", ContainerDefinitionOptions.builder()
-            .image(ContainerImage.fromRegistry("public.ecr.aws/d2r9y8c2/s2n-quic-collector-server"))
+            .image(ContainerImage.fromRegistry("public.ecr.aws/d2r9y8c2/s2n-quic-collector-server-scenario"))
+            //.image(ContainerImage.fromDockerImageAsset(dockerAsset))
             .environment(ecrEnv)
             .cpu(4)
             .memoryLimitMiB(2048)
-            .portMappings(List.of(PortMapping.builder().containerPort(3000).build()))
+            .portMappings(List.of(PortMapping.builder().containerPort(3000).hostPort(3000).build()))
             .build()); 
         
         Ec2Service.Builder.create(this, "ec2service-" + stackType)

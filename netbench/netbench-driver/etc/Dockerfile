@@ -53,29 +53,41 @@ RUN set -eux; \
   if [ "$release" = "true" ]; then \
     export ARGS="--release"; \
   fi; \
+  mkdir -p /app/bin; \
   cd netbench; \
-  cargo build --lib $ARGS;
+  cargo build --lib $ARGS; \
+  if [ "$release" = "true" ]; then \
+    cargo build --bin netbench-collector --release; \
+    cp target/release/netbench-collector /app/bin; \
+  else \
+    cargo build --bin netbench-collector; \
+    cp target/debug/netbench-collector /app/bin; \
+  fi; \
+  rm -rf target;
 
 ARG DRIVER="s2n-quic"
 ARG ENDPOINT="client"
 
 RUN set -eux; \
-  mkdir -p /app/bin; \
   export TARGET="netbench-driver-$DRIVER-$ENDPOINT"; \
   echo "#!/usr/bin/env bash\neval /usr/bin/netbench-collector /usr/bin/$TARGET \$@" > /app/bin/start; \
   cd netbench; \
   if [ "$release" = "true" ]; then \
     cargo build --bin $TARGET --release; \
     cp target/release/$TARGET /app/bin; \
-    cargo build --bin netbench-collector --release; \
-    cp target/release/netbench-collector /app/bin; \
   else \
     cargo build --bin $TARGET; \
     cp target/debug/$TARGET /app/bin; \
-    cargo build --bin netbench-collector; \
-    cp target/debug/netbench-collector /app/bin; \
   fi; \
-  rm -rf target
+  rm -rf target;
+
+ARG SCENARIO="request_response.json"
+
+RUN set -eux; \
+  cd netbench; \
+  cargo run --bin netbench-scenarios; \
+  cp target/netbench/request_response.json /app/bin; \
+  rm -rf target;
 
 FROM debian:latest
 
