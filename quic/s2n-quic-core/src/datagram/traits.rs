@@ -38,7 +38,7 @@ impl Default for ConnectionInfo {
 
 pub trait Receiver: 'static + Send {
     // A callback that gives users direct access to datagrams as they are read off a packet
-    fn on_datagram(&self, datagram: &[u8]);
+    fn on_datagram(&mut self, datagram: &[u8]);
 }
 pub trait Sender: 'static + Send {
     /// A callback that allows users to write datagrams directly to the packet

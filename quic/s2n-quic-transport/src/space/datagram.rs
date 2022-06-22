@@ -54,7 +54,7 @@ impl<Config: endpoint::Config> Manager<Config> {
 
     // A callback that allows users to access datagrams directly after they are
     // received.
-    pub fn on_datagram_frame(&self, datagram: DatagramRef) {
+    pub fn on_datagram_frame(&mut self, datagram: DatagramRef) {
         self.receiver.on_datagram(datagram.data);
     }
 }

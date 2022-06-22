@@ -28,5 +28,5 @@ impl Sender for DisabledSender {
 }
 
 impl Receiver for DisabledReceiver {
-    fn on_datagram(&self, _datagram: &[u8]) {}
+    fn on_datagram(&mut self, _datagram: &[u8]) {}
 }
