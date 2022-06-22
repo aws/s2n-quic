@@ -593,6 +593,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             },
         });
 
+        publisher.on_mtu_updated(event::builder::MtuUpdated {
+            path_id: path_manager.active_path_id().into_event(),
+            mtu: path_manager.active_path().mtu_controller.mtu() as u16,
+        });
+
         let wakeup_handle = Arc::from(parameters.wakeup_handle);
         let waker = Waker::from(wakeup_handle.clone());
         let mut connection = Self {
@@ -1854,6 +1859,19 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             &mut self.event_context.context,
             query,
         );
+    }
+
+    #[inline]
+    fn datagram_mut(&mut self, query: &mut dyn event::query::QueryMut) {
+        if let Some((space, _)) = self.space_manager.application_mut() {
+            // Try to execute the query on the sender side. If that fails, try the receiver side.
+            match query.execute_mut(&mut space.datagram_manager.sender) {
+                event::query::ControlFlow::Continue => {
+                    query.execute_mut(&mut space.datagram_manager.receiver);
+                }
+                event::query::ControlFlow::Break => (),
+            }
+        }
     }
 
     fn with_event_publisher<F>(

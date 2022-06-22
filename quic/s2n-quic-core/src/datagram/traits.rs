@@ -12,20 +12,27 @@ pub trait Endpoint: 'static + Send {
     fn create_connection(&mut self, info: &ConnectionInfo) -> (Self::Sender, Self::Receiver);
 }
 
-// ConnectionInfo will eventually contain information needed to set up a
-// datagram provider
+/// ConnectionInfo contains the peer's limit on the size of datagrams
+/// they accept
+///
+/// Sending a datagram larger than this will result in an error
 #[non_exhaustive]
-pub struct ConnectionInfo {}
+#[derive(Debug)]
+pub struct ConnectionInfo {
+    pub max_datagram_payload: u64,
+}
 
 impl ConnectionInfo {
-    pub fn new() -> Self {
-        ConnectionInfo {}
+    pub fn new(max_datagram_payload: u64) -> Self {
+        ConnectionInfo {
+            max_datagram_payload,
+        }
     }
 }
 
 impl Default for ConnectionInfo {
     fn default() -> Self {
-        ConnectionInfo::new()
+        ConnectionInfo::new(0)
     }
 }
 
@@ -68,5 +75,6 @@ pub trait Packet {
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum WriteError {
-    DatagramIsTooLarge,
+    ExceedsPacketCapacity,
+    ExceedsPeerTransportLimits,
 }

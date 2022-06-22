@@ -2751,20 +2751,53 @@ fn can_send_multiple_chunks() {
 
                     assert_eq!(expected_consumed_bytes, offset);
 
-                    let no_write_waiter = !with_context || !flush;
-                    let expected_interests = if finish && no_write_waiter {
-                        stream_interests(&["fin"])
-                    } else {
-                        stream_interests(&[])
-                    };
-
                     execute_instructions(
                         &mut test_env,
-                        &[Instruction::CheckInterests(expected_interests)],
+                        &[Instruction::CheckInterests(stream_interests(&[]))],
                     );
                 }
             }
         }
+    }
+}
+
+#[test]
+fn detach_modes() {
+    for detached in [false, true] {
+        let test_env_config = TestEnvironmentConfig {
+            stream_id: StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional),
+            local_endpoint_type: endpoint::Type::Client,
+            ..Default::default()
+        };
+        let mut test_env = setup_stream_test_env_with_config(test_env_config);
+
+        let mut chunks = gen_pattern_test_chunks(VarInt::from_u8(0), &[16]);
+        let mut request = ops::Request::default();
+
+        request.send(&mut chunks).finish();
+
+        if detached {
+            request.detach_tx();
+        }
+
+        test_env
+            .run_request(&mut request, false)
+            .expect("request should succeed");
+
+        execute_instructions(
+            &mut test_env,
+            &[
+                Instruction::CheckInterests(stream_interests(&["tx"])),
+                Instruction::CheckDataTx(VarInt::from_u32(0), 16, true, false, pn(0)),
+                Instruction::CheckInterests(stream_interests(&["ack"])),
+                Instruction::AckPacket(pn(0), ExpectWakeup(Some(false))),
+                Instruction::CheckInterests(if detached {
+                    stream_interests(&["fin"])
+                } else {
+                    stream_interests(&[])
+                }),
+            ],
+        );
     }
 }
 

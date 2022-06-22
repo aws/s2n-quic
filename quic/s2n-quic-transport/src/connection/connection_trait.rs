@@ -455,6 +455,8 @@ pub trait ConnectionTrait: 'static + Send + Sized {
 
     fn query_event_context_mut(&mut self, query: &mut dyn event::query::QueryMut);
 
+    fn datagram_mut(&mut self, query: &mut dyn event::query::QueryMut);
+
     fn with_event_publisher<F>(
         &mut self,
         timestamp: Timestamp,

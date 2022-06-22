@@ -311,61 +311,15 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: true
-
-      - uses: actions-rs/toolchain@v1.0.7
-        id: toolchain
+      - uses: ./.github/actions/duvet
         with:
-          toolchain: stable
-          override: true
-
-      - uses: camshaft/rust-cache@v1
-
-      - name: Clean up cache
-        run: |
-          rm -f target/release/duvet
-          rm -f common/duvet/target/release/duvet
-
-      - name: Cache duvet
-        uses: actions/cache@v3.0.3
-        continue-on-error: true
-        with:
-          path: target/release/duvet
-          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-duvet-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('common/duvet/**') }}
-
-      - name: Build duvet
-        working-directory: common/duvet
-        run: |
-          if [ ! -f ../../target/release/duvet ]; then
-            mkdir -p ../../target/release
-            cargo build --release
-            cp target/release/duvet ../../target/release/duvet
-          fi
-
-      - name: Run duvet
-        run: ./scripts/compliance ${{ github.sha }}
-
-      - uses: aws-actions/configure-aws-credentials@v1.6.1
-        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
-        with:
+          report-script: ./scripts/compliance
+          report-path: ./target/compliance/report.html
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
-
-      - name: Upload to S3
-        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
-        id: s3
-        run: |
-          TARGET="${{ github.sha }}/compliance.html"
-          aws s3 cp target/compliance/report.html "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET"
-          echo "::set-output name=URL::$URL"
-
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
-        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
-        with:
-          name: "compliance / report"
-          status: "success"
-          url: "${{ steps.s3.outputs.URL }}"
+          aws-s3-bucket-name: s2n-quic-ci-artifacts
+          aws-s3-region: us-west-1
+          cdn: $CDN
 
   coverage:
     runs-on: ubuntu-latest
@@ -430,6 +384,7 @@ jobs:
           - examples/event-framework
           - examples/post-quantum
           - examples/rustls-provider
+          - examples/unreliable-datagram
 
     steps:
       - uses: actions/checkout@v3

@@ -442,6 +442,11 @@ impl<Config: endpoint::Config> Manager<Config> {
             new: path_event!(path, new_path_id),
         });
 
+        publisher.on_mtu_updated(event::builder::MtuUpdated {
+            path_id: new_path_id.into_event(),
+            mtu: path.mtu_controller.mtu() as u16,
+        });
+
         // create a new path
         if new_path_idx < self.paths.len() {
             self.paths[new_path_idx] = path;

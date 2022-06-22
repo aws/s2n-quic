@@ -3,6 +3,7 @@
 
 use crate::{
     contexts::WriteContext,
+    path,
     path::{MaxMtu, MINIMUM_MTU},
     transmission,
 };
@@ -10,6 +11,8 @@ use core::time::Duration;
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{
     counter::{Counter, Saturating},
+    event,
+    event::IntoEvent,
     frame,
     inet::SocketAddress,
     packet::number::PacketNumber,
@@ -179,11 +182,13 @@ impl Controller {
     //# supported, this mechanism MAY also be used by DPLPMTUD to acknowledge
     //# reception of a probe packet.
     /// This method gets called when a packet delivery got acknowledged
-    pub fn on_packet_ack<CC: CongestionController>(
+    pub fn on_packet_ack<CC: CongestionController, Pub: event::ConnectionPublisher>(
         &mut self,
         packet_number: PacketNumber,
         sent_bytes: u16,
         congestion_controller: &mut CC,
+        path_id: path::Id,
+        publisher: &mut Pub,
     ) {
         if self.state == State::Disabled || !packet_number.space().is_application_data() {
             return;
@@ -206,6 +211,11 @@ impl Controller {
                 // A new MTU has been confirmed, notify the congestion controller
                 congestion_controller.on_mtu_update(self.plpmtu);
 
+                publisher.on_mtu_updated(event::builder::MtuUpdated {
+                    path_id: path_id.into_event(),
+                    mtu: self.plpmtu,
+                });
+
                 self.update_probed_size();
 
                 //= https://www.rfc-editor.org/rfc/rfc8899#section-8
@@ -225,12 +235,14 @@ impl Controller {
     //# robust in the case where probe packets are lost due to other
     //# reasons (including link transmission error, congestion).
     /// This method gets called when a packet loss is reported
-    pub fn on_packet_loss<CC: CongestionController>(
+    pub fn on_packet_loss<CC: CongestionController, Pub: event::ConnectionPublisher>(
         &mut self,
         packet_number: PacketNumber,
         lost_bytes: u16,
         now: Timestamp,
         congestion_controller: &mut CC,
+        path_id: path::Id,
+        publisher: &mut Pub,
     ) {
         // MTU probes are only sent in application data space
         if !packet_number.space().is_application_data() {
@@ -264,7 +276,7 @@ impl Controller {
                 }
 
                 if self.black_hole_counter > BLACK_HOLE_THRESHOLD {
-                    self.on_black_hole_detected(now, congestion_controller);
+                    self.on_black_hole_detected(now, congestion_controller, path_id, publisher);
                 }
             }
         }
@@ -364,10 +376,12 @@ impl Controller {
     }
 
     /// Called when an excessive number of packets larger than the BASE_PLPMTU have been lost
-    fn on_black_hole_detected<CC: CongestionController>(
+    fn on_black_hole_detected<CC: CongestionController, Pub: event::ConnectionPublisher>(
         &mut self,
         now: Timestamp,
         congestion_controller: &mut CC,
+        path_id: path::Id,
+        publisher: &mut Pub,
     ) {
         self.black_hole_counter = Default::default();
         self.largest_acked_mtu_sized_packet = None;
@@ -378,6 +392,11 @@ impl Controller {
         self.state = State::SearchComplete;
         // Arm the PMTU raise timer to try a larger MTU again after a cooling off period
         self.arm_pmtu_raise_timer(now + BLACK_HOLE_COOL_OFF_DURATION);
+
+        publisher.on_mtu_updated(event::builder::MtuUpdated {
+            path_id: path_id.into_event(),
+            mtu: self.plpmtu,
+        })
     }
 
     /// Arm the PMTU Raise Timer if there is still room to increase the
@@ -435,7 +454,7 @@ mod test {
     use super::*;
     use crate::contexts::testing::{MockWriteContext, OutgoingFrameBuffer};
     use s2n_quic_core::{
-        endpoint, frame::Frame, packet::number::PacketNumberSpace,
+        endpoint, event::testing::Publisher, frame::Frame, packet::number::PacketNumberSpace,
         recovery::congestion_controller::testing::mock::CongestionController,
         time::timer::Provider as _, varint::VarInt,
     };
@@ -555,11 +574,18 @@ mod test {
         let pn = pn(1);
         let mut cc = CongestionController::default();
         let now = now();
+        let mut publisher = Publisher::snapshot();
         controller.state = State::Searching(pn, now);
         controller.probed_size = BASE_PLPMTU;
         controller.max_probe_size = BASE_PLPMTU + PROBE_THRESHOLD * 2 - 1;
 
-        controller.on_packet_ack(pn, BASE_PLPMTU, &mut cc);
+        controller.on_packet_ack(
+            pn,
+            BASE_PLPMTU,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
 
         assert_eq!(
             BASE_PLPMTU + (max_udp_payload - BASE_PLPMTU) / 2,
@@ -591,9 +617,16 @@ mod test {
         let pn = pn(1);
         let mut cc = CongestionController::default();
         let now = now();
+        let mut publisher = Publisher::snapshot();
         controller.state = State::Searching(pn, now);
 
-        controller.on_packet_ack(pn, controller.probed_size, &mut cc);
+        controller.on_packet_ack(
+            pn,
+            controller.probed_size,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
 
         assert_eq!(1472 + (max_udp_payload - 1472) / 2, controller.probed_size);
         assert_eq!(1, cc.on_mtu_update);
@@ -618,9 +651,16 @@ mod test {
         let pn = pn(1);
         let mut cc = CongestionController::default();
         let now = now();
+        let mut publisher = Publisher::snapshot();
         controller.state = State::Searching(pn, now);
 
-        controller.on_packet_ack(pn, controller.probed_size, &mut cc);
+        controller.on_packet_ack(
+            pn,
+            controller.probed_size,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
 
         assert_eq!(1472 + (max_udp_payload - 1472) / 2, controller.probed_size);
         assert_eq!(1, cc.on_mtu_update);
@@ -633,16 +673,29 @@ mod test {
         let mut controller = new_controller(1500 + (PROBE_THRESHOLD * 2));
         let pnum = pn(3);
         let mut cc = CongestionController::default();
+        let mut publisher = Publisher::snapshot();
         controller.enable();
 
         controller.black_hole_counter += 1;
         // ack a packet smaller than the plpmtu
-        controller.on_packet_ack(pnum, controller.plpmtu - 1, &mut cc);
+        controller.on_packet_ack(
+            pnum,
+            controller.plpmtu - 1,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
         assert_eq!(controller.black_hole_counter, 1);
         assert_eq!(None, controller.largest_acked_mtu_sized_packet);
 
         // ack a packet the size of the plpmtu
-        controller.on_packet_ack(pnum, controller.plpmtu, &mut cc);
+        controller.on_packet_ack(
+            pnum,
+            controller.plpmtu,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
         assert_eq!(controller.black_hole_counter, 0);
         assert_eq!(Some(pnum), controller.largest_acked_mtu_sized_packet);
 
@@ -650,7 +703,13 @@ mod test {
 
         // ack an older packet
         let pnum_2 = pn(2);
-        controller.on_packet_ack(pnum_2, controller.plpmtu, &mut cc);
+        controller.on_packet_ack(
+            pnum_2,
+            controller.plpmtu,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
         assert_eq!(controller.black_hole_counter, 1);
         assert_eq!(Some(pnum), controller.largest_acked_mtu_sized_packet);
     }
@@ -660,12 +719,19 @@ mod test {
         let mut controller = new_controller(1500 + (PROBE_THRESHOLD * 2));
         let pnum = pn(3);
         let mut cc = CongestionController::default();
+        let mut publisher = Publisher::snapshot();
 
         controller.black_hole_counter += 1;
         controller.largest_acked_mtu_sized_packet = Some(pnum);
 
         let pn = pn(10);
-        controller.on_packet_ack(pn, controller.plpmtu, &mut cc);
+        controller.on_packet_ack(
+            pn,
+            controller.plpmtu,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
 
         assert_eq!(State::Disabled, controller.state);
         assert_eq!(controller.black_hole_counter, 1);
@@ -677,6 +743,7 @@ mod test {
         let mut controller = new_controller(1500 + (PROBE_THRESHOLD * 2));
         let pnum = pn(3);
         let mut cc = CongestionController::default();
+        let mut publisher = Publisher::snapshot();
         controller.enable();
 
         controller.black_hole_counter += 1;
@@ -685,7 +752,13 @@ mod test {
         // on_packet_ack will be called with packet numbers from Initial and Handshake space,
         // so it should not fail in this scenario.
         let pn = PacketNumberSpace::Handshake.new_packet_number(VarInt::from_u8(10));
-        controller.on_packet_ack(pn, controller.plpmtu, &mut cc);
+        controller.on_packet_ack(
+            pn,
+            controller.plpmtu,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
         assert_eq!(controller.black_hole_counter, 1);
         assert_eq!(Some(pnum), controller.largest_acked_mtu_sized_packet);
     }
@@ -702,10 +775,18 @@ mod test {
         let pn = pn(1);
         let mut cc = CongestionController::default();
         let now = now();
+        let mut publisher = Publisher::snapshot();
         controller.state = State::Searching(pn, now);
         let probed_size = controller.probed_size;
 
-        controller.on_packet_loss(pn, controller.probed_size, now, &mut cc);
+        controller.on_packet_loss(
+            pn,
+            controller.probed_size,
+            now,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
 
         assert_eq!(0, cc.on_mtu_update);
         assert_eq!(max_udp_payload, controller.max_probe_size);
@@ -720,11 +801,19 @@ mod test {
         let pn = pn(1);
         let mut cc = CongestionController::default();
         let now = now();
+        let mut publisher = Publisher::snapshot();
         controller.state = State::Searching(pn, now);
         controller.probe_count = MAX_PROBES;
         assert_eq!(max_udp_payload, controller.max_probe_size);
 
-        controller.on_packet_loss(pn, controller.probed_size, now, &mut cc);
+        controller.on_packet_loss(
+            pn,
+            controller.probed_size,
+            now,
+            &mut cc,
+            path::Id::test_id(),
+            &mut publisher,
+        );
 
         assert_eq!(0, cc.on_mtu_update);
         assert_eq!(1472, controller.max_probe_size);
@@ -740,6 +829,7 @@ mod test {
         let mut controller = new_controller(1500);
         let mut cc = CongestionController::default();
         let now = now();
+        let mut publisher = Publisher::snapshot();
         controller.plpmtu = 1472;
         controller.enable();
 
@@ -747,14 +837,35 @@ mod test {
             let pn = pn(i as usize);
 
             // Losing a packet the size of the BASE_PLPMTU should not increase the black_hole_counter
-            controller.on_packet_loss(pn, BASE_PLPMTU, now, &mut cc);
+            controller.on_packet_loss(
+                pn,
+                BASE_PLPMTU,
+                now,
+                &mut cc,
+                path::Id::test_id(),
+                &mut publisher,
+            );
             assert_eq!(controller.black_hole_counter, i);
 
             // Losing a packet larger than the PLPMTU should not increase the black_hole_counter
-            controller.on_packet_loss(pn, controller.plpmtu + 1, now, &mut cc);
+            controller.on_packet_loss(
+                pn,
+                controller.plpmtu + 1,
+                now,
+                &mut cc,
+                path::Id::test_id(),
+                &mut publisher,
+            );
             assert_eq!(controller.black_hole_counter, i);
 
-            controller.on_packet_loss(pn, BASE_PLPMTU + 1, now, &mut cc);
+            controller.on_packet_loss(
+                pn,
+                BASE_PLPMTU + 1,
+                now,
+                &mut cc,
+                path::Id::test_id(),
+                &mut publisher,
+            );
             if i < BLACK_HOLE_THRESHOLD {
                 assert_eq!(controller.black_hole_counter, i + 1);
             }
@@ -776,11 +887,19 @@ mod test {
         let mut controller = new_controller(1500);
         let mut cc = CongestionController::default();
         let now = now();
+        let mut publisher = Publisher::snapshot();
 
         for i in 0..BLACK_HOLE_THRESHOLD + 1 {
             let pn = pn(i as usize);
             assert_eq!(controller.black_hole_counter, 0);
-            controller.on_packet_loss(pn, BASE_PLPMTU + 1, now, &mut cc);
+            controller.on_packet_loss(
+                pn,
+                BASE_PLPMTU + 1,
+                now,
+                &mut cc,
+                path::Id::test_id(),
+                &mut publisher,
+            );
         }
 
         assert_eq!(State::Disabled, controller.state);
@@ -792,6 +911,7 @@ mod test {
     fn on_packet_loss_not_application_space() {
         let mut controller = new_controller(1500);
         let mut cc = CongestionController::default();
+        let mut publisher = Publisher::snapshot();
 
         // test the loss in each state
         for state in vec![
@@ -805,7 +925,14 @@ mod test {
                 // on_packet_loss may be called with packet numbers from Initial and Handshake space
                 // so it should not fail in this scenario.
                 let pn = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(i));
-                controller.on_packet_loss(pn, BASE_PLPMTU + 1, now(), &mut cc);
+                controller.on_packet_loss(
+                    pn,
+                    BASE_PLPMTU + 1,
+                    now(),
+                    &mut cc,
+                    path::Id::test_id(),
+                    &mut publisher,
+                );
                 assert_eq!(controller.black_hole_counter, 0);
                 assert_eq!(0, cc.on_mtu_update);
             }

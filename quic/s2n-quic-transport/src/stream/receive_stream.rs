@@ -345,6 +345,8 @@ pub struct ReceiveStream {
     pub(super) read_waiter: Option<(Waker, usize)>,
     /// Whether the final state had already been observed by the application
     final_state_observed: bool,
+    /// Marks the stream as detached from the application
+    detached: bool,
 }
 
 impl ReceiveStream {
@@ -373,6 +375,7 @@ impl ReceiveStream {
             stop_sending_sync: OnceSync::new(),
             read_waiter: None,
             final_state_observed: is_closed,
+            detached: is_closed,
         };
 
         if is_closed {
@@ -538,9 +541,7 @@ impl ReceiveStream {
                 }
 
                 if should_wake {
-                    if let Some((waker, _low_watermark)) = self.read_waiter.take() {
-                        events.store_read_waker(waker);
-                    }
+                    self.wake(events);
                 }
             }
         }
@@ -568,12 +569,7 @@ impl ReceiveStream {
         debug_assert!(reset_result.is_ok());
 
         // Return the waker to wake up potential users of the stream
-        if let Some((waker, _low_watermark)) = self.read_waiter.take() {
-            events.store_read_waker(waker);
-        } else {
-            // There aren't any wakers associated with this stream so finalize it
-            self.final_state_observed = true;
-        }
+        self.wake(events);
     }
 
     /// This is called when a `RESET_STREAM` frame had been received for
@@ -597,9 +593,7 @@ impl ReceiveStream {
         self.stop_sending_sync.stop_sync();
 
         // Return the waker to wake up potential users of the stream
-        if let Some((waker, _low_watermark)) = self.read_waiter.take() {
-            events.store_read_waker(waker);
-        }
+        self.wake(events);
 
         Ok(())
     }
@@ -621,11 +615,6 @@ impl ReceiveStream {
         // data had been already received.
         match self.state {
             ReceiveStreamState::Reset(_) | ReceiveStreamState::DataRead => return Ok(()),
-            ReceiveStreamState::Stopping { .. } => {
-                // Prefer the error from the peer instead of the STOP_SENDING error.
-                self.state = ReceiveStreamState::Reset(error);
-                return Ok(());
-            }
             ReceiveStreamState::Receiving(Some(total_size)) => {
                 if let Some(actual_size) = actual_size {
                     // If the stream size which is indicated through the reset
@@ -658,7 +647,7 @@ impl ReceiveStream {
                     return Ok(());
                 }
             }
-            ReceiveStreamState::Receiving(None) => {
+            ReceiveStreamState::Receiving(None) | ReceiveStreamState::Stopping { .. } => {
                 if let Some(actual_size) = actual_size {
                     // We have to acquire the flow control credits up up to the
                     // offset which the peer indicates as the end of the Stream.
@@ -696,9 +685,7 @@ impl ReceiveStream {
     /// This method gets called when a packet delivery got acknowledged
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.flow_controller.read_window_sync.on_packet_ack(ack_set);
-
-        // finalize the stream if the peer has ACKed the STOP_SENDING frame
-        self.final_state_observed |= self.stop_sending_sync.on_packet_ack(ack_set).is_ready();
+        let _ = self.stop_sending_sync.on_packet_ack(ack_set);
     }
 
     /// This method gets called when a packet loss is reported
@@ -727,6 +714,23 @@ impl ReceiveStream {
         self.flow_controller
             .read_window_sync
             .on_transmit(stream_id, context)
+    }
+
+    /// Wakes up the application on progress updates
+    ///
+    /// If there is not a registered waker and the stream is in a terminal state,
+    /// the stream will be finalized.
+    fn wake(&mut self, events: &mut StreamEvents) {
+        // Return the waker to wake up potential users of the stream
+        if let Some((waker, _low_watermark)) = self.read_waiter.take() {
+            events.store_read_waker(waker);
+            return;
+        }
+
+        // If the stream is detached from the application, then try to make progress
+        if self.detached {
+            self.detach();
+        }
     }
 
     // These functions are called from the client API
@@ -787,14 +791,12 @@ impl ReceiveStream {
                 }
             }
 
-            self.read_waiter = None;
+            // STOP_SENDING cannot be flushed so it natually operates in detached mode
+            self.detach();
 
             // We clear the receive buffer, to free up any buffer
             // space which had been allocated but not used
             self.receive_buffer.reset();
-
-            // we don't need any more flow control
-            self.flow_controller.release_outstanding_window();
 
             // Mark the stream as reset. Note that the request doesn't have a flush so there's
             // currently no way to wait for the reset to be acknowledged.
@@ -803,13 +805,21 @@ impl ReceiveStream {
             return Ok(response);
         }
 
+        if request.detached {
+            self.detach();
+        }
+
         // Do some state checks here. Only read data when the client is still
         // allowed to read (not reset).
 
         let total_size = match self.state {
-            ReceiveStreamState::Reset(error) | ReceiveStreamState::Stopping { error, .. } => {
+            ReceiveStreamState::Reset(error) => {
                 // The reset is now known to have been read by the client.
                 self.final_state_observed = true;
+                self.read_waiter = None;
+                return Err(error);
+            }
+            ReceiveStreamState::Stopping { error, .. } => {
                 self.read_waiter = None;
                 return Err(error);
             }
@@ -894,13 +904,8 @@ impl ReceiveStream {
                 // clear the waiter
                 self.read_waiter = None;
 
-                // mark the final state as observed if the request was vectorized
-                //
-                // Non-vectorized requests that consumed a chunk will need to perform another
-                // request to observe the final state
-                self.final_state_observed = request.chunks.as_ref().map_or(true, |chunks| {
-                    chunks.len() != 1 || response.chunks.consumed == 0
-                });
+                // mark the final state as observed - the caller is expected to cache the `Finished` status
+                self.final_state_observed = true;
 
                 // Indicate that all data has been read
                 response.status = ops::Status::Finished;
@@ -924,6 +929,33 @@ impl ReceiveStream {
         }
 
         Ok(response)
+    }
+
+    fn detach(&mut self) {
+        debug_assert!(
+            matches!(
+                &self.state,
+                ReceiveStreamState::DataRead
+                    | ReceiveStreamState::Reset(_)
+                    | ReceiveStreamState::Stopping { .. }
+            ),
+            "a receive stream should only detach in a finalizing state"
+        );
+
+        self.detached = true;
+        self.read_waiter = None;
+
+        match &self.state {
+            // if the application has read the entire stream, then we can finalize the stream
+            ReceiveStreamState::DataRead => {
+                self.final_state_observed = true;
+            }
+            // if the stream has been reset and the application isn't subscribed to updates
+            ReceiveStreamState::Reset(_) => {
+                self.final_state_observed = true;
+            }
+            _ => {}
+        }
     }
 }
 

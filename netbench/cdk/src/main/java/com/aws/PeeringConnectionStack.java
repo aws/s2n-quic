@@ -25,19 +25,20 @@ class PeeringConnectionStack extends Stack {
             String serverVpcId = StringParameter.fromStringParameterName(this, "server-vpc-id",
                 "server-vpc-id").getStringValue();
 
+
             String clientVpcId = new SSMParameterReader(this, "client-vpc-id-reader", SSMParameterReaderProps.builder()
                 .sdkCall("client-vpc-id", props.getRegion())
                 .policy()
                 .build())
                 .getParameterValue();
 
-            
+
             String cidr = new SSMParameterReader(this, "client-cidr-reader", SSMParameterReaderProps.builder()
                 .sdkCall("client-cidr", props.getRegion())
                 .policy()
                 .build())
                 .getParameterValue();
-            
+
             //Vpc peering connection between client-server vpc's
             CfnVPCPeeringConnection conn = CfnVPCPeeringConnection.Builder
                 .create(this, "vpc-peering-connection")
@@ -73,11 +74,11 @@ class PeeringConnectionStack extends Stack {
                 .policy()
                 .build())
                 .getParameterValue();
-
+          
             //Establishing client-to-server connections between private subnets
             for (ISubnet subnet: props.getVpcClient().getPrivateSubnets()) {
                 CfnRoute.Builder.create(this, 
-                "client-to-server" + Integer.toString(counter))
+                "client-to-server" + Integer.toString(counter))                  
                 .destinationCidrBlock(cidr)
                 .routeTableId(subnet.getRouteTable().getRouteTableId())
                 .vpcPeeringConnectionId(connRef)

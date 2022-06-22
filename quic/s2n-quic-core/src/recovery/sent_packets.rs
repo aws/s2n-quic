@@ -3,7 +3,7 @@
 
 use crate::{
     frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification, path,
-    time::Timestamp,
+    time::Timestamp, transmission,
 };
 use core::convert::TryInto;
 
@@ -30,6 +30,8 @@ pub struct SentPacketInfo<PacketInfo> {
     pub path_id: path::Id,
     /// The ECN marker (if any) sent on the datagram that contained this packet
     pub ecn: ExplicitCongestionNotification,
+    /// Indicates if the packet was part of a probe transmission
+    pub transmission_mode: transmission::Mode,
     /// Additional packet metadata dictated by the congestion controller
     pub cc_packet_info: PacketInfo,
 }
@@ -43,6 +45,7 @@ impl<PacketInfo> SentPacketInfo<PacketInfo> {
         ack_elicitation: AckElicitation,
         path_id: path::Id,
         ecn: ExplicitCongestionNotification,
+        transmission_mode: transmission::Mode,
         cc_packet_info: PacketInfo,
     ) -> Self {
         debug_assert_eq!(
@@ -60,6 +63,7 @@ impl<PacketInfo> SentPacketInfo<PacketInfo> {
             ack_elicitation,
             path_id,
             ecn,
+            transmission_mode,
             cc_packet_info,
         }
     }
@@ -73,6 +77,7 @@ mod test {
         path,
         recovery::SentPacketInfo,
         time::{Clock, NoopClock},
+        transmission,
     };
 
     #[test]
@@ -85,6 +90,7 @@ mod test {
             AckElicitation::Eliciting,
             unsafe { path::Id::new(0) },
             ExplicitCongestionNotification::default(),
+            transmission::Mode::Normal,
             (),
         );
     }

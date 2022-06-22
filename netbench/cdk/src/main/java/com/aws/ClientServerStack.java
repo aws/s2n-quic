@@ -38,6 +38,7 @@ import software.amazon.awscdk.RemovalPolicy;
 import java.util.HashMap;
 import java.util.List;
 
+
 public class ClientServerStack extends Stack {
     private final String cidr;
     private final Vpc vpc;
@@ -72,7 +73,7 @@ public class ClientServerStack extends Stack {
             .parameterName(stackType + "-cidr")
             .stringValue(this.vpc.getVpcCidrBlock())
             .build();
-
+        
         Cluster cluster = Cluster.Builder.create(this, stackType + "-cluster")
             .vpc(vpc)
             .build();
@@ -90,6 +91,7 @@ public class ClientServerStack extends Stack {
             .build();
         
         cluster.addAsgCapacityProvider(asgProvider);
+
         
         /*
         Ec2TaskDefinition task = Ec2TaskDefinition.Builder
@@ -112,7 +114,7 @@ public class ClientServerStack extends Stack {
         Ec2Service.Builder.create(this, "ec2service-" + stackType)
             .cluster(cluster)
             .taskDefinition(task)
-            .capacityProviderStrategies(List.of(CapacityProviderStrategy.builder()
+           .capacityProviderStrategies(List.of(CapacityProviderStrategy.builder()
                  .capacityProvider(asgProvider.getCapacityProviderName())
                  .weight(1)
                  .build()))
