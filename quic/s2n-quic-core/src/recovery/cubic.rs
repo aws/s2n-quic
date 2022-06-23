@@ -187,6 +187,11 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
+    fn is_slow_start(&self) -> bool {
+        matches!(self.state, SlowStart)
+    }
+
+    #[inline]
     fn requires_fast_retransmission(&self) -> bool {
         matches!(self.state, Recovery(_, RequiresTransmission))
     }

@@ -657,6 +657,7 @@ fn on_packet_lost_persistent_congestion() {
 
     cc.on_packet_lost(100, (), true, false, random, now);
 
+    assert!(cc.is_slow_start());
     assert_eq!(cc.state, SlowStart);
     assert_delta!(cc.congestion_window, cc.cubic.minimum_window(), 0.001);
     assert_delta!(cc.cubic.w_max, 0.0, 0.001);
