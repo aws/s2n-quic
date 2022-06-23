@@ -4,7 +4,6 @@
 //! Contains the implementation of the `Connection`
 
 use crate::{
-    ack::interest::Provider as _,
     connection::{
         self,
         close_sender::CloseSender,
@@ -1054,35 +1053,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         Ok(())
     }
 
-    /// Process ACKs for the `Connection`.
-    fn on_pending_ack_ranges(
-        &mut self,
-        random_generator: &mut Config::RandomGenerator,
-        timestamp: Timestamp,
-        subscriber: &mut Config::EventSubscriber,
-    ) -> Result<(), connection::Error> {
-        let mut publisher = self.event_context.publisher(timestamp, subscriber);
-
-        // TODO: care should be taken to only delay ACK processing for the active path.
-        // However, the active path could change so it might be necessary to track the
-        // active path across some ACK delay processing.
-        let path_id = self.path_manager.active_path_id();
-        self.space_manager
-            .on_pending_ack_ranges(
-                timestamp,
-                path_id,
-                &mut self.path_manager,
-                &mut self.local_id_registry,
-                random_generator,
-                &mut publisher,
-            )
-            .map_err(|err| {
-                // TODO: publish metrics
-
-                err.into()
-            })
-    }
-
     /// Handles all external wakeups on the [`Connection`].
     fn on_wakeup(
         &mut self,
@@ -1684,14 +1654,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     && self.space_manager.handshake().is_none()
                     && self.local_id_registry.connection_id_interest()
                         != connection::id::Interest::None;
-                interests.ack = self.space_manager.has_ack_interest();
             }
             ConnectionState::Closing => {
                 let constraint = self.path_manager.active_path().transmission_constraint();
                 interests.closing = true;
                 interests.transmission = self.close_sender.can_transmit(constraint);
                 interests.finalization = self.close_sender.finalization_status().is_final();
-                interests.ack = self.space_manager.has_ack_interest();
             }
             ConnectionState::Draining | ConnectionState::Finished => {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.2
@@ -1701,7 +1669,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
                 // Remove the connection from the endpoint
                 interests.finalization = true;
-                interests.ack = self.space_manager.has_ack_interest();
             }
         }
 
@@ -1859,6 +1826,19 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             &mut self.event_context.context,
             query,
         );
+    }
+
+    #[inline]
+    fn datagram_mut(&mut self, query: &mut dyn event::query::QueryMut) {
+        if let Some((space, _)) = self.space_manager.application_mut() {
+            // Try to execute the query on the sender side. If that fails, try the receiver side.
+            match query.execute_mut(&mut space.datagram_manager.sender) {
+                event::query::ControlFlow::Continue => {
+                    query.execute_mut(&mut space.datagram_manager.receiver);
+                }
+                event::query::ControlFlow::Break => (),
+            }
+        }
     }
 
     fn with_event_publisher<F>(

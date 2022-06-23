@@ -99,14 +99,6 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<(), connection::Error>;
 
-    /// Process pendings ACKs for the `Connection`.
-    fn on_pending_ack_ranges(
-        &mut self,
-        random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
-        timestamp: Timestamp,
-        subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
-    ) -> Result<(), connection::Error>;
-
     /// Handles all external wakeups on the [`Connection`].
     fn on_wakeup(
         &mut self,
@@ -454,6 +446,8 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     fn query_event_context(&self, query: &mut dyn event::query::Query);
 
     fn query_event_context_mut(&mut self, query: &mut dyn event::query::QueryMut);
+
+    fn datagram_mut(&mut self, query: &mut dyn event::query::QueryMut);
 
     fn with_event_publisher<F>(
         &mut self,

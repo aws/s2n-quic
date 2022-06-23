@@ -65,22 +65,49 @@ public class NetbenchAutoApp {
         
         // Stack instantiation
         ReportStack reportStack = new ReportStack(app, "ReportStack", StackProps.builder()
-            .env(makeEnv(awsAccount, clientRegion))
+            .env(makeEnv(awsAccount, serverRegion))
             .build());
 
-        ClientStack clientStack = new ClientStack(app, "ClientStack", ClientStackProps.builder()
+        ClientServerStack clientStack = new ClientServerStack(app, "ClientStack", ClientServerStackProps.builder()
             .env(makeEnv(awsAccount, clientRegion))
             .bucket(reportStack.getBucket())
             .instanceType(ec2InstanceType)
+            .cidr("10.0.0.0/16")
+            .stackType("client")
             .build());
 
-        ServerStack serverStack = new ServerStack(app, "ServerStack", StackProps.builder()
+        ClientServerStack serverStack = new ClientServerStack(app, "ServerStack", ClientServerStackProps.builder()
             .env(makeEnv(awsAccount, serverRegion))
+            .bucket(reportStack.getBucket())
+            .instanceType(ec2InstanceType)
+            .cidr("11.0.0.0/16")
+            .stackType("server")
             .build());
 
         StateMachineStack stateMachineStack = new StateMachineStack(app, "StateMachineStack", StackProps.builder()
             .build());
 
+        PeeringConnectionStack serverPeeringConnStack = new PeeringConnectionStack(app, "ServerPeerConnStack",
+            PeeringStackProps.builder()
+            .env(makeEnv(awsAccount, serverRegion))
+            .VpcClient(clientStack.getVpc())
+            .VpcServer(serverStack.getVpc())
+            .cidr(clientStack.getCidr())
+            .stackType("server")
+            .region(clientRegion)
+            .build());
+
+        PeeringConnectionStack clientPeeringConnStack = new PeeringConnectionStack(app, "ClientPeerConnStack",
+            PeeringStackProps.builder()
+            .env(makeEnv(awsAccount, clientRegion))
+            .VpcClient(clientStack.getVpc())
+            .VpcServer(serverStack.getVpc())
+            .cidr(serverStack.getCidr())
+            .stackType("client")
+            .ref(serverPeeringConnStack.getRef())
+            .region(serverRegion)
+            .build());
+      
         app.synth();
     }
 }

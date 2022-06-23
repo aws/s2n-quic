@@ -8,8 +8,6 @@ mod ack_eliciting_transmission;
 mod ack_manager;
 pub(crate) mod ack_ranges;
 mod ack_transmission_state;
-pub mod interest;
-pub(crate) mod pending_ack_ranges;
 
 #[cfg(test)]
 mod tests;

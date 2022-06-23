@@ -125,15 +125,6 @@ impl connection::Trait for TestConnection {
         Ok(())
     }
 
-    fn on_pending_ack_ranges(
-        &mut self,
-        _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
-        _timestamp: Timestamp,
-        _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
-    ) -> Result<(), connection::Error> {
-        Ok(())
-    }
-
     fn on_wakeup(
         &mut self,
         _timestamp: Timestamp,
@@ -319,6 +310,10 @@ impl connection::Trait for TestConnection {
     }
 
     fn query_event_context_mut(&mut self, _query: &mut dyn event::query::QueryMut) {
+        todo!()
+    }
+
+    fn datagram_mut(&mut self, _query: &mut dyn event::query::QueryMut) {
         todo!()
     }
 

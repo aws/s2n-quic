@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    ack::pending_ack_ranges::PendingAckRanges,
     contexts::WriteContext,
     endpoint,
     path::{self, ecn::ValidationOutcome, path_event, Path},
@@ -314,45 +313,6 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// Queries the component for any outgoing frames that need to get sent
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         self.pto.on_transmit(context)
-    }
-
-    /// Process pending ACK information.
-    ///
-    /// Update congestion controller, timers and meta data around acked packet ranges.
-    pub fn on_pending_ack_ranges<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
-        &mut self,
-        timestamp: Timestamp,
-        pending_ack_ranges: &mut PendingAckRanges,
-        random_generator: &mut Config::RandomGenerator,
-        context: &mut Ctx,
-        publisher: &mut Pub,
-    ) -> Result<(), transport::Error> {
-        debug_assert!(
-            !pending_ack_ranges.is_empty(),
-            "pending_ack_ranges should be non-empty since connection indicated ack interest"
-        );
-
-        let largest_acked_packet_number = pending_ack_ranges
-            .max_value()
-            .expect("pending range should not be empty");
-        let result = self.process_acks(
-            timestamp,
-            pending_ack_ranges.iter(),
-            largest_acked_packet_number,
-            pending_ack_ranges.ack_delay(),
-            pending_ack_ranges.ecn_counts(),
-            random_generator,
-            context,
-            publisher,
-        );
-
-        // reset pending ack information after processing
-        //
-        // If there was an error during processing its probably safer
-        // to clear the queue rather than try again.
-        pending_ack_ranges.clear();
-
-        result
     }
 
     /// Process ACK frame.
