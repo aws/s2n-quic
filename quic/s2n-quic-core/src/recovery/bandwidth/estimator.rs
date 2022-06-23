@@ -139,6 +139,9 @@ pub struct Estimator {
     /// The send time of the packet that was most recently marked as delivered, or if the connection
     /// was recently idle, the send time of the first packet sent after resuming from idle.
     first_sent_time: Option<Timestamp>,
+    /// The `delivered_bytes` that marks the end of the current application-limited period, or
+    /// `None` if the connection is not currently application-limited.
+    app_limited_delivered_bytes: Option<u64>,
     rate_sample: RateSample,
 }
 
@@ -158,7 +161,7 @@ impl Estimator {
     pub fn on_packet_sent(
         &mut self,
         bytes_in_flight: u32,
-        is_app_limited: bool,
+        app_limited: Option<bool>,
         now: Timestamp,
     ) -> PacketInfo {
         //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#3.2
@@ -171,6 +174,10 @@ impl Estimator {
             self.delivered_time = Some(now);
         }
 
+        if app_limited.unwrap_or(false) {
+            self.app_limited_delivered_bytes = Some(self.delivered_bytes + bytes_in_flight as u64);
+        }
+
         PacketInfo {
             delivered_bytes: self.delivered_bytes,
             delivered_time: self
@@ -181,7 +188,7 @@ impl Estimator {
                 .first_sent_time
                 .expect("initialized on first sent packet"),
             bytes_in_flight,
-            is_app_limited,
+            is_app_limited: self.app_limited_delivered_bytes.is_some(),
         }
     }
 
@@ -199,6 +206,16 @@ impl Estimator {
     ) {
         self.delivered_bytes += bytes_acknowledged as u64;
         self.delivered_time = Some(now);
+
+        if self
+            .app_limited_delivered_bytes
+            .map_or(false, |app_limited_bytes| {
+                self.delivered_bytes > app_limited_bytes
+            })
+        {
+            // Clear app-limited field if bubble is ACKed and gone
+            self.app_limited_delivered_bytes = None;
+        }
 
         //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#3.3
         //# UpdateRateSample() is invoked multiple times when a stretched ACK acknowledges

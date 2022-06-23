@@ -219,7 +219,7 @@ fn minimum_window<CC: CongestionController>(
     let random = &mut random::testing::Generator::default();
 
     let packet_info =
-        congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize, &rtt_estimator);
+        congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize, None, &rtt_estimator);
     // Experience persistent congestion to drop to the minimum window
     congestion_controller.on_packet_lost(
         MINIMUM_MTU as u32,
@@ -230,7 +230,7 @@ fn minimum_window<CC: CongestionController>(
         time_zero,
     );
     let packet_info =
-        congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize, &rtt_estimator);
+        congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize, None, &rtt_estimator);
     // Lose a packet to exit slow start
     congestion_controller.on_packet_lost(
         MINIMUM_MTU as u32,
@@ -307,6 +307,7 @@ fn simulate_constant_rtt<CC: CongestionController>(
             let packet_info = congestion_controller.on_packet_sent(
                 round_start,
                 MINIMUM_MTU as usize,
+                None,
                 &rtt_estimator,
             );
             congestion_controller.on_packet_lost(
@@ -320,7 +321,7 @@ fn simulate_constant_rtt<CC: CongestionController>(
             drop_index += 1;
         } else {
             let send_bytes = (congestion_controller.congestion_window() as usize)
-                .min(app_limit.unwrap_or(usize::max_value()));
+                .min(app_limit.unwrap_or(usize::MAX));
 
             // Send and ack the full congestion window
             send_and_ack(
@@ -343,32 +344,57 @@ fn send_and_ack<CC: CongestionController>(
     bytes: usize,
 ) {
     let random = &mut random::testing::Generator::default();
-    let mut remaining = bytes;
+    let mut tx_remaining = bytes;
+    let mut rx_remaining = 0;
+    let mut now = timestamp;
+    let ack_receive_time = now + rtt_estimator.min_rtt();
+    // Allow acks to start being received after this time, to simulate
+    // acks arriving while sending is paused by the pacer.
+    let earliest_ack_receive_time = ack_receive_time - Duration::from_millis(50);
+    let sending_full_cwnd = bytes as u32 == congestion_controller.congestion_window();
 
     let mut packet_info = None;
 
-    while remaining > 0 {
-        let bytes_sent = remaining.min(MINIMUM_MTU as usize);
-        packet_info =
-            Some(congestion_controller.on_packet_sent(timestamp, bytes_sent, rtt_estimator));
-        remaining -= bytes_sent;
-    }
+    while tx_remaining > 0 || rx_remaining > 0 {
+        while tx_remaining > 0 {
+            if let Some(edt) = congestion_controller.earliest_departure_time() {
+                if !edt.has_elapsed(now) {
+                    // We are blocked by the pacer, stop sending and fast forward to the earliest departure time
+                    now = edt;
+                    break;
+                }
+            }
 
-    let ack_receive_time = timestamp + rtt_estimator.min_rtt();
+            let bytes_sent = tx_remaining.min(MINIMUM_MTU as usize);
+            let app_limited = tx_remaining - bytes_sent == 0 && !sending_full_cwnd;
 
-    let mut remaining = bytes;
+            packet_info = Some(congestion_controller.on_packet_sent(
+                now,
+                bytes_sent,
+                Some(app_limited),
+                rtt_estimator,
+            ));
+            tx_remaining -= bytes_sent;
+            rx_remaining += bytes_sent;
+        }
 
-    while remaining > 0 {
-        let bytes_sent = remaining.min(MINIMUM_MTU as usize);
+        if tx_remaining == 0 {
+            // Nothing left to send, so fast forward to when we receive acks for everything
+            now = ack_receive_time;
+        }
 
-        congestion_controller.on_ack(
-            ack_receive_time,
-            bytes_sent,
-            packet_info.unwrap(),
-            rtt_estimator,
-            random,
-            ack_receive_time,
-        );
-        remaining -= bytes_sent;
+        while now >= earliest_ack_receive_time && rx_remaining > 0 {
+            let bytes_acked = rx_remaining.min(MINIMUM_MTU as usize);
+
+            congestion_controller.on_ack(
+                now,
+                bytes_acked,
+                packet_info.unwrap(),
+                rtt_estimator,
+                random,
+                now,
+            );
+            rx_remaining -= bytes_acked;
+        }
     }
 }

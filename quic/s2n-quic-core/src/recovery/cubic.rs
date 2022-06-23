@@ -158,6 +158,9 @@ pub struct CubicCongestionController {
     bytes_in_flight: BytesInFlight,
     time_of_last_sent_packet: Option<Timestamp>,
     under_utilized: bool,
+    // The highest number of bytes in flight seen when an ACK was received,
+    // since the last congestion event.
+    bytes_in_flight_hi: BytesInFlight,
 }
 
 type BytesInFlight = Counter<u32>;
@@ -193,6 +196,7 @@ impl CongestionController for CubicCongestionController {
         &mut self,
         time_sent: Timestamp,
         bytes_sent: usize,
+        app_limited: Option<bool>,
         rtt_estimator: &RttEstimator,
     ) {
         if bytes_sent == 0 {
@@ -204,7 +208,18 @@ impl CongestionController for CubicCongestionController {
             .try_add(bytes_sent)
             .expect("bytes sent should not exceed u32::MAX");
 
-        self.under_utilized = self.is_congestion_window_under_utilized();
+        if let Some(app_limited) = app_limited {
+            // We check both the given `app_limited` value and is_congestion_window_under_utilized()
+            // as is_congestion_window_under_utilized() is more lenient with respect to the utilization
+            // of the congestion window than the app_limited check. is_congestion_window_under_utilized()
+            // returns true if there are more than 3 MTU's of space left in the cwnd, or less than
+            // half the cwnd is utilized in slow start.
+            self.under_utilized = app_limited && self.is_congestion_window_under_utilized();
+        } else {
+            // We don't externally determine `app_limited` in the Initial and Handshake packet
+            // spaces, so set under_utilized based on is_congestion_window_under_utilized alone
+            self.under_utilized = self.is_congestion_window_under_utilized();
+        }
 
         if let Recovery(recovery_start_time, RequiresTransmission) = self.state {
             // A packet has been sent since we entered recovery (fast retransmission)
@@ -249,6 +264,7 @@ impl CongestionController for CubicCongestionController {
         _random_generator: &mut Rnd,
         ack_receive_time: Timestamp,
     ) {
+        self.bytes_in_flight_hi = self.bytes_in_flight_hi.max(self.bytes_in_flight);
         self.bytes_in_flight
             .try_sub(bytes_acknowledged)
             .expect("bytes_acknowledged should not exceed u32::MAX");
@@ -275,6 +291,25 @@ impl CongestionController for CubicCongestionController {
             }
         };
 
+        // The congestion window may continue to grow while app-limited due to pacing
+        // interrupting sending while momentarily not app-limited. To avoid the congestion
+        // window growing too far beyond bytes in flight, we limit the maximum cwnd to
+        // the highest bytes_in_flight value seen since the last congestion event multiplied
+        // by a multiplier depending on the current state.
+        const SLOW_START_MAX_CWND_MULTIPLIER: f32 = 2.0;
+        const MAX_CWND_MULTIPLIER: f32 = 1.5;
+        let max_cwnd = match self.state {
+            SlowStart => *self.bytes_in_flight_hi as f32 * SLOW_START_MAX_CWND_MULTIPLIER,
+            Recovery(_, _) => self.congestion_window,
+            CongestionAvoidance(_) => *self.bytes_in_flight_hi as f32 * MAX_CWND_MULTIPLIER,
+        }
+        .max(self.cubic.minimum_window());
+
+        if self.congestion_window >= max_cwnd {
+            // The window is already larger than the max, so we can return early
+            return;
+        }
+
         match self.state {
             SlowStart => {
                 //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.1
@@ -282,7 +317,9 @@ impl CongestionController for CubicCongestionController {
                 //# the number of bytes acknowledged when each acknowledgment is
                 //# processed.  This results in exponential growth of the congestion
                 //# window.
-                self.congestion_window += self.slow_start.cwnd_increment(bytes_acknowledged);
+                self.congestion_window = (self.congestion_window
+                    + self.slow_start.cwnd_increment(bytes_acknowledged))
+                .min(max_cwnd);
 
                 if self.congestion_window >= self.slow_start.threshold {
                     //= https://www.rfc-editor.org/rfc/rfc8312#section-4.8
@@ -316,7 +353,7 @@ impl CongestionController for CubicCongestionController {
                 //      investigation and testing to evaluate if smoothed_rtt would be a better input.
                 let rtt = rtt_estimator.min_rtt();
 
-                self.congestion_avoidance(t, rtt, bytes_acknowledged);
+                self.congestion_avoidance(t, rtt, bytes_acknowledged, max_cwnd);
             }
         };
 
@@ -352,6 +389,9 @@ impl CongestionController for CubicCongestionController {
 
     #[inline]
     fn on_congestion_event(&mut self, event_time: Timestamp) {
+        // Reset bytes_in_flight_hi
+        self.bytes_in_flight_hi = BytesInFlight::new(0);
+
         // No reaction if already in a recovery period.
         if matches!(self.state, Recovery(_, _)) {
             return;
@@ -456,6 +496,7 @@ impl CubicCongestionController {
             bytes_in_flight: Counter::new(0),
             time_of_last_sent_packet: None,
             under_utilized: true,
+            bytes_in_flight_hi: Counter::new(0),
         }
     }
 
@@ -474,12 +515,18 @@ impl CubicCongestionController {
     }
 
     #[inline]
-    fn congestion_avoidance(&mut self, t: Duration, rtt: Duration, sent_bytes: usize) {
+    fn congestion_avoidance(
+        &mut self,
+        t: Duration,
+        rtt: Duration,
+        sent_bytes: usize,
+        max_cwnd: f32,
+    ) {
         let w_cubic = self.cubic.w_cubic(t);
         let w_est = self.cubic.w_est(t, rtt);
         // limit the window increase to half the acked bytes
         // as the Linux implementation of Cubic does.
-        let max_cwnd = self.congestion_window + sent_bytes as f32 / 2.0;
+        let max_cwnd = (self.congestion_window + sent_bytes as f32 / 2.0).min(max_cwnd);
 
         if w_cubic < w_est {
             // TCP-Friendly Region

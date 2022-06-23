@@ -216,7 +216,7 @@ fn on_packet_sent() {
     cc.congestion_window = 100_000.0;
 
     // Last sent packet time updated to t10
-    cc.on_packet_sent(now + Duration::from_secs(10), 1, &rtt_estimator);
+    cc.on_packet_sent(now + Duration::from_secs(10), 1, None, &rtt_estimator);
 
     assert_eq!(cc.bytes_in_flight, 1);
 
@@ -250,7 +250,7 @@ fn on_packet_sent() {
     );
 
     // Last sent packet time updated to t20
-    cc.on_packet_sent(now + Duration::from_secs(20), 1, &rtt_estimator);
+    cc.on_packet_sent(now + Duration::from_secs(20), 1, None, &rtt_estimator);
 
     assert_eq!(cc.bytes_in_flight, 2);
 
@@ -273,7 +273,7 @@ fn on_packet_sent_application_limited() {
     cc.state = SlowStart;
 
     // t0: Send a packet in Slow Start
-    cc.on_packet_sent(now, 1000, &rtt_estimator);
+    cc.on_packet_sent(now, 1000, Some(true), &rtt_estimator);
 
     assert_eq!(cc.bytes_in_flight, 93_500);
     assert_eq!(cc.time_of_last_sent_packet, Some(now));
@@ -284,7 +284,12 @@ fn on_packet_sent_application_limited() {
     assert!(!cc.under_utilized);
 
     // t15: Send a packet in Congestion Avoidance
-    cc.on_packet_sent(now + Duration::from_secs(15), 1000, &rtt_estimator);
+    cc.on_packet_sent(
+        now + Duration::from_secs(15),
+        1000,
+        Some(true),
+        &rtt_estimator,
+    );
 
     assert_eq!(cc.bytes_in_flight, 94_500);
     assert_eq!(
@@ -295,7 +300,52 @@ fn on_packet_sent_application_limited() {
 
     // t20: Send packets to fully utilize the congestion window
     while cc.bytes_in_flight < cc.congestion_window() {
-        cc.on_packet_sent(now + Duration::from_secs(20), 1000, &rtt_estimator);
+        cc.on_packet_sent(
+            now + Duration::from_secs(20),
+            1000,
+            Some(true),
+            &rtt_estimator,
+        );
+    }
+
+    assert!(!cc.under_utilized);
+}
+
+// Confirm `under_utilized` is set properly even when `app_limited` is `None`
+#[test]
+fn on_packet_sent_none_application_limited() {
+    let mut cc = CubicCongestionController::new(1000);
+    let rtt_estimator = RttEstimator::new(Duration::from_millis(0));
+    let now = NoopClock.get_time();
+
+    cc.congestion_window = 100_000.0;
+    cc.bytes_in_flight = BytesInFlight::new(92_500);
+    cc.state = SlowStart;
+
+    // t0: Send a packet in Slow Start
+    cc.on_packet_sent(now, 1000, None, &rtt_estimator);
+
+    assert_eq!(cc.bytes_in_flight, 93_500);
+    assert_eq!(cc.time_of_last_sent_packet, Some(now));
+
+    // t10: Enter Congestion Avoidance
+    cc.state = State::congestion_avoidance(now + Duration::from_secs(10));
+
+    assert!(!cc.under_utilized);
+
+    // t15: Send a packet in Congestion Avoidance
+    cc.on_packet_sent(now + Duration::from_secs(15), 1000, None, &rtt_estimator);
+
+    assert_eq!(cc.bytes_in_flight, 94_500);
+    assert_eq!(
+        cc.time_of_last_sent_packet,
+        Some(now + Duration::from_secs(15))
+    );
+    assert!(cc.under_utilized);
+
+    // t20: Send packets to fully utilize the congestion window
+    while cc.bytes_in_flight < cc.congestion_window() {
+        cc.on_packet_sent(now + Duration::from_secs(20), 1000, None, &rtt_estimator);
     }
 
     assert!(!cc.under_utilized);
@@ -311,7 +361,7 @@ fn on_packet_sent_fast_retransmission() {
     cc.bytes_in_flight = BytesInFlight::new(99900);
     cc.state = Recovery(now, RequiresTransmission);
 
-    cc.on_packet_sent(now + Duration::from_secs(10), 100, &rtt_estimator);
+    cc.on_packet_sent(now + Duration::from_secs(10), 100, None, &rtt_estimator);
 
     assert_eq!(cc.state, Recovery(now, Idle));
 }
@@ -334,7 +384,7 @@ fn congestion_avoidance_after_idle_period() {
     cc.state = SlowStart;
 
     // t0: Send a packet in Slow Start
-    cc.on_packet_sent(now, 1000, rtt_estimator);
+    cc.on_packet_sent(now, 1000, Some(true), rtt_estimator);
 
     assert_eq!(cc.bytes_in_flight, 1000);
 
@@ -343,7 +393,12 @@ fn congestion_avoidance_after_idle_period() {
     cc.state = State::congestion_avoidance(now + Duration::from_secs(10));
 
     // t15: Send a packet in Congestion Avoidance while under utilized
-    cc.on_packet_sent(now + Duration::from_secs(15), 1000, rtt_estimator);
+    cc.on_packet_sent(
+        now + Duration::from_secs(15),
+        1000,
+        Some(true),
+        rtt_estimator,
+    );
     assert!(cc.is_congestion_window_under_utilized());
 
     assert_eq!(cc.bytes_in_flight, 2000);
@@ -371,7 +426,12 @@ fn congestion_avoidance_after_idle_period() {
 
     // t20: Send packets to fully utilize the congestion window
     while cc.bytes_in_flight < cc.congestion_window() {
-        cc.on_packet_sent(now + Duration::from_secs(20), 1000, rtt_estimator);
+        cc.on_packet_sent(
+            now + Duration::from_secs(20),
+            1000,
+            Some(false),
+            rtt_estimator,
+        );
     }
 
     assert!(!cc.is_congestion_window_under_utilized());
@@ -434,7 +494,12 @@ fn congestion_avoidance_after_fast_convergence() {
     let prev_cwnd = cc.congestion_window;
 
     // Enter congestion avoidance
-    cc.congestion_avoidance(Duration::from_millis(10), Duration::from_millis(100), 100);
+    cc.congestion_avoidance(
+        Duration::from_millis(10),
+        Duration::from_millis(100),
+        100,
+        f32::MAX,
+    );
 
     // Verify congestion window has increased
     assert!(cc.congestion_window > prev_cwnd);
@@ -449,7 +514,12 @@ fn congestion_avoidance_after_rtt_improvement() {
     cc.cubic.w_max = cc.congestion_window / 1200.0;
 
     // Enter congestion avoidance with a long rtt
-    cc.congestion_avoidance(Duration::from_millis(10), Duration::from_millis(750), 100);
+    cc.congestion_avoidance(
+        Duration::from_millis(10),
+        Duration::from_millis(750),
+        100,
+        f32::MAX,
+    );
 
     // At this point the target is less than the congestion window
     let prev_cwnd = cc.congestion_window;
@@ -458,7 +528,12 @@ fn congestion_avoidance_after_rtt_improvement() {
     );
 
     // Receive another ack, now with a short rtt
-    cc.congestion_avoidance(Duration::from_millis(20), Duration::from_millis(10), 100);
+    cc.congestion_avoidance(
+        Duration::from_millis(20),
+        Duration::from_millis(10),
+        100,
+        f32::MAX,
+    );
 
     // Verify congestion window did not change
     assert_delta!(cc.congestion_window, prev_cwnd, 0.001);
@@ -472,10 +547,34 @@ fn congestion_avoidance_with_small_min_rtt() {
     cc.congestion_window = 80_000.0;
     cc.cubic.w_max = cc.congestion_window / 1200.0;
 
-    cc.congestion_avoidance(Duration::from_millis(100), Duration::from_millis(1), 100);
+    cc.congestion_avoidance(
+        Duration::from_millis(100),
+        Duration::from_millis(1),
+        100,
+        f32::MAX,
+    );
 
     // Verify the window grew by half the sent bytes
     assert_delta!(cc.congestion_window, 80_050.0, 0.001);
+}
+
+#[test]
+fn congestion_avoidance_max_cwnd() {
+    let max_datagram_size = 1200;
+    let mut cc = CubicCongestionController::new(max_datagram_size);
+    cc.bytes_in_flight = BytesInFlight::new(100);
+    cc.congestion_window = 80_000.0;
+    cc.cubic.w_max = bytes_to_packets(100_000.0, max_datagram_size);
+
+    cc.congestion_avoidance(
+        Duration::from_millis(300),
+        Duration::from_millis(100),
+        1200,
+        80_100.0,
+    );
+
+    // Verify the window did not exceed the max cwnd
+    assert_delta!(cc.congestion_window, 80_100.0, 0.001);
 }
 
 #[test]
@@ -729,8 +828,8 @@ fn on_packet_ack_utilized_then_under_utilized() {
     cc.congestion_window = 100_000.0;
     cc.state = SlowStart;
 
-    cc.on_packet_sent(now, 60_000, &rtt_estimator);
-    cc.on_ack(now, 50_000, (), &rtt_estimator, random, now);
+    cc.on_packet_sent(now, 60_000, Some(true), &rtt_estimator);
+    cc.on_ack(now, 10_000, (), &rtt_estimator, random, now);
     let cwnd = cc.congestion_window();
 
     assert!(!cc.under_utilized);
@@ -748,11 +847,23 @@ fn on_packet_ack_utilized_then_under_utilized() {
     );
     assert!(cc.congestion_window() > cwnd);
 
+    // A large amount is acked, but the window should only grow to the max_cwnd
+    cc.on_ack(
+        now,
+        40_000,
+        (),
+        &rtt_estimator,
+        random,
+        now + Duration::from_millis(100),
+    );
+    // 60_000 is the highest bytes in flight * 2 for the slow start max_cwnd multiplier
+    assert_eq!(60_000 * 2, cc.congestion_window());
+
     let cwnd = cc.congestion_window();
 
     // Now the application has had a chance to send more data, but it didn't send enough to
     // utilize the congestion window, so the window does not grow.
-    cc.on_packet_sent(now, 1200, &rtt_estimator);
+    cc.on_packet_sent(now, 1200, Some(true), &rtt_estimator);
     assert!(cc.under_utilized);
     cc.on_ack(
         now,
@@ -763,6 +874,30 @@ fn on_packet_ack_utilized_then_under_utilized() {
         now + Duration::from_millis(201),
     );
     assert_eq!(cc.congestion_window(), cwnd);
+}
+
+#[test]
+fn on_packet_ack_congestion_avoidance_max_cwnd() {
+    let mut cc = CubicCongestionController::new(5000);
+    let now = NoopClock.get_time();
+    let mut rtt_estimator = RttEstimator::new(Duration::from_secs(0));
+    let random = &mut random::testing::Generator::default();
+    rtt_estimator.update_rtt(
+        Duration::from_secs(0),
+        Duration::from_millis(200),
+        now,
+        true,
+        PacketNumberSpace::ApplicationData,
+    );
+    cc.congestion_window = 89_000.0;
+    cc.state = State::congestion_avoidance(now);
+    cc.cubic.w_max = 100_000.0;
+
+    cc.on_packet_sent(now, 60_000, Some(false), &rtt_estimator);
+    cc.on_ack(now, 60_000, (), &rtt_estimator, random, now);
+
+    // 60_000 is the highest bytes in flight * 1.5 for the congestion avoidance max_cwnd multiplier
+    assert_eq!(90_000, cc.congestion_window());
 }
 
 #[test]
@@ -892,7 +1027,7 @@ fn on_packet_ack_congestion_avoidance() {
     let t = Duration::from_millis(4750) - Duration::from_millis(3300);
     let rtt = rtt_estimator.min_rtt();
 
-    cc2.congestion_avoidance(t, rtt, 1000);
+    cc2.congestion_avoidance(t, rtt, 1000, f32::MAX);
 
     assert_delta!(cc.congestion_window, cc2.congestion_window, 0.001);
 }
@@ -912,7 +1047,7 @@ fn on_packet_ack_congestion_avoidance_tcp_friendly_region() {
     let t = Duration::from_millis(300);
     let rtt = Duration::from_millis(250);
 
-    cc.congestion_avoidance(t, rtt, 5000);
+    cc.congestion_avoidance(t, rtt, 5000, f32::MAX);
 
     assert!(cc.cubic.w_cubic(t) < cc.cubic.w_est(t, rtt));
     assert_delta!(cc.congestion_window, cc.cubic.w_est(t, rtt) * 5000.0, 0.001);
@@ -935,7 +1070,7 @@ fn on_packet_ack_congestion_avoidance_concave_region() {
     let t = Duration::from_millis(9800);
     let rtt = Duration::from_millis(200);
 
-    cc.congestion_avoidance(t, rtt, 1000);
+    cc.congestion_avoidance(t, rtt, 1000, f32::MAX);
 
     assert!(cc.cubic.w_cubic(t) > cc.cubic.w_est(t, rtt));
 
@@ -967,7 +1102,7 @@ fn on_packet_ack_congestion_avoidance_convex_region() {
     let t = Duration::from_millis(25800);
     let rtt = Duration::from_millis(200);
 
-    cc.congestion_avoidance(t, rtt, 1000);
+    cc.congestion_avoidance(t, rtt, 1000, f32::MAX);
 
     assert!(cc.cubic.w_cubic(t) > cc.cubic.w_est(t, rtt));
 
@@ -993,7 +1128,7 @@ fn on_packet_ack_congestion_avoidance_too_large_increase() {
     let t = Duration::from_millis(125_800);
     let rtt = Duration::from_millis(200);
 
-    cc.congestion_avoidance(t, rtt, 1000);
+    cc.congestion_avoidance(t, rtt, 1000, f32::MAX);
 
     assert!(cc.cubic.w_cubic(t) > cc.cubic.w_est(t, rtt));
     assert_delta!(cc.congestion_window, 3_600_000.0 + 1000.0 / 2.0, 0.001);

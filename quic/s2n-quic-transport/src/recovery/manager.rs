@@ -195,6 +195,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         time_sent: Timestamp,
         ecn: ExplicitCongestionNotification,
         transmission_mode: transmission::Mode,
+        app_limited: Option<bool>,
         context: &mut Ctx,
         publisher: &mut Pub,
     ) {
@@ -218,6 +219,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         let cc_packet_info = path.congestion_controller.on_packet_sent(
             time_sent,
             congestion_controlled_bytes,
+            app_limited,
             &path.rtt_estimator,
         );
 
