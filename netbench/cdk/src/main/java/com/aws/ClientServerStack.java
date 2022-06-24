@@ -38,6 +38,7 @@ import software.amazon.awscdk.RemovalPolicy;
 import java.util.HashMap;
 import java.util.List;
 
+
 public class ClientServerStack extends Stack {
     private final String cidr;
     private final Vpc vpc;
@@ -72,7 +73,7 @@ public class ClientServerStack extends Stack {
             .parameterName(stackType + "-cidr")
             .stringValue(this.vpc.getVpcCidrBlock())
             .build();
-
+        
         Cluster cluster = Cluster.Builder.create(this, stackType + "-cluster")
             .vpc(vpc)
             .build();

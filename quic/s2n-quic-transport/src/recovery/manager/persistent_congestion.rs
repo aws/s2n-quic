@@ -61,6 +61,15 @@ impl PersistentCongestionCalculator {
             return;
         }
 
+        // Check if this lost packet was an MTU probe
+        if packet_info.transmission_mode.is_mtu_probing() {
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-14.4
+            //# Loss of a QUIC packet that is carried in a PMTU probe is therefore not a
+            //# reliable indication of congestion and SHOULD NOT trigger a congestion
+            //# control reaction; see Item 7 in Section 3 of [DPLPMTUD].
+            return;
+        }
+
         if let Some(current_period) = &mut self.current_period {
             // We are currently tracking a persistent congestion period
 

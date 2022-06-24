@@ -18,16 +18,22 @@ use s2n_quic_core::{
 // Used to call datagram callbacks during packet transmission and
 // packet processing.
 pub struct Manager<Config: endpoint::Config> {
-    sender: <<Config as endpoint::Config>::DatagramEndpoint as Endpoint>::Sender,
-    receiver: <<Config as endpoint::Config>::DatagramEndpoint as Endpoint>::Receiver,
+    pub sender: <<Config as endpoint::Config>::DatagramEndpoint as Endpoint>::Sender,
+    pub receiver: <<Config as endpoint::Config>::DatagramEndpoint as Endpoint>::Receiver,
+    max_datagram_payload: u64,
 }
 
 impl<Config: endpoint::Config> Manager<Config> {
     pub fn new(
         sender: <<Config as endpoint::Config>::DatagramEndpoint as Endpoint>::Sender,
         receiver: <<Config as endpoint::Config>::DatagramEndpoint as Endpoint>::Receiver,
+        max_datagram_payload: u64,
     ) -> Self {
-        Self { sender, receiver }
+        Self {
+            sender,
+            receiver,
+            max_datagram_payload,
+        }
     }
 
     /// A callback that allows users to write datagrams directly to the packet.
@@ -41,6 +47,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             context,
             has_pending_streams: stream_manager.has_pending_streams(),
             datagrams_prioritized,
+            max_datagram_payload: self.max_datagram_payload,
         };
         self.sender.on_transmit(&mut packet);
     }
@@ -66,6 +73,7 @@ struct Packet<'a, C: WriteContext> {
     context: &'a mut C,
     has_pending_streams: bool,
     datagrams_prioritized: bool,
+    max_datagram_payload: u64,
 }
 
 impl<'a, C: WriteContext> s2n_quic_core::datagram::Packet for Packet<'a, C> {
@@ -84,6 +92,9 @@ impl<'a, C: WriteContext> s2n_quic_core::datagram::Packet for Packet<'a, C> {
 
     /// Writes a single datagram to a packet
     fn write_datagram(&mut self, data: &[u8]) -> Result<(), WriteError> {
+        if data.len() as u64 > self.max_datagram_payload {
+            return Err(WriteError::ExceedsPeerTransportLimits);
+        }
         let remaining_capacity = self.context.remaining_capacity();
         let data_len = data.len();
         let is_last_frame =
@@ -94,7 +105,7 @@ impl<'a, C: WriteContext> s2n_quic_core::datagram::Packet for Packet<'a, C> {
         };
         self.context
             .write_frame(&frame)
-            .ok_or(WriteError::DatagramIsTooLarge)?;
+            .ok_or(WriteError::ExceedsPacketCapacity)?;
 
         Ok(())
     }

@@ -573,12 +573,11 @@ impl<'a, R> frame::ack::AckRanges for AckRanges<'a, R> {
     }
 }
 
-#[cfg(test)]
-mod tests {
+#[cfg(any(test, feature = "testing"))]
+pub mod testing {
     use super::*;
-    use bolero::check;
 
-    struct RandomSlice<'a>(core::iter::Cycle<core::slice::Iter<'a, u8>>);
+    pub struct RandomSlice<'a>(core::iter::Cycle<core::slice::Iter<'a, u8>>);
 
     impl<'a> RandomSlice<'a> {
         pub fn new(slice: &'a [u8]) -> Self {
@@ -612,6 +611,12 @@ mod tests {
             start + value % variance
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{testing::RandomSlice, *};
+    use bolero::check;
 
     macro_rules! test {
         ($name:ident, $strategy:expr) => {

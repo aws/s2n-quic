@@ -72,7 +72,7 @@ public class NetbenchAutoApp {
         ReportStack reportStack = new ReportStack(app, "ReportStack", StackProps.builder()
             .env(makeEnv(awsAccount, serverRegion))
             .build());
-
+      
         ClientServerStack serverStack = new ClientServerStack(app, "ServerStack", ClientServerStackProps.builder()
             .env(makeEnv(awsAccount, serverRegion))
             .bucket(reportStack.getBucket())
@@ -83,7 +83,7 @@ public class NetbenchAutoApp {
             .build());
 
         serverStack.addDependency(reportStack);
-
+      
         ClientServerStack clientStack = new ClientServerStack(app, "ClientStack", ClientServerStackProps.builder()
             .env(makeEnv(awsAccount, clientRegion))
             .bucket(reportStack.getBucket())
