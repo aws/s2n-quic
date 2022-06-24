@@ -435,12 +435,20 @@ pub mod api {
     #[doc = " The reason the slow start congestion controller state has been exited"]
     pub enum SlowStartExitCause {
         #[non_exhaustive]
+        #[doc = " A packet was determined lost"]
         PacketLoss {},
         #[non_exhaustive]
+        #[doc = " An Explicit Congestion Notification: Congestion Experienced marking was received"]
         Ecn {},
         #[non_exhaustive]
+        #[doc = " The round trip time estimate was updated"]
         Rtt {},
         #[non_exhaustive]
+        #[doc = " Slow Start exited due to a reason other than those above"]
+        #[doc = ""]
+        #[doc = " With the Cubic congestion controller, this reason is used after the initial exiting of"]
+        #[doc = " Slow Start, when the previously determined Slow Start threshold is exceed by the"]
+        #[doc = " congestion window."]
         Other {},
     }
     #[derive(Clone, Debug)]
@@ -2726,9 +2734,17 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " The reason the slow start congestion controller state has been exited"]
     pub enum SlowStartExitCause {
+        #[doc = " A packet was determined lost"]
         PacketLoss,
+        #[doc = " An Explicit Congestion Notification: Congestion Experienced marking was received"]
         Ecn,
+        #[doc = " The round trip time estimate was updated"]
         Rtt,
+        #[doc = " Slow Start exited due to a reason other than those above"]
+        #[doc = ""]
+        #[doc = " With the Cubic congestion controller, this reason is used after the initial exiting of"]
+        #[doc = " Slow Start, when the previously determined Slow Start threshold is exceed by the"]
+        #[doc = " congestion window."]
         Other,
     }
     impl IntoEvent<api::SlowStartExitCause> for SlowStartExitCause {

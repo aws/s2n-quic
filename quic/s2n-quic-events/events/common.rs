@@ -766,8 +766,16 @@ enum PathChallengeStatus {
 
 /// The reason the slow start congestion controller state has been exited
 enum SlowStartExitCause {
+    /// A packet was determined lost
     PacketLoss,
+    /// An Explicit Congestion Notification: Congestion Experienced marking was received
     Ecn,
+    /// The round trip time estimate was updated
     Rtt,
+    /// Slow Start exited due to a reason other than those above
+    ///
+    /// With the Cubic congestion controller, this reason is used after the initial exiting of
+    /// Slow Start, when the previously determined Slow Start threshold is exceed by the
+    /// congestion window.
     Other,
 }
