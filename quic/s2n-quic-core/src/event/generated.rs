@@ -439,6 +439,8 @@ pub mod api {
         #[non_exhaustive]
         Ecn {},
         #[non_exhaustive]
+        Rtt {},
+        #[non_exhaustive]
         Other {},
     }
     #[derive(Clone, Debug)]
@@ -2726,6 +2728,7 @@ pub mod builder {
     pub enum SlowStartExitCause {
         PacketLoss,
         Ecn,
+        Rtt,
         Other,
     }
     impl IntoEvent<api::SlowStartExitCause> for SlowStartExitCause {
@@ -2735,6 +2738,7 @@ pub mod builder {
             match self {
                 Self::PacketLoss => PacketLoss {},
                 Self::Ecn => Ecn {},
+                Self::Rtt => Rtt {},
                 Self::Other => Other {},
             }
         }

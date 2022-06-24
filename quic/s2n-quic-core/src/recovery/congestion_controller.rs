@@ -82,7 +82,7 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
 
     /// Invoked each time the round trip time is updated, which is whenever the
     /// newest acknowledged packet in an ACK frame is newly acknowledged
-    fn on_rtt_update(&mut self, time_sent: Timestamp, rtt_estimator: &RttEstimator);
+    fn on_rtt_update(&mut self, time_sent: Timestamp, now: Timestamp, rtt_estimator: &RttEstimator);
 
     /// Invoked when an acknowledgement of one or more previously unacknowledged packets is received
     ///
@@ -203,7 +203,13 @@ pub mod testing {
                 PacketInfo(())
             }
 
-            fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RttEstimator) {}
+            fn on_rtt_update(
+                &mut self,
+                _time_sent: Timestamp,
+                _now: Timestamp,
+                _rtt_estimator: &RttEstimator,
+            ) {
+            }
 
             fn on_ack<Rnd: random::Generator>(
                 &mut self,
@@ -333,7 +339,12 @@ pub mod testing {
                 PacketInfo(())
             }
 
-            fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RttEstimator) {
+            fn on_rtt_update(
+                &mut self,
+                _time_sent: Timestamp,
+                _now: Timestamp,
+                _rtt_estimator: &RttEstimator,
+            ) {
                 self.on_rtt_update += 1
             }
 

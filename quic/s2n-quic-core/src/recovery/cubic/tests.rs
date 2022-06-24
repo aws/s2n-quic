@@ -238,7 +238,9 @@ fn on_packet_sent() {
     //# distance networks.
 
     // Round one of hybrid slow start
-    cc.on_rtt_update(now, &rtt_estimator);
+    cc.on_rtt_update(now, now, &rtt_estimator);
+
+    assert!(cc.is_slow_start());
 
     // Latest RTT is 200ms
     rtt_estimator.update_rtt(
@@ -253,12 +255,18 @@ fn on_packet_sent() {
     cc.on_packet_sent(now + Duration::from_secs(20), 1, None, &rtt_estimator);
 
     assert_eq!(cc.bytes_in_flight, 2);
+    assert!(cc.is_slow_start());
 
     // Round two of hybrid slow start
     for _i in 1..=8 {
-        cc.on_rtt_update(now + Duration::from_secs(10), &rtt_estimator);
+        cc.on_rtt_update(
+            now + Duration::from_secs(10),
+            now + Duration::from_secs(10),
+            &rtt_estimator,
+        );
     }
 
+    assert!(!cc.is_slow_start());
     assert_delta!(cc.slow_start.threshold, 100_000.0, 0.001);
 }
 

@@ -401,6 +401,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 timestamp,
                 ack_delay,
                 context,
+                publisher,
             );
 
             let (_, largest_newly_acked_info) = largest_newly_acked;
@@ -484,7 +485,8 @@ impl<Config: endpoint::Config> Manager<Config> {
         Ok((largest_newly_acked, includes_ack_eliciting))
     }
 
-    fn update_congestion_control<Ctx: Context<Config>>(
+    #[allow(clippy::too_many_arguments)]
+    fn update_congestion_control<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         largest_newly_acked: PacketDetails<packet_info_type!()>,
         largest_acked_packet_number: PacketNumber,
@@ -492,6 +494,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         timestamp: Timestamp,
         ack_delay: Duration,
         context: &mut Ctx,
+        publisher: &mut Pub,
     ) {
         let mut should_update_rtt = true;
         let is_handshake_confirmed = context.is_handshake_confirmed();
@@ -524,9 +527,22 @@ impl<Config: endpoint::Config> Manager<Config> {
                 largest_acked_packet_number.space(),
             );
 
+            let slow_start = path.congestion_controller.is_slow_start();
+            let congestion_window = path.congestion_controller.congestion_window();
             // Update the congestion controller with the latest RTT estimate
-            path.congestion_controller
-                .on_rtt_update(largest_newly_acked_info.time_sent, &path.rtt_estimator);
+            path.congestion_controller.on_rtt_update(
+                largest_newly_acked_info.time_sent,
+                timestamp,
+                &path.rtt_estimator,
+            );
+            if slow_start && !path.congestion_controller.is_slow_start() {
+                let path_id = largest_newly_acked_info.path_id;
+                publisher.on_slow_start_exited(event::builder::SlowStartExited {
+                    path: path_event!(path, path_id),
+                    cause: SlowStartExitCause::Rtt,
+                    congestion_window,
+                });
+            }
 
             // Notify components the RTT estimate was updated
             context.on_rtt_update();

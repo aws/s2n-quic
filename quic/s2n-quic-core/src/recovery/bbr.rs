@@ -119,7 +119,12 @@ impl CongestionController for BbrCongestionController {
             .on_packet_sent(*self.bytes_in_flight, app_limited, time_sent)
     }
 
-    fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RttEstimator) {
+    fn on_rtt_update(
+        &mut self,
+        _time_sent: Timestamp,
+        _now: Timestamp,
+        _rtt_estimator: &RttEstimator,
+    ) {
         todo!()
     }
 

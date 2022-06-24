@@ -768,5 +768,6 @@ enum PathChallengeStatus {
 enum SlowStartExitCause {
     PacketLoss,
     Ecn,
+    Rtt,
     Other,
 }
