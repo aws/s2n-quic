@@ -776,7 +776,7 @@ pub mod api {
         pub congestion_window: u32,
     }
     impl<'a> Event for SlowStartExited<'a> {
-        const NAME: &'static str = "connectivity:slow_start_exited";
+        const NAME: &'static str = "recovery:slow_start_exited";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
