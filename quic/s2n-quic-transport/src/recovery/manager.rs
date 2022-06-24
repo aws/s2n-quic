@@ -12,7 +12,11 @@ use crate::{
 };
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
-    event::{self, builder::CongestionSource, IntoEvent},
+    event::{
+        self,
+        builder::{CongestionSource, SlowStartExitCause},
+        IntoEvent,
+    },
     frame,
     frame::ack::EcnCounts,
     inet::ExplicitCongestionNotification,
@@ -563,6 +567,8 @@ impl<Config: endpoint::Config> Manager<Config> {
             if acked_packet_info.path_id == current_path_id {
                 current_path_acked_bytes += sent_bytes;
             } else if sent_bytes > 0 {
+                let slow_start = path.congestion_controller.is_slow_start();
+                let congestion_window = path.congestion_controller.congestion_window();
                 path.congestion_controller.on_ack(
                     acked_packet_info.time_sent,
                     sent_bytes,
@@ -571,6 +577,14 @@ impl<Config: endpoint::Config> Manager<Config> {
                     random_generator,
                     timestamp,
                 );
+                if slow_start && !path.congestion_controller.is_slow_start() {
+                    let path_id = acked_packet_info.path_id;
+                    publisher.on_slow_start_exited(event::builder::SlowStartExited {
+                        path: path_event!(path, path_id),
+                        cause: SlowStartExitCause::Other,
+                        congestion_window,
+                    });
+                }
             }
 
             //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
@@ -652,6 +666,8 @@ impl<Config: endpoint::Config> Manager<Config> {
         );
 
         if matches!(outcome, ValidationOutcome::CongestionExperienced) {
+            let slow_start = context.path().congestion_controller.is_slow_start();
+            let congestion_window = context.path().congestion_controller.congestion_window();
             //= https://www.rfc-editor.org/rfc/rfc9002#section-7.1
             //# If a path has been validated to support Explicit Congestion
             //# Notification (ECN) [RFC3168] [RFC8311], QUIC treats a Congestion
@@ -661,6 +677,14 @@ impl<Config: endpoint::Config> Manager<Config> {
                 .path_mut()
                 .congestion_controller
                 .on_congestion_event(timestamp);
+            if slow_start && !context.path().congestion_controller.is_slow_start() {
+                let path = context.path();
+                publisher.on_slow_start_exited(event::builder::SlowStartExited {
+                    path: path_event!(path, path_id),
+                    cause: SlowStartExitCause::Ecn,
+                    congestion_window,
+                });
+            }
             let path = context.path();
             publisher.on_congestion(event::builder::Congestion {
                 path: path_event!(path, path_id),
@@ -876,6 +900,8 @@ impl<Config: endpoint::Config> Manager<Config> {
                 path.congestion_controller
                     .on_packet_discarded(sent_info.sent_bytes as usize);
             } else if sent_info.sent_bytes > 0 {
+                let slow_start = path.congestion_controller.is_slow_start();
+                let congestion_window = path.congestion_controller.congestion_window();
                 path.congestion_controller.on_packet_lost(
                     sent_info.sent_bytes as u32,
                     sent_info.cc_packet_info,
@@ -884,6 +910,14 @@ impl<Config: endpoint::Config> Manager<Config> {
                     random_generator,
                     now,
                 );
+                if slow_start && !path.congestion_controller.is_slow_start() {
+                    let path_id = sent_info.path_id;
+                    publisher.on_slow_start_exited(event::builder::SlowStartExited {
+                        path: path_event!(path, path_id),
+                        cause: SlowStartExitCause::PacketLoss,
+                        congestion_window,
+                    });
+                }
                 is_congestion_event = true;
             }
 

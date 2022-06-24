@@ -763,3 +763,10 @@ enum PathChallengeStatus {
     Validated,
     Abandoned,
 }
+
+/// The reason the slow start congestion controller state has been exited
+enum SlowStartExitCause {
+    PacketLoss,
+    Ecn,
+    Other,
+}

@@ -274,6 +274,7 @@ pub mod testing {
             pub requires_fast_retransmission: bool,
             pub loss_bursts: u32,
             pub app_limited: Option<bool>,
+            pub slow_start: bool,
         }
 
         impl Default for CongestionController {
@@ -291,6 +292,7 @@ pub mod testing {
                     requires_fast_retransmission: false,
                     loss_bursts: 0,
                     app_limited: None,
+                    slow_start: true,
                 }
             }
         }
@@ -311,7 +313,7 @@ pub mod testing {
             }
 
             fn is_slow_start(&self) -> bool {
-                false
+                self.slow_start
             }
 
             fn requires_fast_retransmission(&self) -> bool {
@@ -369,6 +371,7 @@ pub mod testing {
 
             fn on_congestion_event(&mut self, _event_time: Timestamp) {
                 self.congestion_events += 1;
+                self.slow_start = false;
             }
 
             fn on_mtu_update(&mut self, _max_data_size: u16) {
