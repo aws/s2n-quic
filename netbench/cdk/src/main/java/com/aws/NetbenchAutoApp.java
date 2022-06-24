@@ -67,16 +67,6 @@ public class NetbenchAutoApp {
         ec2InstanceType = (ec2InstanceType == null) 
             ? "c5n.xlarge" 
             : ec2InstanceType.toLowerCase();
-
-        String scenario = (String)app.getNode().tryGetContext("scenario");
-        scenario = (scenario == null) 
-            ? ""
-            : scenario;
-
-        Path scenarioPath = Paths.get(scenario);
-        if (!Files.exists(scenarioPath)) {
-            throw new IllegalArgumentException("Scenario file not found.");
-        }
         
         // Stack instantiation
         ReportStack reportStack = new ReportStack(app, "ReportStack", StackProps.builder()
@@ -105,10 +95,8 @@ public class NetbenchAutoApp {
         
         clientStack.addDependency(serverStack);
         
-        /*
         StateMachineStack stateMachineStack = new StateMachineStack(app, "StateMachineStack", StackProps.builder()
             .build());
-        */
 
         PeeringConnectionStack serverPeeringConnStack = new PeeringConnectionStack(app, "ServerPeerConnStack",
             PeeringStackProps.builder()
