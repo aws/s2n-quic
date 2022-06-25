@@ -94,7 +94,7 @@ impl super::Endpoint for Endpoint {
 }
 
 pub struct Receiver {
-    pub queue: VecDeque<Datagram>,
+    pub queue: VecDeque<Bytes>,
     capacity: usize,
     waker: Option<Waker>,
 }
@@ -106,7 +106,7 @@ impl Receiver {
     }
 
     /// Returns a datagram if there are any on the queue
-    pub fn datagram_recv(&mut self) -> Option<Datagram> {
+    pub fn recv_datagram(&mut self) -> Option<Bytes> {
         self.queue.pop_front()
     }
 
@@ -120,7 +120,7 @@ impl Receiver {
     ///   the caller should retry receiving after the [`Waker`](core::task::Waker) on the provided
     ///   [`Context`](core::task::Context) is notified.
     /// - `Poll::Ready(Datagram)` if there exists a datagram to be received.
-    pub fn poll_recv_datagram(&mut self, cx: &mut Context) -> Poll<Datagram> {
+    pub fn poll_recv_datagram(&mut self, cx: &mut Context) -> Poll<Bytes> {
         if self.queue.is_empty() {
             self.waker = Some(cx.waker().clone());
             return Poll::Pending;
@@ -141,9 +141,7 @@ impl super::Receiver for Receiver {
         buf.resize(datagram.len(), 0);
 
         buf.copy_from_slice(datagram);
-        self.queue.push_back(Datagram {
-            data: bytes::Bytes::from(buf),
-        });
+        self.queue.push_back(bytes::Bytes::from(buf));
         // Since a datagram was appended to the queue, wake the waker to inform
         // the user that it can receive datagrams now.
         if let Some(w) = self.waker.take() {
@@ -663,8 +661,8 @@ mod tests {
         crate::datagram::Receiver::on_datagram(&mut receiver, &datagram_2);
 
         // Oldest datagram has been dropped
-        assert_eq!(receiver.queue.pop_front().unwrap().data, datagram_1);
-        assert_eq!(receiver.queue.pop_front().unwrap().data, datagram_2);
+        assert_eq!(receiver.queue.pop_front().unwrap(), datagram_1);
+        assert_eq!(receiver.queue.pop_front().unwrap(), datagram_2);
         assert!(receiver.queue.pop_front().is_none());
     }
 
@@ -673,19 +671,17 @@ mod tests {
         let mut receiver = Receiver::builder().build().unwrap();
 
         // Calling receive with no datagrams on the queue will result in a None
-        assert!(receiver.datagram_recv().is_none());
+        assert!(receiver.recv_datagram().is_none());
 
         // Append a datagram to the receive queue
-        receiver.queue.push_back(Datagram {
-            data: bytes::Bytes::from_static(&[1, 2, 3]),
-        });
+        receiver
+            .queue
+            .push_back(bytes::Bytes::from_static(&[1, 2, 3]));
 
         // Now the user can receive a datagram
         assert_eq!(
-            receiver.datagram_recv(),
-            Some(Datagram {
-                data: bytes::Bytes::from_static(&[1, 2, 3]),
-            })
+            receiver.recv_datagram(),
+            Some(bytes::Bytes::from_static(&[1, 2, 3]),)
         );
     }
 
@@ -713,9 +709,7 @@ mod tests {
 
         assert_eq!(
             receiver.poll_recv_datagram(&mut cx),
-            Poll::Ready(Datagram {
-                data: bytes::Bytes::from_static(&[1, 2, 3])
-            })
+            Poll::Ready(bytes::Bytes::from_static(&[1, 2, 3]))
         );
     }
 

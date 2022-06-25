@@ -794,11 +794,21 @@ transport_parameter!(MaxDatagramFrameSize(VarInt), 0x20, VarInt::from_u16(0));
 //# this endpoint will accept any DATAGRAM frame that fits inside a QUIC packet.
 impl MaxDatagramFrameSize {
     pub const RECOMMENDED: Self = Self(VarInt::from_u16(65535));
+    pub const DEFAULT: Self = Self(VarInt::from_u16(0));
 }
 
 impl TransportParameterValidator for MaxDatagramFrameSize {
     fn validate(self) -> Result<Self, DecoderError> {
         Ok(self)
+    }
+}
+
+impl TryFrom<u64> for MaxDatagramFrameSize {
+    type Error = ValidationError;
+
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        let value = VarInt::new(value)?;
+        Self::try_from(value)
     }
 }
 
@@ -1468,6 +1478,7 @@ impl<
         );
         load!(max_ack_delay, max_ack_delay);
         load!(max_active_connection_ids, active_connection_id_limit);
+        load!(max_datagram_frame_size, max_datagram_frame_size);
     }
 }
 
