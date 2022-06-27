@@ -251,3 +251,11 @@ struct MtuUpdated {
     path_id: u64,
     mtu: u16,
 }
+
+#[event("recovery:slow_start_exited")]
+/// The slow start congestion controller state has been exited
+struct SlowStartExited<'a> {
+    path: Path<'a>,
+    cause: SlowStartExitCause,
+    congestion_window: u32,
+}

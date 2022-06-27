@@ -187,6 +187,11 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
+    fn is_slow_start(&self) -> bool {
+        matches!(self.state, SlowStart)
+    }
+
+    #[inline]
     fn requires_fast_retransmission(&self) -> bool {
         matches!(self.state, Recovery(_, RequiresTransmission))
     }
@@ -242,7 +247,12 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
-    fn on_rtt_update(&mut self, time_sent: Timestamp, rtt_estimator: &RttEstimator) {
+    fn on_rtt_update(
+        &mut self,
+        time_sent: Timestamp,
+        now: Timestamp,
+        rtt_estimator: &RttEstimator,
+    ) {
         // Update the Slow Start algorithm each time the RTT
         // estimate is updated to find the slow start threshold.
         self.slow_start.on_rtt_update(
@@ -252,6 +262,19 @@ impl CongestionController for CubicCongestionController {
                 .expect("At least one packet must be sent to update RTT"),
             rtt_estimator.latest_rtt(),
         );
+
+        if self.is_slow_start() && self.congestion_window >= self.slow_start.threshold {
+            //= https://www.rfc-editor.org/rfc/rfc8312#section-4.8
+            //# In the case when CUBIC runs the hybrid slow start [HR08], it may exit
+            //# the first slow start without incurring any packet loss and thus W_max
+            //# is undefined.  In this special case, CUBIC switches to congestion
+            //# avoidance and increases its congestion window size using Eq. 1, where
+            //# t is the elapsed time since the beginning of the current congestion
+            //# avoidance, K is set to 0, and W_max is set to the congestion window
+            //# size at the beginning of the current congestion avoidance.
+            self.state = State::congestion_avoidance(now);
+            self.cubic.on_slow_start_exit(self.congestion_window);
+        }
     }
 
     #[inline]
@@ -322,14 +345,8 @@ impl CongestionController for CubicCongestionController {
                 .min(max_cwnd);
 
                 if self.congestion_window >= self.slow_start.threshold {
-                    //= https://www.rfc-editor.org/rfc/rfc8312#section-4.8
-                    //# In the case when CUBIC runs the hybrid slow start [HR08], it may exit
-                    //# the first slow start without incurring any packet loss and thus W_max
-                    //# is undefined.  In this special case, CUBIC switches to congestion
-                    //# avoidance and increases its congestion window size using Eq. 1, where
-                    //# t is the elapsed time since the beginning of the current congestion
-                    //# avoidance, K is set to 0, and W_max is set to the congestion window
-                    //# size at the beginning of the current congestion avoidance.
+                    // The congestion window has exceeded a previously determined slow start threshold
+                    // so transition to congestion avoidance and notify cubic of the slow start exit
                     self.state = State::congestion_avoidance(ack_receive_time);
                     self.cubic.on_slow_start_exit(self.congestion_window);
                 }

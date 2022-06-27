@@ -52,6 +52,9 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
     /// bytes in flight
     fn is_congestion_limited(&self) -> bool;
 
+    /// Returns `true` if the congestion controller is in the "Slow Start" state
+    fn is_slow_start(&self) -> bool;
+
     /// Returns `true` if the current state of the congestion controller
     /// requires a packet to be transmitted without respecting the
     /// available congestion window
@@ -79,7 +82,7 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
 
     /// Invoked each time the round trip time is updated, which is whenever the
     /// newest acknowledged packet in an ACK frame is newly acknowledged
-    fn on_rtt_update(&mut self, time_sent: Timestamp, rtt_estimator: &RttEstimator);
+    fn on_rtt_update(&mut self, time_sent: Timestamp, now: Timestamp, rtt_estimator: &RttEstimator);
 
     /// Invoked when an acknowledgement of one or more previously unacknowledged packets is received
     ///
@@ -182,6 +185,10 @@ pub mod testing {
                 false
             }
 
+            fn is_slow_start(&self) -> bool {
+                false
+            }
+
             fn requires_fast_retransmission(&self) -> bool {
                 false
             }
@@ -196,7 +203,13 @@ pub mod testing {
                 PacketInfo(())
             }
 
-            fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RttEstimator) {}
+            fn on_rtt_update(
+                &mut self,
+                _time_sent: Timestamp,
+                _now: Timestamp,
+                _rtt_estimator: &RttEstimator,
+            ) {
+            }
 
             fn on_ack<Rnd: random::Generator>(
                 &mut self,
@@ -267,6 +280,7 @@ pub mod testing {
             pub requires_fast_retransmission: bool,
             pub loss_bursts: u32,
             pub app_limited: Option<bool>,
+            pub slow_start: bool,
         }
 
         impl Default for CongestionController {
@@ -284,6 +298,7 @@ pub mod testing {
                     requires_fast_retransmission: false,
                     loss_bursts: 0,
                     app_limited: None,
+                    slow_start: true,
                 }
             }
         }
@@ -303,6 +318,10 @@ pub mod testing {
                 self.requires_fast_retransmission || self.bytes_in_flight >= self.congestion_window
             }
 
+            fn is_slow_start(&self) -> bool {
+                self.slow_start
+            }
+
             fn requires_fast_retransmission(&self) -> bool {
                 self.requires_fast_retransmission
             }
@@ -320,7 +339,12 @@ pub mod testing {
                 PacketInfo(())
             }
 
-            fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RttEstimator) {
+            fn on_rtt_update(
+                &mut self,
+                _time_sent: Timestamp,
+                _now: Timestamp,
+                _rtt_estimator: &RttEstimator,
+            ) {
                 self.on_rtt_update += 1
             }
 
@@ -358,6 +382,7 @@ pub mod testing {
 
             fn on_congestion_event(&mut self, _event_time: Timestamp) {
                 self.congestion_events += 1;
+                self.slow_start = false;
             }
 
             fn on_mtu_update(&mut self, _max_data_size: u16) {

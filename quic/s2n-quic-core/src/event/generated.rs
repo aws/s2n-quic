@@ -432,6 +432,27 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " The reason the slow start congestion controller state has been exited"]
+    pub enum SlowStartExitCause {
+        #[non_exhaustive]
+        #[doc = " A packet was determined lost"]
+        PacketLoss {},
+        #[non_exhaustive]
+        #[doc = " An Explicit Congestion Notification: Congestion Experienced marking was received"]
+        Ecn {},
+        #[non_exhaustive]
+        #[doc = " The round trip time estimate was updated"]
+        Rtt {},
+        #[non_exhaustive]
+        #[doc = " Slow Start exited due to a reason other than those above"]
+        #[doc = ""]
+        #[doc = " With the Cubic congestion controller, this reason is used after the initial exiting of"]
+        #[doc = " Slow Start, when the previously determined Slow Start threshold is exceed by the"]
+        #[doc = " congestion window."]
+        Other {},
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Application level protocol"]
     pub struct ApplicationProtocolInformation<'a> {
         pub chosen_application_protocol: &'a [u8],
@@ -755,6 +776,17 @@ pub mod api {
     }
     impl Event for MtuUpdated {
         const NAME: &'static str = "connectivity:mtu_updated";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " The slow start congestion controller state has been exited"]
+    pub struct SlowStartExited<'a> {
+        pub path: Path<'a>,
+        pub cause: SlowStartExitCause,
+        pub congestion_window: u32,
+    }
+    impl<'a> Event for SlowStartExited<'a> {
+        const NAME: &'static str = "recovery:slow_start_exited";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1741,6 +1773,21 @@ pub mod tracing {
             tracing :: event ! (target : "mtu_updated" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , mtu = tracing :: field :: debug (mtu));
         }
         #[inline]
+        fn on_slow_start_exited(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::SlowStartExited,
+        ) {
+            let id = context.id();
+            let api::SlowStartExited {
+                path,
+                cause,
+                congestion_window,
+            } = event;
+            tracing :: event ! (target : "slow_start_exited" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , cause = tracing :: field :: debug (cause) , congestion_window = tracing :: field :: debug (congestion_window));
+        }
+        #[inline]
         fn on_version_information(
             &mut self,
             meta: &api::EndpointMeta,
@@ -2685,6 +2732,34 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " The reason the slow start congestion controller state has been exited"]
+    pub enum SlowStartExitCause {
+        #[doc = " A packet was determined lost"]
+        PacketLoss,
+        #[doc = " An Explicit Congestion Notification: Congestion Experienced marking was received"]
+        Ecn,
+        #[doc = " The round trip time estimate was updated"]
+        Rtt,
+        #[doc = " Slow Start exited due to a reason other than those above"]
+        #[doc = ""]
+        #[doc = " With the Cubic congestion controller, this reason is used after the initial exiting of"]
+        #[doc = " Slow Start, when the previously determined Slow Start threshold is exceed by the"]
+        #[doc = " congestion window."]
+        Other,
+    }
+    impl IntoEvent<api::SlowStartExitCause> for SlowStartExitCause {
+        #[inline]
+        fn into_event(self) -> api::SlowStartExitCause {
+            use api::SlowStartExitCause::*;
+            match self {
+                Self::PacketLoss => PacketLoss {},
+                Self::Ecn => Ecn {},
+                Self::Rtt => Rtt {},
+                Self::Other => Other {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Application level protocol"]
     pub struct ApplicationProtocolInformation<'a> {
         pub chosen_application_protocol: &'a [u8],
@@ -3246,6 +3321,28 @@ pub mod builder {
             api::MtuUpdated {
                 path_id: path_id.into_event(),
                 mtu: mtu.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " The slow start congestion controller state has been exited"]
+    pub struct SlowStartExited<'a> {
+        pub path: Path<'a>,
+        pub cause: SlowStartExitCause,
+        pub congestion_window: u32,
+    }
+    impl<'a> IntoEvent<api::SlowStartExited<'a>> for SlowStartExited<'a> {
+        #[inline]
+        fn into_event(self) -> api::SlowStartExited<'a> {
+            let SlowStartExited {
+                path,
+                cause,
+                congestion_window,
+            } = self;
+            api::SlowStartExited {
+                path: path.into_event(),
+                cause: cause.into_event(),
+                congestion_window: congestion_window.into_event(),
             }
         }
     }
@@ -4085,6 +4182,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `SlowStartExited` event is triggered"]
+        #[inline]
+        fn on_slow_start_exited(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &SlowStartExited,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `VersionInformation` event is triggered"]
         #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
@@ -4626,6 +4735,16 @@ mod traits {
             (self.1).on_mtu_updated(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_slow_start_exited(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &SlowStartExited,
+        ) {
+            (self.0).on_slow_start_exited(&mut context.0, meta, event);
+            (self.1).on_slow_start_exited(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
             (self.0).on_version_information(meta, event);
             (self.1).on_version_information(meta, event);
@@ -4992,6 +5111,8 @@ mod traits {
         fn on_keep_alive_timer_expired(&mut self, event: builder::KeepAliveTimerExpired);
         #[doc = "Publishes a `MtuUpdated` event to the publisher's subscriber"]
         fn on_mtu_updated(&mut self, event: builder::MtuUpdated);
+        #[doc = "Publishes a `SlowStartExited` event to the publisher's subscriber"]
+        fn on_slow_start_exited(&mut self, event: builder::SlowStartExited);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
         fn quic_version(&self) -> u32;
         #[doc = r" Returns the [`Subject`] for the current publisher"]
@@ -5332,6 +5453,15 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_slow_start_exited(&mut self, event: builder::SlowStartExited) {
+            let event = event.into_event();
+            self.subscriber
+                .on_slow_start_exited(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn quic_version(&self) -> u32 {
             self.quic_version
         }
@@ -5381,6 +5511,7 @@ pub mod testing {
         pub tx_stream_progress: u32,
         pub keep_alive_timer_expired: u32,
         pub mtu_updated: u32,
+        pub slow_start_exited: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -5452,6 +5583,7 @@ pub mod testing {
                 tx_stream_progress: 0,
                 keep_alive_timer_expired: 0,
                 mtu_updated: 0,
+                slow_start_exited: 0,
                 version_information: 0,
                 endpoint_packet_sent: 0,
                 endpoint_packet_received: 0,
@@ -5840,6 +5972,17 @@ pub mod testing {
                 self.output.push(format!("{:?} {:?}", meta, event));
             }
         }
+        fn on_slow_start_exited(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::SlowStartExited,
+        ) {
+            self.slow_start_exited += 1;
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
+        }
         fn on_version_information(
             &mut self,
             meta: &api::EndpointMeta,
@@ -5974,6 +6117,7 @@ pub mod testing {
         pub tx_stream_progress: u32,
         pub keep_alive_timer_expired: u32,
         pub mtu_updated: u32,
+        pub slow_start_exited: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -6035,6 +6179,7 @@ pub mod testing {
                 tx_stream_progress: 0,
                 keep_alive_timer_expired: 0,
                 mtu_updated: 0,
+                slow_start_exited: 0,
                 version_information: 0,
                 endpoint_packet_sent: 0,
                 endpoint_packet_received: 0,
@@ -6363,6 +6508,13 @@ pub mod testing {
         }
         fn on_mtu_updated(&mut self, event: builder::MtuUpdated) {
             self.mtu_updated += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
+        }
+        fn on_slow_start_exited(&mut self, event: builder::SlowStartExited) {
+            self.slow_start_exited += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 self.output.push(format!("{:?}", event));
