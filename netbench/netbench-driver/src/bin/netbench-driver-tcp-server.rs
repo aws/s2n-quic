@@ -32,9 +32,7 @@ impl Server {
 
         let server = self.server().await?;
         let trace = self.opts.trace();
-
-        // TODO load configuration from scenario
-        let config = multiplex::Config::default();
+        let config = self.opts.multiplex();
 
         let mut conn_id = 0;
         loop {
@@ -63,7 +61,7 @@ impl Server {
             conn_id: u64,
             scenario: Arc<scenario::Server>,
             mut trace: impl netbench::Trace,
-            config: multiplex::Config,
+            config: Option<multiplex::Config>,
             (rx_buffer, tx_buffer): (usize, usize),
         ) -> Result<()> {
             let connection = io::BufStream::with_capacity(rx_buffer, tx_buffer, connection);
@@ -74,15 +72,25 @@ impl Server {
                 .connections
                 .get(server_idx as usize)
                 .ok_or("invalid connection id")?;
-            let conn = netbench::Driver::new(
-                scenario,
-                netbench::multiplex::Connection::new(conn_id, connection, config),
-            );
 
             let mut checkpoints = HashSet::new();
             let mut timer = netbench::timer::Tokio::default();
 
-            conn.run(&mut trace, &mut checkpoints, &mut timer).await?;
+            if let Some(config) = config {
+                let conn = netbench::Driver::new(
+                    scenario,
+                    netbench::multiplex::Connection::new(conn_id, connection, config),
+                );
+
+                conn.run(&mut trace, &mut checkpoints, &mut timer).await?;
+            } else {
+                let conn = netbench::Driver::new(
+                    scenario,
+                    netbench::duplex::Connection::new(conn_id, connection),
+                );
+
+                conn.run(&mut trace, &mut checkpoints, &mut timer).await?;
+            }
 
             Ok(())
         }

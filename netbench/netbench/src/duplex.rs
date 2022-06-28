@@ -6,28 +6,31 @@ use core::{
     pin::Pin,
     task::{Context, Poll},
 };
-use futures::ready;
+use once_cell::sync::Lazy;
 use std::mem::MaybeUninit;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 const READ_BUFFER_SIZE: usize = 100_000;
 const SEND_BUFFER_SIZE: usize = 100_000_000;
 
+static SEND_BUFFER: Lazy<Vec<u8>> = Lazy::new(|| vec![42; SEND_BUFFER_SIZE]);
+
 #[derive(Debug)]
 pub struct Connection<T: AsyncRead + AsyncWrite> {
     id: u64,
     inner: Pin<Box<T>>,
     stream_opened: bool,
-    send_buffer: Vec<u8>,
 }
 
 impl<T: AsyncRead + AsyncWrite> Connection<T> {
     pub fn new(id: u64, inner: Pin<Box<T>>) -> Self {
+        // force an allocation up-front
+        let _ = &*SEND_BUFFER;
+
         Self {
             id,
             inner,
             stream_opened: false,
-            send_buffer: vec![1; SEND_BUFFER_SIZE],
         }
     }
 
@@ -82,7 +85,7 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
         while sent < bytes {
             let to_send = (bytes - sent) as usize;
             let to_send = to_send.min(SEND_BUFFER_SIZE);
-            let to_send = &self.send_buffer[0..to_send];
+            let to_send = &SEND_BUFFER[0..to_send];
             match self.inner.as_mut().poll_write(cx, to_send) {
                 Poll::Ready(result) => {
                     sent += result? as u64;
@@ -153,9 +156,8 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
         Ok(()).into()
     }
 
-    fn poll_finish(&mut self, cx: &mut Context) -> Poll<Result<()>> {
+    fn poll_finish(&mut self, _cx: &mut Context) -> Poll<Result<()>> {
         if self.stream_opened {
-            ready!(self.inner.as_mut().poll_shutdown(cx))?;
             self.close_stream()?;
         }
         Ok(()).into()
