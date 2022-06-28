@@ -94,7 +94,7 @@ impl super::Endpoint for Endpoint {
 }
 
 pub struct Receiver {
-    pub queue: VecDeque<Bytes>,
+    queue: VecDeque<Bytes>,
     capacity: usize,
     waker: Option<Waker>,
 }
@@ -121,12 +121,12 @@ impl Receiver {
     ///   [`Context`](core::task::Context) is notified.
     /// - `Poll::Ready(Datagram)` if there exists a datagram to be received.
     pub fn poll_recv_datagram(&mut self, cx: &mut Context) -> Poll<Bytes> {
-        if self.queue.is_empty() {
+        if let Some(datagram) = self.queue.pop_front() {
+            Poll::Ready(datagram)
+        } else {
             self.waker = Some(cx.waker().clone());
-            return Poll::Pending;
+            Poll::Pending
         }
-        // Since we know the queue is not empty, we can safely unwrap the popped value
-        Poll::Ready(self.queue.pop_front().unwrap())
     }
 }
 
@@ -137,11 +137,9 @@ impl super::Receiver for Receiver {
         if self.queue.len() == self.capacity {
             self.queue.pop_front();
         }
-        let mut buf = bytes::BytesMut::with_capacity(datagram.len());
-        buf.resize(datagram.len(), 0);
 
-        buf.copy_from_slice(datagram);
-        self.queue.push_back(bytes::Bytes::from(buf));
+        self.queue
+            .push_back(bytes::Bytes::copy_from_slice(datagram));
         // Since a datagram was appended to the queue, wake the waker to inform
         // the user that it can receive datagrams now.
         if let Some(w) = self.waker.take() {
@@ -185,7 +183,7 @@ impl ReceiverBuilder {
 
 #[derive(Debug)]
 pub struct Sender {
-    pub queue: VecDeque<Datagram>,
+    queue: VecDeque<Datagram>,
     capacity: usize,
     min_packet_space: usize,
     max_packet_space: usize,
