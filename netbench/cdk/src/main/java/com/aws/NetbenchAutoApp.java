@@ -13,6 +13,11 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
+import java.nio.file.FileSystem;
+import java.nio.file.Paths;
+import java.nio.file.Path;
+import java.nio.file.Files;
+
 public class NetbenchAutoApp {
 
     // Helper method to build an environment
@@ -67,23 +72,29 @@ public class NetbenchAutoApp {
         ReportStack reportStack = new ReportStack(app, "ReportStack", StackProps.builder()
             .env(makeEnv(awsAccount, serverRegion))
             .build());
-
-        ClientServerStack clientStack = new ClientServerStack(app, "ClientStack", ClientServerStackProps.builder()
-            .env(makeEnv(awsAccount, clientRegion))
-            .bucket(reportStack.getBucket())
-            .instanceType(ec2InstanceType)
-            .cidr("10.0.0.0/16")
-            .stackType("client")
-            .build());
-
+      
         ClientServerStack serverStack = new ClientServerStack(app, "ServerStack", ClientServerStackProps.builder()
             .env(makeEnv(awsAccount, serverRegion))
             .bucket(reportStack.getBucket())
             .instanceType(ec2InstanceType)
             .cidr("11.0.0.0/16")
             .stackType("server")
+            .protocol(protocol)
             .build());
 
+        serverStack.addDependency(reportStack);
+      
+        ClientServerStack clientStack = new ClientServerStack(app, "ClientStack", ClientServerStackProps.builder()
+            .env(makeEnv(awsAccount, clientRegion))
+            .bucket(reportStack.getBucket())
+            .instanceType(ec2InstanceType)
+            .cidr("10.0.0.0/16")
+            .stackType("client")
+            .protocol(protocol)
+            .build());
+        
+        clientStack.addDependency(serverStack);
+        
         StateMachineStack stateMachineStack = new StateMachineStack(app, "StateMachineStack", StackProps.builder()
             .build());
 
@@ -96,6 +107,8 @@ public class NetbenchAutoApp {
             .stackType("server")
             .region(clientRegion)
             .build());
+        
+        serverPeeringConnStack.addDependency(clientStack);
 
         PeeringConnectionStack clientPeeringConnStack = new PeeringConnectionStack(app, "ClientPeerConnStack",
             PeeringStackProps.builder()
@@ -107,7 +120,8 @@ public class NetbenchAutoApp {
             .ref(serverPeeringConnStack.getRef())
             .region(serverRegion)
             .build());
-      
+
+        clientPeeringConnStack.addDependency(serverPeeringConnStack);
         app.synth();
     }
 }
