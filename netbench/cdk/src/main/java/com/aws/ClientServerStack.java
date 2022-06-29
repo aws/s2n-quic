@@ -36,6 +36,7 @@ import software.amazon.awscdk.services.lambda.Runtime;
 import software.amazon.awscdk.RemovalPolicy;
 
 import java.util.HashMap;
+import java.util.List;
 
 
 public class ClientServerStack extends Stack {
@@ -72,8 +73,7 @@ public class ClientServerStack extends Stack {
             .parameterName(stackType + "-cidr")
             .stringValue(this.vpc.getVpcCidrBlock())
             .build();
-
-        /*
+        
         Cluster cluster = Cluster.Builder.create(this, stackType + "-cluster")
             .vpc(vpc)
             .build();
@@ -83,6 +83,7 @@ public class ClientServerStack extends Stack {
             .instanceType(new InstanceType(instanceType))
             .machineImage(EcsOptimizedImage.amazonLinux2())
             .minCapacity(0)
+            .desiredCapacity(1)
             .build();
 
         AsgCapacityProvider asgProvider = AsgCapacityProvider.Builder.create(this, stackType + "-asg-provider")
@@ -90,17 +91,6 @@ public class ClientServerStack extends Stack {
             .build();
         
         cluster.addAsgCapacityProvider(asgProvider);
-
-        Ec2TaskDefinition task = Ec2TaskDefinition.Builder
-            .create(this, stackType + "-task")
-            .build();
-        task.addContainer(); 
-        
-        Ec2Service.Builder.create(this, "ec2service-" + stackType)
-            .cluster(cluster)
-            .taskDefinition(task)
-            .build();
-        */
 
         BastionHostLinux bastion = BastionHostLinux.Builder.create(this, stackType + "-bastion")
             .vpc(vpc)

@@ -21,12 +21,15 @@ public interface ClientServerStackProps extends StackProps {
 
     String getStackType();
 
+    String getProtocol();
+
     public static class Builder {
         private Bucket bucket;
         private String instanceType;
         private Environment env;
         private String cidr;
         private String stackType;
+        private String protocol;
 
         public Builder bucket(Bucket bucket) {
             this.bucket = bucket;
@@ -50,6 +53,11 @@ public interface ClientServerStackProps extends StackProps {
 
         public Builder stackType(String stackType) {
             this.stackType = stackType;
+            return this;
+        }
+
+        public Builder protocol(String protocol) {
+            this.protocol = protocol;
             return this;
         }
 
@@ -78,6 +86,11 @@ public interface ClientServerStackProps extends StackProps {
                 @Override
                 public Environment getEnv() {
                     return env;
+                }
+
+                @Override
+                public String getProtocol() {
+                    return protocol;
                 }
             };
         }

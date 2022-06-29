@@ -69,7 +69,8 @@ public interface PeeringStackProps extends StackProps {
             return this;
         }
 
-        public static PeeringStackProps build() {
+
+        public PeeringStackProps build() {
             return new PeeringStackProps() {
                 @Override
                 public Vpc getVpcClient() {
