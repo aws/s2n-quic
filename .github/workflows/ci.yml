@@ -298,7 +298,7 @@ jobs:
         with:
           toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
           override: true
-          target: thumbv7m-none-eabi
+          target: bpfeb-unknown-none
 
       - uses: camshaft/rust-cache@v1
 
