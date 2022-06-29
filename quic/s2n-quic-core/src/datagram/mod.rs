@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#[cfg(all(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 pub mod default;
 pub mod disabled;
 pub mod traits;

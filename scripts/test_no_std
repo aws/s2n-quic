@@ -10,6 +10,7 @@ set -e
 # can be run for specific toolchain: `./scripts/test_no_std nightly-2021-06-21`
 TOOLCHAIN=${1:-nightly}
 
+rustup component remove rust-std --toolchain $TOOLCHAIN
 rustup target add bpfeb-unknown-none --toolchain $TOOLCHAIN
 
 # see https://github.com/rust-lang/cargo/issues/7916

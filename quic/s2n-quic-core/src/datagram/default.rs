@@ -35,6 +35,7 @@ pub enum BuilderError {
     ZeroCapacity,
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for BuilderError {}
 
 impl fmt::Display for BuilderError {
