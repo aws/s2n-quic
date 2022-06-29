@@ -114,7 +114,7 @@ impl fmt::Display for SendDatagramError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::QueueAtCapacity { .. } => {
-                write!(f, "Queue does not have more room for datagrams.")
+                write!(f, "Queue does not have room for more datagrams.")
             }
             Self::ExceedsPeerTransportLimits { .. } => {
                 write!(
