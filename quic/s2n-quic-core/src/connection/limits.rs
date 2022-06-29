@@ -150,7 +150,6 @@ impl Limits {
         Duration
     );
     setter!(with_max_keep_alive_period, max_keep_alive_period, Duration);
-    setter!(with_max_datagram_frame_size, max_datagram_frame_size, u64);
 
     // internal APIs
 

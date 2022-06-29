@@ -28,6 +28,7 @@ use s2n_quic_core::{
         InitialId, LocalId, PeerId,
     },
     crypto::{tls, tls::Endpoint as _, CryptoSuite, InitialKey},
+    datagram::{Endpoint as DatagramEndpoint, PreConnectionInfo},
     endpoint::{limits::Outcome, Limiter as _},
     event::{
         self, supervisor, ConnectionPublisher, EndpointPublisher as _, IntoEvent, Subscriber as _,
@@ -1087,6 +1088,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .connection_limits
             .on_connection(&LimitsInfo::new(&remote_address));
         transport_parameters.load_limits(&limits);
+
+        transport_parameters.max_datagram_frame_size = endpoint_context
+            .datagram
+            .max_datagram_frame_size(&PreConnectionInfo::new())
+            .try_into()
+            .expect("Failed to convert max_datagram_frame_size");
 
         transport_parameters.active_connection_id_limit = s2n_quic_core::varint::VarInt::from(
             connection::peer_id_registry::ACTIVE_CONNECTION_ID_LIMIT,

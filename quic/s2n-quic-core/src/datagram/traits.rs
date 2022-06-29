@@ -10,6 +10,9 @@ pub trait Endpoint: 'static + Send {
     type Receiver: Receiver;
 
     fn create_connection(&mut self, info: &ConnectionInfo) -> (Self::Sender, Self::Receiver);
+
+    /// Returns the maximum datagram frame size the provider is willing to accept
+    fn max_datagram_frame_size(&self, info: &PreConnectionInfo) -> u64;
 }
 
 /// ConnectionInfo contains the peer's limit on the size of datagrams
@@ -33,6 +36,17 @@ impl ConnectionInfo {
 impl Default for ConnectionInfo {
     fn default() -> Self {
         ConnectionInfo::new(0)
+    }
+}
+
+/// PreConnectionInfo will contain information needed to determine how
+/// large of a datagram a provider is willing to accept
+#[non_exhaustive]
+pub struct PreConnectionInfo(());
+
+impl PreConnectionInfo {
+    pub fn new() -> Self {
+        PreConnectionInfo(())
     }
 }
 

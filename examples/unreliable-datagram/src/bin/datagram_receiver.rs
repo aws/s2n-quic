@@ -27,17 +27,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .unwrap();
 
-    // The limits provider is used to advertise the capacity to receive datagrams
-    let connection_limits = s2n_quic::provider::limits::Limits::new()
-        .with_max_datagram_frame_size(65535)
-        .expect("connection limits are valid");
-
     // Build an `s2n_quic::Client`
     let client = Client::builder()
         .with_tls((CERT_PEM, KEY_PEM))?
         .with_io("0.0.0.0:0")?
         .with_datagram(datagram_provider)?
-        .with_limits(connection_limits)?
         .start()?;
 
     let addr: SocketAddr = "127.0.0.1:4433".parse()?;
