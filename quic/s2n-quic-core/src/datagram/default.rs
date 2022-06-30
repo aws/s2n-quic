@@ -3,7 +3,10 @@
 
 // s2n-quic's default implementation of the datagram component
 
-use crate::datagram::{ConnectionInfo, Packet, PreConnectionInfo};
+use crate::{
+    datagram::{ConnectionInfo, Packet, PreConnectionInfo},
+    transport::parameters::MaxDatagramFrameSize,
+};
 use alloc::collections::VecDeque;
 use bytes::Bytes;
 use core::{
@@ -87,14 +90,14 @@ impl super::Endpoint for Endpoint {
                 .unwrap(),
             Receiver::builder()
                 .with_capacity(self.recv_queue_capacity)
-                .with_max_datagram_frame_size(65535)
+                .with_max_datagram_frame_size(MaxDatagramFrameSize::RECOMMENDED)
                 .build()
                 .unwrap(),
         )
     }
 
     fn max_datagram_frame_size(&self, _info: &PreConnectionInfo) -> u64 {
-        65535
+        MaxDatagramFrameSize::RECOMMENDED
     }
 }
 
@@ -170,7 +173,7 @@ impl Default for ReceiverBuilder {
     fn default() -> Self {
         Self {
             queue_capacity: 200,
-            max_datagram_frame_size: 65535,
+            max_datagram_frame_size: MaxDatagramFrameSize::RECOMMENDED,
         }
     }
 }

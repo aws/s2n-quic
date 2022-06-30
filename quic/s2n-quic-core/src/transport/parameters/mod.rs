@@ -782,18 +782,19 @@ impl TransportParameterValidator for InitialMaxStreamsUni {
 //# (represented as a variable-length integer) that represents the maximum
 //# size of a DATAGRAM frame (including the frame type, length, and
 //# payload) the endpoint is willing to receive, in bytes.
-//# The default for this parameter is 0, which indicates that the
-//# endpoint does not support DATAGRAM frames.  A value greater than 0
-//# indicates that the endpoint supports the DATAGRAM frame types and is
-//# willing to receive such frames on this connection.
 transport_parameter!(MaxDatagramFrameSize(VarInt), 0x20, VarInt::from_u16(0));
 
-//= https://www.rfc-editor.org/rfc/rfc9221#section-3
-//# For most uses of DATAGRAM frames, it is RECOMMENDED to send a value of
-//# 65535 in the max_datagram_frame_size transport parameter to indicate that
-//# this endpoint will accept any DATAGRAM frame that fits inside a QUIC packet.
 impl MaxDatagramFrameSize {
-    pub const RECOMMENDED: Self = Self(VarInt::from_u16(65535));
+    //= https://www.rfc-editor.org/rfc/rfc9221#section-3
+    //# For most uses of DATAGRAM frames, it is RECOMMENDED to send a value of
+    //# 65535 in the max_datagram_frame_size transport parameter to indicate that
+    //# this endpoint will accept any DATAGRAM frame that fits inside a QUIC packet.
+    pub const RECOMMENDED: u64 = 65535;
+    //= https://www.rfc-editor.org/rfc/rfc9221#section-3
+    //# The default for this parameter is 0, which indicates that the
+    //# endpoint does not support DATAGRAM frames.  A value greater than 0
+    //# indicates that the endpoint supports the DATAGRAM frame types and is
+    //# willing to receive such frames on this connection.
     pub const DEFAULT: Self = Self(VarInt::from_u16(0));
 }
 

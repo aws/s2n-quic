@@ -378,6 +378,18 @@ macro_rules! impl_handle_api {
             query.into()
         }
 
+        /// API for querying the connection's
+        /// [`Datagram::Sender`](crate::provider::datagram::Sender) or
+        /// [`Datagram::Receiver`](crate::provider::datagram::Receiver).
+        ///
+        ///  Provides mutable access to `Sender` or `Receiver`.
+        ///
+        /// ```ignore
+        /// let outcome = connection
+        ///     .datagram_mut(
+        ///         |sender: &MySender| sender.send_datagram(Bytes::from_static(&[1, 2, 3]));
+        ///     );
+        /// ```
         pub fn datagram_mut<Query, ProviderType, Outcome>(
             &mut self,
             query: Query,

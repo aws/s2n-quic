@@ -26,6 +26,7 @@ pub struct ConnectionInfo {
 }
 
 impl ConnectionInfo {
+    #[doc(hidden)]
     pub fn new(max_datagram_payload: u64) -> Self {
         ConnectionInfo {
             max_datagram_payload,
@@ -39,12 +40,13 @@ impl Default for ConnectionInfo {
     }
 }
 
-/// PreConnectionInfo will contain information needed to determine how
-/// large of a datagram a provider is willing to accept
+/// PreConnectionInfo will contain information needed to determine whether
+/// or not a provider will accept datagrams.
 #[non_exhaustive]
 pub struct PreConnectionInfo(());
 
 impl PreConnectionInfo {
+    #[doc(hidden)]
     pub fn new() -> Self {
         PreConnectionInfo(())
     }
