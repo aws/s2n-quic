@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let recv_result = futures::future::poll_fn(|cx| {
         // datagram_mut takes a closure which calls the requested datagram function. The type
-        // parameter of the closure parameter should be either the datagram Sender type or the
+        // of the closure parameter should be either the datagram Sender type or the
         // datagram Receiver type. The datagram_mut function will check this type against
         // its stored datagram Sender and Receiver, and if the type matches, the requested
         // function will execute. Here, that requested function is poll_recv_datagram.

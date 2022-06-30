@@ -162,7 +162,8 @@ impl super::Receiver for Receiver {
 
 // A builder for the default datagram receiver
 ///
-/// Use to configure a datagram recv queue size
+/// Use to configure a datagram recv queue size and how large of
+/// a datagram we can receive.
 #[derive(Debug)]
 pub struct ReceiverBuilder {
     queue_capacity: usize,
