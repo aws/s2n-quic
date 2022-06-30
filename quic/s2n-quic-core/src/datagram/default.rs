@@ -304,8 +304,8 @@ impl Sender {
         self.queue.push_back(datagram);
 
         match oldest {
-            Some(datagram) => return Ok(Some(datagram.data)),
-            None => return Ok(None),
+            Some(datagram) => Ok(Some(datagram.data)),
+            None => Ok(None),
         }
     }
 
