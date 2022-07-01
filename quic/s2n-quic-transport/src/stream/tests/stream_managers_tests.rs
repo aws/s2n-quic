@@ -418,6 +418,93 @@ fn try_open(
 }
 
 #[test]
+#[should_panic]
+fn panic_if_local_violates_limits() {
+    let max_streams = 2;
+    let flow_limits = InitialFlowControlLimits {
+        stream_limits: InitialStreamLimits {
+            max_data_bidi_local: VarInt::from_u32(100),
+            max_data_bidi_remote: VarInt::from_u32(100),
+            max_data_uni: VarInt::from_u32(100),
+        },
+        max_data: VarInt::from_u32(64 * 1024),
+        max_streams_bidi: VarInt::from_u32(max_streams),
+        max_streams_uni: VarInt::from_u32(max_streams),
+    };
+    let connection_limits = ConnectionLimits::default()
+        .with_max_open_local_unidirectional_streams(100)
+        .unwrap();
+    let local_endpoint_type = endpoint::Type::Server;
+    let mut manager = AbstractStreamManager::<MockStream>::new(
+        &connection_limits,
+        local_endpoint_type,
+        flow_limits,
+        flow_limits,
+    );
+
+    // open up 1 active streams
+    try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    assert_eq!(manager.active_streams().len(), 1);
+    assert!(manager.active_streams().len() <= max_streams as usize);
+
+    // open up 2 active streams
+    try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    assert_eq!(manager.active_streams().len(), 2);
+    assert!(manager.active_streams().len() <= max_streams as usize);
+
+    // open up 3 active streams
+    try_open(&mut manager, StreamType::Bidirectional).unwrap();
+}
+
+#[test]
+fn emit_error_if_peer_violates_limits() {
+    let max_streams = 2;
+    let flow_limits = InitialFlowControlLimits {
+        stream_limits: InitialStreamLimits {
+            max_data_bidi_local: VarInt::from_u32(100),
+            max_data_bidi_remote: VarInt::from_u32(100),
+            max_data_uni: VarInt::from_u32(100),
+        },
+        max_data: VarInt::from_u32(64 * 1024),
+        max_streams_bidi: VarInt::from_u32(max_streams),
+        max_streams_uni: VarInt::from_u32(max_streams),
+    };
+    let connection_limits = ConnectionLimits::default()
+        .with_max_open_local_unidirectional_streams(100)
+        .unwrap();
+    let local_endpoint_type = endpoint::Type::Server;
+    let mut manager = AbstractStreamManager::<MockStream>::new(
+        &connection_limits,
+        local_endpoint_type,
+        flow_limits,
+        flow_limits,
+    );
+
+    // open up 1 active streams
+    let stream_id = StreamId::nth(endpoint::Type::Client, StreamType::Bidirectional, 0).unwrap();
+    assert!(manager
+        .on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], false))
+        .is_ok());
+    assert_eq!(manager.active_streams().len(), 1);
+    assert!(manager.active_streams().len() <= max_streams as usize);
+
+    // open up 2 active streams
+    let stream_id = StreamId::nth(endpoint::Type::Client, StreamType::Bidirectional, 1).unwrap();
+    assert!(manager
+        .on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], false))
+        .is_ok());
+    assert_eq!(manager.active_streams().len(), 2);
+    assert!(manager.active_streams().len() <= max_streams as usize);
+
+    // open up 3 active streams
+    let stream_id = StreamId::nth(endpoint::Type::Client, StreamType::Bidirectional, 2).unwrap();
+    let res = manager.on_data(&stream_data(stream_id, VarInt::from_u32(1), &[], false));
+    // error if peer violates stream limits
+    assert_eq!(res, Err(transport::Error::STREAM_LIMIT_ERROR));
+    assert!(manager.active_streams().len() <= max_streams as usize);
+}
+
+#[test]
 fn remote_messages_open_unopened_streams() {
     const STREAMS_TO_OPEN: u64 = 8;
 
@@ -668,7 +755,7 @@ fn max_streams_replenishes_stream_control_capacity() {
         // peer's max streams limit and not the local concurrent stream limit.
         for i in 0..*current_max_streams {
             let stream_id = StreamId::nth(endpoint::Type::Server, stream_type, i).unwrap();
-            manager.with_stream_controller(|ctrl| ctrl.on_open_stream(stream_id));
+            manager.with_stream_controller(|ctrl| ctrl.on_open_stream(stream_id).unwrap());
             manager.with_stream_controller(|ctrl| ctrl.on_close_stream(stream_id));
         }
 

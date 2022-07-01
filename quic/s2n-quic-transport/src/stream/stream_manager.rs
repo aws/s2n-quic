@@ -202,10 +202,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
     }
 
     /// Opens the `Stream` with the given `StreamId`.
-    /// This method does not perform any validation whether it is allowed to
-    /// open the `Stream`, since the necessary validation depends on which side
-    /// opens the `Stream`.
-    fn open_stream(&mut self, stream_id: StreamId) {
+    pub fn open_stream(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
         // The receive window is announced by us towards to the peer
         let initial_receive_window = self
             .initial_local_limits
@@ -229,7 +226,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
             "Receive window must not exceed 32bit range"
         );
 
-        self.stream_controller.on_open_stream(stream_id);
+        self.stream_controller.on_open_stream(stream_id)?;
 
         self.streams.insert_stream(S::new(StreamConfig {
             incoming_connection_flow_controller: self.incoming_connection_flow_controller.clone(),
@@ -241,16 +238,20 @@ impl<S: StreamTrait> StreamManagerState<S> {
             initial_send_window,
             max_send_buffer_size: self.stream_limits.max_send_buffer_size,
         }));
+
+        Ok(())
     }
 
     /// Opens a Stream which is referenced in a frame if it has not yet been
     /// opened so far. This will also open all unopened frames which a lower
     /// Stream ID of the same type, as required by the QUIC specification.
-    fn open_stream_if_necessary(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
+    pub fn open_stream_if_necessary(
+        &mut self,
+        stream_id: StreamId,
+    ) -> Result<(), transport::Error> {
         // If the stream ID is higher than any Stream ID we observed so far, we
         // need open all Stream IDs of the same type. Otherwise we need to look
         // up the Stream ID the map.
-
         let first_unopened_id: StreamId = if let Some(first_unopened_id) = *self
             .next_stream_ids
             .get_mut(stream_id.initiator(), stream_id.stream_type())
@@ -289,7 +290,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
 
                 let mut stream_id_iter = first_unopened_id;
                 while stream_id_iter <= stream_id {
-                    self.open_stream(stream_id_iter);
+                    self.open_stream(stream_id_iter)?;
 
                     // The Stream ID can be expected to be valid, since we check upfront
                     // whether the highest stream id (`stream_id`) is still valid,
@@ -573,7 +574,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             .next_stream_ids
             .get_mut(local_endpoint_type, stream_type) = first_unopened_id.next_of_type();
 
-        self.inner.open_stream(first_unopened_id);
+        self.inner.open_stream(first_unopened_id)?;
 
         Ok(first_unopened_id).into()
     }
