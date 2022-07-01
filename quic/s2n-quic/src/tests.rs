@@ -118,7 +118,7 @@ fn stream_reset_test() {
             .with_limits(
                 // keep the stream limit low
                 provider::limits::Limits::default()
-                    .with_max_open_bidirectional_streams(1)
+                    .with_max_open_bidirectional_streams(2)
                     .unwrap(),
             )?
             .start()?;

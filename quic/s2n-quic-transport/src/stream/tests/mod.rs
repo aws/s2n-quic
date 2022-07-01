@@ -19,6 +19,7 @@ macro_rules! assert_matches {
         }
     };
 }
+pub(super) use assert_matches;
 
 /// Creates a `STREAM_DATA` frame
 pub fn stream_data<Data>(
@@ -38,7 +39,7 @@ pub fn stream_data<Data>(
 
 /// Asserts that a `Result` type contains a TransportError with the given
 /// error code.
-fn assert_is_transport_error<T: core::fmt::Debug>(
+pub fn assert_is_transport_error<T: core::fmt::Debug>(
     result: Result<T, transport::Error>,
     expected: transport::Error,
 ) {
@@ -79,7 +80,6 @@ fn gen_pattern_test_chunks(mut offset: VarInt, lens: &[usize]) -> Vec<bytes::Byt
 // Tests in submodules
 mod receive_stream_tests;
 mod send_stream_tests;
-mod stream_managers_tests;
 
 #[test]
 fn idle_stream_does_not_write_data() {

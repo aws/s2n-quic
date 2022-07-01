@@ -119,23 +119,6 @@ impl Controller {
         }
     }
 
-    /// This method is called when the remote peer wishes to open a new stream.
-    ///
-    /// A `STREAM_LIMIT_ERROR` will be returned if the peer has exceeded the stream limits
-    /// that were communicated by transport parameters or MAX_STREAMS frames.
-    pub fn on_remote_open_stream(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
-        match stream_id.stream_type() {
-            StreamType::Bidirectional => self
-                .bidi_controller
-                .incoming
-                .on_remote_open_stream(stream_id),
-            StreamType::Unidirectional => self
-                .uni_controller
-                .incoming
-                .on_remote_open_stream(stream_id),
-        }
-    }
-
     /// This method is called whenever a stream is opened, regardless of which side initiated.
     pub fn on_open_stream(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
         match self.direction(stream_id) {
@@ -146,27 +129,16 @@ impl Controller {
                 .uni_controller
                 .outgoing
                 .on_open_stream(stream_id, self.local_endpoint_type),
-            StreamDirection::Incoming => self
-                .uni_controller
-                .incoming
-                .on_open_stream(stream_id, self.local_endpoint_type),
+            StreamDirection::Incoming => self.uni_controller.incoming.on_open_stream(stream_id),
         }
     }
 
     /// This method is called whenever a stream is closed.
     pub fn on_close_stream(&mut self, stream_id: StreamId) {
         match self.direction(stream_id) {
-            StreamDirection::Bidirectional => self
-                .bidi_controller
-                .on_close_stream(stream_id, self.local_endpoint_type),
-            StreamDirection::Outgoing => self
-                .uni_controller
-                .outgoing
-                .on_close_stream(stream_id, self.local_endpoint_type),
-            StreamDirection::Incoming => self
-                .uni_controller
-                .incoming
-                .on_close_stream(stream_id, self.local_endpoint_type),
+            StreamDirection::Bidirectional => self.bidi_controller.on_close_stream(stream_id),
+            StreamDirection::Outgoing => self.uni_controller.outgoing.on_close_stream(stream_id),
+            StreamDirection::Incoming => self.uni_controller.incoming.on_close_stream(stream_id),
         }
     }
 
@@ -230,6 +202,22 @@ impl Controller {
             StreamType::Unidirectional => StreamDirection::Incoming,
         }
     }
+
+    #[cfg(test)]
+    // Invoke check when opening peer initiated streams. This check is performed
+    // on the IncomingController when opening streams.
+    pub fn on_remote_open_stream(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
+        match stream_id.stream_type() {
+            StreamType::Bidirectional => self
+                .bidi_controller
+                .incoming
+                .on_remote_open_stream(stream_id),
+            StreamType::Unidirectional => self
+                .uni_controller
+                .incoming
+                .on_remote_open_stream(stream_id),
+        }
+    }
 }
 
 impl timer::Provider for Controller {
@@ -273,17 +261,14 @@ impl ControllerPair {
     ) -> Result<(), transport::Error> {
         self.outgoing
             .on_open_stream(stream_id, local_endpoint_type)?;
-        self.incoming
-            .on_open_stream(stream_id, local_endpoint_type)?;
+        self.incoming.on_open_stream(stream_id)?;
         Ok(())
     }
 
     #[inline]
-    fn on_close_stream(&mut self, stream_id: StreamId, local_endpoint_type: endpoint::Type) {
-        self.outgoing
-            .on_close_stream(stream_id, local_endpoint_type);
-        self.incoming
-            .on_close_stream(stream_id, local_endpoint_type);
+    fn on_close_stream(&mut self, stream_id: StreamId) {
+        self.outgoing.on_close_stream(stream_id);
+        self.incoming.on_close_stream(stream_id);
     }
 
     #[inline]
@@ -432,25 +417,72 @@ impl OutgoingController {
         Poll::Ready(())
     }
 
+    fn on_local_open_stream(
+        &self,
+        stream_id: StreamId,
+        local_endpoint_type: endpoint::Type,
+    ) -> Result<(), transport::Error> {
+        // open a total of allowed_limit streams
+        let allowed_limit = self.local_initiated_concurrent_stream_limit.as_u64();
+        // open maximum of allowed_streams; streams as 0-indexed
+        let allowed_streams = allowed_limit
+            .checked_sub(1)
+            .ok_or(transport::Error::STREAM_LIMIT_ERROR)?;
+
+        let max_stream_id = StreamId::nth(
+            stream_id.initiator(),
+            stream_id.stream_type(),
+            allowed_streams,
+        )
+        .expect("max_streams is limited to MAX_STREAMS_MAX_VALUE");
+
+        if stream_id > max_stream_id {
+            dbg!(
+                "{} {} {:?} {:?}",
+                allowed_limit,
+                allowed_streams,
+                max_stream_id,
+                stream_id
+            );
+            if local_endpoint_type == stream_id.initiator() {
+                // flow control limits
+                return Err(transport::Error::INTERNAL_ERROR);
+            } else {
+                // peer violated the limits
+                //
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
+                //# Endpoints MUST NOT exceed the limit set by their peer.  An endpoint
+                //# that receives a frame with a stream ID exceeding the limit it has
+                //# sent MUST treat this as a connection error of type
+                //# STREAM_LIMIT_ERROR; see Section 11 for details on error handling.
+
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
+                //# An endpoint MUST terminate a connection
+                //# with an error of type STREAM_LIMIT_ERROR if a peer opens more streams
+                //# than was permitted.
+                return Err(transport::Error::STREAM_LIMIT_ERROR);
+            }
+        }
+        Ok(())
+    }
+
     fn on_open_stream(
         &mut self,
         stream_id: StreamId,
         local_endpoint_type: endpoint::Type,
     ) -> Result<(), transport::Error> {
+        self.on_local_open_stream(stream_id, local_endpoint_type)?;
         self.opened_streams += 1;
 
-        self.check_integrity(stream_id, local_endpoint_type)
+        self.check_integrity(stream_id);
+        Ok(())
     }
 
-    fn on_close_stream(&mut self, stream_id: StreamId, local_endpoint_type: endpoint::Type) {
+    fn on_close_stream(&mut self, stream_id: StreamId) {
         self.closed_streams += 1;
 
         self.wake_unblocked();
-        self.check_integrity(stream_id, local_endpoint_type)
-            .unwrap_or(
-                // ignore error since the stream is already closing
-                (),
-            );
+        self.check_integrity(stream_id);
     }
 
     /// The number of streams that may be opened by the local application, respecting both
@@ -540,44 +572,40 @@ impl OutgoingController {
     }
 
     #[inline]
-    fn check_integrity(
-        &self,
-        stream_id: StreamId,
-        local_endpoint_type: endpoint::Type,
-    ) -> Result<(), transport::Error> {
+    fn check_integrity(&self, stream_id: StreamId) {
         debug_assert!(
             self.closed_streams <= self.opened_streams,
             "Cannot close more streams than previously opened."
         );
-
-        // panic in debug mode for local violations since that is incorrect library
-        // behavior and return an error on peer violation.
-        if self.open_stream_count() > self.local_initiated_concurrent_stream_limit {
-            if local_endpoint_type == stream_id.initiator() {
-                debug_assert!(
-                    self.open_stream_count() <= self.local_initiated_concurrent_stream_limit,
-                    "Cannot have more outgoing streams open concurrently than \
+        debug_assert!(
+            self.open_stream_count() <= self.local_initiated_concurrent_stream_limit,
+            "Cannot have more outgoing streams open concurrently than \
                     the local_initiated_concurrent_stream_limit. {:?} {:#?}",
-                    stream_id,
-                    self
-                );
-            } else {
-                // peer violated the limits
-                //
-                //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
-                //# Endpoints MUST NOT exceed the limit set by their peer.  An endpoint
-                //# that receives a frame with a stream ID exceeding the limit it has
-                //# sent MUST treat this as a connection error of type
-                //# STREAM_LIMIT_ERROR; see Section 11 for details on error handling.
+            stream_id,
+            self
+        );
 
-                //= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
-                //# An endpoint MUST terminate a connection
-                //# with an error of type STREAM_LIMIT_ERROR if a peer opens more streams
-                //# than was permitted.
-                return Err(transport::Error::STREAM_LIMIT_ERROR);
-            }
-        }
-        Ok(())
+        //// panic in debug mode for local violations since that is incorrect library
+        //// behavior and return an error on peer violation.
+        //if self.open_stream_count() > self.local_initiated_concurrent_stream_limit {
+        //    if local_endpoint_type == stream_id.initiator() {
+        //        // todo internal error
+        //    } else {
+        //        // peer violated the limits
+        //        //
+        //        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
+        //        //# Endpoints MUST NOT exceed the limit set by their peer.  An endpoint
+        //        //# that receives a frame with a stream ID exceeding the limit it has
+        //        //# sent MUST treat this as a connection error of type
+        //        //# STREAM_LIMIT_ERROR; see Section 11 for details on error handling.
+
+        //        //= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
+        //        //# An endpoint MUST terminate a connection
+        //        //# with an error of type STREAM_LIMIT_ERROR if a peer opens more streams
+        //        //# than was permitted.
+        //        return Err(transport::Error::STREAM_LIMIT_ERROR);
+        //    }
+        //}
     }
 }
 
@@ -655,15 +683,33 @@ impl IncomingController {
         }
     }
 
+    /// This method is called when the remote peer wishes to open a new stream.
+    ///
+    /// A `STREAM_LIMIT_ERROR` will be returned if the peer has exceeded the stream limits
+    /// that were communicated by transport parameters or MAX_STREAMS frames.
     fn on_remote_open_stream(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
+        // open a total of allowed_limit streams
+        let allowed_limit = self.max_streams_sync.latest_value().as_u64();
+        // open maximum of allowed_streams; streams as 0-indexed
+        let allowed_streams = allowed_limit
+            .checked_sub(1)
+            .ok_or(transport::Error::STREAM_LIMIT_ERROR)?;
+
         let max_stream_id = StreamId::nth(
             stream_id.initiator(),
             stream_id.stream_type(),
-            self.max_streams_sync.latest_value().as_u64(),
+            allowed_streams,
         )
         .expect("max_streams is limited to MAX_STREAMS_MAX_VALUE");
 
         if stream_id > max_stream_id {
+            dbg!(
+                "{} {} {:?} {:?}",
+                allowed_limit,
+                allowed_streams,
+                max_stream_id,
+                stream_id
+            );
             //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
             //# Endpoints MUST NOT exceed the limit set by their peer.  An endpoint
             //# that receives a frame with a stream ID exceeding the limit it has
@@ -679,17 +725,15 @@ impl IncomingController {
         Ok(())
     }
 
-    fn on_open_stream(
-        &mut self,
-        stream_id: StreamId,
-        local_endpoint_type: endpoint::Type,
-    ) -> Result<(), transport::Error> {
+    fn on_open_stream(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
+        self.on_remote_open_stream(stream_id)?;
         self.opened_streams += 1;
 
-        self.check_integrity(stream_id, local_endpoint_type)
+        self.check_integrity(stream_id);
+        Ok(())
     }
 
-    fn on_close_stream(&mut self, stream_id: StreamId, local_endpoint_type: endpoint::Type) {
+    fn on_close_stream(&mut self, stream_id: StreamId) {
         self.closed_streams += 1;
 
         let max_streams = self
@@ -698,11 +742,7 @@ impl IncomingController {
             .min(MAX_STREAMS_MAX_VALUE);
         self.max_streams_sync.update_latest_value(max_streams);
 
-        self.check_integrity(stream_id, local_endpoint_type)
-            .unwrap_or(
-                // ignore error since the stream is already closing
-                (),
-            );
+        self.check_integrity(stream_id);
     }
 
     /// Returns the number of streams currently open
@@ -734,45 +774,40 @@ impl IncomingController {
     }
 
     #[inline]
-    fn check_integrity(
-        &self,
-        stream_id: StreamId,
-        local_endpoint_type: endpoint::Type,
-    ) -> Result<(), transport::Error> {
+    fn check_integrity(&self, stream_id: StreamId) {
         debug_assert!(
             self.closed_streams <= self.opened_streams,
             "Cannot close more streams than previously opened."
         );
-
-        // panic in debug mode for local violations since that is incorrect library
-        // behavior and return an error on peer violation.
-        if self.open_stream_count() > self.peer_initiated_concurrent_stream_limit {
-            if local_endpoint_type == stream_id.initiator() {
-                debug_assert!(
-                    self.open_stream_count() <= self.peer_initiated_concurrent_stream_limit,
-                    "Cannot have more incoming streams open concurrently than \
+        debug_assert!(
+            self.open_stream_count() <= self.peer_initiated_concurrent_stream_limit,
+            "Cannot have more incoming streams open concurrently than \
                     the peer_initiated_concurrent_stream_limit. {:?} {:#?}",
-                    stream_id,
-                    self
-                );
-            } else {
-                // peer violated the limits
-                //
-                //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
-                //# Endpoints MUST NOT exceed the limit set by their peer.  An endpoint
-                //# that receives a frame with a stream ID exceeding the limit it has
-                //# sent MUST treat this as a connection error of type
-                //# STREAM_LIMIT_ERROR; see Section 11 for details on error handling.
+            stream_id,
+            self
+        );
 
-                //= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
-                //# An endpoint MUST terminate a connection
-                //# with an error of type STREAM_LIMIT_ERROR if a peer opens more streams
-                //# than was permitted.
-                return Err(transport::Error::STREAM_LIMIT_ERROR);
-            }
-        }
+        //// panic in debug mode for local violations since that is incorrect library
+        //// behavior and return an error on peer violation.
+        //if self.open_stream_count() > self.peer_initiated_concurrent_stream_limit {
+        //    if local_endpoint_type == stream_id.initiator() {
+        //        // todo internal error
+        //    } else {
+        //        // peer violated the limits
+        //        //
+        //        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
+        //        //# Endpoints MUST NOT exceed the limit set by their peer.  An endpoint
+        //        //# that receives a frame with a stream ID exceeding the limit it has
+        //        //# sent MUST treat this as a connection error of type
+        //        //# STREAM_LIMIT_ERROR; see Section 11 for details on error handling.
 
-        Ok(())
+        //        //= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
+        //        //# An endpoint MUST terminate a connection
+        //        //# with an error of type STREAM_LIMIT_ERROR if a peer opens more streams
+        //        //# than was permitted.
+        //        return Err(transport::Error::STREAM_LIMIT_ERROR);
+        //    }
+        //}
     }
 }
 

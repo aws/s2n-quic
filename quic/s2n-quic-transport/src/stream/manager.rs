@@ -274,13 +274,6 @@ impl<S: StreamTrait> StreamManagerState<S> {
                     return Err(transport::Error::NO_ERROR.with_reason("Connection was closed"));
                 }
 
-                //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
-                //# Endpoints MUST NOT exceed the limit set by their peer.  An endpoint
-                //# that receives a frame with a stream ID exceeding the limit it has
-                //# sent MUST treat this as a connection error of type
-                //# STREAM_LIMIT_ERROR; see Section 11 for details on error handling.
-                self.stream_controller.on_remote_open_stream(stream_id)?;
-
                 // We must create ALL streams which a lower Stream ID too:
 
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-3.2
@@ -1113,3 +1106,6 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         results
     }
 }
+
+#[cfg(test)]
+mod tests;

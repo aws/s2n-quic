@@ -9,13 +9,13 @@ use crate::{
         self, finalization::Provider, InternalConnectionId, InternalConnectionIdGenerator,
         Limits as ConnectionLimits,
     },
-    contexts::{ConnectionApiCallContext, OnTransmitError, WriteContext},
     endpoint,
     recovery::RttEstimator,
     stream::{
         controller::MAX_STREAMS_SYNC_FRACTION,
         stream_impl::StreamConfig,
         stream_interests::{StreamInterestProvider, StreamInterests},
+        tests::*,
         AbstractStreamManager, StreamError, StreamEvents, StreamTrait,
     },
     sync::DEFAULT_SYNC_PERIOD,
@@ -47,7 +47,6 @@ use s2n_quic_core::{
         parameters::{InitialFlowControlLimits, InitialStreamLimits},
         Error as TransportError,
     },
-    varint::VarInt,
 };
 
 #[derive(Debug)]
@@ -418,8 +417,7 @@ fn try_open(
 }
 
 #[test]
-#[should_panic]
-fn panic_if_local_violates_limits() {
+fn check_local_flow_control_violation() {
     let max_streams = 2;
     let flow_limits = InitialFlowControlLimits {
         stream_limits: InitialStreamLimits {
@@ -452,12 +450,20 @@ fn panic_if_local_violates_limits() {
     assert_eq!(manager.active_streams().len(), 2);
     assert!(manager.active_streams().len() <= max_streams as usize);
 
-    // open up 3 active streams
-    try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let (accept_waker, _accept_wake_counter) = new_count_waker();
+    let mut token = connection::OpenToken::new();
+    // should not be able to open up 3 active streams
+    assert!(manager
+        .poll_open(
+            StreamType::Bidirectional,
+            &mut token,
+            &Context::from_waker(&accept_waker),
+        )
+        .is_pending());
 }
 
 #[test]
-fn emit_error_if_peer_violates_limits() {
+fn check_peer_flow_control_violation() {
     let max_streams = 2;
     let flow_limits = InitialFlowControlLimits {
         stream_limits: InitialStreamLimits {
@@ -498,7 +504,7 @@ fn emit_error_if_peer_violates_limits() {
 
     // open up 3 active streams
     let stream_id = StreamId::nth(endpoint::Type::Client, StreamType::Bidirectional, 2).unwrap();
-    let res = manager.on_data(&stream_data(stream_id, VarInt::from_u32(1), &[], false));
+    let res = manager.on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], false));
     // error if peer violates stream limits
     assert_eq!(res, Err(transport::Error::STREAM_LIMIT_ERROR));
     assert!(manager.active_streams().len() <= max_streams as usize);
@@ -1254,7 +1260,7 @@ fn stream_limit_error_on_peer_open_stream_too_large() {
         let max_stream_id = StreamId::nth(
             endpoint::Type::Client,
             stream_type,
-            current_max_streams.as_u64(),
+            current_max_streams.as_u64() - 1,
         )
         .unwrap();
 
