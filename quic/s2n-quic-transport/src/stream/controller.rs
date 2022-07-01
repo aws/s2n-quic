@@ -136,9 +136,9 @@ impl Controller {
     /// This method is called whenever a stream is closed.
     pub fn on_close_stream(&mut self, stream_id: StreamId) {
         match self.direction(stream_id) {
-            StreamDirection::Bidirectional => self.bidi_controller.on_close_stream(stream_id),
-            StreamDirection::Outgoing => self.uni_controller.outgoing.on_close_stream(stream_id),
-            StreamDirection::Incoming => self.uni_controller.incoming.on_close_stream(stream_id),
+            StreamDirection::Bidirectional => self.bidi_controller.on_close_stream(),
+            StreamDirection::Outgoing => self.uni_controller.outgoing.on_close_stream(),
+            StreamDirection::Incoming => self.uni_controller.incoming.on_close_stream(),
         }
     }
 
@@ -266,9 +266,9 @@ impl ControllerPair {
     }
 
     #[inline]
-    fn on_close_stream(&mut self, stream_id: StreamId) {
-        self.outgoing.on_close_stream(stream_id);
-        self.incoming.on_close_stream(stream_id);
+    fn on_close_stream(&mut self) {
+        self.outgoing.on_close_stream();
+        self.incoming.on_close_stream();
     }
 
     #[inline]
@@ -358,6 +358,7 @@ impl OutgoingController {
         }
     }
 
+    #[inline]
     fn on_max_streams(&mut self, frame: &MaxStreams) {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
         //# MAX_STREAMS frames that do not increase the stream limit MUST be ignored.
@@ -374,8 +375,10 @@ impl OutgoingController {
         self.streams_blocked_sync.stop_sync();
 
         self.wake_unblocked();
+        self.check_integrity();
     }
 
+    #[inline]
     fn poll_open_stream(
         &mut self,
         open_token: &mut open_token::Token,
@@ -408,15 +411,18 @@ impl OutgoingController {
                     .request_delivery(self.peer_cumulative_stream_limit)
             }
 
+            self.check_integrity();
             return Poll::Pending;
         }
 
         // reset the open token since they're no longer blocked
         open_token.clear();
 
+        self.check_integrity();
         Poll::Ready(())
     }
 
+    #[inline]
     fn on_local_open_stream(
         &self,
         stream_id: StreamId,
@@ -466,6 +472,7 @@ impl OutgoingController {
         Ok(())
     }
 
+    #[inline]
     fn on_open_stream(
         &mut self,
         stream_id: StreamId,
@@ -474,19 +481,20 @@ impl OutgoingController {
         self.on_local_open_stream(stream_id, local_endpoint_type)?;
         self.opened_streams += 1;
 
-        self.check_integrity(stream_id);
+        self.check_integrity();
         Ok(())
     }
 
-    fn on_close_stream(&mut self, stream_id: StreamId) {
+    fn on_close_stream(&mut self) {
         self.closed_streams += 1;
 
         self.wake_unblocked();
-        self.check_integrity(stream_id);
+        self.check_integrity();
     }
 
     /// The number of streams that may be opened by the local application, respecting both
     /// the local concurrent streams limit and the peer's stream limits.
+    #[inline]
     fn available_stream_capacity(&self) -> VarInt {
         let local_capacity = self
             .local_initiated_concurrent_stream_limit
@@ -495,6 +503,7 @@ impl OutgoingController {
     }
 
     /// The current number of streams that can be opened according to the peer's limits
+    #[inline]
     fn peer_capacity(&self) -> VarInt {
         self.peer_cumulative_stream_limit
             .saturating_sub(self.opened_streams)
@@ -531,16 +540,19 @@ impl OutgoingController {
     #[inline]
     pub fn on_timeout(&mut self, now: Timestamp) {
         self.streams_blocked_sync.on_timeout(now);
+        self.check_integrity();
     }
 
     #[inline]
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
-        self.streams_blocked_sync.on_packet_ack(ack_set)
+        self.streams_blocked_sync.on_packet_ack(ack_set);
+        self.check_integrity();
     }
 
     #[inline]
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
-        self.streams_blocked_sync.on_packet_loss(ack_set)
+        self.streams_blocked_sync.on_packet_loss(ack_set);
+        self.check_integrity();
     }
 
     #[inline]
@@ -566,13 +578,15 @@ impl OutgoingController {
         }
     }
 
+    #[inline]
     pub fn close(&mut self) {
         self.wake_all();
         self.streams_blocked_sync.stop_sync();
+        self.check_integrity();
     }
 
     #[inline]
-    fn check_integrity(&self, stream_id: StreamId) {
+    fn check_integrity(&self) {
         debug_assert!(
             self.closed_streams <= self.opened_streams,
             "Cannot close more streams than previously opened."
@@ -580,32 +594,9 @@ impl OutgoingController {
         debug_assert!(
             self.open_stream_count() <= self.local_initiated_concurrent_stream_limit,
             "Cannot have more outgoing streams open concurrently than \
-                    the local_initiated_concurrent_stream_limit. {:?} {:#?}",
-            stream_id,
+                    the local_initiated_concurrent_stream_limit. {:#?}",
             self
         );
-
-        //// panic in debug mode for local violations since that is incorrect library
-        //// behavior and return an error on peer violation.
-        //if self.open_stream_count() > self.local_initiated_concurrent_stream_limit {
-        //    if local_endpoint_type == stream_id.initiator() {
-        //        // todo internal error
-        //    } else {
-        //        // peer violated the limits
-        //        //
-        //        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
-        //        //# Endpoints MUST NOT exceed the limit set by their peer.  An endpoint
-        //        //# that receives a frame with a stream ID exceeding the limit it has
-        //        //# sent MUST treat this as a connection error of type
-        //        //# STREAM_LIMIT_ERROR; see Section 11 for details on error handling.
-
-        //        //= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
-        //        //# An endpoint MUST terminate a connection
-        //        //# with an error of type STREAM_LIMIT_ERROR if a peer opens more streams
-        //        //# than was permitted.
-        //        return Err(transport::Error::STREAM_LIMIT_ERROR);
-        //    }
-        //}
     }
 }
 
@@ -687,7 +678,8 @@ impl IncomingController {
     ///
     /// A `STREAM_LIMIT_ERROR` will be returned if the peer has exceeded the stream limits
     /// that were communicated by transport parameters or MAX_STREAMS frames.
-    fn on_remote_open_stream(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
+    #[inline]
+    fn on_remote_open_stream(&self, stream_id: StreamId) -> Result<(), transport::Error> {
         // open a total of allowed_limit streams
         let allowed_limit = self.max_streams_sync.latest_value().as_u64();
         // open maximum of allowed_streams; streams as 0-indexed
@@ -725,15 +717,17 @@ impl IncomingController {
         Ok(())
     }
 
+    #[inline]
     fn on_open_stream(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
         self.on_remote_open_stream(stream_id)?;
         self.opened_streams += 1;
 
-        self.check_integrity(stream_id);
+        self.check_integrity();
         Ok(())
     }
 
-    fn on_close_stream(&mut self, stream_id: StreamId) {
+    #[inline]
+    fn on_close_stream(&mut self) {
         self.closed_streams += 1;
 
         let max_streams = self
@@ -742,22 +736,25 @@ impl IncomingController {
             .min(MAX_STREAMS_MAX_VALUE);
         self.max_streams_sync.update_latest_value(max_streams);
 
-        self.check_integrity(stream_id);
+        self.check_integrity();
     }
 
     /// Returns the number of streams currently open
+    #[inline]
     fn open_stream_count(&self) -> VarInt {
         self.opened_streams - self.closed_streams
     }
 
     #[inline]
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
-        self.max_streams_sync.on_packet_ack(ack_set)
+        self.max_streams_sync.on_packet_ack(ack_set);
+        self.check_integrity();
     }
 
     #[inline]
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
-        self.max_streams_sync.on_packet_loss(ack_set)
+        self.max_streams_sync.on_packet_loss(ack_set);
+        self.check_integrity();
     }
 
     #[inline]
@@ -769,12 +766,14 @@ impl IncomingController {
         self.max_streams_sync.on_transmit(stream_id, context)
     }
 
+    #[inline]
     pub fn close(&mut self) {
         self.max_streams_sync.stop_sync();
+        self.check_integrity();
     }
 
     #[inline]
-    fn check_integrity(&self, stream_id: StreamId) {
+    fn check_integrity(&self) {
         debug_assert!(
             self.closed_streams <= self.opened_streams,
             "Cannot close more streams than previously opened."
@@ -782,32 +781,9 @@ impl IncomingController {
         debug_assert!(
             self.open_stream_count() <= self.peer_initiated_concurrent_stream_limit,
             "Cannot have more incoming streams open concurrently than \
-                    the peer_initiated_concurrent_stream_limit. {:?} {:#?}",
-            stream_id,
+                    the peer_initiated_concurrent_stream_limit. {:#?}",
             self
         );
-
-        //// panic in debug mode for local violations since that is incorrect library
-        //// behavior and return an error on peer violation.
-        //if self.open_stream_count() > self.peer_initiated_concurrent_stream_limit {
-        //    if local_endpoint_type == stream_id.initiator() {
-        //        // todo internal error
-        //    } else {
-        //        // peer violated the limits
-        //        //
-        //        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
-        //        //# Endpoints MUST NOT exceed the limit set by their peer.  An endpoint
-        //        //# that receives a frame with a stream ID exceeding the limit it has
-        //        //# sent MUST treat this as a connection error of type
-        //        //# STREAM_LIMIT_ERROR; see Section 11 for details on error handling.
-
-        //        //= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
-        //        //# An endpoint MUST terminate a connection
-        //        //# with an error of type STREAM_LIMIT_ERROR if a peer opens more streams
-        //        //# than was permitted.
-        //        return Err(transport::Error::STREAM_LIMIT_ERROR);
-        //    }
-        //}
     }
 }
 
