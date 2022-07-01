@@ -3,7 +3,10 @@
 
 // s2n-quic's default implementation of the datagram component
 
-use crate::datagram::{ConnectionInfo, Packet};
+use crate::{
+    datagram::{ConnectionInfo, Packet, PreConnectionInfo},
+    transport::parameters::MaxDatagramFrameSize,
+};
 use alloc::collections::VecDeque;
 use bytes::Bytes;
 use core::{
@@ -14,6 +17,7 @@ use core::{
 #[derive(Debug, Default)]
 pub struct Endpoint {
     send_queue_capacity: usize,
+    recv_queue_capacity: usize,
 }
 
 impl Endpoint {
@@ -27,6 +31,7 @@ impl Endpoint {
 #[derive(Debug, Default)]
 pub struct EndpointBuilder {
     send_queue_capacity: usize,
+    recv_queue_capacity: usize,
 }
 
 #[non_exhaustive]
@@ -57,9 +62,18 @@ impl EndpointBuilder {
         Ok(self)
     }
 
+    pub fn with_recv_capacity(mut self, capacity: usize) -> Result<Self, BuilderError> {
+        if capacity == 0 {
+            return Err(BuilderError::ZeroCapacity);
+        }
+        self.recv_queue_capacity = capacity;
+        Ok(self)
+    }
+
     pub fn build(self) -> Result<Endpoint, core::convert::Infallible> {
         Ok(Endpoint {
             send_queue_capacity: self.send_queue_capacity,
+            recv_queue_capacity: self.recv_queue_capacity,
         })
     }
 }
@@ -75,20 +89,123 @@ impl super::Endpoint for Endpoint {
                 .with_connection_info(info)
                 .build()
                 .unwrap(),
-            Receiver(()),
+            Receiver::builder()
+                .with_capacity(self.recv_queue_capacity)
+                .with_max_datagram_frame_size(MaxDatagramFrameSize::RECOMMENDED)
+                .build()
+                .unwrap(),
         )
+    }
+
+    fn max_datagram_frame_size(&self, _info: &PreConnectionInfo) -> u64 {
+        MaxDatagramFrameSize::RECOMMENDED
     }
 }
 
-pub struct Receiver(());
+pub struct Receiver {
+    queue: VecDeque<Bytes>,
+    capacity: usize,
+    waker: Option<Waker>,
+    max_datagram_frame_size: u64,
+}
+
+impl Receiver {
+    /// Creates a builder for the default datagram receiver
+    fn builder() -> ReceiverBuilder {
+        ReceiverBuilder::default()
+    }
+
+    /// Returns a datagram if there are any on the queue
+    pub fn recv_datagram(&mut self) -> Option<Bytes> {
+        self.queue.pop_front()
+    }
+
+    /// Dequeues a datagram received from the peer.
+    ///
+    /// # Return value
+    ///
+    /// The function returns:
+    ///
+    /// - `Poll::Pending` if there are no datagrams to be received on the queue. In this case,
+    ///   the caller should retry receiving after the [`Waker`](core::task::Waker) on the provided
+    ///   [`Context`](core::task::Context) is notified.
+    /// - `Poll::Ready(Datagram)` if there exists a datagram to be received.
+    pub fn poll_recv_datagram(&mut self, cx: &mut Context) -> Poll<Bytes> {
+        if let Some(datagram) = self.queue.pop_front() {
+            Poll::Ready(datagram)
+        } else {
+            self.waker = Some(cx.waker().clone());
+            Poll::Pending
+        }
+    }
+}
 
 impl super::Receiver for Receiver {
-    fn on_datagram(&self, _datagram: &[u8]) {}
+    fn on_datagram(&mut self, datagram: &[u8]) {
+        if datagram.len() as u64 > self.max_datagram_frame_size {
+            return;
+        }
+        // The oldest datagram on the queue is popped off if the queue is full.
+        // Configure this behavior by implementing a custom Receiver for datagrams.
+        if self.queue.len() == self.capacity {
+            self.queue.pop_front();
+        }
+
+        self.queue
+            .push_back(bytes::Bytes::copy_from_slice(datagram));
+        // Since a datagram was appended to the queue, wake the waker to inform
+        // the user that it can receive datagrams now.
+        if let Some(w) = self.waker.take() {
+            w.wake();
+        }
+    }
+}
+
+// A builder for the default datagram receiver
+///
+/// Use to configure a datagram recv queue size and how large of
+/// a datagram we can receive.
+#[derive(Debug)]
+pub struct ReceiverBuilder {
+    queue_capacity: usize,
+    max_datagram_frame_size: u64,
+}
+
+impl Default for ReceiverBuilder {
+    fn default() -> Self {
+        Self {
+            queue_capacity: 200,
+            max_datagram_frame_size: MaxDatagramFrameSize::RECOMMENDED,
+        }
+    }
+}
+
+impl ReceiverBuilder {
+    /// Sets the capacity of the datagram receiver queue
+    pub fn with_capacity(mut self, capacity: usize) -> Self {
+        self.queue_capacity = capacity;
+        self
+    }
+
+    pub fn with_max_datagram_frame_size(mut self, size: u64) -> Self {
+        self.max_datagram_frame_size = size;
+        self
+    }
+
+    /// Builds the datagram receiver
+    pub fn build(self) -> Result<Receiver, core::convert::Infallible> {
+        Ok(Receiver {
+            queue: VecDeque::with_capacity(self.queue_capacity),
+            capacity: self.queue_capacity,
+            waker: None,
+            max_datagram_frame_size: self.max_datagram_frame_size,
+        })
+    }
 }
 
 #[derive(Debug)]
 pub struct Sender {
-    pub queue: VecDeque<Datagram>,
+    queue: VecDeque<Datagram>,
     capacity: usize,
     min_packet_space: usize,
     max_packet_space: usize,
@@ -128,8 +245,8 @@ impl fmt::Display for SendDatagramError {
 
 impl Sender {
     /// Creates a builder for the default datagram sender
-    pub fn builder() -> Builder {
-        Builder::default()
+    fn builder() -> SenderBuilder {
+        SenderBuilder::default()
     }
 
     /// Enqueues a datagram for sending it towards the peer.
@@ -173,7 +290,7 @@ impl Sender {
     pub fn send_datagram_forced(
         &mut self,
         data: bytes::Bytes,
-    ) -> Result<Option<Datagram>, SendDatagramError> {
+    ) -> Result<Option<Bytes>, SendDatagramError> {
         if data.len() as u64 > self.max_datagram_payload {
             return Err(SendDatagramError::ExceedsPeerTransportLimits);
         }
@@ -186,7 +303,11 @@ impl Sender {
 
         let datagram = Datagram { data };
         self.queue.push_back(datagram);
-        Ok(oldest)
+
+        match oldest {
+            Some(datagram) => Ok(Some(datagram.data)),
+            None => Ok(None),
+        }
     }
 
     /// Adds datagrams on the queue to be sent
@@ -305,12 +426,12 @@ impl super::Sender for Sender {
 ///
 /// Use to configure a datagram send queue size
 #[derive(Debug)]
-pub struct Builder {
+pub struct SenderBuilder {
     queue_capacity: usize,
     max_datagram_payload: u64,
 }
 
-impl Default for Builder {
+impl Default for SenderBuilder {
     fn default() -> Self {
         Self {
             queue_capacity: 200,
@@ -319,7 +440,7 @@ impl Default for Builder {
     }
 }
 
-impl Builder {
+impl SenderBuilder {
     /// Sets the capacity of the datagram sender queue
     pub fn with_capacity(mut self, capacity: usize) -> Self {
         self.queue_capacity = capacity;
@@ -371,12 +492,7 @@ mod tests {
         assert_eq!(default_sender.send_datagram_forced(datagram_1), Ok(None));
         // Queue has reached capacity so oldest datagram is returned
         let result = default_sender.send_datagram_forced(datagram_2);
-        assert_eq!(
-            result,
-            Ok(Some(Datagram {
-                data: bytes::Bytes::from_static(&[1, 2, 3])
-            }))
-        );
+        assert_eq!(result, Ok(Some(bytes::Bytes::from_static(&[1, 2, 3]))));
 
         // Oldest datagram has been bumped off the queue and the newest two datagrams
         // are there
@@ -548,6 +664,82 @@ mod tests {
         assert!(packet.remaining_capacity > 0);
         // Send queue is not completely depleted
         assert!(!default_sender.queue.is_empty());
+    }
+
+    #[test]
+    fn on_datagram() {
+        // Create a receiver with limited capacity
+        let mut receiver = Receiver::builder()
+            .with_capacity(2)
+            .with_max_datagram_frame_size(5)
+            .build()
+            .unwrap();
+
+        let datagram_0 = vec![1, 2, 3];
+        let datagram_1 = vec![4, 5, 6];
+        let datagram_2 = vec![7, 8, 9];
+        crate::datagram::Receiver::on_datagram(&mut receiver, &datagram_0);
+        crate::datagram::Receiver::on_datagram(&mut receiver, &datagram_1);
+        // Datagram queue will be forced to drop a datagram to receive the newest one
+        crate::datagram::Receiver::on_datagram(&mut receiver, &datagram_2);
+
+        // Oldest datagram has been dropped
+        assert_eq!(receiver.queue.pop_front().unwrap(), datagram_1);
+        assert_eq!(receiver.queue.pop_front().unwrap(), datagram_2);
+        assert!(receiver.queue.pop_front().is_none());
+
+        // Datagram sent by peer is larger than max_datagram_frame_size
+        let datagram_3 = vec![10, 11, 12, 13, 14, 15];
+        crate::datagram::Receiver::on_datagram(&mut receiver, &datagram_3);
+        // Queue is empty as datagram was not accepted
+        assert!(receiver.queue.pop_front().is_none());
+    }
+
+    #[test]
+    fn recv_datagram() {
+        let mut receiver = Receiver::builder().build().unwrap();
+
+        // Calling receive with no datagrams on the queue will result in a None
+        assert!(receiver.recv_datagram().is_none());
+
+        // Append a datagram to the receive queue
+        receiver
+            .queue
+            .push_back(bytes::Bytes::from_static(&[1, 2, 3]));
+
+        // Now the user can receive a datagram
+        assert_eq!(
+            receiver.recv_datagram(),
+            Some(bytes::Bytes::from_static(&[1, 2, 3]),)
+        );
+    }
+
+    #[test]
+    fn poll_recv_datagram() {
+        // Create a receiver
+        let mut receiver = Receiver::builder().build().unwrap();
+
+        let (waker, wake_count) = new_count_waker();
+        let mut cx = Context::from_waker(&waker);
+
+        // There are no datagrams on the queue to be received
+        assert_eq!(receiver.poll_recv_datagram(&mut cx), Poll::Pending);
+
+        // Adding some datagrams to the queue will wake up the stored waker
+        let datagram_0 = vec![1, 2, 3];
+        let datagram_1 = vec![4, 5, 6];
+        let datagram_2 = vec![7, 8, 9];
+        crate::datagram::Receiver::on_datagram(&mut receiver, &datagram_0);
+        crate::datagram::Receiver::on_datagram(&mut receiver, &datagram_1);
+        crate::datagram::Receiver::on_datagram(&mut receiver, &datagram_2);
+
+        // Waker was called
+        assert_eq!(wake_count, 1);
+
+        assert_eq!(
+            receiver.poll_recv_datagram(&mut cx),
+            Poll::Ready(bytes::Bytes::from_static(&[1, 2, 3]))
+        );
     }
 
     // The MockPacket mocks writing datagrams to a packet, but is not

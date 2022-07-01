@@ -378,13 +378,25 @@ macro_rules! impl_handle_api {
             query.into()
         }
 
-        pub fn datagram_mut<Query, SenderType, Outcome>(
+        /// API for querying the connection's
+        /// [`Datagram::Sender`](crate::provider::datagram::Sender) or
+        /// [`Datagram::Receiver`](crate::provider::datagram::Receiver).
+        ///
+        ///  Provides mutable access to `Sender` or `Receiver`.
+        ///
+        /// ```ignore
+        /// let outcome = connection
+        ///     .datagram_mut(
+        ///         |sender: &MySender| sender.send_datagram(Bytes::from_static(&[1, 2, 3]));
+        ///     );
+        /// ```
+        pub fn datagram_mut<Query, ProviderType, Outcome>(
             &mut self,
             query: Query,
         ) -> core::result::Result<Outcome, s2n_quic_core::event::query::Error>
         where
-            Query: FnOnce(&mut SenderType) -> Outcome,
-            SenderType: 'static,
+            Query: FnOnce(&mut ProviderType) -> Outcome,
+            ProviderType: 'static,
         {
             use s2n_quic_core::event::query;
             let mut query = query::Once::new_mut(query);

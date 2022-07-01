@@ -10,6 +10,9 @@ pub trait Endpoint: 'static + Send {
     type Receiver: Receiver;
 
     fn create_connection(&mut self, info: &ConnectionInfo) -> (Self::Sender, Self::Receiver);
+
+    /// Returns the maximum datagram frame size the provider is willing to accept
+    fn max_datagram_frame_size(&self, info: &PreConnectionInfo) -> u64;
 }
 
 /// ConnectionInfo contains the peer's limit on the size of datagrams
@@ -23,6 +26,7 @@ pub struct ConnectionInfo {
 }
 
 impl ConnectionInfo {
+    #[doc(hidden)]
     pub fn new(max_datagram_payload: u64) -> Self {
         ConnectionInfo {
             max_datagram_payload,
@@ -36,9 +40,21 @@ impl Default for ConnectionInfo {
     }
 }
 
+/// PreConnectionInfo will contain information needed to determine whether
+/// or not a provider will accept datagrams.
+#[non_exhaustive]
+pub struct PreConnectionInfo(());
+
+impl PreConnectionInfo {
+    #[doc(hidden)]
+    pub fn new() -> Self {
+        PreConnectionInfo(())
+    }
+}
+
 pub trait Receiver: 'static + Send {
     // A callback that gives users direct access to datagrams as they are read off a packet
-    fn on_datagram(&self, datagram: &[u8]);
+    fn on_datagram(&mut self, datagram: &[u8]);
 }
 pub trait Sender: 'static + Send {
     /// A callback that allows users to write datagrams directly to the packet

@@ -9,7 +9,7 @@ use crate::{
         AckDelayExponent, ActiveConnectionIdLimit, InitialFlowControlLimits, InitialMaxData,
         InitialMaxStreamDataBidiLocal, InitialMaxStreamDataBidiRemote, InitialMaxStreamDataUni,
         InitialMaxStreamsBidi, InitialMaxStreamsUni, InitialStreamLimits, MaxAckDelay,
-        MaxIdleTimeout, TransportParameters,
+        MaxDatagramFrameSize, MaxIdleTimeout, TransportParameters,
     },
 };
 use core::{convert::TryInto, time::Duration};
@@ -62,6 +62,7 @@ pub struct Limits {
     pub(crate) max_send_buffer_size: u32,
     pub(crate) max_handshake_duration: Duration,
     pub(crate) max_keep_alive_period: Duration,
+    pub(crate) max_datagram_frame_size: MaxDatagramFrameSize,
 }
 
 impl Default for Limits {
@@ -98,6 +99,7 @@ impl Limits {
             max_send_buffer_size: stream::Limits::RECOMMENDED.max_send_buffer_size,
             max_handshake_duration: MAX_HANDSHAKE_DURATION_DEFAULT,
             max_keep_alive_period: MAX_KEEP_ALIVE_PERIOD_DEFAULT,
+            max_datagram_frame_size: MaxDatagramFrameSize::DEFAULT,
         }
     }
 

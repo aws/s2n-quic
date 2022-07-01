@@ -16,6 +16,7 @@ use core::convert::TryInto;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     crypto::{tls, tls::Endpoint as TLSEndpoint, CryptoSuite, InitialKey},
+    datagram::{Endpoint, PreConnectionInfo},
     event::{self, supervisor, ConnectionPublisher, IntoEvent, Subscriber as _},
     inet::{datagram, DatagramInfo},
     packet::initial::ProtectedInitial,
@@ -201,6 +202,12 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         .unwrap();
 
         let endpoint_context = self.config.context();
+
+        transport_parameters.max_datagram_frame_size = endpoint_context
+            .datagram
+            .max_datagram_frame_size(&PreConnectionInfo::new())
+            .try_into()
+            .expect("Failed to convert max_datagram_frame_size");
 
         let tls_session = endpoint_context
             .tls
