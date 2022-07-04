@@ -65,8 +65,23 @@ public class NetbenchAutoApp {
 
         String ec2InstanceType = (String)app.getNode().tryGetContext("instance-type");
         ec2InstanceType = (ec2InstanceType == null) 
-            ? "c5n.xlarge" 
+            ? "t4g.xlarge" 
             : ec2InstanceType.toLowerCase();
+
+        String serverEcrUri = (String)app.getNode().tryGetContext("server-ecr-uri");
+        serverEcrUri = (serverEcrUri == null) 
+            ? "public.ecr.aws/d2r9y8c2/s2n-quic-collector-server-scenario" 
+            : serverEcrUri;
+
+        String clientEcrUri = (String)app.getNode().tryGetContext("client-ecr-uri");
+        clientEcrUri = (clientEcrUri == null) 
+            ? "public.ecr.aws/d2r9y8c2/s2n-quic-collector-client-scenario"
+            : clientEcrUri;
+
+        String scenarioFile = (String)app.getNode().tryGetContext("scenario");
+        scenarioFile = (scenarioFile == null) 
+            ? "/usr/bin/request_response.json"
+            : scenarioFile;
         
         // Stack instantiation
         ReportStack reportStack = new ReportStack(app, "ReportStack", StackProps.builder()
@@ -75,53 +90,39 @@ public class NetbenchAutoApp {
       
         ClientServerStack serverStack = new ClientServerStack(app, "ServerStack", ClientServerStackProps.builder()
             .env(makeEnv(awsAccount, serverRegion))
-            .bucket(reportStack.getBucket())
-            .instanceType(ec2InstanceType)
             .cidr("11.0.0.0/16")
             .stackType("server")
-            .protocol(protocol)
             .build());
 
         serverStack.addDependency(reportStack);
-      
-        ClientServerStack clientStack = new ClientServerStack(app, "ClientStack", ClientServerStackProps.builder()
+
+        EcsStack serverEcsStack = new EcsStack(app, "ServerEcsStack", EcsStackProps.builder()
+            .env(makeEnv(awsAccount, serverRegion))
+            .bucket(reportStack.getBucket())
+            .stackType("server")
+            .vpc(serverStack.getVpc())
+            .instanceType(ec2InstanceType)
+            .ecrUri(serverEcrUri)
+            .scenario(scenarioFile)
+            .build());
+
+        EcsStack clientEcsStack = new EcsStack(app, "ClientEcsStack", EcsStackProps.builder()
             .env(makeEnv(awsAccount, clientRegion))
             .bucket(reportStack.getBucket())
+            .stackType("client")
+            .vpc(serverStack.getVpc())
             .instanceType(ec2InstanceType)
-            .cidr("10.0.0.0/16")
-            .stackType("client")
-            .protocol(protocol)
-            .build());
-        
-        clientStack.addDependency(serverStack);
-        
-        StateMachineStack stateMachineStack = new StateMachineStack(app, "StateMachineStack", StackProps.builder()
+            .serverRegion(serverRegion)
+            .dnsAddress(serverEcsStack.getDnsAddress())
+            .ecrUri(clientEcrUri)
+            .scenario(scenarioFile)
             .build());
 
-        PeeringConnectionStack serverPeeringConnStack = new PeeringConnectionStack(app, "ServerPeerConnStack",
-            PeeringStackProps.builder()
-            .env(makeEnv(awsAccount, serverRegion))
-            .VpcClient(clientStack.getVpc())
-            .VpcServer(serverStack.getVpc())
-            .cidr(clientStack.getCidr())
-            .stackType("server")
-            .region(clientRegion)
-            .build());
-        
-        serverPeeringConnStack.addDependency(clientStack);
-
-        PeeringConnectionStack clientPeeringConnStack = new PeeringConnectionStack(app, "ClientPeerConnStack",
-            PeeringStackProps.builder()
+        StateMachineStack stateMachineStack = new StateMachineStack(app, "StateMachineStack", StateMachineStackProps.builder()
             .env(makeEnv(awsAccount, clientRegion))
-            .VpcClient(clientStack.getVpc())
-            .VpcServer(serverStack.getVpc())
-            .cidr(serverStack.getCidr())
-            .stackType("client")
-            .ref(serverPeeringConnStack.getRef())
-            .region(serverRegion)
+            .clientTask(clientEcsStack.getEcsTask())
             .build());
 
-        clientPeeringConnStack.addDependency(serverPeeringConnStack);
         app.synth();
     }
 }

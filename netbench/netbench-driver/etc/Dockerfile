@@ -65,12 +65,18 @@ RUN set -eux; \
   fi; \
   rm -rf target
 
+RUN set -eux; \
+  cd netbench; \
+  cargo run --bin netbench-scenarios; \
+  cp target/netbench/request_response.json /app/bin; \
+  rm -rf target;
+
 ARG DRIVER="s2n-quic"
 ARG ENDPOINT="client"
 
 RUN set -eux; \
   export TARGET="netbench-driver-$DRIVER-$ENDPOINT"; \
-  echo "#!/usr/bin/env bash\neval /usr/bin/netbench-collector /usr/bin/$TARGET \$@" > /app/bin/start; \
+  echo "#!/usr/bin/env bash\nexport SERVER_0=\$(dig +short \$DNS_ADDRESS):\$SERVER_PORT\nprintenv\neval /usr/bin/netbench-collector /usr/bin/$TARGET \$@ > client.csv\naws s3 cp ./client.csv s3://\$S3_BUCKET/" > /app/bin/start; \
   cd netbench; \
   if [ "$release" = "true" ]; then \
     cargo build --bin $TARGET --release; \
@@ -87,7 +93,12 @@ ENV RUST_BACKTRACE="1"
 
 # copy driver
 COPY --from=builder /app/bin /tmp/netbench
+ENV DEBIAN_FRONTEND=noninteractive
 RUN set -eux; \
+  apt update && apt install -y dnsutils curl unzip sudo; \
+  curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"; \
+  unzip awscliv2.zip; \
+  sudo ./aws/install; \
   chmod +x /tmp/netbench/*; \
   mv /tmp/netbench/* /usr/bin; \
   echo done

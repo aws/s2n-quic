@@ -5,24 +5,22 @@ package com.aws;
 import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.StackProps;
 import software.amazon.awscdk.Environment;
+import software.amazon.awscdk.services.stepfunctions.tasks.EcsRunTask;
 
-public interface ClientServerStackProps extends StackProps {
+public interface StateMachineStackProps extends StackProps {
 
     public static Builder builder() {
         return new Builder();
     }
 
-    String getCidr();
-
-    String getStackType();
+    EcsRunTask getClientTask();
 
     public static class Builder {
+        private EcsRunTask clientTask;
         private Environment env;
-        private String cidr;
-        private String stackType;
 
-        public Builder cidr(String cidr) {
-            this.cidr = cidr;
+        public Builder clientTask(EcsRunTask clientTask) {
+            this.clientTask = clientTask;
             return this;
         }
 
@@ -31,22 +29,12 @@ public interface ClientServerStackProps extends StackProps {
             return this;
         }
 
-        public Builder stackType(String stackType) {
-            this.stackType = stackType;
-            return this;
-        }
-
-        public ClientServerStackProps build() {
-            return new ClientServerStackProps() {
+        public StateMachineStackProps build() {
+            return new StateMachineStackProps() {
 
                 @Override
-                public String getCidr() {
-                    return cidr;
-                }
-
-                @Override
-                public String getStackType() {
-                    return stackType;
+                public EcsRunTask getClientTask() {
+                    return clientTask;
                 }
 
                 @Override
