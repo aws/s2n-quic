@@ -202,22 +202,6 @@ impl Controller {
             StreamType::Unidirectional => StreamDirection::Incoming,
         }
     }
-
-    #[cfg(test)]
-    // Invoke check when opening peer initiated streams. This check is performed
-    // on the IncomingController when opening streams.
-    pub fn on_remote_open_stream(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
-        match stream_id.stream_type() {
-            StreamType::Bidirectional => self
-                .bidi_controller
-                .incoming
-                .on_remote_open_stream(stream_id),
-            StreamType::Unidirectional => self
-                .uni_controller
-                .incoming
-                .on_remote_open_stream(stream_id),
-        }
-    }
 }
 
 impl timer::Provider for Controller {
@@ -428,28 +412,9 @@ impl OutgoingController {
         stream_id: StreamId,
         local_endpoint_type: endpoint::Type,
     ) -> Result<(), transport::Error> {
-        // open a total of allowed_limit streams
-        let allowed_limit = self.local_initiated_concurrent_stream_limit.as_u64();
-        // open maximum of allowed_streams; streams as 0-indexed
-        let allowed_streams = allowed_limit
-            .checked_sub(1)
-            .ok_or(transport::Error::STREAM_LIMIT_ERROR)?;
-
-        let max_stream_id = StreamId::nth(
-            stream_id.initiator(),
-            stream_id.stream_type(),
-            allowed_streams,
-        )
-        .expect("max_streams is limited to MAX_STREAMS_MAX_VALUE");
-
-        if stream_id > max_stream_id {
-            dbg!(
-                "{} {} {:?} {:?}",
-                allowed_limit,
-                allowed_streams,
-                max_stream_id,
-                stream_id
-            );
+        let not_available = self.available_stream_capacity() < VarInt::from_u32(1);
+        if not_available {
+            dbg!(self.available_stream_capacity());
             if local_endpoint_type == stream_id.initiator() {
                 // flow control limits
                 return Err(transport::Error::INTERNAL_ERROR);
@@ -834,6 +799,21 @@ impl Controller {
             StreamType::Unidirectional => {
                 self.uni_controller.incoming.max_streams_sync.latest_value()
             }
+        }
+    }
+
+    // Invoke check when opening peer initiated streams. This check is performed
+    // on the IncomingController when opening streams.
+    pub fn on_remote_open_stream(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
+        match stream_id.stream_type() {
+            StreamType::Bidirectional => self
+                .bidi_controller
+                .incoming
+                .on_remote_open_stream(stream_id),
+            StreamType::Unidirectional => self
+                .uni_controller
+                .incoming
+                .on_remote_open_stream(stream_id),
         }
     }
 }

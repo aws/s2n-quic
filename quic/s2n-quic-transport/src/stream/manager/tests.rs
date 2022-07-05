@@ -418,7 +418,8 @@ fn try_open(
 
 #[test]
 fn check_local_flow_control_violation() {
-    let max_streams = 2;
+    let uni_limit = 3;
+    let bidi_limit = 2;
     let flow_limits = InitialFlowControlLimits {
         stream_limits: InitialStreamLimits {
             max_data_bidi_local: VarInt::from_u32(100),
@@ -426,8 +427,8 @@ fn check_local_flow_control_violation() {
             max_data_uni: VarInt::from_u32(100),
         },
         max_data: VarInt::from_u32(64 * 1024),
-        max_streams_bidi: VarInt::from_u32(max_streams),
-        max_streams_uni: VarInt::from_u32(max_streams),
+        max_streams_bidi: VarInt::from_u32(bidi_limit),
+        max_streams_uni: VarInt::from_u32(uni_limit),
     };
     let connection_limits = ConnectionLimits::default()
         .with_max_open_local_unidirectional_streams(100)
@@ -443,12 +444,11 @@ fn check_local_flow_control_violation() {
     // open up 1 active streams
     try_open(&mut manager, StreamType::Bidirectional).unwrap();
     assert_eq!(manager.active_streams().len(), 1);
-    assert!(manager.active_streams().len() <= max_streams as usize);
-
+    assert!(manager.active_streams().len() <= bidi_limit as usize);
     // open up 2 active streams
     try_open(&mut manager, StreamType::Bidirectional).unwrap();
     assert_eq!(manager.active_streams().len(), 2);
-    assert!(manager.active_streams().len() <= max_streams as usize);
+    assert!(manager.active_streams().len() <= bidi_limit as usize);
 
     let (accept_waker, _accept_wake_counter) = new_count_waker();
     let mut token = connection::OpenToken::new();
@@ -460,11 +460,32 @@ fn check_local_flow_control_violation() {
             &Context::from_waker(&accept_waker),
         )
         .is_pending());
+
+    // Open Unidirectional streams
+    // open Unidirectional
+    try_open(&mut manager, StreamType::Unidirectional).unwrap();
+    assert_eq!(manager.active_streams().len(), 3);
+    // open Unidirectional
+    try_open(&mut manager, StreamType::Unidirectional).unwrap();
+    assert_eq!(manager.active_streams().len(), 4);
+    // open Unidirectional
+    try_open(&mut manager, StreamType::Unidirectional).unwrap();
+    assert_eq!(manager.active_streams().len(), 5);
+
+    // should not be able to open up 3 Unidirectional active streams
+    assert!(manager
+        .poll_open(
+            StreamType::Unidirectional,
+            &mut token,
+            &Context::from_waker(&accept_waker),
+        )
+        .is_pending());
 }
 
 #[test]
 fn check_peer_flow_control_violation() {
-    let max_streams = 2;
+    let uni_limit = 3;
+    let bidi_limit = 2;
     let flow_limits = InitialFlowControlLimits {
         stream_limits: InitialStreamLimits {
             max_data_bidi_local: VarInt::from_u32(100),
@@ -472,8 +493,8 @@ fn check_peer_flow_control_violation() {
             max_data_uni: VarInt::from_u32(100),
         },
         max_data: VarInt::from_u32(64 * 1024),
-        max_streams_bidi: VarInt::from_u32(max_streams),
-        max_streams_uni: VarInt::from_u32(max_streams),
+        max_streams_bidi: VarInt::from_u32(bidi_limit),
+        max_streams_uni: VarInt::from_u32(uni_limit),
     };
     let connection_limits = ConnectionLimits::default()
         .with_max_open_local_unidirectional_streams(100)
@@ -488,26 +509,33 @@ fn check_peer_flow_control_violation() {
 
     // open up 1 active streams
     let stream_id = StreamId::nth(endpoint::Type::Client, StreamType::Bidirectional, 0).unwrap();
-    assert!(manager
+    manager
         .on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], false))
-        .is_ok());
+        .unwrap();
     assert_eq!(manager.active_streams().len(), 1);
-    assert!(manager.active_streams().len() <= max_streams as usize);
+    assert!(manager.active_streams().len() <= bidi_limit as usize);
 
     // open up 2 active streams
     let stream_id = StreamId::nth(endpoint::Type::Client, StreamType::Bidirectional, 1).unwrap();
-    assert!(manager
+    manager
         .on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], false))
-        .is_ok());
+        .unwrap();
     assert_eq!(manager.active_streams().len(), 2);
-    assert!(manager.active_streams().len() <= max_streams as usize);
+    assert!(manager.active_streams().len() <= bidi_limit as usize);
 
     // open up 3 active streams
     let stream_id = StreamId::nth(endpoint::Type::Client, StreamType::Bidirectional, 2).unwrap();
     let res = manager.on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], false));
     // error if peer violates stream limits
     assert_eq!(res, Err(transport::Error::STREAM_LIMIT_ERROR));
-    assert!(manager.active_streams().len() <= max_streams as usize);
+    assert!(manager.active_streams().len() <= bidi_limit as usize);
+
+    // // =====
+    // // open up 2 active streams
+    // let stream_id = StreamId::nth(endpoint::Type::Client, StreamType::Unidirectional, 0).unwrap();
+    // manager
+    //     .on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], false))
+    //     .unwrap();
 }
 
 #[test]
@@ -1364,14 +1392,19 @@ fn asymmetric_stream_limits() {
                 initial_peer_limits,
             );
 
+            // Bidirectional stream also opens an outgoing stream so take the minimum of
+            // the limits.
+            let local_limit = match stream_type {
+                StreamType::Bidirectional => local_limit.min(peer_limit),
+                StreamType::Unidirectional => local_limit,
+            };
             // The peer opens streams up to the limit we have given them
             for i in 0..*local_limit {
                 let stream_id =
                     StreamId::nth(endpoint::Type::Client, stream_type, i as u64).unwrap();
-                assert_eq!(
-                    Ok(()),
-                    manager.on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], false))
-                );
+                manager
+                    .on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], false))
+                    .unwrap();
             }
 
             let available_outgoing_stream_capacity = manager.with_stream_controller(|cntl| {
