@@ -38,7 +38,7 @@ use s2n_quic_core::{
     crypto::{tls, CryptoSuite},
     event::{
         self,
-        builder::{DatagramDropReason, RxStreamProgress, TxStreamProgress},
+        builder::{DatagramDropReason, MtuUpdatedCause, RxStreamProgress, TxStreamProgress},
         supervisor, ConnectionPublisher as _, IntoEvent as _, Subscriber,
     },
     inet::{DatagramInfo, SocketAddress},
@@ -595,6 +595,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         publisher.on_mtu_updated(event::builder::MtuUpdated {
             path_id: path_manager.active_path_id().into_event(),
             mtu: path_manager.active_path().mtu_controller.mtu() as u16,
+            cause: MtuUpdatedCause::NewPath,
         });
 
         let wakeup_handle = Arc::from(parameters.wakeup_handle);

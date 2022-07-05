@@ -12,7 +12,7 @@ use s2n_codec::EncoderValue;
 use s2n_quic_core::{
     counter::{Counter, Saturating},
     event,
-    event::IntoEvent,
+    event::{builder::MtuUpdatedCause, IntoEvent},
     frame,
     inet::SocketAddress,
     packet::number::PacketNumber,
@@ -214,6 +214,7 @@ impl Controller {
                 publisher.on_mtu_updated(event::builder::MtuUpdated {
                     path_id: path_id.into_event(),
                     mtu: self.plpmtu,
+                    cause: MtuUpdatedCause::ProbeAcknowledged,
                 });
 
                 self.update_probed_size();
@@ -396,6 +397,7 @@ impl Controller {
         publisher.on_mtu_updated(event::builder::MtuUpdated {
             path_id: path_id.into_event(),
             mtu: self.plpmtu,
+            cause: MtuUpdatedCause::Blackhole,
         })
     }
 
