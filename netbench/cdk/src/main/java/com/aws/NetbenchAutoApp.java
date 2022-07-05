@@ -83,24 +83,17 @@ public class NetbenchAutoApp {
             ? "/usr/bin/request_response.json"
             : scenarioFile;
         
-        // Stack instantiation
-        ReportStack reportStack = new ReportStack(app, "ReportStack", StackProps.builder()
-            .env(makeEnv(awsAccount, serverRegion))
-            .build());
-      
-        ClientServerStack serverStack = new ClientServerStack(app, "ServerStack", ClientServerStackProps.builder()
+        // Stack instantiation   
+        VpcStack vpcStack = new VpcStack(app, "VpcStack", VpcStackProps.builder()
             .env(makeEnv(awsAccount, serverRegion))
             .cidr("11.0.0.0/16")
-            .stackType("server")
             .build());
-
-        serverStack.addDependency(reportStack);
 
         EcsStack serverEcsStack = new EcsStack(app, "ServerEcsStack", EcsStackProps.builder()
             .env(makeEnv(awsAccount, serverRegion))
-            .bucket(reportStack.getBucket())
+            .bucket(vpcStack.getBucket())
             .stackType("server")
-            .vpc(serverStack.getVpc())
+            .vpc(vpcStack.getVpc())
             .instanceType(ec2InstanceType)
             .ecrUri(serverEcrUri)
             .scenario(scenarioFile)
@@ -108,9 +101,9 @@ public class NetbenchAutoApp {
 
         EcsStack clientEcsStack = new EcsStack(app, "ClientEcsStack", EcsStackProps.builder()
             .env(makeEnv(awsAccount, clientRegion))
-            .bucket(reportStack.getBucket())
+            .bucket(vpcStack.getBucket())
             .stackType("client")
-            .vpc(serverStack.getVpc())
+            .vpc(vpcStack.getVpc())
             .instanceType(ec2InstanceType)
             .serverRegion(serverRegion)
             .dnsAddress(serverEcsStack.getDnsAddress())

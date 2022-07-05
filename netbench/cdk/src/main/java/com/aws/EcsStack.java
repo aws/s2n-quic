@@ -83,7 +83,7 @@ class EcsStack extends Stack {
 
         HashMap<String, String> ecrEnv = new HashMap<>();
         ecrEnv.put("SCENARIO", props.getScenario());
-        ecrEnv.put("PORT", "3000");        
+        ecrEnv.put("PORT", "3000");  //Arbitrary port
 
         if (stackType.equals("server")) {
             PrivateDnsNamespace ecsNameSpace = PrivateDnsNamespace.Builder.create(this, stackType + "-namespace")

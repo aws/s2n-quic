@@ -13,18 +13,22 @@ import software.amazon.awscdk.services.ec2.GatewayVpcEndpointAwsService;
 import software.amazon.awscdk.services.ec2.SecurityGroup;
 import software.amazon.awscdk.services.ec2.Peer;
 import software.amazon.awscdk.services.ec2.Port;
+import software.amazon.awscdk.services.s3.Bucket;
+import software.amazon.awscdk.RemovalPolicy;
+import software.amazon.awscdk.Environment;
+import software.amazon.awscdk.PhysicalName;
 
-public class ClientServerStack extends Stack {
+public class VpcStack extends Stack {
     private final Vpc vpc;
+    private Bucket metricsBucket;
 
-    public ClientServerStack(final Construct parent, final String id, final ClientServerStackProps props) {
+    public VpcStack(final Construct parent, final String id, final VpcStackProps props) {
         super(parent, id, props);
 
-        String stackType  = props.getStackType();
         String cidr = props.getCidr();
         
         //All construct names are for descriptive purposes only
-        this.vpc = Vpc.Builder.create(this, stackType + "-vpc")
+        this.vpc = Vpc.Builder.create(this, "client-server-vpc")
             .maxAzs(1)
             .enableDnsSupport(true)
             .enableDnsHostnames(true)
@@ -38,10 +42,20 @@ public class ClientServerStack extends Stack {
             GatewayVpcEndpointOptions.builder()
             .service(GatewayVpcEndpointAwsService.S3)
             .build());
+
+        metricsBucket = Bucket.Builder.create(this, "MetricsReportBucket")
+            .bucketName(PhysicalName.GENERATE_IF_NEEDED)
+            .removalPolicy(RemovalPolicy.DESTROY)
+            .autoDeleteObjects(true)
+            .build();
     }
 
     public Vpc getVpc() {
         return this.vpc;
+    }
+
+    public Bucket getBucket() {
+        return metricsBucket;
     }
 
 }                                         
