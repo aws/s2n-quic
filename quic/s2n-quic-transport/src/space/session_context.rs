@@ -30,7 +30,8 @@ use s2n_quic_core::{
         self,
         parameters::{
             ActiveConnectionIdLimit, ClientTransportParameters, DatagramLimits,
-            InitialFlowControlLimits, InitialSourceConnectionId, ServerTransportParameters,
+            InitialFlowControlLimits, InitialSourceConnectionId, MaxAckDelay,
+            ServerTransportParameters,
         },
     },
 };
@@ -68,6 +69,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             InitialFlowControlLimits,
             ActiveConnectionIdLimit,
             DatagramLimits,
+            MaxAckDelay,
         ),
         transport::Error,
     > {
@@ -185,6 +187,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             initial_flow_control_limits,
             active_connection_id_limit,
             datagram_limits,
+            peer_parameters.max_ack_delay,
         ))
     }
 
@@ -197,6 +200,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             InitialFlowControlLimits,
             ActiveConnectionIdLimit,
             DatagramLimits,
+            MaxAckDelay,
         ),
         transport::Error,
     > {
@@ -241,6 +245,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             initial_flow_control_limits,
             active_connection_id_limit,
             datagram_limits,
+            peer_parameters.max_ack_delay,
         ))
     }
 
@@ -368,7 +373,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
         // Parse transport parameters
         let param_decoder = DecoderBuffer::new(application_parameters.transport_parameters);
-        let (peer_flow_control_limits, active_connection_id_limit, datagram_limits) =
+        let (peer_flow_control_limits, active_connection_id_limit, datagram_limits, max_ack_delay) =
             match Config::ENDPOINT_TYPE {
                 endpoint::Type::Client => self.on_server_params(param_decoder)?,
                 endpoint::Type::Server => self.on_client_params(param_decoder)?,
@@ -401,6 +406,11 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             datagram_receiver,
             datagram_limits.max_datagram_payload,
         );
+
+        self.path_manager
+            .active_path_mut()
+            .rtt_estimator
+            .on_max_ack_delay(max_ack_delay);
 
         let cipher_suite = key.cipher_suite().into_event();
         let max_mtu = self.path_manager.max_mtu();

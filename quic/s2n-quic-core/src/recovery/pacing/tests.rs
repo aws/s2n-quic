@@ -19,7 +19,7 @@ fn earliest_departure_time() {
     assert_eq!(None, pacer.next_packet_departure_time);
 
     let now = NoopClock.get_time();
-    let rtt = RttEstimator::new(Duration::default());
+    let rtt = RttEstimator::default();
     let cwnd = 12000;
 
     pacer.on_packet_sent(now, MINIMUM_MTU as usize, &rtt, cwnd, MINIMUM_MTU, false);
@@ -36,7 +36,7 @@ fn on_packet_sent_large_bytes_sent() {
     let mut pacer = Pacer::default();
 
     let now = NoopClock.get_time();
-    let rtt = RttEstimator::new(Duration::default());
+    let rtt = RttEstimator::default();
     let cwnd = 12000;
 
     pacer.on_packet_sent(now, usize::MAX, &rtt, cwnd, MINIMUM_MTU, false);
@@ -60,7 +60,7 @@ fn post_slow_start() {
 fn test_one_rtt(slow_start: bool) {
     let mut pacer = Pacer::default();
     let now = NoopClock.get_time();
-    let rtt = RttEstimator::new(Duration::default());
+    let rtt = RttEstimator::default();
 
     let cwnd = MINIMUM_MTU as u32 * 100;
     let n = if slow_start {
@@ -114,7 +114,7 @@ fn test_one_rtt(slow_start: bool) {
 fn earliest_departure_time_before_now() {
     let mut pacer = Pacer::default();
     let now = NoopClock.get_time();
-    let rtt = RttEstimator::new(Duration::default());
+    let rtt = RttEstimator::default();
 
     let cwnd = MINIMUM_MTU as u32 * 100;
     loop {
@@ -140,7 +140,7 @@ fn earliest_departure_time_before_now() {
 fn interval_change() {
     let mut pacer = Pacer::default();
     let now = NoopClock.get_time();
-    let mut rtt = RttEstimator::new(Duration::default());
+    let mut rtt = RttEstimator::default();
 
     let mut cwnd = MINIMUM_MTU as u32 * 100;
 

@@ -3038,7 +3038,7 @@ fn timer_granularity() {
     //# timer granularity (kGranularity) is 1 millisecond.
     assert_eq!(Duration::from_millis(1), K_GRANULARITY);
 
-    let mut rtt_estimator = RttEstimator::new(Duration::from_millis(0));
+    let mut rtt_estimator = RttEstimator::default();
     rtt_estimator.update_rtt(
         Duration::from_millis(0),
         Duration::from_nanos(1),
