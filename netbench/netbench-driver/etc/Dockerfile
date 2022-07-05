@@ -76,7 +76,7 @@ ARG ENDPOINT="client"
 
 RUN set -eux; \
   export TARGET="netbench-driver-$DRIVER-$ENDPOINT"; \
-  echo "#!/usr/bin/env bash\nexport SERVER_0=\$(dig +short \$DNS_ADDRESS):\$SERVER_PORT\nprintenv\neval /usr/bin/netbench-collector /usr/bin/$TARGET \$@ > client.csv\naws s3 cp ./client.json s3://\$S3_BUCKET/" > /app/bin/start; \
+  echo "#!/usr/bin/env bash\nexport SERVER_0=\$(dig +short \$DNS_ADDRESS):\$SERVER_PORT\nprintenv\neval /usr/bin/netbench-collector /usr/bin/$TARGET \$@ > client.json\naws s3 cp ./client.json s3://\$S3_BUCKET/" > /app/bin/start; \
   cd netbench; \
   if [ "$release" = "true" ]; then \
     cargo build --bin $TARGET --release; \
