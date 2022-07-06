@@ -420,6 +420,8 @@ fn try_open(
 fn check_local_flow_control_violation() {
     let uni_limit = 3;
     let bidi_limit = 2;
+    let (accept_waker, _accept_wake_counter) = new_count_waker();
+    let mut token = connection::OpenToken::new();
     let flow_limits = InitialFlowControlLimits {
         stream_limits: InitialStreamLimits {
             max_data_bidi_local: VarInt::from_u32(100),
@@ -441,18 +443,13 @@ fn check_local_flow_control_violation() {
         flow_limits,
     );
 
-    // open up 1 active streams
+    // Bidirectional
     try_open(&mut manager, StreamType::Bidirectional).unwrap();
-    assert_eq!(manager.active_streams().len(), 1);
-    assert!(manager.active_streams().len() <= bidi_limit as usize);
     // open up 2 active streams
     try_open(&mut manager, StreamType::Bidirectional).unwrap();
     assert_eq!(manager.active_streams().len(), 2);
-    assert!(manager.active_streams().len() <= bidi_limit as usize);
 
-    let (accept_waker, _accept_wake_counter) = new_count_waker();
-    let mut token = connection::OpenToken::new();
-    // should not be able to open up 3 active streams
+    // prevent endpoint from opening up streams beyond Bidirectional limit
     assert!(manager
         .poll_open(
             StreamType::Bidirectional,
@@ -461,18 +458,13 @@ fn check_local_flow_control_violation() {
         )
         .is_pending());
 
-    // Open Unidirectional streams
-    // open Unidirectional
+    // Unidirectional
     try_open(&mut manager, StreamType::Unidirectional).unwrap();
-    assert_eq!(manager.active_streams().len(), 3);
-    // open Unidirectional
     try_open(&mut manager, StreamType::Unidirectional).unwrap();
-    assert_eq!(manager.active_streams().len(), 4);
-    // open Unidirectional
     try_open(&mut manager, StreamType::Unidirectional).unwrap();
     assert_eq!(manager.active_streams().len(), 5);
 
-    // should not be able to open up 3 Unidirectional active streams
+    // prevent endpoint from opening up streams beyond Unidirectional limit
     assert!(manager
         .poll_open(
             StreamType::Unidirectional,
@@ -507,15 +499,7 @@ fn check_peer_flow_control_violation() {
         flow_limits,
     );
 
-    // open up 1 active streams
-    let stream_id = StreamId::nth(endpoint::Type::Client, StreamType::Bidirectional, 0).unwrap();
-    manager
-        .on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], false))
-        .unwrap();
-    assert_eq!(manager.active_streams().len(), 1);
-    assert!(manager.active_streams().len() <= bidi_limit as usize);
-
-    // open up 2 active streams
+    // Bidirectional
     let stream_id = StreamId::nth(endpoint::Type::Client, StreamType::Bidirectional, 1).unwrap();
     manager
         .on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], false))
@@ -523,19 +507,21 @@ fn check_peer_flow_control_violation() {
     assert_eq!(manager.active_streams().len(), 2);
     assert!(manager.active_streams().len() <= bidi_limit as usize);
 
-    // open up 3 active streams
+    // Unidirectional
+    let stream_id = StreamId::nth(endpoint::Type::Client, StreamType::Unidirectional, 2).unwrap();
+    manager
+        .on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], false))
+        .unwrap();
+    assert_eq!(manager.active_streams().len(), 5);
+
+    // prevent endpoint from opening up streams beyond limit
     let stream_id = StreamId::nth(endpoint::Type::Client, StreamType::Bidirectional, 2).unwrap();
     let res = manager.on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], false));
     // error if peer violates stream limits
     assert_eq!(res, Err(transport::Error::STREAM_LIMIT_ERROR));
-    assert!(manager.active_streams().len() <= bidi_limit as usize);
 
-    // // =====
-    // // open up 2 active streams
-    // let stream_id = StreamId::nth(endpoint::Type::Client, StreamType::Unidirectional, 0).unwrap();
-    // manager
-    //     .on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], false))
-    //     .unwrap();
+    // manager enters closing if limits are violated
+    assert!(manager.finalization_status().is_draining());
 }
 
 #[test]
@@ -1281,7 +1267,7 @@ fn send_data_blocked_frame_when_blocked_by_connection_flow_limits() {
 fn stream_limit_error_on_peer_open_stream_too_large() {
     let mut manager = create_stream_manager(endpoint::Type::Server);
 
-    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
+    for stream_type in [StreamType::Bidirectional] {
         let current_max_streams =
             manager.with_stream_controller(|ctrl| ctrl.max_streams_latest_value(stream_type));
 

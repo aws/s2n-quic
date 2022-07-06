@@ -412,9 +412,15 @@ impl OutgoingController {
         stream_id: StreamId,
         local_endpoint_type: endpoint::Type,
     ) -> Result<(), transport::Error> {
-        let not_available = self.available_stream_capacity() < VarInt::from_u32(1);
-        if not_available {
-            dbg!(self.available_stream_capacity());
+        let capacity = if stream_id.initiator() == local_endpoint_type {
+            self.local_initiated_concurrent_stream_limit
+                .saturating_sub(self.open_stream_count())
+        } else {
+            self.peer_capacity()
+        };
+
+        if capacity < VarInt::from_u32(1) {
+            eprintln!("stream_id: {:?}, capacity: {}", stream_id, capacity);
             if local_endpoint_type == stream_id.initiator() {
                 // flow control limits
                 return Err(transport::Error::INTERNAL_ERROR);
@@ -645,28 +651,25 @@ impl IncomingController {
     /// that were communicated by transport parameters or MAX_STREAMS frames.
     #[inline]
     fn on_remote_open_stream(&self, stream_id: StreamId) -> Result<(), transport::Error> {
-        // open a total of allowed_limit streams
-        let allowed_limit = self.max_streams_sync.latest_value().as_u64();
-        // open maximum of allowed_streams; streams as 0-indexed
-        let allowed_streams = allowed_limit
+        let allowed_streams = self
+            // the limit of streams to open
+            .max_streams_sync
+            .latest_value()
+            .as_u64()
+            // maximum # of streams to open; streams are 0-indexed
             .checked_sub(1)
             .ok_or(transport::Error::STREAM_LIMIT_ERROR)?;
-
-        let max_stream_id = StreamId::nth(
+        // convert stream index into stream id
+        let max_allowed_stream_id = StreamId::nth(
             stream_id.initiator(),
             stream_id.stream_type(),
             allowed_streams,
         )
         .expect("max_streams is limited to MAX_STREAMS_MAX_VALUE");
 
-        if stream_id > max_stream_id {
-            dbg!(
-                "{} {} {:?} {:?}",
-                allowed_limit,
-                allowed_streams,
-                max_stream_id,
-                stream_id
-            );
+        if stream_id > max_allowed_stream_id {
+            // eprintln!("stream_id: {:?}, capacity: {}", stream_id, capacity);
+            //
             //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
             //# Endpoints MUST NOT exceed the limit set by their peer.  An endpoint
             //# that receives a frame with a stream ID exceeding the limit it has
