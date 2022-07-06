@@ -562,7 +562,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         // The path manager always starts with a single path containing the known peer and local
         // connection ids.
-        let rtt_estimator = RttEstimator::new(parameters.limits.ack_settings().max_ack_delay);
+        let rtt_estimator = RttEstimator::default();
         // Assume clients validate the server's address implicitly.
         let peer_validated = Self::Config::ENDPOINT_TYPE.is_server();
 

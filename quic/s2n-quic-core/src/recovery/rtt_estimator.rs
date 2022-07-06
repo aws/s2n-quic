@@ -1,7 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{packet::number::PacketNumberSpace, time::Timestamp};
+use crate::{
+    packet::number::PacketNumberSpace, time::Timestamp, transport::parameters::MaxAckDelay,
+};
 use core::{
     cmp::{max, min},
     time::Duration,
@@ -41,6 +43,12 @@ pub struct RttEstimator {
     max_ack_delay: Duration,
     /// The time that the first RTT sample was obtained
     first_rtt_sample: Option<Timestamp>,
+}
+
+impl Default for RttEstimator {
+    fn default() -> Self {
+        RttEstimator::new(Duration::ZERO)
+    }
 }
 
 impl RttEstimator {
@@ -147,6 +155,12 @@ impl RttEstimator {
 }
 
 impl RttEstimator {
+    /// Sets the `max_ack_delay` value from the peer `MaxAckDelay` transport parameter
+    pub fn on_max_ack_delay(&mut self, max_ack_delay: MaxAckDelay) {
+        self.max_ack_delay = max_ack_delay.as_duration()
+    }
+
+    /// Updates the RTT estimate using the given `rtt_sample`
     pub fn update_rtt(
         &mut self,
         mut ack_delay: Duration,
@@ -283,6 +297,8 @@ mod test {
         path::INITIAL_PTO_BACKOFF,
         recovery::{RttEstimator, DEFAULT_INITIAL_RTT, K_GRANULARITY},
         time::{Clock, Duration, NoopClock},
+        transport::parameters::MaxAckDelay,
+        varint::VarInt,
     };
 
     /// Test the initial values before any RTT samples
@@ -334,7 +350,12 @@ mod test {
     //#    max_ack_delay after the handshake is confirmed;
     #[test]
     fn max_ack_delay() {
-        let mut rtt_estimator = RttEstimator::new(Duration::from_millis(10));
+        let mut rtt_estimator = RttEstimator::default();
+        assert_eq!(Duration::ZERO, rtt_estimator.max_ack_delay());
+
+        rtt_estimator.on_max_ack_delay(MaxAckDelay::new(VarInt::from_u8(10)).unwrap());
+        assert_eq!(Duration::from_millis(10), rtt_estimator.max_ack_delay());
+
         let now = NoopClock.get_time();
         rtt_estimator.update_rtt(
             Duration::from_millis(0),
