@@ -779,3 +779,13 @@ enum SlowStartExitCause {
     /// congestion window.
     Other,
 }
+
+/// The reason the MTU was updated
+enum MtuUpdatedCause {
+    /// The MTU was initialized with the default value
+    NewPath,
+    /// An MTU probe was acknowledged by the peer
+    ProbeAcknowledged,
+    /// A blackhole was detected
+    Blackhole,
+}

@@ -453,6 +453,20 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " The reason the MTU was updated"]
+    pub enum MtuUpdatedCause {
+        #[non_exhaustive]
+        #[doc = " The MTU was initialized with the default value"]
+        NewPath {},
+        #[non_exhaustive]
+        #[doc = " An MTU probe was acknowledged by the peer"]
+        ProbeAcknowledged {},
+        #[non_exhaustive]
+        #[doc = " A blackhole was detected"]
+        Blackhole {},
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Application level protocol"]
     pub struct ApplicationProtocolInformation<'a> {
         pub chosen_application_protocol: &'a [u8],
@@ -773,6 +787,7 @@ pub mod api {
     pub struct MtuUpdated {
         pub path_id: u64,
         pub mtu: u16,
+        pub cause: MtuUpdatedCause,
     }
     impl Event for MtuUpdated {
         const NAME: &'static str = "connectivity:mtu_updated";
@@ -1769,8 +1784,12 @@ pub mod tracing {
             event: &api::MtuUpdated,
         ) {
             let id = context.id();
-            let api::MtuUpdated { path_id, mtu } = event;
-            tracing :: event ! (target : "mtu_updated" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , mtu = tracing :: field :: debug (mtu));
+            let api::MtuUpdated {
+                path_id,
+                mtu,
+                cause,
+            } = event;
+            tracing :: event ! (target : "mtu_updated" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , mtu = tracing :: field :: debug (mtu) , cause = tracing :: field :: debug (cause));
         }
         #[inline]
         fn on_slow_start_exited(
@@ -2760,6 +2779,27 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " The reason the MTU was updated"]
+    pub enum MtuUpdatedCause {
+        #[doc = " The MTU was initialized with the default value"]
+        NewPath,
+        #[doc = " An MTU probe was acknowledged by the peer"]
+        ProbeAcknowledged,
+        #[doc = " A blackhole was detected"]
+        Blackhole,
+    }
+    impl IntoEvent<api::MtuUpdatedCause> for MtuUpdatedCause {
+        #[inline]
+        fn into_event(self) -> api::MtuUpdatedCause {
+            use api::MtuUpdatedCause::*;
+            match self {
+                Self::NewPath => NewPath {},
+                Self::ProbeAcknowledged => ProbeAcknowledged {},
+                Self::Blackhole => Blackhole {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Application level protocol"]
     pub struct ApplicationProtocolInformation<'a> {
         pub chosen_application_protocol: &'a [u8],
@@ -3313,14 +3353,20 @@ pub mod builder {
     pub struct MtuUpdated {
         pub path_id: u64,
         pub mtu: u16,
+        pub cause: MtuUpdatedCause,
     }
     impl IntoEvent<api::MtuUpdated> for MtuUpdated {
         #[inline]
         fn into_event(self) -> api::MtuUpdated {
-            let MtuUpdated { path_id, mtu } = self;
+            let MtuUpdated {
+                path_id,
+                mtu,
+                cause,
+            } = self;
             api::MtuUpdated {
                 path_id: path_id.into_event(),
                 mtu: mtu.into_event(),
+                cause: cause.into_event(),
             }
         }
     }
