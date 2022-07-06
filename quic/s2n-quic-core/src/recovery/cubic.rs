@@ -466,8 +466,11 @@ impl CongestionController for CubicCongestionController {
         self.cubic.max_datagram_size = max_datagram_size;
 
         if max_datagram_size < old_max_datagram_size {
-            self.congestion_window =
-                CubicCongestionController::initial_window(max_datagram_size) as f32;
+            // leave this part for future developments of mtu mechanism.
+            //
+            // As we currenty do not probe MTU until after the handshake is complete,
+            // resetting congestion window is not required here. Also, it can cause
+            // adverse effects in the current logic.
         } else {
             self.congestion_window =
                 (self.congestion_window / old_max_datagram_size as f32) * max_datagram_size as f32;
