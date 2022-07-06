@@ -4,7 +4,7 @@
 use crate::units::{duration_format, Byte, Duration, Rate};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum Connection {
     /// Pause for the specified duration before processing the next op
@@ -48,7 +48,7 @@ pub enum Connection {
     Scope { threads: Vec<Vec<Connection>> },
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum Client {
     /// Pause for the specified duration before processing the next op
@@ -74,7 +74,7 @@ pub enum Client {
     Scope { threads: Vec<Vec<Client>> },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum Router {
     /// Pause for the specified duration before processing the next op
