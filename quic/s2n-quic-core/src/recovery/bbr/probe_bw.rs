@@ -303,17 +303,23 @@ impl State {
         self.cycle_phase = CyclePhase::Down;
     }
 
-    fn pick_probe_wait<Rnd: random::Generator>(&mut self, _random_generator: &mut Rnd) {
+    /// Randomly determine how long to wait before probing again
+    ///
+    /// Note: This uses a method for determining a number in a random range that has a very slight
+    ///       bias. In practice, this bias should not result in a detectable impact to BBR performance.
+    fn pick_probe_wait<Rnd: random::Generator>(&mut self, random_generator: &mut Rnd) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.5.3
         //# BBRPickProbeWait()
-
-        // TODO:
-        //     /* Decide random round-trip bound for wait: */
-        //     BBR.rounds_since_bw_probe = random_int_between(0, 1); /* 0 or 1 */
-        //     /* Decide the random wall clock bound for wait: */
-        //     BBR.bw_probe_wait = 2sec + random_float_between(0.0, 1.0) /* 0..1 sec */
-        self.rounds_since_bw_probe = Counter::default();
-        self.bw_probe_wait = Duration::from_secs(2);
+        //#    /* Decide random round-trip bound for wait: */
+        //#     BBR.rounds_since_bw_probe =
+        //#       random_int_between(0, 1); /* 0 or 1 */
+        //#     /* Decide the random wall clock bound for wait: */
+        //#     BBR.bw_probe_wait =
+        //#       2sec + random_float_between(0.0, 1.0) /* 0..1 sec */
+        self.rounds_since_bw_probe
+            .set(random::gen_range_biased(random_generator, 0..=1) as u8);
+        self.bw_probe_wait =
+            Duration::from_millis(random::gen_range_biased(random_generator, 2000..=3000) as u64);
     }
 }
 

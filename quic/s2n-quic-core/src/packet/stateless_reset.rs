@@ -6,7 +6,6 @@ use crate::{
     packet::{number::PacketNumberLen, Tag},
     random, stateless_reset,
 };
-use core::ops::RangeInclusive;
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3
 //# Stateless Reset {
@@ -108,8 +107,11 @@ fn generate_unpredictable_bits<R: random::Generator>(
 ) -> usize {
     // Generate a random amount of unpredictable bits within the valid range
     // to further decrease the likelihood a stateless reset could be distinguished
-    // from a valid packet.
-    let len = gen_range_biased(random_generator, min_len..=buffer.len());
+    // from a valid packet. This will have slight bias towards the lower end of the range,
+    // but this bias does not result in any reduction in security for this usage and is actually
+    // welcome as it results in reaching the minimal stateless reset size and thus
+    // existing stateless reset loops sooner.
+    let len = random::gen_range_biased(random_generator, min_len..=buffer.len());
 
     //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3
     //# The remainder of the first byte
@@ -120,50 +122,10 @@ fn generate_unpredictable_bits<R: random::Generator>(
     len
 }
 
-/// Generates a random usize within the given inclusive range. Note that this
-/// will have slight bias towards the lower end of the range, but this bias
-/// does not result in any reduction in security for this usage and is actually
-/// welcome as it results in reaching the minimal stateless reset size and thus
-/// existing stateless reset loops sooner. Other usages that require uniform
-/// sampling should implement rejection sampling or other methodologies and not
-/// copy this implementation.
-fn gen_range_biased<R: random::Generator>(
-    random_generator: &mut R,
-    range: RangeInclusive<usize>,
-) -> usize {
-    if range.start() == range.end() {
-        return *range.start();
-    }
-
-    let mut dest = [0; core::mem::size_of::<usize>()];
-    random_generator.public_random_fill(&mut dest);
-    let result = usize::from_le_bytes(dest);
-
-    let max_variance = (range.end() - range.start()).saturating_add(1);
-    range.start() + result % max_variance
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{path::MINIMUM_MTU, stateless_reset::token::testing::TEST_TOKEN_1};
-
-    #[test]
-    #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
-    fn gen_range_biased_test() {
-        bolero::check!()
-            .with_type()
-            .cloned()
-            .for_each(|(seed, mut min, mut max)| {
-                if min > max {
-                    core::mem::swap(&mut min, &mut max);
-                }
-                let mut generator = random::testing::Generator(seed);
-                let result = gen_range_biased(&mut generator, min..=max);
-                assert!(result >= min);
-                assert!(result <= max);
-            });
-    }
 
     #[test]
     #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
