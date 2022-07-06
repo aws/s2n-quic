@@ -468,7 +468,7 @@ impl CongestionController for CubicCongestionController {
         if max_datagram_size < old_max_datagram_size {
             // leave this part for future developments of mtu mechanism.
             //
-            // As we currenty do not probe MTU until after the handshake is complete,
+            // As we currently do not probe MTU until after the handshake is complete,
             // resetting congestion window is not required here. Also, it can cause
             // adverse effects in the current logic.
         } else {
