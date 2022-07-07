@@ -19,6 +19,7 @@ macro_rules! assert_matches {
         }
     };
 }
+pub(super) use assert_matches;
 
 /// Creates a `STREAM_DATA` frame
 pub fn stream_data<Data>(
@@ -38,7 +39,7 @@ pub fn stream_data<Data>(
 
 /// Asserts that a `Result` type contains a TransportError with the given
 /// error code.
-fn assert_is_transport_error<T: core::fmt::Debug>(
+pub fn assert_is_transport_error<T: core::fmt::Debug>(
     result: Result<T, transport::Error>,
     expected: transport::Error,
 ) {
@@ -50,7 +51,7 @@ fn assert_is_transport_error<T: core::fmt::Debug>(
 /// offset in the Stream the utilized data will always be the same. This allows
 /// us to do some simple validation checking whether a receiver received the
 /// expected data without exactly knowing the actual sent data.
-fn gen_pattern_test_data(offset: VarInt, len: usize) -> Vec<u8> {
+pub fn gen_pattern_test_data(offset: VarInt, len: usize) -> Vec<u8> {
     let mut data = Vec::new();
     data.reserve(len);
 
@@ -66,7 +67,7 @@ fn gen_pattern_test_data(offset: VarInt, len: usize) -> Vec<u8> {
     data
 }
 
-fn gen_pattern_test_chunks(mut offset: VarInt, lens: &[usize]) -> Vec<bytes::Bytes> {
+pub fn gen_pattern_test_chunks(mut offset: VarInt, lens: &[usize]) -> Vec<bytes::Bytes> {
     lens.iter()
         .map(|size| {
             let data = bytes::Bytes::from(gen_pattern_test_data(offset, *size));
@@ -75,11 +76,6 @@ fn gen_pattern_test_chunks(mut offset: VarInt, lens: &[usize]) -> Vec<bytes::Byt
         })
         .collect::<Vec<_>>()
 }
-
-// Tests in submodules
-mod receive_stream_tests;
-mod send_stream_tests;
-mod stream_managers_tests;
 
 #[test]
 fn idle_stream_does_not_write_data() {
