@@ -675,30 +675,6 @@ fn on_packet_lost_persistent_congestion() {
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
 //= type=test
-//# If the maximum datagram size is decreased in order to complete the
-//# handshake, the congestion window SHOULD be set to the new initial
-//# congestion window.
-/*
- * disable this tests until further developments for mtu probe mechanism
- *
-#[test]
-fn on_mtu_update_decrease() {
-    let mut cc = CubicCongestionController::new(10000);
-
-    cc.on_mtu_update(5000);
-    assert_eq!(cc.max_datagram_size, 5000);
-    assert_eq!(cc.cubic.max_datagram_size, 5000);
-
-    assert_delta!(
-        cc.congestion_window,
-        CubicCongestionController::initial_window(5000) as f32,
-        0.001
-    );
-}
-*/
-
-//= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
-//= type=test
 //# If the maximum datagram size changes during the connection, the
 //# initial congestion window SHOULD be recalculated with the new size.
 

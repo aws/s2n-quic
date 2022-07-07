@@ -444,13 +444,6 @@ impl CongestionController for CubicCongestionController {
         self.slow_start.on_congestion_event(self.congestion_window);
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
-    //# If the maximum datagram size changes during the connection, the
-    //# initial congestion window SHOULD be recalculated with the new size.
-    //# If the maximum datagram size is decreased in order to complete the
-    //# handshake, the congestion window SHOULD be set to the new initial
-    //# congestion window.
-
     //= https://www.rfc-editor.org/rfc/rfc8899#section-3
     //# An update to the PLPMTU (or MPS) MUST NOT increase the congestion
     //# window measured in bytes [RFC4821].
@@ -459,19 +452,20 @@ impl CongestionController for CubicCongestionController {
     //# A PL that maintains the congestion window in terms of a limit to
     //# the number of outstanding fixed-size packets SHOULD adapt this
     //# limit to compensate for the size of the actual packets.
+
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
+    //= type=exception
+    //= reason=The maximum datagram size remains at the minimum (1200 bytes) during the handshake
+    //# If the maximum datagram size is decreased in order to complete the
+    //# handshake, the congestion window SHOULD be set to the new initial
+    //# congestion window.
     #[inline]
     fn on_mtu_update(&mut self, max_datagram_size: u16) {
         let old_max_datagram_size = self.max_datagram_size;
         self.max_datagram_size = max_datagram_size;
         self.cubic.max_datagram_size = max_datagram_size;
 
-        if max_datagram_size < old_max_datagram_size {
-            // leave this part for future developments of mtu mechanism.
-            //
-            // As we currently do not probe MTU until after the handshake is complete,
-            // resetting congestion window is not required here. Also, it can cause
-            // adverse effects in the current logic.
-        } else {
+        if max_datagram_size > old_max_datagram_size {
             self.congestion_window =
                 (self.congestion_window / old_max_datagram_size as f32) * max_datagram_size as f32;
         }
