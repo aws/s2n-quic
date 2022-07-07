@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+pub use crate::contexts::testing::*;
 use crate::{
     stream::{
         incoming_connection_flow_controller::IncomingConnectionFlowController,
@@ -16,14 +17,13 @@ use futures_test::task::{new_count_waker, AwokenCount};
 use s2n_quic_core::{
     application::Error as ApplicationErrorCode,
     endpoint,
-    frame::{Frame, ResetStream, StreamDataBlocked},
+    frame::{stream::Stream as StreamFrame, Frame, ResetStream, StreamDataBlocked},
     packet::number::{PacketNumber, PacketNumberSpace},
     stream::{ops, StreamError, StreamId, StreamType},
     time::Timestamp,
+    transport,
     varint::VarInt,
 };
-use s2n_quic_core::{frame::stream::Stream as StreamFrame, transport};
-pub use crate::contexts::testing::*;
 
 #[test]
 fn idle_stream_does_not_write_data() {
