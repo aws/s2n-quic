@@ -44,6 +44,7 @@ enum StreamDirection {
 pub struct Controller {
     local_endpoint_type: endpoint::Type,
     bidi_controller: ControllerPair,
+    peer_bidi_controller: ControllerPair,
     uni_controller: ControllerPair,
 }
 
@@ -67,8 +68,21 @@ impl Controller {
     ) -> Self {
         Self {
             local_endpoint_type,
+            // local initiated Bidirectional streams
             bidi_controller: ControllerPair {
                 stream_id: StreamId::initial(local_endpoint_type, StreamType::Bidirectional),
+                outgoing: OutgoingController::new(
+                    initial_peer_limits.max_streams_bidi,
+                    initial_local_limits.max_streams_bidi,
+                ),
+                incoming: IncomingController::new(initial_local_limits.max_streams_bidi),
+            },
+            // peer initiated Bidirectional streams
+            peer_bidi_controller: ControllerPair {
+                stream_id: StreamId::initial(
+                    local_endpoint_type.peer_type(),
+                    StreamType::Bidirectional,
+                ),
                 outgoing: OutgoingController::new(
                     initial_peer_limits.max_streams_bidi,
                     initial_local_limits.max_streams_bidi,
@@ -122,9 +136,15 @@ impl Controller {
     /// This method is called whenever a stream is opened, regardless of which side initiated.
     pub fn on_open_stream(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
         match self.direction(stream_id) {
-            StreamDirection::Bidirectional => self
-                .bidi_controller
-                .on_open_stream(stream_id, self.local_endpoint_type),
+            StreamDirection::Bidirectional => {
+                if stream_id.initiator() == self.local_endpoint_type {
+                    self.bidi_controller
+                        .on_open_stream(stream_id, self.local_endpoint_type)
+                } else {
+                    self.peer_bidi_controller
+                        .on_open_stream(stream_id, self.local_endpoint_type)
+                }
+            }
             StreamDirection::Outgoing => self
                 .uni_controller
                 .outgoing
@@ -136,7 +156,13 @@ impl Controller {
     /// This method is called whenever a stream is closed.
     pub fn on_close_stream(&mut self, stream_id: StreamId) {
         match self.direction(stream_id) {
-            StreamDirection::Bidirectional => self.bidi_controller.on_close_stream(),
+            StreamDirection::Bidirectional => {
+                if stream_id.initiator() == self.local_endpoint_type {
+                    self.bidi_controller.on_close_stream();
+                } else {
+                    self.peer_bidi_controller.on_close_stream();
+                }
+            }
             StreamDirection::Outgoing => self.uni_controller.outgoing.on_close_stream(),
             StreamDirection::Incoming => self.uni_controller.incoming.on_close_stream(),
         }
@@ -146,18 +172,23 @@ impl Controller {
     /// to unblock waiting tasks.
     pub fn close(&mut self) {
         self.bidi_controller.close();
+        self.peer_bidi_controller.close();
         self.uni_controller.close();
     }
 
     /// This method is called when a packet delivery got acknowledged
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.bidi_controller.on_packet_ack(ack_set);
+        self.peer_bidi_controller.on_packet_ack(ack_set);
+        self.peer_bidi_controller.on_packet_ack(ack_set);
         self.uni_controller.on_packet_ack(ack_set);
     }
 
     /// This method is called when a packet loss is reported
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         self.bidi_controller.on_packet_loss(ack_set);
+        self.peer_bidi_controller.on_packet_loss(ack_set);
+        self.peer_bidi_controller.on_packet_loss(ack_set);
         self.uni_controller.on_packet_loss(ack_set);
     }
 
@@ -165,6 +196,10 @@ impl Controller {
     /// if the application is blocked by peer limits.
     pub fn update_blocked_sync_period(&mut self, blocked_sync_period: Duration) {
         self.bidi_controller
+            .outgoing
+            .streams_blocked_sync
+            .update_sync_period(blocked_sync_period);
+        self.peer_bidi_controller
             .outgoing
             .streams_blocked_sync
             .update_sync_period(blocked_sync_period);
@@ -182,6 +217,7 @@ impl Controller {
         }
 
         self.bidi_controller.on_transmit(context)?;
+        self.peer_bidi_controller.on_transmit(context)?;
         self.uni_controller.on_transmit(context)?;
 
         Ok(())
@@ -190,6 +226,7 @@ impl Controller {
     /// Called when the connection timer expires
     pub fn on_timeout(&mut self, now: Timestamp) {
         self.bidi_controller.on_timeout(now);
+        self.peer_bidi_controller.on_timeout(now);
         self.uni_controller.on_timeout(now);
     }
 
@@ -208,6 +245,7 @@ impl timer::Provider for Controller {
     #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
         self.bidi_controller.timers(query)?;
+        self.peer_bidi_controller.timers(query)?;
         self.uni_controller.timers(query)?;
         Ok(())
     }
@@ -221,6 +259,7 @@ impl transmission::interest::Provider for Controller {
         query: &mut Q,
     ) -> transmission::interest::Result {
         self.bidi_controller.transmission_interest(query)?;
+        self.peer_bidi_controller.transmission_interest(query)?;
         self.uni_controller.transmission_interest(query)?;
         Ok(())
     }
@@ -310,7 +349,10 @@ impl transmission::interest::Provider for ControllerPair {
 // The amount of wakers that may be tracked before allocating to the heap.
 const WAKERS_INITIAL_CAPACITY: usize = 5;
 
-/// The OutgoingController controls streams initiated locally
+/// The OutgoingController controls outgoing Unidirectional and Bidirectional streams.
+///
+/// Unidirectional streams are locally initiated while Bidirectional streams can be
+/// initiated locally or by the peer.
 #[derive(Debug)]
 struct OutgoingController {
     local_initiated_concurrent_stream_limit: VarInt,
@@ -413,9 +455,11 @@ impl OutgoingController {
         local_endpoint_type: endpoint::Type,
     ) -> Result<(), transport::Error> {
         let capacity = if stream_id.initiator() == local_endpoint_type {
-            self.local_initiated_concurrent_stream_limit
-                .saturating_sub(self.open_stream_count())
+            // self.local_initiated_concurrent_stream_limit
+            //     .saturating_sub(self.open_stream_count())
+            self.available_stream_capacity()
         } else {
+            debug_assert_eq!(StreamType::Bidirectional, stream_id.stream_type());
             self.peer_capacity()
         };
 
@@ -787,7 +831,13 @@ impl ValueToFrameWriter<VarInt> for MaxStreamsToFrameWriter {
 impl Controller {
     pub fn available_outgoing_stream_capacity(&self, stream_type: StreamType) -> VarInt {
         match stream_type {
-            StreamType::Bidirectional => self.bidi_controller.outgoing.available_stream_capacity(),
+            StreamType::Bidirectional => {
+                // if stream_id.initiator() == self.local_endpoint_type {
+                self.bidi_controller.outgoing.available_stream_capacity()
+                // } else {
+                //     self.peer_bidi_controller.outgoing.available_stream_capacity()
+                // }
+            }
             StreamType::Unidirectional => self.uni_controller.outgoing.available_stream_capacity(),
         }
     }
@@ -810,7 +860,7 @@ impl Controller {
     pub fn on_remote_open_stream(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
         match stream_id.stream_type() {
             StreamType::Bidirectional => self
-                .bidi_controller
+                .peer_bidi_controller
                 .incoming
                 .on_remote_open_stream(stream_id),
             StreamType::Unidirectional => self

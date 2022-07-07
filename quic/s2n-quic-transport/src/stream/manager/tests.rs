@@ -1398,8 +1398,11 @@ fn asymmetric_stream_limits() {
             });
 
             if stream_type.is_bidirectional() {
-                // The peer opening bidirectional streams uses up the capacity for locally opening streams
-                assert_eq!(VarInt::from_u8(0), available_outgoing_stream_capacity);
+                // The peer opening bidirectional streams DOES NOT use up the capacity for locally opening streams
+                assert_eq!(
+                    VarInt::from_u8(*local_limit),
+                    available_outgoing_stream_capacity
+                );
             } else {
                 // The peer opening incoming streams does not affect the capacity for opening outgoing streams
                 assert_eq!(

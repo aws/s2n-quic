@@ -215,10 +215,6 @@ fn stream_limits_test() {
             .with_event(events())?
             .with_limits(
                 provider::limits::Limits::default()
-                    // TODO its currently not possible to specify local and remote bidi limits
-                    // separately. Add functionality and replace this method.
-                    //
-                    // https://github.com/aws/s2n-quic/issues/1388
                     .with_max_open_bidirectional_streams(2)
                     .unwrap(),
             )?
