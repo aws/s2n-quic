@@ -77,7 +77,7 @@ class EcsStack extends Stack {
             .networkMode(NetworkMode.AWS_VPC)
             .build();
 
-        HashMap<String, String> ecrEnv = new HashMap<>();
+        Map<String, String> ecrEnv = new HashMap<>();
         ecrEnv.put("SCENARIO", props.getScenario());
         ecrEnv.put("PORT", "3000");  //Arbitrary port
 
