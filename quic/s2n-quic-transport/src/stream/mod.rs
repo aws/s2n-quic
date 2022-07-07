@@ -30,4 +30,4 @@ pub type StreamManager = AbstractStreamManager<StreamImpl>;
 // Import all tests
 
 #[cfg(test)]
-mod tests;
+mod testing;

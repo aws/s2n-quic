@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::{
-    stream::{stream_interests::StreamInterestProvider, tests::*, StreamEvents, StreamTrait},
+    stream::{stream_interests::StreamInterestProvider, testing::*, StreamEvents, StreamTrait},
     transmission,
     transmission::interest::Provider,
 };

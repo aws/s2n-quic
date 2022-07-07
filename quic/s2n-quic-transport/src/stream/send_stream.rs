@@ -1076,5 +1076,6 @@ impl StreamInterestProvider for SendStream {
             self.data_sender.is_inflight() || self.reset_sync.is_inflight();
     }
 }
+
 #[cfg(test)]
 mod tests;

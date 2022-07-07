@@ -16,7 +16,7 @@ use crate::{
         controller::MAX_STREAMS_SYNC_FRACTION,
         stream_impl::StreamConfig,
         stream_interests::{StreamInterestProvider, StreamInterests},
-        tests::*,
+        testing::*,
         AbstractStreamManager, StreamError, StreamEvents, StreamTrait,
     },
     sync::DEFAULT_SYNC_PERIOD,
