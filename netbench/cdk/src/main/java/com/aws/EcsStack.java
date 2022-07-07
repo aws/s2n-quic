@@ -34,6 +34,7 @@ import software.amazon.awscdk.services.ec2.Peer;
 import software.amazon.awscdk.services.ec2.Port;
 
 import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 
 class EcsStack extends Stack {
