@@ -4,7 +4,6 @@
 package com.aws;
 
 import software.amazon.awscdk.customresources.AwsCustomResource;
-import software.amazon.awscdk.customresources.AwsCustomResourceProps;
 import software.constructs.Construct;
 
 class SSMParameterReader extends AwsCustomResource {

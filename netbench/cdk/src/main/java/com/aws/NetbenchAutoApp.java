@@ -2,21 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.aws;
 
-import software.amazon.awscdk.App;
-import software.amazon.awscdk.Environment;
-import software.amazon.awscdk.StackProps;
-import software.amazon.awscdk.regioninfo.Fact;
-import software.amazon.awscdk.services.ec2.InstanceClass;
-
-import java.lang.IllegalArgumentException;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
-import java.nio.file.FileSystem;
-import java.nio.file.Paths;
-import java.nio.file.Path;
-import java.nio.file.Files;
+import software.amazon.awscdk.App;
+import software.amazon.awscdk.Environment;
+import software.amazon.awscdk.regioninfo.Fact;
 
 public class NetbenchAutoApp {
 
