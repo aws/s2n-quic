@@ -445,6 +445,8 @@ impl CongestionController for CubicCongestionController {
     }
 
     //= https://www.rfc-editor.org/rfc/rfc8899#section-3
+    //= type=exception
+    //= reason=See https://github.com/aws/s2n-quic/issues/959
     //# An update to the PLPMTU (or MPS) MUST NOT increase the congestion
     //# window measured in bytes [RFC4821].
 
@@ -465,10 +467,8 @@ impl CongestionController for CubicCongestionController {
         self.max_datagram_size = max_datagram_size;
         self.cubic.max_datagram_size = max_datagram_size;
 
-        if max_datagram_size > old_max_datagram_size {
-            self.congestion_window =
-                (self.congestion_window / old_max_datagram_size as f32) * max_datagram_size as f32;
-        }
+        self.congestion_window =
+            (self.congestion_window / old_max_datagram_size as f32) * max_datagram_size as f32;
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.4
@@ -519,6 +519,10 @@ impl CubicCongestionController {
     //# window of ten times the maximum datagram size (max_datagram_size),
     //# while limiting the window to the larger of 14,720 bytes or twice the
     //# maximum datagram size.
+
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
+    //# If the maximum datagram size changes during the connection, the
+    //# initial congestion window SHOULD be recalculated with the new size.
     #[inline]
     fn initial_window(max_datagram_size: u16) -> u32 {
         const INITIAL_WINDOW_LIMIT: u32 = 14720;
