@@ -120,6 +120,10 @@ impl Limits {
         unidirectional_data_window,
         u64
     );
+    // TODO its currently not possible to specify local and remote bidi limits
+    // separately. Add functionality and deprecate this method.
+    //
+    // https://github.com/aws/s2n-quic/issues/1388
     setter!(
         with_max_open_bidirectional_streams,
         max_open_bidirectional_streams,
