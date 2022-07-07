@@ -97,6 +97,7 @@ public class NetbenchAutoApp {
             .instanceType(ec2InstanceType)
             .ecrUri(serverEcrUri)
             .scenario(scenarioFile)
+            .serverRegion(serverRegion)
             .build());
 
         EcsStack clientEcsStack = new EcsStack(app, "ClientEcsStack", EcsStackProps.builder()
@@ -114,6 +115,11 @@ public class NetbenchAutoApp {
         StateMachineStack stateMachineStack = new StateMachineStack(app, "StateMachineStack", StateMachineStackProps.builder()
             .env(makeEnv(awsAccount, clientRegion))
             .clientTask(clientEcsStack.getEcsTask())
+            .bucket(vpcStack.getBucket())
+            .region(serverRegion)
+            .logGroupName("ServerEcsStack-serverloggroupC083529C-UyrnnWfg0PId")
+            .serviceLogGroup(serverEcsStack.getServiceLogGroup())
+            .logsLambda(serverEcsStack.getLogsLambda())
             .build());
 
         app.synth();
