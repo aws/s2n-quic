@@ -175,7 +175,7 @@ impl Estimator {
         }
 
         if app_limited.unwrap_or(false) {
-            self.app_limited_delivered_bytes = Some(self.delivered_bytes + bytes_in_flight as u64);
+            self.mark_app_limited(bytes_in_flight);
         }
 
         PacketInfo {
@@ -248,6 +248,11 @@ impl Estimator {
     pub fn on_loss(&mut self, lost_bytes: usize) {
         self.lost_bytes += lost_bytes as u64;
         self.rate_sample.lost_bytes = self.lost_bytes - self.rate_sample.prior_lost_bytes;
+    }
+
+    /// Mark the path as app limited until the given `bytes_in_flight` are acknowledged
+    pub fn mark_app_limited(&mut self, bytes_in_flight: u32) {
+        self.app_limited_delivered_bytes = Some(self.delivered_bytes + bytes_in_flight as u64);
     }
 }
 

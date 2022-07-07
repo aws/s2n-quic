@@ -22,6 +22,7 @@ mod data_rate;
 mod data_volume;
 mod full_pipe;
 mod probe_bw;
+mod probe_rtt;
 mod recovery;
 mod round;
 mod windowed_filter;
@@ -67,12 +68,16 @@ struct BbrCongestionController {
     //# congestion feedback.
     bytes_in_flight: BytesInFlight,
     cwnd: u32,
+    prior_cwnd: u32,
     recovery_state: recovery::State,
     congestion_state: congestion::State,
     probe_bw_state: probe_bw::State,
+    probe_rtt_state: probe_rtt::State,
     data_rate_model: data_rate::Model,
     data_volume_model: data_volume::Model,
     max_datagram_size: u16,
+    /// A boolean that is true if and only if a connection is restarting after being idle
+    idle_restart: bool,
 }
 
 type BytesInFlight = Counter<u32>;
@@ -344,5 +349,26 @@ impl BbrCongestionController {
     #[inline]
     fn minimum_window(&self) -> u32 {
         (MIN_PIPE_CWND_PACKETS * self.max_datagram_size) as u32
+    }
+
+    /// Saves the last-known good congestion window (the latest cwnd unmodulated by loss recovery or ProbeRTT)
+    fn save_cwnd(&mut self) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
+        //# BBRSaveCwnd()
+
+        self.prior_cwnd = if !self.recovery_state.in_recovery() {
+            // TODO: && BBR.state != ProbeRTT
+            self.cwnd
+        } else {
+            self.prior_cwnd.max(self.cwnd)
+        }
+    }
+
+    /// Restores the last-known good congestion window (the latest cwnd unmodulated by loss recovery or ProbeRTT)
+    fn restore_cwnd(&mut self) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
+        //# BBRRestoreCwnd()
+
+        self.cwnd = self.cwnd.max(self.prior_cwnd);
     }
 }
