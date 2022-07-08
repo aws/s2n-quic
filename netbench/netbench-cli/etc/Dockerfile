@@ -72,7 +72,7 @@ RUN set -eux; \
   aws s3 cp s3://\$S3_BUCKET/exportedlogs/\$EXPORT_TASK_ID/ /tmp/ --recursive\n \
   export DIR=\$(ls -d /tmp/*/)\n \
   printenv\n \
-  gzip -d \$DIR000000.gz && python3 logParser.py \$DIR000000.gz && mv \$DIR000000.gz /tmp/server.json\n \
+  gzip -d \$(echo \$DIR)000000.gz && python3 /usr/bin/logParser.py \$(echo \$DIR)000000 && mv \$(echo \$DIR)000000 /tmp/server.json\n \
   eval /usr/bin/netbench-cli report /tmp/client.json /tmp/server.json \$@ > /tmp/report.json\n \
   aws s3 cp /tmp/report.json s3://\$S3_BUCKET/" > /app/bin/start; 
 

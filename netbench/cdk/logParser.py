@@ -2,7 +2,13 @@ import sys
 
 def main(file_name):
     f = open(file_name, "r+")
-    lines = [line[line.index('{'):] for line in f.readlines()]
+    lines = []
+    for line in f.readlines():
+        try:
+            lines.append(line[line.index('{')])
+        except:
+            continue
+
     f.truncate(0)
     f.seek(0)
     f.writelines(lines)
