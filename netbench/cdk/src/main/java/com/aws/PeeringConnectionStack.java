@@ -2,15 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.aws;
 
-import software.constructs.Construct;
 import software.amazon.awscdk.Stack;
-import software.amazon.awscdk.StackProps;
-import software.amazon.awscdk.services.ec2.CfnVPCPeeringConnection;
-import software.amazon.awscdk.services.ec2.Vpc;
-import software.amazon.awscdk.services.ec2.ISubnet;
 import software.amazon.awscdk.services.ec2.CfnRoute;
+import software.amazon.awscdk.services.ec2.CfnVPCPeeringConnection;
+import software.amazon.awscdk.services.ec2.ISubnet;
 import software.amazon.awscdk.services.ssm.StringParameter;
-import software.amazon.awscdk.services.ssm.IStringParameter;
+import software.constructs.Construct;
 
 class PeeringConnectionStack extends Stack {
     private String ref;
