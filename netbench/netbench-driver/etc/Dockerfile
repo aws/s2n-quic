@@ -73,14 +73,14 @@ RUN set -eux; \
 
 ARG DRIVER="s2n-quic"
 ARG ENDPOINT="client"
-ENV ENDPOINT_ENV=$ENDPOINT
 
 RUN set -eux; \
-  export TARGET="netbench-driver-$DRIVER-$ENDPOINT"; \
-  if [ "$ENDPOINT" = "server"]; then \
+  if [ "$ENDPOINT" = "server" ]; then \
+    export TARGET="netbench-driver-$DRIVER-$ENDPOINT"; \
     echo "#!/usr/bin/env bash\n \
     eval /usr/bin/netbench-collector /usr/bin/$TARGET \$@" > /app/bin/start; \
   else \
+    export TARGET="netbench-driver-$DRIVER-$ENDPOINT"; \
     echo "#!/usr/bin/env bash\n \
     export SERVER_0=\$(dig +short \$DNS_ADDRESS):\$SERVER_PORT\n \
     printenv\n \
