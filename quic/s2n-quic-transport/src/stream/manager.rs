@@ -1112,3 +1112,6 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         results
     }
 }
+
+#[cfg(test)]
+mod tests;

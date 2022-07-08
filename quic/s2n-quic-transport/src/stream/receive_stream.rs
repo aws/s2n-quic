@@ -981,3 +981,6 @@ impl StreamInterestProvider for ReceiveStream {
         });
     }
 }
+
+#[cfg(test)]
+mod tests;

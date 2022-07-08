@@ -4,6 +4,7 @@
 use super::*;
 use crate::stream::{
     stream_interests::{StreamInterestProvider, StreamInterests},
+    testing::*,
     StreamError, StreamEvents, StreamTrait,
 };
 use bytes::Bytes;
