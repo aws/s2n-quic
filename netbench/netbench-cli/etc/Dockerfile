@@ -69,9 +69,10 @@ RUN set -eux; \
   rm -rf target; \
   echo "#!/usr/bin/env bash\n \
   aws s3 cp s3://\$S3_BUCKET/client.json /tmp/client.json\n \
-  aws s3 cp s3://\$S3_BUCKET/exportedlogs/\$EXPORT_TASK_ID/ /tmp/\n \
+  aws s3 cp s3://\$S3_BUCKET/exportedlogs/\$EXPORT_TASK_ID/ /tmp/ --recursive\n \
   export DIR=\$(ls -d /tmp/*/)\n \
-  gzip -d \$DIR/000000.gz && python3 logParser.py \$DIR/000000.gz && mv \$DIR/000000.gz /tmp/server.json\n \
+  printenv\n \
+  gzip -d \$DIR000000.gz && python3 logParser.py \$DIR000000.gz && mv \$DIR000000.gz /tmp/server.json\n \
   eval /usr/bin/netbench-cli report /tmp/client.json /tmp/server.json \$@ > /tmp/report.json\n \
   aws s3 cp /tmp/report.json s3://\$S3_BUCKET/" > /app/bin/start; 
 
@@ -89,6 +90,7 @@ RUN set -eux; \
   sudo ./aws/install; \
   chmod +x /tmp/netbench/*; \
   mv /tmp/netbench/* /usr/bin; \
+  rm -r /tmp/netbench; \
   echo done
 
 ENTRYPOINT ["/usr/bin/start"]
