@@ -184,6 +184,8 @@ impl CongestionController for BbrCongestionController {
             // TODO: if self.state == State::Probe_BW
             self.update_probe_bw_cycle_phase(random_generator, ack_receive_time);
         }
+
+        self.check_probe_rtt(*self.bytes_in_flight, random_generator, ack_receive_time);
         self.congestion_state
             .advance(self.bw_estimator.rate_sample());
     }
