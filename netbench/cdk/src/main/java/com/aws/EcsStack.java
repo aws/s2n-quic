@@ -102,7 +102,7 @@ class EcsStack extends Stack {
             CloudMapOptions ecsServiceDiscovery = CloudMapOptions.builder()
                     .dnsRecordType(DnsRecordType.A)
                     .cloudMapNamespace(ecsNameSpace)
-                    .name("ec2serviceserverCloudmapSer-UEyneXTpp1nx") //Arbitrary hard-coded value to make DNS resolution easier
+                    .name("ec2serviceserverCloudmapSrv-UEyneXTpp1nx") //Arbitrary hard-coded value to make DNS resolution easier
                     .build();
             
             dnsAddress = ecsServiceDiscovery.getName();
