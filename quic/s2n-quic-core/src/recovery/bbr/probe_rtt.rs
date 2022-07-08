@@ -22,6 +22,7 @@ pub(crate) struct State {
 
 /// Methods related to the ProbeRtt state
 impl BbrCongestionController {
+    /// Check if it is time to start probing for RTT changes, and enter the ProbeRtt state if so
     pub fn check_probe_rtt<Rnd: random::Generator>(
         &mut self,
         bytes_in_flight: u32,
@@ -49,6 +50,9 @@ impl BbrCongestionController {
         }
     }
 
+    /// Keeps BBR in the ProbeRTT state for max of (PROBE_RTT_DURATION, 1 round)
+    ///
+    /// ProbeRTT will be exited when either this threshold is reached
     fn handle_probe_rtt<Rnd: random::Generator>(
         &mut self,
         bytes_in_flight: u32,
@@ -59,7 +63,7 @@ impl BbrCongestionController {
         //# BBRHandleProbeRTT()
 
         // Ignore low rate samples during ProbeRTT
-        self.bw_estimator.mark_app_limited(bytes_in_flight);
+        self.bw_estimator.on_app_limited(bytes_in_flight);
 
         if self.probe_rtt_state.done_timestamp.is_none() && bytes_in_flight <= self.probe_rtt_cwnd()
         {
@@ -79,13 +83,16 @@ impl BbrCongestionController {
         }
     }
 
+    /// Checks if the ProbeRtt state should be exited and calls `exit_probe_rtt` if so
+    ///
+    /// The next ProbeRtt will be scheduled as necessary
     pub fn check_probe_rtt_done<Rnd: random::Generator>(
         &mut self,
         random_generator: &mut Rnd,
         now: Timestamp,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.4.4
-        //# BBRCheckProbeRTT()
+        //# BBRCheckProbeRTTDone()
 
         if self
             .probe_rtt_state
@@ -101,6 +108,7 @@ impl BbrCongestionController {
         }
     }
 
+    /// Exits the ProbeRtt state
     pub fn exit_probe_rtt<Rnd: random::Generator>(
         &mut self,
         random_generator: &mut Rnd,
@@ -113,6 +121,7 @@ impl BbrCongestionController {
         self.data_rate_model.reset_lower_bound();
 
         if self.full_pipe_estimator.filled_pipe() {
+            // TODO: self.state == ProbeBw (or add start_probe_bw to probe_bw.rs)
             self.probe_bw_state.start_down(
                 &mut self.congestion_state,
                 &mut self.round_counter,
@@ -121,9 +130,12 @@ impl BbrCongestionController {
                 now,
             );
             self.probe_bw_state.start_cruise();
+        } else {
+            // TODO: self.state == Startup
         }
     }
 
+    /// Returns the congestion window that should be used during the ProbeRTT state
     pub fn probe_rtt_cwnd(&self) -> u32 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.5
         //# BBRProbeRTTCwnd()

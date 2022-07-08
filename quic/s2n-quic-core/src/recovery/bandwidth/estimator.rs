@@ -175,7 +175,7 @@ impl Estimator {
         }
 
         if app_limited.unwrap_or(false) {
-            self.mark_app_limited(bytes_in_flight);
+            self.on_app_limited(bytes_in_flight);
         }
 
         PacketInfo {
@@ -251,7 +251,7 @@ impl Estimator {
     }
 
     /// Mark the path as app limited until the given `bytes_in_flight` are acknowledged
-    pub fn mark_app_limited(&mut self, bytes_in_flight: u32) {
+    pub fn on_app_limited(&mut self, bytes_in_flight: u32) {
         self.app_limited_delivered_bytes = Some(self.delivered_bytes + bytes_in_flight as u64);
     }
 }
