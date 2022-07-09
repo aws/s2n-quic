@@ -17,6 +17,11 @@ pub struct Limits {
     /// is not communicated to the peer, it is only used for limiting
     /// concurrent streams opened locally by the application.
     pub max_open_local_unidirectional_streams: VarInt,
+    /// The maximum number of bidirectional streams that may
+    /// be opened concurrently by the local endpoint. This value
+    /// is not communicated to the peer, it is only used for limiting
+    /// concurrent streams opened locally by the application.
+    pub max_open_local_bidirectional_streams: VarInt,
 }
 
 impl Default for Limits {
@@ -29,5 +34,6 @@ impl Limits {
     pub const RECOMMENDED: Self = Self {
         max_send_buffer_size: DEFAULT_STREAM_MAX_SEND_BUFFER_SIZE,
         max_open_local_unidirectional_streams: InitialMaxStreamsUni::RECOMMENDED.as_varint(),
+        max_open_local_bidirectional_streams: InitialMaxStreamsUni::RECOMMENDED.as_varint(),
     };
 }
