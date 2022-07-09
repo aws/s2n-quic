@@ -52,7 +52,7 @@ impl BbrCongestionController {
 
     /// Keeps BBR in the ProbeRTT state for max of (PROBE_RTT_DURATION, 1 round)
     ///
-    /// ProbeRTT will be exited when either this threshold is reached
+    /// ProbeRTT will be exited when this threshold is reached
     fn handle_probe_rtt<Rnd: random::Generator>(
         &mut self,
         bytes_in_flight: u32,
@@ -66,9 +66,9 @@ impl BbrCongestionController {
         self.bw_estimator.on_app_limited(bytes_in_flight);
 
         if !self.probe_rtt_state.timer.is_armed() && bytes_in_flight <= self.probe_rtt_cwnd() {
-            /* Wait for at least ProbeRTTDuration to elapse: */
+            // Wait for at least ProbeRTTDuration to elapse:
             self.probe_rtt_state.timer.set(now + PROBE_RTT_DURATION);
-            /* Wait for at least one round to elapse: */
+            // Wait for at least one round to elapse:
             self.probe_rtt_state.round_done = false;
             self.round_counter
                 .set_round_end(self.bw_estimator.delivered_bytes());
@@ -139,4 +139,9 @@ impl BbrCongestionController {
             .unwrap_or(u32::MAX)
             .max(self.minimum_window())
     }
+}
+
+#[cfg(test)]
+mod tests {
+    // TODO
 }
