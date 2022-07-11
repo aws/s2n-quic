@@ -161,6 +161,18 @@ index c2d6d1f..844bbd5 100644
  
  print("\nPulling the iperf endpoint...")
  os.system("docker pull martenseemann/quic-interop-iperf-endpoint")
+diff --git a/requirements.txt b/requirements.txt
+index fff6217..2ae6f9d 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,4 +1,4 @@
+ pycrypto
+ termcolor
+ prettytable
+-pyshark
+\ No newline at end of file
++pyshark==0.4.6
+\ No newline at end of file
 diff --git a/run.py b/run.py
 index fbd9515..aa8d6ed 100755
 --- a/run.py
@@ -172,7 +184,7 @@ index fbd9515..aa8d6ed 100755
 -    sys.exit(main())
 +    main()
 diff --git a/testcases.py b/testcases.py
-index 2741a0d..a8d1e14 100644
+index 99edfe0..0b8941a 100644
 --- a/testcases.py
 +++ b/testcases.py
 @@ -90,6 +90,10 @@ class TestCase(abc.ABC):
@@ -186,7 +198,7 @@ index 2741a0d..a8d1e14 100644
      @staticmethod
      def scenario() -> str:
          """ Scenario for the ns3 simulator """
-@@ -1201,54 +1205,26 @@ class TestCasePortRebinding(TestCaseTransfer):
+@@ -1203,54 +1207,26 @@ class TestCasePortRebinding(TestCaseTransfer):
              logging.info("Server saw only a single client port in use; test broken?")
              return TestResult.FAILED
  
@@ -249,7 +261,7 @@ index 2741a0d..a8d1e14 100644
                  if hasattr(p["quic"], "path_response.data")
              )
          )
-@@ -1445,6 +1421,10 @@ class MeasurementGoodput(Measurement):
+@@ -1532,6 +1508,10 @@ class MeasurementGoodput(Measurement):
      def testname(p: Perspective):
          return "transfer"
  
@@ -260,7 +272,7 @@ index 2741a0d..a8d1e14 100644
      @staticmethod
      def abbreviation():
          return "G"
-@@ -1455,7 +1435,7 @@ class MeasurementGoodput(Measurement):
+@@ -1542,7 +1522,7 @@ class MeasurementGoodput(Measurement):
  
      @staticmethod
      def repetitions() -> int:
@@ -269,7 +281,7 @@ index 2741a0d..a8d1e14 100644
  
      def get_paths(self):
          self._files = [self._generate_random_file(self.FILESIZE)]
-@@ -1528,8 +1508,8 @@ TESTCASES = [
+@@ -1615,8 +1595,8 @@ TESTCASES = [
      TestCaseChaCha20,
      TestCaseMultiplexing,
      TestCaseRetry,
@@ -280,10 +292,10 @@ index 2741a0d..a8d1e14 100644
      TestCaseHTTP3,
      TestCaseBlackhole,
      TestCaseKeyUpdate,
-@@ -1540,11 +1520,9 @@ TESTCASES = [
-     TestCaseHandshakeCorruption,
+@@ -1628,11 +1608,9 @@ TESTCASES = [
      TestCaseTransferCorruption,
      TestCaseIPv6,
+     TestCaseV2,
 -    # The next three tests are disabled due to Wireshark not being able
 -    # to decrypt packets sent on the new path.
 -    # TestCasePortRebinding,
