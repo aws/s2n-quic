@@ -72,7 +72,7 @@ jobs:
         mode: ["debug", "release"]
     # enable debug information
     env:
-      RUSTFLAGS: "-g"
+      RUSTFLAGS: "-g --cfg s2n_internal_dev"
     steps:
       - uses: actions/checkout@v3
         with:

@@ -449,6 +449,55 @@ jobs:
           status: "success"
           url: "${{ steps.s3.outputs.URL }}"
 
+  sims:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - uses: camshaft/rust-cache@v1
+
+      - name: Run cargo build
+        uses: actions-rs/cargo@v1.0.3
+        with:
+          command: build
+          args: --bin s2n-quic-sim --release
+
+      - name: Run simulations
+        run: |
+          ./scripts/sim
+
+      - uses: aws-actions/configure-aws-credentials@v1.6.1
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-1
+
+      - name: Upload to S3
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+        id: s3
+        run: |
+          TARGET="${{ github.sha }}/sim"
+          aws s3 sync target/s2n-quic-sim "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          URL="$CDN/$TARGET/index.html"
+          echo "::set-output name=URL::$URL"
+
+      - uses: ouzi-dev/commit-status-updater@v1.1.2
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+        with:
+          name: "sims / report"
+          status: "success"
+          url: "${{ steps.s3.outputs.URL }}"
+
   copyright:
     runs-on: ubuntu-latest
     steps:

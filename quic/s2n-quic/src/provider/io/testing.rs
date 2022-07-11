@@ -48,6 +48,8 @@ pub fn test_seed<N: Network, F: FnOnce(&Handle) -> Result<O>, O>(
 
     // return the total runtime of the test
     let now = executor.enter(time::now);
+
     let now = unsafe { now.as_duration() };
+
     Ok(now)
 }

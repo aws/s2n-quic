@@ -16,7 +16,7 @@ use std::{
 pub struct Model(Arc<State>);
 
 impl Model {
-    fn jitter(&self) -> Duration {
+    pub fn jitter(&self) -> Duration {
         Duration::from_micros(self.0.jitter.load(Ordering::SeqCst))
     }
 
@@ -30,7 +30,7 @@ impl Model {
         self
     }
 
-    fn network_jitter(&self) -> Duration {
+    pub fn network_jitter(&self) -> Duration {
         Duration::from_micros(self.0.network_jitter.load(Ordering::SeqCst))
     }
 
@@ -44,7 +44,7 @@ impl Model {
         self
     }
 
-    fn delay(&self) -> Duration {
+    pub fn delay(&self) -> Duration {
         Duration::from_micros(self.0.delay.load(Ordering::SeqCst))
     }
 
@@ -54,7 +54,7 @@ impl Model {
         self
     }
 
-    fn transmit_rate(&self) -> u64 {
+    pub fn transmit_rate(&self) -> u64 {
         self.0.transmit_rate.load(Ordering::SeqCst)
     }
 
@@ -108,7 +108,7 @@ impl Model {
         self
     }
 
-    fn max_udp_payload(&self) -> u16 {
+    pub fn max_udp_payload(&self) -> u16 {
         self.0.max_udp_payload.load(Ordering::SeqCst)
     }
 
@@ -123,7 +123,7 @@ impl Model {
         self.0.current_inflight.load(Ordering::SeqCst)
     }
 
-    fn max_inflight(&self) -> u64 {
+    pub fn max_inflight(&self) -> u64 {
         self.0.max_inflight.load(Ordering::SeqCst)
     }
 
@@ -132,6 +132,30 @@ impl Model {
     /// Any packets that exceed this amount will be dropped
     pub fn set_max_inflight(&self, value: u64) -> &Self {
         self.0.max_inflight.store(value, Ordering::SeqCst);
+        self
+    }
+
+    pub fn inflight_delay(&self) -> Duration {
+        Duration::from_micros(self.0.inflight_delay.load(Ordering::SeqCst))
+    }
+
+    /// Sets the delay for each packet above the inflight_delay
+    pub fn set_inflight_delay(&self, value: Duration) -> &Self {
+        self.0
+            .inflight_delay
+            .store(value.as_micros() as _, Ordering::SeqCst);
+        self
+    }
+
+    pub fn inflight_delay_threshold(&self) -> u64 {
+        self.0.inflight_delay_threshold.load(Ordering::SeqCst)
+    }
+
+    /// Sets the delay for each packet above the inflight_delay_threshold
+    pub fn set_inflight_delay_threshold(&self, value: u64) -> &Self {
+        self.0
+            .inflight_delay_threshold
+            .store(value, Ordering::SeqCst);
         self
     }
 }
@@ -152,6 +176,8 @@ struct State {
     drop_rate: AtomicU64,
     max_udp_payload: AtomicU16,
     max_inflight: AtomicU64,
+    inflight_delay: AtomicU64,
+    inflight_delay_threshold: AtomicU64,
     current_inflight: AtomicU64,
 }
 
@@ -167,6 +193,8 @@ impl Default for State {
             drop_rate: AtomicU64::new(0),
             max_udp_payload: AtomicU16::new(MaxMtu::default().into()),
             max_inflight: AtomicU64::new(u64::MAX),
+            inflight_delay: AtomicU64::new(0),
+            inflight_delay_threshold: AtomicU64::new(u64::MAX),
             current_inflight: AtomicU64::new(0),
         }
     }
@@ -181,6 +209,8 @@ impl Network for Model {
         let corrupt_rate = self.corrupt_rate();
         let drop_rate = self.drop_rate();
         let max_udp_payload = self.max_udp_payload() as usize;
+        let inflight_delay = self.inflight_delay();
+        let inflight_delay_threshold = self.inflight_delay_threshold();
 
         let now = super::time::now();
         let mut transmit_time = now + self.delay();
@@ -195,6 +225,11 @@ impl Network for Model {
         let mut transmit = |packet: Cow<Packet>| {
             // drop the packet if it's over the current MTU
             if packet.payload.len() > max_udp_payload {
+                return 0;
+            }
+
+            // drop packets that exceed the maximum number of inflight packets for the network
+            if self.inflight() >= self.max_inflight() {
                 return 0;
             }
 
@@ -232,11 +267,17 @@ impl Network for Model {
                 transmit_time += gen_jitter(network_jitter);
             }
 
+            let model = self.clone();
+            let current_inflight = model.0.current_inflight.fetch_add(1, Ordering::SeqCst);
+
+            // scale the inflight delay by the number above the delay threshold
+            if let Some(mul) = current_inflight.checked_sub(inflight_delay_threshold) {
+                transmit_time += inflight_delay * mul as u32;
+            }
+
             // reverse the addresses so the dst/src are correct for the receiver
             packet.switch();
 
-            let model = self.clone();
-            model.0.current_inflight.fetch_add(1, Ordering::SeqCst);
             let buffers = buffers.clone();
 
             // spawn a task that will push the packet onto the receiver queue at the transit time
@@ -258,11 +299,6 @@ impl Network for Model {
 
         let mut transmission_count = 0;
         buffers.pending_transmissions(|packet| {
-            // drop packets that exceed the maximum number of inflight packets for the network
-            if self.inflight() >= self.max_inflight() {
-                return Ok(());
-            }
-
             // retransmit the packet until the rate fails or we retransmit 5
             //
             // We limit retransmissions to 5 just so we don't endlessly iterate when the
