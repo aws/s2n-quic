@@ -378,9 +378,7 @@ macro_rules! impl_handle_api {
             query.into()
         }
 
-        /// API for querying the connection's
-        /// [`Datagram::Sender`](crate::provider::datagram::Sender) or
-        /// [`Datagram::Receiver`](crate::provider::datagram::Receiver).
+        /// API for querying the connection's datagram endpoint.
         ///
         ///  Provides mutable access to `Sender` or `Receiver`.
         ///
