@@ -22,7 +22,6 @@ import software.amazon.awscdk.services.ecs.AmiHardwareType;
 import software.amazon.awscdk.services.ecs.CloudMapOptions;
 import software.amazon.awscdk.services.ecs.AwsLogDriverProps;
 import software.amazon.awscdk.services.ecs.LogDriver;
-import software.amazon.awscdk.services.ecs.ContainerDefinition;
 
 import software.amazon.awscdk.services.logs.LogGroup;
 import software.amazon.awscdk.services.logs.RetentionDays;
@@ -34,9 +33,6 @@ import software.amazon.awscdk.services.lambda.Code;
 import software.amazon.awscdk.services.stepfunctions.tasks.EcsRunTask;
 import software.amazon.awscdk.services.stepfunctions.IntegrationPattern;
 import software.amazon.awscdk.services.stepfunctions.tasks.EcsEc2LaunchTarget;
-import software.amazon.awscdk.services.stepfunctions.tasks.ContainerOverride;
-import software.amazon.awscdk.services.stepfunctions.tasks.TaskEnvironmentVariable;
-import software.amazon.awscdk.services.stepfunctions.JsonPath;
 
 import software.amazon.awscdk.services.iam.PolicyStatement;
 import software.amazon.awscdk.services.iam.Effect;
@@ -52,12 +48,14 @@ import software.amazon.awscdk.services.ec2.Port;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Date;
+import java.text.SimpleDateFormat;
 
 class EcsStack extends Stack {
     private String dnsAddress;
     private EcsRunTask ecsTask;
-    private LogGroup serviceLogGroup;
     private Function exportLogsLambda;
+    private Cluster cluster;
 
     public EcsStack(final Construct parent, final String id, final EcsStackProps props) {
         super(parent, id, props);
@@ -72,7 +70,7 @@ class EcsStack extends Stack {
             .build();
         sg.addIngressRule(Peer.anyIpv4(), Port.allTraffic());
 
-        Cluster cluster = Cluster.Builder.create(this, stackType + "-cluster")
+        cluster = Cluster.Builder.create(this, stackType + "-cluster")
             .vpc(vpc)
             .build();
         
@@ -106,9 +104,9 @@ class EcsStack extends Stack {
                 .vpc(vpc)
                 .build();
 
-            serviceLogGroup = LogGroup.Builder.create(this, "server-log-group")
+            LogGroup serviceLogGroup = LogGroup.Builder.create(this, "server-log-group")
                 .retention(RetentionDays.ONE_DAY)
-                .logGroupName("server-export-s3-logs")
+                .logGroupName("server-logs" + new SimpleDateFormat("dd-MM-yyyy-HH-mm-ss").format(new Date()).toString())
                 .build();
 
             bucket.grantPut(new ServicePrincipal("logs." + props.getServerRegion() + ".amazonaws.com"));
@@ -129,13 +127,13 @@ class EcsStack extends Stack {
                 .handler("exportS3.handler")
                 .code(Code.fromAsset("lambda"))
                 .environment(exportLambdaLogsEnv)
+                .logRetention(RetentionDays.ONE_DAY)    //One day to prevent reaching log limit, can be adjusted accordingly
                 .build();
 
             exportLogsLambda.addToRolePolicy(PolicyStatement.Builder.create()
                 .actions(List.of("logs:CreateExportTask"))
                 .effect(Effect.ALLOW)
                 .resources(List.of(serviceLogGroup.getLogGroupArn()))
-                //.principals(List.of(new ServicePrincipal("logs." + props.getServerRegion() + ".amazon.aws.com")))
                 .build());
 
             bucket.grantReadWrite(exportLogsLambda.getRole());
@@ -160,7 +158,7 @@ class EcsStack extends Stack {
             CloudMapOptions ecsServiceDiscovery = CloudMapOptions.builder()
                     .dnsRecordType(DnsRecordType.A)
                     .cloudMapNamespace(ecsNameSpace)
-                    .name("ec2serviceserverCloudmapSer-UEyneXTpp1nx") //Arbitrary hard-coded value to make DNS resolution easier
+                    .name("ec2serviceserverCloudmapSrv-UEyneXTpp1nx") //Arbitrary hard-coded value to make DNS resolution easier
                     .build();
             
             dnsAddress = ecsServiceDiscovery.getName();
@@ -177,7 +175,6 @@ class EcsStack extends Stack {
                 .securityGroups(List.of(sg))
                 .build();
         } else {
-            /*
             ecrEnv.put("DNS_ADDRESS", props.getDnsAddress() + ".serverecs.com");
             ecrEnv.put("SERVER_PORT", "3000");
             ecrEnv.put("S3_BUCKET", bucket.getBucketName());
@@ -186,7 +183,7 @@ class EcsStack extends Stack {
                 .image(ContainerImage.fromRegistry(props.getEcrUri()))
                 .environment(ecrEnv)
                 .memoryLimitMiB(2048)
-                .logging(LogDriver.awsLogs(AwsLogDriverProps.builder().streamPrefix(stackType + "-ecs-task").build()))
+                .logging(LogDriver.awsLogs(AwsLogDriverProps.builder().logRetention(RetentionDays.ONE_DAY).streamPrefix(stackType + "-ecs-task").build()))
                 .portMappings(List.of(PortMapping.builder().containerPort(3000).hostPort(3000)
                     .protocol(software.amazon.awscdk.services.ecs.Protocol.UDP).build()))
                 .build()); 
@@ -199,33 +196,6 @@ class EcsStack extends Stack {
                 .taskDefinition(task)
                 .launchTarget(EcsEc2LaunchTarget.Builder.create().build())
                 .build();
-            */
-            HashMap lambdaEnv = new HashMap<>();
-            lambdaEnv.put("S3_BUCKET", bucket.getBucketName());
-
-            ContainerDefinition clientContainer = task.addContainer("report-generation", ContainerDefinitionOptions.builder()
-                .image(ContainerImage.fromRegistry("public.ecr.aws/d2r9y8c2/netbench-cli"))
-                .environment(lambdaEnv)
-                .memoryLimitMiB(2048)
-                .logging(LogDriver.awsLogs(AwsLogDriverProps.builder().streamPrefix(stackType + "report-generation").build()))
-                .build()); 
-
-            bucket.grantReadWrite(task.getTaskRole());
-
-            ecsTask = EcsRunTask.Builder.create(this, "report-generation-task")
-                .integrationPattern(IntegrationPattern.RUN_JOB)
-                .cluster(cluster)
-                .taskDefinition(task)
-                .launchTarget(EcsEc2LaunchTarget.Builder.create().build())
-                .inputPath("$.Payload")
-                .containerOverrides(List.of(ContainerOverride.builder()
-                    .containerDefinition(clientContainer)
-                    .environment(List.of(TaskEnvironmentVariable.builder()
-                        .name("EXPORT_TASK_ID")
-                        .value(JsonPath.stringAt("$.body.taskId"))
-                        .build()))
-                    .build()))
-                .build();
         }
     }
 
@@ -237,11 +207,11 @@ class EcsStack extends Stack {
         return ecsTask;
     }
 
-    public LogGroup getServiceLogGroup() {
-        return serviceLogGroup;
-    }
-
     public Function getLogsLambda() {
         return exportLogsLambda;
+    }
+
+    public Cluster getCluster() {
+        return cluster;
     }
 }

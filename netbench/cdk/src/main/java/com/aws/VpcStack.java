@@ -4,8 +4,6 @@ package com.aws;
 
 import software.constructs.Construct;
 import software.amazon.awscdk.Stack;
-import software.amazon.awscdk.StackProps;
-
 import software.amazon.awscdk.services.ec2.Vpc;
 import software.amazon.awscdk.services.ec2.GatewayVpcEndpoint;
 import software.amazon.awscdk.services.ec2.GatewayVpcEndpointOptions;
@@ -15,7 +13,6 @@ import software.amazon.awscdk.services.ec2.Peer;
 import software.amazon.awscdk.services.ec2.Port;
 import software.amazon.awscdk.services.s3.Bucket;
 import software.amazon.awscdk.RemovalPolicy;
-import software.amazon.awscdk.Environment;
 import software.amazon.awscdk.PhysicalName;
 
 public class VpcStack extends Stack {

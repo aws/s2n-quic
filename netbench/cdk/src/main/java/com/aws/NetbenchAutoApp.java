@@ -4,19 +4,10 @@ package com.aws;
 
 import software.amazon.awscdk.App;
 import software.amazon.awscdk.Environment;
-import software.amazon.awscdk.StackProps;
 import software.amazon.awscdk.regioninfo.Fact;
-import software.amazon.awscdk.services.ec2.InstanceClass;
-
 import java.lang.IllegalArgumentException;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
-
-import java.nio.file.FileSystem;
-import java.nio.file.Paths;
-import java.nio.file.Path;
-import java.nio.file.Files;
 
 public class NetbenchAutoApp {
 
@@ -100,6 +91,8 @@ public class NetbenchAutoApp {
             .serverRegion(serverRegion)
             .build());
 
+        serverEcsStack.addDependency(vpcStack);
+
         EcsStack clientEcsStack = new EcsStack(app, "ClientEcsStack", EcsStackProps.builder()
             .env(makeEnv(awsAccount, clientRegion))
             .bucket(vpcStack.getBucket())
@@ -111,16 +104,18 @@ public class NetbenchAutoApp {
             .ecrUri(clientEcrUri)
             .scenario(scenarioFile)
             .build());
+        
+        clientEcsStack.addDependency(serverEcsStack);
 
         StateMachineStack stateMachineStack = new StateMachineStack(app, "StateMachineStack", StateMachineStackProps.builder()
             .env(makeEnv(awsAccount, clientRegion))
             .clientTask(clientEcsStack.getEcsTask())
             .bucket(vpcStack.getBucket())
-            .region(serverRegion)
-            .logGroupName("ServerEcsStack-serverloggroupC083529C-UyrnnWfg0PId")
-            .serviceLogGroup(serverEcsStack.getServiceLogGroup())
             .logsLambda(serverEcsStack.getLogsLambda())
+            .cluster(clientEcsStack.getCluster())
             .build());
+
+        stateMachineStack.addDependency(clientEcsStack);
 
         app.synth();
     }

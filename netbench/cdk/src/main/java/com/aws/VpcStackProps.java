@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.aws;
 
-import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.StackProps;
 import software.amazon.awscdk.Environment;
 
@@ -17,7 +16,6 @@ public interface VpcStackProps extends StackProps {
     public static class Builder {
         private Environment env;
         private String cidr;
-        private String stackType;
 
         public Builder cidr(String cidr) {
             this.cidr = cidr;

@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.aws;
 
-import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.StackProps;
 import software.amazon.awscdk.Environment;
 import software.amazon.awscdk.services.stepfunctions.tasks.EcsRunTask;
 import software.amazon.awscdk.services.s3.Bucket;
-import software.amazon.awscdk.services.logs.LogGroup;
 import software.amazon.awscdk.services.lambda.Function;
+import software.amazon.awscdk.services.ecs.Cluster;
 
 public interface StateMachineStackProps extends StackProps {
 
@@ -20,22 +19,16 @@ public interface StateMachineStackProps extends StackProps {
 
     Bucket getBucket();
 
-    String getRegion();
-
-    String getLogGroupName();
-
-    LogGroup getServiceLogGroup();
-
     Function getLogsLambda();
+
+    Cluster getCluster();
 
     public static class Builder {
         private EcsRunTask clientTask;
         private Environment env;
         private Bucket bucket;
-        private String region;
-        private String logGroupName;
-        private LogGroup serviceLogGroup;
         private Function logsLambda;
+        private Cluster cluster;
 
         public Builder clientTask(EcsRunTask clientTask) {
             this.clientTask = clientTask;
@@ -52,23 +45,13 @@ public interface StateMachineStackProps extends StackProps {
             return this;
         }
 
-        public Builder region(String region) {
-            this.region = region;
-            return this;
-        }
-
-        public Builder logGroupName(String logGroupName) {
-            this.logGroupName = logGroupName;
-            return this;
-        }
-        
-        public Builder serviceLogGroup(LogGroup serviceLogGroup) {
-            this.serviceLogGroup = serviceLogGroup;
-            return this;
-        }
-
         public Builder logsLambda(Function logsLambda) {
             this.logsLambda = logsLambda;
+            return this;
+        }
+
+        public Builder cluster(Cluster cluster) {
+            this.cluster = cluster;
             return this;
         }
 
@@ -91,23 +74,13 @@ public interface StateMachineStackProps extends StackProps {
                 }
 
                 @Override
-                public String getRegion() {
-                    return region;
-                }
-
-                @Override
-                public String getLogGroupName() {
-                    return logGroupName;
-                }
-
-                @Override
-                public LogGroup getServiceLogGroup() {
-                    return serviceLogGroup;
-                }
-
-                @Override
                 public Function getLogsLambda() {
                     return logsLambda;
+                }
+
+                @Override
+                public Cluster getCluster() {
+                    return cluster;
                 }
             };
         }

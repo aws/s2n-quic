@@ -5,7 +5,7 @@ def main(file_name):
     lines = []
     for line in f.readlines():
         try:
-            lines.append(line[line.index('{')])
+            lines.append(line[line.index('{'):])
         except:
             continue
 
