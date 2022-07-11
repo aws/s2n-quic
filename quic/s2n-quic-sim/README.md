@@ -48,4 +48,4 @@ cargo run --release -- batch ./path/to/plan.toml
 > * Perform a deterministic computation on the inputs
 > * Aggregate the results
 
-In the case of `s2n-quic-sim`, the input domains are specified in the simulation plan. The simulation iterates the specified number of times and metrics are collected. After the simulation completes, one or more reports are generated. Usually these reports compare the input value to some output value. For example, if we vary the network's  and wanted to understand the impact it had on connection
+In the case of `s2n-quic-sim`, the input domains are specified in the simulation plan. The simulation iterates the specified number of times and metrics are collected. After the simulation completes, one or more reports are generated. Usually these reports compare the input value to some output value. For example, if we vary the network's delay and wanted to understand the impact it had on connection.

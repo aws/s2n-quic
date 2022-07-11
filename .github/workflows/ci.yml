@@ -473,7 +473,7 @@ jobs:
 
       - name: Run simulations
         run: |
-          ./target/release/s2n-quic-sim batch quic/s2n-quic-sim/plans/*.toml
+          ./scripts/sim
 
       - uses: aws-actions/configure-aws-credentials@v1.6.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name

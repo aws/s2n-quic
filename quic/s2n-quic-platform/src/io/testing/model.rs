@@ -139,7 +139,7 @@ impl Model {
         Duration::from_micros(self.0.inflight_delay.load(Ordering::SeqCst))
     }
 
-    /// Sets the delay for each packet above the inflight_delay_threshold
+    /// Sets the delay for each packet above the inflight_delay
     pub fn set_inflight_delay(&self, value: Duration) -> &Self {
         self.0
             .inflight_delay
