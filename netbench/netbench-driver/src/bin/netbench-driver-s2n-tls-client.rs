@@ -3,7 +3,7 @@
 
 use netbench::{multiplex, scenario, Result};
 use netbench_driver::Allocator;
-use s2n_tls::raw::{
+use s2n_tls::{
     config::{Builder, Config},
     error::Error,
     security::DEFAULT_TLS13,

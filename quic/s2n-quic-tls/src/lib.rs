@@ -7,9 +7,9 @@
 static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 
 #[cfg(all(s2n_quic_unstable, s2n_quic_enable_pq_tls))]
-static DEFAULT_POLICY: &s2n_tls::raw::security::Policy = &s2n_tls::raw::security::TESTING_PQ;
+static DEFAULT_POLICY: &s2n_tls::security::Policy = &s2n_tls::security::TESTING_PQ;
 #[cfg(not(all(s2n_quic_unstable, s2n_quic_enable_pq_tls)))]
-static DEFAULT_POLICY: &s2n_tls::raw::security::Policy = &s2n_tls::raw::security::DEFAULT_TLS13;
+static DEFAULT_POLICY: &s2n_tls::security::Policy = &s2n_tls::security::DEFAULT_TLS13;
 
 mod callback;
 mod keylog;
@@ -26,7 +26,7 @@ pub use server::Server;
 // Re-export the `ClientHelloHandler` and `Connection` to make it easier for users
 // to consume. This depends on experimental behavior in s2n-tls.
 #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
-pub use s2n_tls::raw::{config::ClientHelloHandler, connection::Connection};
+pub use s2n_tls::{callbacks::ClientHelloCallback, connection::Connection};
 
 #[cfg(test)]
 mod tests;

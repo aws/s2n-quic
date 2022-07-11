@@ -15,8 +15,8 @@ use s2n_quic_core::{
     transport,
 };
 #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
-use s2n_tls::raw::{config::ClientHelloHandler, connection::Connection};
-use s2n_tls::raw::{config::VerifyClientCertificateHandler, error::Error};
+use s2n_tls::{callbacks::ClientHelloCallback, connection::Connection};
+use s2n_tls::{callbacks::VerifyHostNameCallback, error::Error};
 use std::sync::Arc;
 
 pub struct MyClientHelloHandler {
@@ -34,8 +34,11 @@ impl MyClientHelloHandler {
 }
 
 #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
-impl ClientHelloHandler for MyClientHelloHandler {
-    fn poll_client_hello(&self, _connection: &mut Connection) -> core::task::Poll<Result<(), ()>> {
+impl ClientHelloCallback for MyClientHelloHandler {
+    fn poll_client_hello(
+        &self,
+        _connection: &mut Connection,
+    ) -> core::task::Poll<Result<(), Error>> {
         if self.wait_counter.fetch_sub(1, Ordering::SeqCst) == 0 {
             self.done.store(true, Ordering::SeqCst);
             return Poll::Ready(Ok(()));
@@ -49,7 +52,7 @@ pub struct VerifyHostNameClientCertVerifier {
     host_name: String,
 }
 
-impl VerifyClientCertificateHandler for VerifyHostNameClientCertVerifier {
+impl VerifyHostNameCallback for VerifyHostNameClientCertVerifier {
     fn verify_host_name(&self, host_name: &str) -> bool {
         self.host_name == host_name
     }
@@ -65,7 +68,7 @@ impl VerifyHostNameClientCertVerifier {
 
 #[derive(Default)]
 pub struct RejectAllClientCertificatesHandler {}
-impl VerifyClientCertificateHandler for RejectAllClientCertificatesHandler {
+impl VerifyHostNameCallback for RejectAllClientCertificatesHandler {
     fn verify_host_name(&self, _host_name: &str) -> bool {
         false
     }
@@ -107,9 +110,7 @@ fn s2n_server_with_client_auth() -> Result<server::Server, Error> {
     server::Builder::default()
         .with_empty_trust_store()?
         .with_client_authentication()?
-        .with_verify_client_certificate_handler(VerifyHostNameClientCertVerifier::new(
-            "qlaws.qlaws",
-        ))?
+        .with_verify_host_name_callback(VerifyHostNameClientCertVerifier::new("qlaws.qlaws"))?
         .with_certificate(CERT_PEM, KEY_PEM)?
         .with_trusted_certificate(CERT_PEM)?
         .build()
@@ -119,7 +120,7 @@ fn s2n_server_with_client_auth_verifier_rejects_client_certs() -> Result<server:
     server::Builder::default()
         .with_empty_trust_store()?
         .with_client_authentication()?
-        .with_verify_client_certificate_handler(RejectAllClientCertificatesHandler::default())?
+        .with_verify_host_name_callback(RejectAllClientCertificatesHandler::default())?
         .with_certificate(CERT_PEM, KEY_PEM)?
         .with_trusted_certificate(CERT_PEM)?
         .build()

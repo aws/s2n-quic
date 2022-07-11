@@ -10,9 +10,10 @@ use crate::{
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls, endpoint};
 #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
-use s2n_tls::raw::config::ClientHelloHandler;
-use s2n_tls::raw::{
-    config::{self, Config, VerifyClientCertificateHandler},
+use s2n_tls::callbacks::ClientHelloCallback;
+use s2n_tls::{
+    callbacks::VerifyHostNameCallback,
+    config::{self, Config},
     enums::ClientAuthType,
     error::Error,
 };
@@ -63,11 +64,11 @@ impl Default for Builder {
 
 impl Builder {
     #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
-    pub fn with_client_hello_handler<T: 'static + ClientHelloHandler>(
+    pub fn with_client_hello_handler<T: 'static + ClientHelloCallback>(
         mut self,
         handler: T,
     ) -> Result<Self, Error> {
-        self.config.set_client_hello_handler(handler)?;
+        self.config.set_client_hello_callback(handler)?;
         Ok(self)
     }
 
@@ -134,11 +135,24 @@ impl Builder {
 
     /// Set the application level certificate verification handler which will be invoked on this
     /// server instance when a client certificate is presented during the mutual TLS handshake.
-    pub fn with_verify_client_certificate_handler<T: 'static + VerifyClientCertificateHandler>(
+    #[deprecated(note = "use `with_verify_host_name_callback` instead")]
+    pub fn with_verify_client_certificate_handler<T: 'static + VerifyHostNameCallback>(
         mut self,
         handler: T,
     ) -> Result<Self, Error> {
-        self.config.set_verify_host_handler(handler)?;
+        self.config.set_verify_host_callback(handler)?;
+        Ok(self)
+    }
+
+    /// Set the host name verification callback.
+    ///
+    /// This will be invoked when a client certificate is presented during a mutual TLS
+    /// handshake.
+    pub fn with_verify_host_name_callback<T: 'static + VerifyHostNameCallback>(
+        mut self,
+        handler: T,
+    ) -> Result<Self, Error> {
+        self.config.set_verify_host_callback(handler)?;
         Ok(self)
     }
 
