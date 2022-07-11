@@ -217,7 +217,7 @@ impl<Config: endpoint::Config> EventContext<Config> {
     }
 }
 
-#[cfg(debug_assertions)]
+#[cfg(s2n_quic_dump_on_panic)]
 impl<Config: endpoint::Config> Drop for ConnectionImpl<Config> {
     fn drop(&mut self) {
         if std::thread::panicking() {
