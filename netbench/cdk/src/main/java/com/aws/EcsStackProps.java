@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.aws;
 
-import software.amazon.awscdk.Stack;
-import software.amazon.awscdk.StackProps;
-import software.amazon.awscdk.services.s3.Bucket;
 import software.amazon.awscdk.Environment;
+import software.amazon.awscdk.StackProps;
+import software.amazon.awscdk.services.ec2.Vpc;
+import software.amazon.awscdk.services.s3.Bucket;
 
-public interface ClientServerStackProps extends StackProps {
+public interface EcsStackProps extends StackProps {
 
     public static Builder builder() {
         return new Builder();
@@ -17,19 +17,31 @@ public interface ClientServerStackProps extends StackProps {
 
     String getInstanceType();
 
-    String getCidr();
-
     String getStackType();
 
     String getProtocol();
+
+    Vpc getVpc();
+
+    String getServerRegion();
+
+    String getDnsAddress();
+
+    String getEcrUri();
+
+    String getScenario();
 
     public static class Builder {
         private Bucket bucket;
         private String instanceType;
         private Environment env;
-        private String cidr;
         private String stackType;
         private String protocol;
+        private Vpc vpc;
+        private String serverRegion;
+        private String dnsAddress;
+        private String ecrUri;
+        private String scenario;
 
         public Builder bucket(Bucket bucket) {
             this.bucket = bucket;
@@ -38,11 +50,6 @@ public interface ClientServerStackProps extends StackProps {
 
         public Builder instanceType(String instanceType) {
             this.instanceType = instanceType;
-            return this;
-        }
-
-        public Builder cidr(String cidr) {
-            this.cidr = cidr;
             return this;
         }
 
@@ -61,8 +68,33 @@ public interface ClientServerStackProps extends StackProps {
             return this;
         }
 
-        public ClientServerStackProps build() {
-            return new ClientServerStackProps() {
+        public Builder vpc(Vpc vpc) {
+            this.vpc = vpc;
+            return this;
+        }
+
+        public Builder serverRegion(String serverRegion) {
+            this.serverRegion = serverRegion;
+            return this;
+        }
+
+        public Builder dnsAddress(String dnsAddress) {
+            this.dnsAddress = dnsAddress;
+            return this;
+        }
+
+        public Builder ecrUri(String ecrUri) {
+            this.ecrUri = ecrUri;
+            return this;
+        }
+
+        public Builder scenario(String scenario) {
+            this.scenario = scenario;
+            return this;
+        }
+
+        public EcsStackProps build() {
+            return new EcsStackProps() {
                 @Override
                 public Bucket getBucket() {
                     return bucket;
@@ -71,11 +103,6 @@ public interface ClientServerStackProps extends StackProps {
                 @Override
                 public String getInstanceType() {
                     return instanceType;
-                }
-
-                @Override
-                public String getCidr() {
-                    return cidr;
                 }
 
                 @Override
@@ -91,6 +118,30 @@ public interface ClientServerStackProps extends StackProps {
                 @Override
                 public String getProtocol() {
                     return protocol;
+                }
+
+                @Override
+                public Vpc getVpc() {
+                    return vpc;
+                }
+
+                @Override
+                public String getServerRegion() {
+                    return serverRegion;
+                }
+
+                @Override
+                public String getDnsAddress() {
+                    return dnsAddress;
+                }
+
+                @Override
+                public String getEcrUri() {
+                    return ecrUri;
+                }
+                @Override
+                public String getScenario() {
+                    return scenario;
                 }
             };
         }

@@ -1,0 +1,41 @@
+[sim]
+connections = "1"
+delay = "10ms..50ms"
+max_inflight = 10000000
+iterations = 1000
+stream_data = 100000000
+
+[report.tx-packets]
+filters = ["conn.success", "conn.client"]
+x = "net.delay"
+y = "conn.tx.packets"
+
+[report.rtt-spread]
+filters = ["conn.success", "conn.client"]
+x = "net.delay"
+y = "conn.rtt-spread"
+
+[report.min-rtt]
+filters = ["conn.success", "conn.client"]
+x = "net.delay"
+y = "conn.min-rtt"
+
+[report.max-rtt]
+filters = ["conn.success", "conn.client"]
+x = "net.delay"
+y = "conn.max-rtt"
+
+[report.lost-packets]
+filters = ["conn.success", "conn.client"]
+x = "net.delay"
+y = "conn.lost.packets"
+
+[report.tx-throughput]
+filters = ["conn.success", "conn.client"]
+x = "net.delay"
+y = "conn.tx.stream-throughput"
+
+[report.congestion-window]
+filters = ["conn.success", "conn.client"]
+x = "net.delay"
+y = "conn.max-cwin"

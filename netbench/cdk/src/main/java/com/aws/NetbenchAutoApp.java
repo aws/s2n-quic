@@ -2,21 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.aws;
 
-import software.amazon.awscdk.App;
-import software.amazon.awscdk.Environment;
-import software.amazon.awscdk.StackProps;
-import software.amazon.awscdk.regioninfo.Fact;
-import software.amazon.awscdk.services.ec2.InstanceClass;
-
-import java.lang.IllegalArgumentException;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
-import java.nio.file.FileSystem;
-import java.nio.file.Paths;
-import java.nio.file.Path;
-import java.nio.file.Files;
+import software.amazon.awscdk.App;
+import software.amazon.awscdk.Environment;
+import software.amazon.awscdk.regioninfo.Fact;
 
 public class NetbenchAutoApp {
 
@@ -65,63 +56,57 @@ public class NetbenchAutoApp {
 
         String ec2InstanceType = (String)app.getNode().tryGetContext("instance-type");
         ec2InstanceType = (ec2InstanceType == null) 
-            ? "c5n.xlarge" 
+            ? "t4g.xlarge" 
             : ec2InstanceType.toLowerCase();
+
+        String serverEcrUri = (String)app.getNode().tryGetContext("server-ecr-uri");
+        serverEcrUri = (serverEcrUri == null) 
+            ? "public.ecr.aws/d2r9y8c2/s2n-quic-collector-server-scenario" 
+            : serverEcrUri;
+
+        String clientEcrUri = (String)app.getNode().tryGetContext("client-ecr-uri");
+        clientEcrUri = (clientEcrUri == null) 
+            ? "public.ecr.aws/d2r9y8c2/s2n-quic-collector-client-scenario"
+            : clientEcrUri;
+
+        String scenarioFile = (String)app.getNode().tryGetContext("scenario");
+        scenarioFile = (scenarioFile == null) 
+            ? "/usr/bin/request_response.json"
+            : scenarioFile;
         
-        // Stack instantiation
-        ReportStack reportStack = new ReportStack(app, "ReportStack", StackProps.builder()
+        // Stack instantiation   
+        VpcStack vpcStack = new VpcStack(app, "VpcStack", VpcStackProps.builder()
             .env(makeEnv(awsAccount, serverRegion))
-            .build());
-      
-        ClientServerStack serverStack = new ClientServerStack(app, "ServerStack", ClientServerStackProps.builder()
-            .env(makeEnv(awsAccount, serverRegion))
-            .bucket(reportStack.getBucket())
-            .instanceType(ec2InstanceType)
             .cidr("11.0.0.0/16")
-            .stackType("server")
-            .protocol(protocol)
             .build());
 
-        serverStack.addDependency(reportStack);
-      
-        ClientServerStack clientStack = new ClientServerStack(app, "ClientStack", ClientServerStackProps.builder()
-            .env(makeEnv(awsAccount, clientRegion))
-            .bucket(reportStack.getBucket())
-            .instanceType(ec2InstanceType)
-            .cidr("10.0.0.0/16")
-            .stackType("client")
-            .protocol(protocol)
-            .build());
-        
-        clientStack.addDependency(serverStack);
-        
-        StateMachineStack stateMachineStack = new StateMachineStack(app, "StateMachineStack", StackProps.builder()
-            .build());
-
-        PeeringConnectionStack serverPeeringConnStack = new PeeringConnectionStack(app, "ServerPeerConnStack",
-            PeeringStackProps.builder()
+        EcsStack serverEcsStack = new EcsStack(app, "ServerEcsStack", EcsStackProps.builder()
             .env(makeEnv(awsAccount, serverRegion))
-            .VpcClient(clientStack.getVpc())
-            .VpcServer(serverStack.getVpc())
-            .cidr(clientStack.getCidr())
+            .bucket(vpcStack.getBucket())
             .stackType("server")
-            .region(clientRegion)
+            .vpc(vpcStack.getVpc())
+            .instanceType(ec2InstanceType)
+            .ecrUri(serverEcrUri)
+            .scenario(scenarioFile)
             .build());
-        
-        serverPeeringConnStack.addDependency(clientStack);
 
-        PeeringConnectionStack clientPeeringConnStack = new PeeringConnectionStack(app, "ClientPeerConnStack",
-            PeeringStackProps.builder()
+        EcsStack clientEcsStack = new EcsStack(app, "ClientEcsStack", EcsStackProps.builder()
             .env(makeEnv(awsAccount, clientRegion))
-            .VpcClient(clientStack.getVpc())
-            .VpcServer(serverStack.getVpc())
-            .cidr(serverStack.getCidr())
+            .bucket(vpcStack.getBucket())
             .stackType("client")
-            .ref(serverPeeringConnStack.getRef())
-            .region(serverRegion)
+            .vpc(vpcStack.getVpc())
+            .instanceType(ec2InstanceType)
+            .serverRegion(serverRegion)
+            .dnsAddress(serverEcsStack.getDnsAddress())
+            .ecrUri(clientEcrUri)
+            .scenario(scenarioFile)
             .build());
 
-        clientPeeringConnStack.addDependency(serverPeeringConnStack);
+        StateMachineStack stateMachineStack = new StateMachineStack(app, "StateMachineStack", StateMachineStackProps.builder()
+            .env(makeEnv(awsAccount, clientRegion))
+            .clientTask(clientEcsStack.getEcsTask())
+            .build());
+
         app.synth();
     }
 }

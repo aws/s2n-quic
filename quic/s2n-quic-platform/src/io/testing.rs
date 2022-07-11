@@ -4,7 +4,11 @@
 use super::select::{self, Select};
 use bach::time::scheduler;
 use core::{pin::Pin, task::Poll};
-use s2n_quic_core::{endpoint::Endpoint, inet::SocketAddress};
+use s2n_quic_core::{
+    endpoint::Endpoint,
+    event::{self, EndpointPublisher as _},
+    inet::SocketAddress,
+};
 
 type Error = std::io::Error;
 type Result<T = (), E = Error> = core::result::Result<T, E>;
@@ -287,15 +291,33 @@ impl<E: Endpoint<PathHandle = network::PathHandle>> Instance<E> {
 
             let select::Outcome {
                 rx_result,
-                tx_result: _,
-                timeout_expired: _,
-                application_wakeup: _,
+                tx_result,
+                timeout_expired,
+                application_wakeup,
             } = if let Ok(res) = Select::new(io_task, empty_task, &mut wakeups, &mut timer).await {
                 res
             } else {
                 // The endpoint has shut down
                 return;
             };
+
+            let wakeup_timestamp = time::now();
+            let subscriber = endpoint.subscriber();
+            let mut publisher = event::EndpointPublisherSubscriber::new(
+                event::builder::EndpointMeta {
+                    endpoint_type: E::ENDPOINT_TYPE,
+                    timestamp: wakeup_timestamp,
+                },
+                None,
+                subscriber,
+            );
+
+            publisher.on_platform_event_loop_wakeup(event::builder::PlatformEventLoopWakeup {
+                timeout_expired,
+                rx_ready: rx_result.is_some(),
+                tx_ready: tx_result.is_some(),
+                application_wakeup,
+            });
 
             if let Some(result) = rx_result {
                 if result.is_err() {

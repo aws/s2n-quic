@@ -1,0 +1,29 @@
+[sim]
+max_inflight = "1..1000"
+connections = 100
+iterations = 1000
+stream_data = 100000
+
+[report.duration]
+filters = ["conn.success"]
+x = "net.max_inflight"
+y = "conn.duration"
+
+[report.tx-packets]
+filters = ["conn.success"]
+x = "net.max_inflight"
+y = "conn.tx.packets"
+
+[report.bytes-in-flight]
+filters = ["conn.success"]
+x = "net.max_inflight"
+y = "conn.max_bytes_in_flight"
+
+[report.cwin]
+filters = ["conn.success"]
+x = "net.max_inflight"
+y = "conn.max_cwin"
+
+[report.success]
+x = "net.max_inflight"
+y = "sim.success"
