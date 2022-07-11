@@ -162,7 +162,7 @@ index c2d6d1f..844bbd5 100644
  print("\nPulling the iperf endpoint...")
  os.system("docker pull martenseemann/quic-interop-iperf-endpoint")
 diff --git a/requirements.txt b/requirements.txt
-index fff6217..2ae6f9d 100644
+index fff6217..07a1506 100644
 --- a/requirements.txt
 +++ b/requirements.txt
 @@ -1,4 +1,4 @@
@@ -171,7 +171,7 @@ index fff6217..2ae6f9d 100644
  prettytable
 -pyshark
 \ No newline at end of file
-+pyshark==0.4.5
++pyshark==0.5.2
 \ No newline at end of file
 diff --git a/run.py b/run.py
 index fbd9515..aa8d6ed 100755
@@ -184,7 +184,7 @@ index fbd9515..aa8d6ed 100755
 -    sys.exit(main())
 +    main()
 diff --git a/testcases.py b/testcases.py
-index 99edfe0..0b8941a 100644
+index 2741a0d..5c0a862 100644
 --- a/testcases.py
 +++ b/testcases.py
 @@ -90,6 +90,10 @@ class TestCase(abc.ABC):
@@ -198,7 +198,7 @@ index 99edfe0..0b8941a 100644
      @staticmethod
      def scenario() -> str:
          """ Scenario for the ns3 simulator """
-@@ -1203,54 +1207,26 @@ class TestCasePortRebinding(TestCaseTransfer):
+@@ -1201,54 +1205,26 @@ class TestCasePortRebinding(TestCaseTransfer):
              logging.info("Server saw only a single client port in use; test broken?")
              return TestResult.FAILED
  
@@ -261,7 +261,7 @@ index 99edfe0..0b8941a 100644
                  if hasattr(p["quic"], "path_response.data")
              )
          )
-@@ -1532,6 +1508,10 @@ class MeasurementGoodput(Measurement):
+@@ -1445,6 +1421,10 @@ class MeasurementGoodput(Measurement):
      def testname(p: Perspective):
          return "transfer"
  
@@ -272,7 +272,7 @@ index 99edfe0..0b8941a 100644
      @staticmethod
      def abbreviation():
          return "G"
-@@ -1542,7 +1522,7 @@ class MeasurementGoodput(Measurement):
+@@ -1455,7 +1435,7 @@ class MeasurementGoodput(Measurement):
  
      @staticmethod
      def repetitions() -> int:
@@ -281,7 +281,21 @@ index 99edfe0..0b8941a 100644
  
      def get_paths(self):
          self._files = [self._generate_random_file(self.FILESIZE)]
-@@ -1615,8 +1595,8 @@ TESTCASES = [
+@@ -1469,12 +1449,7 @@ class MeasurementGoodput(Measurement):
+         if not self._check_version_and_files():
+             return TestResult.FAILED
+ 
+-        packets = self._client_trace().get_1rtt(Direction.FROM_SERVER)
+-        first, last = 0, 0
+-        for p in packets:
+-            if first == 0:
+-                first = p.sniff_time
+-            last = p.sniff_time
++        first, last = self._client_trace().get_start_end(Direction.FROM_SERVER)
+ 
+         if last - first == 0:
+             return TestResult.FAILED
+@@ -1528,8 +1503,8 @@ TESTCASES = [
      TestCaseChaCha20,
      TestCaseMultiplexing,
      TestCaseRetry,
@@ -292,10 +306,10 @@ index 99edfe0..0b8941a 100644
      TestCaseHTTP3,
      TestCaseBlackhole,
      TestCaseKeyUpdate,
-@@ -1628,11 +1608,9 @@ TESTCASES = [
+@@ -1540,11 +1515,9 @@ TESTCASES = [
+     TestCaseHandshakeCorruption,
      TestCaseTransferCorruption,
      TestCaseIPv6,
-     TestCaseV2,
 -    # The next three tests are disabled due to Wireshark not being able
 -    # to decrypt packets sent on the new path.
 -    # TestCasePortRebinding,
@@ -307,3 +321,34 @@ index 99edfe0..0b8941a 100644
  ]
  
  MEASUREMENTS = [
+diff --git a/trace.py b/trace.py
+index 215f25a..00759d4 100644
+--- a/trace.py
++++ b/trace.py
+@@ -125,10 +125,25 @@ class TraceAnalyzer:
+                 if layer.layer_name == "quic" and not hasattr(
+                     layer, "long_packet_type"
+                 ):
+-                    layer.sniff_time = packet.sniff_time
+                     packets.append(layer)
+         return packets
+ 
++    def get_start_end(self, direction: Direction = Direction.ALL) -> (int, int):
++        """ Get start and end time, one or both directions. """
++        start = 0
++        end = 0
++        for packet in self._get_packets(
++            self._get_direction_filter(direction) + "quic.header_form==0"
++        ):
++            for layer in packet.layers:
++                if layer.layer_name == "quic" and not hasattr(
++                    layer, "long_packet_type"
++                ):
++                    if start == 0:
++                        start = packet.sniff_time
++                    end = packet.sniff_time
++        return (start, end)
++
+     def get_vnp(self, direction: Direction = Direction.ALL) -> List:
+         return self._get_packets(
+             self._get_direction_filter(direction) + "quic.version==0"
