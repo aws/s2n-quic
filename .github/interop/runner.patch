@@ -171,7 +171,7 @@ index fff6217..2ae6f9d 100644
  prettytable
 -pyshark
 \ No newline at end of file
-+pyshark==0.4.6
++pyshark==0.4.5
 \ No newline at end of file
 diff --git a/run.py b/run.py
 index fbd9515..aa8d6ed 100755
