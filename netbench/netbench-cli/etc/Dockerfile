@@ -15,6 +15,7 @@ WORKDIR app
 RUN cargo install cargo-chef --version 0.1.23
 COPY --from=planner /app/recipe.json recipe.json
 COPY --from=planner /app/netbench/recipe.json netbench/recipe.json
+COPY --from=planner /app/netbench/cdk netbench/cdk
 
 ARG release="true"
 RUN set -eux; \
@@ -44,6 +45,7 @@ COPY netbench /app/netbench
 COPY --from=cacher /app/target target
 COPY --from=cacher /app/netbench/target netbench/target
 COPY --from=cacher /usr/local/cargo /usr/local/cargo
+COPY --from=cacher /app/netbench/cdk netbench/cdk
 
 ARG release="true"
 
@@ -55,6 +57,7 @@ RUN set -eux; \
   fi; \
   mkdir -p /app/bin; \
   cd netbench; \
+  cp cdk/logParser.py /app/bin; \
   cargo build --lib $ARGS; \
   if [ "$release" = "true" ]; then \
     cargo build --bin netbench-cli --release; \
@@ -64,7 +67,14 @@ RUN set -eux; \
     cp target/debug/netbench-cli /app/bin; \
   fi; \
   rm -rf target; \
-  echo "#!/usr/bin/env bash\naws s3 cp s3://\$S3_BUCKET/client.json ./client.json\naws s3 cp s3://\$S3_BUCKET/server.json ./server.json\neval /usr/bin/netbench-cli ./client.json ./server.json \$@ > report.json\naws s3 cp ./report.json s3://\$S3_BUCKET/" > /app/bin/start; 
+  echo "#!/usr/bin/env bash\n \
+  aws s3 cp s3://\$S3_BUCKET/client.json /tmp/client.json\n \
+  aws s3 cp s3://\$S3_BUCKET/exportedlogs/\$EXPORT_TASK_ID/ /tmp/ --recursive\n \
+  export DIR=\$(ls -d /tmp/*/)\n \
+  printenv\n \
+  gzip -d \$(echo \$DIR)000000.gz && sort -k1 \"\$(echo \$DIR)000000\" > \$(echo \$DIR)000000_sorted && python3 /usr/bin/logParser.py \$(echo \$DIR)000000_sorted && mv \$(echo \$DIR)000000_sorted /tmp/server.json\n \
+  eval /usr/bin/netbench-cli report /tmp/client.json /tmp/server.json \$@ > /tmp/report.json\n \
+  aws s3 cp /tmp/report.json s3://\$S3_BUCKET/" > /app/bin/start; 
 
 FROM debian:latest
 
@@ -74,12 +84,13 @@ ENV RUST_BACKTRACE="1"
 COPY --from=builder /app/bin /tmp/netbench
 ENV DEBIAN_FRONTEND=noninteractive
 RUN set -eux; \
-  apt update && apt install -y dnsutils curl unzip sudo; \
+  apt update && apt install -y dnsutils curl unzip sudo python3; \
   curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"; \
   unzip awscliv2.zip; \
   sudo ./aws/install; \
   chmod +x /tmp/netbench/*; \
   mv /tmp/netbench/* /usr/bin; \
+  rm -r /tmp/netbench; \
   echo done
 
 ENTRYPOINT ["/usr/bin/start"]
