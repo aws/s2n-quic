@@ -621,6 +621,8 @@ mod tests {
 
     #[test]
     fn record_capacity_stats() {
+        // Here we test that record_capacity_stats() is working as expected. We use
+        // a precalculated const for the smoothed_packet_space value.
         const SMOOTHED_PACKET_SPACE: usize = 102;
 
         let mut default_sender = Sender::builder().build().unwrap();
