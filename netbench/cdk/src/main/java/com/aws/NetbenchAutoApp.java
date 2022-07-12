@@ -107,6 +107,7 @@ public class NetbenchAutoApp {
         
         clientEcsStack.addDependency(serverEcsStack);
 
+
         StateMachineStack stateMachineStack = new StateMachineStack(app, "StateMachineStack", StateMachineStackProps.builder()
             .env(makeEnv(awsAccount, clientRegion))
             .clientTask(clientEcsStack.getEcsTask())

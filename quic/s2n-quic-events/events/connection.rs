@@ -250,6 +250,7 @@ pub struct KeepAliveTimerExpired {
 struct MtuUpdated {
     path_id: u64,
     mtu: u16,
+    cause: MtuUpdatedCause,
 }
 
 #[event("recovery:slow_start_exited")]

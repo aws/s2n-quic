@@ -445,6 +445,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         publisher.on_mtu_updated(event::builder::MtuUpdated {
             path_id: new_path_id.into_event(),
             mtu: path.mtu_controller.mtu() as u16,
+            cause: MtuUpdatedCause::NewPath,
         });
 
         // create a new path
@@ -909,6 +910,7 @@ macro_rules! path_event {
 }
 
 pub(crate) use path_event;
+use s2n_quic_core::event::builder::MtuUpdatedCause;
 
 #[cfg(test)]
 mod tests;

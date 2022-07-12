@@ -57,6 +57,7 @@ class EcsStack extends Stack {
     private Function exportLogsLambda;
     private Cluster cluster;
 
+
     public EcsStack(final Construct parent, final String id, final EcsStackProps props) {
         super(parent, id, props);
 
@@ -143,7 +144,7 @@ class EcsStack extends Stack {
                     .effect(Effect.ALLOW)
                     .principals(List.of(new ArnPrincipal(exportLogsLambda.getRole().getRoleArn())))
                     .build());
-
+                    
             task.addContainer(stackType + "-driver", ContainerDefinitionOptions.builder()
                 .image(ContainerImage.fromRegistry(props.getEcrUri()))
                 .environment(ecrEnv)
@@ -183,6 +184,7 @@ class EcsStack extends Stack {
                 .image(ContainerImage.fromRegistry(props.getEcrUri()))
                 .environment(ecrEnv)
                 .memoryLimitMiB(2048)
+
                 .logging(LogDriver.awsLogs(AwsLogDriverProps.builder().logRetention(RetentionDays.ONE_DAY).streamPrefix(stackType + "-ecs-task").build()))
                 .portMappings(List.of(PortMapping.builder().containerPort(3000).hostPort(3000)
                     .protocol(software.amazon.awscdk.services.ecs.Protocol.UDP).build()))
@@ -214,4 +216,5 @@ class EcsStack extends Stack {
     public Cluster getCluster() {
         return cluster;
     }
+
 }

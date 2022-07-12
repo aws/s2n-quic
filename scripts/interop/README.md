@@ -28,7 +28,7 @@
 ```
 git clone git@github.com:marten-seemann/quic-interop-runner.git
 cd quic-interop-runner
-gco cd62367f7cf98d16854551fdd8ef6a48ad89d53d
+gco b21b8a55de227f665d2381f3e63174a83a3bc66c
 
 cp <s2n-quic_proj_dir>.runner.patch .
 git apply --3way runner.patch # apply the current patch

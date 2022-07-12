@@ -103,9 +103,13 @@ pub mod api {
         #[non_exhaustive]
         Ack {},
         #[non_exhaustive]
-        ResetStream {},
+        ResetStream {
+            id: u64,
+            error_code: u64,
+            final_size: u64,
+        },
         #[non_exhaustive]
-        StopSending {},
+        StopSending { id: u64, error_code: u64 },
         #[non_exhaustive]
         Crypto { offset: u64, len: u16 },
         #[non_exhaustive]
@@ -118,11 +122,15 @@ pub mod api {
             is_fin: bool,
         },
         #[non_exhaustive]
-        MaxData {},
+        MaxData { value: u64 },
         #[non_exhaustive]
-        MaxStreamData {},
+        MaxStreamData {
+            stream_type: StreamType,
+            id: u64,
+            value: u64,
+        },
         #[non_exhaustive]
-        MaxStreams { stream_type: StreamType },
+        MaxStreams { stream_type: StreamType, value: u64 },
         #[non_exhaustive]
         DataBlocked {},
         #[non_exhaustive]
@@ -453,6 +461,20 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " The reason the MTU was updated"]
+    pub enum MtuUpdatedCause {
+        #[non_exhaustive]
+        #[doc = " The MTU was initialized with the default value"]
+        NewPath {},
+        #[non_exhaustive]
+        #[doc = " An MTU probe was acknowledged by the peer"]
+        ProbeAcknowledged {},
+        #[non_exhaustive]
+        #[doc = " A blackhole was detected"]
+        Blackhole {},
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Application level protocol"]
     pub struct ApplicationProtocolInformation<'a> {
         pub chosen_application_protocol: &'a [u8],
@@ -773,6 +795,7 @@ pub mod api {
     pub struct MtuUpdated {
         pub path_id: u64,
         pub mtu: u16,
+        pub cause: MtuUpdatedCause,
     }
     impl Event for MtuUpdated {
         const NAME: &'static str = "connectivity:mtu_updated";
@@ -1144,12 +1167,19 @@ pub mod api {
     }
     impl IntoEvent<builder::Frame> for &crate::frame::ResetStream {
         fn into_event(self) -> builder::Frame {
-            builder::Frame::ResetStream {}
+            builder::Frame::ResetStream {
+                id: self.stream_id.as_u64(),
+                error_code: self.application_error_code.as_u64(),
+                final_size: self.final_size.as_u64(),
+            }
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::StopSending {
         fn into_event(self) -> builder::Frame {
-            builder::Frame::ResetStream {}
+            builder::Frame::StopSending {
+                id: self.stream_id.as_u64(),
+                error_code: self.application_error_code.as_u64(),
+            }
         }
     }
     impl<'a> IntoEvent<builder::Frame> for &crate::frame::NewToken<'a> {
@@ -1159,18 +1189,27 @@ pub mod api {
     }
     impl IntoEvent<builder::Frame> for &crate::frame::MaxData {
         fn into_event(self) -> builder::Frame {
-            builder::Frame::MaxData {}
+            builder::Frame::MaxData {
+                value: self.maximum_data.as_u64(),
+            }
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::MaxStreamData {
         fn into_event(self) -> builder::Frame {
-            builder::Frame::MaxStreamData {}
+            builder::Frame::MaxStreamData {
+                id: self.stream_id.as_u64(),
+                stream_type: crate::stream::StreamId::from_varint(self.stream_id)
+                    .stream_type()
+                    .into_event(),
+                value: self.maximum_stream_data.as_u64(),
+            }
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::MaxStreams {
         fn into_event(self) -> builder::Frame {
             builder::Frame::MaxStreams {
                 stream_type: self.stream_type.into_event(),
+                value: self.maximum_streams.as_u64(),
             }
         }
     }
@@ -1769,8 +1808,12 @@ pub mod tracing {
             event: &api::MtuUpdated,
         ) {
             let id = context.id();
-            let api::MtuUpdated { path_id, mtu } = event;
-            tracing :: event ! (target : "mtu_updated" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , mtu = tracing :: field :: debug (mtu));
+            let api::MtuUpdated {
+                path_id,
+                mtu,
+                cause,
+            } = event;
+            tracing :: event ! (target : "mtu_updated" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , mtu = tracing :: field :: debug (mtu) , cause = tracing :: field :: debug (cause));
         }
         #[inline]
         fn on_slow_start_exited(
@@ -2196,8 +2239,15 @@ pub mod builder {
         Padding,
         Ping,
         Ack,
-        ResetStream,
-        StopSending,
+        ResetStream {
+            id: u64,
+            error_code: u64,
+            final_size: u64,
+        },
+        StopSending {
+            id: u64,
+            error_code: u64,
+        },
         Crypto {
             offset: u64,
             len: u16,
@@ -2209,10 +2259,17 @@ pub mod builder {
             len: u16,
             is_fin: bool,
         },
-        MaxData,
-        MaxStreamData,
+        MaxData {
+            value: u64,
+        },
+        MaxStreamData {
+            stream_type: StreamType,
+            id: u64,
+            value: u64,
+        },
         MaxStreams {
             stream_type: StreamType,
+            value: u64,
         },
         DataBlocked,
         StreamDataBlocked,
@@ -2237,8 +2294,19 @@ pub mod builder {
                 Self::Padding => Padding {},
                 Self::Ping => Ping {},
                 Self::Ack => Ack {},
-                Self::ResetStream => ResetStream {},
-                Self::StopSending => StopSending {},
+                Self::ResetStream {
+                    id,
+                    error_code,
+                    final_size,
+                } => ResetStream {
+                    id: id.into_event(),
+                    error_code: error_code.into_event(),
+                    final_size: final_size.into_event(),
+                },
+                Self::StopSending { id, error_code } => StopSending {
+                    id: id.into_event(),
+                    error_code: error_code.into_event(),
+                },
                 Self::Crypto { offset, len } => Crypto {
                     offset: offset.into_event(),
                     len: len.into_event(),
@@ -2255,10 +2323,21 @@ pub mod builder {
                     len: len.into_event(),
                     is_fin: is_fin.into_event(),
                 },
-                Self::MaxData => MaxData {},
-                Self::MaxStreamData => MaxStreamData {},
-                Self::MaxStreams { stream_type } => MaxStreams {
+                Self::MaxData { value } => MaxData {
+                    value: value.into_event(),
+                },
+                Self::MaxStreamData {
+                    stream_type,
+                    id,
+                    value,
+                } => MaxStreamData {
                     stream_type: stream_type.into_event(),
+                    id: id.into_event(),
+                    value: value.into_event(),
+                },
+                Self::MaxStreams { stream_type, value } => MaxStreams {
+                    stream_type: stream_type.into_event(),
+                    value: value.into_event(),
                 },
                 Self::DataBlocked => DataBlocked {},
                 Self::StreamDataBlocked => StreamDataBlocked {},
@@ -2756,6 +2835,27 @@ pub mod builder {
                 Self::Ecn => Ecn {},
                 Self::Rtt => Rtt {},
                 Self::Other => Other {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " The reason the MTU was updated"]
+    pub enum MtuUpdatedCause {
+        #[doc = " The MTU was initialized with the default value"]
+        NewPath,
+        #[doc = " An MTU probe was acknowledged by the peer"]
+        ProbeAcknowledged,
+        #[doc = " A blackhole was detected"]
+        Blackhole,
+    }
+    impl IntoEvent<api::MtuUpdatedCause> for MtuUpdatedCause {
+        #[inline]
+        fn into_event(self) -> api::MtuUpdatedCause {
+            use api::MtuUpdatedCause::*;
+            match self {
+                Self::NewPath => NewPath {},
+                Self::ProbeAcknowledged => ProbeAcknowledged {},
+                Self::Blackhole => Blackhole {},
             }
         }
     }
@@ -3313,14 +3413,20 @@ pub mod builder {
     pub struct MtuUpdated {
         pub path_id: u64,
         pub mtu: u16,
+        pub cause: MtuUpdatedCause,
     }
     impl IntoEvent<api::MtuUpdated> for MtuUpdated {
         #[inline]
         fn into_event(self) -> api::MtuUpdated {
-            let MtuUpdated { path_id, mtu } = self;
+            let MtuUpdated {
+                path_id,
+                mtu,
+                cause,
+            } = self;
             api::MtuUpdated {
                 path_id: path_id.into_event(),
                 mtu: mtu.into_event(),
+                cause: cause.into_event(),
             }
         }
     }

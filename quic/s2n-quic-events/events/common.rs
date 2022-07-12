@@ -281,8 +281,15 @@ enum Frame {
     Padding,
     Ping,
     Ack,
-    ResetStream,
-    StopSending,
+    ResetStream {
+        id: u64,
+        error_code: u64,
+        final_size: u64,
+    },
+    StopSending {
+        id: u64,
+        error_code: u64,
+    },
     Crypto {
         offset: u64,
         len: u16,
@@ -294,10 +301,17 @@ enum Frame {
         len: u16,
         is_fin: bool,
     },
-    MaxData,
-    MaxStreamData,
+    MaxData {
+        value: u64,
+    },
+    MaxStreamData {
+        stream_type: StreamType,
+        id: u64,
+        value: u64,
+    },
     MaxStreams {
         stream_type: StreamType,
+        value: u64,
     },
     DataBlocked,
     StreamDataBlocked,
@@ -335,13 +349,20 @@ impl<AckRanges> IntoEvent<builder::Frame> for &crate::frame::Ack<AckRanges> {
 
 impl IntoEvent<builder::Frame> for &crate::frame::ResetStream {
     fn into_event(self) -> builder::Frame {
-        builder::Frame::ResetStream {}
+        builder::Frame::ResetStream {
+            id: self.stream_id.as_u64(),
+            error_code: self.application_error_code.as_u64(),
+            final_size: self.final_size.as_u64(),
+        }
     }
 }
 
 impl IntoEvent<builder::Frame> for &crate::frame::StopSending {
     fn into_event(self) -> builder::Frame {
-        builder::Frame::ResetStream {}
+        builder::Frame::StopSending {
+            id: self.stream_id.as_u64(),
+            error_code: self.application_error_code.as_u64(),
+        }
     }
 }
 
@@ -353,13 +374,21 @@ impl<'a> IntoEvent<builder::Frame> for &crate::frame::NewToken<'a> {
 
 impl IntoEvent<builder::Frame> for &crate::frame::MaxData {
     fn into_event(self) -> builder::Frame {
-        builder::Frame::MaxData {}
+        builder::Frame::MaxData {
+            value: self.maximum_data.as_u64(),
+        }
     }
 }
 
 impl IntoEvent<builder::Frame> for &crate::frame::MaxStreamData {
     fn into_event(self) -> builder::Frame {
-        builder::Frame::MaxStreamData {}
+        builder::Frame::MaxStreamData {
+            id: self.stream_id.as_u64(),
+            stream_type: crate::stream::StreamId::from_varint(self.stream_id)
+                .stream_type()
+                .into_event(),
+            value: self.maximum_stream_data.as_u64(),
+        }
     }
 }
 
@@ -367,6 +396,7 @@ impl IntoEvent<builder::Frame> for &crate::frame::MaxStreams {
     fn into_event(self) -> builder::Frame {
         builder::Frame::MaxStreams {
             stream_type: self.stream_type.into_event(),
+            value: self.maximum_streams.as_u64(),
         }
     }
 }
@@ -778,4 +808,14 @@ enum SlowStartExitCause {
     /// Slow Start, when the previously determined Slow Start threshold is exceed by the
     /// congestion window.
     Other,
+}
+
+/// The reason the MTU was updated
+enum MtuUpdatedCause {
+    /// The MTU was initialized with the default value
+    NewPath,
+    /// An MTU probe was acknowledged by the peer
+    ProbeAcknowledged,
+    /// A blackhole was detected
+    Blackhole,
 }

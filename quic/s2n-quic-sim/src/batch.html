@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/normalize.css@8.0.1/normalize.css">
+</head>
+<body>
+
+<div>
+  <select id="reports">
+    <option>LOADING...</option>
+  </select>
+</div>
+
+<div class="command-header">
+  <span class="command-title">Simulation: </span>
+  <span id="command"></span>
+  <span id="copied"></span>
+</div>
+
+<div id="vis"></div>
+
+<script type="text/javascript">
+  const select = document.getElementById('reports');
+
+  select.onchange = () => {
+    window.location.hash = `#${select.value}`;
+  };
+
+  fetch('reports.json').then((res) => res.json()).then((reports) => {
+    let out = '';
+    for (let report of reports) {
+      out += `<option value=${JSON.stringify(report[1])}>${report[0]}</option>`;
+    }
+    select.innerHTML = out;
+
+    if (!window.location.hash) window.location.hash = `#${reports[0][1]}`;
+  })
+
+  const command = document.getElementById('command');
+
+  command.onclick = () => {
+    navigator.clipboard.writeText(command.innerText);
+    const copied = document.getElementById('copied');
+    copied.innerText = ' copied!'
+    setTimeout(() => copied.innerText = '', 2000);
+  };
+
+  function onChange() {
+    var spec = window.location.hash.replace(/^#/, '');
+    if (!spec) return;
+
+    vegaEmbed('#vis', spec).then((embed) => {
+      command.innerText = embed.view.signal('sig$command');
+      embed.view.addSignalListener('sig$command', (name, value) => {
+        command.innerText = value;
+      });
+    }).catch(console.error);
+  }
+
+  onChange();
+  window.onhashchange = onChange;
+</script>
+<style>
+  body {
+    box-sizing: border-box;
+    font-family: sans-serif;
+    padding: 20px;
+  }
+
+  .vega-bind-name {
+    display: inline-block;
+    min-width: 250px;
+  }
+
+  .command-header {
+    margin: 20px;
+  }
+
+  .command-title {
+    font-size: 14px;
+  }
+
+  #command {
+    font-family: monospace;
+  }
+</style>
+</body>
+</html>

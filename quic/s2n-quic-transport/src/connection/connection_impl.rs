@@ -38,7 +38,7 @@ use s2n_quic_core::{
     crypto::{tls, CryptoSuite},
     event::{
         self,
-        builder::{DatagramDropReason, RxStreamProgress, TxStreamProgress},
+        builder::{DatagramDropReason, MtuUpdatedCause, RxStreamProgress, TxStreamProgress},
         supervisor, ConnectionPublisher as _, IntoEvent as _, Subscriber,
     },
     inet::{DatagramInfo, SocketAddress},
@@ -217,7 +217,7 @@ impl<Config: endpoint::Config> EventContext<Config> {
     }
 }
 
-#[cfg(debug_assertions)]
+#[cfg(s2n_quic_dump_on_panic)]
 impl<Config: endpoint::Config> Drop for ConnectionImpl<Config> {
     fn drop(&mut self) {
         if std::thread::panicking() {
@@ -562,7 +562,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         // The path manager always starts with a single path containing the known peer and local
         // connection ids.
-        let rtt_estimator = RttEstimator::new(parameters.limits.ack_settings().max_ack_delay);
+        let rtt_estimator = RttEstimator::default();
         // Assume clients validate the server's address implicitly.
         let peer_validated = Self::Config::ENDPOINT_TYPE.is_server();
 
@@ -595,6 +595,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         publisher.on_mtu_updated(event::builder::MtuUpdated {
             path_id: path_manager.active_path_id().into_event(),
             mtu: path_manager.active_path().mtu_controller.mtu() as u16,
+            cause: MtuUpdatedCause::NewPath,
         });
 
         let wakeup_handle = Arc::from(parameters.wakeup_handle);

@@ -58,6 +58,7 @@ RUN set -eux; \
   mkdir -p /app/bin; \
   cd netbench; \
   cp cdk/logParser.py /app/bin; \
+
   cargo build --lib $ARGS; \
   if [ "$release" = "true" ]; then \
     cargo build --bin netbench-cli --release; \
