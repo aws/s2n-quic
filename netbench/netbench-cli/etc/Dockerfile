@@ -15,7 +15,6 @@ WORKDIR app
 RUN cargo install cargo-chef --version 0.1.23
 COPY --from=planner /app/recipe.json recipe.json
 COPY --from=planner /app/netbench/recipe.json netbench/recipe.json
-COPY --from=planner /app/netbench/cdk netbench/cdk
 
 ARG release="true"
 RUN set -eux; \
@@ -57,8 +56,6 @@ RUN set -eux; \
   fi; \
   mkdir -p /app/bin; \
   cd netbench; \
-  cp cdk/logParser.py /app/bin; \
-
   cargo build --lib $ARGS; \
   if [ "$release" = "true" ]; then \
     cargo build --bin netbench-cli --release; \
