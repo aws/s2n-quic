@@ -597,18 +597,22 @@ impl IncomingController {
     }
 
     fn on_remote_open_stream(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
-        let allowed_streams = self
-            // the limit of streams to open
-            .max_streams_sync
-            .latest_value()
-            .as_u64()
+        // get the total number of streams that are allowed
+        let max_allowed_stream_limit = self.max_streams_sync.latest_value().as_u64();
+        // since stream ids are 0-indexed do a checked_sub before
+        // calculating the stream_id
+        //
+        // if no more streams are allowed and max_allowed_stream_limit is `0`,
+        // checked_sub will error. In this case emit a STREAM_LIMIT_ERROR
+        let max_allowed_stream_limit = max_allowed_stream_limit
             .checked_sub(1)
             .ok_or(transport::Error::STREAM_LIMIT_ERROR)?;
-        // convert stream index into stream id
+
+        // calculate the max stream_id based on the limit, initiator and type
         let max_allowed_stream_id = StreamId::nth(
             stream_id.initiator(),
             stream_id.stream_type(),
-            allowed_streams,
+            max_allowed_stream_limit,
         )
         .expect("max_streams is limited to MAX_STREAMS_MAX_VALUE");
 
