@@ -599,24 +599,17 @@ impl IncomingController {
     fn on_remote_open_stream(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
         // get the total number of streams that are allowed
         let max_allowed_stream_limit = self.max_streams_sync.latest_value().as_u64();
-        // since stream ids are 0-indexed do a checked_sub before
-        // calculating the stream_id
-        //
-        // if no more streams are allowed and max_allowed_stream_limit is `0`,
-        // checked_sub will error. In this case emit a STREAM_LIMIT_ERROR
-        let max_allowed_stream_limit = max_allowed_stream_limit
-            .checked_sub(1)
-            .ok_or(transport::Error::STREAM_LIMIT_ERROR)?;
 
-        // calculate the max stream_id based on the limit, initiator and type
-        let max_allowed_stream_id = StreamId::nth(
+        // since streams are 0-indexed, using `max_allowed_stream_limit` to calculate
+        // the stream_id gives 1 stream_id greater than the allowed limit
+        let not_allowed_stream_id = StreamId::nth(
             stream_id.initiator(),
             stream_id.stream_type(),
             max_allowed_stream_limit,
         )
         .expect("max_streams is limited to MAX_STREAMS_MAX_VALUE");
 
-        if stream_id > max_allowed_stream_id {
+        if stream_id >= not_allowed_stream_id {
             //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
             //# Endpoints MUST NOT exceed the limit set by their peer.  An endpoint
             //# that receives a frame with a stream ID exceeding the limit it has
