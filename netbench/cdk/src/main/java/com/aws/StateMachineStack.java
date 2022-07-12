@@ -20,6 +20,10 @@ import software.amazon.awscdk.services.stepfunctions.JsonPath;
 import software.amazon.awscdk.services.stepfunctions.IntegrationPattern;
 import software.amazon.awscdk.services.stepfunctions.tasks.EcsEc2LaunchTarget;
 
+import software.amazon.awscdk.services.lambda.Function;
+import software.amazon.awscdk.services.lambda.Runtime;
+import software.amazon.awscdk.services.lambda.Code;
+
 import software.amazon.awscdk.services.ecs.ContainerDefinition;
 import software.amazon.awscdk.services.ecs.ContainerDefinitionOptions;
 import software.amazon.awscdk.services.ecs.Ec2TaskDefinition;
@@ -37,6 +41,17 @@ public class StateMachineStack extends Stack {
         super(parent, id, props);
 
         Bucket bucket = props.getBucket();
+
+        Function timestampFunction = Function.Builder.create(this, "timestamp-function")
+                .runtime(Runtime.NODEJS_14_X)
+                .handler("timestamp.handler")
+                .code(Code.fromAsset("lambda"))
+                .logRetention(RetentionDays.ONE_DAY)    //One day to prevent reaching log limit, can be adjusted accordingly
+                .build();
+
+        LambdaInvoke timestampLambdaInvoke = LambdaInvoke.Builder.create(this, "timestamp-task")
+                .lambdaFunction(timestampFunction)
+                .build();
 
         EcsRunTask clientTask = props.getClientTask();
 
@@ -79,6 +94,8 @@ public class StateMachineStack extends Stack {
                 .lambdaFunction(props.getLogsLambda())
                 .invocationType(LambdaInvocationType.REQUEST_RESPONSE)
                 .build();
+            
+        timestampLambdaInvoke.next(clientTask);
 
         clientTask.next(exportServerLogsLambdaInvoke);
 
@@ -87,7 +104,7 @@ public class StateMachineStack extends Stack {
         waitFunction.next(reportGenerationStep);
 
         StateMachine stateMachine = StateMachine.Builder.create(this, "ecs-state-machine")
-            .definition(clientTask)
+            .definition(timestampLambdaInvoke)
             .build();
         
     }
