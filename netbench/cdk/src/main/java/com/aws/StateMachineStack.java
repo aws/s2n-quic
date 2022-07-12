@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.aws;
 
+import software.constructs.Construct;
 import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.services.stepfunctions.tasks.EcsRunTask;
 import software.amazon.awscdk.services.stepfunctions.StateMachine;
