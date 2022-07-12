@@ -92,7 +92,9 @@ pub(crate) struct State {
     /// The current mode for deciding how fast to send
     cycle_phase: CyclePhase,
     /// How the incoming ACK stream relates to our bandwidth probing
-    ack_phase: AckPhase,
+    ///
+    /// TODO: Consider making a setter and enforcing state transitions
+    pub ack_phase: AckPhase,
     /// A random duration to wait until probing for bandwidth
     bw_probe_wait: Duration,
     /// Packet-timed rounds since probed bw
@@ -227,7 +229,7 @@ impl State {
     }
 
     /// Start the `Cruise` cycle phase
-    fn start_cruise(&mut self) {
+    pub fn start_cruise(&mut self) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRStartProbeBW_CRUISE()
 
@@ -283,7 +285,7 @@ impl State {
     }
 
     /// Start the `Down` cycle phase
-    fn start_down<Rnd: random::Generator>(
+    pub fn start_down<Rnd: random::Generator>(
         &mut self,
         congestion_state: &mut congestion::State,
         round_counter: &mut round::Counter,
