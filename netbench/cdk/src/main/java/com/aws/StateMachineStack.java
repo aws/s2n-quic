@@ -8,6 +8,7 @@ import software.amazon.awscdk.services.stepfunctions.tasks.EcsRunTask;
 import software.amazon.awscdk.services.stepfunctions.StateMachine;
 import software.amazon.awscdk.services.s3.Bucket;
 import software.amazon.awscdk.Duration;
+import software.amazon.awscdk.services.logs.RetentionDays;
 
 import software.amazon.awscdk.services.stepfunctions.tasks.LambdaInvoke;
 import software.amazon.awscdk.services.stepfunctions.tasks.LambdaInvocationType;
@@ -54,7 +55,7 @@ public class StateMachineStack extends Stack {
             .image(ContainerImage.fromRegistry("public.ecr.aws/d2r9y8c2/netbench-cli"))
             .environment(reportGenerationEnv)
             .memoryLimitMiB(2048)
-            .logging(LogDriver.awsLogs(AwsLogDriverProps.builder().streamPrefix("report-generation").build()))
+            .logging(LogDriver.awsLogs(AwsLogDriverProps.builder().logRetention(RetentionDays.ONE_DAY).streamPrefix("report-generation").build()))
             .build()); 
 
         bucket.grantReadWrite(reportGenerationTask.getTaskRole());
