@@ -31,6 +31,18 @@ impl BbrCongestionController {
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.4.4
         //# BBRCheckProbeRTT()
+        //#    if (BBR.state != ProbeRTT and
+        //#         BBR.probe_rtt_expired and
+        //#         not BBR.idle_restart)
+        //#       BBREnterProbeRTT()
+        //#       BBRSaveCwnd()
+        //#       BBR.probe_rtt_done_stamp = 0
+        //#       BBR.ack_phase = ACKS_PROBE_STOPPING
+        //#      BBRStartRound()
+        //#     if (BBR.state == ProbeRTT)
+        //#       BBRHandleProbeRTT()
+        //#     if (rs.delivered > 0)
+        //#       BBR.idle_restart = false
 
         // TODO: check BBR.state != ProbeRtt
         if self.data_volume_model.probe_rtt_expired() && !self.idle_restart {
@@ -61,6 +73,21 @@ impl BbrCongestionController {
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.4.4
         //# BBRHandleProbeRTT()
+        //#     /* Ignore low rate samples during ProbeRTT: */
+        //#     MarkConnectionAppLimited()
+        //#     if (BBR.probe_rtt_done_stamp == 0 and
+        //#         packets_in_flight <= BBRProbeRTTCwnd())
+        //#       /* Wait for at least ProbeRTTDuration to elapse: */
+        //#      BBR.probe_rtt_done_stamp =
+        //#         Now() + ProbeRTTDuration
+        //#       /* Wait for at least one round to elapse: */
+        //#       BBR.probe_rtt_round_done = false
+        //#       BBRStartRound()
+        //#     else if (BBR.probe_rtt_done_stamp != 0)
+        //#       if (BBR.round_start)
+        //#         BBR.probe_rtt_round_done = true
+        //#       if (BBR.probe_rtt_round_done)
+        //#         BBRCheckProbeRTTDone()
 
         // Ignore low rate samples during ProbeRTT
         self.bw_estimator.on_app_limited(bytes_in_flight);
@@ -92,6 +119,12 @@ impl BbrCongestionController {
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.4.4
         //# BBRCheckProbeRTTDone()
+        //#    if (BBR.probe_rtt_done_stamp != 0 and
+        //#         Now() > BBR.probe_rtt_done_stamp)
+        //#       /* schedule next ProbeRTT: */
+        //#       BBR.probe_rtt_min_stamp = Now()
+        //#       BBRRestoreCwnd()
+        //#       BBRExitProbeRTT()
 
         if self.probe_rtt_state.timer.poll_expiration(now).is_ready() {
             /* schedule next ProbeRTT: */
@@ -109,6 +142,12 @@ impl BbrCongestionController {
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.4.5
         //# BBRExitProbeRTT()
+        //#     BBRResetLowerBounds()
+        //#     if (BBR.filled_pipe)
+        //#       BBRStartProbeBW_DOWN()
+        //#       BBRStartProbeBW_CRUISE()
+        //#     else
+        //#       BBREnterStartup()
 
         self.data_volume_model.reset_lower_bound();
         self.data_rate_model.reset_lower_bound();
@@ -131,7 +170,10 @@ impl BbrCongestionController {
     /// Returns the congestion window that should be used during the ProbeRTT state
     pub fn probe_rtt_cwnd(&self) -> u32 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.5
-        //# BBRProbeRTTCwnd()
+        //# BBRProbeRTTCwnd():
+        //#    probe_rtt_cwnd = BBRBDPMultiple(BBR.bw, BBRProbeRTTCwndGain)
+        //#    probe_rtt_cwnd = max(probe_rtt_cwnd, BBRMinPipeCwnd)
+        //#    return probe_rtt_cwnd#
 
         let probe_rtt_cwnd_gain = Ratio::new(1u64, 2u64); // TODO State::ProbeRtt.cwnd_gain()
         self.bdp_multiple(self.data_rate_model.bw(), probe_rtt_cwnd_gain)
