@@ -69,12 +69,16 @@ RUN set -eux; \
   fi; \
   rm -rf target; \
   echo "#!/usr/bin/env bash\n \
+  set -e\n \
   aws s3 cp s3://\$S3_BUCKET/client.json /tmp/client.json\n \
   aws s3 cp s3://\$S3_BUCKET/exportedlogs/\$EXPORT_TASK_ID/ /tmp/ --recursive\n \
   export DIR=\$(ls -d /tmp/*/)\n \
   printenv\n \
-  gzip -d \$(echo \$DIR)000000.gz && sort -k1 \"\$(echo \$DIR)000000\" > \$(echo \$DIR)000000_sorted && python3 /usr/bin/logParser.py \$(echo \$DIR)000000_sorted && mv \$(echo \$DIR)000000_sorted /tmp/server.json\n \
+  gzip -d \$(echo \$DIR)000000.gz\n \
+  sort -k1 \"\$(echo \$DIR)000000\" > \$(echo \$DIR)000000_sorted\n \
+  echo \"\$(<\$(echo \$DIR)000000_sorted)\" |  awk -F'{' '{ st = index(\$0,\"{\");print \"{\" substr(\$0,st+1)}' > /tmp/server.json\n \
   eval /usr/bin/netbench-cli report /tmp/client.json /tmp/server.json \$@ > /tmp/report.json\n \
+  aws s3 cp /tmp/server.json s3://\$S3_BUCKET/\n \
   aws s3 cp /tmp/report.json s3://\$S3_BUCKET/" > /app/bin/start; 
 
 FROM debian:latest
