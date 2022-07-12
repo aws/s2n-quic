@@ -22,6 +22,7 @@ import software.amazon.awscdk.services.ecs.AmiHardwareType;
 import software.amazon.awscdk.services.ecs.CloudMapOptions;
 import software.amazon.awscdk.services.ecs.AwsLogDriverProps;
 import software.amazon.awscdk.services.ecs.LogDriver;
+import software.amazon.awscdk.services.ecs.ContainerDefinition;
 
 import software.amazon.awscdk.services.logs.LogGroup;
 import software.amazon.awscdk.services.logs.RetentionDays;
@@ -33,6 +34,9 @@ import software.amazon.awscdk.services.lambda.Code;
 import software.amazon.awscdk.services.stepfunctions.tasks.EcsRunTask;
 import software.amazon.awscdk.services.stepfunctions.IntegrationPattern;
 import software.amazon.awscdk.services.stepfunctions.tasks.EcsEc2LaunchTarget;
+import software.amazon.awscdk.services.stepfunctions.tasks.ContainerOverride;
+import software.amazon.awscdk.services.stepfunctions.tasks.TaskEnvironmentVariable;
+import software.amazon.awscdk.services.stepfunctions.JsonPath;
 
 import software.amazon.awscdk.services.iam.PolicyStatement;
 import software.amazon.awscdk.services.iam.Effect;
@@ -179,7 +183,7 @@ class EcsStack extends Stack {
             ecrEnv.put("SERVER_PORT", "3000");
             ecrEnv.put("S3_BUCKET", bucket.getBucketName());
 
-            task.addContainer(stackType + "-driver", ContainerDefinitionOptions.builder()
+            ContainerDefinition clientContainer = task.addContainer(stackType + "-driver", ContainerDefinitionOptions.builder()
                 .image(ContainerImage.fromRegistry(props.getEcrUri()))
                 .environment(ecrEnv)
                 .memoryLimitMiB(2048)
@@ -195,6 +199,14 @@ class EcsStack extends Stack {
                 .cluster(cluster)
                 .taskDefinition(task)
                 .launchTarget(EcsEc2LaunchTarget.Builder.create().build())
+                .inputPath("$.Payload")
+                .containerOverrides(List.of(ContainerOverride.builder()
+                .containerDefinition(clientContainer)
+                .environment(List.of(TaskEnvironmentVariable.builder()
+                    .name("TIMESTAMP")
+                    .value(JsonPath.stringAt("$.timestamp"))
+                    .build()))
+                .build()))
                 .build();
         }
     }
