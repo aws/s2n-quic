@@ -215,7 +215,7 @@ fn minimum_window<CC: CongestionController>(
     num_rounds: usize,
 ) -> Simulation {
     let time_zero = NoopClock.get_time();
-    let rtt_estimator = RttEstimator::new(Duration::from_millis(0));
+    let rtt_estimator = RttEstimator::default();
     let random = &mut random::testing::Generator::default();
 
     let packet_info =
@@ -277,7 +277,7 @@ fn simulate_constant_rtt<CC: CongestionController>(
     num_rounds: usize,
 ) -> Vec<Round> {
     let time_zero = NoopClock.get_time();
-    let mut rtt_estimator = RttEstimator::new(Duration::from_millis(0));
+    let mut rtt_estimator = RttEstimator::default();
     let random = &mut random::testing::Generator::default();
 
     // Update the rtt with 200 ms

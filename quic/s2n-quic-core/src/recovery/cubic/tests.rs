@@ -210,7 +210,7 @@ fn minimum_window_equals_two_times_max_datagram_size() {
 #[test]
 fn on_packet_sent() {
     let mut cc = CubicCongestionController::new(1000);
-    let mut rtt_estimator = RttEstimator::new(Duration::from_millis(0));
+    let mut rtt_estimator = RttEstimator::default();
     let now = NoopClock.get_time();
 
     cc.congestion_window = 100_000.0;
@@ -273,7 +273,7 @@ fn on_packet_sent() {
 #[test]
 fn on_packet_sent_application_limited() {
     let mut cc = CubicCongestionController::new(1000);
-    let rtt_estimator = RttEstimator::new(Duration::from_millis(0));
+    let rtt_estimator = RttEstimator::default();
     let now = NoopClock.get_time();
 
     cc.congestion_window = 100_000.0;
@@ -323,7 +323,7 @@ fn on_packet_sent_application_limited() {
 #[test]
 fn on_packet_sent_none_application_limited() {
     let mut cc = CubicCongestionController::new(1000);
-    let rtt_estimator = RttEstimator::new(Duration::from_millis(0));
+    let rtt_estimator = RttEstimator::default();
     let now = NoopClock.get_time();
 
     cc.congestion_window = 100_000.0;
@@ -362,7 +362,7 @@ fn on_packet_sent_none_application_limited() {
 #[test]
 fn on_packet_sent_fast_retransmission() {
     let mut cc = CubicCongestionController::new(1000);
-    let rtt_estimator = RttEstimator::new(Duration::from_millis(0));
+    let rtt_estimator = RttEstimator::default();
     let now = NoopClock.get_time();
 
     cc.congestion_window = 100_000.0;
@@ -384,7 +384,7 @@ fn on_packet_sent_fast_retransmission() {
 fn congestion_avoidance_after_idle_period() {
     let mut cc = CubicCongestionController::new(1000);
     let now = NoopClock.get_time();
-    let rtt_estimator = &RttEstimator::new(Duration::from_secs(0));
+    let rtt_estimator = &RttEstimator::default();
     let random = &mut random::testing::Generator::default();
 
     cc.congestion_window = 6000.0;
@@ -675,26 +675,6 @@ fn on_packet_lost_persistent_congestion() {
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
 //= type=test
-//# If the maximum datagram size is decreased in order to complete the
-//# handshake, the congestion window SHOULD be set to the new initial
-//# congestion window.
-#[test]
-fn on_mtu_update_decrease() {
-    let mut cc = CubicCongestionController::new(10000);
-
-    cc.on_mtu_update(5000);
-    assert_eq!(cc.max_datagram_size, 5000);
-    assert_eq!(cc.cubic.max_datagram_size, 5000);
-
-    assert_delta!(
-        cc.congestion_window,
-        CubicCongestionController::initial_window(5000) as f32,
-        0.001
-    );
-}
-
-//= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
-//= type=test
 //# If the maximum datagram size changes during the connection, the
 //# initial congestion window SHOULD be recalculated with the new size.
 
@@ -763,27 +743,13 @@ fn on_packet_ack_limited() {
     cc.under_utilized = true;
     cc.state = SlowStart;
 
-    cc.on_ack(
-        now,
-        1,
-        (),
-        &RttEstimator::new(Duration::from_secs(0)),
-        random,
-        now,
-    );
+    cc.on_ack(now, 1, (), &RttEstimator::default(), random, now);
 
     assert_delta!(cc.congestion_window, 100_000.0, 0.001);
 
     cc.state = State::congestion_avoidance(now);
 
-    cc.on_ack(
-        now,
-        1,
-        (),
-        &RttEstimator::new(Duration::from_secs(0)),
-        random,
-        now,
-    );
+    cc.on_ack(now, 1, (), &RttEstimator::default(), random, now);
 
     assert_delta!(cc.congestion_window, 100_000.0, 0.001);
 }
@@ -793,7 +759,7 @@ fn on_packet_ack_limited() {
 fn on_packet_ack_timestamp_regression() {
     let mut cc = CubicCongestionController::new(5000);
     let now = NoopClock.get_time() + Duration::from_secs(1);
-    let rtt_estimator = RttEstimator::new(Duration::from_secs(0));
+    let rtt_estimator = RttEstimator::default();
     let random = &mut random::testing::Generator::default();
     cc.congestion_window = 100_000.0;
     cc.bytes_in_flight = BytesInFlight::new(10000);
@@ -825,7 +791,7 @@ fn on_packet_ack_timestamp_regression() {
 fn on_packet_ack_utilized_then_under_utilized() {
     let mut cc = CubicCongestionController::new(5000);
     let now = NoopClock.get_time();
-    let mut rtt_estimator = RttEstimator::new(Duration::from_secs(0));
+    let mut rtt_estimator = RttEstimator::default();
     let random = &mut random::testing::Generator::default();
     rtt_estimator.update_rtt(
         Duration::from_secs(0),
@@ -889,7 +855,7 @@ fn on_packet_ack_utilized_then_under_utilized() {
 fn on_packet_ack_congestion_avoidance_max_cwnd() {
     let mut cc = CubicCongestionController::new(5000);
     let now = NoopClock.get_time();
-    let mut rtt_estimator = RttEstimator::new(Duration::from_secs(0));
+    let mut rtt_estimator = RttEstimator::default();
     let random = &mut random::testing::Generator::default();
     rtt_estimator.update_rtt(
         Duration::from_secs(0),
@@ -926,7 +892,7 @@ fn on_packet_ack_recovery_to_congestion_avoidance() {
         now + Duration::from_millis(1),
         1,
         (),
-        &RttEstimator::new(Duration::from_secs(0)),
+        &RttEstimator::default(),
         random,
         now + Duration::from_millis(2),
     );
@@ -955,7 +921,7 @@ fn on_packet_ack_slow_start_to_congestion_avoidance() {
         now,
         100,
         (),
-        &RttEstimator::new(Duration::from_secs(0)),
+        &RttEstimator::default(),
         random,
         now + Duration::from_millis(2),
     );
@@ -987,7 +953,7 @@ fn on_packet_ack_recovery() {
         now,
         100,
         (),
-        &RttEstimator::new(Duration::from_secs(0)),
+        &RttEstimator::default(),
         random,
         now + Duration::from_millis(2),
     );
@@ -1015,7 +981,7 @@ fn on_packet_ack_congestion_avoidance() {
     cc2.bytes_in_flight = BytesInFlight::new(10000);
     cc2.cubic.w_max = bytes_to_packets(10000.0, max_datagram_size);
 
-    let mut rtt_estimator = RttEstimator::new(Duration::from_secs(0));
+    let mut rtt_estimator = RttEstimator::default();
     rtt_estimator.update_rtt(
         Duration::from_secs(0),
         Duration::from_millis(275),

@@ -67,7 +67,7 @@ public interface StateMachineStackProps extends StackProps {
                 public Environment getEnv() {
                     return env;
                 }
-
+                
                 @Override
                 public Bucket getBucket() {
                     return bucket;
@@ -82,6 +82,7 @@ public interface StateMachineStackProps extends StackProps {
                 public Cluster getCluster() {
                     return cluster;
                 }
+
             };
         }
     }

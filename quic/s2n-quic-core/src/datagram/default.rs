@@ -369,8 +369,8 @@ impl Sender {
     ///
     /// Should be used to determine an appropriate datagram size that can be sent in
     /// this connection.
-    pub fn smoothed_packet_space(&self) -> f64 {
-        self.smoothed_packet_size
+    pub fn smoothed_packet_space(&self) -> usize {
+        self.smoothed_packet_size as usize
     }
 }
 
@@ -621,7 +621,9 @@ mod tests {
 
     #[test]
     fn record_capacity_stats() {
-        const SMOOTHED_PACKET_SPACE: f64 = 102.3193359375;
+        // Here we test that record_capacity_stats() is working as expected. We use
+        // a precalculated const for the smoothed_packet_space value.
+        const SMOOTHED_PACKET_SPACE: usize = 102;
 
         let mut default_sender = Sender::builder().build().unwrap();
         default_sender.record_capacity_stats(100);

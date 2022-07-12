@@ -52,7 +52,7 @@ pub struct AckManager {
     /// All of the processed AckRanges that need to be ACKed
     pub(super) ack_ranges: AckRanges,
 
-    /// Peer's AckSettings from the transport parameters
+    /// Locally configured AckSettings
     pub ack_settings: ack::Settings,
 
     /// The largest packet number that we've acked - used for pn decoding

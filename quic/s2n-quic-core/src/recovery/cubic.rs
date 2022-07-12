@@ -444,14 +444,9 @@ impl CongestionController for CubicCongestionController {
         self.slow_start.on_congestion_event(self.congestion_window);
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
-    //# If the maximum datagram size changes during the connection, the
-    //# initial congestion window SHOULD be recalculated with the new size.
-    //# If the maximum datagram size is decreased in order to complete the
-    //# handshake, the congestion window SHOULD be set to the new initial
-    //# congestion window.
-
     //= https://www.rfc-editor.org/rfc/rfc8899#section-3
+    //= type=exception
+    //= reason=See https://github.com/aws/s2n-quic/issues/959
     //# An update to the PLPMTU (or MPS) MUST NOT increase the congestion
     //# window measured in bytes [RFC4821].
 
@@ -459,19 +454,21 @@ impl CongestionController for CubicCongestionController {
     //# A PL that maintains the congestion window in terms of a limit to
     //# the number of outstanding fixed-size packets SHOULD adapt this
     //# limit to compensate for the size of the actual packets.
+
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
+    //= type=exception
+    //= reason=The maximum datagram size remains at the minimum (1200 bytes) during the handshake
+    //# If the maximum datagram size is decreased in order to complete the
+    //# handshake, the congestion window SHOULD be set to the new initial
+    //# congestion window.
     #[inline]
     fn on_mtu_update(&mut self, max_datagram_size: u16) {
         let old_max_datagram_size = self.max_datagram_size;
         self.max_datagram_size = max_datagram_size;
         self.cubic.max_datagram_size = max_datagram_size;
 
-        if max_datagram_size < old_max_datagram_size {
-            self.congestion_window =
-                CubicCongestionController::initial_window(max_datagram_size) as f32;
-        } else {
-            self.congestion_window =
-                (self.congestion_window / old_max_datagram_size as f32) * max_datagram_size as f32;
-        }
+        self.congestion_window =
+            (self.congestion_window / old_max_datagram_size as f32) * max_datagram_size as f32;
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.4
@@ -522,6 +519,10 @@ impl CubicCongestionController {
     //# window of ten times the maximum datagram size (max_datagram_size),
     //# while limiting the window to the larger of 14,720 bytes or twice the
     //# maximum datagram size.
+
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
+    //# If the maximum datagram size changes during the connection, the
+    //# initial congestion window SHOULD be recalculated with the new size.
     #[inline]
     fn initial_window(max_datagram_size: u16) -> u32 {
         const INITIAL_WINDOW_LIMIT: u32 = 14720;
