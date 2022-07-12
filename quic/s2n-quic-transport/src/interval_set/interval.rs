@@ -346,7 +346,7 @@ impl IntervalBound for VarInt {
 
     #[inline]
     fn steps_between(&self, upper: &Self) -> usize {
-        <u64 as IntervalBound>::steps_between(&*self, &*upper)
+        <u64 as IntervalBound>::steps_between(self, upper)
     }
 
     #[inline]

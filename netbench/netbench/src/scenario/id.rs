@@ -4,7 +4,7 @@
 use core::fmt;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct Id(String);
 
 impl Id {

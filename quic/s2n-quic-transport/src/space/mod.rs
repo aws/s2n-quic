@@ -404,14 +404,12 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 can_send_handshake,
                 early_connection_close
             );
-            let buffer = write_packet!(
+            write_packet!(
                 buffer,
                 application_mut,
                 can_send_application,
                 connection_close
-            );
-
-            buffer
+            )
         })
     }
 

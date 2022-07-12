@@ -104,13 +104,7 @@ decoder_value!(
         fn decode(buffer: Buffer) -> Result<Self> {
             let len = buffer.len();
             let (slice, buffer) = buffer.decode_slice(len)?;
-            // clippy changed identity_conversion to useless_conversion
-            // specify both for backwards compatibility
-            #[allow(
-                clippy::unknown_clippy_lints,
-                clippy::useless_conversion,
-                clippy::identity_conversion
-            )]
+            #[allow(clippy::useless_conversion)]
             let slice = slice.into();
             Ok((slice, buffer))
         }
