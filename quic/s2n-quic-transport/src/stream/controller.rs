@@ -81,7 +81,9 @@ impl Controller {
                 stream_id: StreamId::initial(local_endpoint_type, StreamType::Unidirectional),
                 local_initiated: LocalInitiated::new(
                     initial_peer_limits.max_streams_uni,
-                    stream_limits.max_open_local_unidirectional_streams,
+                    stream_limits
+                        .max_open_local_unidirectional_streams
+                        .as_varint(),
                 ),
                 remote_initiated: RemoteInitiated::new(initial_local_limits.max_streams_uni),
             },
