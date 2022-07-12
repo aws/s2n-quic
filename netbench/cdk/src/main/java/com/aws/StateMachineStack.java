@@ -55,6 +55,12 @@ public class StateMachineStack extends Stack {
 
         EcsRunTask clientTask = props.getClientTask();
 
+        LambdaInvoke exportServerLogsLambdaInvoke = LambdaInvoke.Builder.create(this, "export-server-logs-task")
+                .lambdaFunction(props.getLogsLambda())
+                .resultPath("$.Payload.body")
+                .invocationType(LambdaInvocationType.REQUEST_RESPONSE)
+                .build();
+
         Wait waitFunction = Wait.Builder.create(this, "wait-step")
             .time(WaitTime.duration(Duration.seconds(20)))
             .build();
@@ -65,6 +71,7 @@ public class StateMachineStack extends Stack {
 
         Map<String, String> reportGenerationEnv = new HashMap<>();
         reportGenerationEnv.put("S3_BUCKET", bucket.getBucketName());
+        reportGenerationEnv.put("PROTOCOL", props.getProtocol());
 
         ContainerDefinition reportGenerationContainer = reportGenerationTask.addContainer("report-generation", ContainerDefinitionOptions.builder()
             .image(ContainerImage.fromRegistry("public.ecr.aws/d2r9y8c2/netbench-cli"))
@@ -85,15 +92,14 @@ public class StateMachineStack extends Stack {
                 .containerDefinition(reportGenerationContainer)
                 .environment(List.of(TaskEnvironmentVariable.builder()
                     .name("EXPORT_TASK_ID")
-                    .value(JsonPath.stringAt("$.body.taskId"))
+                    .value(JsonPath.stringAt("$.body.Payload.taskId"))
+                    .build(),
+                TaskEnvironmentVariable.builder()
+                    .name("TIMESTAMP")
+                    .value(JsonPath.stringAt("$.timestamp"))
                     .build()))
                 .build()))
             .build();
-
-        LambdaInvoke exportServerLogsLambdaInvoke = LambdaInvoke.Builder.create(this, "export-server-logs-task")
-                .lambdaFunction(props.getLogsLambda())
-                .invocationType(LambdaInvocationType.REQUEST_RESPONSE)
-                .build();
             
         timestampLambdaInvoke.next(clientTask);
 

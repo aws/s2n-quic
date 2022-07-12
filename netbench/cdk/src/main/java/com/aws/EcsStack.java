@@ -200,6 +200,7 @@ class EcsStack extends Stack {
                 .taskDefinition(task)
                 .launchTarget(EcsEc2LaunchTarget.Builder.create().build())
                 .inputPath("$.Payload")
+                .resultPath("$.client_result")
                 .containerOverrides(List.of(ContainerOverride.builder()
                 .containerDefinition(clientContainer)
                 .environment(List.of(TaskEnvironmentVariable.builder()

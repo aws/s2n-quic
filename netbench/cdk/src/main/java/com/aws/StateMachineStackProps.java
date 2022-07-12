@@ -23,12 +23,15 @@ public interface StateMachineStackProps extends StackProps {
 
     Cluster getCluster();
 
+    String getProtocol();
+
     public static class Builder {
         private EcsRunTask clientTask;
         private Environment env;
         private Bucket bucket;
         private Function logsLambda;
         private Cluster cluster;
+        private String protocol;
 
         public Builder clientTask(EcsRunTask clientTask) {
             this.clientTask = clientTask;
@@ -52,6 +55,11 @@ public interface StateMachineStackProps extends StackProps {
 
         public Builder cluster(Cluster cluster) {
             this.cluster = cluster;
+            return this;
+        }
+
+        public Builder protocol(String protocol) {
+            this.protocol = protocol;
             return this;
         }
 
@@ -81,6 +89,11 @@ public interface StateMachineStackProps extends StackProps {
                 @Override
                 public Cluster getCluster() {
                     return cluster;
+                }
+
+                @Override
+                public String getProtocol() {
+                    return protocol;
                 }
             };
         }
