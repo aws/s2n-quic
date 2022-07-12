@@ -92,6 +92,8 @@ pub(crate) struct State {
     /// The current mode for deciding how fast to send
     cycle_phase: CyclePhase,
     /// How the incoming ACK stream relates to our bandwidth probing
+    ///
+    /// TODO: Consider making a setter and enforcing state transitions
     pub ack_phase: AckPhase,
     /// A random duration to wait until probing for bandwidth
     bw_probe_wait: Duration,
