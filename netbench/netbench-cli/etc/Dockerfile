@@ -44,7 +44,6 @@ COPY netbench /app/netbench
 COPY --from=cacher /app/target target
 COPY --from=cacher /app/netbench/target netbench/target
 COPY --from=cacher /usr/local/cargo /usr/local/cargo
-COPY --from=cacher /app/netbench/cdk netbench/cdk
 
 ARG release="true"
 
@@ -65,15 +64,16 @@ RUN set -eux; \
     cp target/debug/netbench-cli /app/bin; \
   fi; \
   rm -rf target; \
+  # Bash script to retrieve client and server metrics from S3, and upload generated report to S3
   echo "#!/usr/bin/env bash\n \
   set -e\n \
   aws s3 cp s3://\$S3_BUCKET/client.json /tmp/client.json\n \
   aws s3 cp s3://\$S3_BUCKET/exportedlogs/\$EXPORT_TASK_ID/ /tmp/ --recursive\n \
-  export DIR=\$(ls -d /tmp/*/)\n \
+  export DIR=\$(ls -d /tmp/*/) #get directory containing server logs\n \
   printenv\n \
-  gzip -d \$(echo \$DIR)000000.gz\n \
-  sort -k1 \"\$(echo \$DIR)000000\" > \$(echo \$DIR)000000_sorted\n \
-  echo \"\$(<\$(echo \$DIR)000000_sorted)\" |  awk -F'{' '{ st = index(\$0,\"{\");print \"{\" substr(\$0,st+1)}' > /tmp/server.json\n \
+  gzip -d \$(echo \$DIR)000000.gz #exported log file always named 000000.gz\n \
+  sort -k1 \"\$(echo \$DIR)000000\" > \$(echo \$DIR)000000_sorted #sort server logs based on timestamp\n \
+  echo \"\$(<\$(echo \$DIR)000000_sorted)\" |  awk -F'{' '{ st = index(\$0,\"{\");print \"{\" substr(\$0,st+1)}' > /tmp/server.json #remove timestamp from server logs\n \
   eval /usr/bin/netbench-cli report /tmp/client.json /tmp/server.json \$@ > /tmp/report.json\n \
   aws s3 cp /tmp/server.json s3://\$S3_BUCKET/\n \
   aws s3 cp /tmp/report.json s3://\$S3_BUCKET/" > /app/bin/start; 

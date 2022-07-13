@@ -7,7 +7,7 @@ const cloudwatchlogs = new AWS.CloudWatchLogs(cloudconfig)
 exports.handler =  async (event, context) => {
    const params = {
     destination: process.env.BUCKET_NAME, 
-    from: new Date().getTime() - 600000, //ten minutes, will add exact time stamp in future iteration
+    from: new Date().getTime() - 600000, //TODO: will be replaced with the timestamp of the start of statemachine execution
     logGroupName: process.env.LOG_GROUP_NAME,
     to: new Date().getTime()
   };
