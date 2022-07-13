@@ -19,6 +19,8 @@ import software.amazon.awscdk.services.stepfunctions.tasks.TaskEnvironmentVariab
 import software.amazon.awscdk.services.stepfunctions.JsonPath;
 import software.amazon.awscdk.services.stepfunctions.IntegrationPattern;
 import software.amazon.awscdk.services.stepfunctions.tasks.EcsEc2LaunchTarget;
+import software.amazon.awscdk.services.stepfunctions.Parallel;
+import software.amazon.awscdk.services.stepfunctions.CustomState;
 
 import software.amazon.awscdk.services.lambda.Function;
 import software.amazon.awscdk.services.lambda.Runtime;
@@ -100,8 +102,25 @@ public class StateMachineStack extends Stack {
                     .build()))
                 .build()))
             .build();
+
+        Wait dummyWait = Wait.Builder.create(this, "testing-wait")
+            .time(WaitTime.duration(Duration.seconds(3600)))
+            .build();
+
+        Parallel parallelState = new Parallel(this, "parallel-jobs").branch(clientTask).branch(dummyWait);
+
+        Map<String, String> stopStateParameters = new HashMap<>();
+        stopStateParameters.put("Task", dummyWait.getId());
+        Map<String, Object> stopStateJson = new HashMap<>();
+        stopStateJson.put("Type", "Task");
+        stopStateJson.put("End", true);
+        stopStateJson.put("Parameters", stopStateParameters);
+        stopStateJson.put("Resource", "arn:aws:states:::aws-sdk:ecs:stopTask");
+        CustomState stopServerTask = CustomState.Builder.create(this, "stop-server-task")
+            .stateJson(stopStateJson)
+            .build();
             
-        timestampLambdaInvoke.next(clientTask);
+        timestampLambdaInvoke.next(parallelState);
 
         clientTask.next(exportServerLogsLambdaInvoke);
 
@@ -109,10 +128,11 @@ public class StateMachineStack extends Stack {
         
         waitFunction.next(reportGenerationStep);
 
+        reportGenerationStep.next(stopServerTask);
+
         StateMachine stateMachine = StateMachine.Builder.create(this, "ecs-state-machine")
             .definition(timestampLambdaInvoke)
             .build();
         
     }
 }                                         
-
