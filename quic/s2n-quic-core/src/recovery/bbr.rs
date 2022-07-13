@@ -265,7 +265,7 @@ impl CongestionController for BbrCongestionController {
             }
         }
 
-        self.check_probe_rtt(*self.bytes_in_flight, random_generator, ack_receive_time);
+        self.check_probe_rtt(random_generator, ack_receive_time);
         self.congestion_state
             .advance(self.bw_estimator.rate_sample());
     }

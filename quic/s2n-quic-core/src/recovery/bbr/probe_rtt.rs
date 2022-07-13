@@ -86,7 +86,6 @@ impl BbrCongestionController {
     /// Check if it is time to start probing for RTT changes, and enter the ProbeRtt state if so
     pub fn check_probe_rtt<Rnd: random::Generator>(
         &mut self,
-        bytes_in_flight: u32,
         random_generator: &mut Rnd,
         now: Timestamp,
     ) {
@@ -121,7 +120,7 @@ impl BbrCongestionController {
                 &mut self.bw_estimator,
                 &mut self.round_counter,
                 probe_rtt_cwnd,
-                bytes_in_flight,
+                *self.bytes_in_flight,
                 now,
             );
             if probe_rtt_state.is_done(now) {
