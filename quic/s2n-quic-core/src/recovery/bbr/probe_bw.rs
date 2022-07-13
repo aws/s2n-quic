@@ -146,6 +146,11 @@ impl State {
     ) -> bool {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.5.3
         //# BBRCheckTimeToProbeBW()
+        //#   if (BBRHasElapsedInPhase(BBR.bw_probe_wait) ||
+        //#       BBRIsRenoCoexistenceProbeTime())
+        //#     BBRStartProbeBW_REFILL()
+        //#     return true
+        //#   return false
 
         debug_assert!(
             self.cycle_phase == CyclePhase::Down || self.cycle_phase == CyclePhase::Cruise
@@ -170,6 +175,17 @@ impl State {
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRProbeInflightHiUpward()
+        //#   if (!is_cwnd_limited or cwnd < BBR.inflight_hi)
+        //#       return  /* not fully using inflight_hi, so don't grow it */
+        //#   BBR.bw_probe_up_acks += rs.newly_acked
+        //#   if (BBR.bw_probe_up_acks >= BBR.probe_up_cnt)
+        //#      delta = BBR.bw_probe_up_acks / BBR.probe_up_cnt
+        //#      BBR.bw_probe_up_acks -= delta * BBR.bw_probe_up_cnt
+        //#      BBR.inflight_hi += delta
+        //#   if (BBR.round_start)
+        //#      BBRRaiseInflightHiSlope()
+
+        // is_cwnd_limited and cwnd < BBR.inflight_hi is checked upstream
 
         self.bw_probe_up_acks += bytes_acknowledged as u32;
         // Increase inflight_hi by the number of bw_probe_up_cnt bytes within bw_probe_up_acks
@@ -188,7 +204,10 @@ impl State {
     /// Raise inflight_hi slope if appropriate
     fn raise_inflight_hi_slope(&mut self, cwnd: u32, max_data_size: u16) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
-        //# BBRRaiseInflightHiSlope()
+        //# BBRRaiseInflightHiSlope():
+        //#   growth_this_round = 1MSS << BBR.bw_probe_up_rounds
+        //#   BBR.bw_probe_up_rounds = min(BBR.bw_probe_up_rounds + 1, 30)
+        //#   BBR.probe_up_cnt = max(cwnd / growth_this_round, 1)
 
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.4
         //# BBR takes an approach where the additive increase to BBR.inflight_hi
@@ -205,6 +224,7 @@ impl State {
     fn has_elapsed_in_phase(&self, interval: Duration, now: Timestamp) -> bool {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRHasElapsedInPhase(interval)
+        //#   return Now() > BBR.cycle_stamp + interval
 
         self.cycle_start_timestamp
             .map_or(false, |cycle_stamp| now > cycle_stamp + interval)
@@ -219,6 +239,9 @@ impl State {
     fn is_reno_coexistence_probe_time(&self, target_inflight: u32, max_data_size: u16) -> bool {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.5.3
         //# BBRIsRenoCoexistenceProbeTime()
+        //#   reno_rounds = BBRTargetInflight()
+        //#   rounds = min(reno_rounds, 63)
+        //#   return BBR.rounds_since_bw_probe >= rounds
 
         let reno_rounds = target_inflight / max_data_size as u32;
         let rounds = reno_rounds
@@ -232,6 +255,7 @@ impl State {
     pub fn start_cruise(&mut self) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRStartProbeBW_CRUISE()
+        //#   BBR.state = ProbeBW_CRUISE
 
         debug_assert_eq!(self.cycle_phase, CyclePhase::Down);
 
@@ -249,6 +273,11 @@ impl State {
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRStartProbeBW_UP()
+        //#   BBR.ack_phase = ACKS_PROBE_STARTING
+        //#   BBRStartRound()
+        //#   BBR.cycle_stamp = Now() /* start wall clock */
+        //#   BBR.state = ProbeBW_UP
+        //#   BBRRaiseInflightHiSlope()
 
         debug_assert_eq!(self.cycle_phase, CyclePhase::Refill);
 
@@ -269,6 +298,12 @@ impl State {
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRStartProbeBW_REFILL()
+        //# BBRResetLowerBounds()
+        //#   BBR.bw_probe_up_rounds = 0
+        //#   BBR.bw_probe_up_acks = 0
+        //#   BBR.ack_phase = ACKS_REFILLING
+        //#   BBRStartRound()
+        //#   BBR.state = ProbeBW_REFILL
 
         debug_assert!(
             self.cycle_phase == CyclePhase::Down || self.cycle_phase == CyclePhase::Cruise
@@ -294,6 +329,13 @@ impl State {
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRStartProbeBW_DOWN()
+        //#   BBRResetCongestionSignals()
+        //#   BBR.probe_up_cnt = Infinity /* not growing inflight_hi */
+        //#   BBRPickProbeWait()
+        //#   BBR.cycle_stamp = Now()  /* start wall clock */
+        //#   BBR.ack_phase  = ACKS_PROBE_STOPPING
+        //#   BBRStartRound()
+        //#   BBR.state = ProbeBW_DOWN
 
         congestion_state.reset();
         self.bw_probe_up_cnt = u32::MAX;
@@ -336,6 +378,8 @@ impl BbrCongestionController {
         random_generator: &mut Rnd,
         now: Timestamp,
     ) {
+        debug_assert!(self.state.is_drain() || self.state.is_probing_rtt());
+
         let mut state = State::new();
         state.start_down(
             &mut self.congestion_state,
@@ -359,7 +403,35 @@ impl BbrCongestionController {
         now: Timestamp,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
-        //# BBRUpdateProbeBWCyclePhase()
+        //# BBRUpdateProbeBWCyclePhase():
+        //#    if (!BBR.filled_pipe)
+        //#      return  /* only handling steady-state behavior here */
+        //#    BBRAdaptUpperBounds()
+        //#    if (!IsInAProbeBWState())
+        //#      return /* only handling ProbeBW states here: */
+        //#
+        //#    switch (state)
+        //#
+        //#    ProbeBW_DOWN:
+        //#      if (BBRCheckTimeToProbeBW())
+        //#        return /* already decided state transition */
+        //#      if (BBRCheckTimeToCruise())
+        //#        BBRStartProbeBW_CRUISE()
+        //#
+        //#    ProbeBW_CRUISE:
+        //#      if (BBRCheckTimeToProbeBW())
+        //#        return /* already decided state transition */
+        //#
+        //#    ProbeBW_REFILL:
+        //#      /* After one round of REFILL, start UP */
+        //#      if (BBR.round_start)
+        //#        BBR.bw_probe_samples = 1
+        //#        BBRStartProbeBW_UP()
+        //#
+        //#    ProbeBW_UP:
+        //#      if (BBRHasElapsedInPhase(BBR.min_rtt) and
+        //#          inflight > BBRInflight(BBR.max_bw, 1.25))
+        //#       BBRStartProbeBW_DOWN()
 
         debug_assert!(
             self.full_pipe_estimator.filled_pipe(),
@@ -442,6 +514,20 @@ impl BbrCongestionController {
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRAdaptUpperBounds()
+        //#   if (BBR.ack_phase == ACKS_PROBE_STARTING and BBR.round_start)
+        //#      /* starting to get bw probing samples */
+        //#      BBR.ack_phase = ACKS_PROBE_FEEDBACK
+        //#    if (BBR.ack_phase == ACKS_PROBE_STOPPING and BBR.round_start)
+        //#      /* end of samples from bw probing phase */
+        //#      if (IsInAProbeBWState() and !rs.is_app_limited)
+        //#        BBRAdvanceMaxBwFilter()
+        //#
+        //#    if (!CheckInflightTooHigh())
+        //#      /* Loss rate is safe. Adjust upper bounds upward. */
+        //#      if (BBR.inflight_hi == Infinity or BBR.bw_hi == Infinity)
+        //#        return /* no upper bounds to raise */
+        //#      if (rs.tx_in_flight > BBR.inflight_hi)
+        //#        BBR.inflight_hi = rs.tx_in_flight
 
         debug_assert!(
             self.full_pipe_estimator.filled_pipe(),
@@ -536,6 +622,12 @@ impl BbrCongestionController {
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
         //# BBRHandleInflightTooHigh()
+        //# BBR.bw_probe_samples = 0;  /* only react once per bw probe */
+        //#    if (!rs.is_app_limited)
+        //#      BBR.inflight_hi = max(rs.tx_in_flight,
+        //#                            BBRTargetInflight() * BBRBeta))
+        //#    If (BBR.state == ProbeBW_UP)
+        //#      BBRStartProbeBW_DOWN()
 
         self.bw_probe_samples = false; // only react once per bw probe
         if !is_app_limited {
@@ -561,7 +653,10 @@ impl BbrCongestionController {
     fn is_time_to_cruise(&self) -> bool {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRCheckTimeToCruise())
-
+        //#   if (inflight > BBRInflightWithHeadroom())
+        //#      return false /* not enough headroom */
+        //#   if (inflight <= BBRInflight(BBR.max_bw, 1.0))
+        //#      return true  /* inflight <= estimated BDP */
         if self.bytes_in_flight > self.inflight_with_headroom() {
             return false; // not enough headroom
         }
