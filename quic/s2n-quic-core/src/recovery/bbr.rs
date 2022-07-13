@@ -312,7 +312,11 @@ impl BbrCongestionController {
     /// Calculates a bandwidth-delay product using the supplied `Bandwidth` and `gain`
     fn bdp_multiple(&self, bw: Bandwidth, gain: Ratio<u64>) -> u64 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
-        //# BBRBDPMultiple()
+        //# BBRBDPMultiple(gain):
+        //#   if (BBR.min_rtt == Inf)
+        //#       return InitialCwnd /* no valid RTT samples yet */
+        //#     BBR.bdp = BBR.bw * BBR.min_rtt
+        //#     return gain * BBR.bdp
 
         if let Some(min_rtt) = self.data_volume_model.min_rtt() {
             (gain * (bw * min_rtt)).to_integer()
@@ -327,6 +331,7 @@ impl BbrCongestionController {
     fn target_inflight(&self) -> u32 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.5.3
         //# BBRTargetInflight()
+        //#   return min(BBR.bdp, cwnd)
 
         self.bdp().min(self.cwnd as u64) as u32
     }
@@ -340,6 +345,13 @@ impl BbrCongestionController {
     fn max_inflight(&self) -> u64 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
         //# BBRUpdateMaxInflight()
+        //#   BBRUpdateAggregationBudget()
+        //#   inflight = BBRBDPMultiple(BBR.cwnd_gain)
+        //#   inflight += BBR.extra_acked
+        //#   BBR.max_inflight = BBRQuantizationBudget(inflight)
+
+        // max_inflight is calculated and returned from this function
+        // as needed, rather than maintained as a field
 
         let bdp = self.bdp_multiple(self.data_rate_model.bw(), self.state.cwnd_gain());
         let inflight = bdp + self.data_volume_model.extra_acked();
@@ -350,6 +362,10 @@ impl BbrCongestionController {
     fn inflight(&self, bw: Bandwidth, gain: Ratio<u64>) -> u32 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
         //# BBRInflight(gain)
+        //#   inflight = BBRBDPMultiple(gain)
+        //#   return BBRQuantizationBudget(inflight)
+
+        // BBRInflight is defined in the RFC with and without a Bandwidth input
 
         let inflight = self.bdp_multiple(bw, gain);
         self.quantization_budget(inflight)
@@ -362,6 +378,11 @@ impl BbrCongestionController {
     fn inflight_with_headroom(&self) -> u32 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRInflightWithHeadroom()
+        //#   if (BBR.inflight_hi == Infinity)
+        //#     return Infinity
+        //#   headroom = max(1, BBRHeadroom * BBR.inflight_hi)
+        //#     return max(BBR.inflight_hi - headroom,
+        //#                BBRMinPipeCwnd)
 
         if self.data_volume_model.inflight_hi() == u64::MAX {
             return u32::MAX;
@@ -407,6 +428,7 @@ impl BbrCongestionController {
     fn is_inflight_too_high(lost_bytes: u64, bytes_inflight: u32) -> bool {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
         //# IsInflightTooHigh()
+        //#   return (rs.lost > rs.tx_in_flight * BBRLossThresh)
 
         lost_bytes > (LOSS_THRESH * bytes_inflight).to_integer() as u64
     }
@@ -451,6 +473,7 @@ impl BbrCongestionController {
     fn restore_cwnd(&mut self) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
         //# BBRRestoreCwnd()
+        //#   cwnd = max(cwnd, BBR.prior_cwnd)
 
         self.cwnd = self.cwnd.max(self.prior_cwnd);
     }
