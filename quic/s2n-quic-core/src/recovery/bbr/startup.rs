@@ -7,12 +7,12 @@ use num_rational::Ratio;
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.6
 //# A constant specifying the minimum gain value for calculating the pacing rate that will
 //# allow the sending rate to double each round (4*ln(2) ~= 2.77)
-pub(crate) const STARTUP_PACING_GAIN: Ratio<u64> = Ratio::new_raw(277, 100);
+pub(crate) const PACING_GAIN: Ratio<u64> = Ratio::new_raw(277, 100);
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.6
 //# A constant specifying the minimum gain value for calculating the
 //# cwnd that will allow the sending rate to double each round (2.0)
-pub(crate) const STARTUP_CWND_GAIN: Ratio<u64> = Ratio::new_raw(2, 1);
+pub(crate) const CWND_GAIN: Ratio<u64> = Ratio::new_raw(2, 1);
 
 /// Methods related to the Startup state
 impl BbrCongestionController {

@@ -5,7 +5,7 @@ use crate::{
     random,
     recovery::{
         bandwidth, bbr,
-        bbr::{round, BbrCongestionController},
+        bbr::{probe_rtt, round, BbrCongestionController},
     },
     time::{Timer, Timestamp},
 };
@@ -21,11 +21,11 @@ const PROBE_RTT_DURATION: Duration = Duration::from_millis(200);
 //# BBREnterProbeRTT():
 //#     BBR.state = ProbeRTT
 //#     BBR.pacing_gain = 1
-pub(crate) const PROBE_RTT_PACING_GAIN: Ratio<u64> = Ratio::new_raw(1, 1);
+pub(crate) const PACING_GAIN: Ratio<u64> = Ratio::new_raw(1, 1);
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.14.2
 //# A constant specifying the gain value for calculating the cwnd during ProbeRTT: 0.5
-pub(crate) const PROBE_RTT_CWND_GAIN: Ratio<u64> = Ratio::new_raw(1, 2);
+pub(crate) const CWND_GAIN: Ratio<u64> = Ratio::new_raw(1, 2);
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct State {
@@ -176,7 +176,7 @@ impl BbrCongestionController {
         //#    probe_rtt_cwnd = max(probe_rtt_cwnd, BBRMinPipeCwnd)
         //#    return probe_rtt_cwnd#
 
-        self.bdp_multiple(self.data_rate_model.bw(), PROBE_RTT_CWND_GAIN)
+        self.bdp_multiple(self.data_rate_model.bw(), probe_rtt::CWND_GAIN)
             .try_into()
             .unwrap_or(u32::MAX)
             .max(self.minimum_window())

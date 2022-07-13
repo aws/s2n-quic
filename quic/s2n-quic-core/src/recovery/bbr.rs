@@ -86,27 +86,20 @@ impl State {
     /// The dynamic gain factor used to scale BBR.bw to produce BBR.pacing_rate
     pub fn pacing_gain(&self) -> Ratio<u64> {
         match self {
-            State::Startup => startup::STARTUP_PACING_GAIN,
-            State::Drain => drain::DRAIN_PACING_GAIN,
+            State::Startup => startup::PACING_GAIN,
+            State::Drain => drain::PACING_GAIN,
             State::ProbeBw(probe_bw_state) => probe_bw_state.cycle_phase().pacing_gain(),
-            State::ProbeRtt(_) => probe_rtt::PROBE_RTT_PACING_GAIN,
+            State::ProbeRtt(_) => probe_rtt::PACING_GAIN,
         }
     }
 
     /// The dynamic gain factor used to scale the estimated BDP to produce a congestion window (cwnd)
     pub fn cwnd_gain(&self) -> Ratio<u64> {
-        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.2
-        //# BBREnterDrain():
-        //#     BBR.state = Drain
-        //#     BBR.pacing_gain = 1/BBRStartupCwndGain  /* pace slowly */
-        //#     BBR.cwnd_gain = BBRStartupCwndGain      /* maintain cwnd */
-        const DRAIN_CWND_GAIN: Ratio<u64> = startup::STARTUP_CWND_GAIN;
-
         match self {
-            State::Startup => startup::STARTUP_CWND_GAIN,
-            State::Drain => DRAIN_CWND_GAIN,
-            State::ProbeBw(_) => probe_bw::PROBE_BW_CWND_GAIN,
-            State::ProbeRtt(_) => probe_rtt::PROBE_RTT_CWND_GAIN,
+            State::Startup => startup::CWND_GAIN,
+            State::Drain => drain::CWND_GAIN,
+            State::ProbeBw(_) => probe_bw::CWND_GAIN,
+            State::ProbeRtt(_) => probe_rtt::CWND_GAIN,
         }
     }
 

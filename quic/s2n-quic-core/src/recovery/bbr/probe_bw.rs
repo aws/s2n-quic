@@ -25,7 +25,7 @@ const MAX_BW_PROBE_ROUNDS: u8 = 63;
 ///
 /// This value is defined in the table in
 /// https://www.ietf.org/archive/id/draft-cardwell-iccrg-bbr-congestion-control-02.html#section-4.6.1
-pub(crate) const PROBE_BW_CWND_GAIN: Ratio<u64> = Ratio::new_raw(2, 1);
+pub(crate) const CWND_GAIN: Ratio<u64> = Ratio::new_raw(2, 1);
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3
 //# a BBR flow in ProbeBW mode cycles through the four

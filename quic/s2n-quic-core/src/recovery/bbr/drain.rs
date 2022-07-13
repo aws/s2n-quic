@@ -14,14 +14,14 @@ use num_traits::One;
 //# pacing_gain well below 1.0, until any estimated queue has been drained. It uses a
 //# pacing_gain that is the inverse of the value used during Startup, chosen to try to
 //# drain the queue in one round
-pub(crate) const DRAIN_PACING_GAIN: Ratio<u64> = Ratio::new_raw(1, 2);
+pub(crate) const PACING_GAIN: Ratio<u64> = Ratio::new_raw(1, 2);
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.2
 //# BBREnterDrain():
 //#     BBR.state = Drain
 //#     BBR.pacing_gain = 1/BBRStartupCwndGain  /* pace slowly */
 //#     BBR.cwnd_gain = BBRStartupCwndGain      /* maintain cwnd */
-pub(crate) const DRAIN_CWND_GAIN: Ratio<u64> = startup::STARTUP_CWND_GAIN;
+pub(crate) const CWND_GAIN: Ratio<u64> = startup::CWND_GAIN;
 
 /// Methods related to the Drain state
 impl BbrCongestionController {
