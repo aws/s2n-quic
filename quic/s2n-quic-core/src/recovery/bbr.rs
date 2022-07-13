@@ -47,6 +47,124 @@ const HEADROOM: Ratio<u64> = Ratio::new_raw(85, 100);
 //# that follow an "ACK every other packet" delayed-ACK policy: 4 * SMSS.
 const MIN_PIPE_CWND_PACKETS: u16 = 4;
 
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.1.1
+//# The following state transition diagram summarizes the flow of control and the relationship between the different states:
+//#
+//#              |
+//#              V
+//#     +---> Startup  ------------+
+//#     |        |                 |
+//#     |        V                 |
+//#     |     Drain  --------------+
+//#     |        |                 |
+//#     |        V                 |
+//#     +---> ProbeBW_DOWN  -------+
+//#     | ^      |                 |
+//#     | |      V                 |
+//#     | |   ProbeBW_CRUISE ------+
+//#     | |      |                 |
+//#     | |      V                 |
+//#     | |   ProbeBW_REFILL  -----+
+//#     | |      |                 |
+//#     | |      V                 |
+//#     | |   ProbeBW_UP  ---------+
+//#     | |      |                 |
+//#     | +------+                 |
+//#     |                          |
+//#     +---- ProbeRTT <-----------+
+#[derive(Clone, Debug)]
+enum State {
+    Startup,
+    Drain,
+    ProbeBw(probe_bw::State),
+    ProbeRtt(probe_rtt::State),
+}
+
+impl State {
+    /// The dynamic gain factor used to scale BBR.bw to produce BBR.pacing_rate
+    pub fn pacing_gain(&self) -> Ratio<u64> {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.6
+        //# A constant specifying the minimum gain value for calculating the pacing rate that will
+        //# allow the sending rate to double each round (4*ln(2) ~= 2.77)
+        const STARTUP_PACING_GAIN: Ratio<u64> = Ratio::new_raw(277, 100);
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.2
+        //# In Drain, BBR aims to quickly drain any queue created in Startup by switching to a
+        //# pacing_gain well below 1.0, until any estimated queue has been drained. It uses a
+        //# pacing_gain that is the inverse of the value used during Startup, chosen to try to
+        //# drain the queue in one round
+        const DRAIN_PACING_GAIN: Ratio<u64> = Ratio::new_raw(1, 2);
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.4.4
+        //# BBREnterProbeRTT():
+        //#     BBR.state = ProbeRTT
+        //#     BBR.pacing_gain = 1
+        const PROBE_RTT_PACING_GAIN: Ratio<u64> = Ratio::new_raw(1, 1);
+
+        match self {
+            State::Startup => STARTUP_PACING_GAIN,
+            State::Drain => DRAIN_PACING_GAIN,
+            State::ProbeBw(probe_bw_state) => probe_bw_state.cycle_phase().pacing_gain(),
+            State::ProbeRtt(_) => PROBE_RTT_PACING_GAIN,
+        }
+    }
+
+    /// The dynamic gain factor used to scale the estimated BDP to produce a congestion window (cwnd)
+    pub fn cwnd_gain(&self) -> Ratio<u64> {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.6
+        //# A constant specifying the minimum gain value for calculating the
+        //# cwnd that will allow the sending rate to double each round (2.0)
+        const STARTUP_CWND_GAIN: Ratio<u64> = Ratio::new_raw(2, 1);
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.2
+        //# BBREnterDrain():
+        //#     BBR.state = Drain
+        //#     BBR.pacing_gain = 1/BBRStartupCwndGain  /* pace slowly */
+        //#     BBR.cwnd_gain = BBRStartupCwndGain      /* maintain cwnd */
+        const DRAIN_CWND_GAIN: Ratio<u64> = STARTUP_CWND_GAIN;
+
+        /// Cwnd gain used in the Probe BW state
+        ///
+        /// This value is defined in the table in
+        /// https://www.ietf.org/archive/id/draft-cardwell-iccrg-bbr-congestion-control-02.html#section-4.6.1
+        const PROBE_BW_CWND_GAIN: Ratio<u64> = Ratio::new_raw(2, 1);
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.14.2
+        //# A constant specifying the gain value for calculating the cwnd during ProbeRTT: 0.5
+        const PROBE_RTT_CWND_GAIN: Ratio<u64> = Ratio::new_raw(1, 2);
+
+        match self {
+            State::Startup => STARTUP_CWND_GAIN,
+            State::Drain => DRAIN_CWND_GAIN,
+            State::ProbeBw(_) => PROBE_BW_CWND_GAIN,
+            State::ProbeRtt(_) => PROBE_RTT_CWND_GAIN,
+        }
+    }
+
+    /// True if the current state is Startup
+    pub fn is_startup(&self) -> bool {
+        matches!(self, State::Startup)
+    }
+
+    /// True if the current state is ProbeBw
+    pub fn is_probing_bw(&self) -> bool {
+        matches!(self, State::ProbeBw(_))
+    }
+
+    /// True if the current state is ProbeBw and the CyclePhase is `Up`
+    pub fn is_probing_bw_up(&self) -> bool {
+        if let State::ProbeBw(probe_bw_state) = self {
+            return probe_bw_state.cycle_phase() == CyclePhase::Up;
+        }
+        false
+    }
+
+    /// True if the current state is ProbeRtt
+    pub fn is_probing_rtt(&self) -> bool {
+        matches!(self, State::ProbeRtt(_))
+    }
+}
+
 /// A congestion controller that implements "Bottleneck Bandwidth and Round-trip propagation time"
 /// version 2 (BBRv2) as specified in <https://datatracker.ietf.org/doc/draft-cardwell-iccrg-bbr-congestion-control/>.
 ///
@@ -54,6 +172,7 @@ const MIN_PIPE_CWND_PACKETS: u16 = 4;
 /// and the Linux Kernel TCP BBRv2 implementation, see <https://github.com/google/bbr/blob/v2alpha/net/ipv4/tcp_bbr2.c>
 #[derive(Debug, Clone)]
 struct BbrCongestionController {
+    state: State,
     round_counter: round::Counter,
     bw_estimator: bandwidth::Estimator,
     full_pipe_estimator: full_pipe::Estimator,
@@ -71,13 +190,13 @@ struct BbrCongestionController {
     prior_cwnd: u32,
     recovery_state: recovery::State,
     congestion_state: congestion::State,
-    probe_bw_state: probe_bw::State,
-    probe_rtt_state: probe_rtt::State,
     data_rate_model: data_rate::Model,
     data_volume_model: data_volume::Model,
     max_datagram_size: u16,
     /// A boolean that is true if and only if a connection is restarting after being idle
     idle_restart: bool,
+    /// True if rate samples reflect bandwidth probing
+    bw_probe_samples: bool,
 }
 
 type BytesInFlight = Counter<u32>;
@@ -171,7 +290,6 @@ impl CongestionController for BbrCongestionController {
                 self.data_rate_model.max_bw(),
                 self.recovery_state.in_recovery(),
             );
-            self.probe_bw_state.on_round_start();
         }
 
         if self.full_pipe_estimator.filled_pipe() {
@@ -317,8 +435,7 @@ impl BbrCongestionController {
             .max(offload_budget)
             .max(self.minimum_window() as u64);
 
-        if self.probe_bw_state.cycle_phase() == CyclePhase::Up {
-            // TODO: Check BBR.state == ProbeBW
+        if self.state.is_probing_bw_up() {
             inflight += 2 * self.max_datagram_size as u64;
         }
 

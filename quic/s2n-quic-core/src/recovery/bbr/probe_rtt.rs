@@ -3,7 +3,10 @@
 
 use crate::{
     random,
-    recovery::bbr::{probe_bw::AckPhase, BbrCongestionController},
+    recovery::{
+        bandwidth, bbr,
+        bbr::{round, BbrCongestionController},
+    },
     time::{Timer, Timestamp},
 };
 use core::time::Duration;
@@ -18,6 +21,54 @@ const PROBE_RTT_DURATION: Duration = Duration::from_millis(200);
 pub(crate) struct State {
     timer: Timer,
     round_done: bool,
+}
+
+impl State {
+    /// Keeps BBR in the ProbeRTT state for max of (PROBE_RTT_DURATION, 1 round)
+    fn handle_probe_rtt(
+        &mut self,
+        bw_estimator: &mut bandwidth::Estimator,
+        round_counter: &mut round::Counter,
+        probe_rtt_cwnd: u32,
+        bytes_in_flight: u32,
+        now: Timestamp,
+    ) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.4.4
+        //# BBRHandleProbeRTT()
+        //#     /* Ignore low rate samples during ProbeRTT: */
+        //#     MarkConnectionAppLimited()
+        //#     if (BBR.probe_rtt_done_stamp == 0 and
+        //#         packets_in_flight <= BBRProbeRTTCwnd())
+        //#       /* Wait for at least ProbeRTTDuration to elapse: */
+        //#      BBR.probe_rtt_done_stamp =
+        //#         Now() + ProbeRTTDuration
+        //#       /* Wait for at least one round to elapse: */
+        //#       BBR.probe_rtt_round_done = false
+        //#       BBRStartRound()
+        //#     else if (BBR.probe_rtt_done_stamp != 0)
+        //#       if (BBR.round_start)
+        //#         BBR.probe_rtt_round_done = true
+        //#       if (BBR.probe_rtt_round_done)
+        //#         BBRCheckProbeRTTDone()
+
+        // Ignore low rate samples during ProbeRTT
+        bw_estimator.on_app_limited(bytes_in_flight);
+
+        if !self.timer.is_armed() && bytes_in_flight <= probe_rtt_cwnd {
+            // Wait for at least ProbeRTTDuration to elapse:
+            self.timer.set(now + PROBE_RTT_DURATION);
+            // Wait for at least one round to elapse:
+            self.round_done = false;
+            round_counter.set_round_end(bw_estimator.delivered_bytes());
+        } else if self.timer.is_armed() && round_counter.round_start() {
+            self.round_done = true;
+        }
+    }
+
+    /// Returns true if the ProbeRtt state is done and should be exited
+    pub fn is_done(&self, now: Timestamp) -> bool {
+        self.round_done && self.timer.is_expired(now)
+    }
 }
 
 /// Methods related to the ProbeRtt state
@@ -44,102 +95,45 @@ impl BbrCongestionController {
         //#     if (rs.delivered > 0)
         //#       BBR.idle_restart = false
 
-        // TODO: check BBR.state != ProbeRtt
-        if self.data_volume_model.probe_rtt_expired() && !self.idle_restart {
-            // TODO: self.state = ProbeRtt
+        if !self.state.is_probing_rtt()
+            && self.data_volume_model.probe_rtt_expired()
+            && !self.idle_restart
+        {
+            self.state = bbr::State::ProbeRtt(State::default());
             self.save_cwnd();
-            self.probe_rtt_state.timer.cancel();
-            self.probe_bw_state.ack_phase = AckPhase::ProbeStopping;
             self.round_counter
                 .set_round_end(self.bw_estimator.delivered_bytes());
         }
 
-        // TODO: if BBR.state == ProbeRtt
-        self.handle_probe_rtt(bytes_in_flight, random_generator, now);
+        let probe_rtt_cwnd = self.probe_rtt_cwnd();
+        if let bbr::State::ProbeRtt(probe_rtt_state) = &mut self.state {
+            probe_rtt_state.handle_probe_rtt(
+                &mut self.bw_estimator,
+                &mut self.round_counter,
+                probe_rtt_cwnd,
+                bytes_in_flight,
+                now,
+            );
+            if probe_rtt_state.is_done(now) {
+                self.exit_probe_rtt(random_generator, now);
+            }
+        }
 
         if self.bw_estimator.rate_sample().delivered_bytes > 0 {
             self.idle_restart = false;
         }
     }
 
-    /// Keeps BBR in the ProbeRTT state for max of (PROBE_RTT_DURATION, 1 round)
-    ///
-    /// ProbeRTT will be exited when this threshold is reached
-    fn handle_probe_rtt<Rnd: random::Generator>(
-        &mut self,
-        bytes_in_flight: u32,
-        random_generator: &mut Rnd,
-        now: Timestamp,
-    ) {
-        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.4.4
-        //# BBRHandleProbeRTT()
-        //#     /* Ignore low rate samples during ProbeRTT: */
-        //#     MarkConnectionAppLimited()
-        //#     if (BBR.probe_rtt_done_stamp == 0 and
-        //#         packets_in_flight <= BBRProbeRTTCwnd())
-        //#       /* Wait for at least ProbeRTTDuration to elapse: */
-        //#      BBR.probe_rtt_done_stamp =
-        //#         Now() + ProbeRTTDuration
-        //#       /* Wait for at least one round to elapse: */
-        //#       BBR.probe_rtt_round_done = false
-        //#       BBRStartRound()
-        //#     else if (BBR.probe_rtt_done_stamp != 0)
-        //#       if (BBR.round_start)
-        //#         BBR.probe_rtt_round_done = true
-        //#       if (BBR.probe_rtt_round_done)
-        //#         BBRCheckProbeRTTDone()
-
-        // Ignore low rate samples during ProbeRTT
-        self.bw_estimator.on_app_limited(bytes_in_flight);
-
-        if !self.probe_rtt_state.timer.is_armed() && bytes_in_flight <= self.probe_rtt_cwnd() {
-            // Wait for at least ProbeRTTDuration to elapse:
-            self.probe_rtt_state.timer.set(now + PROBE_RTT_DURATION);
-            // Wait for at least one round to elapse:
-            self.probe_rtt_state.round_done = false;
-            self.round_counter
-                .set_round_end(self.bw_estimator.delivered_bytes());
-        } else if self.probe_rtt_state.timer.is_armed() {
-            if self.round_counter.round_start() {
-                self.probe_rtt_state.round_done = true;
-            }
-            if self.probe_rtt_state.round_done {
-                self.check_probe_rtt_done(random_generator, now)
-            }
-        }
-    }
-
-    /// Checks if the ProbeRtt state should be exited and calls `exit_probe_rtt` if so
-    ///
-    /// The next ProbeRtt will be scheduled as necessary
-    pub fn check_probe_rtt_done<Rnd: random::Generator>(
-        &mut self,
-        random_generator: &mut Rnd,
-        now: Timestamp,
-    ) {
-        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.4.4
-        //# BBRCheckProbeRTTDone()
-        //#    if (BBR.probe_rtt_done_stamp != 0 and
-        //#         Now() > BBR.probe_rtt_done_stamp)
-        //#       /* schedule next ProbeRTT: */
-        //#       BBR.probe_rtt_min_stamp = Now()
-        //#       BBRRestoreCwnd()
-        //#       BBRExitProbeRTT()
-
-        if self.probe_rtt_state.timer.poll_expiration(now).is_ready() {
-            /* schedule next ProbeRTT: */
-            self.data_volume_model.schedule_next_probe_rtt(now);
-            self.restore_cwnd();
-            self.exit_probe_rtt(random_generator, now);
-        }
-    }
-
     /// Exits the ProbeRtt state
-    fn exit_probe_rtt<Rnd: random::Generator>(
+    pub fn exit_probe_rtt<Rnd: random::Generator>(
         &mut self,
         random_generator: &mut Rnd,
         now: Timestamp,
     ) {
+        // schedule next ProbeRTT:
+        self.data_volume_model.schedule_next_probe_rtt(now);
+        self.restore_cwnd();
+
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.4.5
         //# BBRExitProbeRTT()
         //#     BBRResetLowerBounds()
@@ -153,17 +147,14 @@ impl BbrCongestionController {
         self.data_rate_model.reset_lower_bound();
 
         if self.full_pipe_estimator.filled_pipe() {
-            // TODO: self.state == ProbeBw (or add start_probe_bw to probe_bw.rs)
-            self.probe_bw_state.start_down(
-                &mut self.congestion_state,
-                &mut self.round_counter,
-                self.bw_estimator.delivered_bytes(),
-                random_generator,
-                now,
-            );
-            self.probe_bw_state.start_cruise();
+            //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.4.5
+            //# as an optimization, since the connection is exiting ProbeRTT, we know that infligh
+            //# is already below the estimated BDP, so the connection can proceed immediately to
+            //# ProbeBW_CRUISE
+            let cruise_immediately = true;
+            self.enter_probe_bw(cruise_immediately, random_generator, now);
         } else {
-            // TODO: self.state == Startup
+            self.state = bbr::State::Startup;
         }
     }
 
