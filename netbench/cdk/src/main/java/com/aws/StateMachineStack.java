@@ -102,33 +102,14 @@ public class StateMachineStack extends Stack {
                     .build()))
                 .build()))
             .build();
-
-        Wait dummyWait = Wait.Builder.create(this, "testing-wait")
-            .time(WaitTime.duration(Duration.seconds(3600)))
-            .build();
-
-        Parallel parallelState = new Parallel(this, "parallel-jobs").branch(clientTask).branch(dummyWait);
-
-        Map<String, String> stopStateParameters = new HashMap<>();
-        stopStateParameters.put("Task", dummyWait.getId());
-        Map<String, Object> stopStateJson = new HashMap<>();
-        stopStateJson.put("Type", "Task");
-        stopStateJson.put("End", true);
-        stopStateJson.put("Parameters", stopStateParameters);
-        stopStateJson.put("Resource", "arn:aws:states:::aws-sdk:ecs:stopTask");
-        CustomState stopServerTask = CustomState.Builder.create(this, "stop-server-task")
-            .stateJson(stopStateJson)
-            .build();
             
-        timestampLambdaInvoke.next(parallelState);
+        timestampLambdaInvoke.next(clientTask);
 
         clientTask.next(exportServerLogsLambdaInvoke);
 
         exportServerLogsLambdaInvoke.next(waitFunction);
         
         waitFunction.next(reportGenerationStep);
-
-        reportGenerationStep.next(stopServerTask);
 
         StateMachine stateMachine = StateMachine.Builder.create(this, "ecs-state-machine")
             .definition(timestampLambdaInvoke)
