@@ -95,17 +95,11 @@ impl State {
         //# drain the queue in one round
         const DRAIN_PACING_GAIN: Ratio<u64> = Ratio::new_raw(1, 2);
 
-        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.4.4
-        //# BBREnterProbeRTT():
-        //#     BBR.state = ProbeRTT
-        //#     BBR.pacing_gain = 1
-        const PROBE_RTT_PACING_GAIN: Ratio<u64> = Ratio::new_raw(1, 1);
-
         match self {
             State::Startup => STARTUP_PACING_GAIN,
             State::Drain => DRAIN_PACING_GAIN,
             State::ProbeBw(probe_bw_state) => probe_bw_state.cycle_phase().pacing_gain(),
-            State::ProbeRtt(_) => PROBE_RTT_PACING_GAIN,
+            State::ProbeRtt(_) => probe_rtt::PROBE_RTT_PACING_GAIN,
         }
     }
 
@@ -123,21 +117,11 @@ impl State {
         //#     BBR.cwnd_gain = BBRStartupCwndGain      /* maintain cwnd */
         const DRAIN_CWND_GAIN: Ratio<u64> = STARTUP_CWND_GAIN;
 
-        /// Cwnd gain used in the Probe BW state
-        ///
-        /// This value is defined in the table in
-        /// https://www.ietf.org/archive/id/draft-cardwell-iccrg-bbr-congestion-control-02.html#section-4.6.1
-        const PROBE_BW_CWND_GAIN: Ratio<u64> = Ratio::new_raw(2, 1);
-
-        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.14.2
-        //# A constant specifying the gain value for calculating the cwnd during ProbeRTT: 0.5
-        const PROBE_RTT_CWND_GAIN: Ratio<u64> = Ratio::new_raw(1, 2);
-
         match self {
             State::Startup => STARTUP_CWND_GAIN,
             State::Drain => DRAIN_CWND_GAIN,
-            State::ProbeBw(_) => PROBE_BW_CWND_GAIN,
-            State::ProbeRtt(_) => PROBE_RTT_CWND_GAIN,
+            State::ProbeBw(_) => probe_bw::PROBE_BW_CWND_GAIN,
+            State::ProbeRtt(_) => probe_rtt::PROBE_RTT_CWND_GAIN,
         }
     }
 
@@ -217,7 +201,7 @@ impl CongestionController for BbrCongestionController {
     }
 
     fn is_slow_start(&self) -> bool {
-        todo!()
+        self.state.is_startup()
     }
 
     fn requires_fast_retransmission(&self) -> bool {
@@ -273,14 +257,13 @@ impl CongestionController for BbrCongestionController {
         );
         self.recovery_state
             .on_ack(self.round_counter.round_start(), newest_acked_time_sent);
-        let is_probing_bw = false; // TODO: track probing state
         self.congestion_state.update(
             newest_acked_packet_info,
             self.bw_estimator.rate_sample(),
             self.bw_estimator.delivered_bytes(),
             &mut self.data_rate_model,
             &mut self.data_volume_model,
-            is_probing_bw,
+            self.state.is_probing_bw(),
             self.cwnd,
         );
 
@@ -299,8 +282,9 @@ impl CongestionController for BbrCongestionController {
                 random_generator,
                 ack_receive_time,
             );
-            // TODO: if self.state == State::Probe_BW
-            self.update_probe_bw_cycle_phase(random_generator, ack_receive_time);
+            if self.state.is_probing_bw() {
+                self.update_probe_bw_cycle_phase(random_generator, ack_receive_time);
+            }
         }
 
         self.check_probe_rtt(*self.bytes_in_flight, random_generator, ack_receive_time);
@@ -379,8 +363,7 @@ impl BbrCongestionController {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
         //# BBRUpdateMaxInflight()
 
-        let cwnd_gain = Ratio::one(); // TODO: get cwnd_gain from State
-        let bdp = self.bdp_multiple(self.data_rate_model.bw(), cwnd_gain);
+        let bdp = self.bdp_multiple(self.data_rate_model.bw(), self.state.cwnd_gain());
         let inflight = bdp + self.data_volume_model.extra_acked();
         self.quantization_budget(inflight)
     }
@@ -474,9 +457,12 @@ impl BbrCongestionController {
     fn save_cwnd(&mut self) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
         //# BBRSaveCwnd()
+        //#   if (!InLossRecovery() and BBR.state != ProbeRTT)
+        //#     return cwnd
+        //#   else
+        //#     return max(BBR.prior_cwnd, cwnd)
 
-        self.prior_cwnd = if !self.recovery_state.in_recovery() {
-            // TODO: && BBR.state != ProbeRTT
+        self.prior_cwnd = if !self.recovery_state.in_recovery() && !self.state.is_probing_rtt() {
             self.cwnd
         } else {
             self.prior_cwnd.max(self.cwnd)

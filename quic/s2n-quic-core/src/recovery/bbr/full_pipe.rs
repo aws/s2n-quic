@@ -28,7 +28,6 @@ pub(crate) struct Estimator {
 
 impl Estimator {
     /// Returns true if BBR estimates that is has ever fully utilized its available bandwidth
-    #[allow(dead_code)] // TODO: Remove when used
     #[inline]
     pub fn filled_pipe(&self) -> bool {
         self.filled_pipe

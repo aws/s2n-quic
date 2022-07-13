@@ -17,6 +17,16 @@ use num_rational::Ratio;
 //# holds inflight to BBRMinPipeCwnd or fewer packets: 200 ms.
 const PROBE_RTT_DURATION: Duration = Duration::from_millis(200);
 
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.4.4
+//# BBREnterProbeRTT():
+//#     BBR.state = ProbeRTT
+//#     BBR.pacing_gain = 1
+pub(crate) const PROBE_RTT_PACING_GAIN: Ratio<u64> = Ratio::new_raw(1, 1);
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.14.2
+//# A constant specifying the gain value for calculating the cwnd during ProbeRTT: 0.5
+pub(crate) const PROBE_RTT_CWND_GAIN: Ratio<u64> = Ratio::new_raw(1, 2);
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct State {
     timer: Timer,
@@ -166,8 +176,7 @@ impl BbrCongestionController {
         //#    probe_rtt_cwnd = max(probe_rtt_cwnd, BBRMinPipeCwnd)
         //#    return probe_rtt_cwnd#
 
-        let probe_rtt_cwnd_gain = Ratio::new(1u64, 2u64); // TODO State::ProbeRtt.cwnd_gain()
-        self.bdp_multiple(self.data_rate_model.bw(), probe_rtt_cwnd_gain)
+        self.bdp_multiple(self.data_rate_model.bw(), PROBE_RTT_CWND_GAIN)
             .try_into()
             .unwrap_or(u32::MAX)
             .max(self.minimum_window())

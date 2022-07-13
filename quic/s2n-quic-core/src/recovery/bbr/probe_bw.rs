@@ -21,6 +21,12 @@ const MAX_BW_PROBE_UP_ROUNDS: u8 = 30;
 /// Max number of packet-timed rounds to wait before probing for bandwidth
 const MAX_BW_PROBE_ROUNDS: u8 = 63;
 
+/// Cwnd gain used in the Probe BW state
+///
+/// This value is defined in the table in
+/// https://www.ietf.org/archive/id/draft-cardwell-iccrg-bbr-congestion-control-02.html#section-4.6.1
+pub(crate) const PROBE_BW_CWND_GAIN: Ratio<u64> = Ratio::new_raw(2, 1);
+
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3
 //# a BBR flow in ProbeBW mode cycles through the four
 //# Probe bw states - DOWN, CRUISE, REFILL, and UP
@@ -109,8 +115,7 @@ pub(crate) struct State {
 
 impl State {
     /// Constructs new `probe_bw::State`
-    #[allow(dead_code)] // TODO: Remove when used
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             cycle_phase: CyclePhase::Down,
             ack_phase: AckPhase::Init,
@@ -331,16 +336,7 @@ impl BbrCongestionController {
         random_generator: &mut Rnd,
         now: Timestamp,
     ) {
-        let mut state = State {
-            cycle_phase: CyclePhase::Down,
-            ack_phase: AckPhase::Init,
-            bw_probe_wait: Duration::ZERO,
-            rounds_since_bw_probe: Counter::default(),
-            bw_probe_up_cnt: u32::MAX,
-            bw_probe_up_acks: 0,
-            bw_probe_up_rounds: 0,
-            cycle_start_timestamp: None,
-        };
+        let mut state = State::new();
         state.start_down(
             &mut self.congestion_state,
             &mut self.round_counter,
