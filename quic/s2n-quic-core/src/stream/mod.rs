@@ -3,6 +3,7 @@
 
 mod error;
 mod id;
+pub mod iter;
 pub mod limits;
 pub mod ops;
 mod type_;

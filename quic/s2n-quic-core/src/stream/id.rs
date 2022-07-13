@@ -4,12 +4,15 @@
 //! Types and utilities around the QUIC Stream identifier
 
 use crate::{endpoint, stream::StreamType, varint::VarInt};
+#[cfg(any(test, feature = "generator"))]
+use bolero_generator::*;
 
 /// The ID of a stream.
 ///
 /// A stream ID is a 62-bit integer (0 to 2^62-1) that is unique for all streams
 /// on a connection.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Copy, Clone, Hash)]
+#[cfg_attr(any(feature = "generator", test), derive(TypeGenerator))]
 pub struct StreamId(VarInt);
 
 // Stream IDs can be converted into `VarInt` and `u64`

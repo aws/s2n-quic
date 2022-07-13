@@ -16,7 +16,7 @@ use s2n_quic_core::{
     ack,
     frame::{MaxStreams, StreamsBlocked},
     packet::number::PacketNumber,
-    stream::StreamId,
+    stream::{limits::LocalLimits, StreamId},
     time::{timer, Timestamp},
     varint::VarInt,
 };
@@ -27,12 +27,12 @@ const WAKERS_INITIAL_CAPACITY: usize = 5;
 
 /// The LocalInitiated controller controls streams initiated locally
 #[derive(Debug)]
-pub(super) struct LocalInitiated {
+pub(super) struct LocalInitiated<L: LocalLimits> {
     /// The max stream limit specified by the local endpoint.
     ///
     /// Used to restrict the number of concurrent streams the local
     /// connection can open.
-    max_local_limit: VarInt,
+    max_local_limit: L,
     /// The cumulative stream limit specified by the remote endpoint.
     ///
     /// Can be updated when MAX_STREAMS frame is received.
@@ -49,8 +49,8 @@ pub(super) struct LocalInitiated {
     expired_token: open_token::Token,
 }
 
-impl LocalInitiated {
-    pub fn new(initial_peer_maximum_streams: VarInt, max_local_limit: VarInt) -> Self {
+impl<L: LocalLimits> LocalInitiated<L> {
+    pub fn new(initial_peer_maximum_streams: VarInt, max_local_limit: L) -> Self {
         Self {
             max_local_limit,
             peer_cumulative_stream_limit: initial_peer_maximum_streams,
@@ -145,6 +145,7 @@ impl LocalInitiated {
     pub fn available_stream_capacity(&self) -> VarInt {
         let local_capacity = self
             .max_local_limit
+            .as_varint()
             .saturating_sub(self.open_stream_count());
         local_capacity.min(self.peer_capacity())
     }
@@ -179,7 +180,7 @@ impl LocalInitiated {
     }
 
     /// Returns the number of streams currently open
-    fn open_stream_count(&self) -> VarInt {
+    pub fn open_stream_count(&self) -> VarInt {
         self.opened_streams - self.closed_streams
     }
 
@@ -227,14 +228,14 @@ impl LocalInitiated {
     }
 
     #[inline]
-    fn check_integrity(&self) {
+    pub fn check_integrity(&self) {
         if cfg!(debug_assertions) {
             assert!(
                 self.closed_streams <= self.opened_streams,
                 "Cannot close more streams than previously opened"
             );
             assert!(
-                self.open_stream_count() <= self.max_local_limit,
+                self.open_stream_count() <= self.max_local_limit.as_varint(),
                 "Cannot have more outgoing streams open concurrently than
                 the max_local_limit"
             );
@@ -242,7 +243,7 @@ impl LocalInitiated {
     }
 }
 
-impl timer::Provider for LocalInitiated {
+impl<L: LocalLimits> timer::Provider for LocalInitiated<L> {
     #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
         self.streams_blocked_sync.timers(query)?;
@@ -250,7 +251,7 @@ impl timer::Provider for LocalInitiated {
     }
 }
 
-impl transmission::interest::Provider for LocalInitiated {
+impl<L: LocalLimits> transmission::interest::Provider for LocalInitiated<L> {
     #[inline]
     fn transmission_interest<Q: transmission::interest::Query>(
         &self,
