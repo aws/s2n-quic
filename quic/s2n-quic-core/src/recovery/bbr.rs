@@ -20,6 +20,7 @@ use num_traits::One;
 mod congestion;
 mod data_rate;
 mod data_volume;
+mod drain;
 mod full_pipe;
 mod probe_bw;
 mod probe_rtt;
@@ -84,16 +85,9 @@ enum State {
 impl State {
     /// The dynamic gain factor used to scale BBR.bw to produce BBR.pacing_rate
     pub fn pacing_gain(&self) -> Ratio<u64> {
-        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.2
-        //# In Drain, BBR aims to quickly drain any queue created in Startup by switching to a
-        //# pacing_gain well below 1.0, until any estimated queue has been drained. It uses a
-        //# pacing_gain that is the inverse of the value used during Startup, chosen to try to
-        //# drain the queue in one round
-        const DRAIN_PACING_GAIN: Ratio<u64> = Ratio::new_raw(1, 2);
-
         match self {
             State::Startup => startup::STARTUP_PACING_GAIN,
-            State::Drain => DRAIN_PACING_GAIN,
+            State::Drain => drain::DRAIN_PACING_GAIN,
             State::ProbeBw(probe_bw_state) => probe_bw_state.cycle_phase().pacing_gain(),
             State::ProbeRtt(_) => probe_rtt::PROBE_RTT_PACING_GAIN,
         }
@@ -119,6 +113,11 @@ impl State {
     /// True if the current state is Startup
     pub fn is_startup(&self) -> bool {
         matches!(self, State::Startup)
+    }
+
+    /// True if the current state is Drain
+    pub fn is_drain(&self) -> bool {
+        matches!(self, State::Drain)
     }
 
     /// True if the current state is ProbeBw
@@ -259,6 +258,7 @@ impl CongestionController for BbrCongestionController {
         );
 
         self.check_startup_done();
+        self.check_drain_done(random_generator, ack_receive_time);
 
         if self.full_pipe_estimator.filled_pipe() {
             self.adapt_upper_bounds(
