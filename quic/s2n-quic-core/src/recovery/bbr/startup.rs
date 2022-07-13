@@ -1,0 +1,38 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+use crate::recovery::{bbr, bbr::BbrCongestionController};
+use num_rational::Ratio;
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.6
+//# A constant specifying the minimum gain value for calculating the pacing rate that will
+//# allow the sending rate to double each round (4*ln(2) ~= 2.77)
+pub(crate) const STARTUP_PACING_GAIN: Ratio<u64> = Ratio::new_raw(277, 100);
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.6
+//# A constant specifying the minimum gain value for calculating the
+//# cwnd that will allow the sending rate to double each round (2.0)
+pub(crate) const STARTUP_CWND_GAIN: Ratio<u64> = Ratio::new_raw(2, 1);
+
+/// Methods related to the Startup state
+impl BbrCongestionController {
+    /// Checks if the Startup state is done and enters `Drain` if so
+    pub fn check_startup_done(&mut self) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.1.1
+        //# BBRCheckStartupDone():
+        //#   BBRCheckStartupFullBandwidth()
+        //#   BBRCheckStartupHighLoss()
+        //#   if (BBR.state == Startup and BBR.filled_pipe)
+        //#     BBREnterDrain()
+        if self.round_counter.round_start() {
+            self.full_pipe_estimator.on_round_start(
+                self.bw_estimator.rate_sample(),
+                self.data_rate_model.max_bw(),
+                self.recovery_state.in_recovery(),
+            );
+            if self.state.is_startup() && self.full_pipe_estimator.filled_pipe() {
+                self.state = bbr::State::Drain;
+            }
+        }
+    }
+}

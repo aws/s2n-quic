@@ -25,6 +25,7 @@ mod probe_bw;
 mod probe_rtt;
 mod recovery;
 mod round;
+mod startup;
 mod windowed_filter;
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.8
@@ -83,11 +84,6 @@ enum State {
 impl State {
     /// The dynamic gain factor used to scale BBR.bw to produce BBR.pacing_rate
     pub fn pacing_gain(&self) -> Ratio<u64> {
-        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.6
-        //# A constant specifying the minimum gain value for calculating the pacing rate that will
-        //# allow the sending rate to double each round (4*ln(2) ~= 2.77)
-        const STARTUP_PACING_GAIN: Ratio<u64> = Ratio::new_raw(277, 100);
-
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.2
         //# In Drain, BBR aims to quickly drain any queue created in Startup by switching to a
         //# pacing_gain well below 1.0, until any estimated queue has been drained. It uses a
@@ -96,7 +92,7 @@ impl State {
         const DRAIN_PACING_GAIN: Ratio<u64> = Ratio::new_raw(1, 2);
 
         match self {
-            State::Startup => STARTUP_PACING_GAIN,
+            State::Startup => startup::STARTUP_PACING_GAIN,
             State::Drain => DRAIN_PACING_GAIN,
             State::ProbeBw(probe_bw_state) => probe_bw_state.cycle_phase().pacing_gain(),
             State::ProbeRtt(_) => probe_rtt::PROBE_RTT_PACING_GAIN,
@@ -105,20 +101,15 @@ impl State {
 
     /// The dynamic gain factor used to scale the estimated BDP to produce a congestion window (cwnd)
     pub fn cwnd_gain(&self) -> Ratio<u64> {
-        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.6
-        //# A constant specifying the minimum gain value for calculating the
-        //# cwnd that will allow the sending rate to double each round (2.0)
-        const STARTUP_CWND_GAIN: Ratio<u64> = Ratio::new_raw(2, 1);
-
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.2
         //# BBREnterDrain():
         //#     BBR.state = Drain
         //#     BBR.pacing_gain = 1/BBRStartupCwndGain  /* pace slowly */
         //#     BBR.cwnd_gain = BBRStartupCwndGain      /* maintain cwnd */
-        const DRAIN_CWND_GAIN: Ratio<u64> = STARTUP_CWND_GAIN;
+        const DRAIN_CWND_GAIN: Ratio<u64> = startup::STARTUP_CWND_GAIN;
 
         match self {
-            State::Startup => STARTUP_CWND_GAIN,
+            State::Startup => startup::STARTUP_CWND_GAIN,
             State::Drain => DRAIN_CWND_GAIN,
             State::ProbeBw(_) => probe_bw::PROBE_BW_CWND_GAIN,
             State::ProbeRtt(_) => probe_rtt::PROBE_RTT_CWND_GAIN,
@@ -267,13 +258,7 @@ impl CongestionController for BbrCongestionController {
             self.cwnd,
         );
 
-        if self.round_counter.round_start() {
-            self.full_pipe_estimator.on_round_start(
-                self.bw_estimator.rate_sample(),
-                self.data_rate_model.max_bw(),
-                self.recovery_state.in_recovery(),
-            );
-        }
+        self.check_startup_done();
 
         if self.full_pipe_estimator.filled_pipe() {
             self.adapt_upper_bounds(
