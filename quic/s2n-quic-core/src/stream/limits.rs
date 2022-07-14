@@ -14,17 +14,17 @@ const DEFAULT_STREAM_MAX_SEND_BUFFER_SIZE: u32 = 512 * 1024;
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Limits {
     /// The maximum send buffer size for a Stream
-    pub max_send_buffer_size: LocalMaxSendBufferSize,
+    pub max_send_buffer_size: MaxSendBufferSize,
     /// The maximum number of unidirectional streams that may
     /// be opened concurrently by the local endpoint. This value
     /// is not communicated to the peer, it is only used for limiting
     /// concurrent streams opened locally by the application.
-    pub max_open_local_unidirectional_streams: LocalUniDirectionalLimit,
+    pub max_open_local_unidirectional_streams: LocalUnidirectional,
     /// The maximum number of bidirectional streams that may
     /// be opened concurrently by the local endpoint. This value
     /// is not communicated to the peer, it is only used for limiting
     /// concurrent streams opened locally by the application.
-    pub max_open_local_bidirectional_streams: LocalBiDirectionalLimit,
+    pub max_open_local_bidirectional_streams: LocalBidirectional,
 }
 
 impl Default for Limits {
@@ -35,9 +35,9 @@ impl Default for Limits {
 
 impl Limits {
     pub const RECOMMENDED: Self = Self {
-        max_send_buffer_size: LocalMaxSendBufferSize::RECOMMENDED,
-        max_open_local_unidirectional_streams: LocalUniDirectionalLimit::RECOMMENDED,
-        max_open_local_bidirectional_streams: LocalBiDirectionalLimit::RECOMMENDED,
+        max_send_buffer_size: MaxSendBufferSize::RECOMMENDED,
+        max_open_local_unidirectional_streams: LocalUnidirectional::RECOMMENDED,
+        max_open_local_bidirectional_streams: LocalBidirectional::RECOMMENDED,
     };
 }
 
@@ -70,9 +70,9 @@ macro_rules! varint_local_limits {
     };
 }
 
-local_limits!(LocalMaxSendBufferSize(u32));
+local_limits!(MaxSendBufferSize(u32));
 
-impl LocalMaxSendBufferSize {
+impl MaxSendBufferSize {
     pub const RECOMMENDED: Self = Self(DEFAULT_STREAM_MAX_SEND_BUFFER_SIZE);
 
     pub fn as_u32(self) -> u32 {
@@ -80,7 +80,7 @@ impl LocalMaxSendBufferSize {
     }
 }
 
-impl TryFrom<u32> for LocalMaxSendBufferSize {
+impl TryFrom<u32> for MaxSendBufferSize {
     type Error = ValidationError;
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
@@ -88,21 +88,19 @@ impl TryFrom<u32> for LocalMaxSendBufferSize {
     }
 }
 
-varint_local_limits!(LocalUniDirectionalLimit(VarInt));
+varint_local_limits!(LocalUnidirectional(VarInt));
 
-impl LocalUniDirectionalLimit {
+impl LocalUnidirectional {
     pub const RECOMMENDED: Self = Self(InitialMaxStreamsUni::RECOMMENDED.as_varint());
 }
 
-varint_local_limits!(LocalBiDirectionalLimit(VarInt));
+varint_local_limits!(LocalBidirectional(VarInt));
 
-impl LocalBiDirectionalLimit {
+impl LocalBidirectional {
     pub const RECOMMENDED: Self = Self(InitialMaxStreamsBidi::RECOMMENDED.as_varint());
 }
 
-// To maintain backwards API compatibility we need to convert from
-// `max_open_bidirectional_streams` to `max_open_local_bidirectional_streams`
-impl From<InitialMaxStreamsBidi> for LocalBiDirectionalLimit {
+impl From<InitialMaxStreamsBidi> for LocalBidirectional {
     fn from(value: InitialMaxStreamsBidi) -> Self {
         Self(value.as_varint())
     }
