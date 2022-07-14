@@ -287,7 +287,7 @@ impl State {
     }
 
     /// Start the `Cruise` cycle phase
-    pub fn start_cruise(&mut self) {
+    fn start_cruise(&mut self) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRStartProbeBW_CRUISE()
         //#   BBR.state = ProbeBW_CRUISE
@@ -346,7 +346,7 @@ impl State {
     }
 
     /// Start the `Down` cycle phase
-    pub fn start_down<Rnd: random::Generator>(
+    fn start_down<Rnd: random::Generator>(
         &mut self,
         congestion_state: &mut congestion::State,
         round_counter: &mut round::Counter,
@@ -399,7 +399,7 @@ impl BbrCongestionController {
     ///
     /// If `cruise_immediately` is true, `CyclePhase::Cruise` will be entered immediately
     /// after entering `CyclePhase::Down`
-    pub fn enter_probe_bw<Rnd: random::Generator>(
+    pub(super) fn enter_probe_bw<Rnd: random::Generator>(
         &mut self,
         cruise_immediately: bool,
         random_generator: &mut Rnd,
@@ -426,7 +426,7 @@ impl BbrCongestionController {
     }
 
     /// Transition the current Probe BW cycle phase if necessary
-    pub fn update_probe_bw_cycle_phase<Rnd: random::Generator>(
+    pub(super) fn update_probe_bw_cycle_phase<Rnd: random::Generator>(
         &mut self,
         random_generator: &mut Rnd,
         now: Timestamp,
@@ -534,7 +534,7 @@ impl BbrCongestionController {
     }
 
     /// Adapt the upper bounds lower or higher depending on the loss rate
-    pub fn adapt_upper_bounds<Rnd: random::Generator>(
+    pub(super) fn adapt_upper_bounds<Rnd: random::Generator>(
         &mut self,
         rate_sample: RateSample,
         bytes_acknowledged: usize,
@@ -643,7 +643,7 @@ impl BbrCongestionController {
     }
 
     /// Called when loss indicates the current inflight amount is too high
-    pub fn on_inflight_too_high<Rnd: random::Generator>(
+    pub(super) fn on_inflight_too_high<Rnd: random::Generator>(
         &mut self,
         is_app_limited: bool,
         bytes_in_flight: u32,

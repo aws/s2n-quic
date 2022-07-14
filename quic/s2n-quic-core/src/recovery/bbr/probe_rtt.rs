@@ -84,7 +84,7 @@ impl State {
 /// Methods related to the `ProbeRtt` state
 impl BbrCongestionController {
     /// Check if it is time to start probing for RTT changes, and enter the ProbeRtt state if so
-    pub fn check_probe_rtt<Rnd: random::Generator>(
+    pub(super) fn check_probe_rtt<Rnd: random::Generator>(
         &mut self,
         random_generator: &mut Rnd,
         now: Timestamp,
@@ -145,7 +145,7 @@ impl BbrCongestionController {
     }
 
     /// Exits the `ProbeRtt` state
-    pub fn exit_probe_rtt<Rnd: random::Generator>(
+    pub(super) fn exit_probe_rtt<Rnd: random::Generator>(
         &mut self,
         random_generator: &mut Rnd,
         now: Timestamp,
@@ -197,7 +197,7 @@ impl BbrCongestionController {
     }
 
     /// Returns the congestion window that should be used during the `ProbeRTT` state
-    pub fn probe_rtt_cwnd(&self) -> u32 {
+    pub(super) fn probe_rtt_cwnd(&self) -> u32 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.5
         //# BBRProbeRTTCwnd():
         //#    probe_rtt_cwnd = BBRBDPMultiple(BBR.bw, BBRProbeRTTCwndGain)

@@ -84,7 +84,7 @@ enum State {
 
 impl State {
     /// The dynamic gain factor used to scale BBR.bw to produce BBR.pacing_rate
-    pub fn pacing_gain(&self) -> Ratio<u64> {
+    fn pacing_gain(&self) -> Ratio<u64> {
         match self {
             State::Startup => startup::PACING_GAIN,
             State::Drain => drain::PACING_GAIN,
@@ -94,7 +94,7 @@ impl State {
     }
 
     /// The dynamic gain factor used to scale the estimated BDP to produce a congestion window (cwnd)
-    pub fn cwnd_gain(&self) -> Ratio<u64> {
+    fn cwnd_gain(&self) -> Ratio<u64> {
         match self {
             State::Startup => startup::CWND_GAIN,
             State::Drain => drain::CWND_GAIN,
@@ -104,22 +104,22 @@ impl State {
     }
 
     /// True if the current state is Startup
-    pub fn is_startup(&self) -> bool {
+    fn is_startup(&self) -> bool {
         matches!(self, State::Startup)
     }
 
     /// True if the current state is Drain
-    pub fn is_drain(&self) -> bool {
+    fn is_drain(&self) -> bool {
         matches!(self, State::Drain)
     }
 
     /// True if the current state is ProbeBw
-    pub fn is_probing_bw(&self) -> bool {
+    fn is_probing_bw(&self) -> bool {
         matches!(self, State::ProbeBw(_))
     }
 
     /// True if the current state is ProbeBw and the CyclePhase is `Up`
-    pub fn is_probing_bw_up(&self) -> bool {
+    fn is_probing_bw_up(&self) -> bool {
         if let State::ProbeBw(probe_bw_state) = self {
             return probe_bw_state.cycle_phase() == CyclePhase::Up;
         }
@@ -127,12 +127,12 @@ impl State {
     }
 
     /// True if the current state is ProbeRtt
-    pub fn is_probing_rtt(&self) -> bool {
+    fn is_probing_rtt(&self) -> bool {
         matches!(self, State::ProbeRtt(_))
     }
 
     /// Transition to the given `new_state`
-    pub fn transition_to(&mut self, new_state: State) {
+    fn transition_to(&mut self, new_state: State) {
         if cfg!(debug_assertions) {
             match &new_state {
                 // BBR is initialized in the Startup state, but may re-enter Startup after ProbeRtt

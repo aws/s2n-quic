@@ -26,7 +26,7 @@ pub(crate) const CWND_GAIN: Ratio<u64> = startup::CWND_GAIN;
 /// Methods related to the Drain state
 impl BbrCongestionController {
     /// Enter the `Drain` state
-    pub fn enter_drain(&mut self) {
+    pub(super) fn enter_drain(&mut self) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.2
         //# BBREnterDrain():
         //#   BBR.state = Drain
@@ -38,7 +38,7 @@ impl BbrCongestionController {
     }
 
     /// Checks if the `Drain` state is done and enters `ProbeBw` if so
-    pub fn check_drain_done<Rnd: random::Generator>(
+    pub(super) fn check_drain_done<Rnd: random::Generator>(
         &mut self,
         random_generator: &mut Rnd,
         now: Timestamp,
