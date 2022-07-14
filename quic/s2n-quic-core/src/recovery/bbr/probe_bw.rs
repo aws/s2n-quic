@@ -109,6 +109,25 @@ pub(crate) enum AckPhase {
     ProbeFeedback,
 }
 
+impl AckPhase {
+    /// Transition to the given `new_phase`
+    fn transition_to(&mut self, new_phase: AckPhase) {
+        if cfg!(debug_assertions) {
+            match new_phase {
+                AckPhase::Init => assert_eq!(*self, AckPhase::ProbeStopping),
+                AckPhase::ProbeStopping => {
+                    assert!(*self == AckPhase::Init || *self == AckPhase::ProbeStarting)
+                }
+                AckPhase::Refilling => assert_eq!(*self, AckPhase::ProbeStopping),
+                AckPhase::ProbeStarting => assert_eq!(*self, AckPhase::Refilling),
+                AckPhase::ProbeFeedback => assert_eq!(*self, AckPhase::ProbeStarting),
+            }
+        }
+
+        *self = new_phase;
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct State {
     /// The current mode for deciding how fast to send
@@ -293,7 +312,7 @@ impl State {
         //#   BBR.state = ProbeBW_UP
         //#   BBRRaiseInflightHiSlope()
 
-        self.ack_phase = AckPhase::ProbeStarting;
+        self.ack_phase.transition_to(AckPhase::ProbeStarting);
         round_counter.set_round_end(delivered_bytes);
         self.cycle_start_timestamp = Some(now);
         self.cycle_phase.transition_to(CyclePhase::Up);
@@ -321,7 +340,7 @@ impl State {
         data_rate_model.reset_lower_bound();
         self.bw_probe_up_rounds = 0;
         self.bw_probe_up_acks = 0;
-        self.ack_phase = AckPhase::Refilling;
+        self.ack_phase.transition_to(AckPhase::Refilling);
         round_counter.set_round_end(delivered_bytes);
         self.cycle_phase.transition_to(CyclePhase::Refill);
     }
@@ -349,7 +368,7 @@ impl State {
         self.bw_probe_up_cnt = u32::MAX;
         self.pick_probe_wait(random_generator);
         self.cycle_start_timestamp = Some(now);
-        self.ack_phase = AckPhase::ProbeStopping;
+        self.ack_phase.transition_to(AckPhase::ProbeStopping);
         round_counter.set_round_end(delivered_bytes);
         self.cycle_phase.transition_to(CyclePhase::Down);
     }
@@ -604,11 +623,13 @@ impl BbrCongestionController {
             match probe_bw_state.ack_phase {
                 AckPhase::ProbeStarting => {
                     // starting to get bw probing samples
-                    probe_bw_state.ack_phase = AckPhase::ProbeFeedback;
+                    probe_bw_state
+                        .ack_phase
+                        .transition_to(AckPhase::ProbeFeedback);
                 }
                 AckPhase::ProbeStopping => {
                     self.bw_probe_samples = false;
-                    probe_bw_state.ack_phase = AckPhase::Init;
+                    probe_bw_state.ack_phase.transition_to(AckPhase::Init);
 
                     if !rate_sample.is_app_limited {
                         self.data_rate_model.advance_max_bw_filter();
@@ -835,6 +856,7 @@ mod tests {
         let max_data_size = 1200;
         let now = NoopClock.get_time();
 
+        state.ack_phase = AckPhase::Refilling;
         state.cycle_phase = CyclePhase::Refill;
 
         state.start_up(
@@ -869,6 +891,7 @@ mod tests {
         data_volume_model.update_lower_bound(12000, 12000);
         data_rate_model.update_lower_bound(Bandwidth::ZERO);
 
+        state.ack_phase = AckPhase::ProbeStopping;
         state.cycle_phase = CyclePhase::Cruise;
 
         state.start_refill(
