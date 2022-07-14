@@ -34,7 +34,7 @@ pub(crate) struct State {
 }
 
 impl State {
-    /// Keeps BBR in the ProbeRTT state for max of (PROBE_RTT_DURATION, 1 round)
+    /// Keeps BBR in the `ProbeRTT` state for max of (PROBE_RTT_DURATION, 1 round)
     fn handle_probe_rtt(
         &mut self,
         bw_estimator: &mut bandwidth::Estimator,
@@ -75,13 +75,13 @@ impl State {
         }
     }
 
-    /// Returns true if the ProbeRtt state is done and should be exited
+    /// Returns true if the `ProbeRtt` state is done and should be exited
     pub fn is_done(&self, now: Timestamp) -> bool {
         self.round_done && self.timer.is_expired(now)
     }
 }
 
-/// Methods related to the ProbeRtt state
+/// Methods related to the `ProbeRtt` state
 impl BbrCongestionController {
     /// Check if it is time to start probing for RTT changes, and enter the ProbeRtt state if so
     pub fn check_probe_rtt<Rnd: random::Generator>(
@@ -133,7 +133,7 @@ impl BbrCongestionController {
         }
     }
 
-    /// Exits the ProbeRtt state
+    /// Exits the `ProbeRtt` state
     pub fn exit_probe_rtt<Rnd: random::Generator>(
         &mut self,
         random_generator: &mut Rnd,
@@ -163,11 +163,11 @@ impl BbrCongestionController {
             let cruise_immediately = true;
             self.enter_probe_bw(cruise_immediately, random_generator, now);
         } else {
-            self.state = bbr::State::Startup;
+            self.enter_startup();
         }
     }
 
-    /// Returns the congestion window that should be used during the ProbeRTT state
+    /// Returns the congestion window that should be used during the `ProbeRTT` state
     pub fn probe_rtt_cwnd(&self) -> u32 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.5
         //# BBRProbeRTTCwnd():

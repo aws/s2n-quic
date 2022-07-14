@@ -16,7 +16,21 @@ pub(crate) const CWND_GAIN: Ratio<u64> = Ratio::new_raw(2, 1);
 
 /// Methods related to the Startup state
 impl BbrCongestionController {
-    /// Checks if the Startup state is done and enters `Drain` if so
+    /// Enter the `Startup` state
+    pub fn enter_startup(&mut self) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.1.1
+        //# BBREnterStartup():
+        //#   BBR.state = Startup
+        //#   BBR.pacing_gain = BBRStartupPacingGain
+        //#   BBR.cwnd_gain = BBRStartupCwndGain
+
+        // BBR is initialized in the Startup state, but may re-enter Startup after ProbeRtt
+        debug_assert!(self.state.is_probing_rtt());
+
+        self.state = bbr::State::Startup;
+    }
+
+    /// Checks if the `Startup` state is done and enters `Drain` if so
     pub fn check_startup_done(&mut self) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.1.1
         //# BBRCheckStartupDone():
@@ -31,7 +45,7 @@ impl BbrCongestionController {
                 self.recovery_state.in_recovery(),
             );
             if self.state.is_startup() && self.full_pipe_estimator.filled_pipe() {
-                self.state = bbr::State::Drain;
+                self.enter_drain();
             }
         }
     }

@@ -3,7 +3,10 @@
 
 use crate::{
     random,
-    recovery::bbr::{startup, BbrCongestionController},
+    recovery::{
+        bbr,
+        bbr::{startup, BbrCongestionController},
+    },
     time::Timestamp,
 };
 use num_rational::Ratio;
@@ -25,7 +28,19 @@ pub(crate) const CWND_GAIN: Ratio<u64> = startup::CWND_GAIN;
 
 /// Methods related to the Drain state
 impl BbrCongestionController {
-    /// Checks if the Drain state is done and enters `ProbeBw` if so
+    /// Enter the `Drain` state
+    pub fn enter_drain(&mut self) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.2
+        //# BBREnterDrain():
+        //#   BBR.state = Drain
+        //#   BBR.pacing_gain = 1/BBRStartupCwndGain  /* pace slowly */
+        //#   BBR.cwnd_gain = BBRStartupCwndGain      /* maintain cwnd */
+        debug_assert!(self.state.is_startup());
+
+        self.state = bbr::State::Drain;
+    }
+
+    /// Checks if the `Drain` state is done and enters `ProbeBw` if so
     pub fn check_drain_done<Rnd: random::Generator>(
         &mut self,
         random_generator: &mut Rnd,
