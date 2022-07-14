@@ -243,6 +243,32 @@ impl CongestionController for BbrCongestionController {
         random_generator: &mut Rnd,
         ack_receive_time: Timestamp,
     ) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
+        //# On every ACK, the BBR algorithm executes the following BBRUpdateOnACK() steps in order
+        //# to update its network path model, update its state machine, and adjust its control
+        //# parameters to adapt to the updated model:
+        //#
+        //#  BBRUpdateOnACK():
+        //#     BBRUpdateModelAndState()
+        //#     BBRUpdateControlParameters()
+        //#
+        //#  BBRUpdateModelAndState():
+        //#     BBRUpdateLatestDeliverySignals()
+        //#     BBRUpdateCongestionSignals()
+        //#     BBRUpdateACKAggregation()
+        //#     BBRCheckStartupDone()
+        //#     BBRCheckDrain()
+        //#     BBRUpdateProbeBWCyclePhase()
+        //#     BBRUpdateMinRTT()
+        //#     BBRCheckProbeRTT()
+        //#     BBRAdvanceLatestDeliverySignals()
+        //#     BBRBoundBWForModel()
+        //#
+        //#   BBRUpdateControlParameters():
+        //#     BBRSetPacingRate()
+        //#     BBRSetSendQuantum()
+        //#     BBRSetCwnd()
+
         self.bw_estimator.on_ack(
             bytes_acknowledged,
             newest_acked_time_sent,

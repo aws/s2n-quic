@@ -104,6 +104,14 @@ impl BbrCongestionController {
         //#     if (rs.delivered > 0)
         //#       BBR.idle_restart = false
 
+        // `BBR.probe_rtt_done_stamp = 0`, which is equivalent to `probe_rtt::State.timer.cancel`, is
+        // not necessary, as the timer is contained with the `probe_rtt::State`, and is thus unarmed
+        // whenever BBR is not in the `ProbeRTT` state
+
+        // `BBR.ack_phase = ACKS_PROBE_STOPPING` is not performed here as `ack_phase` is only used by
+        // the `ProbeBW` state, which is initialized to `ACKS_PROBE_STOPPING` every time it is
+        // reentered
+
         if !self.state.is_probing_rtt()
             && self.data_volume_model.probe_rtt_expired()
             && !self.idle_restart
@@ -124,6 +132,8 @@ impl BbrCongestionController {
                 *self.bytes_in_flight,
                 now,
             );
+            // The RFC pseudocode exits `ProbeRTT` internal to `BBRHandleProbeRTT`, whereas this
+            // code checks if the `ProbeRTT` state is ready to exit here
             if probe_rtt_state.is_done(now) {
                 self.exit_probe_rtt(random_generator, now);
             }
@@ -140,6 +150,24 @@ impl BbrCongestionController {
         random_generator: &mut Rnd,
         now: Timestamp,
     ) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.4.4
+        //# BBRCheckProbeRTTDone():
+        //#  if (BBR.probe_rtt_done_stamp != 0 and
+        //#      Now() > BBR.probe_rtt_done_stamp)
+        //#    /* schedule next ProbeRTT: */
+        //#    BBR.probe_rtt_min_stamp = Now()
+        //#    BBRRestoreCwnd()
+        //#    BBRExitProbeRTT()
+
+        if cfg!(debug_assertions) {
+            // BBR.probe_rtt_done_stamp != 0 and Now() > BBR.probe_rtt_done_stamp should be
+            // checked by calling `probe_rtt_state.is_done(now)` prior to calling `exit_probe_rtt`
+            assert!(self.state.is_probing_rtt());
+            if let bbr::State::ProbeRtt(probe_rtt_state) = &self.state {
+                assert!(probe_rtt_state.is_done(now));
+            }
+        }
+
         // schedule next ProbeRTT:
         self.data_volume_model.schedule_next_probe_rtt(now);
         self.restore_cwnd();
