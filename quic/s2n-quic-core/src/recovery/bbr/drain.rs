@@ -3,10 +3,7 @@
 
 use crate::{
     random,
-    recovery::{
-        bbr,
-        bbr::{startup, BbrCongestionController},
-    },
+    recovery::bbr::{startup, BbrCongestionController, State},
     time::Timestamp,
 };
 use num_rational::Ratio;
@@ -35,9 +32,7 @@ impl BbrCongestionController {
         //#   BBR.state = Drain
         //#   BBR.pacing_gain = 1/BBRStartupCwndGain  /* pace slowly */
         //#   BBR.cwnd_gain = BBRStartupCwndGain      /* maintain cwnd */
-        debug_assert!(self.state.is_startup());
-
-        self.state = bbr::State::Drain;
+        self.state.transition_to(State::Drain);
     }
 
     /// Checks if the `Drain` state is done and enters `ProbeBw` if so

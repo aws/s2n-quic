@@ -130,6 +130,21 @@ impl State {
     pub fn is_probing_rtt(&self) -> bool {
         matches!(self, State::ProbeRtt(_))
     }
+
+    /// Transition to the given `new_state`
+    pub fn transition_to(&mut self, new_state: State) {
+        if cfg!(debug_assertions) {
+            match &new_state {
+                // BBR is initialized in the Startup state, but may re-enter Startup after ProbeRtt
+                State::Startup => assert!(self.is_probing_rtt()),
+                State::Drain => assert!(self.is_startup()),
+                State::ProbeBw(_) => assert!(self.is_drain() || self.is_probing_rtt()),
+                State::ProbeRtt(_) => {} // ProbeRtt may be entered anytime
+            }
+        }
+
+        *self = new_state;
+    }
 }
 
 /// A congestion controller that implements "Bottleneck Bandwidth and Round-trip propagation time"

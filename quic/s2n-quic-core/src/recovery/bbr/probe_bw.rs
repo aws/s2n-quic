@@ -378,8 +378,6 @@ impl BbrCongestionController {
         random_generator: &mut Rnd,
         now: Timestamp,
     ) {
-        debug_assert!(self.state.is_drain() || self.state.is_probing_rtt());
-
         let mut state = State::new();
         state.start_down(
             &mut self.congestion_state,
@@ -393,7 +391,7 @@ impl BbrCongestionController {
             state.start_cruise();
         }
 
-        self.state = bbr::State::ProbeBw(state)
+        self.state.transition_to(bbr::State::ProbeBw(state));
     }
 
     /// Transition the current Probe BW cycle phase if necessary

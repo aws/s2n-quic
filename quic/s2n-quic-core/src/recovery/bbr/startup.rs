@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::recovery::{bbr, bbr::BbrCongestionController};
+use crate::recovery::bbr::{BbrCongestionController, State};
 use num_rational::Ratio;
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.6
@@ -23,11 +23,7 @@ impl BbrCongestionController {
         //#   BBR.state = Startup
         //#   BBR.pacing_gain = BBRStartupPacingGain
         //#   BBR.cwnd_gain = BBRStartupCwndGain
-
-        // BBR is initialized in the Startup state, but may re-enter Startup after ProbeRtt
-        debug_assert!(self.state.is_probing_rtt());
-
-        self.state = bbr::State::Startup;
+        self.state.transition_to(State::Startup);
     }
 
     /// Checks if the `Startup` state is done and enters `Drain` if so

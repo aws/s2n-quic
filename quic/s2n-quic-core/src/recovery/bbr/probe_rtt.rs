@@ -108,7 +108,8 @@ impl BbrCongestionController {
             && self.data_volume_model.probe_rtt_expired()
             && !self.idle_restart
         {
-            self.state = bbr::State::ProbeRtt(State::default());
+            self.state
+                .transition_to(bbr::State::ProbeRtt(State::default()));
             self.save_cwnd();
             self.round_counter
                 .set_round_end(self.bw_estimator.delivered_bytes());
