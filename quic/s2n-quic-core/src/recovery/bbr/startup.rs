@@ -23,6 +23,9 @@ impl BbrCongestionController {
         //#   BBR.state = Startup
         //#   BBR.pacing_gain = BBRStartupPacingGain
         //#   BBR.cwnd_gain = BBRStartupCwndGain
+
+        // pacing_gain and cwnd_gain are managed with the State enum
+
         self.state.transition_to(State::Startup);
     }
 

@@ -378,6 +378,10 @@ impl BbrCongestionController {
         random_generator: &mut Rnd,
         now: Timestamp,
     ) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
+        //# BBREnterProbeBW():
+        //#     BBRStartProbeBW_DOWN()
+
         let mut state = State::new();
         state.start_down(
             &mut self.congestion_state,
