@@ -76,6 +76,22 @@ impl CyclePhase {
             CyclePhase::Up => UP_PACING_GAIN,
         }
     }
+
+    /// Transition to the given `new_phase`
+    fn transition_to(&mut self, new_phase: CyclePhase) {
+        if cfg!(debug_assertions) {
+            match new_phase {
+                CyclePhase::Down => assert_eq!(*self, CyclePhase::Up),
+                CyclePhase::Cruise => assert_eq!(*self, CyclePhase::Down),
+                CyclePhase::Refill => {
+                    assert!(*self == CyclePhase::Down || *self == CyclePhase::Cruise)
+                }
+                CyclePhase::Up => assert_eq!(*self, CyclePhase::Refill),
+            }
+        }
+
+        *self = new_phase;
+    }
 }
 
 /// How the incoming ACK stream relates to our bandwidth probing
@@ -117,7 +133,7 @@ impl State {
     /// Constructs new `probe_bw::State`
     fn new() -> Self {
         Self {
-            cycle_phase: CyclePhase::Down,
+            cycle_phase: CyclePhase::Up,
             ack_phase: AckPhase::Init,
             bw_probe_wait: Duration::ZERO,
             rounds_since_bw_probe: Counter::default(),
@@ -257,9 +273,7 @@ impl State {
         //# BBRStartProbeBW_CRUISE()
         //#   BBR.state = ProbeBW_CRUISE
 
-        debug_assert_eq!(self.cycle_phase, CyclePhase::Down);
-
-        self.cycle_phase = CyclePhase::Cruise
+        self.cycle_phase.transition_to(CyclePhase::Cruise);
     }
 
     /// Start the `Up` cycle phase
@@ -279,12 +293,10 @@ impl State {
         //#   BBR.state = ProbeBW_UP
         //#   BBRRaiseInflightHiSlope()
 
-        debug_assert_eq!(self.cycle_phase, CyclePhase::Refill);
-
         self.ack_phase = AckPhase::ProbeStarting;
         round_counter.set_round_end(delivered_bytes);
         self.cycle_start_timestamp = Some(now);
-        self.cycle_phase = CyclePhase::Up;
+        self.cycle_phase.transition_to(CyclePhase::Up);
         self.raise_inflight_hi_slope(cwnd, max_data_size);
     }
 
@@ -305,17 +317,13 @@ impl State {
         //#   BBRStartRound()
         //#   BBR.state = ProbeBW_REFILL
 
-        debug_assert!(
-            self.cycle_phase == CyclePhase::Down || self.cycle_phase == CyclePhase::Cruise
-        );
-
         data_volume_model.reset_lower_bound();
         data_rate_model.reset_lower_bound();
         self.bw_probe_up_rounds = 0;
         self.bw_probe_up_acks = 0;
         self.ack_phase = AckPhase::Refilling;
         round_counter.set_round_end(delivered_bytes);
-        self.cycle_phase = CyclePhase::Refill;
+        self.cycle_phase.transition_to(CyclePhase::Refill);
     }
 
     /// Start the `Down` cycle phase
@@ -343,7 +351,7 @@ impl State {
         self.cycle_start_timestamp = Some(now);
         self.ack_phase = AckPhase::ProbeStopping;
         round_counter.set_round_end(delivered_bytes);
-        self.cycle_phase = CyclePhase::Down;
+        self.cycle_phase.transition_to(CyclePhase::Down);
     }
 
     /// Randomly determine how long to wait before probing again
@@ -716,7 +724,7 @@ mod tests {
     fn new_probe_bw_state() {
         let state = State::new();
 
-        assert_eq!(CyclePhase::Down, state.cycle_phase);
+        assert_eq!(CyclePhase::Up, state.cycle_phase);
         assert_eq!(AckPhase::Init, state.ack_phase);
         assert_eq!(Duration::ZERO, state.bw_probe_wait);
         assert_eq!(Counter::new(0), state.rounds_since_bw_probe);
@@ -729,6 +737,7 @@ mod tests {
     fn is_time_to_probe_bw() {
         let mut state = State::new();
         let now = NoopClock.get_time();
+        state.cycle_phase.transition_to(CyclePhase::Down);
 
         // cycle_stamp hasn't been set yet
         assert!(!state.is_time_to_probe_bw(12000, 1200, now));
@@ -810,6 +819,7 @@ mod tests {
     #[test]
     fn start_cruise() {
         let mut state = State::new();
+        state.cycle_phase.transition_to(CyclePhase::Down);
 
         state.start_cruise();
 
