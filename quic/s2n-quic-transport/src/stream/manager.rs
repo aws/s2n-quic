@@ -239,7 +239,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
             initial_receive_window,
             desired_flow_control_window: initial_receive_window.as_u64() as u32,
             initial_send_window,
-            max_send_buffer_size: self.stream_limits.max_send_buffer_size,
+            max_send_buffer_size: self.stream_limits.max_send_buffer_size.as_u32(),
         }));
     }
 
