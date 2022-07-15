@@ -290,6 +290,13 @@ impl CongestionController for BbrCongestionController {
             self.state.is_probing_bw(),
             self.cwnd,
         );
+        self.data_volume_model.update_ack_aggregation(
+            self.data_rate_model.bw(),
+            bytes_acknowledged,
+            self.cwnd,
+            self.round_counter.round_count(),
+            ack_receive_time,
+        );
 
         self.check_startup_done();
         self.check_drain_done(random_generator, ack_receive_time);
@@ -305,6 +312,8 @@ impl CongestionController for BbrCongestionController {
                 self.update_probe_bw_cycle_phase(random_generator, ack_receive_time);
             }
         }
+        self.data_volume_model
+            .update_min_rtt(_rtt_estimator.latest_rtt(), ack_receive_time);
 
         self.check_probe_rtt(random_generator, ack_receive_time);
         self.congestion_state
