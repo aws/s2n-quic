@@ -9,7 +9,7 @@ use crate::{
 };
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls, endpoint};
-use s2n_tls::raw::{
+use s2n_tls::{
     config::{self, Config},
     enums::ClientAuthType,
     error::Error,
