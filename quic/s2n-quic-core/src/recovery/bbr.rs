@@ -20,11 +20,13 @@ use num_traits::One;
 mod congestion;
 mod data_rate;
 mod data_volume;
+mod drain;
 mod full_pipe;
 mod probe_bw;
 mod probe_rtt;
 mod recovery;
 mod round;
+mod startup;
 mod windowed_filter;
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.8
@@ -47,6 +49,104 @@ const HEADROOM: Ratio<u64> = Ratio::new_raw(85, 100);
 //# that follow an "ACK every other packet" delayed-ACK policy: 4 * SMSS.
 const MIN_PIPE_CWND_PACKETS: u16 = 4;
 
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.1.1
+//# The following state transition diagram summarizes the flow of control and the relationship between the different states:
+//#
+//#              |
+//#              V
+//#     +---> Startup  ------------+
+//#     |        |                 |
+//#     |        V                 |
+//#     |     Drain  --------------+
+//#     |        |                 |
+//#     |        V                 |
+//#     +---> ProbeBW_DOWN  -------+
+//#     | ^      |                 |
+//#     | |      V                 |
+//#     | |   ProbeBW_CRUISE ------+
+//#     | |      |                 |
+//#     | |      V                 |
+//#     | |   ProbeBW_REFILL  -----+
+//#     | |      |                 |
+//#     | |      V                 |
+//#     | |   ProbeBW_UP  ---------+
+//#     | |      |                 |
+//#     | +------+                 |
+//#     |                          |
+//#     +---- ProbeRTT <-----------+
+#[derive(Clone, Debug)]
+enum State {
+    Startup,
+    Drain,
+    ProbeBw(probe_bw::State),
+    ProbeRtt(probe_rtt::State),
+}
+
+impl State {
+    /// The dynamic gain factor used to scale BBR.bw to produce BBR.pacing_rate
+    fn pacing_gain(&self) -> Ratio<u64> {
+        match self {
+            State::Startup => startup::PACING_GAIN,
+            State::Drain => drain::PACING_GAIN,
+            State::ProbeBw(probe_bw_state) => probe_bw_state.cycle_phase().pacing_gain(),
+            State::ProbeRtt(_) => probe_rtt::PACING_GAIN,
+        }
+    }
+
+    /// The dynamic gain factor used to scale the estimated BDP to produce a congestion window (cwnd)
+    fn cwnd_gain(&self) -> Ratio<u64> {
+        match self {
+            State::Startup => startup::CWND_GAIN,
+            State::Drain => drain::CWND_GAIN,
+            State::ProbeBw(_) => probe_bw::CWND_GAIN,
+            State::ProbeRtt(_) => probe_rtt::CWND_GAIN,
+        }
+    }
+
+    /// True if the current state is Startup
+    fn is_startup(&self) -> bool {
+        matches!(self, State::Startup)
+    }
+
+    /// True if the current state is Drain
+    fn is_drain(&self) -> bool {
+        matches!(self, State::Drain)
+    }
+
+    /// True if the current state is ProbeBw
+    fn is_probing_bw(&self) -> bool {
+        matches!(self, State::ProbeBw(_))
+    }
+
+    /// True if the current state is ProbeBw and the CyclePhase is `Up`
+    fn is_probing_bw_up(&self) -> bool {
+        if let State::ProbeBw(probe_bw_state) = self {
+            return probe_bw_state.cycle_phase() == CyclePhase::Up;
+        }
+        false
+    }
+
+    /// True if the current state is ProbeRtt
+    fn is_probing_rtt(&self) -> bool {
+        matches!(self, State::ProbeRtt(_))
+    }
+
+    /// Transition to the given `new_state`
+    fn transition_to(&mut self, new_state: State) {
+        if cfg!(debug_assertions) {
+            match &new_state {
+                // BBR is initialized in the Startup state, but may re-enter Startup after ProbeRtt
+                State::Startup => assert!(self.is_probing_rtt()),
+                State::Drain => assert!(self.is_startup()),
+                State::ProbeBw(_) => assert!(self.is_drain() || self.is_probing_rtt()),
+                State::ProbeRtt(_) => {} // ProbeRtt may be entered anytime
+            }
+        }
+
+        *self = new_state;
+    }
+}
+
 /// A congestion controller that implements "Bottleneck Bandwidth and Round-trip propagation time"
 /// version 2 (BBRv2) as specified in <https://datatracker.ietf.org/doc/draft-cardwell-iccrg-bbr-congestion-control/>.
 ///
@@ -54,6 +154,7 @@ const MIN_PIPE_CWND_PACKETS: u16 = 4;
 /// and the Linux Kernel TCP BBRv2 implementation, see <https://github.com/google/bbr/blob/v2alpha/net/ipv4/tcp_bbr2.c>
 #[derive(Debug, Clone)]
 struct BbrCongestionController {
+    state: State,
     round_counter: round::Counter,
     bw_estimator: bandwidth::Estimator,
     full_pipe_estimator: full_pipe::Estimator,
@@ -71,13 +172,13 @@ struct BbrCongestionController {
     prior_cwnd: u32,
     recovery_state: recovery::State,
     congestion_state: congestion::State,
-    probe_bw_state: probe_bw::State,
-    probe_rtt_state: probe_rtt::State,
     data_rate_model: data_rate::Model,
     data_volume_model: data_volume::Model,
     max_datagram_size: u16,
     /// A boolean that is true if and only if a connection is restarting after being idle
     idle_restart: bool,
+    /// True if rate samples reflect bandwidth probing
+    bw_probe_samples: bool,
 }
 
 type BytesInFlight = Counter<u32>;
@@ -98,7 +199,7 @@ impl CongestionController for BbrCongestionController {
     }
 
     fn is_slow_start(&self) -> bool {
-        todo!()
+        self.state.is_startup()
     }
 
     fn requires_fast_retransmission(&self) -> bool {
@@ -142,6 +243,32 @@ impl CongestionController for BbrCongestionController {
         random_generator: &mut Rnd,
         ack_receive_time: Timestamp,
     ) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
+        //# On every ACK, the BBR algorithm executes the following BBRUpdateOnACK() steps in order
+        //# to update its network path model, update its state machine, and adjust its control
+        //# parameters to adapt to the updated model:
+        //#
+        //#  BBRUpdateOnACK():
+        //#     BBRUpdateModelAndState()
+        //#     BBRUpdateControlParameters()
+        //#
+        //#  BBRUpdateModelAndState():
+        //#     BBRUpdateLatestDeliverySignals()
+        //#     BBRUpdateCongestionSignals()
+        //#     BBRUpdateACKAggregation()
+        //#     BBRCheckStartupDone()
+        //#     BBRCheckDrain()
+        //#     BBRUpdateProbeBWCyclePhase()
+        //#     BBRUpdateMinRTT()
+        //#     BBRCheckProbeRTT()
+        //#     BBRAdvanceLatestDeliverySignals()
+        //#     BBRBoundBWForModel()
+        //#
+        //#   BBRUpdateControlParameters():
+        //#     BBRSetPacingRate()
+        //#     BBRSetSendQuantum()
+        //#     BBRSetCwnd()
+
         self.bw_estimator.on_ack(
             bytes_acknowledged,
             newest_acked_time_sent,
@@ -154,25 +281,25 @@ impl CongestionController for BbrCongestionController {
         );
         self.recovery_state
             .on_ack(self.round_counter.round_start(), newest_acked_time_sent);
-        let is_probing_bw = false; // TODO: track probing state
         self.congestion_state.update(
             newest_acked_packet_info,
             self.bw_estimator.rate_sample(),
             self.bw_estimator.delivered_bytes(),
             &mut self.data_rate_model,
             &mut self.data_volume_model,
-            is_probing_bw,
+            self.state.is_probing_bw(),
             self.cwnd,
         );
+        self.data_volume_model.update_ack_aggregation(
+            self.data_rate_model.bw(),
+            bytes_acknowledged,
+            self.cwnd,
+            self.round_counter.round_count(),
+            ack_receive_time,
+        );
 
-        if self.round_counter.round_start() {
-            self.full_pipe_estimator.on_round_start(
-                self.bw_estimator.rate_sample(),
-                self.data_rate_model.max_bw(),
-                self.recovery_state.in_recovery(),
-            );
-            self.probe_bw_state.on_round_start();
-        }
+        self.check_startup_done();
+        self.check_drain_done(random_generator, ack_receive_time);
 
         if self.full_pipe_estimator.filled_pipe() {
             self.adapt_upper_bounds(
@@ -181,11 +308,14 @@ impl CongestionController for BbrCongestionController {
                 random_generator,
                 ack_receive_time,
             );
-            // TODO: if self.state == State::Probe_BW
-            self.update_probe_bw_cycle_phase(random_generator, ack_receive_time);
+            if self.state.is_probing_bw() {
+                self.update_probe_bw_cycle_phase(random_generator, ack_receive_time);
+            }
         }
+        self.data_volume_model
+            .update_min_rtt(_rtt_estimator.latest_rtt(), ack_receive_time);
 
-        self.check_probe_rtt(*self.bytes_in_flight, random_generator, ack_receive_time);
+        self.check_probe_rtt(random_generator, ack_receive_time);
         self.congestion_state
             .advance(self.bw_estimator.rate_sample());
     }
@@ -232,7 +362,11 @@ impl BbrCongestionController {
     /// Calculates a bandwidth-delay product using the supplied `Bandwidth` and `gain`
     fn bdp_multiple(&self, bw: Bandwidth, gain: Ratio<u64>) -> u64 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
-        //# BBRBDPMultiple()
+        //# BBRBDPMultiple(gain):
+        //#   if (BBR.min_rtt == Inf)
+        //#       return InitialCwnd /* no valid RTT samples yet */
+        //#     BBR.bdp = BBR.bw * BBR.min_rtt
+        //#     return gain * BBR.bdp
 
         if let Some(min_rtt) = self.data_volume_model.min_rtt() {
             (gain * (bw * min_rtt)).to_integer()
@@ -247,6 +381,7 @@ impl BbrCongestionController {
     fn target_inflight(&self) -> u32 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.5.3
         //# BBRTargetInflight()
+        //#   return min(BBR.bdp, cwnd)
 
         self.bdp().min(self.cwnd as u64) as u32
     }
@@ -260,9 +395,15 @@ impl BbrCongestionController {
     fn max_inflight(&self) -> u64 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
         //# BBRUpdateMaxInflight()
+        //#   BBRUpdateAggregationBudget()
+        //#   inflight = BBRBDPMultiple(BBR.cwnd_gain)
+        //#   inflight += BBR.extra_acked
+        //#   BBR.max_inflight = BBRQuantizationBudget(inflight)
 
-        let cwnd_gain = Ratio::one(); // TODO: get cwnd_gain from State
-        let bdp = self.bdp_multiple(self.data_rate_model.bw(), cwnd_gain);
+        // max_inflight is calculated and returned from this function
+        // as needed, rather than maintained as a field
+
+        let bdp = self.bdp_multiple(self.data_rate_model.bw(), self.state.cwnd_gain());
         let inflight = bdp + self.data_volume_model.extra_acked();
         self.quantization_budget(inflight)
     }
@@ -271,6 +412,10 @@ impl BbrCongestionController {
     fn inflight(&self, bw: Bandwidth, gain: Ratio<u64>) -> u32 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
         //# BBRInflight(gain)
+        //#   inflight = BBRBDPMultiple(gain)
+        //#   return BBRQuantizationBudget(inflight)
+
+        // BBRInflight is defined in the RFC with and without a Bandwidth input
 
         let inflight = self.bdp_multiple(bw, gain);
         self.quantization_budget(inflight)
@@ -283,6 +428,11 @@ impl BbrCongestionController {
     fn inflight_with_headroom(&self) -> u32 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRInflightWithHeadroom()
+        //#   if (BBR.inflight_hi == Infinity)
+        //#     return Infinity
+        //#   headroom = max(1, BBRHeadroom * BBR.inflight_hi)
+        //#     return max(BBR.inflight_hi - headroom,
+        //#                BBRMinPipeCwnd)
 
         if self.data_volume_model.inflight_hi() == u64::MAX {
             return u32::MAX;
@@ -317,8 +467,7 @@ impl BbrCongestionController {
             .max(offload_budget)
             .max(self.minimum_window() as u64);
 
-        if self.probe_bw_state.cycle_phase() == CyclePhase::Up {
-            // TODO: Check BBR.state == ProbeBW
+        if self.state.is_probing_bw_up() {
             inflight += 2 * self.max_datagram_size as u64;
         }
 
@@ -329,6 +478,7 @@ impl BbrCongestionController {
     fn is_inflight_too_high(lost_bytes: u64, bytes_inflight: u32) -> bool {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
         //# IsInflightTooHigh()
+        //#   return (rs.lost > rs.tx_in_flight * BBRLossThresh)
 
         lost_bytes > (LOSS_THRESH * bytes_inflight).to_integer() as u64
     }
@@ -357,9 +507,12 @@ impl BbrCongestionController {
     fn save_cwnd(&mut self) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
         //# BBRSaveCwnd()
+        //#   if (!InLossRecovery() and BBR.state != ProbeRTT)
+        //#     return cwnd
+        //#   else
+        //#     return max(BBR.prior_cwnd, cwnd)
 
-        self.prior_cwnd = if !self.recovery_state.in_recovery() {
-            // TODO: && BBR.state != ProbeRTT
+        self.prior_cwnd = if !self.recovery_state.in_recovery() && !self.state.is_probing_rtt() {
             self.cwnd
         } else {
             self.prior_cwnd.max(self.cwnd)
@@ -370,6 +523,7 @@ impl BbrCongestionController {
     fn restore_cwnd(&mut self) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
         //# BBRRestoreCwnd()
+        //#   cwnd = max(cwnd, BBR.prior_cwnd)
 
         self.cwnd = self.cwnd.max(self.prior_cwnd);
     }

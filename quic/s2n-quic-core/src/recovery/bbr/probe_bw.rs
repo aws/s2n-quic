@@ -21,6 +21,12 @@ const MAX_BW_PROBE_UP_ROUNDS: u8 = 30;
 /// Max number of packet-timed rounds to wait before probing for bandwidth
 const MAX_BW_PROBE_ROUNDS: u8 = 63;
 
+/// Cwnd gain used in the Probe BW state
+///
+/// This value is defined in the table in
+/// https://www.ietf.org/archive/id/draft-cardwell-iccrg-bbr-congestion-control-02.html#section-4.6.1
+pub(crate) const CWND_GAIN: Ratio<u64> = Ratio::new_raw(2, 1);
+
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3
 //# a BBR flow in ProbeBW mode cycles through the four
 //# Probe bw states - DOWN, CRUISE, REFILL, and UP
@@ -70,6 +76,22 @@ impl CyclePhase {
             CyclePhase::Up => UP_PACING_GAIN,
         }
     }
+
+    /// Transition to the given `new_phase`
+    fn transition_to(&mut self, new_phase: CyclePhase) {
+        if cfg!(debug_assertions) {
+            match new_phase {
+                CyclePhase::Down => assert_eq!(*self, CyclePhase::Up),
+                CyclePhase::Cruise => assert_eq!(*self, CyclePhase::Down),
+                CyclePhase::Refill => {
+                    assert!(*self == CyclePhase::Down || *self == CyclePhase::Cruise)
+                }
+                CyclePhase::Up => assert_eq!(*self, CyclePhase::Refill),
+            }
+        }
+
+        *self = new_phase;
+    }
 }
 
 /// How the incoming ACK stream relates to our bandwidth probing
@@ -87,14 +109,31 @@ pub(crate) enum AckPhase {
     ProbeFeedback,
 }
 
+impl AckPhase {
+    /// Transition to the given `new_phase`
+    fn transition_to(&mut self, new_phase: AckPhase) {
+        if cfg!(debug_assertions) {
+            match new_phase {
+                AckPhase::Init => assert_eq!(*self, AckPhase::ProbeStopping),
+                AckPhase::ProbeStopping => {
+                    assert!(*self == AckPhase::Init || *self == AckPhase::ProbeStarting)
+                }
+                AckPhase::Refilling => assert_eq!(*self, AckPhase::ProbeStopping),
+                AckPhase::ProbeStarting => assert_eq!(*self, AckPhase::Refilling),
+                AckPhase::ProbeFeedback => assert_eq!(*self, AckPhase::ProbeStarting),
+            }
+        }
+
+        *self = new_phase;
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct State {
     /// The current mode for deciding how fast to send
     cycle_phase: CyclePhase,
     /// How the incoming ACK stream relates to our bandwidth probing
-    ///
-    /// TODO: Consider making a setter and enforcing state transitions
-    pub ack_phase: AckPhase,
+    ack_phase: AckPhase,
     /// A random duration to wait until probing for bandwidth
     bw_probe_wait: Duration,
     /// Packet-timed rounds since probed bw
@@ -105,25 +144,21 @@ pub(crate) struct State {
     bw_probe_up_acks: u32,
     /// cwnd-limited rounds in PROBE_UP
     bw_probe_up_rounds: u8,
-    /// True if the rate samples reflect bandwidth probing
-    bw_probe_samples: bool,
     /// Time of this cycle phase start
     cycle_start_timestamp: Option<Timestamp>,
 }
 
 impl State {
     /// Constructs new `probe_bw::State`
-    #[allow(dead_code)] // TODO: Remove when used
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
-            cycle_phase: CyclePhase::Down,
+            cycle_phase: CyclePhase::Up,
             ack_phase: AckPhase::Init,
             bw_probe_wait: Duration::ZERO,
             rounds_since_bw_probe: Counter::default(),
             bw_probe_up_cnt: u32::MAX,
             bw_probe_up_acks: 0,
             bw_probe_up_rounds: 0,
-            bw_probe_samples: false,
             cycle_start_timestamp: None,
         }
     }
@@ -146,6 +181,11 @@ impl State {
     ) -> bool {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.5.3
         //# BBRCheckTimeToProbeBW()
+        //#   if (BBRHasElapsedInPhase(BBR.bw_probe_wait) ||
+        //#       BBRIsRenoCoexistenceProbeTime())
+        //#     BBRStartProbeBW_REFILL()
+        //#     return true
+        //#   return false
 
         debug_assert!(
             self.cycle_phase == CyclePhase::Down || self.cycle_phase == CyclePhase::Cruise
@@ -170,6 +210,17 @@ impl State {
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRProbeInflightHiUpward()
+        //#   if (!is_cwnd_limited or cwnd < BBR.inflight_hi)
+        //#       return  /* not fully using inflight_hi, so don't grow it */
+        //#   BBR.bw_probe_up_acks += rs.newly_acked
+        //#   if (BBR.bw_probe_up_acks >= BBR.probe_up_cnt)
+        //#      delta = BBR.bw_probe_up_acks / BBR.probe_up_cnt
+        //#      BBR.bw_probe_up_acks -= delta * BBR.bw_probe_up_cnt
+        //#      BBR.inflight_hi += delta
+        //#   if (BBR.round_start)
+        //#      BBRRaiseInflightHiSlope()
+
+        // is_cwnd_limited and cwnd < BBR.inflight_hi is checked upstream
 
         self.bw_probe_up_acks += bytes_acknowledged as u32;
         // Increase inflight_hi by the number of bw_probe_up_cnt bytes within bw_probe_up_acks
@@ -188,7 +239,10 @@ impl State {
     /// Raise inflight_hi slope if appropriate
     fn raise_inflight_hi_slope(&mut self, cwnd: u32, max_data_size: u16) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
-        //# BBRRaiseInflightHiSlope()
+        //# BBRRaiseInflightHiSlope():
+        //#   growth_this_round = 1MSS << BBR.bw_probe_up_rounds
+        //#   BBR.bw_probe_up_rounds = min(BBR.bw_probe_up_rounds + 1, 30)
+        //#   BBR.probe_up_cnt = max(cwnd / growth_this_round, 1)
 
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.4
         //# BBR takes an approach where the additive increase to BBR.inflight_hi
@@ -205,6 +259,7 @@ impl State {
     fn has_elapsed_in_phase(&self, interval: Duration, now: Timestamp) -> bool {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRHasElapsedInPhase(interval)
+        //#   return Now() > BBR.cycle_stamp + interval
 
         self.cycle_start_timestamp
             .map_or(false, |cycle_stamp| now > cycle_stamp + interval)
@@ -219,6 +274,9 @@ impl State {
     fn is_reno_coexistence_probe_time(&self, target_inflight: u32, max_data_size: u16) -> bool {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.5.3
         //# BBRIsRenoCoexistenceProbeTime()
+        //#   reno_rounds = BBRTargetInflight()
+        //#   rounds = min(reno_rounds, 63)
+        //#   return BBR.rounds_since_bw_probe >= rounds
 
         let reno_rounds = target_inflight / max_data_size as u32;
         let rounds = reno_rounds
@@ -229,13 +287,12 @@ impl State {
     }
 
     /// Start the `Cruise` cycle phase
-    pub fn start_cruise(&mut self) {
+    fn start_cruise(&mut self) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRStartProbeBW_CRUISE()
+        //#   BBR.state = ProbeBW_CRUISE
 
-        debug_assert_eq!(self.cycle_phase, CyclePhase::Down);
-
-        self.cycle_phase = CyclePhase::Cruise
+        self.cycle_phase.transition_to(CyclePhase::Cruise);
     }
 
     /// Start the `Up` cycle phase
@@ -249,14 +306,16 @@ impl State {
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRStartProbeBW_UP()
+        //#   BBR.ack_phase = ACKS_PROBE_STARTING
+        //#   BBRStartRound()
+        //#   BBR.cycle_stamp = Now() /* start wall clock */
+        //#   BBR.state = ProbeBW_UP
+        //#   BBRRaiseInflightHiSlope()
 
-        debug_assert_eq!(self.cycle_phase, CyclePhase::Refill);
-
-        self.bw_probe_samples = true;
-        self.ack_phase = AckPhase::ProbeStarting;
+        self.ack_phase.transition_to(AckPhase::ProbeStarting);
         round_counter.set_round_end(delivered_bytes);
         self.cycle_start_timestamp = Some(now);
-        self.cycle_phase = CyclePhase::Up;
+        self.cycle_phase.transition_to(CyclePhase::Up);
         self.raise_inflight_hi_slope(cwnd, max_data_size);
     }
 
@@ -270,22 +329,24 @@ impl State {
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRStartProbeBW_REFILL()
-
-        debug_assert!(
-            self.cycle_phase == CyclePhase::Down || self.cycle_phase == CyclePhase::Cruise
-        );
+        //# BBRResetLowerBounds()
+        //#   BBR.bw_probe_up_rounds = 0
+        //#   BBR.bw_probe_up_acks = 0
+        //#   BBR.ack_phase = ACKS_REFILLING
+        //#   BBRStartRound()
+        //#   BBR.state = ProbeBW_REFILL
 
         data_volume_model.reset_lower_bound();
         data_rate_model.reset_lower_bound();
         self.bw_probe_up_rounds = 0;
         self.bw_probe_up_acks = 0;
-        self.ack_phase = AckPhase::Refilling;
+        self.ack_phase.transition_to(AckPhase::Refilling);
         round_counter.set_round_end(delivered_bytes);
-        self.cycle_phase = CyclePhase::Refill;
+        self.cycle_phase.transition_to(CyclePhase::Refill);
     }
 
     /// Start the `Down` cycle phase
-    pub fn start_down<Rnd: random::Generator>(
+    fn start_down<Rnd: random::Generator>(
         &mut self,
         congestion_state: &mut congestion::State,
         round_counter: &mut round::Counter,
@@ -295,14 +356,21 @@ impl State {
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRStartProbeBW_DOWN()
+        //#   BBRResetCongestionSignals()
+        //#   BBR.probe_up_cnt = Infinity /* not growing inflight_hi */
+        //#   BBRPickProbeWait()
+        //#   BBR.cycle_stamp = Now()  /* start wall clock */
+        //#   BBR.ack_phase  = ACKS_PROBE_STOPPING
+        //#   BBRStartRound()
+        //#   BBR.state = ProbeBW_DOWN
 
         congestion_state.reset();
         self.bw_probe_up_cnt = u32::MAX;
         self.pick_probe_wait(random_generator);
         self.cycle_start_timestamp = Some(now);
-        self.ack_phase = AckPhase::ProbeStopping;
+        self.ack_phase.transition_to(AckPhase::ProbeStopping);
         round_counter.set_round_end(delivered_bytes);
-        self.cycle_phase = CyclePhase::Down;
+        self.cycle_phase.transition_to(CyclePhase::Down);
     }
 
     /// Randomly determine how long to wait before probing again
@@ -327,82 +395,146 @@ impl State {
 
 /// Methods related to the ProbeBW state
 impl BbrCongestionController {
+    /// Enters the `ProbeBw` state
+    ///
+    /// If `cruise_immediately` is true, `CyclePhase::Cruise` will be entered immediately
+    /// after entering `CyclePhase::Down`
+    pub(super) fn enter_probe_bw<Rnd: random::Generator>(
+        &mut self,
+        cruise_immediately: bool,
+        random_generator: &mut Rnd,
+        now: Timestamp,
+    ) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
+        //# BBREnterProbeBW():
+        //#     BBRStartProbeBW_DOWN()
+
+        let mut state = State::new();
+        state.start_down(
+            &mut self.congestion_state,
+            &mut self.round_counter,
+            self.bw_estimator.delivered_bytes(),
+            random_generator,
+            now,
+        );
+
+        if cruise_immediately {
+            state.start_cruise();
+        }
+
+        self.state.transition_to(bbr::State::ProbeBw(state));
+    }
+
     /// Transition the current Probe BW cycle phase if necessary
-    pub fn update_probe_bw_cycle_phase<Rnd: random::Generator>(
+    pub(super) fn update_probe_bw_cycle_phase<Rnd: random::Generator>(
         &mut self,
         random_generator: &mut Rnd,
         now: Timestamp,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
-        //# BBRUpdateProbeBWCyclePhase()
+        //# BBRUpdateProbeBWCyclePhase():
+        //#    if (!BBR.filled_pipe)
+        //#      return  /* only handling steady-state behavior here */
+        //#    BBRAdaptUpperBounds()
+        //#    if (!IsInAProbeBWState())
+        //#      return /* only handling ProbeBW states here: */
+        //#
+        //#    switch (state)
+        //#
+        //#    ProbeBW_DOWN:
+        //#      if (BBRCheckTimeToProbeBW())
+        //#        return /* already decided state transition */
+        //#      if (BBRCheckTimeToCruise())
+        //#        BBRStartProbeBW_CRUISE()
+        //#
+        //#    ProbeBW_CRUISE:
+        //#      if (BBRCheckTimeToProbeBW())
+        //#        return /* already decided state transition */
+        //#
+        //#    ProbeBW_REFILL:
+        //#      /* After one round of REFILL, start UP */
+        //#      if (BBR.round_start)
+        //#        BBR.bw_probe_samples = 1
+        //#        BBRStartProbeBW_UP()
+        //#
+        //#    ProbeBW_UP:
+        //#      if (BBRHasElapsedInPhase(BBR.min_rtt) and
+        //#          inflight > BBRInflight(BBR.max_bw, 1.25))
+        //#       BBRStartProbeBW_DOWN()
 
         debug_assert!(
             self.full_pipe_estimator.filled_pipe(),
             "only handling steady-state behavior here"
         );
 
+        debug_assert!(
+            self.state.is_probing_bw(),
+            "only handling ProbeBw states here"
+        );
+
         let target_inflight = self.target_inflight();
+        let inflight = self.inflight(self.data_rate_model.max_bw(), self.state.pacing_gain());
+        let time_to_cruise = self.is_time_to_cruise();
 
-        // TODO: debug_assert(self.state == Probe_Bw, "only handling ProveBW states here")
-
-        match self.probe_bw_state.cycle_phase {
-            CyclePhase::Down | CyclePhase::Cruise => {
-                if self.probe_bw_state.is_time_to_probe_bw(
-                    target_inflight,
-                    self.max_datagram_size,
-                    now,
-                ) {
-                    self.probe_bw_state.start_refill(
-                        &mut self.data_volume_model,
-                        &mut self.data_rate_model,
-                        &mut self.round_counter,
-                        self.bw_estimator.delivered_bytes(),
-                    );
-                } else if self.probe_bw_state.cycle_phase == CyclePhase::Down
-                    && self.is_time_to_cruise()
-                {
-                    self.probe_bw_state.start_cruise();
-                }
+        if let bbr::State::ProbeBw(ref mut probe_bw_state) = self.state {
+            if self.round_counter.round_start() {
+                probe_bw_state.on_round_start();
             }
-            CyclePhase::Refill => {
-                // After one round of Refill, start Up
-                if self.round_counter.round_start() {
-                    self.probe_bw_state.start_up(
-                        &mut self.round_counter,
-                        self.bw_estimator.delivered_bytes(),
-                        self.cwnd,
+
+            match probe_bw_state.cycle_phase() {
+                CyclePhase::Down | CyclePhase::Cruise => {
+                    if probe_bw_state.is_time_to_probe_bw(
+                        target_inflight,
                         self.max_datagram_size,
                         now,
-                    );
+                    ) {
+                        probe_bw_state.start_refill(
+                            &mut self.data_volume_model,
+                            &mut self.data_rate_model,
+                            &mut self.round_counter,
+                            self.bw_estimator.delivered_bytes(),
+                        );
+                    } else if probe_bw_state.cycle_phase == CyclePhase::Down && time_to_cruise {
+                        probe_bw_state.start_cruise();
+                    }
                 }
-            }
-            CyclePhase::Up => {
-                let min_rtt = self
-                    .data_volume_model
-                    .min_rtt()
-                    .expect("at least one RTT has passed");
+                CyclePhase::Refill => {
+                    // After one round of Refill, start Up
+                    if self.round_counter.round_start() {
+                        self.bw_probe_samples = true;
+                        probe_bw_state.start_up(
+                            &mut self.round_counter,
+                            self.bw_estimator.delivered_bytes(),
+                            self.cwnd,
+                            self.max_datagram_size,
+                            now,
+                        );
+                    }
+                }
+                CyclePhase::Up => {
+                    let min_rtt = self
+                        .data_volume_model
+                        .min_rtt()
+                        .expect("at least one RTT has passed");
 
-                if self.probe_bw_state.has_elapsed_in_phase(min_rtt, now)
-                    && self.bytes_in_flight()
-                        > self.inflight(
-                            self.data_rate_model.max_bw(),
-                            self.probe_bw_state.cycle_phase.pacing_gain(),
-                        )
-                {
-                    self.probe_bw_state.start_down(
-                        &mut self.congestion_state,
-                        &mut self.round_counter,
-                        self.bw_estimator.delivered_bytes(),
-                        random_generator,
-                        now,
-                    );
+                    if probe_bw_state.has_elapsed_in_phase(min_rtt, now)
+                        && self.bytes_in_flight > inflight
+                    {
+                        probe_bw_state.start_down(
+                            &mut self.congestion_state,
+                            &mut self.round_counter,
+                            self.bw_estimator.delivered_bytes(),
+                            random_generator,
+                            now,
+                        );
+                    }
                 }
             }
         }
     }
 
     /// Adapt the upper bounds lower or higher depending on the loss rate
-    pub fn adapt_upper_bounds<Rnd: random::Generator>(
+    pub(super) fn adapt_upper_bounds<Rnd: random::Generator>(
         &mut self,
         rate_sample: RateSample,
         bytes_acknowledged: usize,
@@ -411,6 +543,20 @@ impl BbrCongestionController {
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRAdaptUpperBounds()
+        //#   if (BBR.ack_phase == ACKS_PROBE_STARTING and BBR.round_start)
+        //#      /* starting to get bw probing samples */
+        //#      BBR.ack_phase = ACKS_PROBE_FEEDBACK
+        //#    if (BBR.ack_phase == ACKS_PROBE_STOPPING and BBR.round_start)
+        //#      /* end of samples from bw probing phase */
+        //#      if (IsInAProbeBWState() and !rs.is_app_limited)
+        //#        BBRAdvanceMaxBwFilter()
+        //#
+        //#    if (!CheckInflightTooHigh())
+        //#      /* Loss rate is safe. Adjust upper bounds upward. */
+        //#      if (BBR.inflight_hi == Infinity or BBR.bw_hi == Infinity)
+        //#        return /* no upper bounds to raise */
+        //#      if (rs.tx_in_flight > BBR.inflight_hi)
+        //#        BBR.inflight_hi = rs.tx_in_flight
 
         debug_assert!(
             self.full_pipe_estimator.filled_pipe(),
@@ -423,7 +569,7 @@ impl BbrCongestionController {
         }
 
         if Self::is_inflight_too_high(rate_sample.lost_bytes, rate_sample.bytes_in_flight) {
-            if self.probe_bw_state.bw_probe_samples {
+            if self.bw_probe_samples {
                 // Inflight is too high and the sample is from bandwidth probing: lower inflight downward
                 self.on_inflight_too_high(
                     rate_sample.is_app_limited,
@@ -452,46 +598,52 @@ impl BbrCongestionController {
                     .update_upper_bound(rate_sample.bytes_in_flight as u64);
             }
 
-            if self.probe_bw_state.cycle_phase == CyclePhase::Up
-                && self.is_congestion_limited()
-                && self.cwnd as u64 >= self.data_volume_model.inflight_hi()
-            {
-                // inflight_hi is being fully utilized, so probe if we can increase it
-                self.probe_bw_state.probe_inflight_hi_upward(
-                    bytes_acknowledged,
-                    &mut self.data_volume_model,
-                    self.cwnd,
-                    self.max_datagram_size,
-                    self.round_counter.round_start(),
-                );
+            let congestion_limited = self.is_congestion_limited();
+            if let bbr::State::ProbeBw(ref mut probe_bw_state) = self.state {
+                if probe_bw_state.cycle_phase() == CyclePhase::Up
+                    && congestion_limited
+                    && self.cwnd as u64 >= self.data_volume_model.inflight_hi()
+                {
+                    // inflight_hi is being fully utilized, so probe if we can increase it
+                    probe_bw_state.probe_inflight_hi_upward(
+                        bytes_acknowledged,
+                        &mut self.data_volume_model,
+                        self.cwnd,
+                        self.max_datagram_size,
+                        self.round_counter.round_start(),
+                    );
+                }
             }
         }
     }
 
     /// Update AckPhase and advance the Max BW filter if necessary
     fn update_ack_phase(&mut self, rate_sample: RateSample) {
-        // TODO: let is_probe_bw = self.state == ProbeBw
-        let is_probe_bw = true;
-
-        match self.probe_bw_state.ack_phase {
-            AckPhase::ProbeStarting => {
-                // starting to get bw probing samples
-                self.probe_bw_state.ack_phase = AckPhase::ProbeFeedback;
-            }
-            AckPhase::ProbeStopping => {
-                self.probe_bw_state.bw_probe_samples = false;
-                self.probe_bw_state.ack_phase = AckPhase::Init;
-
-                if is_probe_bw && !rate_sample.is_app_limited {
-                    self.data_rate_model.advance_max_bw_filter();
+        if let bbr::State::ProbeBw(ref mut probe_bw_state) = self.state {
+            match probe_bw_state.ack_phase {
+                AckPhase::ProbeStarting => {
+                    // starting to get bw probing samples
+                    probe_bw_state
+                        .ack_phase
+                        .transition_to(AckPhase::ProbeFeedback);
                 }
+                AckPhase::ProbeStopping => {
+                    self.bw_probe_samples = false;
+                    probe_bw_state.ack_phase.transition_to(AckPhase::Init);
+
+                    if !rate_sample.is_app_limited {
+                        self.data_rate_model.advance_max_bw_filter();
+                    }
+                }
+                _ => {}
             }
-            _ => {}
+        } else {
+            self.bw_probe_samples = false;
         }
     }
 
     /// Called when loss indicates the current inflight amount is too high
-    pub fn on_inflight_too_high<Rnd: random::Generator>(
+    pub(super) fn on_inflight_too_high<Rnd: random::Generator>(
         &mut self,
         is_app_limited: bool,
         bytes_in_flight: u32,
@@ -501,23 +653,30 @@ impl BbrCongestionController {
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
         //# BBRHandleInflightTooHigh()
+        //# BBR.bw_probe_samples = 0;  /* only react once per bw probe */
+        //#    if (!rs.is_app_limited)
+        //#      BBR.inflight_hi = max(rs.tx_in_flight,
+        //#                            BBRTargetInflight() * BBRBeta))
+        //#    If (BBR.state == ProbeBW_UP)
+        //#      BBRStartProbeBW_DOWN()
 
-        self.probe_bw_state.bw_probe_samples = false; // only react once per bw probe
+        self.bw_probe_samples = false; // only react once per bw probe
         if !is_app_limited {
             self.data_volume_model.update_upper_bound(
                 (bytes_in_flight as u64).max((bbr::BETA * target_inflight as u64).to_integer()),
             )
         }
 
-        // TODO: Check self.state == State::ProbeBw
-        if self.probe_bw_state.cycle_phase == CyclePhase::Up {
-            self.probe_bw_state.start_down(
-                &mut self.congestion_state,
-                &mut self.round_counter,
-                self.bw_estimator.delivered_bytes(),
-                random_generator,
-                now,
-            );
+        if let bbr::State::ProbeBw(ref mut probe_bw_state) = self.state {
+            if probe_bw_state.cycle_phase() == CyclePhase::Up {
+                probe_bw_state.start_down(
+                    &mut self.congestion_state,
+                    &mut self.round_counter,
+                    self.bw_estimator.delivered_bytes(),
+                    random_generator,
+                    now,
+                );
+            }
         }
     }
 
@@ -525,9 +684,10 @@ impl BbrCongestionController {
     fn is_time_to_cruise(&self) -> bool {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRCheckTimeToCruise())
-
-        debug_assert_eq!(self.probe_bw_state.cycle_phase, CyclePhase::Down);
-
+        //#   if (inflight > BBRInflightWithHeadroom())
+        //#      return false /* not enough headroom */
+        //#   if (inflight <= BBRInflight(BBR.max_bw, 1.0))
+        //#      return true  /* inflight <= estimated BDP */
         if self.bytes_in_flight > self.inflight_with_headroom() {
             return false; // not enough headroom
         }
@@ -585,13 +745,12 @@ mod tests {
     fn new_probe_bw_state() {
         let state = State::new();
 
-        assert_eq!(CyclePhase::Down, state.cycle_phase);
+        assert_eq!(CyclePhase::Up, state.cycle_phase);
         assert_eq!(AckPhase::Init, state.ack_phase);
         assert_eq!(Duration::ZERO, state.bw_probe_wait);
         assert_eq!(Counter::new(0), state.rounds_since_bw_probe);
         assert_eq!(0, state.bw_probe_up_acks);
         assert_eq!(0, state.bw_probe_up_rounds);
-        assert!(!state.bw_probe_samples);
         assert_eq!(None, state.cycle_start_timestamp);
     }
 
@@ -599,6 +758,7 @@ mod tests {
     fn is_time_to_probe_bw() {
         let mut state = State::new();
         let now = NoopClock.get_time();
+        state.cycle_phase.transition_to(CyclePhase::Down);
 
         // cycle_stamp hasn't been set yet
         assert!(!state.is_time_to_probe_bw(12000, 1200, now));
@@ -680,6 +840,7 @@ mod tests {
     #[test]
     fn start_cruise() {
         let mut state = State::new();
+        state.cycle_phase.transition_to(CyclePhase::Down);
 
         state.start_cruise();
 
@@ -695,6 +856,7 @@ mod tests {
         let max_data_size = 1200;
         let now = NoopClock.get_time();
 
+        state.ack_phase = AckPhase::Refilling;
         state.cycle_phase = CyclePhase::Refill;
 
         state.start_up(
@@ -706,7 +868,6 @@ mod tests {
         );
 
         assert_eq!(CyclePhase::Up, state.cycle_phase());
-        assert!(state.bw_probe_samples);
         assert_eq!(AckPhase::ProbeStarting, state.ack_phase);
         assert_eq!(Some(now), state.cycle_start_timestamp);
 
@@ -730,6 +891,7 @@ mod tests {
         data_volume_model.update_lower_bound(12000, 12000);
         data_rate_model.update_lower_bound(Bandwidth::ZERO);
 
+        state.ack_phase = AckPhase::ProbeStopping;
         state.cycle_phase = CyclePhase::Cruise;
 
         state.start_refill(
