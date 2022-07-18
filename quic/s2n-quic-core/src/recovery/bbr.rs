@@ -13,6 +13,7 @@ use crate::{
 use core::{
     cmp::{max, min},
     convert::TryInto,
+    time::Duration,
 };
 use num_rational::Ratio;
 use num_traits::One;
@@ -126,6 +127,14 @@ impl State {
         false
     }
 
+    /// True if the current state is ProbeBw and the CyclePhase is `Cruise`
+    fn is_probing_bw_cruise(&self) -> bool {
+        if let State::ProbeBw(probe_bw_state) = self {
+            return probe_bw_state.cycle_phase() == CyclePhase::Cruise;
+        }
+        false
+    }
+
     /// True if the current state is ProbeRtt
     fn is_probing_rtt(&self) -> bool {
         matches!(self, State::ProbeRtt(_))
@@ -179,6 +188,12 @@ struct BbrCongestionController {
     idle_restart: bool,
     /// True if rate samples reflect bandwidth probing
     bw_probe_samples: bool,
+    /// The current pacing rate for a BBR flow, which controls inter-packet spacing
+    pacing_rate: Bandwidth,
+    /// The earliest pacing departure time for the next packet BBR schedules for transmission
+    next_departure_time: Option<Timestamp>,
+    /// The maximum size of a data aggregate scheduled and transmitted together
+    send_quantum: usize,
 }
 
 type BytesInFlight = Counter<u32>;
@@ -219,6 +234,7 @@ impl CongestionController for BbrCongestionController {
             self.bytes_in_flight
                 .try_add(sent_bytes)
                 .expect("sent_bytes should not exceed u32::MAX");
+            self.set_next_departure_time(sent_bytes, time_sent);
         }
 
         self.bw_estimator
@@ -318,6 +334,11 @@ impl CongestionController for BbrCongestionController {
         self.check_probe_rtt(random_generator, ack_receive_time);
         self.congestion_state
             .advance(self.bw_estimator.rate_sample());
+
+        // BBRUpdateControlParameters
+        self.set_pacing_rate(self.state.pacing_gain());
+        self.set_send_quantum();
+        self.set_cwnd(bytes_acknowledged);
     }
 
     fn on_packet_lost<Rnd: random::Generator>(
@@ -347,7 +368,11 @@ impl CongestionController for BbrCongestionController {
     }
 
     fn earliest_departure_time(&self) -> Option<Timestamp> {
-        todo!()
+        self.next_departure_time
+    }
+
+    fn send_quantum(&self) -> Option<usize> {
+        Some(self.send_quantum)
     }
 }
 
@@ -391,7 +416,6 @@ impl BbrCongestionController {
     ///
     /// Based on the BDP estimate (BBR.bdp), the aggregation estimate (BBR.extra_acked), the
     /// offload budget (BBR.offload_budget), and BBRMinPipeCwnd.
-    #[allow(dead_code)] // TODO: Remove when used
     fn max_inflight(&self) -> u64 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
         //# BBRUpdateMaxInflight()
@@ -461,7 +485,10 @@ impl BbrCongestionController {
         //#     inflight += 2
         //#   return inflight
 
-        let offload_budget = 1; // TODO: Track offload budget
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.4
+        //# BBRUpdateOffloadBudget():
+        //#   BBR.offload_budget = 3 * BBR.send_quantum
+        let offload_budget = 3 * self.send_quantum as u64;
 
         let mut inflight = inflight
             .max(offload_budget)
@@ -472,6 +499,69 @@ impl BbrCongestionController {
         }
 
         inflight
+    }
+
+    /// Sets the pacing rate used for determining the earliest departure time
+    #[inline]
+    fn set_pacing_rate(&mut self, pacing_gain: Ratio<u64>) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.5
+        //# The static discount factor of 1% used to scale BBR.bw to produce BBR.pacing_rate.
+        const PACING_MARGIN_PERCENT: u64 = 1;
+        const PACING_RATIO: Ratio<u64> = Ratio::new_raw(100 - PACING_MARGIN_PERCENT, 100);
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.2
+        //# BBRSetPacingRateWithGain(pacing_gain):
+        //#   rate = pacing_gain * bw * (100 - BBRPacingMarginPercent) / 100
+        //#   if (BBR.filled_pipe || rate > BBR.pacing_rate)
+        //#     BBR.pacing_rate = rate
+        let rate = self.data_rate_model.bw() * pacing_gain * PACING_RATIO;
+
+        if self.full_pipe_estimator.filled_pipe() || rate > self.pacing_rate {
+            self.pacing_rate = rate;
+        }
+    }
+
+    /// Sets the maximum size of data aggregate scheduled and transmitted together
+    #[inline]
+    fn set_send_quantum(&mut self) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.3
+        //# if (BBR.pacing_rate < 1.2 Mbps)
+        //#   floor = 1 * SMSS
+        //# else
+        //#   floor = 2 * SMSS
+        //# BBR.send_quantum = min(BBR.pacing_rate * 1ms, 64KBytes)
+        //# BBR.send_quantum = max(BBR.send_quantum, floor)
+
+        // 1.2 Mbps
+        const SEND_QUANTUM_THRESHOLD: Bandwidth =
+            Bandwidth::new(1_200_000 / 8, Duration::from_secs(1));
+        // 64KBytes
+        const MAX_SEND_QUANTUM: usize = 64_000;
+
+        let floor = if self.pacing_rate < SEND_QUANTUM_THRESHOLD {
+            self.max_datagram_size
+        } else {
+            self.max_datagram_size * 2
+        } as usize;
+
+        let send_quantum = (self.pacing_rate * Duration::from_millis(1)) as usize;
+        self.send_quantum = send_quantum.clamp(floor, MAX_SEND_QUANTUM);
+    }
+
+    /// Sets the next departure time based on the pacing rate for the next packet that is sent
+    #[inline]
+    fn set_next_departure_time(&mut self, packet_size: usize, now: Timestamp) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.2
+        //# BBR.next_departure_time = max(Now(), BBR.next_departure_time)
+        //# packet.departure_time = BBR.next_departure_time
+        //# pacing_delay = packet.size / BBR.pacing_rate
+        //# BBR.next_departure_time = BBR.next_departure_time + pacing_delay
+
+        // The packet currently being sent has already been delayed by the `next_departure_time`
+        // so we only need to base the `next_departure_time` on the current time + pacing_delay
+
+        let pacing_delay = packet_size as u64 / self.pacing_rate;
+        self.next_departure_time = Some(now + pacing_delay);
     }
 
     /// True if the amount of `lost_bytes` exceeds the BBR loss threshold
@@ -501,6 +591,86 @@ impl BbrCongestionController {
     #[inline]
     fn minimum_window(&self) -> u32 {
         (MIN_PIPE_CWND_PACKETS * self.max_datagram_size) as u32
+    }
+
+    /// Updates the congestion window based on the latest model
+    fn set_cwnd(&mut self, newly_acked: usize) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.6
+        //# BBRSetCwnd():
+        //#   BBRUpdateMaxInflight()
+        //#   BBRModulateCwndForRecovery()
+        //#   if (!BBR.packet_conservation) {
+        //#     if (BBR.filled_pipe)
+        //#       cwnd = min(cwnd + rs.newly_acked, BBR.max_inflight)
+        //#     else if (cwnd < BBR.max_inflight || C.delivered < InitialCwnd)
+        //#       cwnd = cwnd + rs.newly_acked
+        //#     cwnd = max(cwnd, BBRMinPipeCwnd)
+        //#  }
+        //#  BBRBoundCwndForProbeRTT()
+        //#  BBRBoundCwndForModel()
+
+        // TODO: Call BBRModulateCwndForRecovery() on each lost packet
+
+        let max_inflight = self.max_inflight().try_into().unwrap_or(u32::MAX);
+        let initial_cwnd = Self::initial_window(self.max_datagram_size);
+        let mut cwnd = self.cwnd;
+
+        if !self.recovery_state.packet_conservation() {
+            if self.full_pipe_estimator.filled_pipe() {
+                cwnd = (cwnd + newly_acked as u32).min(max_inflight);
+            } else if cwnd < max_inflight
+                || self.bw_estimator.delivered_bytes() < initial_cwnd as u64
+            {
+                cwnd += newly_acked as u32;
+            }
+        }
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.5
+        //# BBRBoundCwndForProbeRTT():
+        //#   if (BBR.state == ProbeRTT)
+        //#     cwnd = min(cwnd, BBRProbeRTTCwnd())
+        if self.state.is_probing_rtt() {
+            cwnd = cwnd.min(self.probe_rtt_cwnd());
+        }
+        self.cwnd = cwnd.clamp(self.minimum_window(), self.bound_cwnd_for_model());
+    }
+
+    /// Returns the maximum congestion window bound by recent congestion
+    fn bound_cwnd_for_model(&self) -> u32 {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.7
+        //# BBRBoundCwndForModel():
+        //#   cap = Infinity
+        //#   if (IsInAProbeBWState() and
+        //#       BBR.state != ProbeBW_CRUISE)
+        //#     cap = BBR.inflight_hi
+        //#   else if (BBR.state == ProbeRTT or
+        //#            BBR.state == ProbeBW_CRUISE)
+        //#     cap = BBRInflightWithHeadroom()
+        //#
+        //#   /* apply inflight_lo (possibly infinite): */
+        //#   cap = min(cap, BBR.inflight_lo)
+        //#   cap = max(cap, BBRMinPipeCwnd)
+        //#   cwnd = min(cwnd, cap)
+        let inflight_hi = self
+            .data_volume_model
+            .inflight_hi()
+            .try_into()
+            .unwrap_or(u32::MAX);
+        let inflight_lo = self
+            .data_volume_model
+            .inflight_lo()
+            .try_into()
+            .unwrap_or(u32::MAX);
+
+        let cap = if self.state.is_probing_bw() && !self.state.is_probing_bw_cruise() {
+            inflight_hi
+        } else if self.state.is_probing_rtt() || self.state.is_probing_bw_cruise() {
+            self.inflight_with_headroom()
+        } else {
+            u32::MAX
+        };
+
+        cap.min(inflight_lo).max(self.minimum_window())
     }
 
     /// Saves the last-known good congestion window (the latest cwnd unmodulated by loss recovery or ProbeRTT)
