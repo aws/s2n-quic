@@ -210,7 +210,10 @@ impl CongestionController for BbrCongestionController {
     }
 
     fn is_congestion_limited(&self) -> bool {
-        todo!()
+        let available_congestion_window = self
+            .congestion_window()
+            .saturating_sub(*self.bytes_in_flight);
+        available_congestion_window < self.max_datagram_size as u32
     }
 
     fn is_slow_start(&self) -> bool {
@@ -248,7 +251,7 @@ impl CongestionController for BbrCongestionController {
         _now: Timestamp,
         _rtt_estimator: &RttEstimator,
     ) {
-        todo!()
+        // BBRUpdateMinRTT() called in `on_ack`
     }
 
     fn on_ack<Rnd: random::Generator>(
@@ -256,7 +259,7 @@ impl CongestionController for BbrCongestionController {
         newest_acked_time_sent: Timestamp,
         bytes_acknowledged: usize,
         newest_acked_packet_info: Self::PacketInfo,
-        _rtt_estimator: &RttEstimator,
+        rtt_estimator: &RttEstimator,
         random_generator: &mut Rnd,
         ack_receive_time: Timestamp,
     ) {
@@ -285,6 +288,10 @@ impl CongestionController for BbrCongestionController {
         //#     BBRSetPacingRate()
         //#     BBRSetSendQuantum()
         //#     BBRSetCwnd()
+
+        self.bytes_in_flight
+            .try_sub(bytes_acknowledged)
+            .expect("bytes_acknowledged should not exceed u32::MAX");
 
         self.bw_estimator.on_ack(
             bytes_acknowledged,
@@ -335,7 +342,7 @@ impl CongestionController for BbrCongestionController {
             }
         }
         self.data_volume_model
-            .update_min_rtt(_rtt_estimator.latest_rtt(), ack_receive_time);
+            .update_min_rtt(rtt_estimator.latest_rtt(), ack_receive_time);
 
         self.check_probe_rtt(random_generator, ack_receive_time);
         self.congestion_state
@@ -358,7 +365,7 @@ impl CongestionController for BbrCongestionController {
     ) {
         self.bw_estimator.on_loss(lost_bytes as usize);
         if self.recovery_state.on_congestion_event(timestamp) {
-            // this congestion event caused us to enter recovery
+            // this congestion event caused the connection to enter recovery
             self.on_enter_fast_recovery();
         }
         self.full_pipe_estimator.on_packet_lost(new_loss_burst);
@@ -374,8 +381,11 @@ impl CongestionController for BbrCongestionController {
         self.max_datagram_size = max_datagram_size;
     }
 
-    fn on_packet_discarded(&mut self, _bytes_sent: usize) {
-        todo!()
+    fn on_packet_discarded(&mut self, bytes_sent: usize) {
+        self.bytes_in_flight
+            .try_sub(bytes_sent)
+            .expect("bytes sent should not exceed u32::MAX");
+        self.recovery_state.on_packet_discarded();
     }
 
     fn earliest_departure_time(&self) -> Option<Timestamp> {
@@ -795,9 +805,11 @@ impl BbrCongestionController {
             return;
         }
 
-        let lost_since_transmit = self.bw_estimator.lost_bytes() - packet_info.lost_bytes;
+        let lost_since_transmit = (self.bw_estimator.lost_bytes() - packet_info.lost_bytes)
+            .try_into()
+            .unwrap_or(u32::MAX);
 
-        if Self::is_inflight_too_high(lost_since_transmit, packet_info.bytes_in_flight) {
+        if Self::is_inflight_too_high(lost_since_transmit as u64, packet_info.bytes_in_flight) {
             let inflight_hi_from_lost_packet =
                 self.inflight_hi_from_lost_packet(lost_bytes, lost_since_transmit, packet_info);
             self.on_inflight_too_high(
@@ -814,7 +826,7 @@ impl BbrCongestionController {
     fn inflight_hi_from_lost_packet(
         &self,
         size: u32,
-        lost_since_transmit: u64,
+        lost_since_transmit: u32,
         packet_info: <BbrCongestionController as CongestionController>::PacketInfo,
     ) -> u32 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
@@ -830,17 +842,18 @@ impl BbrCongestionController {
         //#   inflight = inflight_prev + lost_prefix
         //#   return inflight
 
-        const LOSS_THRESH_INVERSE: Ratio<u64> = Ratio::new_raw(50, 49);
+        // The RFC passes a newly construct Rate Sample to BBRInflightHiFromLostPacket as
+        // a means for holding tx_in_flight and lost_since_transmit. Instead, we pass
+        // the required information directly.
 
         // What was in flight before this packet?
         let inflight_prev = packet_info.bytes_in_flight - size;
         // What was lost before this packet?
-        let lost_prev = lost_since_transmit - size as u64;
-        let lost_prefix = (LOSS_THRESH_INVERSE
-            * ((LOSS_THRESH * inflight_prev).to_integer() as u64 - lost_prev))
-            .to_integer();
+        let lost_prev = lost_since_transmit - size;
+        let lost_prefix =
+            ((LOSS_THRESH * inflight_prev - lost_prev) / (Ratio::one() - LOSS_THRESH)).to_integer();
         // At what inflight value did losses cross BBRLossThresh?
-        inflight_prev + lost_prefix as u32
+        inflight_prev + lost_prefix
     }
 
     /// Handles when the connection resumes transmitting after an idle period

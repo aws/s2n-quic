@@ -133,6 +133,18 @@ impl State {
             }
         }
     }
+
+    #[inline]
+    pub fn on_packet_discarded(&mut self) {
+        if let State::Conservation(recovery_start_time, FastRetransmission::RequiresTransmission) =
+            self
+        {
+            // If any of the discarded packets were lost, they will no longer be retransmitted
+            // so flip the Recovery status back to Idle so it is not waiting for a
+            // retransmission that may never come.
+            *self = State::Conservation(*recovery_start_time, FastRetransmission::Idle)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -223,5 +235,10 @@ mod tests {
         let mut state = State::Conservation(now, FastRetransmission::RequiresTransmission);
         assert!(state.on_ack(true, sent_time));
         assert_eq!(state, State::Recovered);
+
+        // Discarded packet sets FastRetransmission back to Idle
+        let mut state = State::Conservation(now, FastRetransmission::RequiresTransmission);
+        state.on_packet_discarded();
+        assert_eq!(state, State::Conservation(now, FastRetransmission::Idle));
     }
 }
