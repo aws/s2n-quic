@@ -333,12 +333,14 @@ impl<Config: endpoint::Config> Manager<Config> {
         &mut self,
         timestamp: Timestamp,
         frame: frame::Ack<A>,
+        packet_number: PacketNumber,
         random_generator: &mut Config::RandomGenerator,
         context: &mut Ctx,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         let space = self.space;
         let largest_acked_packet_number = space.new_packet_number(frame.largest_acknowledged());
+
         self.process_acks(
             timestamp,
             frame.ack_ranges().map(|ack_range| {
@@ -348,6 +350,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             largest_acked_packet_number,
             frame.ack_delay(),
             frame.ecn_counts,
+            packet_number,
             random_generator,
             context,
             publisher,
@@ -365,6 +368,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         largest_acked_packet_number: PacketNumber,
         ack_delay: Duration,
         ecn_counts: Option<EcnCounts>,
+        packet_number: PacketNumber,
         random_generator: &mut Config::RandomGenerator,
         context: &mut Ctx,
         publisher: &mut Pub,
@@ -384,6 +388,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         let (largest_newly_acked, includes_ack_eliciting) = self.process_ack_range(
             &mut newly_acked_packets,
             timestamp,
+            packet_number,
             ranges,
             context,
             publisher,
@@ -434,6 +439,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             [SentPacketInfo<packet_info_type!()>; ACKED_PACKETS_INITIAL_CAPACITY],
         >,
         timestamp: Timestamp,
+        packet_number: PacketNumber,
         ranges: impl Iterator<Item = PacketNumberRange>,
         context: &mut Ctx,
         publisher: &mut Pub,
@@ -442,6 +448,18 @@ impl<Config: endpoint::Config> Manager<Config> {
         let mut includes_ack_eliciting = false;
 
         for pn_range in ranges {
+            // The path the ack was received on
+            let rx_path_id = context.path_id();
+            let rx_path = context.path_mut();
+            publisher.on_ack_range_received(event::builder::AckRangeReceived {
+                packet_header: event::builder::PacketHeader::new(
+                    packet_number,
+                    publisher.quic_version(),
+                ),
+                path: path_event!(rx_path, rx_path_id),
+                ack_range: pn_range.into_event(),
+            });
+
             context.validate_packet_ack(timestamp, &pn_range)?;
             // notify components of packets acked
             context.on_packet_ack(timestamp, &pn_range);

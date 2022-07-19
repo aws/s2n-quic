@@ -707,6 +707,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         timestamp: Timestamp,
         path_id: path::Id,
         path_manager: &mut path::Manager<Config>,
+        packet_number: PacketNumber,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
         random_generator: &mut Config::RandomGenerator,
@@ -717,7 +718,14 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, local_id_registry, path_id, path_manager);
 
-        recovery_manager.on_ack_frame(timestamp, frame, random_generator, &mut context, publisher)
+        recovery_manager.on_ack_frame(
+            timestamp,
+            frame,
+            packet_number,
+            random_generator,
+            &mut context,
+            publisher,
+        )
     }
 
     fn handle_connection_close_frame(
