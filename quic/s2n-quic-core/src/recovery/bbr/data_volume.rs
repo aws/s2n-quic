@@ -145,6 +145,11 @@ impl Model {
     pub fn reset_lower_bound(&mut self) {
         self.inflight_lo = u64::MAX
     }
+
+    /// Sets the `extra_acked_interval_start` to the given `timestamp`
+    pub fn set_extra_acked_interval_start(&mut self, timestamp: Timestamp) {
+        self.extra_acked_interval_start = timestamp;
+    }
 }
 
 #[cfg(test)]

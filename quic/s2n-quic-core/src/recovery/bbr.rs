@@ -230,6 +230,7 @@ impl CongestionController for BbrCongestionController {
     ) -> Self::PacketInfo {
         if sent_bytes > 0 {
             self.recovery_state.on_packet_sent();
+            self.handle_restart_from_idle(time_sent);
 
             self.bytes_in_flight
                 .try_add(sent_bytes)
@@ -840,5 +841,43 @@ impl BbrCongestionController {
             .to_integer();
         // At what inflight value did losses cross BBRLossThresh?
         inflight_prev + lost_prefix as u32
+    }
+
+    /// Handles when the connection resumes transmitting after an idle period
+    #[inline]
+    fn handle_restart_from_idle(&mut self, now: Timestamp) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.4.3
+        //# BBRHandleRestartFromIdle():
+        //#   if (packets_in_flight == 0 and C.app_limited)
+        //#     BBR.idle_restart = true
+        //#        BBR.extra_acked_interval_start = Now()
+        //#     if (IsInAProbeBWState())
+        //#       BBRSetPacingRateWithGain(1)
+
+        if self.bytes_in_flight == 0 && self.bw_estimator.is_app_limited() {
+            self.idle_restart = true;
+            self.data_volume_model.set_extra_acked_interval_start(now);
+            if self.state.is_probing_bw() {
+                self.set_pacing_rate(Ratio::one());
+            }
+        }
+
+        // As an optimization, we can check if the ProbeRtt may be exited here, see #1412 for details.
+        // Without this optimization, ProbeRtt will be exited on the next received Ack.
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.4.3
+        //= type=TODO
+        //= tracking-issue=1412
+        //#   else if (BBR.state == ProbeRTT)
+        //#     BBRCheckProbeRTTDone()
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.4.2
+        //= type=TODO
+        //= tracking-issue=1412
+        //# As an optimization, when restarting from idle BBR checks to see if the connection is in
+        //# ProbeRTT and has met the exit conditions for ProbeRTT. If a connection goes idle during
+        //# ProbeRTT then often it will have met those exit conditions by the time it restarts, so
+        //# that the connection can restore the cwnd to its full value before it starts transmitting
+        //# a new flight of data.
     }
 }

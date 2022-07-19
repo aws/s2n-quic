@@ -176,6 +176,11 @@ impl Estimator {
         self.rate_sample
     }
 
+    /// Returns true if the path is currently in an application-limited period
+    pub fn is_app_limited(&self) -> bool {
+        self.app_limited_delivered_bytes.is_some()
+    }
+
     /// Called when a packet is transmitted
     pub fn on_packet_sent(
         &mut self,
