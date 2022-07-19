@@ -576,6 +576,7 @@ pub mod api {
         pub pto_count: u32,
         pub congestion_window: u32,
         pub bytes_in_flight: u32,
+        pub congestion_limited: bool,
     }
     impl<'a> Event for RecoveryMetrics<'a> {
         const NAME: &'static str = "recovery:metrics_updated";
@@ -1537,8 +1538,9 @@ pub mod tracing {
                 pto_count,
                 congestion_window,
                 bytes_in_flight,
+                congestion_limited,
             } = event;
-            tracing :: event ! (target : "recovery_metrics" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , min_rtt = tracing :: field :: debug (min_rtt) , smoothed_rtt = tracing :: field :: debug (smoothed_rtt) , latest_rtt = tracing :: field :: debug (latest_rtt) , rtt_variance = tracing :: field :: debug (rtt_variance) , max_ack_delay = tracing :: field :: debug (max_ack_delay) , pto_count = tracing :: field :: debug (pto_count) , congestion_window = tracing :: field :: debug (congestion_window) , bytes_in_flight = tracing :: field :: debug (bytes_in_flight));
+            tracing :: event ! (target : "recovery_metrics" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , min_rtt = tracing :: field :: debug (min_rtt) , smoothed_rtt = tracing :: field :: debug (smoothed_rtt) , latest_rtt = tracing :: field :: debug (latest_rtt) , rtt_variance = tracing :: field :: debug (rtt_variance) , max_ack_delay = tracing :: field :: debug (max_ack_delay) , pto_count = tracing :: field :: debug (pto_count) , congestion_window = tracing :: field :: debug (congestion_window) , bytes_in_flight = tracing :: field :: debug (bytes_in_flight) , congestion_limited = tracing :: field :: debug (congestion_limited));
         }
         #[inline]
         fn on_congestion(
@@ -3030,6 +3032,7 @@ pub mod builder {
         pub pto_count: u32,
         pub congestion_window: u32,
         pub bytes_in_flight: u32,
+        pub congestion_limited: bool,
     }
     impl<'a> IntoEvent<api::RecoveryMetrics<'a>> for RecoveryMetrics<'a> {
         #[inline]
@@ -3044,6 +3047,7 @@ pub mod builder {
                 pto_count,
                 congestion_window,
                 bytes_in_flight,
+                congestion_limited,
             } = self;
             api::RecoveryMetrics {
                 path: path.into_event(),
@@ -3055,6 +3059,7 @@ pub mod builder {
                 pto_count: pto_count.into_event(),
                 congestion_window: congestion_window.into_event(),
                 bytes_in_flight: bytes_in_flight.into_event(),
+                congestion_limited: congestion_limited.into_event(),
             }
         }
     }

@@ -98,9 +98,12 @@ macro_rules! recovery_event {
             pto_count: ($path.pto_backoff as f32).log2() as u32,
             congestion_window: $path.congestion_controller.congestion_window(),
             bytes_in_flight: $path.congestion_controller.bytes_in_flight(),
+            congestion_limited: $path.transmission_constraint().is_congestion_limited(),
         }
     };
 }
+
+pub(crate) use recovery_event;
 
 // Since `SentPacketInfo` is generic over a type supplied by the Congestion Controller implementation,
 // the type definition is particularly lengthy, especially since rust requires the fully-qualified
