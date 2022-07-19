@@ -707,6 +707,9 @@ impl BbrCongestionController {
         //# BBRModulateCwndForRecovery():
         //#   if (rs.newly_lost > 0)
         //#     cwnd = max(cwnd - rs.newly_lost, 1)
+
+        debug_assert_ne!(lost_bytes, 0);
+
         self.cwnd = self
             .cwnd
             .saturating_sub(lost_bytes)
