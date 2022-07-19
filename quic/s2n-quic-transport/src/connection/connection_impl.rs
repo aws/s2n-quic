@@ -18,7 +18,7 @@ use crate::{
     endpoint,
     path::{self, path_event},
     processed_packet::ProcessedPacket,
-    recovery::RttEstimator,
+    recovery::{recovery_event, RttEstimator},
     space::{PacketSpace, PacketSpaceManager},
     stream, transmission,
     transmission::interest::Provider as _,
@@ -903,6 +903,19 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         self.timers.pacing_timer.set(edt);
                     }
                 }
+
+                let meta = event::builder::ConnectionMeta {
+                    endpoint_type: Config::ENDPOINT_TYPE,
+                    id: self.internal_connection_id().into(),
+                    timestamp,
+                };
+                let path_id = self.path_manager.active_path_id().as_u8();
+                let path = self.path_manager.active_path();
+                subscriber.on_recovery_metrics(
+                    &mut self.event_context.context,
+                    &meta.into_event(),
+                    &recovery_event!(path_id, path).into_event(),
+                );
 
                 // PathValidationOnly handles transmission on non-active paths. Transmission
                 // on the active path should be handled prior to this.

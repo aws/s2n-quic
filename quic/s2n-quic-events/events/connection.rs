@@ -93,6 +93,7 @@ struct RecoveryMetrics<'a> {
     pto_count: u32,
     congestion_window: u32,
     bytes_in_flight: u32,
+    congestion_limited: bool,
 }
 
 #[event("recovery:congestion")]
