@@ -74,6 +74,17 @@ fn bandwidth_mul_overflow() {
     assert_eq!(result, 18446744073704000000 / 8 / 2);
 }
 
+#[test]
+fn u64_div_bandwidth() {
+    let bandwidth = Bandwidth::new(10_000, Duration::from_secs(1));
+    let bytes = 200_000;
+    assert_eq!(bytes / bandwidth, Duration::from_secs(20));
+
+    let bandwidth = Bandwidth::new(10_000, Duration::from_secs(1));
+    let bytes = 2_000;
+    assert_eq!(bytes / bandwidth, Duration::from_millis(200));
+}
+
 // first_sent_time and delivered_time typically hold values from recently acknowledged packets. However,
 // when  no packet has been sent yet, or there are no packets currently in flight, these values are initialized
 // with the time when a packet is sent. This test confirms first_sent_time and delivered_time are

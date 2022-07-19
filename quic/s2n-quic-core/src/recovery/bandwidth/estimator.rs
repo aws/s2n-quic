@@ -39,7 +39,7 @@ impl Bandwidth {
     };
 
     /// Constructs a new `Bandwidth` with the given bytes per interval
-    pub fn new(bytes: u64, interval: Duration) -> Self {
+    pub const fn new(bytes: u64, interval: Duration) -> Self {
         if interval.is_zero() {
             Bandwidth::ZERO
         } else {
@@ -79,6 +79,20 @@ impl core::ops::Mul<Duration> for Bandwidth {
                 (self.bits_per_second / MICRO_BITS_PER_BYTE).saturating_mul(rhs.as_micros() as u64)
             }
         }
+    }
+}
+
+/// Divides a count of bytes represented as a u64 by the given `Bandwidth`
+///
+/// Since `Bandwidth` is a rate of bytes over a time period, this division
+/// results in a `Duration` being returned, representing how long a path
+/// with the given `Bandwidth` would take to transmit the given number of
+/// bytes.
+impl core::ops::Div<Bandwidth> for u64 {
+    type Output = Duration;
+
+    fn div(self, rhs: Bandwidth) -> Self::Output {
+        Duration::from_micros(self * MICRO_BITS_PER_BYTE / rhs.bits_per_second)
     }
 }
 

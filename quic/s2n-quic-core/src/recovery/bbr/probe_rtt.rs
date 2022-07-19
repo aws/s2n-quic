@@ -204,6 +204,8 @@ impl BbrCongestionController {
         //#    probe_rtt_cwnd = max(probe_rtt_cwnd, BBRMinPipeCwnd)
         //#    return probe_rtt_cwnd#
 
+        debug_assert!(self.state.is_probing_rtt());
+
         self.bdp_multiple(self.data_rate_model.bw(), probe_rtt::CWND_GAIN)
             .try_into()
             .unwrap_or(u32::MAX)
