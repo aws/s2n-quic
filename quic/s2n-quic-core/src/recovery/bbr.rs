@@ -353,6 +353,7 @@ impl CongestionController for BbrCongestionController {
         self.bw_estimator.on_loss(lost_bytes as usize);
         self.recovery_state.on_congestion_event(timestamp);
         self.full_pipe_estimator.on_packet_lost(new_loss_burst);
+        self.modulate_cwnd_for_recovery(lost_bytes);
     }
 
     fn on_congestion_event(&mut self, event_time: Timestamp) {
@@ -609,20 +610,21 @@ impl BbrCongestionController {
         //#  BBRBoundCwndForProbeRTT()
         //#  BBRBoundCwndForModel()
 
-        // TODO: Call BBRModulateCwndForRecovery() on each lost packet
+        // From BBRModulateCwndForRecovery()
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
+        //#   if (BBR.packet_conservation)
+        //#     cwnd = max(cwnd, packets_in_flight + rs.newly_acked)
 
         let max_inflight = self.max_inflight().try_into().unwrap_or(u32::MAX);
         let initial_cwnd = Self::initial_window(self.max_datagram_size);
         let mut cwnd = self.cwnd;
 
-        if !self.recovery_state.packet_conservation() {
-            if self.full_pipe_estimator.filled_pipe() {
-                cwnd = (cwnd + newly_acked as u32).min(max_inflight);
-            } else if cwnd < max_inflight
-                || self.bw_estimator.delivered_bytes() < initial_cwnd as u64
-            {
-                cwnd += newly_acked as u32;
-            }
+        if self.recovery_state.packet_conservation() {
+            cwnd = cwnd.max(self.bytes_in_flight.saturating_add(newly_acked as u32));
+        } else if self.full_pipe_estimator.filled_pipe() {
+            cwnd = (cwnd + newly_acked as u32).min(max_inflight);
+        } else if cwnd < max_inflight || self.bw_estimator.delivered_bytes() < initial_cwnd as u64 {
+            cwnd += newly_acked as u32;
         }
 
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.5
@@ -696,5 +698,18 @@ impl BbrCongestionController {
         //#   cwnd = max(cwnd, BBR.prior_cwnd)
 
         self.cwnd = self.cwnd.max(self.prior_cwnd);
+    }
+
+    /// Modulates the congestion window based on newly lost bytes
+    #[inline]
+    fn modulate_cwnd_for_recovery(&mut self, lost_bytes: u32) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
+        //# BBRModulateCwndForRecovery():
+        //#   if (rs.newly_lost > 0)
+        //#     cwnd = max(cwnd - rs.newly_lost, 1)
+        self.cwnd = self
+            .cwnd
+            .saturating_sub(lost_bytes)
+            .max(self.minimum_window());
     }
 }
