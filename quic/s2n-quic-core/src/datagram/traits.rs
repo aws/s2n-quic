@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::connection;
+
 /// The datagram endpoint trait provides a way to implement custom unreliable datagram
 /// sending and receiving logic. The Sender type should be implemented for custom
 /// sending behavior, and the Receiver type should be implemented for custom
@@ -53,8 +55,11 @@ impl PreConnectionInfo {
 }
 
 pub trait Receiver: 'static + Send {
-    // A callback that gives users direct access to datagrams as they are read off a packet
+    /// A callback that gives users direct access to datagrams as they are read off a packet
     fn on_datagram(&mut self, datagram: &[u8]);
+
+    /// A callback used to notify the application in the case of a connection error
+    fn on_connection_error(&mut self, error: connection::Error);
 }
 pub trait Sender: 'static + Send {
     /// A callback that allows users to write datagrams directly to the packet
@@ -64,6 +69,9 @@ pub trait Sender: 'static + Send {
     ///
     /// Use method to trigger the on_transmit callback
     fn has_transmission_interest(&self) -> bool;
+
+    /// A callback used to notify the application in the case of a connection error
+    fn on_connection_error(&mut self, error: connection::Error);
 }
 
 /// A packet will be available during the on_transmit callback. Use the methods
