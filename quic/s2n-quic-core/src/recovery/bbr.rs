@@ -620,6 +620,7 @@ impl BbrCongestionController {
         let mut cwnd = self.cwnd;
 
         if self.recovery_state.packet_conservation() {
+            // Limit the cwnd as prescribed in BBRModulateCwndForRecovery()
             cwnd = cwnd.max(self.bytes_in_flight.saturating_add(newly_acked as u32));
         } else if self.full_pipe_estimator.filled_pipe() {
             cwnd = (cwnd + newly_acked as u32).min(max_inflight);
@@ -634,6 +635,11 @@ impl BbrCongestionController {
         if self.state.is_probing_rtt() {
             cwnd = cwnd.min(self.probe_rtt_cwnd());
         }
+
+        // Ensure the cwnd is at least the minimum window, and at most the bound defined by the model.
+        // This applies regardless of whether packet conservation is in place, as the pseudocode
+        // applies this clamping within BBRBoundCwndForModel(), which is called after all prior
+        // cwnd adjustments have been made.
         self.cwnd = cwnd.clamp(self.minimum_window(), self.bound_cwnd_for_model());
     }
 
