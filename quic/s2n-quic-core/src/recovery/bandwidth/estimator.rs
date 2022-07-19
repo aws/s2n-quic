@@ -166,6 +166,11 @@ impl Estimator {
         self.delivered_bytes
     }
 
+    /// Gets the total amount of data in bytes lost so far over the lifetime of the path
+    pub fn lost_bytes(&self) -> u64 {
+        self.lost_bytes
+    }
+
     /// Gets the latest [RateSample]
     pub fn rate_sample(&self) -> RateSample {
         self.rate_sample

@@ -295,8 +295,13 @@ impl CongestionController for BbrCongestionController {
             newest_acked_packet_info,
             self.bw_estimator.delivered_bytes(),
         );
-        self.recovery_state
-            .on_ack(self.round_counter.round_start(), newest_acked_time_sent);
+        if self
+            .recovery_state
+            .on_ack(self.round_counter.round_start(), newest_acked_time_sent)
+        {
+            // This ack caused recovery to be exited
+            self.on_exit_fast_recovery();
+        }
         self.congestion_state.update(
             newest_acked_packet_info,
             self.bw_estimator.rate_sample(),
@@ -344,16 +349,20 @@ impl CongestionController for BbrCongestionController {
     fn on_packet_lost<Rnd: random::Generator>(
         &mut self,
         lost_bytes: u32,
-        _packet_info: Self::PacketInfo,
+        packet_info: Self::PacketInfo,
         _persistent_congestion: bool,
         new_loss_burst: bool,
-        _random_generator: &mut Rnd,
+        random_generator: &mut Rnd,
         timestamp: Timestamp,
     ) {
         self.bw_estimator.on_loss(lost_bytes as usize);
-        self.recovery_state.on_congestion_event(timestamp);
+        if self.recovery_state.on_congestion_event(timestamp) {
+            // this congestion event caused us to enter recovery
+            self.on_enter_fast_recovery();
+        }
         self.full_pipe_estimator.on_packet_lost(new_loss_burst);
         self.modulate_cwnd_for_recovery(lost_bytes);
+        self.handle_lost_packet(lost_bytes, packet_info, random_generator, timestamp);
     }
 
     fn on_congestion_event(&mut self, event_time: Timestamp) {
@@ -571,6 +580,8 @@ impl BbrCongestionController {
         //# IsInflightTooHigh()
         //#   return (rs.lost > rs.tx_in_flight * BBRLossThresh)
 
+        // TODO: check ECN threshold
+
         lost_bytes > (LOSS_THRESH * bytes_inflight).to_integer() as u64
     }
 
@@ -720,5 +731,114 @@ impl BbrCongestionController {
             .cwnd
             .saturating_sub(lost_bytes)
             .max(self.minimum_window());
+    }
+
+    /// Called when entering fast recovery
+    #[inline]
+    fn on_enter_fast_recovery(&mut self) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
+        //# Upon entering Fast Recovery, set cwnd to the number of packets still in flight
+        //# (allowing at least one for a fast retransmit):
+        //#
+        //# BBROnEnterFastRecovery():
+        //#   BBR.prior_cwnd = BBRSaveCwnd()
+        //#   cwnd = packets_in_flight + max(rs.newly_acked, 1)
+        //#   BBR.packet_conservation = true
+
+        // packet_conservation is set to true in `recovery::State`
+
+        debug_assert!(self.recovery_state.in_recovery());
+
+        self.save_cwnd();
+        // BBROnEnterFastRecovery() tries to allow for at least one fast retransmit packet in the
+        // the congestion window. The recovery manager will already allow for this fast retransmit
+        // even if we are blocked by congestion control, as long as requires_fast_retransmission()
+        // returns true.
+        self.cwnd = self.bytes_in_flight();
+    }
+
+    /// Called when exiting fast recovery
+    #[inline]
+    fn on_exit_fast_recovery(&mut self) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
+        //# Upon exiting loss recovery (RTO recovery or Fast Recovery), either by repairing all
+        //# losses or undoing recovery, BBR restores the best-known cwnd value we had upon entering
+        //# loss recovery:
+        //#
+        //#   BBR.packet_conservation = false
+        //#   BBRRestoreCwnd()
+
+        // packet_conservation is set to false in `recovery::State`
+        self.restore_cwnd();
+    }
+
+    fn handle_lost_packet<Rnd: random::Generator>(
+        &mut self,
+        lost_bytes: u32,
+        packet_info: <BbrCongestionController as CongestionController>::PacketInfo,
+        random_generator: &mut Rnd,
+        now: Timestamp,
+    ) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
+        //# if (!BBR.bw_probe_samples)
+        //#   return /* not a packet sent while probing bandwidth */
+        //# rs.tx_in_flight = packet.tx_in_flight /* inflight at transmit */
+        //# rs.lost = C.lost - packet.lost /* data lost since transmit */
+        //# rs.is_app_limited = packet.is_app_limited;
+        //# if (IsInflightTooHigh(rs))
+        //#   rs.tx_in_flight = BBRInflightHiFromLostPacket(rs, packet)
+        //#   BBRHandleInflightTooHigh(rs)
+
+        if !self.bw_probe_samples {
+            // not a packet sent while probing bandwidth
+            return;
+        }
+
+        let lost_since_transmit = self.bw_estimator.lost_bytes() - packet_info.lost_bytes;
+
+        if Self::is_inflight_too_high(lost_since_transmit, packet_info.bytes_in_flight) {
+            let inflight_hi_from_lost_packet =
+                self.inflight_hi_from_lost_packet(lost_bytes, lost_since_transmit, packet_info);
+            self.on_inflight_too_high(
+                packet_info.is_app_limited,
+                packet_info.bytes_in_flight,
+                inflight_hi_from_lost_packet,
+                random_generator,
+                now,
+            );
+        }
+    }
+
+    /// Returns the prefix of packet where losses exceeded `LOSS_THRESH`
+    fn inflight_hi_from_lost_packet(
+        &self,
+        size: u32,
+        lost_since_transmit: u64,
+        packet_info: <BbrCongestionController as CongestionController>::PacketInfo,
+    ) -> u32 {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
+        //# BBRInflightHiFromLostPacket(rs, packet):
+        //#   size = packet.size
+        //#   /* What was in flight before this packet? */
+        //#   inflight_prev = rs.tx_in_flight - size
+        //#   /* What was lost before this packet? */
+        //#   lost_prev = rs.lost - size
+        //#   lost_prefix = (BBRLossThresh * inflight_prev - lost_prev) /
+        //#                 (1 - BBRLossThresh)
+        //#   /* At what inflight value did losses cross BBRLossThresh? */
+        //#   inflight = inflight_prev + lost_prefix
+        //#   return inflight
+
+        const LOSS_THRESH_INVERSE: Ratio<u64> = Ratio::new_raw(50, 49);
+
+        // What was in flight before this packet?
+        let inflight_prev = packet_info.bytes_in_flight - size;
+        // What was lost before this packet?
+        let lost_prev = lost_since_transmit - size as u64;
+        let lost_prefix = (LOSS_THRESH_INVERSE
+            * ((LOSS_THRESH * inflight_prev).to_integer() as u64 - lost_prev))
+            .to_integer();
+        // At what inflight value did losses cross BBRLossThresh?
+        inflight_prev + lost_prefix as u32
     }
 }

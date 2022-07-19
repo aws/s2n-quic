@@ -110,8 +110,10 @@ impl State {
     }
 
     /// Called when a congestion event occurs (packet loss or ECN CE count increase)
+    ///
+    /// Returns `true` if the congestion event caused recovery to be entered
     #[inline]
-    pub fn on_congestion_event(&mut self, now: Timestamp) {
+    pub fn on_congestion_event(&mut self, now: Timestamp) -> bool {
         match self {
             State::Recovered => {
                 //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
@@ -120,12 +122,14 @@ impl State {
                 //# recovery if the data in the lost packet is retransmitted and is
                 //# similar to TCP as described in Section 5 of [RFC6675].
                 *self = State::Conservation(now, FastRetransmission::RequiresTransmission);
+                true
             }
             State::Conservation(ref mut recovery_start_time, _)
             | State::Growth(ref mut recovery_start_time) => {
                 // BBR only allows recovery to end when there has been no congestion in a round, so
                 // extend the recovery period when congestion occurs while in recovery
-                *recovery_start_time = now
+                *recovery_start_time = now;
+                false
             }
         }
     }
@@ -176,7 +180,7 @@ mod tests {
         assert_eq!(state, State::Recovered);
 
         // Congestion event moves Recovered to Conservation
-        state.on_congestion_event(now);
+        assert!(state.on_congestion_event(now));
         assert_eq!(
             state,
             State::Conservation(now, FastRetransmission::RequiresTransmission)
@@ -193,7 +197,7 @@ mod tests {
 
         // Congestion moves the recovery start time forward
         let now = now + Duration::from_secs(5);
-        state.on_congestion_event(now);
+        assert!(!state.on_congestion_event(now));
         assert_eq!(state, State::Conservation(now, FastRetransmission::Idle));
 
         // Ack received that starts a new round moves Conservation to Growth
@@ -202,7 +206,7 @@ mod tests {
 
         // Congestion moves the recovery start time forward
         let now = now + Duration::from_secs(10);
-        state.on_congestion_event(now);
+        assert!(!state.on_congestion_event(now));
         assert_eq!(state, State::Growth(now));
 
         // Ack for a packet sent before the recovery start time does not exit recovery
