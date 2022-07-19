@@ -15,7 +15,6 @@ use s2n_tls::{
     enums::ClientAuthType,
     error::Error,
 };
-
 use std::sync::Arc;
 
 pub struct Client {
