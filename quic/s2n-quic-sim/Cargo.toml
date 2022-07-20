@@ -1,6 +1,7 @@
 [package]
 name = "s2n-quic-sim"
-version = "0.1.1"
+# this in an unpublished internal crate so the version should not be changed
+version = "0.1.0"
 description = "A simulation environment for s2n-quic"
 repository = "https://github.com/aws/s2n-quic"
 authors = ["AWS s2n"]
