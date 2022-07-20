@@ -2917,7 +2917,14 @@ fn helper_ack_packets_on_path(
         ecn_counts,
     };
 
-    let _ = manager.on_ack_frame(datagram.timestamp, frame, random, context, publisher);
+    let _ = manager.on_ack_frame(
+        datagram.timestamp,
+        frame,
+        acked_packets.start(),
+        random,
+        context,
+        publisher,
+    );
 
     for packet in acked_packets {
         assert!(manager.sent_packets.get(packet).is_none());

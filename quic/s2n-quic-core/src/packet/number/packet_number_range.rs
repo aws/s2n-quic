@@ -1,7 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::packet::number::PacketNumber;
+use crate::{event::IntoEvent, packet::number::PacketNumber};
+use core::ops::RangeInclusive;
 
 /// An inclusive range of `PacketNumber`s
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -39,6 +40,12 @@ impl PacketNumberRange {
     #[inline]
     pub fn end(&self) -> PacketNumber {
         self.end
+    }
+}
+
+impl IntoEvent<RangeInclusive<u64>> for PacketNumberRange {
+    fn into_event(self) -> RangeInclusive<u64> {
+        self.start().into_event()..=self.end().into_event()
     }
 }
 

@@ -539,6 +539,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         timestamp: Timestamp,
         path_id: path::Id,
         path_manager: &mut path::Manager<Config>,
+        packet_number: PacketNumber,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
         random_generator: &mut Config::RandomGenerator,
@@ -704,6 +705,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 path: path_event!(path, path_id),
                 frame: frame.into_event(),
             });
+
             match frame {
                 Frame::Padding(frame) => {
                     //= https://www.rfc-editor.org/rfc/rfc9000#section-19.1
@@ -743,6 +745,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                         datagram.timestamp,
                         path_id,
                         path_manager,
+                        packet_number,
                         handshake_status,
                         local_id_registry,
                         random_generator,

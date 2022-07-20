@@ -276,11 +276,39 @@ impl IntoEvent<builder::DuplicatePacketError> for crate::packet::number::Sliding
     }
 }
 
+struct EcnCounts {
+    /// A variable-length integer representing the total number of packets
+    /// received with the ECT(0) codepoint.
+    ect_0_count: u64,
+
+    /// A variable-length integer representing the total number of packets
+    /// received with the ECT(1) codepoint.
+    ect_1_count: u64,
+
+    /// A variable-length integer representing the total number of packets
+    /// received with the CE codepoint.
+    ce_count: u64,
+}
+
+impl IntoEvent<builder::EcnCounts> for crate::frame::ack::EcnCounts {
+    fn into_event(self) -> builder::EcnCounts {
+        builder::EcnCounts {
+            ect_0_count: self.ect_0_count.into_event(),
+            ect_1_count: self.ect_1_count.into_event(),
+            ce_count: self.ce_count.into_event(),
+        }
+    }
+}
+
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#A.7
 enum Frame {
     Padding,
     Ping,
-    Ack,
+    Ack {
+        ecn_counts: Option<EcnCounts>,
+        largest_acknowledged: u64,
+        ack_range_count: u64,
+    },
     ResetStream {
         id: u64,
         error_code: u64,
@@ -341,9 +369,15 @@ impl IntoEvent<builder::Frame> for &crate::frame::Ping {
     }
 }
 
-impl<AckRanges> IntoEvent<builder::Frame> for &crate::frame::Ack<AckRanges> {
+impl<AckRanges: crate::frame::ack::AckRanges> IntoEvent<builder::Frame>
+    for &crate::frame::Ack<AckRanges>
+{
     fn into_event(self) -> builder::Frame {
-        builder::Frame::Ack {}
+        builder::Frame::Ack {
+            ecn_counts: self.ecn_counts.map(|val| val.into_event()),
+            largest_acknowledged: self.largest_acknowledged().into_event(),
+            ack_range_count: self.ack_ranges().len() as u64,
+        }
     }
 }
 
@@ -697,18 +731,6 @@ enum AckAction {
         /// The store packet_number range in the IntervalSet
         stored_range: core::ops::RangeInclusive<u64>,
     },
-    // /// Acks were aggregated for delayed processing
-    // AggregatePending {
-    //     ///  number of packet_numbers aggregated
-    //     count: u16,
-    // },
-    // /// Pending Acks were processed
-    // ProcessPending {
-    //     ///  number of packet_numbers acked
-    //     count: u16,
-    // },
-    // /// Acks aggregation failed due to space constraints
-    // AggregationPendingFailed,
 }
 
 enum RetryDiscardReason<'a> {
