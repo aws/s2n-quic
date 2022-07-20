@@ -115,7 +115,6 @@ pub mod api {
         Ping {},
         #[non_exhaustive]
         Ack {
-            ack_delay: Duration,
             ecn_counts: Option<EcnCounts>,
             largest_acknowledged: u64,
             ack_range_count: u64,
@@ -1204,7 +1203,6 @@ pub mod api {
     {
         fn into_event(self) -> builder::Frame {
             builder::Frame::Ack {
-                ack_delay: Duration::from_micros(self.ack_delay.as_u64()).into_event(),
                 ecn_counts: self.ecn_counts.map(|val| val.into_event()),
                 largest_acknowledged: self.largest_acknowledged().into_event(),
                 ack_range_count: self.ack_ranges().len() as u64,
@@ -2328,7 +2326,6 @@ pub mod builder {
         Padding,
         Ping,
         Ack {
-            ack_delay: Duration,
             ecn_counts: Option<EcnCounts>,
             largest_acknowledged: u64,
             ack_range_count: u64,
@@ -2388,12 +2385,10 @@ pub mod builder {
                 Self::Padding => Padding {},
                 Self::Ping => Ping {},
                 Self::Ack {
-                    ack_delay,
                     ecn_counts,
                     largest_acknowledged,
                     ack_range_count,
                 } => Ack {
-                    ack_delay: ack_delay.into_event(),
                     ecn_counts: ecn_counts.into_event(),
                     largest_acknowledged: largest_acknowledged.into_event(),
                     ack_range_count: ack_range_count.into_event(),
