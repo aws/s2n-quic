@@ -69,12 +69,12 @@ impl State {
     /// Called when a packet is transmitted
     #[inline]
     pub fn on_packet_sent(&mut self) {
-        if let State::Conservation(recovery_start_time, FastRetransmission::RequiresTransmission) =
+        if let State::Conservation(_, transmission @ FastRetransmission::RequiresTransmission) =
             self
         {
             // A packet has been sent since we entered recovery (fast retransmission)
             // so flip the state back to idle.
-            *self = State::Conservation(*recovery_start_time, FastRetransmission::Idle)
+            *transmission = FastRetransmission::Idle;
         }
     }
 
@@ -135,13 +135,13 @@ impl State {
 
     #[inline]
     pub fn on_packet_discarded(&mut self) {
-        if let State::Conservation(recovery_start_time, FastRetransmission::RequiresTransmission) =
+        if let State::Conservation(_, transmission @ FastRetransmission::RequiresTransmission) =
             self
         {
             // If any of the discarded packets were lost, they will no longer be retransmitted
             // so flip the Recovery status back to Idle so it is not waiting for a
             // retransmission that may never come.
-            *self = State::Conservation(*recovery_start_time, FastRetransmission::Idle)
+            *transmission = FastRetransmission::Idle;
         }
     }
 }
