@@ -70,6 +70,17 @@ RUN set -eux; \
 
   echo "#!/usr/bin/env bash\n \
   set -e\n \
+  aws logs describe-export-tasks --task-id \$EXPORT_TASK_ID > task.json;\n \
+  export DONE=\$(cat task.json | jq '.exportTasks[0].status.code');\n \
+  export COMPLETED=\\\"COMPLETED\\\";\n \
+  echo \$COMPLETED;\n \
+  while [ \"\$DONE\" != \"\$COMPLETED\" ];\n \
+  do\n \
+  sleep 5;\n; \
+  echo \$DONE;\n \
+  aws logs describe-export-tasks --task-id \$EXPORT_TASK_ID > task.json;\n \
+  export DONE=\$(cat task.json | jq '.exportTasks[0].status.code');\n \
+  done;\n \
   aws s3 cp s3://\$S3_BUCKET/\$TIMESTAMP/\$PROTOCOL-client.json /tmp/client.json\n \
   aws s3 cp s3://\$S3_BUCKET/exportedlogs/\$EXPORT_TASK_ID/ /tmp/ --recursive\n \
   export DIR=\$(ls -d /tmp/*/)\n \
@@ -89,10 +100,11 @@ ENV RUST_BACKTRACE="1"
 COPY --from=builder /app/bin /tmp/netbench
 ENV DEBIAN_FRONTEND=noninteractive
 RUN set -eux; \
-  apt update && apt install -y dnsutils curl unzip sudo python3; \
+  apt update && apt install -y dnsutils curl unzip sudo python3 jq; \
   curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"; \
   unzip awscliv2.zip; \
   sudo ./aws/install; \
+  aws configure set default.region us-west-2; \
   chmod +x /tmp/netbench/*; \
   mv /tmp/netbench/* /usr/bin; \
   rm -r /tmp/netbench; \

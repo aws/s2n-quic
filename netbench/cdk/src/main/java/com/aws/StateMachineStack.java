@@ -33,6 +33,10 @@ import software.amazon.awscdk.services.ecs.ContainerImage;
 import software.amazon.awscdk.services.ecs.AwsLogDriverProps;
 import software.amazon.awscdk.services.ecs.LogDriver;
 
+import software.amazon.awscdk.services.iam.PolicyStatement;
+import software.amazon.awscdk.services.iam.Effect;
+import software.amazon.awscdk.services.iam.ServicePrincipal;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.List;
@@ -63,13 +67,19 @@ public class StateMachineStack extends Stack {
                 .invocationType(LambdaInvocationType.REQUEST_RESPONSE)
                 .build();
 
-        Wait waitFunction = Wait.Builder.create(this, "wait-step")
-            .time(WaitTime.duration(Duration.seconds(20)))
-            .build();
+        //Wait waitFunction = Wait.Builder.create(this, "wait-step")
+        //    .time(WaitTime.duration(Duration.seconds(60)))
+        //    .build();
 
         Ec2TaskDefinition reportGenerationTask = Ec2TaskDefinition.Builder
             .create(this, "report-generation-task")
             .build();
+
+        reportGenerationTask.addToTaskRolePolicy(PolicyStatement.Builder.create()
+            .actions(List.of("logs:DescribeExportTasks"))
+            .effect(Effect.ALLOW)
+            .resources(List.of("*"))
+            .build());
 
         Map<String, String> reportGenerationEnv = new HashMap<>();
         reportGenerationEnv.put("S3_BUCKET", bucket.getBucketName());
@@ -107,9 +117,9 @@ public class StateMachineStack extends Stack {
 
         clientTask.next(exportServerLogsLambdaInvoke);
 
-        exportServerLogsLambdaInvoke.next(waitFunction);
+        exportServerLogsLambdaInvoke.next(reportGenerationStep);
         
-        waitFunction.next(reportGenerationStep);
+        //waitFunction.next(reportGenerationStep);
 
         StateMachine stateMachine = StateMachine.Builder.create(this, "ecs-state-machine")
             .definition(timestampLambdaInvoke)

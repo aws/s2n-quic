@@ -11,9 +11,10 @@ exports.handler =  async (event, context) => {
     logGroupName: process.env.LOG_GROUP_NAME,
     to: new Date().getTime()
   };
+  console.log(params);
 
-var data = await cloudwatchlogs.createExportTask(params).promise();
-
-return data;
+  var data = await cloudwatchlogs.createExportTask(params).promise();
+  console.log(data);
+  return data;
 }
 

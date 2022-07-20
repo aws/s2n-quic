@@ -3,6 +3,7 @@
 package com.aws;
 
 import software.constructs.Construct;
+import software.amazon.awscdk.RemovalPolicy;
 import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.services.s3.Bucket;
 import software.amazon.awscdk.services.autoscaling.AutoScalingGroup;
@@ -110,7 +111,8 @@ class EcsStack extends Stack {
 
             LogGroup serviceLogGroup = LogGroup.Builder.create(this, "server-log-group")
                 .retention(RetentionDays.ONE_DAY)
-                .logGroupName("server-logs" + new SimpleDateFormat("dd-MM-yyyy-HH-mm-ss").format(new Date()).toString())
+                .logGroupName("server-logs" + new SimpleDateFormat("MM-dd-yyyy-HH-mm-ss").format(new Date()).toString())
+                .removalPolicy(RemovalPolicy.DESTROY)
                 .build();
 
             bucket.grantPut(new ServicePrincipal("logs." + props.getServerRegion() + ".amazonaws.com"));
@@ -155,6 +157,7 @@ class EcsStack extends Stack {
                 .logging(LogDriver.awsLogs(AwsLogDriverProps.builder().logGroup(serviceLogGroup).streamPrefix(stackType + "-ecs-task").build()))
                 .portMappings(List.of(PortMapping.builder().containerPort(3000).hostPort(3000)
                     .protocol(software.amazon.awscdk.services.ecs.Protocol.UDP).build()))
+                .privileged(true)
                 .build());
 
             bucket.grantWrite(task.getTaskRole());
@@ -190,6 +193,7 @@ class EcsStack extends Stack {
                 .logging(LogDriver.awsLogs(AwsLogDriverProps.builder().logRetention(RetentionDays.ONE_DAY).streamPrefix(stackType + "-ecs-task").build()))
                 .portMappings(List.of(PortMapping.builder().containerPort(3000).hostPort(3000)
                     .protocol(software.amazon.awscdk.services.ecs.Protocol.UDP).build()))
+                .privileged(true)
                 .build()); 
 
             bucket.grantWrite(task.getTaskRole());
