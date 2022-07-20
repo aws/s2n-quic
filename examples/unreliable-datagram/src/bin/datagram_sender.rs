@@ -42,7 +42,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 // Add datagrams to the send queue by passing in a closure that calls
                 // the desired datagram send function
                 let send_func = |x: &mut Sender| {
-                    match dbg!(x.send_datagram(Bytes::from_static(&[1, 2, 3]))) {
+                    match x.send_datagram(Bytes::from_static(&[1, 2, 3])) {
                         Ok(_) => {
                             // The datagram was successfully inserted into the send queue
                         }
