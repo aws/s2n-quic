@@ -68,7 +68,7 @@ RUN set -eux; \
 RUN set -eux; \
   cd netbench; \
   cargo build --bin netbench-scenarios; \
-  ./target/debug/netbench-scenarios --request_response.count 10 --request_response.request_size 100KB --request_response.response_size 10MB; \
+  ./target/debug/netbench-scenarios --request_response.response_size 1GB; \
   cp target/netbench/request_response.json /app/bin; \
   rm -rf target;
 
