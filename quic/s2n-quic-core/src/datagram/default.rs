@@ -133,16 +133,13 @@ impl Receiver {
     ///   [`Context`](core::task::Context) is notified.
     /// - `Poll::Ready(Datagram)` if there exists a datagram to be received.
     /// - `Poll::Ready(Err)` if a connection error occurred and no more datagrams will be received.
-    pub fn poll_recv_datagram(
-        &mut self,
-        cx: &mut Context,
-    ) -> Poll<Result<Bytes, connection::Error>> {
+    pub fn poll_recv_datagram(&mut self, cx: &mut Context) -> Poll<Result<Bytes, DatagramError>> {
         if let Some(datagram) = self.queue.pop_front() {
             Poll::Ready(Ok(datagram))
         // If there was some connection-level error we don't take the waker
         // and instead error as there will never be any datagrams to receive.
         } else if let Some(err) = self.error {
-            Poll::Ready(Err(err))
+            Poll::Ready(Err(DatagramError::ConnectionError { error: err }))
         } else {
             self.waker = Some(cx.waker().clone());
             Poll::Pending
@@ -241,13 +238,13 @@ pub struct Datagram {
 
 #[non_exhaustive]
 #[derive(Debug, PartialEq)]
-pub enum SendDatagramError {
+pub enum DatagramError {
     QueueAtCapacity,
     ExceedsPeerTransportLimits,
     ConnectionError { error: connection::Error },
 }
 
-impl fmt::Display for SendDatagramError {
+impl fmt::Display for DatagramError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::QueueAtCapacity { .. } => {
@@ -283,21 +280,21 @@ impl Sender {
     ///   retry sending after the [`Waker`](core::task::Waker) on the provided
     ///   [`Context`](core::task::Context) is notified.
     /// - `Poll::Ready(Ok(()))` if the datagram was enqueued for sending.
-    /// - `Poll::Ready(Err(SendDatagramError))` if an error occurred while trying
+    /// - `Poll::Ready(Err(DatagramError))` if an error occurred while trying
     ///   to send the datagram.
     pub fn poll_send_datagram(
         &mut self,
         data: &mut bytes::Bytes,
         cx: &mut Context,
-    ) -> Poll<Result<(), SendDatagramError>> {
+    ) -> Poll<Result<(), DatagramError>> {
         if data.len() as u64 > self.max_datagram_payload {
-            return Poll::Ready(Err(SendDatagramError::ExceedsPeerTransportLimits));
+            return Poll::Ready(Err(DatagramError::ExceedsPeerTransportLimits));
         }
 
         // If there was some connection-level error the user is not allowed to add
         // datagrams to the queue as they will never be sent.
         if let Some(err) = self.error {
-            return Poll::Ready(Err(SendDatagramError::ConnectionError { error: err }));
+            return Poll::Ready(Err(DatagramError::ConnectionError { error: err }));
         }
 
         if self.queue.len() == self.capacity {
@@ -319,15 +316,15 @@ impl Sender {
     pub fn send_datagram_forced(
         &mut self,
         data: bytes::Bytes,
-    ) -> Result<Option<Bytes>, SendDatagramError> {
+    ) -> Result<Option<Bytes>, DatagramError> {
         if data.len() as u64 > self.max_datagram_payload {
-            return Err(SendDatagramError::ExceedsPeerTransportLimits);
+            return Err(DatagramError::ExceedsPeerTransportLimits);
         }
 
         // If there was some connection-level error the user is not allowed to add
         // datagrams to the queue as they will never be sent.
         if let Some(err) = self.error {
-            return Err(SendDatagramError::ConnectionError { error: err });
+            return Err(DatagramError::ConnectionError { error: err });
         }
 
         // Pop oldest datagram off the queue if it is at capacity
@@ -348,19 +345,19 @@ impl Sender {
     /// Adds datagrams on the queue to be sent
     ///
     /// If the queue is full the newest datagram is not added and an error is returned.
-    pub fn send_datagram(&mut self, data: bytes::Bytes) -> Result<(), SendDatagramError> {
+    pub fn send_datagram(&mut self, data: bytes::Bytes) -> Result<(), DatagramError> {
         if data.len() as u64 > self.max_datagram_payload {
-            return Err(SendDatagramError::ExceedsPeerTransportLimits);
+            return Err(DatagramError::ExceedsPeerTransportLimits);
         }
 
         // If there was some connection-level error the user is not allowed to add
         // datagrams to the queue as they will never be sent.
         if let Some(err) = self.error {
-            return Err(SendDatagramError::ConnectionError { error: err });
+            return Err(DatagramError::ConnectionError { error: err });
         }
 
         if self.queue.len() == self.capacity {
-            return Err(SendDatagramError::QueueAtCapacity);
+            return Err(DatagramError::QueueAtCapacity);
         }
 
         let datagram = Datagram { data };
@@ -556,7 +553,7 @@ mod tests {
         default_sender.error = Some(conn_err);
         assert_eq!(
             default_sender.send_datagram_forced(bytes::Bytes::from_static(&[7, 8, 9])),
-            Err(SendDatagramError::ConnectionError { error: conn_err })
+            Err(DatagramError::ConnectionError { error: conn_err })
         );
         assert!(default_sender.queue.is_empty());
     }
@@ -581,7 +578,7 @@ mod tests {
         // is at capacity
         assert_eq!(
             default_sender.send_datagram(datagram_2),
-            Err(SendDatagramError::QueueAtCapacity)
+            Err(DatagramError::QueueAtCapacity)
         );
 
         // Check that the first two datagrams are still there
@@ -596,7 +593,7 @@ mod tests {
         default_sender.error = Some(conn_err);
         assert_eq!(
             default_sender.send_datagram(bytes::Bytes::from_static(&[7, 8, 9])),
-            Err(SendDatagramError::ConnectionError { error: conn_err })
+            Err(DatagramError::ConnectionError { error: conn_err })
         );
         assert!(default_sender.queue.is_empty());
     }
@@ -666,7 +663,7 @@ mod tests {
         default_sender.error = Some(conn_err);
         assert_eq!(
             default_sender.poll_send_datagram(&mut bytes::Bytes::from_static(&[7, 8, 9]), &mut cx),
-            Poll::Ready(Err(SendDatagramError::ConnectionError { error: conn_err }))
+            Poll::Ready(Err(DatagramError::ConnectionError { error: conn_err }))
         );
         assert!(default_sender.queue.is_empty());
     }
@@ -836,7 +833,9 @@ mod tests {
 
         assert_eq!(
             receiver.poll_recv_datagram(&mut cx),
-            Poll::Ready(Err(connection_error))
+            Poll::Ready(Err(DatagramError::ConnectionError {
+                error: connection_error
+            }))
         );
     }
 
