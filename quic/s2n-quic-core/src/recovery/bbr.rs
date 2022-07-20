@@ -377,7 +377,7 @@ impl CongestionController for BbrCongestionController {
         self.handle_lost_packet(lost_bytes, packet_info, random_generator, timestamp);
     }
 
-    fn on_congestion_event(&mut self, event_time: Timestamp) {
+    fn on_explicit_congestion(&mut self, _ce_count: u64, event_time: Timestamp) {
         self.recovery_state.on_congestion_event(event_time);
     }
 

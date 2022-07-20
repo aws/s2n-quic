@@ -585,7 +585,10 @@ fn validate_capable_congestion_experienced() {
         &mut publisher,
     );
 
-    assert_eq!(ValidationOutcome::CongestionExperienced, outcome);
+    assert_eq!(
+        ValidationOutcome::CongestionExperienced(1_u8.into()),
+        outcome
+    );
     assert!(controller.is_capable());
     if let State::Capable(timer) = controller.state {
         assert_eq!(
@@ -730,7 +733,10 @@ fn validate_capable_after_restart() {
         &mut publisher,
     );
 
-    assert_eq!(ValidationOutcome::CongestionExperienced, outcome);
+    assert_eq!(
+        ValidationOutcome::CongestionExperienced(1_u8.into()),
+        outcome
+    );
     assert!(controller.is_capable());
     if let State::Capable(timer) = controller.state {
         assert_eq!(

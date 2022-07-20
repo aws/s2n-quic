@@ -168,6 +168,8 @@ impl core::fmt::Display for VarInt {
 impl VarInt {
     pub const MAX: Self = Self(MAX_VARINT_VALUE);
 
+    pub const ZERO: Self = Self(0);
+
     #[cfg(any(feature = "generator", test))]
     const GENERATOR: core::ops::RangeInclusive<u64> = 0..=MAX_VARINT_VALUE;
 

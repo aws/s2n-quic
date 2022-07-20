@@ -702,7 +702,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             publisher,
         );
 
-        if matches!(outcome, ValidationOutcome::CongestionExperienced) {
+        if let ValidationOutcome::CongestionExperienced(ce_count) = outcome {
             let slow_start = context.path().congestion_controller.is_slow_start();
             let congestion_window = context.path().congestion_controller.congestion_window();
             //= https://www.rfc-editor.org/rfc/rfc9002#section-7.1
@@ -713,7 +713,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             context
                 .path_mut()
                 .congestion_controller
-                .on_congestion_event(timestamp);
+                .on_explicit_congestion(ce_count.as_u64(), timestamp);
             if slow_start && !context.path().congestion_controller.is_slow_start() {
                 let path = context.path();
                 publisher.on_slow_start_exited(event::builder::SlowStartExited {
