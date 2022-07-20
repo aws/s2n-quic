@@ -35,9 +35,6 @@ import software.amazon.awscdk.services.stepfunctions.tasks.EcsRunTask;
 import software.amazon.awscdk.services.stepfunctions.IntegrationPattern;
 import software.amazon.awscdk.services.stepfunctions.tasks.EcsEc2LaunchTarget;
 import software.amazon.awscdk.services.stepfunctions.tasks.ContainerOverride;
-import software.amazon.awscdk.services.stepfunctions.tasks.TaskEnvironmentVariable;
-import software.amazon.awscdk.services.stepfunctions.JsonPath;
-
 import software.amazon.awscdk.services.iam.PolicyStatement;
 import software.amazon.awscdk.services.iam.Effect;
 import software.amazon.awscdk.services.iam.ServicePrincipal;
@@ -201,13 +198,8 @@ class EcsStack extends Stack {
                 .cluster(cluster)
                 .taskDefinition(task)
                 .launchTarget(EcsEc2LaunchTarget.Builder.create().build())
-                .inputPath("$.Payload")
                 .containerOverrides(List.of(ContainerOverride.builder()
                 .containerDefinition(clientContainer)
-                .environment(List.of(TaskEnvironmentVariable.builder()
-                    .name("TIMESTAMP")
-                    .value(JsonPath.stringAt("$.timestamp"))
-                    .build()))
                 .build()))
                 .build();
         }

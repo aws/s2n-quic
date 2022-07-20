@@ -85,7 +85,7 @@ RUN set -eux; \
     export SERVER_0=\$(dig +short \$DNS_ADDRESS):\$SERVER_PORT\n \
     printenv\n \
     eval /usr/bin/netbench-collector /usr/bin/$TARGET \$@ > client.json\n \
-    aws s3 cp ./client.json s3://\$S3_BUCKET/" > /app/bin/start; \
+    aws s3 cp ./client.json s3://\$S3_BUCKET/$DRIVER-client.json" > /app/bin/start; \
   fi; \
   cd netbench; \
   if [ "$release" = "true" ]; then \

@@ -67,20 +67,20 @@ RUN set -eux; \
   # Bash script to retrieve client and server metrics from S3, and upload generated report to S3
   echo "#!/usr/bin/env bash\n \
   set -e\n \
-  aws s3 cp s3://\$S3_BUCKET/client.json /tmp/client.json\n \
-  aws s3 cp s3://\$S3_BUCKET/exportedlogs/\$EXPORT_TASK_ID/ /tmp/ --recursive\n \
+  aws s3 sync s3://\$S3_BUCKET /tmp\n \
+  # aws s3 cp s3://\$S3_BUCKET/client.json /tmp/client.json\n \
+  # aws s3 cp s3://\$S3_BUCKET/exportedlogs/\$EXPORT_TASK_ID/ /tmp/ --recursive\n \
   # get directory containing server logs\n \
-  export DIR=\$(ls -d /tmp/*/)\n \
+  export DIR=\$(ls -d /tmp/exportedlogs/\$EXPORT_TASK_ID/*/)\n \
   printenv\n \
   # exported log file always named 000000.gz\n \
   gzip -d \$(echo \$DIR)000000.gz\n \
   # sort server logs based on timestamp\n \
   sort -k1 \"\$(echo \$DIR)000000\" > \$(echo \$DIR)000000_sorted\n \
   # remove timestamp from server logs\n \
-  echo \"\$(<\$(echo \$DIR)000000_sorted)\" |  awk -F'{' '{ st = index(\$0,\"{\");print \"{\" substr(\$0,st+1)}' > /tmp/server.json\n \
-  eval /usr/bin/netbench-cli report /tmp/client.json /tmp/server.json \$@ > /tmp/report.json\n \
-  aws s3 cp /tmp/server.json s3://\$S3_BUCKET/\n \
-  aws s3 cp /tmp/report.json s3://\$S3_BUCKET/" > /app/bin/start; 
+  echo \"\$(<\$(echo \$DIR)000000_sorted)\" |  awk -F'{' '{ st = index(\$0,\"{\");print \"{\" substr(\$0,st+1)}' > /tmp/\$DRIVER-server.json\n \
+  eval /usr/bin/netbench-cli report /tmp/\$DRIVER-client.json /tmp/\$DRIVER-server.json \$@ > /tmp/\$DRIVER-report.json\n \
+  aws s3 sync /tmp s3://\$S3_BUCKET" > /app/bin/start; 
 
 FROM debian:latest
 
@@ -90,7 +90,7 @@ ENV RUST_BACKTRACE="1"
 COPY --from=builder /app/bin /tmp/netbench
 ENV DEBIAN_FRONTEND=noninteractive
 RUN set -eux; \
-  apt update && apt install -y dnsutils curl unzip sudo python3; \
+  apt update && apt install -y dnsutils curl unzip sudo; \
   curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"; \
   unzip awscliv2.zip; \
   sudo ./aws/install; \

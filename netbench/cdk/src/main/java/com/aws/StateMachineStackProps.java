@@ -23,12 +23,15 @@ public interface StateMachineStackProps extends StackProps {
 
     Cluster getCluster();
 
+    String getDriver();
+
     public static class Builder {
         private EcsRunTask clientTask;
         private Environment env;
         private Bucket bucket;
         private Function logsLambda;
         private Cluster cluster;
+        private String driver;
 
         public Builder clientTask(EcsRunTask clientTask) {
             this.clientTask = clientTask;
@@ -52,6 +55,11 @@ public interface StateMachineStackProps extends StackProps {
 
         public Builder cluster(Cluster cluster) {
             this.cluster = cluster;
+            return this;
+        }
+
+        public Builder driver(String driver) {
+            this.driver = driver;
             return this;
         }
 
@@ -81,6 +89,11 @@ public interface StateMachineStackProps extends StackProps {
                 @Override
                 public Cluster getCluster() {
                     return cluster;
+                }
+
+                @Override
+                public String getDriver() {
+                    return driver;
                 }
 
             };
