@@ -129,6 +129,23 @@ impl MinRttWindowedFilter {
 
     /// Updates the min_probe_rtt and min_rtt estimates with the given `rtt`
     pub fn update(&mut self, rtt: Duration, now: Timestamp) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.4.4
+        //# BBRUpdateMinRTT()
+        //#   BBR.probe_rtt_expired =
+        //#     Now() > BBR.probe_rtt_min_stamp + ProbeRTTInterval
+        //#   if (rs.rtt >= 0 and
+        //#       (rs.rtt < BBR.probe_rtt_min_delay or
+        //#        BBR.probe_rtt_expired))
+        //#      BBR.probe_rtt_min_delay = rs.rtt
+        //#      BBR.probe_rtt_min_stamp = Now()
+        //#
+        //#   min_rtt_expired =
+        //#     Now() > BBR.min_rtt_stamp + MinRTTFilterLen
+        //#   if (BBR.probe_rtt_min_delay < BBR.min_rtt or
+        //#       min_rtt_expired)
+        //#     BBR.min_rtt       = BBR.probe_rtt_min_delay
+        //#     BBR.min_rtt_stamp = BBR.probe_rtt_min_stamp
+
         self.probe_rtt_expired = self.min_probe_rtt.window_expired(now);
         self.min_probe_rtt.update(rtt, now);
 

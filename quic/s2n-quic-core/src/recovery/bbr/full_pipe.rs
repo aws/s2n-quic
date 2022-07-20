@@ -65,6 +65,19 @@ impl Estimator {
         rate_sample: bandwidth::RateSample,
         max_bw: Bandwidth,
     ) -> bool {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.1.2
+        //# BBRCheckStartupFullBandwidth():
+        //#   if BBR.filled_pipe or
+        //#     !BBR.round_start or rs.is_app_limited
+        //#    return  /* no need to check for a full pipe now */
+        //#   if (BBR.max_bw >= BBR.full_bw * 1.25)  /* still growing? */
+        //#     BBR.full_bw = BBR.max_bw    /* record new baseline level */
+        //#     BBR.full_bw_count = 0
+        //#   return
+        //#   BBR.full_bw_count++ /* another round w/o much growth */
+        //#   if (BBR.full_bw_count >= 3)
+        //#     BBR.filled_pipe = true
+
         //# If BBR notices that there are several (three) rounds where attempts to double
         //# the delivery rate actually result in little increase (less than 25 percent),
         //# then it estimates that it has reached BBR.max_bw, sets BBR.filled_pipe to true,

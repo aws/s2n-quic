@@ -119,6 +119,13 @@ impl State {
 
     /// True if the current state is ProbeBw
     fn is_probing_bw(&self) -> bool {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
+        //# IsInAProbeBWState()
+        //#   state = BBR.state
+        //#   return (state == ProbeBW_DOWN or
+        //#           state == ProbeBW_CRUISE or
+        //#           state == ProbeBW_REFILL or
+        //#           state == ProbeBW_UP)
         matches!(self, State::ProbeBw(_))
     }
 
@@ -236,6 +243,10 @@ impl CongestionController for BbrCongestionController {
     ) -> Self::PacketInfo {
         if sent_bytes > 0 {
             self.recovery_state.on_packet_sent();
+
+            //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.2
+            //# BBROnTransmit():
+            //#   BBRHandleRestartFromIdle()
             self.handle_restart_from_idle(time_sent);
 
             self.bytes_in_flight
@@ -266,36 +277,9 @@ impl CongestionController for BbrCongestionController {
         random_generator: &mut Rnd,
         ack_receive_time: Timestamp,
     ) {
-        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
-        //# On every ACK, the BBR algorithm executes the following BBRUpdateOnACK() steps in order
-        //# to update its network path model, update its state machine, and adjust its control
-        //# parameters to adapt to the updated model:
-        //#
-        //#  BBRUpdateOnACK():
-        //#     BBRUpdateModelAndState()
-        //#     BBRUpdateControlParameters()
-        //#
-        //#  BBRUpdateModelAndState():
-        //#     BBRUpdateLatestDeliverySignals()
-        //#     BBRUpdateCongestionSignals()
-        //#     BBRUpdateACKAggregation()
-        //#     BBRCheckStartupDone()
-        //#     BBRCheckDrain()
-        //#     BBRUpdateProbeBWCyclePhase()
-        //#     BBRUpdateMinRTT()
-        //#     BBRCheckProbeRTT()
-        //#     BBRAdvanceLatestDeliverySignals()
-        //#     BBRBoundBWForModel()
-        //#
-        //#   BBRUpdateControlParameters():
-        //#     BBRSetPacingRate()
-        //#     BBRSetSendQuantum()
-        //#     BBRSetCwnd()
-
         self.bytes_in_flight
             .try_sub(bytes_acknowledged)
             .expect("bytes_acknowledged should not exceed u32::MAX");
-
         self.bw_estimator.on_ack(
             bytes_acknowledged,
             newest_acked_time_sent,
@@ -313,7 +297,21 @@ impl CongestionController for BbrCongestionController {
             // This ack caused recovery to be exited
             self.on_exit_fast_recovery();
         }
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
+        //# On every ACK, the BBR algorithm executes the following BBRUpdateOnACK() steps in order
+        //# to update its network path model, update its state machine, and adjust its control
+        //# parameters to adapt to the updated model:
+        //# BBRUpdateOnACK():
+        //#   BBRUpdateModelAndState()
+        //#   BBRUpdateControlParameters()
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
+        //# BBRUpdateModelAndState():
+        //#   BBRUpdateLatestDeliverySignals()
+        //#   BBRUpdateCongestionSignals()
         self.congestion_state.update(
+            // implements BBRUpdateLatestDeliverySignals() and BBRUpdateCongestionSignals()
             newest_acked_packet_info,
             self.bw_estimator.rate_sample(),
             self.bw_estimator.delivered_bytes(),
@@ -322,6 +320,8 @@ impl CongestionController for BbrCongestionController {
             self.state.is_probing_bw(),
             self.cwnd,
         );
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
+        //# BBRUpdateACKAggregation()
         self.data_volume_model.update_ack_aggregation(
             self.data_rate_model.bw(),
             bytes_acknowledged,
@@ -330,10 +330,16 @@ impl CongestionController for BbrCongestionController {
             ack_receive_time,
         );
 
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
+        //# BBRCheckStartupDone()
+        //# BBRCheckDrain()
         self.check_startup_done();
         self.check_drain_done(random_generator, ack_receive_time);
 
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
+        //# BBRUpdateProbeBWCyclePhase()
         if self.full_pipe_estimator.filled_pipe() {
+            // BBRUpdateProbeBWCyclePhase() internally calls BBRAdaptUpperBounds() if BBR.filled_pipe == true
             self.adapt_upper_bounds(
                 self.bw_estimator.rate_sample(),
                 bytes_acknowledged,
@@ -344,15 +350,24 @@ impl CongestionController for BbrCongestionController {
                 self.update_probe_bw_cycle_phase(random_generator, ack_receive_time);
             }
         }
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
+        //# BBRUpdateMinRTT()
+        //# BBRCheckProbeRTT()
+        //# BBRAdvanceLatestDeliverySignals()
+        //# BBRBoundBWForModel()
         self.data_volume_model
             .update_min_rtt(rtt_estimator.latest_rtt(), ack_receive_time);
-
         self.check_probe_rtt(random_generator, ack_receive_time);
         self.congestion_state
             .advance(self.bw_estimator.rate_sample());
         self.data_rate_model.bound_bw_for_model();
 
-        // BBRUpdateControlParameters
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
+        //# BBRUpdateControlParameters():
+        //#   BBRSetPacingRate()
+        //#   BBRSetSendQuantum()
+        //#   BBRSetCwnd()
         self.set_pacing_rate(self.state.pacing_gain());
         self.set_send_quantum();
         self.set_cwnd(bytes_acknowledged);
@@ -374,6 +389,10 @@ impl CongestionController for BbrCongestionController {
         }
         self.full_pipe_estimator.on_packet_lost(new_loss_burst);
         self.modulate_cwnd_for_recovery(lost_bytes);
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.4
+        //# BBRUpdateOnLoss(packet):
+        //#   BBRHandleLostPacket(packet)
         self.handle_lost_packet(lost_bytes, packet_info, random_generator, timestamp);
     }
 
