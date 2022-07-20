@@ -276,6 +276,10 @@ impl Estimator {
 
     /// Mark the path as app limited until the given `bytes_in_flight` are acknowledged
     pub fn on_app_limited(&mut self, bytes_in_flight: u32) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.4.4
+        //# MarkConnectionAppLimited():
+        //#   C.app_limited =
+        //#     (C.delivered + packets_in_flight) ? : 1
         self.app_limited_delivered_bytes = Some(self.delivered_bytes + bytes_in_flight as u64);
     }
 }
