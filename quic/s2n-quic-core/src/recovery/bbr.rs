@@ -813,9 +813,11 @@ impl BbrCongestionController {
         //#   cwnd = packets_in_flight + max(rs.newly_acked, 1)
         //#   BBR.packet_conservation = true
 
-        // packet_conservation is set to true in `recovery::State`
-
         debug_assert!(self.recovery_state.in_recovery());
+
+        // packet_conservation is true while in the state `recovery::State::Conservation`. That
+        // state is entered prior to this method being called, when packet loss is recorded.
+        debug_assert!(self.recovery_state.packet_conservation());
 
         self.save_cwnd();
         // BBROnEnterFastRecovery() tries to allow for at least one fast retransmit packet in the
@@ -836,7 +838,12 @@ impl BbrCongestionController {
         //#   BBR.packet_conservation = false
         //#   BBRRestoreCwnd()
 
-        // packet_conservation is set to false in `recovery::State`
+        debug_assert!(!self.recovery_state.in_recovery());
+
+        // When fast recovery is exited, the state changes to `recovery::State::Recovered`, which
+        // has packet_conservation as false
+        debug_assert!(!self.recovery_state.packet_conservation());
+
         self.restore_cwnd();
     }
 
