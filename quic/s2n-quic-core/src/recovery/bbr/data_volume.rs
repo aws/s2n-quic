@@ -44,7 +44,6 @@ pub(crate) struct Model {
     inflight_lo: u64,
 }
 
-#[allow(dead_code)] // TODO: Remove when used
 impl Model {
     /// Constructs a new `data_volume::Model`
     pub fn new(now: Timestamp) -> Self {
@@ -144,6 +143,11 @@ impl Model {
     /// Resets `inflight_lo` to its initial value
     pub fn reset_lower_bound(&mut self) {
         self.inflight_lo = u64::MAX
+    }
+
+    /// Sets the `extra_acked_interval_start` to the given `timestamp`
+    pub fn set_extra_acked_interval_start(&mut self, timestamp: Timestamp) {
+        self.extra_acked_interval_start = timestamp;
     }
 }
 

@@ -166,9 +166,19 @@ impl Estimator {
         self.delivered_bytes
     }
 
+    /// Gets the total amount of data in bytes lost so far over the lifetime of the path
+    pub fn lost_bytes(&self) -> u64 {
+        self.lost_bytes
+    }
+
     /// Gets the latest [RateSample]
     pub fn rate_sample(&self) -> RateSample {
         self.rate_sample
+    }
+
+    /// Returns true if the path is currently in an application-limited period
+    pub fn is_app_limited(&self) -> bool {
+        self.app_limited_delivered_bytes.is_some()
     }
 
     /// Called when a packet is transmitted

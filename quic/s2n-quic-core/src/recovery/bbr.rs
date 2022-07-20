@@ -50,6 +50,9 @@ const HEADROOM: Ratio<u64> = Ratio::new_raw(85, 100);
 //# that follow an "ACK every other packet" delayed-ACK policy: 4 * SMSS.
 const MIN_PIPE_CWND_PACKETS: u16 = 4;
 
+// 64KBytes
+const MAX_SEND_QUANTUM: usize = 64_000;
+
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.1.1
 //# The following state transition diagram summarizes the flow of control and the relationship between the different states:
 //#
@@ -210,7 +213,10 @@ impl CongestionController for BbrCongestionController {
     }
 
     fn is_congestion_limited(&self) -> bool {
-        todo!()
+        let available_congestion_window = self
+            .congestion_window()
+            .saturating_sub(*self.bytes_in_flight);
+        available_congestion_window < self.max_datagram_size as u32
     }
 
     fn is_slow_start(&self) -> bool {
@@ -230,6 +236,7 @@ impl CongestionController for BbrCongestionController {
     ) -> Self::PacketInfo {
         if sent_bytes > 0 {
             self.recovery_state.on_packet_sent();
+            self.handle_restart_from_idle(time_sent);
 
             self.bytes_in_flight
                 .try_add(sent_bytes)
@@ -247,7 +254,7 @@ impl CongestionController for BbrCongestionController {
         _now: Timestamp,
         _rtt_estimator: &RttEstimator,
     ) {
-        todo!()
+        // BBRUpdateMinRTT() called in `on_ack`
     }
 
     fn on_ack<Rnd: random::Generator>(
@@ -255,7 +262,7 @@ impl CongestionController for BbrCongestionController {
         newest_acked_time_sent: Timestamp,
         bytes_acknowledged: usize,
         newest_acked_packet_info: Self::PacketInfo,
-        _rtt_estimator: &RttEstimator,
+        rtt_estimator: &RttEstimator,
         random_generator: &mut Rnd,
         ack_receive_time: Timestamp,
     ) {
@@ -285,6 +292,10 @@ impl CongestionController for BbrCongestionController {
         //#     BBRSetSendQuantum()
         //#     BBRSetCwnd()
 
+        self.bytes_in_flight
+            .try_sub(bytes_acknowledged)
+            .expect("bytes_acknowledged should not exceed u32::MAX");
+
         self.bw_estimator.on_ack(
             bytes_acknowledged,
             newest_acked_time_sent,
@@ -295,8 +306,13 @@ impl CongestionController for BbrCongestionController {
             newest_acked_packet_info,
             self.bw_estimator.delivered_bytes(),
         );
-        self.recovery_state
-            .on_ack(self.round_counter.round_start(), newest_acked_time_sent);
+        if self
+            .recovery_state
+            .on_ack(self.round_counter.round_start(), newest_acked_time_sent)
+        {
+            // This ack caused recovery to be exited
+            self.on_exit_fast_recovery();
+        }
         self.congestion_state.update(
             newest_acked_packet_info,
             self.bw_estimator.rate_sample(),
@@ -329,11 +345,12 @@ impl CongestionController for BbrCongestionController {
             }
         }
         self.data_volume_model
-            .update_min_rtt(_rtt_estimator.latest_rtt(), ack_receive_time);
+            .update_min_rtt(rtt_estimator.latest_rtt(), ack_receive_time);
 
         self.check_probe_rtt(random_generator, ack_receive_time);
         self.congestion_state
             .advance(self.bw_estimator.rate_sample());
+        self.data_rate_model.bound_bw_for_model();
 
         // BBRUpdateControlParameters
         self.set_pacing_rate(self.state.pacing_gain());
@@ -344,16 +361,20 @@ impl CongestionController for BbrCongestionController {
     fn on_packet_lost<Rnd: random::Generator>(
         &mut self,
         lost_bytes: u32,
-        _packet_info: Self::PacketInfo,
+        packet_info: Self::PacketInfo,
         _persistent_congestion: bool,
         new_loss_burst: bool,
-        _random_generator: &mut Rnd,
+        random_generator: &mut Rnd,
         timestamp: Timestamp,
     ) {
         self.bw_estimator.on_loss(lost_bytes as usize);
-        self.recovery_state.on_congestion_event(timestamp);
+        if self.recovery_state.on_congestion_event(timestamp) {
+            // this congestion event caused the connection to enter recovery
+            self.on_enter_fast_recovery();
+        }
         self.full_pipe_estimator.on_packet_lost(new_loss_burst);
         self.modulate_cwnd_for_recovery(lost_bytes);
+        self.handle_lost_packet(lost_bytes, packet_info, random_generator, timestamp);
     }
 
     fn on_congestion_event(&mut self, event_time: Timestamp) {
@@ -364,8 +385,11 @@ impl CongestionController for BbrCongestionController {
         self.max_datagram_size = max_datagram_size;
     }
 
-    fn on_packet_discarded(&mut self, _bytes_sent: usize) {
-        todo!()
+    fn on_packet_discarded(&mut self, bytes_sent: usize) {
+        self.bytes_in_flight
+            .try_sub(bytes_sent)
+            .expect("bytes sent should not exceed u32::MAX");
+        self.recovery_state.on_packet_discarded();
     }
 
     fn earliest_departure_time(&self) -> Option<Timestamp> {
@@ -378,6 +402,61 @@ impl CongestionController for BbrCongestionController {
 }
 
 impl BbrCongestionController {
+    /// Constructs a new `BbrCongestionController`
+    #[allow(dead_code)] // TODO: Remove when used
+    pub fn new(max_datagram_size: u16, now: Timestamp) -> Self {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.1
+        //# BBROnInit():
+        //#   init_windowed_max_filter(filter=BBR.MaxBwFilter, value=0, time=0)
+        //#   BBR.min_rtt = SRTT ? SRTT : Inf
+        //#   BBR.min_rtt_stamp = Now()
+        //#   BBR.probe_rtt_done_stamp = 0
+        //#   BBR.probe_rtt_round_done = false
+        //#   BBR.prior_cwnd = 0
+        //#   BBR.idle_restart = false
+        //#   BBR.extra_acked_interval_start = Now()
+        //#   BBR.extra_acked_delivered = 0
+        //#   BBRResetCongestionSignals()
+        //#   BBRResetLowerBounds()
+        //#   BBRInitRoundCounting()
+        //#   BBRInitFullPipe()
+        //#   BBRInitPacingRate()
+        //#   BBREnterStartup()
+
+        // BBRResetCongestionSignals() is implemented by the default congestion::State
+        // BBRResetLowerBounds() is implemented by data_rate::Model::new() and data_volume::Model::new()
+        // BBRInitRoundCounting() is implemented by round::Counter::default()
+        // BBRInitFullPipe() is implemented by full_pipe::Estimator::default()
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.2
+        //# BBRInitPacingRate():
+        //#   nominal_bandwidth = InitialCwnd / (SRTT ? SRTT : 1ms)
+        //# BBR.pacing_rate =  BBRStartupPacingGain * nominal_bandwidth
+        let initial_cwnd = Self::initial_window(max_datagram_size);
+        let nominal_bandwidth = Bandwidth::new(initial_cwnd as u64, Duration::from_millis(1));
+        let pacing_rate = nominal_bandwidth * State::Startup.pacing_gain();
+
+        Self {
+            state: State::Startup,
+            round_counter: Default::default(),
+            bw_estimator: Default::default(),
+            full_pipe_estimator: Default::default(),
+            bytes_in_flight: Default::default(),
+            cwnd: initial_cwnd,
+            prior_cwnd: 0,
+            recovery_state: recovery::State::Recovered,
+            congestion_state: Default::default(),
+            data_rate_model: data_rate::Model::new(),
+            // initialize extra_acked_interval_start and extra_acked_delivered
+            data_volume_model: data_volume::Model::new(now),
+            max_datagram_size,
+            idle_restart: false,
+            bw_probe_samples: false,
+            pacing_rate,
+            next_departure_time: None,
+            send_quantum: MAX_SEND_QUANTUM,
+        }
+    }
     /// The bandwidth-delay product
     ///
     /// Based on the current estimate of maximum sending bandwidth and minimum RTT
@@ -536,8 +615,6 @@ impl BbrCongestionController {
         // 1.2 Mbps
         const SEND_QUANTUM_THRESHOLD: Bandwidth =
             Bandwidth::new(1_200_000 / 8, Duration::from_secs(1));
-        // 64KBytes
-        const MAX_SEND_QUANTUM: usize = 64_000;
 
         let floor = if self.pacing_rate < SEND_QUANTUM_THRESHOLD {
             self.max_datagram_size
@@ -570,6 +647,8 @@ impl BbrCongestionController {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
         //# IsInflightTooHigh()
         //#   return (rs.lost > rs.tx_in_flight * BBRLossThresh)
+
+        // TODO: check ECN threshold
 
         lost_bytes > (LOSS_THRESH * bytes_inflight).to_integer() as u64
     }
@@ -720,5 +799,162 @@ impl BbrCongestionController {
             .cwnd
             .saturating_sub(lost_bytes)
             .max(self.minimum_window());
+    }
+
+    /// Called when entering fast recovery
+    #[inline]
+    fn on_enter_fast_recovery(&mut self) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
+        //# Upon entering Fast Recovery, set cwnd to the number of packets still in flight
+        //# (allowing at least one for a fast retransmit):
+        //#
+        //# BBROnEnterFastRecovery():
+        //#   BBR.prior_cwnd = BBRSaveCwnd()
+        //#   cwnd = packets_in_flight + max(rs.newly_acked, 1)
+        //#   BBR.packet_conservation = true
+
+        debug_assert!(self.recovery_state.in_recovery());
+
+        // packet_conservation is true while in the state `recovery::State::Conservation`. That
+        // state is entered prior to this method being called, when packet loss is recorded.
+        debug_assert!(self.recovery_state.packet_conservation());
+
+        self.save_cwnd();
+        // BBROnEnterFastRecovery() tries to allow for at least one fast retransmit packet in the
+        // the congestion window. The recovery manager will already allow for this fast retransmit
+        // even if we are blocked by congestion control, as long as requires_fast_retransmission()
+        // returns true.
+        self.cwnd = self.bytes_in_flight();
+    }
+
+    /// Called when exiting fast recovery
+    #[inline]
+    fn on_exit_fast_recovery(&mut self) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
+        //# Upon exiting loss recovery (RTO recovery or Fast Recovery), either by repairing all
+        //# losses or undoing recovery, BBR restores the best-known cwnd value we had upon entering
+        //# loss recovery:
+        //#
+        //#   BBR.packet_conservation = false
+        //#   BBRRestoreCwnd()
+
+        debug_assert!(!self.recovery_state.in_recovery());
+
+        // When fast recovery is exited, the state changes to `recovery::State::Recovered`, which
+        // has packet_conservation as false
+        debug_assert!(!self.recovery_state.packet_conservation());
+
+        self.restore_cwnd();
+    }
+
+    fn handle_lost_packet<Rnd: random::Generator>(
+        &mut self,
+        lost_bytes: u32,
+        packet_info: <BbrCongestionController as CongestionController>::PacketInfo,
+        random_generator: &mut Rnd,
+        now: Timestamp,
+    ) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
+        //# if (!BBR.bw_probe_samples)
+        //#   return /* not a packet sent while probing bandwidth */
+        //# rs.tx_in_flight = packet.tx_in_flight /* inflight at transmit */
+        //# rs.lost = C.lost - packet.lost /* data lost since transmit */
+        //# rs.is_app_limited = packet.is_app_limited;
+        //# if (IsInflightTooHigh(rs))
+        //#   rs.tx_in_flight = BBRInflightHiFromLostPacket(rs, packet)
+        //#   BBRHandleInflightTooHigh(rs)
+
+        if !self.bw_probe_samples {
+            // not a packet sent while probing bandwidth
+            return;
+        }
+
+        let lost_since_transmit = (self.bw_estimator.lost_bytes() - packet_info.lost_bytes)
+            .try_into()
+            .unwrap_or(u32::MAX);
+
+        if Self::is_inflight_too_high(lost_since_transmit as u64, packet_info.bytes_in_flight) {
+            let inflight_hi_from_lost_packet =
+                self.inflight_hi_from_lost_packet(lost_bytes, lost_since_transmit, packet_info);
+            self.on_inflight_too_high(
+                packet_info.is_app_limited,
+                packet_info.bytes_in_flight,
+                inflight_hi_from_lost_packet,
+                random_generator,
+                now,
+            );
+        }
+    }
+
+    /// Returns the prefix of packet where losses exceeded `LOSS_THRESH`
+    fn inflight_hi_from_lost_packet(
+        &self,
+        size: u32,
+        lost_since_transmit: u32,
+        packet_info: <BbrCongestionController as CongestionController>::PacketInfo,
+    ) -> u32 {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
+        //# BBRInflightHiFromLostPacket(rs, packet):
+        //#   size = packet.size
+        //#   /* What was in flight before this packet? */
+        //#   inflight_prev = rs.tx_in_flight - size
+        //#   /* What was lost before this packet? */
+        //#   lost_prev = rs.lost - size
+        //#   lost_prefix = (BBRLossThresh * inflight_prev - lost_prev) /
+        //#                 (1 - BBRLossThresh)
+        //#   /* At what inflight value did losses cross BBRLossThresh? */
+        //#   inflight = inflight_prev + lost_prefix
+        //#   return inflight
+
+        // The RFC passes a newly construct Rate Sample to BBRInflightHiFromLostPacket as
+        // a means for holding tx_in_flight and lost_since_transmit. Instead, we pass
+        // the required information directly.
+
+        // What was in flight before this packet?
+        let inflight_prev = packet_info.bytes_in_flight - size;
+        // What was lost before this packet?
+        let lost_prev = lost_since_transmit - size;
+        let lost_prefix =
+            ((LOSS_THRESH * inflight_prev - lost_prev) / (Ratio::one() - LOSS_THRESH)).to_integer();
+        // At what inflight value did losses cross BBRLossThresh?
+        inflight_prev + lost_prefix
+    }
+
+    /// Handles when the connection resumes transmitting after an idle period
+    #[inline]
+    fn handle_restart_from_idle(&mut self, now: Timestamp) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.4.3
+        //# BBRHandleRestartFromIdle():
+        //#   if (packets_in_flight == 0 and C.app_limited)
+        //#     BBR.idle_restart = true
+        //#        BBR.extra_acked_interval_start = Now()
+        //#     if (IsInAProbeBWState())
+        //#       BBRSetPacingRateWithGain(1)
+
+        if self.bytes_in_flight == 0 && self.bw_estimator.is_app_limited() {
+            self.idle_restart = true;
+            self.data_volume_model.set_extra_acked_interval_start(now);
+            if self.state.is_probing_bw() {
+                self.set_pacing_rate(Ratio::one());
+            }
+        }
+
+        // As an optimization, we can check if the ProbeRtt may be exited here, see #1412 for details.
+        // Without this optimization, ProbeRtt will be exited on the next received Ack.
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.4.3
+        //= type=TODO
+        //= tracking-issue=1412
+        //#   else if (BBR.state == ProbeRTT)
+        //#     BBRCheckProbeRTTDone()
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.4.2
+        //= type=TODO
+        //= tracking-issue=1412
+        //# As an optimization, when restarting from idle BBR checks to see if the connection is in
+        //# ProbeRTT and has met the exit conditions for ProbeRTT. If a connection goes idle during
+        //# ProbeRTT then often it will have met those exit conditions by the time it restarts, so
+        //# that the connection can restore the cwnd to its full value before it starts transmitting
+        //# a new flight of data.
     }
 }
