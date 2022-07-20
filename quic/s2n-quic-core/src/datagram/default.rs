@@ -132,7 +132,7 @@ impl Receiver {
     ///   the caller should retry receiving after the [`Waker`](core::task::Waker) on the provided
     ///   [`Context`](core::task::Context) is notified.
     /// - `Poll::Ready(Datagram)` if there exists a datagram to be received.
-    /// - `Poll::Read(Err)` if a connection error occurred and no more datagrams will be received.
+    /// - `Poll::Ready(Err)` if a connection error occurred and no more datagrams will be received.
     pub fn poll_recv_datagram(
         &mut self,
         cx: &mut Context,
@@ -244,7 +244,7 @@ pub struct Datagram {
 pub enum SendDatagramError {
     QueueAtCapacity,
     ExceedsPeerTransportLimits,
-    ConnectionError,
+    ConnectionError { error: connection::Error },
 }
 
 impl fmt::Display for SendDatagramError {
@@ -296,8 +296,8 @@ impl Sender {
 
         // If there was some connection-level error the user is not allowed to add
         // datagrams to the queue as they will never be sent.
-        if self.error.is_some() {
-            return Poll::Ready(Err(SendDatagramError::ConnectionError));
+        if let Some(err) = self.error {
+            return Poll::Ready(Err(SendDatagramError::ConnectionError { error: err }));
         }
 
         if self.queue.len() == self.capacity {
@@ -326,8 +326,8 @@ impl Sender {
 
         // If there was some connection-level error the user is not allowed to add
         // datagrams to the queue as they will never be sent.
-        if self.error.is_some() {
-            return Err(SendDatagramError::ConnectionError);
+        if let Some(err) = self.error {
+            return Err(SendDatagramError::ConnectionError { error: err });
         }
 
         // Pop oldest datagram off the queue if it is at capacity
@@ -355,8 +355,8 @@ impl Sender {
 
         // If there was some connection-level error the user is not allowed to add
         // datagrams to the queue as they will never be sent.
-        if self.error.is_some() {
-            return Err(SendDatagramError::ConnectionError);
+        if let Some(err) = self.error {
+            return Err(SendDatagramError::ConnectionError { error: err });
         }
 
         if self.queue.len() == self.capacity {
@@ -552,10 +552,11 @@ mod tests {
         assert!(default_sender.queue.is_empty());
 
         // Connection-level error means new datagrams are not added to the queue
-        default_sender.error = Some(connection::Error::closed(crate::endpoint::Location::Remote));
+        let conn_err = connection::Error::closed(crate::endpoint::Location::Remote);
+        default_sender.error = Some(conn_err);
         assert_eq!(
             default_sender.send_datagram_forced(bytes::Bytes::from_static(&[7, 8, 9])),
-            Err(SendDatagramError::ConnectionError)
+            Err(SendDatagramError::ConnectionError { error: conn_err })
         );
         assert!(default_sender.queue.is_empty());
     }
@@ -591,10 +592,11 @@ mod tests {
         assert!(default_sender.queue.is_empty());
 
         // Connection-level error means new datagrams are not added to the queue
-        default_sender.error = Some(connection::Error::closed(crate::endpoint::Location::Remote));
+        let conn_err = connection::Error::closed(crate::endpoint::Location::Remote);
+        default_sender.error = Some(conn_err);
         assert_eq!(
             default_sender.send_datagram(bytes::Bytes::from_static(&[7, 8, 9])),
-            Err(SendDatagramError::ConnectionError)
+            Err(SendDatagramError::ConnectionError { error: conn_err })
         );
         assert!(default_sender.queue.is_empty());
     }
@@ -660,10 +662,11 @@ mod tests {
         assert!(default_sender.queue.is_empty());
 
         // Connection-level error means new datagrams are not added to the queue
-        default_sender.error = Some(connection::Error::closed(crate::endpoint::Location::Remote));
+        let conn_err = connection::Error::closed(crate::endpoint::Location::Remote);
+        default_sender.error = Some(conn_err);
         assert_eq!(
             default_sender.poll_send_datagram(&mut bytes::Bytes::from_static(&[7, 8, 9]), &mut cx),
-            Poll::Ready(Err(SendDatagramError::ConnectionError))
+            Poll::Ready(Err(SendDatagramError::ConnectionError { error: conn_err }))
         );
         assert!(default_sender.queue.is_empty());
     }
@@ -819,6 +822,17 @@ mod tests {
         // Mock a connection error
         let connection_error = connection::Error::closed(crate::endpoint::Location::Remote);
         receiver.error = Some(connection_error);
+
+        // Continue to recv bytes until we run out and return the connection error
+        assert_eq!(
+            receiver.poll_recv_datagram(&mut cx),
+            Poll::Ready(Ok(bytes::Bytes::from_static(&[4, 5, 6])))
+        );
+
+        assert_eq!(
+            receiver.poll_recv_datagram(&mut cx),
+            Poll::Ready(Ok(bytes::Bytes::from_static(&[7, 8, 9])))
+        );
 
         assert_eq!(
             receiver.poll_recv_datagram(&mut cx),

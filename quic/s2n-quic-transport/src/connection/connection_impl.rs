@@ -763,6 +763,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             self.state = ConnectionState::Finished;
         }
 
+        // Notify the datagram manager that the connection has closed
+        if let Some((space, _)) = self.space_manager.application_mut() {
+            space.datagram_manager.sender.on_connection_error(error);
+            space.datagram_manager.receiver.on_connection_error(error);
+        }
+
         //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
         //# In the closing state, an endpoint retains only enough information to
         //# generate a packet containing a CONNECTION_CLOSE frame and to identify
@@ -1832,12 +1838,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
     #[inline]
     fn datagram_mut(&mut self, query: &mut dyn event::query::QueryMut) {
-        let error = self.error();
         if let Some((space, _)) = self.space_manager.application_mut() {
-            if let Some(error) = error {
-                space.datagram_manager.sender.on_connection_error(error);
-                space.datagram_manager.receiver.on_connection_error(error);
-            }
             if space.datagram_manager.datagram_mut(query).is_ready() {
                 self.wakeup_handle.wakeup();
             }
