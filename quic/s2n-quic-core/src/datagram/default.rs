@@ -132,7 +132,7 @@ impl Receiver {
     ///   the caller should retry receiving after the [`Waker`](core::task::Waker) on the provided
     ///   [`Context`](core::task::Context) is notified.
     /// - `Poll::Ready(Datagram)` if there exists a datagram to be received.
-    /// - `Poll::Ready(Err)` if a connection error occurred and no more datagrams will be received.
+    /// - `Poll::Ready(DatagramError)` if a connection error occurred and no more datagrams will be received.
     pub fn poll_recv_datagram(&mut self, cx: &mut Context) -> Poll<Result<Bytes, DatagramError>> {
         if let Some(datagram) = self.queue.pop_front() {
             Poll::Ready(Ok(datagram))
