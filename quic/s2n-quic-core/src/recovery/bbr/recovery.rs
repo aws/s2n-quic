@@ -46,7 +46,6 @@ pub(crate) enum State {
 
 impl State {
     /// True if packet conservation dynamics should be used to bound cwnd
-    #[allow(dead_code)] // TODO: Remove when used
     #[inline]
     pub fn packet_conservation(&self) -> bool {
         matches!(self, State::Conservation(_, _))

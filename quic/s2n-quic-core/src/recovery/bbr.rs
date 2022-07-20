@@ -50,6 +50,9 @@ const HEADROOM: Ratio<u64> = Ratio::new_raw(85, 100);
 //# that follow an "ACK every other packet" delayed-ACK policy: 4 * SMSS.
 const MIN_PIPE_CWND_PACKETS: u16 = 4;
 
+// 64KBytes
+const MAX_SEND_QUANTUM: usize = 64_000;
+
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.1.1
 //# The following state transition diagram summarizes the flow of control and the relationship between the different states:
 //#
@@ -347,6 +350,7 @@ impl CongestionController for BbrCongestionController {
         self.check_probe_rtt(random_generator, ack_receive_time);
         self.congestion_state
             .advance(self.bw_estimator.rate_sample());
+        self.data_rate_model.bound_bw_for_model();
 
         // BBRUpdateControlParameters
         self.set_pacing_rate(self.state.pacing_gain());
@@ -398,6 +402,61 @@ impl CongestionController for BbrCongestionController {
 }
 
 impl BbrCongestionController {
+    /// Constructs a new `BbrCongestionController`
+    #[allow(dead_code)] // TODO: Remove when used
+    pub fn new(max_datagram_size: u16, now: Timestamp) -> Self {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.1
+        //# BBROnInit():
+        //#   init_windowed_max_filter(filter=BBR.MaxBwFilter, value=0, time=0)
+        //#   BBR.min_rtt = SRTT ? SRTT : Inf
+        //#   BBR.min_rtt_stamp = Now()
+        //#   BBR.probe_rtt_done_stamp = 0
+        //#   BBR.probe_rtt_round_done = false
+        //#   BBR.prior_cwnd = 0
+        //#   BBR.idle_restart = false
+        //#   BBR.extra_acked_interval_start = Now()
+        //#   BBR.extra_acked_delivered = 0
+        //#   BBRResetCongestionSignals()
+        //#   BBRResetLowerBounds()
+        //#   BBRInitRoundCounting()
+        //#   BBRInitFullPipe()
+        //#   BBRInitPacingRate()
+        //#   BBREnterStartup()
+
+        // BBRResetCongestionSignals() is implemented by the default congestion::State
+        // BBRResetLowerBounds() is implemented by data_rate::Model::new() and data_volume::Model::new()
+        // BBRInitRoundCounting() is implemented by round::Counter::default()
+        // BBRInitFullPipe() is implemented by full_pipe::Estimator::default()
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.2
+        //# BBRInitPacingRate():
+        //#   nominal_bandwidth = InitialCwnd / (SRTT ? SRTT : 1ms)
+        //# BBR.pacing_rate =  BBRStartupPacingGain * nominal_bandwidth
+        let initial_cwnd = Self::initial_window(max_datagram_size);
+        let nominal_bandwidth = Bandwidth::new(initial_cwnd as u64, Duration::from_millis(1));
+        let pacing_rate = nominal_bandwidth * State::Startup.pacing_gain();
+
+        Self {
+            state: State::Startup,
+            round_counter: Default::default(),
+            bw_estimator: Default::default(),
+            full_pipe_estimator: Default::default(),
+            bytes_in_flight: Default::default(),
+            cwnd: initial_cwnd,
+            prior_cwnd: 0,
+            recovery_state: recovery::State::Recovered,
+            congestion_state: Default::default(),
+            data_rate_model: data_rate::Model::new(),
+            // initialize extra_acked_interval_start and extra_acked_delivered
+            data_volume_model: data_volume::Model::new(now),
+            max_datagram_size,
+            idle_restart: false,
+            bw_probe_samples: false,
+            pacing_rate,
+            next_departure_time: None,
+            send_quantum: MAX_SEND_QUANTUM,
+        }
+    }
     /// The bandwidth-delay product
     ///
     /// Based on the current estimate of maximum sending bandwidth and minimum RTT
@@ -556,8 +615,6 @@ impl BbrCongestionController {
         // 1.2 Mbps
         const SEND_QUANTUM_THRESHOLD: Bandwidth =
             Bandwidth::new(1_200_000 / 8, Duration::from_secs(1));
-        // 64KBytes
-        const MAX_SEND_QUANTUM: usize = 64_000;
 
         let floor = if self.pacing_rate < SEND_QUANTUM_THRESHOLD {
             self.max_datagram_size

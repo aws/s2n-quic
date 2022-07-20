@@ -37,7 +37,7 @@ pub(crate) struct Model {
     //# The virtual time used by the BBR.max_bw filter window.
     cycle_count: core::num::Wrapping<u8>,
 }
-#[allow(dead_code)] // TODO: Remove when used
+
 impl Model {
     /// Constructs a new `data_rate::Model`
     pub fn new() -> Self {
@@ -97,6 +97,7 @@ impl Model {
     }
 
     /// Updates `bw_hi` with the given `bw`
+    #[allow(dead_code)] // TODO: See note in probe_bw.rs about updating bw_hi
     pub fn update_upper_bound(&mut self, bw: Bandwidth) {
         self.bw_hi = bw
     }
@@ -117,7 +118,10 @@ impl Model {
 
     /// Bounds `bw` to min(`max_bw`, `bw_lo`, `bw_hi)
     pub fn bound_bw_for_model(&mut self) {
-        self.bw = self.max_bw().min(self.bw_lo).min(self.bw_hi)
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
+        //# BBRBoundBWForModel():
+        //#   BBR.bw = min(BBR.max_bw, BBR.bw_lo, BBR.bw_hi)
+        self.bw = self.max_bw().min(self.bw_lo()).min(self.bw_hi())
     }
 }
 

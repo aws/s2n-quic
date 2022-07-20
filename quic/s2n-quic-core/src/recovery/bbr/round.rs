@@ -10,6 +10,11 @@ use crate::recovery::bandwidth::PacketInfo;
 //# elapsed so far.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Counter {
+    //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.1
+    //# BBRInitRoundCounting():
+    //#   BBR.next_round_delivered = 0
+    //#   BBR.round_start = false
+    //#   BBR.round_count = 0
     /// The `delivered_bytes` at which the next round begins
     next_round_delivered_bytes: u64,
     /// True if the current ack being processed started a new round
@@ -45,7 +50,6 @@ impl Counter {
     }
 
     /// The number of rounds counted since initialization
-    #[allow(dead_code)] // TODO: Remove when used
     pub fn round_count(&self) -> u64 {
         self.round_count
     }

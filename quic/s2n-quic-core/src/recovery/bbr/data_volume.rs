@@ -44,7 +44,6 @@ pub(crate) struct Model {
     inflight_lo: u64,
 }
 
-#[allow(dead_code)] // TODO: Remove when used
 impl Model {
     /// Constructs a new `data_volume::Model`
     pub fn new(now: Timestamp) -> Self {

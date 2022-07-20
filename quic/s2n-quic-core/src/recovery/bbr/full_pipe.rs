@@ -10,6 +10,12 @@ use num_rational::Ratio;
 /// Estimator for determining if BBR has fully utilized its available bandwidth ("filled the pipe")
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Estimator {
+    //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.1.2
+    //# BBRInitFullPipe():
+    //#  BBR.filled_pipe = false
+    //#  BBR.full_bw = 0
+    //#  BBR.full_bw_count = 0
+
     //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.13
     //# A boolean that records whether BBR estimates that it has ever
     //# fully utilized its available bandwidth ("filled the pipe").

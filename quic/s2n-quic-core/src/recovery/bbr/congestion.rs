@@ -66,8 +66,12 @@ impl State {
     }
 
     /// Resets the congestion signals
-    #[allow(dead_code)] // TODO: Remove when used
     pub fn reset(&mut self) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
+        //# BBRResetCongestionSignals():
+        //#   BBR.loss_in_round = 0
+        //#   BBR.bw_latest = 0
+        //#   BBR.inflight_latest = 0
         self.loss_in_round = false;
         self.bw_latest = Bandwidth::ZERO;
         self.inflight_latest = 0;
