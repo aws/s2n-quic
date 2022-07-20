@@ -10,6 +10,7 @@ use crate::{
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls, endpoint};
 use s2n_tls::{
+    callbacks::VerifyHostNameCallback,
     config::{self, Config},
     enums::ClientAuthType,
     error::Error,
@@ -115,6 +116,20 @@ impl Builder {
                 .expect("pem is currently the only certificate format supported"),
         )?;
         self.config.set_client_auth_type(ClientAuthType::Required)?;
+        Ok(self)
+    }
+
+    /// Set the host name verification callback.
+    ///
+    /// This will be invoked when a server certificate is presented during a TLS
+    /// handshake. If this function is invoked, the default server name validation
+    /// logic is disabled; this should only be used in very specific cases where normal
+    /// TLS hostname validation is not appropriate.
+    pub fn with_verify_host_name_callback<T: 'static + VerifyHostNameCallback>(
+        mut self,
+        handler: T,
+    ) -> Result<Self, Error> {
+        self.config.set_verify_host_callback(handler)?;
         Ok(self)
     }
 

@@ -98,6 +98,15 @@ fn s2n_client_with_untrusted_client_auth() -> Result<client::Client, Error> {
         .build()
 }
 
+fn s2n_client_with_fixed_hostname_auth(host_name: &str) -> Result<client::Client, Error> {
+    client::Builder::default()
+        .with_certificate(CERT_PEM)
+        .unwrap()
+        .with_verify_host_name_callback(VerifyHostNameClientCertVerifier::new(host_name))
+        .unwrap()
+        .build()
+}
+
 fn s2n_server() -> server::Server {
     server::Builder::default()
         .with_certificate(CERT_PEM, KEY_PEM)
@@ -261,6 +270,29 @@ fn s2n_client_with_client_auth_s2n_server_does_not_trust_issuer() {
     assert!(test_result.is_err());
     let e = test_result.unwrap_err();
     assert_eq!(e.description().unwrap(), "HANDSHAKE_FAILURE");
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn s2n_client_with_custom_hostname_auth_rejects_server_name() {
+    let mut client_endpoint = s2n_client_with_fixed_hostname_auth("not-localhost").unwrap();
+    let mut server_endpoint = s2n_server();
+
+    let test_result = run_result(&mut server_endpoint, &mut client_endpoint, None);
+
+    // The handshake should fail because the hostname ("localhost") is not validated
+    assert!(test_result.is_err());
+    let e = test_result.unwrap_err();
+    assert_eq!(e.description().unwrap(), "HANDSHAKE_FAILURE");
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn s2n_client_with_custom_hostname_auth_accepts_server_name() {
+    let mut client_endpoint = s2n_client_with_fixed_hostname_auth("localhost").unwrap();
+    let mut server_endpoint = s2n_server();
+
+    run_result(&mut server_endpoint, &mut client_endpoint, None).unwrap();
 }
 
 /// Executes the handshake to completion
