@@ -362,8 +362,8 @@ fn create_default_initial_flow_control_limits() -> InitialFlowControlLimits {
             max_data_uni: VarInt::from_u32(4096),
         },
         max_data: VarInt::from_u32(64 * 1024),
-        max_streams_bidi: VarInt::from_u32(128),
-        max_streams_uni: VarInt::from_u32(128),
+        max_open_remote_bidirectional_streams: VarInt::from_u32(128),
+        max_open_remote_unidirectional_streams: VarInt::from_u32(128),
     }
 }
 
@@ -1275,10 +1275,14 @@ fn asymmetric_stream_limits_remote_initiated() {
                     .with_max_open_local_unidirectional_streams(local_limit as u64)
                     .unwrap();
 
-                initial_local_limits.max_streams_bidi = VarInt::from_u16(local_limit);
-                initial_peer_limits.max_streams_bidi = VarInt::from_u16(peer_limit);
-                initial_local_limits.max_streams_uni = VarInt::from_u16(local_limit);
-                initial_peer_limits.max_streams_uni = VarInt::from_u16(peer_limit);
+                initial_local_limits.max_open_remote_bidirectional_streams =
+                    VarInt::from_u16(local_limit);
+                initial_peer_limits.max_open_remote_bidirectional_streams =
+                    VarInt::from_u16(peer_limit);
+                initial_local_limits.max_open_remote_unidirectional_streams =
+                    VarInt::from_u16(local_limit);
+                initial_peer_limits.max_open_remote_unidirectional_streams =
+                    VarInt::from_u16(peer_limit);
 
                 let mut manager = AbstractStreamManager::<MockStream>::new(
                     &limits,
@@ -1349,10 +1353,14 @@ fn asymmetric_stream_limits_local_initiated() {
                     .with_max_open_local_unidirectional_streams(local_limit as u64)
                     .unwrap();
 
-                initial_local_limits.max_streams_bidi = VarInt::from_u16(local_limit);
-                initial_peer_limits.max_streams_bidi = VarInt::from_u16(peer_limit);
-                initial_local_limits.max_streams_uni = VarInt::from_u16(local_limit);
-                initial_peer_limits.max_streams_uni = VarInt::from_u16(peer_limit);
+                initial_local_limits.max_open_remote_bidirectional_streams =
+                    VarInt::from_u16(local_limit);
+                initial_peer_limits.max_open_remote_bidirectional_streams =
+                    VarInt::from_u16(peer_limit);
+                initial_local_limits.max_open_remote_unidirectional_streams =
+                    VarInt::from_u16(local_limit);
+                initial_peer_limits.max_open_remote_unidirectional_streams =
+                    VarInt::from_u16(peer_limit);
 
                 let mut manager = AbstractStreamManager::<MockStream>::new(
                     &limits,

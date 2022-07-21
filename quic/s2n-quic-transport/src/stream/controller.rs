@@ -67,15 +67,19 @@ impl Controller {
         Self {
             local_endpoint_type,
             local_bidi_controller: LocalInitiated::new(
-                initial_peer_limits.max_streams_bidi,
+                initial_peer_limits.max_open_remote_bidirectional_streams,
                 stream_limits.max_open_local_bidirectional_streams,
             ),
-            remote_bidi_controller: RemoteInitiated::new(initial_local_limits.max_streams_bidi),
+            remote_bidi_controller: RemoteInitiated::new(
+                initial_local_limits.max_open_remote_bidirectional_streams,
+            ),
             local_uni_controller: LocalInitiated::new(
-                initial_peer_limits.max_streams_uni,
+                initial_peer_limits.max_open_remote_unidirectional_streams,
                 stream_limits.max_open_local_unidirectional_streams,
             ),
-            remote_uni_controller: RemoteInitiated::new(initial_local_limits.max_streams_uni),
+            remote_uni_controller: RemoteInitiated::new(
+                initial_local_limits.max_open_remote_unidirectional_streams,
+            ),
         }
     }
 

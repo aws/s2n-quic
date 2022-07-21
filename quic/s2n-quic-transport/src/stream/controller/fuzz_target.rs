@@ -123,19 +123,27 @@ impl Oracle {
             }
             (false, StreamType::Bidirectional) => {
                 self.remote_bidi_open_idx_set.take(&nth_idx).unwrap();
-                self.initial_local_limits.max_streams_bidi += 1;
+                self.initial_local_limits
+                    .max_open_remote_bidirectional_streams += 1;
             }
             (false, StreamType::Unidirectional) => {
                 self.remote_uni_open_idx_set.take(&nth_idx).unwrap();
-                self.initial_local_limits.max_streams_uni += 1;
+                self.initial_local_limits
+                    .max_open_remote_unidirectional_streams += 1;
             }
         };
     }
 
     fn remote_limit(&self, stream_type: StreamType) -> u64 {
         match stream_type {
-            StreamType::Bidirectional => self.initial_local_limits.max_streams_bidi,
-            StreamType::Unidirectional => self.initial_local_limits.max_streams_uni,
+            StreamType::Bidirectional => {
+                self.initial_local_limits
+                    .max_open_remote_bidirectional_streams
+            }
+            StreamType::Unidirectional => {
+                self.initial_local_limits
+                    .max_open_remote_unidirectional_streams
+            }
         }
         .as_u64()
     }
@@ -152,13 +160,25 @@ impl Oracle {
     fn on_max_stream_local(&mut self, maximum_streams: u8, direction: StreamDirection) {
         match direction {
             StreamDirection::LocalInitiatedBidirectional => {
-                if self.initial_remote_limits.max_streams_bidi.as_u64() < maximum_streams.into() {
-                    self.initial_remote_limits.max_streams_bidi = VarInt::from_u8(maximum_streams);
+                if self
+                    .initial_remote_limits
+                    .max_open_remote_bidirectional_streams
+                    .as_u64()
+                    < maximum_streams.into()
+                {
+                    self.initial_remote_limits
+                        .max_open_remote_bidirectional_streams = VarInt::from_u8(maximum_streams);
                 }
             }
             StreamDirection::LocalInitiatedUnidirectional => {
-                if self.initial_remote_limits.max_streams_uni.as_u64() < maximum_streams.into() {
-                    self.initial_remote_limits.max_streams_uni = VarInt::from_u8(maximum_streams);
+                if self
+                    .initial_remote_limits
+                    .max_open_remote_unidirectional_streams
+                    .as_u64()
+                    < maximum_streams.into()
+                {
+                    self.initial_remote_limits
+                        .max_open_remote_unidirectional_streams = VarInt::from_u8(maximum_streams);
                 }
             }
             StreamDirection::RemoteInitiatedBidirectional
@@ -494,21 +514,21 @@ impl Limits {
         };
 
         // OpenRemoteBidi (initial_local_limits)
-        initial_local_limits.max_streams_bidi =
+        initial_local_limits.max_open_remote_bidirectional_streams =
             VarInt::from_u32(self.initial_local_max_remote_bidi.into());
 
         // OpenRemoteUni (initial_local_limits)
-        initial_local_limits.max_streams_uni =
+        initial_local_limits.max_open_remote_unidirectional_streams =
             VarInt::from_u32(self.initial_local_max_remote_uni.into());
 
         // OpenLocalBidi (initial_remote_limits)
         //  initial_remote_max_local_bidi.min(app_max_local_bidi)
-        initial_remote_limits.max_streams_bidi =
+        initial_remote_limits.max_open_remote_bidirectional_streams =
             VarInt::from_u32(self.initial_remote_max_local_bidi.into());
 
         // OpenLocalUni (initial_remote_limits)
         //  initial_remote_max_local_uni.min(app_max_local_uni)
-        initial_remote_limits.max_streams_uni =
+        initial_remote_limits.max_open_remote_unidirectional_streams =
             VarInt::from_u32(self.initial_remote_max_local_uni.into());
 
         (initial_local_limits, initial_remote_limits, stream_limits)

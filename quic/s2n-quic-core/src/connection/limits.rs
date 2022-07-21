@@ -207,8 +207,12 @@ impl Limits {
         InitialFlowControlLimits {
             stream_limits: self.initial_stream_limits(),
             max_data: self.data_window.as_varint(),
-            max_streams_bidi: self.max_open_remote_bidirectional_streams.as_varint(),
-            max_streams_uni: self.max_open_remote_unidirectional_streams.as_varint(),
+            max_open_remote_bidirectional_streams: self
+                .max_open_remote_bidirectional_streams
+                .as_varint(),
+            max_open_remote_unidirectional_streams: self
+                .max_open_remote_unidirectional_streams
+                .as_varint(),
         }
     }
 
