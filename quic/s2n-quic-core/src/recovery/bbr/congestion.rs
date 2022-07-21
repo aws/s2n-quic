@@ -66,6 +66,7 @@ impl State {
 
         if self.loss_round_counter.round_start() {
             // TODO: Check for ecn_in_round as in bbr2_adapt_lower_bounds
+            // See https://github.com/aws/s2n-quic/issues/1423
 
             //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
             //# BBRAdaptLowerBoundsFromCongestion():
