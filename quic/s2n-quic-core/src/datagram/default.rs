@@ -239,8 +239,11 @@ pub struct Datagram {
 #[non_exhaustive]
 #[derive(Debug, PartialEq)]
 pub enum DatagramError {
+    #[non_exhaustive]
     QueueAtCapacity,
+    #[non_exhaustive]
     ExceedsPeerTransportLimits,
+    #[non_exhaustive]
     ConnectionError { error: connection::Error },
 }
 
