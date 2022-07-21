@@ -2251,7 +2251,7 @@ pub mod builder {
             }
         }
     }
-    #[derive(Clone, Debug)]
+    #[derive(Copy, Clone, Debug)]
     pub struct Path<'a> {
         pub local_addr: SocketAddress<'a>,
         pub local_cid: ConnectionId<'a>,
@@ -2281,7 +2281,7 @@ pub mod builder {
             }
         }
     }
-    #[derive(Clone, Debug)]
+    #[derive(Copy, Clone, Debug)]
     pub struct ConnectionId<'a> {
         pub bytes: &'a [u8],
     }
@@ -2321,7 +2321,7 @@ pub mod builder {
             }
         }
     }
-    #[derive(Clone, Debug)]
+    #[derive(Copy, Clone, Debug)]
     pub enum SocketAddress<'a> {
         IpV4 { ip: &'a [u8; 4], port: u16 },
         IpV6 { ip: &'a [u8; 16], port: u16 },
