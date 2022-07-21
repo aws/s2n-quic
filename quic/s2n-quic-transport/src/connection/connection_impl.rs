@@ -36,6 +36,7 @@ use s2n_quic_core::{
     application::ServerName,
     connection::{id::Generator as _, InitialId, PeerId},
     crypto::{tls, CryptoSuite},
+    datagram::{Receiver, Sender},
     event::{
         self,
         builder::{DatagramDropReason, MtuUpdatedCause, RxStreamProgress, TxStreamProgress},
@@ -760,6 +761,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 self.state,
             );
             self.state = ConnectionState::Finished;
+        }
+
+        // Notify the datagram manager that the connection has closed
+        if let Some((space, _)) = self.space_manager.application_mut() {
+            space.datagram_manager.sender.on_connection_error(error);
+            space.datagram_manager.receiver.on_connection_error(error);
         }
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
@@ -1845,12 +1852,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     #[inline]
     fn datagram_mut(&mut self, query: &mut dyn event::query::QueryMut) {
         if let Some((space, _)) = self.space_manager.application_mut() {
-            // Try to execute the query on the sender side. If that fails, try the receiver side.
-            match query.execute_mut(&mut space.datagram_manager.sender) {
-                event::query::ControlFlow::Continue => {
-                    query.execute_mut(&mut space.datagram_manager.receiver);
-                }
-                event::query::ControlFlow::Break => (),
+            if space.datagram_manager.datagram_mut(query).is_ready() {
+                self.wakeup_handle.wakeup();
             }
         }
     }
