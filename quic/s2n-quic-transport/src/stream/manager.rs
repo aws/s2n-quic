@@ -22,6 +22,7 @@ use core::{
     task::{Context, Poll, Waker},
     time::Duration,
 };
+use futures_core::ready;
 use s2n_quic_core::{
     ack, endpoint,
     frame::{
@@ -281,7 +282,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
                 // Validate that there is enough capacity to open all streams.
                 self.stream_controller.on_open_remote_stream(stream_iter)?;
 
-                // We must create ALL streams which a lower Stream ID too:
+                // We must create ALL streams with a lower Stream ID too:
                 //
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-3.2
                 //# Before a stream is created, all streams of the same type with lower-
@@ -336,16 +337,15 @@ impl<S: StreamTrait> StreamManagerState<S> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
         //# An endpoint MUST NOT open more streams than permitted by the current
         //# stream limit set by its peer.
-        match self
+        let poll_open = self
             .stream_controller
-            .poll_open_local_stream(stream_id, open_token, context)
-        {
-            Poll::Ready(stream_id) => {
-                self.insert_stream(stream_id);
-                Poll::Ready(Ok(stream_id))
-            }
-            Poll::Pending => Poll::Pending,
-        }
+            .poll_open_local_stream(stream_id, open_token, context);
+
+        // returns Pending if there is no capacity available
+        let stream_id = ready!(poll_open);
+
+        self.insert_stream(stream_id);
+        Poll::Ready(Ok(stream_id))
     }
 
     fn close(&mut self, error: connection::Error, flush: bool) {

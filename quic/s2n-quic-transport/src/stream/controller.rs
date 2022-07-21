@@ -15,6 +15,7 @@ use core::{
     task::{Context, Poll},
     time::Duration,
 };
+use futures_core::ready;
 use s2n_quic_core::{
     ack, endpoint,
     frame::MaxStreams,
@@ -117,7 +118,7 @@ impl Controller {
             }
         }
 
-        let poll = match stream_id.stream_type() {
+        let poll_open = match stream_id.stream_type() {
             StreamType::Bidirectional => self
                 .local_bidi_controller
                 .poll_open_stream(&mut open_tokens.bidirectional, context),
@@ -126,14 +127,12 @@ impl Controller {
                 .poll_open_stream(&mut open_tokens.unidirectional, context),
         };
 
-        match poll {
-            Poll::Ready(_) => {
-                // only open streams if there is sufficient capacity based on limits
-                self.on_open_stream(stream_id);
-                Poll::Ready(stream_id)
-            }
-            Poll::Pending => Poll::Pending,
-        }
+        // returns Pending if there is no capacity available
+        ready!(poll_open);
+
+        // only open streams if there is sufficient capacity based on limits
+        self.on_open_stream(stream_id);
+        Poll::Ready(stream_id)
     }
 
     /// This method is called when the remote peer wishes to open a new stream.
@@ -312,9 +311,19 @@ impl transmission::interest::Provider for Controller {
 
 #[derive(Debug, Copy, Clone)]
 enum StreamDirection {
+    // A bidirectional stream opened by the local application to send
+    // and receive data
     LocalInitiatedBidirectional,
+
+    // A bidirectional stream opened by the peer to send and receive
+    // data
     RemoteInitiatedBidirectional,
+
+    // A unidirectional stream opened by the local application to send
+    // data
     LocalInitiatedUnidirectional,
+
+    // A unidirectional stream opened by the peer to send data
     RemoteInitiatedUnidirectional,
 }
 
@@ -338,7 +347,10 @@ mod tests {
             }
         }
 
-        pub fn available_remote_intiated_stream_capacity(&self, stream_type: StreamType) -> VarInt {
+        pub fn available_remote_initiated_stream_capacity(
+            &self,
+            stream_type: StreamType,
+        ) -> VarInt {
             match stream_type {
                 StreamType::Bidirectional => {
                     self.remote_initiated_max_streams_latest_value(stream_type)

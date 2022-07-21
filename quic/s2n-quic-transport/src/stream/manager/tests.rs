@@ -1321,7 +1321,7 @@ fn asymmetric_stream_limits_remote_initiated() {
 
                 // remote capacity assertion
                 let available_remote_stream_capacity = manager.with_stream_controller(|cntl| {
-                    cntl.available_remote_intiated_stream_capacity(stream_type)
+                    cntl.available_remote_initiated_stream_capacity(stream_type)
                 });
                 // Remote initiated streams capacity should be all used up
                 assert_eq!(
@@ -1402,7 +1402,7 @@ fn asymmetric_stream_limits_local_initiated() {
 
                 // remote capacity assertion
                 let available_remote_stream_capacity = manager.with_stream_controller(|cntl| {
-                    cntl.available_remote_intiated_stream_capacity(stream_type)
+                    cntl.available_remote_initiated_stream_capacity(stream_type)
                 });
                 // Local initiated streams do NOT use up the capacity for remote initiated streams
                 //
