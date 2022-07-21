@@ -55,8 +55,8 @@ pub mod api {
         pub connection_id: ConnectionId<'a>,
         pub stateless_reset_token: &'a [u8],
     }
+    #[derive(Clone, Debug)]
     #[non_exhaustive]
-    #[derive(Debug, Clone, Copy)]
     pub struct Path<'a> {
         pub local_addr: SocketAddress<'a>,
         pub local_cid: ConnectionId<'a>,
@@ -66,7 +66,7 @@ pub mod api {
         pub is_active: bool,
     }
     #[non_exhaustive]
-    #[derive(Clone, Copy)]
+    #[derive(Clone)]
     pub struct ConnectionId<'a> {
         pub bytes: &'a [u8],
     }
@@ -84,7 +84,7 @@ pub mod api {
         pub ce_count: u64,
     }
     #[non_exhaustive]
-    #[derive(Clone, Copy)]
+    #[derive(Clone)]
     pub enum SocketAddress<'a> {
         #[non_exhaustive]
         IpV4 { ip: &'a [u8; 4], port: u16 },
@@ -2251,7 +2251,7 @@ pub mod builder {
             }
         }
     }
-    #[derive(Copy, Clone, Debug)]
+    #[derive(Clone, Debug)]
     pub struct Path<'a> {
         pub local_addr: SocketAddress<'a>,
         pub local_cid: ConnectionId<'a>,
@@ -2281,7 +2281,7 @@ pub mod builder {
             }
         }
     }
-    #[derive(Copy, Clone, Debug)]
+    #[derive(Clone, Debug)]
     pub struct ConnectionId<'a> {
         pub bytes: &'a [u8],
     }
@@ -2321,7 +2321,7 @@ pub mod builder {
             }
         }
     }
-    #[derive(Copy, Clone, Debug)]
+    #[derive(Clone, Debug)]
     pub enum SocketAddress<'a> {
         IpV4 { ip: &'a [u8; 4], port: u16 },
         IpV6 { ip: &'a [u8; 16], port: u16 },
