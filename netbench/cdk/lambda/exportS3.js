@@ -1,7 +1,7 @@
 const AWS = require('aws-sdk')
 const cloudconfig = {
   apiVersion: '2014-03-28',
-  region: process.env.REGION, 
+  region: process.env.AWS_REGION, 
 }
 const cloudwatchlogs = new AWS.CloudWatchLogs(cloudconfig)
 exports.handler =  async (event, context) => {

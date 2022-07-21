@@ -57,6 +57,8 @@ class EcsStack extends Stack {
     private EcsRunTask ecsTask;
     private Function exportLogsLambda;
     private Cluster cluster;
+    static final String bucketName = "BUCKET_NAME";
+    static final String logGroupName = "LOG_GROUP_NAME";
 
 
     public EcsStack(final Construct parent, final String id, final EcsStackProps props) {
@@ -120,9 +122,9 @@ class EcsStack extends Stack {
                 .build());
 
             Map<String, String> exportLambdaLogsEnv = new HashMap<>();
-            exportLambdaLogsEnv.put("BUCKET_NAME", bucket.getBucketName());
-            exportLambdaLogsEnv.put("REGION", props.getServerRegion());
-            exportLambdaLogsEnv.put("LOG_GROUP_NAME", serviceLogGroup.getLogGroupName());
+            exportLambdaLogsEnv.put(EcsStack.bucketName, bucket.getBucketName());
+            //exportLambdaLogsEnv.put("REGION", props.getServerRegion());
+            exportLambdaLogsEnv.put(EcsStack.logGroupName, serviceLogGroup.getLogGroupName());
 
             exportLogsLambda = Function.Builder.create(this, "export-logs-lambda")
                 .runtime(Runtime.NODEJS_14_X)
