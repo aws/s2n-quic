@@ -136,15 +136,10 @@ impl Controller {
         &mut self,
         stream_iter: StreamIter,
     ) -> Result<(), transport::Error> {
-        if cfg!(debug_assertions) {
-            match self.direction(stream_iter.max_stream_id()) {
-                StreamDirection::LocalInitiatedBidirectional
-                | StreamDirection::LocalInitiatedUnidirectional => {
-                    panic!("should only be called for remote initiated streams")
-                }
-                _ => (),
-            }
-        }
+        debug_assert!(
+            self.direction(stream_iter.max_stream_id()).is_remote(),
+            "should only be called for remote initiated streams"
+        );
 
         // return early if there is not sufficient capacity based on limits
         match stream_iter.max_stream_id().stream_type() {
@@ -316,6 +311,17 @@ enum StreamDirection {
 
     // A unidirectional stream opened by the peer to send data
     RemoteInitiatedUnidirectional,
+}
+
+impl StreamDirection {
+    fn is_remote(&self) -> bool {
+        match self {
+            StreamDirection::LocalInitiatedBidirectional => false,
+            StreamDirection::RemoteInitiatedBidirectional => true,
+            StreamDirection::LocalInitiatedUnidirectional => false,
+            StreamDirection::RemoteInitiatedUnidirectional => true,
+        }
+    }
 }
 
 #[cfg(test)]
