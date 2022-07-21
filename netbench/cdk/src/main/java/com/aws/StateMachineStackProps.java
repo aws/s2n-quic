@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.aws;
 
-import software.amazon.awscdk.Environment;
 import software.amazon.awscdk.StackProps;
+import software.amazon.awscdk.Environment;
 import software.amazon.awscdk.services.stepfunctions.tasks.EcsRunTask;
+import software.amazon.awscdk.services.s3.Bucket;
+import software.amazon.awscdk.services.lambda.Function;
+import software.amazon.awscdk.services.ecs.Cluster;
 
 public interface StateMachineStackProps extends StackProps {
 
@@ -14,9 +17,21 @@ public interface StateMachineStackProps extends StackProps {
 
     EcsRunTask getClientTask();
 
+    Bucket getBucket();
+
+    Function getLogsLambda();
+
+    Cluster getCluster();
+
+    String getDriver();
+
     public static class Builder {
         private EcsRunTask clientTask;
         private Environment env;
+        private Bucket bucket;
+        private Function logsLambda;
+        private Cluster cluster;
+        private String driver;
 
         public Builder clientTask(EcsRunTask clientTask) {
             this.clientTask = clientTask;
@@ -25,6 +40,26 @@ public interface StateMachineStackProps extends StackProps {
 
         public Builder env(Environment env) {
             this.env = env;
+            return this;
+        }
+
+        public Builder bucket(Bucket bucket) {
+            this.bucket = bucket;
+            return this;
+        }
+
+        public Builder logsLambda(Function logsLambda) {
+            this.logsLambda = logsLambda;
+            return this;
+        }
+
+        public Builder cluster(Cluster cluster) {
+            this.cluster = cluster;
+            return this;
+        }
+
+        public Builder driver(String driver) {
+            this.driver = driver;
             return this;
         }
 
@@ -40,6 +75,27 @@ public interface StateMachineStackProps extends StackProps {
                 public Environment getEnv() {
                     return env;
                 }
+                
+                @Override
+                public Bucket getBucket() {
+                    return bucket;
+                }
+
+                @Override
+                public Function getLogsLambda() {
+                    return logsLambda;
+                }
+
+                @Override
+                public Cluster getCluster() {
+                    return cluster;
+                }
+
+                @Override
+                public String getDriver() {
+                    return driver;
+                }
+
             };
         }
     }

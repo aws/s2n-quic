@@ -64,7 +64,23 @@ RUN set -eux; \
     cp target/debug/netbench-cli /app/bin; \
   fi; \
   rm -rf target; \
-  echo "#!/usr/bin/env bash\naws s3 cp s3://\$S3_BUCKET/client.json ./client.json\naws s3 cp s3://\$S3_BUCKET/server.json ./server.json\neval /usr/bin/netbench-cli ./client.json ./server.json \$@ > report.json\naws s3 cp ./report.json s3://\$S3_BUCKET/" > /app/bin/start; 
+  # Bash script to retrieve client and server metrics from S3, and upload generated report to S3
+  echo "#!/usr/bin/env bash\n \
+  set -e\n \
+  aws s3 sync s3://\$S3_BUCKET /tmp\n \
+  # aws s3 cp s3://\$S3_BUCKET/client.json /tmp/client.json\n \
+  # aws s3 cp s3://\$S3_BUCKET/exportedlogs/\$EXPORT_TASK_ID/ /tmp/ --recursive\n \
+  # get directory containing server logs\n \
+  export DIR=\$(ls -d /tmp/exportedlogs/\$EXPORT_TASK_ID/*/)\n \
+  printenv\n \
+  # exported log file always named 000000.gz\n \
+  gzip -d \$(echo \$DIR)000000.gz\n \
+  # sort server logs based on timestamp\n \
+  sort -k1 \"\$(echo \$DIR)000000\" > \$(echo \$DIR)000000_sorted\n \
+  # remove timestamp from server logs\n \
+  echo \"\$(<\$(echo \$DIR)000000_sorted)\" |  awk -F'{' '{ st = index(\$0,\"{\");print \"{\" substr(\$0,st+1)}' > /tmp/\$DRIVER-server.json\n \
+  eval /usr/bin/netbench-cli report /tmp/\$DRIVER-client.json /tmp/\$DRIVER-server.json \$@ > /tmp/\$DRIVER-report.json\n \
+  aws s3 sync /tmp s3://\$S3_BUCKET" > /app/bin/start; 
 
 FROM debian:latest
 
@@ -80,6 +96,7 @@ RUN set -eux; \
   sudo ./aws/install; \
   chmod +x /tmp/netbench/*; \
   mv /tmp/netbench/* /usr/bin; \
+  rm -r /tmp/netbench; \
   echo done
 
 ENTRYPOINT ["/usr/bin/start"]

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.aws;
 
+import software.amazon.awscdk.StackProps;
 import software.amazon.awscdk.Environment;
 import software.amazon.awscdk.StackProps;
 import software.amazon.awscdk.services.ec2.Vpc;

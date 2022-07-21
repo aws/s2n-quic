@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.aws;
 
-import java.util.HashSet;
-import java.util.Set;
-
 import software.amazon.awscdk.App;
 import software.amazon.awscdk.Environment;
 import software.amazon.awscdk.regioninfo.Fact;
+import java.lang.IllegalArgumentException;
+import java.util.HashSet;
+import java.util.Set;
 
 public class NetbenchAutoApp {
 
@@ -88,7 +88,10 @@ public class NetbenchAutoApp {
             .instanceType(ec2InstanceType)
             .ecrUri(serverEcrUri)
             .scenario(scenarioFile)
+            .serverRegion(serverRegion)
             .build());
+
+        serverEcsStack.addDependency(vpcStack);
 
         EcsStack clientEcsStack = new EcsStack(app, "ClientEcsStack", EcsStackProps.builder()
             .env(makeEnv(awsAccount, clientRegion))
@@ -101,11 +104,20 @@ public class NetbenchAutoApp {
             .ecrUri(clientEcrUri)
             .scenario(scenarioFile)
             .build());
+        
+        clientEcsStack.addDependency(serverEcsStack);
+
 
         StateMachineStack stateMachineStack = new StateMachineStack(app, "StateMachineStack", StateMachineStackProps.builder()
             .env(makeEnv(awsAccount, clientRegion))
             .clientTask(clientEcsStack.getEcsTask())
+            .bucket(vpcStack.getBucket())
+            .logsLambda(serverEcsStack.getLogsLambda())
+            .cluster(clientEcsStack.getCluster())
+            .driver(protocol)
             .build());
+
+        stateMachineStack.addDependency(clientEcsStack);
 
         app.synth();
     }
