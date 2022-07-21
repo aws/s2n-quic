@@ -93,6 +93,8 @@ impl IntoEvent<bool> for &crate::transport::parameters::MigrationSupport {
     }
 }
 
+#[builder_derive(derive(Copy))]
+#[derive(Debug, Clone, Copy)]
 struct Path<'a> {
     local_addr: SocketAddress<'a>,
     local_cid: ConnectionId<'a>,
@@ -102,7 +104,8 @@ struct Path<'a> {
     is_active: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
+#[builder_derive(derive(Copy))]
 struct ConnectionId<'a> {
     bytes: &'a [u8],
 }
@@ -135,7 +138,8 @@ impl_conn_id!(PeerId);
 impl_conn_id!(UnboundedId);
 impl_conn_id!(InitialId);
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
+#[builder_derive(derive(Copy))]
 enum SocketAddress<'a> {
     IpV4 { ip: &'a [u8; 4], port: u16 },
     IpV6 { ip: &'a [u8; 16], port: u16 },
@@ -714,6 +718,7 @@ enum PacketDropReason<'a> {
     },
 }
 
+#[deprecated(note = "use on_rx_ack_range_dropped event instead")]
 enum AckAction {
     /// Ack range for received packets was dropped due to space constraints
     ///

@@ -55,8 +55,8 @@ pub mod api {
         pub connection_id: ConnectionId<'a>,
         pub stateless_reset_token: &'a [u8],
     }
-    #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[derive(Debug, Clone, Copy)]
     pub struct Path<'a> {
         pub local_addr: SocketAddress<'a>,
         pub local_cid: ConnectionId<'a>,
@@ -66,7 +66,7 @@ pub mod api {
         pub is_active: bool,
     }
     #[non_exhaustive]
-    #[derive(Clone)]
+    #[derive(Clone, Copy)]
     pub struct ConnectionId<'a> {
         pub bytes: &'a [u8],
     }
@@ -84,7 +84,7 @@ pub mod api {
         pub ce_count: u64,
     }
     #[non_exhaustive]
-    #[derive(Clone)]
+    #[derive(Clone, Copy)]
     pub enum SocketAddress<'a> {
         #[non_exhaustive]
         IpV4 { ip: &'a [u8; 4], port: u16 },
@@ -334,6 +334,7 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[deprecated(note = "use on_rx_ack_range_dropped event instead")]
     pub enum AckAction {
         #[non_exhaustive]
         #[doc = " Ack range for received packets was dropped due to space constraints"]
@@ -611,12 +612,37 @@ pub mod api {
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     #[doc = " Events related to ACK processing"]
+    #[deprecated(note = "use on_rx_ack_range_dropped event instead")]
+    #[allow(deprecated)]
     pub struct AckProcessed<'a> {
         pub action: AckAction,
         pub path: Path<'a>,
     }
+    #[allow(deprecated)]
     impl<'a> Event for AckProcessed<'a> {
         const NAME: &'static str = "recovery:ack_processed";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Ack range for received packets was dropped due to space constraints"]
+    #[doc = ""]
+    #[doc = " For the purpose of processing Acks, RX packet numbers are stored as"]
+    #[doc = " packet_number ranges in an IntervalSet; only lower and upper bounds"]
+    #[doc = " are stored instead of individual packet_numbers. Ranges are merged"]
+    #[doc = " when possible so only disjointed ranges are stored."]
+    #[doc = ""]
+    #[doc = " When at `capacity`, the lowest packet_number range is dropped."]
+    pub struct RxAckRangeDropped<'a> {
+        pub path: Path<'a>,
+        #[doc = " The packet number range which was dropped"]
+        pub packet_number_range: core::ops::RangeInclusive<u64>,
+        #[doc = " The number of disjoint ranges the IntervalSet can store"]
+        pub capacity: usize,
+        #[doc = " The store packet_number range in the IntervalSet"]
+        pub stored_range: core::ops::RangeInclusive<u64>,
+    }
+    impl<'a> Event for RxAckRangeDropped<'a> {
+        const NAME: &'static str = "recovery:rx_ack_range_dropped";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1597,6 +1623,7 @@ pub mod tracing {
             tracing :: event ! (target : "congestion" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , source = tracing :: field :: debug (source));
         }
         #[inline]
+        #[allow(deprecated)]
         fn on_ack_processed(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -1606,6 +1633,22 @@ pub mod tracing {
             let id = context.id();
             let api::AckProcessed { action, path } = event;
             tracing :: event ! (target : "ack_processed" , parent : id , tracing :: Level :: DEBUG , action = tracing :: field :: debug (action) , path = tracing :: field :: debug (path));
+        }
+        #[inline]
+        fn on_rx_ack_range_dropped(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::RxAckRangeDropped,
+        ) {
+            let id = context.id();
+            let api::RxAckRangeDropped {
+                path,
+                packet_number_range,
+                capacity,
+                stored_range,
+            } = event;
+            tracing :: event ! (target : "rx_ack_range_dropped" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , packet_number_range = tracing :: field :: debug (packet_number_range) , capacity = tracing :: field :: debug (capacity) , stored_range = tracing :: field :: debug (stored_range));
         }
         #[inline]
         fn on_ack_range_received(
@@ -2208,7 +2251,7 @@ pub mod builder {
             }
         }
     }
-    #[derive(Clone, Debug)]
+    #[derive(Copy, Clone, Debug)]
     pub struct Path<'a> {
         pub local_addr: SocketAddress<'a>,
         pub local_cid: ConnectionId<'a>,
@@ -2238,7 +2281,7 @@ pub mod builder {
             }
         }
     }
-    #[derive(Clone, Debug)]
+    #[derive(Copy, Clone, Debug)]
     pub struct ConnectionId<'a> {
         pub bytes: &'a [u8],
     }
@@ -2278,7 +2321,7 @@ pub mod builder {
             }
         }
     }
-    #[derive(Clone, Debug)]
+    #[derive(Copy, Clone, Debug)]
     pub enum SocketAddress<'a> {
         IpV4 { ip: &'a [u8; 4], port: u16 },
         IpV6 { ip: &'a [u8; 16], port: u16 },
@@ -2739,6 +2782,7 @@ pub mod builder {
             stored_range: core::ops::RangeInclusive<u64>,
         },
     }
+    #[allow(deprecated)]
     impl IntoEvent<api::AckAction> for AckAction {
         #[inline]
         fn into_event(self) -> api::AckAction {
@@ -3182,6 +3226,7 @@ pub mod builder {
         pub action: AckAction,
         pub path: Path<'a>,
     }
+    #[allow(deprecated)]
     impl<'a> IntoEvent<api::AckProcessed<'a>> for AckProcessed<'a> {
         #[inline]
         fn into_event(self) -> api::AckProcessed<'a> {
@@ -3189,6 +3234,41 @@ pub mod builder {
             api::AckProcessed {
                 action: action.into_event(),
                 path: path.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Ack range for received packets was dropped due to space constraints"]
+    #[doc = ""]
+    #[doc = " For the purpose of processing Acks, RX packet numbers are stored as"]
+    #[doc = " packet_number ranges in an IntervalSet; only lower and upper bounds"]
+    #[doc = " are stored instead of individual packet_numbers. Ranges are merged"]
+    #[doc = " when possible so only disjointed ranges are stored."]
+    #[doc = ""]
+    #[doc = " When at `capacity`, the lowest packet_number range is dropped."]
+    pub struct RxAckRangeDropped<'a> {
+        pub path: Path<'a>,
+        #[doc = " The packet number range which was dropped"]
+        pub packet_number_range: core::ops::RangeInclusive<u64>,
+        #[doc = " The number of disjoint ranges the IntervalSet can store"]
+        pub capacity: usize,
+        #[doc = " The store packet_number range in the IntervalSet"]
+        pub stored_range: core::ops::RangeInclusive<u64>,
+    }
+    impl<'a> IntoEvent<api::RxAckRangeDropped<'a>> for RxAckRangeDropped<'a> {
+        #[inline]
+        fn into_event(self) -> api::RxAckRangeDropped<'a> {
+            let RxAckRangeDropped {
+                path,
+                packet_number_range,
+                capacity,
+                stored_range,
+            } = self;
+            api::RxAckRangeDropped {
+                path: path.into_event(),
+                packet_number_range: packet_number_range.into_event(),
+                capacity: capacity.into_event(),
+                stored_range: stored_range.into_event(),
             }
         }
     }
@@ -4150,11 +4230,25 @@ mod traits {
         }
         #[doc = "Called when the `AckProcessed` event is triggered"]
         #[inline]
+        #[deprecated(note = "use on_rx_ack_range_dropped event instead")]
+        #[allow(deprecated)]
         fn on_ack_processed(
             &mut self,
             context: &mut Self::ConnectionContext,
             meta: &ConnectionMeta,
             event: &AckProcessed,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `RxAckRangeDropped` event is triggered"]
+        #[inline]
+        fn on_rx_ack_range_dropped(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &RxAckRangeDropped,
         ) {
             let _ = context;
             let _ = meta;
@@ -4757,6 +4851,7 @@ mod traits {
             (self.1).on_congestion(&mut context.1, meta, event);
         }
         #[inline]
+        #[allow(deprecated)]
         fn on_ack_processed(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -4765,6 +4860,16 @@ mod traits {
         ) {
             (self.0).on_ack_processed(&mut context.0, meta, event);
             (self.1).on_ack_processed(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_rx_ack_range_dropped(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &RxAckRangeDropped,
+        ) {
+            (self.0).on_rx_ack_range_dropped(&mut context.0, meta, event);
+            (self.1).on_rx_ack_range_dropped(&mut context.1, meta, event);
         }
         #[inline]
         fn on_ack_range_received(
@@ -5321,6 +5426,8 @@ mod traits {
         fn on_congestion(&mut self, event: builder::Congestion);
         #[doc = "Publishes a `AckProcessed` event to the publisher's subscriber"]
         fn on_ack_processed(&mut self, event: builder::AckProcessed);
+        #[doc = "Publishes a `RxAckRangeDropped` event to the publisher's subscriber"]
+        fn on_rx_ack_range_dropped(&mut self, event: builder::RxAckRangeDropped);
         #[doc = "Publishes a `AckRangeReceived` event to the publisher's subscriber"]
         fn on_ack_range_received(&mut self, event: builder::AckRangeReceived);
         #[doc = "Publishes a `PacketDropped` event to the publisher's subscriber"]
@@ -5506,10 +5613,20 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        #[allow(deprecated)]
         fn on_ack_processed(&mut self, event: builder::AckProcessed) {
             let event = event.into_event();
             self.subscriber
                 .on_ack_processed(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_rx_ack_range_dropped(&mut self, event: builder::RxAckRangeDropped) {
+            let event = event.into_event();
+            self.subscriber
+                .on_rx_ack_range_dropped(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -5753,6 +5870,7 @@ pub mod testing {
         pub recovery_metrics: u32,
         pub congestion: u32,
         pub ack_processed: u32,
+        pub rx_ack_range_dropped: u32,
         pub ack_range_received: u32,
         pub packet_dropped: u32,
         pub key_update: u32,
@@ -5826,6 +5944,7 @@ pub mod testing {
                 recovery_metrics: 0,
                 congestion: 0,
                 ack_processed: 0,
+                rx_ack_range_dropped: 0,
                 ack_range_received: 0,
                 packet_dropped: 0,
                 key_update: 0,
@@ -5995,6 +6114,7 @@ pub mod testing {
                 self.output.push(format!("{:?} {:?}", meta, event));
             }
         }
+        #[allow(deprecated)]
         fn on_ack_processed(
             &mut self,
             _context: &mut Self::ConnectionContext,
@@ -6002,6 +6122,17 @@ pub mod testing {
             event: &api::AckProcessed,
         ) {
             self.ack_processed += 1;
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
+        }
+        fn on_rx_ack_range_dropped(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::RxAckRangeDropped,
+        ) {
+            self.rx_ack_range_dropped += 1;
             if self.location.is_some() {
                 self.output.push(format!("{:?} {:?}", meta, event));
             }
@@ -6372,6 +6503,7 @@ pub mod testing {
         pub recovery_metrics: u32,
         pub congestion: u32,
         pub ack_processed: u32,
+        pub rx_ack_range_dropped: u32,
         pub ack_range_received: u32,
         pub packet_dropped: u32,
         pub key_update: u32,
@@ -6435,6 +6567,7 @@ pub mod testing {
                 recovery_metrics: 0,
                 congestion: 0,
                 ack_processed: 0,
+                rx_ack_range_dropped: 0,
                 ack_range_received: 0,
                 packet_dropped: 0,
                 key_update: 0,
@@ -6634,8 +6767,16 @@ pub mod testing {
                 self.output.push(format!("{:?}", event));
             }
         }
+        #[allow(deprecated)]
         fn on_ack_processed(&mut self, event: builder::AckProcessed) {
             self.ack_processed += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
+        }
+        fn on_rx_ack_range_dropped(&mut self, event: builder::RxAckRangeDropped) {
+            self.rx_ack_range_dropped += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 self.output.push(format!("{:?}", event));

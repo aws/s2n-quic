@@ -16,7 +16,7 @@ use s2n_quic_core::{
     counter::{Counter, Saturating},
     event::{
         self,
-        builder::{AckAction, AckProcessed},
+        builder::{self, AckAction, AckProcessed},
         IntoEvent as _,
     },
     frame::{ack::EcnCounts, Ack, Ping},
@@ -244,6 +244,13 @@ impl AckManager {
                         .max_value()
                         .expect("should be non empty")
                         .into_event();
+
+                    publisher.on_rx_ack_range_dropped(builder::RxAckRangeDropped {
+                        path,
+                        packet_number_range: min.into_event()..=max.into_event(),
+                        capacity: self.ack_ranges.interval_len(),
+                        stored_range: start..=end,
+                    });
 
                     publisher.on_ack_processed(AckProcessed {
                         action: AckAction::RxAckRangeDropped {
