@@ -70,27 +70,28 @@ RUN set -eux; \
 
   echo "#!/usr/bin/env bash\n \
   set -e\n \
+  # Wait until server logs have been successfully exported
   aws logs describe-export-tasks --task-id \$EXPORT_TASK_ID > task.json;\n \
   export DONE=\$(cat task.json | jq '.exportTasks[0].status.code');\n \
   export COMPLETED=\\\"COMPLETED\\\";\n \
-  echo \$COMPLETED;\n \
   while [ \"\$DONE\" != \"\$COMPLETED\" ];\n \
   do\n \
-  sleep 5;\n; \
-  echo \$DONE;\n \
+  sleep 5;\n \
   aws logs describe-export-tasks --task-id \$EXPORT_TASK_ID > task.json;\n \
   export DONE=\$(cat task.json | jq '.exportTasks[0].status.code');\n \
   done;\n \
-  aws s3 cp s3://\$S3_BUCKET/\$TIMESTAMP/\$PROTOCOL-client.json /tmp/client.json\n \
-  aws s3 cp s3://\$S3_BUCKET/exportedlogs/\$EXPORT_TASK_ID/ /tmp/ --recursive\n \
-  export DIR=\$(ls -d /tmp/*/)\n \
+  aws s3 sync s3://\$S3_BUCKET/\$TIMESTAMP /tmp\n \
+  # get directory containing server logs\n \
+  export DIR=\$(ls -d /tmp/\$EXPORT_TASK_ID/*/)\n \
   printenv\n \
+  # exported log file always named 000000.gz\n \
   gzip -d \$(echo \$DIR)000000.gz\n \
+  # sort server logs based on timestamp\n \
   sort -k1 \"\$(echo \$DIR)000000\" > \$(echo \$DIR)000000_sorted\n \
-  echo \"\$(<\$(echo \$DIR)000000_sorted)\" |  awk -F'{' '{ st = index(\$0,\"{\");print \"{\" substr(\$0,st+1)}' > /tmp/server.json\n \
-  eval /usr/bin/netbench-cli report /tmp/client.json /tmp/server.json \$@ > /tmp/report.json\n \
-  aws s3 cp /tmp/server.json s3://\$S3_BUCKET/\$TIMESTAMP/\$PROTOCOL-server.json\n \
-  aws s3 cp /tmp/report.json s3://\$S3_BUCKET/\$TIMESTAMP/\$PROTOCOL-report.json" > /app/bin/start; 
+  # remove timestamp from server logs\n \
+  echo \"\$(<\$(echo \$DIR)000000_sorted)\" |  awk -F'{' '{ st = index(\$0,\"{\");print \"{\" substr(\$0,st+1)}' > /tmp/\$PROTOCOL-server.json\n \
+  eval /usr/bin/netbench-cli report /tmp/\$PROTOCOL-client.json /tmp/\$PROTOCOL-server.json \$@ > /tmp/\$PROTOCOL-report.json\n \
+  aws s3 sync /tmp s3://\$S3_BUCKET/\$TIMESTAMP" > /app/bin/start; 
 
 FROM debian:latest
 
@@ -100,7 +101,7 @@ ENV RUST_BACKTRACE="1"
 COPY --from=builder /app/bin /tmp/netbench
 ENV DEBIAN_FRONTEND=noninteractive
 RUN set -eux; \
-  apt update && apt install -y dnsutils curl unzip sudo python3 jq; \
+  apt update && apt install -y dnsutils curl unzip sudo jq; \
   curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"; \
   unzip awscliv2.zip; \
   sudo ./aws/install; \

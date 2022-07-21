@@ -7,20 +7,16 @@ import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.services.stepfunctions.tasks.EcsRunTask;
 import software.amazon.awscdk.services.stepfunctions.StateMachine;
 import software.amazon.awscdk.services.s3.Bucket;
-import software.amazon.awscdk.Duration;
 import software.amazon.awscdk.services.logs.RetentionDays;
 
 import software.amazon.awscdk.services.stepfunctions.tasks.LambdaInvoke;
 import software.amazon.awscdk.services.stepfunctions.tasks.LambdaInvocationType;
-import software.amazon.awscdk.services.stepfunctions.Wait;
-import software.amazon.awscdk.services.stepfunctions.WaitTime;
+
 import software.amazon.awscdk.services.stepfunctions.tasks.ContainerOverride;
 import software.amazon.awscdk.services.stepfunctions.tasks.TaskEnvironmentVariable;
 import software.amazon.awscdk.services.stepfunctions.JsonPath;
 import software.amazon.awscdk.services.stepfunctions.IntegrationPattern;
 import software.amazon.awscdk.services.stepfunctions.tasks.EcsEc2LaunchTarget;
-import software.amazon.awscdk.services.stepfunctions.Parallel;
-import software.amazon.awscdk.services.stepfunctions.CustomState;
 
 import software.amazon.awscdk.services.lambda.Function;
 import software.amazon.awscdk.services.lambda.Runtime;
@@ -35,7 +31,6 @@ import software.amazon.awscdk.services.ecs.LogDriver;
 
 import software.amazon.awscdk.services.iam.PolicyStatement;
 import software.amazon.awscdk.services.iam.Effect;
-import software.amazon.awscdk.services.iam.ServicePrincipal;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -66,10 +61,6 @@ public class StateMachineStack extends Stack {
                 .resultPath("$.Payload.body")
                 .invocationType(LambdaInvocationType.REQUEST_RESPONSE)
                 .build();
-
-        //Wait waitFunction = Wait.Builder.create(this, "wait-step")
-        //    .time(WaitTime.duration(Duration.seconds(60)))
-        //    .build();
 
         Ec2TaskDefinition reportGenerationTask = Ec2TaskDefinition.Builder
             .create(this, "report-generation-task")
@@ -118,8 +109,6 @@ public class StateMachineStack extends Stack {
         clientTask.next(exportServerLogsLambdaInvoke);
 
         exportServerLogsLambdaInvoke.next(reportGenerationStep);
-        
-        //waitFunction.next(reportGenerationStep);
 
         StateMachine stateMachine = StateMachine.Builder.create(this, "ecs-state-machine")
             .definition(timestampLambdaInvoke)
