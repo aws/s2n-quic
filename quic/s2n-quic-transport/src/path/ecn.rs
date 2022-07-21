@@ -249,7 +249,7 @@ impl Controller {
                 return ValidationOutcome::Failed;
             }
 
-            // ce_supression check above ensures this doesn't underflow
+            // ce_suppression check above ensures this doesn't underflow
             incremental_ecn_counts.ce_count - newly_acked_ecn_counts.ce_count
         } else {
             // ECN counts decreased from the baseline
