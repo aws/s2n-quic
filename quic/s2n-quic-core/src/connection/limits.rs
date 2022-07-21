@@ -51,10 +51,9 @@ pub struct Limits {
     pub(crate) bidirectional_local_data_window: InitialMaxStreamDataBidiLocal,
     pub(crate) bidirectional_remote_data_window: InitialMaxStreamDataBidiRemote,
     pub(crate) unidirectional_data_window: InitialMaxStreamDataUni,
-    pub(crate) max_open_bidirectional_streams: InitialMaxStreamsBidi,
+    pub(crate) max_open_local_bidirectional_streams: stream::limits::LocalBidirectional,
     pub(crate) max_open_local_unidirectional_streams: stream::limits::LocalUnidirectional,
-    pub(crate) max_open_local_bidirectional_streams: Option<stream::limits::LocalBidirectional>,
-    pub(crate) max_open_remote_bidirectional_streams: Option<InitialMaxStreamsBidi>,
+    pub(crate) max_open_remote_bidirectional_streams: InitialMaxStreamsBidi,
     pub(crate) max_open_remote_unidirectional_streams: InitialMaxStreamsUni,
     pub(crate) max_ack_delay: MaxAckDelay,
     pub(crate) ack_delay_exponent: AckDelayExponent,
@@ -90,10 +89,9 @@ impl Limits {
             bidirectional_local_data_window: InitialMaxStreamDataBidiLocal::RECOMMENDED,
             bidirectional_remote_data_window: InitialMaxStreamDataBidiRemote::RECOMMENDED,
             unidirectional_data_window: InitialMaxStreamDataUni::RECOMMENDED,
-            max_open_bidirectional_streams: InitialMaxStreamsBidi::RECOMMENDED,
+            max_open_local_bidirectional_streams: stream::limits::LocalBidirectional::RECOMMENDED,
             max_open_local_unidirectional_streams: stream::limits::LocalUnidirectional::RECOMMENDED,
-            max_open_local_bidirectional_streams: None,
-            max_open_remote_bidirectional_streams: None,
+            max_open_remote_bidirectional_streams: InitialMaxStreamsBidi::RECOMMENDED,
             max_open_remote_unidirectional_streams: InitialMaxStreamsUni::RECOMMENDED,
             max_ack_delay: MaxAckDelay::RECOMMENDED,
             ack_delay_exponent: AckDelayExponent::RECOMMENDED,
@@ -125,41 +123,38 @@ impl Limits {
         u64
     );
 
-    /// Sets the max local and remote limits for bidi streams.
-    ///
-    /// The value `with_max_open_remote_bidirectional_streams` and
-    /// `with_max_open_local_bidirectional_streams` will be used instead
-    /// if set on the builder.
-    // TODO: Deprecate
+    /// Sets both the max local and remote limits for bidirectional streams.
+    #[deprecated(
+        note = "use with_max_open_local_bidirectional_streams and with_max_open_remote_bidirectional_streams instead"
+    )]
     pub fn with_max_open_bidirectional_streams(
         mut self,
         value: u64,
     ) -> Result<Self, ValidationError> {
-        self.max_open_bidirectional_streams = value.try_into()?;
+        self.max_open_local_bidirectional_streams = value.try_into()?;
+        self.max_open_remote_bidirectional_streams = value.try_into()?;
         Ok(self)
     }
 
-    /// Sets the max local limits for bidi streams
+    /// Sets the max local limits for bidirectional streams
     ///
     /// The value set is used instead of `with_max_open_bidirectional_streams` when set.
-    #[doc(hidden)]
     pub fn with_max_open_local_bidirectional_streams(
         mut self,
         value: u64,
     ) -> Result<Self, ValidationError> {
-        self.max_open_local_bidirectional_streams = Some(value.try_into()?);
+        self.max_open_local_bidirectional_streams = value.try_into()?;
         Ok(self)
     }
 
-    /// Sets the max remote limits for bidi streams.
+    /// Sets the max remote limits for bidirectional streams.
     ///
     /// The value set is used instead of `with_max_open_bidirectional_streams` when set.
-    #[doc(hidden)]
     pub fn with_max_open_remote_bidirectional_streams(
         mut self,
         value: u64,
     ) -> Result<Self, ValidationError> {
-        self.max_open_remote_bidirectional_streams = Some(value.try_into()?);
+        self.max_open_remote_bidirectional_streams = value.try_into()?;
         Ok(self)
     }
 
@@ -209,13 +204,10 @@ impl Limits {
 
     #[doc(hidden)]
     pub fn initial_flow_control_limits(&self) -> InitialFlowControlLimits {
-        let max_bidi_limit = self
-            .max_open_remote_bidirectional_streams
-            .unwrap_or(self.max_open_bidirectional_streams);
         InitialFlowControlLimits {
             stream_limits: self.initial_stream_limits(),
             max_data: self.data_window.as_varint(),
-            max_streams_bidi: max_bidi_limit.as_varint(),
+            max_streams_bidi: self.max_open_remote_bidirectional_streams.as_varint(),
             max_streams_uni: self.max_open_remote_unidirectional_streams.as_varint(),
         }
     }
@@ -234,9 +226,7 @@ impl Limits {
         stream::Limits {
             max_send_buffer_size: self.max_send_buffer_size,
             max_open_local_unidirectional_streams: self.max_open_local_unidirectional_streams,
-            max_open_local_bidirectional_streams: self
-                .max_open_local_bidirectional_streams
-                .unwrap_or_else(|| self.max_open_bidirectional_streams.into()),
+            max_open_local_bidirectional_streams: self.max_open_local_bidirectional_streams,
         }
     }
 

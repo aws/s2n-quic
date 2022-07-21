@@ -116,9 +116,9 @@ fn stream_reset_test() {
             .with_tls(SERVER_CERTS)?
             .with_event(events())?
             .with_limits(
-                // keep the stream limit low
                 provider::limits::Limits::default()
-                    .with_max_open_bidirectional_streams(1)
+                    // only allow 1 concurrent stream form the peer
+                    .with_max_open_local_bidirectional_streams(1)
                     .unwrap(),
             )?
             .start()?;
@@ -148,7 +148,7 @@ fn stream_reset_test() {
             let connect = Connect::new(server_addr).with_server_name("localhost");
             let mut connection = client.connect(connect).await.unwrap();
 
-            for mut remaining_chunks in 0usize..2 {
+            for mut remaining_chunks in 0usize..4 {
                 let mut stream = connection.open_bidirectional_stream().await.unwrap();
 
                 primary::spawn(async move {

@@ -1472,7 +1472,11 @@ impl<
             initial_max_stream_data_bidi_remote
         );
         load!(unidirectional_data_window, initial_max_stream_data_uni);
-        load!(max_open_bidirectional_streams, initial_max_streams_bidi);
+        load!(
+            max_open_remote_bidirectional_streams,
+            initial_max_streams_bidi
+        );
+
         load!(
             max_open_remote_unidirectional_streams,
             initial_max_streams_uni
