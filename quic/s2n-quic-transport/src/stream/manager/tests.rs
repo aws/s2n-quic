@@ -413,7 +413,11 @@ fn try_open(
     let (accept_waker, _accept_wake_counter) = new_count_waker();
     let mut token = connection::OpenToken::new();
 
-    match manager.poll_open(stream_type, &mut token, &Context::from_waker(&accept_waker)) {
+    match manager.poll_open_local_stream(
+        stream_type,
+        &mut token,
+        &Context::from_waker(&accept_waker),
+    ) {
         Poll::Ready(res) => res,
         Poll::Pending => Err(connection::Error::unspecified()),
     }
@@ -675,7 +679,11 @@ fn max_streams_replenishes_stream_control_capacity() {
             let stream_id = StreamId::nth(endpoint::Type::Server, stream_type, i).unwrap();
             assert!(manager
                 .with_stream_controller(|ctrl| {
-                    ctrl.poll_open_local_stream(stream_id, &mut token, &Context::from_waker(&waker))
+                    ctrl.poll_open_local_stream(
+                        stream_id.stream_type(),
+                        &mut token,
+                        &Context::from_waker(&waker),
+                    )
                 })
                 .is_ready());
 
@@ -683,7 +691,7 @@ fn max_streams_replenishes_stream_control_capacity() {
         }
 
         assert!(manager
-            .poll_open(stream_type, &mut token, &Context::from_waker(&waker))
+            .poll_open_local_stream(stream_type, &mut token, &Context::from_waker(&waker))
             .is_pending());
 
         for additional_streams in &[VarInt::from_u8(0), VarInt::from_u8(1), VarInt::from_u8(10)] {
@@ -702,7 +710,7 @@ fn max_streams_replenishes_stream_control_capacity() {
         }
 
         assert!(manager
-            .poll_open(stream_type, &mut token, &Context::from_waker(&waker))
+            .poll_open_local_stream(stream_type, &mut token, &Context::from_waker(&waker))
             .is_ready());
     }
 }
@@ -818,7 +826,7 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
 
         // Open streams until blocked
         while manager
-            .poll_open(stream_type, &mut token, &Context::from_waker(&waker))
+            .poll_open_local_stream(stream_type, &mut token, &Context::from_waker(&waker))
             .is_ready()
         {
             opened_streams += 1;
@@ -916,7 +924,7 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
 
         // Open streams until blocked
         while manager
-            .poll_open(stream_type, &mut token, &Context::from_waker(&waker))
+            .poll_open_local_stream(stream_type, &mut token, &Context::from_waker(&waker))
             .is_ready()
         {
             opened_streams += 1;
@@ -953,7 +961,7 @@ fn streams_blocked_period() {
 
             // Open streams until blocked
             while manager
-                .poll_open(stream_type, &mut token, &Context::from_waker(&waker))
+                .poll_open_local_stream(stream_type, &mut token, &Context::from_waker(&waker))
                 .is_ready()
             {
                 opened_streams += 1;
@@ -1222,7 +1230,7 @@ fn blocked_on_local_concurrent_stream_limit() {
 
         for _i in 0..*available_outgoing_stream_capacity {
             assert!(manager
-                .poll_open(stream_type, &mut token, &Context::from_waker(&waker))
+                .poll_open_local_stream(stream_type, &mut token, &Context::from_waker(&waker))
                 .is_ready());
         }
 
@@ -1230,7 +1238,7 @@ fn blocked_on_local_concurrent_stream_limit() {
 
         // Cannot open any more streams
         assert!(manager
-            .poll_open(stream_type, &mut token, &Context::from_waker(&waker))
+            .poll_open_local_stream(stream_type, &mut token, &Context::from_waker(&waker))
             .is_pending());
 
         // No STREAMS_BLOCKED frame should be transmitted since we are blocked on the local
@@ -1247,11 +1255,11 @@ fn blocked_on_local_concurrent_stream_limit() {
 
         // One more stream can be opened
         assert!(manager
-            .poll_open(stream_type, &mut token, &Context::from_waker(&waker))
+            .poll_open_local_stream(stream_type, &mut token, &Context::from_waker(&waker))
             .is_ready());
         assert_eq!(wake_counter, 1);
         assert!(manager
-            .poll_open(stream_type, &mut token, &Context::from_waker(&waker))
+            .poll_open_local_stream(stream_type, &mut token, &Context::from_waker(&waker))
             .is_pending());
 
         // Close the stream manager and verify the wake counter is incremented
@@ -1372,7 +1380,7 @@ fn asymmetric_stream_limits_local_initiated() {
                 // Local endpoint opens streams up to the limit
                 let local_available_limit = local_limit.min(peer_limit);
                 for _ in 0..local_available_limit {
-                    let result = manager.poll_open(
+                    let result = manager.poll_open_local_stream(
                         stream_type,
                         &mut token,
                         &Context::from_waker(&accept_waker),

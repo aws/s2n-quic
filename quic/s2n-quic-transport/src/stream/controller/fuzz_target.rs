@@ -292,11 +292,10 @@ impl Model {
             };
 
         for stream_nth_idx in stream_nth_idx_iter {
-            let stream_id = StreamId::nth(stream_initiator, stream_type, stream_nth_idx).unwrap();
             let can_open = self.can_open_local(stream_type);
 
             let res = self.subject.poll_open_local_stream(
-                stream_id,
+                stream_type,
                 &mut token,
                 &Context::from_waker(&waker),
             );

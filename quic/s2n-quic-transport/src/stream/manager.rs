@@ -327,25 +327,30 @@ impl<S: StreamTrait> StreamManagerState<S> {
 
     fn poll_open_local_stream(
         &mut self,
-        stream_id: StreamId,
+        stream_type: StreamType,
         open_token: &mut connection::OpenToken,
         context: &Context,
     ) -> Poll<Result<StreamId, connection::Error>> {
+        let first_unopened_id = self
+            .next_stream_ids
+            .get_mut(self.local_endpoint_type, stream_type)
+            .ok_or_else(connection::Error::stream_id_exhausted)?;
+
         //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
         //# Endpoints MUST NOT exceed the limit set by their peer.
         //
         //= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
         //# An endpoint MUST NOT open more streams than permitted by the current
         //# stream limit set by its peer.
-        let poll_open = self
-            .stream_controller
-            .poll_open_local_stream(stream_id, open_token, context);
+        let poll_open =
+            self.stream_controller
+                .poll_open_local_stream(stream_type, open_token, context);
 
         // returns Pending if there is no capacity available
-        let stream_id = ready!(poll_open);
+        ready!(poll_open);
 
-        self.insert_stream(stream_id);
-        Poll::Ready(Ok(stream_id))
+        self.insert_stream(first_unopened_id);
+        Poll::Ready(Ok(first_unopened_id))
     }
 
     fn close(&mut self, error: connection::Error, flush: bool) {
@@ -549,7 +554,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     }
 
     /// Opens the next local initiated stream of a certain type
-    pub fn poll_open(
+    pub fn poll_open_local_stream(
         &mut self,
         stream_type: StreamType,
         open_token: &mut connection::OpenToken,
@@ -560,27 +565,17 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             return Err(error).into();
         }
 
-        let local_endpoint_type = self.inner.local_endpoint_type;
-
-        let first_unopened_id = self
-            .inner
-            .next_stream_ids
-            .get_mut(local_endpoint_type, stream_type)
-            .ok_or_else(connection::Error::stream_id_exhausted)?;
-
-        if self
-            .inner
-            .poll_open_local_stream(first_unopened_id, open_token, context)
-            .is_pending()
-        {
-            return Poll::Pending;
-        }
+        let first_unopened_id =
+            ready!(self
+                .inner
+                .poll_open_local_stream(stream_type, open_token, context))?;
 
         // Increase the next utilized Stream ID
         *self
             .inner
             .next_stream_ids
-            .get_mut(local_endpoint_type, stream_type) = first_unopened_id.next_of_type();
+            .get_mut(self.inner.local_endpoint_type, stream_type) =
+            first_unopened_id.next_of_type();
 
         Ok(first_unopened_id).into()
     }

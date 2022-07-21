@@ -93,10 +93,8 @@ impl Controller {
         }
     }
 
-    /// This method is called when the local application wishes to open a new stream.
-    ///
-    /// This API requires that only one stream is opened per invocation and must be
-    /// called the next stream id of a type.
+    /// This method is called when the local application wishes to open the next stream
+    /// of a type (Bidirectional/Unidirectional).
     ///
     /// `Poll::Pending` is returned when there isn't available capacity to open a stream,
     /// either because of local initiated concurrency limits or the peer's stream limits.
@@ -104,21 +102,11 @@ impl Controller {
     /// when additional stream capacity becomes available.
     pub fn poll_open_local_stream(
         &mut self,
-        stream_id: StreamId,
+        stream_type: StreamType,
         open_tokens: &mut connection::OpenToken,
         context: &Context,
-    ) -> Poll<StreamId> {
-        if cfg!(debug_assertions) {
-            match self.direction(stream_id) {
-                StreamDirection::RemoteInitiatedBidirectional
-                | StreamDirection::RemoteInitiatedUnidirectional => {
-                    panic!("should only be called for locally initiated streams")
-                }
-                _ => (),
-            }
-        }
-
-        let poll_open = match stream_id.stream_type() {
+    ) -> Poll<()> {
+        let poll_open = match stream_type {
             StreamType::Bidirectional => self
                 .local_bidi_controller
                 .poll_open_stream(&mut open_tokens.bidirectional, context),
@@ -131,8 +119,9 @@ impl Controller {
         ready!(poll_open);
 
         // only open streams if there is sufficient capacity based on limits
-        self.on_open_stream(stream_id);
-        Poll::Ready(stream_id)
+        let direction = self.direction(StreamId::initial(self.local_endpoint_type, stream_type));
+        self.on_open_stream(direction);
+        Poll::Ready(())
     }
 
     /// This method is called when the remote peer wishes to open a new stream.
@@ -167,8 +156,10 @@ impl Controller {
                 .on_remote_open_stream(stream_iter.max_stream_id())?,
         }
 
-        for stream_id in stream_iter {
-            self.on_open_stream(stream_id);
+        let direction = self.direction(stream_iter.max_stream_id());
+        // checked above that there is enough capacity to open all streams
+        for _stream_id in stream_iter {
+            self.on_open_stream(direction);
         }
         Ok(())
     }
@@ -178,8 +169,8 @@ impl Controller {
     ///
     /// The caller is responsible for performing stream capacity checks
     /// prior to calling this function.
-    fn on_open_stream(&mut self, stream_id: StreamId) {
-        match self.direction(stream_id) {
+    fn on_open_stream(&mut self, direction: StreamDirection) {
+        match direction {
             StreamDirection::LocalInitiatedBidirectional => {
                 self.local_bidi_controller.on_open_stream()
             }
