@@ -32,7 +32,9 @@ const CE_SUPPRESSION_TESTING_RTT_MULTIPLIER: RangeInclusive<u16> = 10..=100;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ValidationOutcome {
     /// The path is ECN capable and congestion was experienced
-    CongestionExperienced,
+    ///
+    /// Contains the incremental count of packets that experienced congestion
+    CongestionExperienced(VarInt),
     /// The path failed validation
     Failed,
     /// The path passed validation
@@ -234,9 +236,10 @@ impl Controller {
             }
         }
 
-        let congestion_experienced = if let Some(incremental_ecn_counts) = ack_frame_ecn_counts
-            .unwrap_or_default()
-            .checked_sub(baseline_ecn_counts)
+        let congestion_experienced_count = if let Some(incremental_ecn_counts) =
+            ack_frame_ecn_counts
+                .unwrap_or_default()
+                .checked_sub(baseline_ecn_counts)
         {
             if Self::ce_remarking(incremental_ecn_counts, newly_acked_ecn_counts)
                 || Self::remarked_to_ect0_or_ect1(incremental_ecn_counts, sent_packet_ecn_counts)
@@ -246,7 +249,8 @@ impl Controller {
                 return ValidationOutcome::Failed;
             }
 
-            incremental_ecn_counts.ce_count > newly_acked_ecn_counts.ce_count
+            // ce_suppression check above ensures this doesn't underflow
+            incremental_ecn_counts.ce_count - newly_acked_ecn_counts.ce_count
         } else {
             // ECN counts decreased from the baseline
             self.fail(now, path, publisher);
@@ -268,8 +272,8 @@ impl Controller {
             self.change_state(State::Capable(ce_suppression_timer), path, publisher);
         }
 
-        if self.is_capable() && congestion_experienced {
-            return ValidationOutcome::CongestionExperienced;
+        if self.is_capable() && congestion_experienced_count > VarInt::ZERO {
+            return ValidationOutcome::CongestionExperienced(congestion_experienced_count);
         }
 
         ValidationOutcome::Passed

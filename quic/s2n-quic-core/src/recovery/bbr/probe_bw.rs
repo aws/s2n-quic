@@ -536,7 +536,6 @@ impl BbrCongestionController {
     /// Adapt the upper bounds lower or higher depending on the loss rate
     pub(super) fn adapt_upper_bounds<Rnd: random::Generator>(
         &mut self,
-        rate_sample: RateSample,
         bytes_acknowledged: usize,
         random_generator: &mut Rnd,
         now: Timestamp,
@@ -563,12 +562,14 @@ impl BbrCongestionController {
             "only handling steady-state behavior here"
         );
 
+        let rate_sample = self.bw_estimator.rate_sample();
+
         // Update AckPhase once per round
         if self.round_counter.round_start() {
             self.update_ack_phase(rate_sample);
         }
 
-        if Self::is_inflight_too_high(rate_sample.lost_bytes, rate_sample.bytes_in_flight) {
+        if self.is_inflight_too_high() {
             if self.bw_probe_samples {
                 // Inflight is too high and the sample is from bandwidth probing: lower inflight downward
                 self.on_inflight_too_high(
@@ -957,6 +958,7 @@ mod tests {
             delivered_bytes: expected_end - 1,
             delivered_time: now,
             lost_bytes: 0,
+            ecn_ce_count: 0,
             first_sent_time: now,
             bytes_in_flight: 0,
             is_app_limited: false,

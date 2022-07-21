@@ -65,6 +65,9 @@ impl State {
         }
 
         if self.loss_round_counter.round_start() {
+            // TODO: Check for ecn_in_round as in bbr2_adapt_lower_bounds
+            // See https://github.com/aws/s2n-quic/issues/1423
+
             //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
             //# BBRAdaptLowerBoundsFromCongestion():
             //#   if (BBRIsProbingBW())
@@ -139,6 +142,7 @@ pub mod testing {
             delivered_bytes: 100,
             delivered_time: now,
             lost_bytes: 0,
+            ecn_ce_count: 0,
             first_sent_time: now,
             bytes_in_flight: 0,
             is_app_limited: false,
@@ -181,6 +185,7 @@ mod tests {
             delivered_bytes: 100,
             delivered_time: now,
             lost_bytes: 0,
+            ecn_ce_count: 0,
             first_sent_time: now,
             bytes_in_flight: 0,
             is_app_limited: false,
@@ -272,6 +277,7 @@ mod tests {
             delivered_bytes: 100,
             delivered_time: now,
             lost_bytes: 0,
+            ecn_ce_count: 0,
             first_sent_time: now,
             bytes_in_flight: 0,
             is_app_limited: false,

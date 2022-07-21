@@ -14,6 +14,8 @@ pub struct PacketInfo {
     pub delivered_time: Timestamp,
     /// `Estimator::lost_bytes` at the time this packet was sent.
     pub lost_bytes: u64,
+    /// `Estimator::ecn_ce_count` at the time this packet was sent.
+    pub ecn_ce_count: u64,
     /// `Estimator::first_sent_time` at the time this packet was sent.
     pub first_sent_time: Timestamp,
     /// The volume of data that was estimated to be in flight at the
@@ -105,6 +107,8 @@ pub struct RateSample {
     pub delivered_bytes: u64,
     /// The amount of data in bytes marked as lost over the sampling interval
     pub lost_bytes: u64,
+    /// The number of packets marked as explicit congestion experienced over the sampling interval
+    pub ecn_ce_count: u64,
     /// [PacketInfo::is_app_limited] from the most recent acknowledged packet
     pub is_app_limited: bool,
     /// [PacketInfo::delivered_bytes] from the most recent acknowledged packet
@@ -113,6 +117,8 @@ pub struct RateSample {
     pub bytes_in_flight: u32,
     /// [PacketInfo::lost_bytes] from the most recent acknowledged packet
     pub prior_lost_bytes: u64,
+    /// [PacketInfo::ecn_ce_count] from the most recent acknowledged packet
+    pub prior_ecn_ce_count: u64,
 }
 
 impl RateSample {
@@ -126,6 +132,7 @@ impl RateSample {
         self.is_app_limited = packet_info.is_app_limited;
         self.prior_delivered_bytes = packet_info.delivered_bytes;
         self.prior_lost_bytes = packet_info.lost_bytes;
+        self.prior_ecn_ce_count = packet_info.ecn_ce_count;
         self.bytes_in_flight = packet_info.bytes_in_flight;
     }
 
@@ -150,6 +157,8 @@ pub struct Estimator {
     /// The total amount of data in bytes declared lost so far over the lifetime of the path, not including
     /// non-congestion-controlled packets such as pure ACK packets.
     lost_bytes: u64,
+    /// The total amount of explicit congestion experienced packets over the lifetime of the path
+    ecn_ce_count: u64,
     /// The send time of the packet that was most recently marked as delivered, or if the connection
     /// was recently idle, the send time of the first packet sent after resuming from idle.
     first_sent_time: Option<Timestamp>,
@@ -208,6 +217,7 @@ impl Estimator {
                 .delivered_time
                 .expect("initialized on first sent packet"),
             lost_bytes: self.lost_bytes,
+            ecn_ce_count: self.ecn_ce_count,
             first_sent_time: self
                 .first_sent_time
                 .expect("initialized on first sent packet"),
@@ -272,6 +282,13 @@ impl Estimator {
     pub fn on_loss(&mut self, lost_bytes: usize) {
         self.lost_bytes += lost_bytes as u64;
         self.rate_sample.lost_bytes = self.lost_bytes - self.rate_sample.prior_lost_bytes;
+    }
+
+    /// Called each time explicit congestion is recorded
+    #[inline]
+    pub fn on_explicit_congestion(&mut self, ce_count: u64) {
+        self.ecn_ce_count += ce_count;
+        self.rate_sample.ecn_ce_count = self.ecn_ce_count - self.rate_sample.prior_ecn_ce_count;
     }
 
     /// Mark the path as app limited until the given `bytes_in_flight` are acknowledged
