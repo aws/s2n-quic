@@ -3,7 +3,7 @@
 
 use crate::{
     counter::{Counter, Saturating},
-    recovery::{bandwidth, bandwidth::Bandwidth, bbr},
+    recovery::{bandwidth, bandwidth::Bandwidth, bbr::BbrCongestionController},
 };
 use num_rational::Ratio;
 
@@ -28,6 +28,8 @@ pub(crate) struct Estimator {
     full_bw_count: Counter<u8, Saturating>,
     /// The number of discontiguous bursts of lost packets in the last round
     loss_bursts: Counter<u8, Saturating>,
+    /// The number of rounds where the ECN CE markings exceed ECN_THRESH
+    ecn_ce_rounds: Counter<u8, Saturating>,
     /// True if BBR was in fast recovery in the last round
     in_recovery_last_round: bool,
 }
@@ -46,13 +48,15 @@ impl Estimator {
         rate_sample: bandwidth::RateSample,
         max_bw: Bandwidth,
         in_recovery: bool,
+        max_datagram_size: u16,
     ) {
         if self.filled_pipe {
             return;
         }
 
         self.filled_pipe = self.bandwidth_plateaued(rate_sample, max_bw)
-            || self.excessive_loss(rate_sample, in_recovery);
+            || self.excessive_loss(rate_sample, in_recovery)
+            || self.excessive_explicit_congestion(rate_sample, max_datagram_size);
     }
 
     /// Determines if the rate of increase of bandwidth has decreased enough to estimate the
@@ -123,8 +127,10 @@ impl Estimator {
 
         if in_recovery
             && self.in_recovery_last_round
-            && rate_sample.lost_bytes
-                > (bbr::LOSS_THRESH * rate_sample.bytes_in_flight).to_integer() as u64
+            && BbrCongestionController::is_loss_too_high(
+                rate_sample.lost_bytes,
+                rate_sample.bytes_in_flight,
+            )
             && self.loss_bursts >= STARTUP_FULL_LOSS_COUNT
         {
             return true;
@@ -134,6 +140,33 @@ impl Estimator {
         self.loss_bursts = Counter::default();
 
         false
+    }
+
+    /// Determines if enough consecutive rounds of explicit congestion have been encountered that we
+    /// can estimate the available bandwidth has been fully utilized.
+    ///
+    /// Based on bbr2_check_ecn_too_high_in_startup from https://github.com/google/bbr/blob/1a45fd4faf30229a3d3116de7bfe9d2f933d3562/net/ipv4/tcp_bbr2.c#L1372
+    fn excessive_explicit_congestion(
+        &mut self,
+        rate_sample: bandwidth::RateSample,
+        max_datagram_size: u16,
+    ) -> bool {
+        // Startup is exited if the number of consecutive round trips with ECN CE markings above
+        // the ECN_THRESH exceed this value
+        // Value from https://github.com/google/bbr/blob/1a45fd4faf30229a3d3116de7bfe9d2f933d3562/net/ipv4/tcp_bbr2.c#L2334
+        const STARTUP_FULL_ECN_COUNT: u8 = 2;
+
+        if BbrCongestionController::is_ecn_ce_too_high(
+            rate_sample.ecn_ce_count,
+            rate_sample.delivered_bytes,
+            max_datagram_size,
+        ) {
+            self.ecn_ce_rounds += 1;
+        } else {
+            self.ecn_ce_rounds = Counter::default();
+        }
+
+        self.ecn_ce_rounds >= STARTUP_FULL_ECN_COUNT
     }
 
     /// Called for each lost packet
@@ -147,14 +180,15 @@ impl Estimator {
             self.loss_bursts += 1;
         }
     }
-
-    // TODO: track excessive ECN markings as in bbr2_check_ecn_too_high_in_startup
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::recovery::{bandwidth::RateSample, bbr::full_pipe};
+    use crate::{
+        path::MINIMUM_MTU,
+        recovery::{bandwidth::RateSample, bbr::full_pipe},
+    };
     use std::time::Duration;
 
     #[test]
@@ -162,19 +196,19 @@ mod tests {
         let mut fp_estimator = full_pipe::Estimator::default();
         let rate_sample = RateSample::default();
         let mut max_bw = Bandwidth::new(1000, Duration::from_secs(1));
-        fp_estimator.on_round_start(rate_sample, max_bw, false);
+        fp_estimator.on_round_start(rate_sample, max_bw, false, MINIMUM_MTU);
 
         // Grow at 25% over 3 rounds
         max_bw = max_bw * Ratio::new(4, 3); // 4/3 = 125%
         for _ in 0..3 {
-            fp_estimator.on_round_start(rate_sample, max_bw, false);
+            fp_estimator.on_round_start(rate_sample, max_bw, false, MINIMUM_MTU);
         }
         // The pipe has not been filled yet since we have continued to grow bandwidth
         assert!(!fp_estimator.filled_pipe());
 
         // One more round with 24% growth, not growing fast enough to continue
         max_bw = max_bw * Ratio::new(31, 25); // 31/25 = 124%
-        fp_estimator.on_round_start(rate_sample, max_bw, false);
+        fp_estimator.on_round_start(rate_sample, max_bw, false, MINIMUM_MTU);
         // The pipe is considered full
         assert!(fp_estimator.filled_pipe());
     }
@@ -190,7 +224,7 @@ mod tests {
 
         // No growth, but app limited
         for _ in 0..3 {
-            fp_estimator.on_round_start(rate_sample, max_bw, false);
+            fp_estimator.on_round_start(rate_sample, max_bw, false, MINIMUM_MTU);
         }
 
         // The pipe has not been filled yet since we were app limited
@@ -211,13 +245,13 @@ mod tests {
         let max_bw = Bandwidth::new(1000, Duration::from_secs(1));
 
         // In recovery the first round
-        fp_estimator.on_round_start(rate_sample, max_bw, true);
+        fp_estimator.on_round_start(rate_sample, max_bw, true, MINIMUM_MTU);
 
         // Only 2 loss bursts, not enough to be considered excessive loss
         fp_estimator.on_packet_lost(true);
         fp_estimator.on_packet_lost(true);
 
-        fp_estimator.on_round_start(rate_sample, max_bw, true);
+        fp_estimator.on_round_start(rate_sample, max_bw, true, MINIMUM_MTU);
         // The pipe has not been filled yet since there were only 2 loss bursts
         assert!(!fp_estimator.filled_pipe());
 
@@ -226,7 +260,7 @@ mod tests {
         fp_estimator.on_packet_lost(true);
         fp_estimator.on_packet_lost(true);
 
-        fp_estimator.on_round_start(rate_sample, max_bw, true);
+        fp_estimator.on_round_start(rate_sample, max_bw, true, MINIMUM_MTU);
         // The pipe has not been filled yet since there were only 2 loss bursts
         assert!(fp_estimator.filled_pipe());
     }
@@ -245,14 +279,14 @@ mod tests {
         let max_bw = Bandwidth::new(1000, Duration::from_secs(1));
 
         // In recovery the first round
-        fp_estimator.on_round_start(rate_sample, max_bw, true);
+        fp_estimator.on_round_start(rate_sample, max_bw, true, MINIMUM_MTU);
 
         // 3 loss bursts, enough to be considered excessive loss
         fp_estimator.on_packet_lost(true);
         fp_estimator.on_packet_lost(true);
         fp_estimator.on_packet_lost(true);
 
-        fp_estimator.on_round_start(rate_sample, max_bw, true);
+        fp_estimator.on_round_start(rate_sample, max_bw, true, MINIMUM_MTU);
         // The pipe has not been filled yet since the loss rate was not high enough
         assert!(!fp_estimator.filled_pipe());
     }
@@ -271,15 +305,52 @@ mod tests {
         let max_bw = Bandwidth::new(1000, Duration::from_secs(1));
 
         // Not in recovery the first round
-        fp_estimator.on_round_start(rate_sample, max_bw, false);
+        fp_estimator.on_round_start(rate_sample, max_bw, false, MINIMUM_MTU);
 
         // 3 loss bursts, enough to be considered excessive loss
         fp_estimator.on_packet_lost(true);
         fp_estimator.on_packet_lost(true);
         fp_estimator.on_packet_lost(true);
 
-        fp_estimator.on_round_start(rate_sample, max_bw, true);
+        fp_estimator.on_round_start(rate_sample, max_bw, true, MINIMUM_MTU);
         // The pipe has not been filled yet since we haven't been in recovery for a full round
         assert!(!fp_estimator.filled_pipe());
+    }
+
+    #[test]
+    fn excessive_explicit_congestion() {
+        let mut fp_estimator = full_pipe::Estimator::default();
+        let high_ecn_rs = RateSample {
+            // Set app_limited to true to ignore bandwidth plateau check
+            is_app_limited: true,
+            // >= ECN_THRESH (50%) of packets had ECN CE markings
+            ecn_ce_count: 5,
+            delivered_bytes: 9 * MINIMUM_MTU as u64,
+            ..Default::default()
+        };
+
+        let low_ecn_rs = RateSample {
+            // Set app_limited to true to ignore bandwidth plateau check
+            is_app_limited: true,
+            // < ECN_THRESH (50%) of packets had ECN CE markings
+            ecn_ce_count: 4,
+            delivered_bytes: 9 * MINIMUM_MTU as u64,
+            ..Default::default()
+        };
+        let max_bw = Bandwidth::new(1000, Duration::from_secs(1));
+
+        fp_estimator.on_round_start(high_ecn_rs, max_bw, false, MINIMUM_MTU);
+        // The pipe has not been filled yet since there was only one round with high ECN CE markings
+        assert!(!fp_estimator.filled_pipe());
+
+        fp_estimator.on_round_start(low_ecn_rs, max_bw, false, MINIMUM_MTU);
+        fp_estimator.on_round_start(high_ecn_rs, max_bw, false, MINIMUM_MTU);
+        // The pipe has not been filled yet since the low ecn rate sample reset the count,
+        // ie the high ecn rate samples were not contiguous
+        assert!(!fp_estimator.filled_pipe());
+
+        fp_estimator.on_round_start(high_ecn_rs, max_bw, false, MINIMUM_MTU);
+        // After two consecutive rounds of high ECN markings, the pipe is full
+        assert!(fp_estimator.filled_pipe());
     }
 }

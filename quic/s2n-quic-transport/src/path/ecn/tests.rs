@@ -570,9 +570,9 @@ fn validate_capable_congestion_experienced() {
         ..Default::default()
     };
     let now = s2n_quic_platform::time::now();
-    let expected_ecn_counts = helper_ecn_counts(2, 0, 0);
-    let ack_frame_ecn_counts = helper_ecn_counts(1, 0, 1);
-    let sent_packet_ecn_counts = helper_ecn_counts(2, 0, 0);
+    let expected_ecn_counts = helper_ecn_counts(2, 0, 5);
+    let ack_frame_ecn_counts = helper_ecn_counts(1, 0, 12);
+    let sent_packet_ecn_counts = helper_ecn_counts(2, 0, 5);
     let rtt = Duration::from_millis(50);
     let outcome = controller.validate(
         expected_ecn_counts,
@@ -586,7 +586,7 @@ fn validate_capable_congestion_experienced() {
     );
 
     assert_eq!(
-        ValidationOutcome::CongestionExperienced(1_u8.into()),
+        ValidationOutcome::CongestionExperienced(7_u8.into()),
         outcome
     );
     assert!(controller.is_capable());

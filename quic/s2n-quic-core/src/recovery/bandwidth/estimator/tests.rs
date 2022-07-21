@@ -126,6 +126,7 @@ fn on_packet_sent() {
         delivered_bytes: 15000,
         delivered_time: Some(delivered_time),
         lost_bytes: 100,
+        ecn_ce_count: 5,
         first_sent_time: Some(first_sent_time),
         app_limited_delivered_bytes: None,
         rate_sample: Default::default(),
@@ -136,6 +137,7 @@ fn on_packet_sent() {
     assert_eq!(delivered_time, packet_info.delivered_time);
     assert_eq!(15000, packet_info.delivered_bytes);
     assert_eq!(100, packet_info.lost_bytes);
+    assert_eq!(5, packet_info.ecn_ce_count);
     assert!(packet_info.is_app_limited);
     assert_eq!(500, packet_info.bytes_in_flight);
     assert_eq!(Some(500 + 15000), bw_estimator.app_limited_delivered_bytes);
@@ -149,6 +151,7 @@ fn app_limited() {
         delivered_bytes: 15000,
         delivered_time: Some(delivered_time),
         lost_bytes: 100,
+        ecn_ce_count: 5,
         first_sent_time: Some(first_sent_time),
         app_limited_delivered_bytes: None,
         rate_sample: Default::default(),
@@ -173,6 +176,7 @@ fn app_limited() {
         delivered_bytes: bw_estimator.delivered_bytes,
         delivered_time,
         lost_bytes: 0,
+        ecn_ce_count: 0,
         first_sent_time,
         bytes_in_flight: 1500,
         is_app_limited: false,
@@ -344,4 +348,22 @@ fn on_packet_loss() {
 
     assert_eq!(750, bw_estimator.lost_bytes);
     assert_eq!(750, bw_estimator.rate_sample.lost_bytes);
+}
+
+#[test]
+fn on_explicit_congestion() {
+    let mut bw_estimator = Estimator::default();
+
+    assert_eq!(0, bw_estimator.ecn_ce_count);
+    assert_eq!(0, bw_estimator.rate_sample.ecn_ce_count);
+
+    bw_estimator.on_explicit_congestion(5);
+
+    assert_eq!(5, bw_estimator.ecn_ce_count);
+    assert_eq!(5, bw_estimator.rate_sample.ecn_ce_count);
+
+    bw_estimator.on_explicit_congestion(3);
+
+    assert_eq!(8, bw_estimator.ecn_ce_count);
+    assert_eq!(8, bw_estimator.rate_sample.ecn_ce_count);
 }

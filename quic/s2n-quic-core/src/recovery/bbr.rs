@@ -34,6 +34,10 @@ mod windowed_filter;
 //# The maximum tolerated per-round-trip packet loss rate when probing for bandwidth (the default is 2%).
 const LOSS_THRESH: Ratio<u32> = Ratio::new_raw(1, 50);
 
+// The maximum tolerated ratio of packets containing ECN CE markings
+// Value from https://github.com/google/bbr/blob/1a45fd4faf30229a3d3116de7bfe9d2f933d3562/net/ipv4/tcp_bbr2.c#L2306
+const ECN_THRESH: Ratio<u64> = Ratio::new_raw(1, 2);
+
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.8
 //# The default multiplicative decrease to make upon each round trip during which
 //# the connection detects packet loss (the value is 0.7)
@@ -340,12 +344,7 @@ impl CongestionController for BbrCongestionController {
         //# BBRUpdateProbeBWCyclePhase()
         if self.full_pipe_estimator.filled_pipe() {
             // BBRUpdateProbeBWCyclePhase() internally calls BBRAdaptUpperBounds() if BBR.filled_pipe == true
-            self.adapt_upper_bounds(
-                self.bw_estimator.rate_sample(),
-                bytes_acknowledged,
-                random_generator,
-                ack_receive_time,
-            );
+            self.adapt_upper_bounds(bytes_acknowledged, random_generator, ack_receive_time);
             if self.state.is_probing_bw() {
                 self.update_probe_bw_cycle_phase(random_generator, ack_receive_time);
             }
@@ -396,7 +395,8 @@ impl CongestionController for BbrCongestionController {
         self.handle_lost_packet(lost_bytes, packet_info, random_generator, timestamp);
     }
 
-    fn on_explicit_congestion(&mut self, _ce_count: u64, event_time: Timestamp) {
+    fn on_explicit_congestion(&mut self, ce_count: u64, event_time: Timestamp) {
+        self.bw_estimator.on_explicit_congestion(ce_count);
         self.recovery_state.on_congestion_event(event_time);
     }
 
@@ -661,15 +661,35 @@ impl BbrCongestionController {
         self.next_departure_time = Some(now + pacing_delay);
     }
 
+    /// True if the amount of loss or ECN CE markings exceed the BBR thresholds
+    fn is_inflight_too_high(&self) -> bool {
+        let rate_sample = self.bw_estimator.rate_sample();
+        Self::is_loss_too_high(rate_sample.lost_bytes, rate_sample.bytes_in_flight)
+            || Self::is_ecn_ce_too_high(
+                rate_sample.ecn_ce_count,
+                rate_sample.delivered_bytes,
+                self.max_datagram_size,
+            )
+    }
+
     /// True if the amount of `lost_bytes` exceeds the BBR loss threshold
-    fn is_inflight_too_high(lost_bytes: u64, bytes_inflight: u32) -> bool {
+    #[inline]
+    fn is_loss_too_high(lost_bytes: u64, bytes_inflight: u32) -> bool {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
         //# IsInflightTooHigh()
         //#   return (rs.lost > rs.tx_in_flight * BBRLossThresh)
-
-        // TODO: check ECN threshold
-
         lost_bytes > (LOSS_THRESH * bytes_inflight).to_integer() as u64
+    }
+
+    /// True if the `ecn_ce_count` exceeds the BBR ECN threshold
+    #[inline]
+    fn is_ecn_ce_too_high(ecn_ce_count: u64, delivered_bytes: u64, max_datagram_size: u16) -> bool {
+        // Estimate the number of bytes experiencing explicit congestion by multiplying
+        // the ecn_ce_count by max_datagram_size
+        let ecn_ce_bytes = ecn_ce_count.saturating_mul(max_datagram_size as u64);
+        let ecn_ce_threshold = (ECN_THRESH * delivered_bytes).to_integer();
+
+        ecn_ce_bytes > ecn_ce_threshold
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
@@ -892,7 +912,7 @@ impl BbrCongestionController {
             .try_into()
             .unwrap_or(u32::MAX);
 
-        if Self::is_inflight_too_high(lost_since_transmit as u64, packet_info.bytes_in_flight) {
+        if Self::is_loss_too_high(lost_since_transmit as u64, packet_info.bytes_in_flight) {
             let inflight_hi_from_lost_packet =
                 self.inflight_hi_from_lost_packet(lost_bytes, lost_since_transmit, packet_info);
             self.on_inflight_too_high(
