@@ -59,9 +59,7 @@ impl Client {
         let mut io_builder =
             io::Default::builder().with_receive_address((self.opts.local_ip, 0u16).into())?;
 
-        if self.disable_gso {
-            io_builder = io_builder.with_gso_disabled()?;
-        }
+        io_builder = io_builder.with_gso_disabled()?;
 
         let io = io_builder.build()?;
 
