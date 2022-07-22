@@ -58,6 +58,7 @@ macro_rules! varint_local_limits {
         local_limits!($name($encodable_type));
 
         impl LocalLimits for $name {
+            #[inline]
             fn as_varint(&self) -> VarInt {
                 self.0
             }
@@ -66,6 +67,7 @@ macro_rules! varint_local_limits {
         impl TryFrom<u64> for $name {
             type Error = ValidationError;
 
+            #[inline]
             fn try_from(value: u64) -> Result<Self, Self::Error> {
                 let value = VarInt::new(value)?;
                 Ok(Self(value))
@@ -79,6 +81,7 @@ local_limits!(MaxSendBufferSize(u32));
 impl MaxSendBufferSize {
     pub const RECOMMENDED: Self = Self(DEFAULT_STREAM_MAX_SEND_BUFFER_SIZE);
 
+    #[inline]
     pub fn as_u32(self) -> u32 {
         self.0
     }
@@ -87,6 +90,7 @@ impl MaxSendBufferSize {
 impl TryFrom<u32> for MaxSendBufferSize {
     type Error = ValidationError;
 
+    #[inline]
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         Ok(Self(value))
     }

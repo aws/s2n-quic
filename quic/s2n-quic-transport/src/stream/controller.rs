@@ -19,12 +19,7 @@ use futures_core::ready;
 use s2n_quic_core::{
     ack, endpoint,
     frame::MaxStreams,
-    stream::{
-        self,
-        iter::StreamIter,
-        limits::{LocalBidirectional, LocalUnidirectional},
-        StreamId, StreamType,
-    },
+    stream::{self, iter::StreamIter, StreamId, StreamType},
     time::{timer, Timestamp},
     transport,
     transport::parameters::InitialFlowControlLimits,
@@ -41,9 +36,9 @@ pub use remote_initiated::MAX_STREAMS_SYNC_FRACTION;
 #[derive(Debug)]
 pub struct Controller {
     local_endpoint_type: endpoint::Type,
-    local_bidi_controller: LocalInitiated<LocalBidirectional>,
+    local_bidi_controller: LocalInitiated<stream::limits::LocalBidirectional>,
     remote_bidi_controller: RemoteInitiated,
-    local_uni_controller: LocalInitiated<LocalUnidirectional>,
+    local_uni_controller: LocalInitiated<stream::limits::LocalUnidirectional>,
     remote_uni_controller: RemoteInitiated,
 }
 
@@ -260,6 +255,7 @@ impl Controller {
         self.local_uni_controller.on_timeout(now);
     }
 
+    #[inline]
     fn direction(&self, stream_id: StreamId) -> StreamDirection {
         let is_local_initiated = self.local_endpoint_type == stream_id.initiator();
         match (is_local_initiated, stream_id.stream_type()) {

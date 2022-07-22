@@ -310,7 +310,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
                 }
             }
         } else {
-            // Check if the peer is sending us a frame for a Stream with
+            // Check if the peer is sending us a frame for a local initiated Stream with
             // a higher Stream ID than we ever used.
             // In this case the peer seems to be time-travelling and know about
             // Future Stream IDs we might use. We also will not accept this and

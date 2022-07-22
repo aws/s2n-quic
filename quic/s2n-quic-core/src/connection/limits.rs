@@ -203,7 +203,7 @@ impl Limits {
     }
 
     #[doc(hidden)]
-    pub fn initial_flow_control_limits(&self) -> InitialFlowControlLimits {
+    pub const fn initial_flow_control_limits(&self) -> InitialFlowControlLimits {
         InitialFlowControlLimits {
             stream_limits: self.initial_stream_limits(),
             max_data: self.data_window.as_varint(),

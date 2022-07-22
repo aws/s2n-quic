@@ -86,6 +86,7 @@ impl<L: LocalLimits> LocalInitiated<L> {
             .update_sync_period(blocked_sync_period);
     }
 
+    #[inline]
     pub fn poll_open_stream(
         &mut self,
         open_token: &mut open_token::Token,
@@ -127,6 +128,7 @@ impl<L: LocalLimits> LocalInitiated<L> {
         Poll::Ready(())
     }
 
+    #[inline]
     pub fn on_open_stream(&mut self) {
         self.opened_streams += 1;
 
@@ -142,6 +144,7 @@ impl<L: LocalLimits> LocalInitiated<L> {
 
     /// The number of streams that may be opened by the local application, respecting both
     /// the local concurrent streams limit and the peer's stream limits.
+    #[inline]
     pub fn available_stream_capacity(&self) -> VarInt {
         let local_capacity = self
             .max_local_limit
@@ -151,6 +154,7 @@ impl<L: LocalLimits> LocalInitiated<L> {
     }
 
     /// The current number of streams that can be opened according to the peer's limits
+    #[inline]
     fn peer_capacity(&self) -> VarInt {
         self.peer_cumulative_stream_limit
             .saturating_sub(self.opened_streams)
@@ -180,6 +184,7 @@ impl<L: LocalLimits> LocalInitiated<L> {
     }
 
     /// Returns the number of streams currently open
+    #[inline]
     pub fn open_stream_count(&self) -> VarInt {
         self.opened_streams - self.closed_streams
     }

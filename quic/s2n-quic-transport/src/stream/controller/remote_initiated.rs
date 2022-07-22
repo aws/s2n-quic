@@ -85,6 +85,7 @@ impl RemoteInitiated {
         Ok(())
     }
 
+    #[inline]
     pub fn on_open_stream(&mut self) {
         self.opened_streams += 1;
 
@@ -104,6 +105,7 @@ impl RemoteInitiated {
     }
 
     /// Returns the number of streams currently open
+    #[inline]
     pub fn open_stream_count(&self) -> VarInt {
         self.opened_streams - self.closed_streams
     }
