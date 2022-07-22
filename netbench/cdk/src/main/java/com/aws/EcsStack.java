@@ -59,7 +59,7 @@ class EcsStack extends Stack {
     private Function exportLogsLambda;
     private Cluster cluster;
     private static final String bucketName = "BUCKET_NAME";
-    private static final String logGroupName = "lOG_GROUP_NAME";
+    private static final String logGroupName = "LOG_GROUP_NAME";
 
     public EcsStack(final Construct parent, final String id, final EcsStackProps props) {
         super(parent, id, props);
