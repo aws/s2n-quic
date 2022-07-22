@@ -10,7 +10,7 @@ use s2n_quic_core::{
     endpoint, transport,
 };
 use s2n_quic_crypto::Suite;
-use s2n_tls::raw::{
+use s2n_tls::{
     config::Config,
     connection::Connection,
     enums::{Blinding, Mode},
@@ -99,7 +99,7 @@ impl tls::Session for Session {
             callback.set(&mut self.connection);
         }
 
-        let result = self.connection.negotiate().map_ok(|_| ());
+        let result = self.connection.poll_negotiate().map_ok(|_| ());
 
         callback.unset(&mut self.connection)?;
 

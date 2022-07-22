@@ -70,6 +70,19 @@ pub mod api {
     pub struct ConnectionId<'a> {
         pub bytes: &'a [u8],
     }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct EcnCounts {
+        #[doc = " A variable-length integer representing the total number of packets"]
+        #[doc = " received with the ECT(0) codepoint."]
+        pub ect_0_count: u64,
+        #[doc = " A variable-length integer representing the total number of packets"]
+        #[doc = " received with the ECT(1) codepoint."]
+        pub ect_1_count: u64,
+        #[doc = " A variable-length integer representing the total number of packets"]
+        #[doc = " received with the CE codepoint."]
+        pub ce_count: u64,
+    }
     #[non_exhaustive]
     #[derive(Clone)]
     pub enum SocketAddress<'a> {
@@ -101,7 +114,11 @@ pub mod api {
         #[non_exhaustive]
         Ping {},
         #[non_exhaustive]
-        Ack {},
+        Ack {
+            ecn_counts: Option<EcnCounts>,
+            largest_acknowledged: u64,
+            ack_range_count: u64,
+        },
         #[non_exhaustive]
         ResetStream {
             id: u64,
@@ -317,6 +334,7 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[deprecated(note = "use on_rx_ack_range_dropped event instead")]
     pub enum AckAction {
         #[non_exhaustive]
         #[doc = " Ack range for received packets was dropped due to space constraints"]
@@ -576,6 +594,7 @@ pub mod api {
         pub pto_count: u32,
         pub congestion_window: u32,
         pub bytes_in_flight: u32,
+        pub congestion_limited: bool,
     }
     impl<'a> Event for RecoveryMetrics<'a> {
         const NAME: &'static str = "recovery:metrics_updated";
@@ -593,12 +612,48 @@ pub mod api {
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     #[doc = " Events related to ACK processing"]
+    #[deprecated(note = "use on_rx_ack_range_dropped event instead")]
+    #[allow(deprecated)]
     pub struct AckProcessed<'a> {
         pub action: AckAction,
         pub path: Path<'a>,
     }
+    #[allow(deprecated)]
     impl<'a> Event for AckProcessed<'a> {
         const NAME: &'static str = "recovery:ack_processed";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Ack range for received packets was dropped due to space constraints"]
+    #[doc = ""]
+    #[doc = " For the purpose of processing Acks, RX packet numbers are stored as"]
+    #[doc = " packet_number ranges in an IntervalSet; only lower and upper bounds"]
+    #[doc = " are stored instead of individual packet_numbers. Ranges are merged"]
+    #[doc = " when possible so only disjointed ranges are stored."]
+    #[doc = ""]
+    #[doc = " When at `capacity`, the lowest packet_number range is dropped."]
+    pub struct RxAckRangeDropped<'a> {
+        pub path: Path<'a>,
+        #[doc = " The packet number range which was dropped"]
+        pub packet_number_range: core::ops::RangeInclusive<u64>,
+        #[doc = " The number of disjoint ranges the IntervalSet can store"]
+        pub capacity: usize,
+        #[doc = " The store packet_number range in the IntervalSet"]
+        pub stored_range: core::ops::RangeInclusive<u64>,
+    }
+    impl<'a> Event for RxAckRangeDropped<'a> {
+        const NAME: &'static str = "recovery:rx_ack_range_dropped";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " ACK range was received"]
+    pub struct AckRangeReceived<'a> {
+        pub packet_header: PacketHeader,
+        pub path: Path<'a>,
+        pub ack_range: RangeInclusive<u64>,
+    }
+    impl<'a> Event for AckRangeReceived<'a> {
+        const NAME: &'static str = "recovery:ack_range_received";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1150,6 +1205,15 @@ pub mod api {
             }
         }
     }
+    impl IntoEvent<builder::EcnCounts> for crate::frame::ack::EcnCounts {
+        fn into_event(self) -> builder::EcnCounts {
+            builder::EcnCounts {
+                ect_0_count: self.ect_0_count.into_event(),
+                ect_1_count: self.ect_1_count.into_event(),
+                ce_count: self.ce_count.into_event(),
+            }
+        }
+    }
     impl IntoEvent<builder::Frame> for &crate::frame::Padding {
         fn into_event(self) -> builder::Frame {
             builder::Frame::Padding {}
@@ -1160,9 +1224,15 @@ pub mod api {
             builder::Frame::Ping {}
         }
     }
-    impl<AckRanges> IntoEvent<builder::Frame> for &crate::frame::Ack<AckRanges> {
+    impl<AckRanges: crate::frame::ack::AckRanges> IntoEvent<builder::Frame>
+        for &crate::frame::Ack<AckRanges>
+    {
         fn into_event(self) -> builder::Frame {
-            builder::Frame::Ack {}
+            builder::Frame::Ack {
+                ecn_counts: self.ecn_counts.map(|val| val.into_event()),
+                largest_acknowledged: self.largest_acknowledged().into_event(),
+                ack_range_count: self.ack_ranges().len() as u64,
+            }
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::ResetStream {
@@ -1537,8 +1607,9 @@ pub mod tracing {
                 pto_count,
                 congestion_window,
                 bytes_in_flight,
+                congestion_limited,
             } = event;
-            tracing :: event ! (target : "recovery_metrics" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , min_rtt = tracing :: field :: debug (min_rtt) , smoothed_rtt = tracing :: field :: debug (smoothed_rtt) , latest_rtt = tracing :: field :: debug (latest_rtt) , rtt_variance = tracing :: field :: debug (rtt_variance) , max_ack_delay = tracing :: field :: debug (max_ack_delay) , pto_count = tracing :: field :: debug (pto_count) , congestion_window = tracing :: field :: debug (congestion_window) , bytes_in_flight = tracing :: field :: debug (bytes_in_flight));
+            tracing :: event ! (target : "recovery_metrics" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , min_rtt = tracing :: field :: debug (min_rtt) , smoothed_rtt = tracing :: field :: debug (smoothed_rtt) , latest_rtt = tracing :: field :: debug (latest_rtt) , rtt_variance = tracing :: field :: debug (rtt_variance) , max_ack_delay = tracing :: field :: debug (max_ack_delay) , pto_count = tracing :: field :: debug (pto_count) , congestion_window = tracing :: field :: debug (congestion_window) , bytes_in_flight = tracing :: field :: debug (bytes_in_flight) , congestion_limited = tracing :: field :: debug (congestion_limited));
         }
         #[inline]
         fn on_congestion(
@@ -1552,6 +1623,7 @@ pub mod tracing {
             tracing :: event ! (target : "congestion" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , source = tracing :: field :: debug (source));
         }
         #[inline]
+        #[allow(deprecated)]
         fn on_ack_processed(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -1561,6 +1633,37 @@ pub mod tracing {
             let id = context.id();
             let api::AckProcessed { action, path } = event;
             tracing :: event ! (target : "ack_processed" , parent : id , tracing :: Level :: DEBUG , action = tracing :: field :: debug (action) , path = tracing :: field :: debug (path));
+        }
+        #[inline]
+        fn on_rx_ack_range_dropped(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::RxAckRangeDropped,
+        ) {
+            let id = context.id();
+            let api::RxAckRangeDropped {
+                path,
+                packet_number_range,
+                capacity,
+                stored_range,
+            } = event;
+            tracing :: event ! (target : "rx_ack_range_dropped" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , packet_number_range = tracing :: field :: debug (packet_number_range) , capacity = tracing :: field :: debug (capacity) , stored_range = tracing :: field :: debug (stored_range));
+        }
+        #[inline]
+        fn on_ack_range_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::AckRangeReceived,
+        ) {
+            let id = context.id();
+            let api::AckRangeReceived {
+                packet_header,
+                path,
+                ack_range,
+            } = event;
+            tracing :: event ! (target : "ack_range_received" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , ack_range = tracing :: field :: debug (ack_range));
         }
         #[inline]
         fn on_packet_dropped(
@@ -2148,7 +2251,7 @@ pub mod builder {
             }
         }
     }
-    #[derive(Clone, Debug)]
+    #[derive(Copy, Clone, Debug)]
     pub struct Path<'a> {
         pub local_addr: SocketAddress<'a>,
         pub local_cid: ConnectionId<'a>,
@@ -2178,7 +2281,7 @@ pub mod builder {
             }
         }
     }
-    #[derive(Clone, Debug)]
+    #[derive(Copy, Clone, Debug)]
     pub struct ConnectionId<'a> {
         pub bytes: &'a [u8],
     }
@@ -2192,6 +2295,33 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct EcnCounts {
+        #[doc = " A variable-length integer representing the total number of packets"]
+        #[doc = " received with the ECT(0) codepoint."]
+        pub ect_0_count: u64,
+        #[doc = " A variable-length integer representing the total number of packets"]
+        #[doc = " received with the ECT(1) codepoint."]
+        pub ect_1_count: u64,
+        #[doc = " A variable-length integer representing the total number of packets"]
+        #[doc = " received with the CE codepoint."]
+        pub ce_count: u64,
+    }
+    impl IntoEvent<api::EcnCounts> for EcnCounts {
+        #[inline]
+        fn into_event(self) -> api::EcnCounts {
+            let EcnCounts {
+                ect_0_count,
+                ect_1_count,
+                ce_count,
+            } = self;
+            api::EcnCounts {
+                ect_0_count: ect_0_count.into_event(),
+                ect_1_count: ect_1_count.into_event(),
+                ce_count: ce_count.into_event(),
+            }
+        }
+    }
+    #[derive(Copy, Clone, Debug)]
     pub enum SocketAddress<'a> {
         IpV4 { ip: &'a [u8; 4], port: u16 },
         IpV6 { ip: &'a [u8; 16], port: u16 },
@@ -2238,7 +2368,11 @@ pub mod builder {
     pub enum Frame {
         Padding,
         Ping,
-        Ack,
+        Ack {
+            ecn_counts: Option<EcnCounts>,
+            largest_acknowledged: u64,
+            ack_range_count: u64,
+        },
         ResetStream {
             id: u64,
             error_code: u64,
@@ -2293,7 +2427,15 @@ pub mod builder {
             match self {
                 Self::Padding => Padding {},
                 Self::Ping => Ping {},
-                Self::Ack => Ack {},
+                Self::Ack {
+                    ecn_counts,
+                    largest_acknowledged,
+                    ack_range_count,
+                } => Ack {
+                    ecn_counts: ecn_counts.into_event(),
+                    largest_acknowledged: largest_acknowledged.into_event(),
+                    ack_range_count: ack_range_count.into_event(),
+                },
                 Self::ResetStream {
                     id,
                     error_code,
@@ -2640,6 +2782,7 @@ pub mod builder {
             stored_range: core::ops::RangeInclusive<u64>,
         },
     }
+    #[allow(deprecated)]
     impl IntoEvent<api::AckAction> for AckAction {
         #[inline]
         fn into_event(self) -> api::AckAction {
@@ -3030,6 +3173,7 @@ pub mod builder {
         pub pto_count: u32,
         pub congestion_window: u32,
         pub bytes_in_flight: u32,
+        pub congestion_limited: bool,
     }
     impl<'a> IntoEvent<api::RecoveryMetrics<'a>> for RecoveryMetrics<'a> {
         #[inline]
@@ -3044,6 +3188,7 @@ pub mod builder {
                 pto_count,
                 congestion_window,
                 bytes_in_flight,
+                congestion_limited,
             } = self;
             api::RecoveryMetrics {
                 path: path.into_event(),
@@ -3055,6 +3200,7 @@ pub mod builder {
                 pto_count: pto_count.into_event(),
                 congestion_window: congestion_window.into_event(),
                 bytes_in_flight: bytes_in_flight.into_event(),
+                congestion_limited: congestion_limited.into_event(),
             }
         }
     }
@@ -3080,6 +3226,7 @@ pub mod builder {
         pub action: AckAction,
         pub path: Path<'a>,
     }
+    #[allow(deprecated)]
     impl<'a> IntoEvent<api::AckProcessed<'a>> for AckProcessed<'a> {
         #[inline]
         fn into_event(self) -> api::AckProcessed<'a> {
@@ -3087,6 +3234,63 @@ pub mod builder {
             api::AckProcessed {
                 action: action.into_event(),
                 path: path.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Ack range for received packets was dropped due to space constraints"]
+    #[doc = ""]
+    #[doc = " For the purpose of processing Acks, RX packet numbers are stored as"]
+    #[doc = " packet_number ranges in an IntervalSet; only lower and upper bounds"]
+    #[doc = " are stored instead of individual packet_numbers. Ranges are merged"]
+    #[doc = " when possible so only disjointed ranges are stored."]
+    #[doc = ""]
+    #[doc = " When at `capacity`, the lowest packet_number range is dropped."]
+    pub struct RxAckRangeDropped<'a> {
+        pub path: Path<'a>,
+        #[doc = " The packet number range which was dropped"]
+        pub packet_number_range: core::ops::RangeInclusive<u64>,
+        #[doc = " The number of disjoint ranges the IntervalSet can store"]
+        pub capacity: usize,
+        #[doc = " The store packet_number range in the IntervalSet"]
+        pub stored_range: core::ops::RangeInclusive<u64>,
+    }
+    impl<'a> IntoEvent<api::RxAckRangeDropped<'a>> for RxAckRangeDropped<'a> {
+        #[inline]
+        fn into_event(self) -> api::RxAckRangeDropped<'a> {
+            let RxAckRangeDropped {
+                path,
+                packet_number_range,
+                capacity,
+                stored_range,
+            } = self;
+            api::RxAckRangeDropped {
+                path: path.into_event(),
+                packet_number_range: packet_number_range.into_event(),
+                capacity: capacity.into_event(),
+                stored_range: stored_range.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " ACK range was received"]
+    pub struct AckRangeReceived<'a> {
+        pub packet_header: PacketHeader,
+        pub path: Path<'a>,
+        pub ack_range: RangeInclusive<u64>,
+    }
+    impl<'a> IntoEvent<api::AckRangeReceived<'a>> for AckRangeReceived<'a> {
+        #[inline]
+        fn into_event(self) -> api::AckRangeReceived<'a> {
+            let AckRangeReceived {
+                packet_header,
+                path,
+                ack_range,
+            } = self;
+            api::AckRangeReceived {
+                packet_header: packet_header.into_event(),
+                path: path.into_event(),
+                ack_range: ack_range.into_event(),
             }
         }
     }
@@ -4026,11 +4230,37 @@ mod traits {
         }
         #[doc = "Called when the `AckProcessed` event is triggered"]
         #[inline]
+        #[deprecated(note = "use on_rx_ack_range_dropped event instead")]
+        #[allow(deprecated)]
         fn on_ack_processed(
             &mut self,
             context: &mut Self::ConnectionContext,
             meta: &ConnectionMeta,
             event: &AckProcessed,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `RxAckRangeDropped` event is triggered"]
+        #[inline]
+        fn on_rx_ack_range_dropped(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &RxAckRangeDropped,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `AckRangeReceived` event is triggered"]
+        #[inline]
+        fn on_ack_range_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &AckRangeReceived,
         ) {
             let _ = context;
             let _ = meta;
@@ -4621,6 +4851,7 @@ mod traits {
             (self.1).on_congestion(&mut context.1, meta, event);
         }
         #[inline]
+        #[allow(deprecated)]
         fn on_ack_processed(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -4629,6 +4860,26 @@ mod traits {
         ) {
             (self.0).on_ack_processed(&mut context.0, meta, event);
             (self.1).on_ack_processed(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_rx_ack_range_dropped(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &RxAckRangeDropped,
+        ) {
+            (self.0).on_rx_ack_range_dropped(&mut context.0, meta, event);
+            (self.1).on_rx_ack_range_dropped(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_ack_range_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &AckRangeReceived,
+        ) {
+            (self.0).on_ack_range_received(&mut context.0, meta, event);
+            (self.1).on_ack_range_received(&mut context.1, meta, event);
         }
         #[inline]
         fn on_packet_dropped(
@@ -5175,6 +5426,10 @@ mod traits {
         fn on_congestion(&mut self, event: builder::Congestion);
         #[doc = "Publishes a `AckProcessed` event to the publisher's subscriber"]
         fn on_ack_processed(&mut self, event: builder::AckProcessed);
+        #[doc = "Publishes a `RxAckRangeDropped` event to the publisher's subscriber"]
+        fn on_rx_ack_range_dropped(&mut self, event: builder::RxAckRangeDropped);
+        #[doc = "Publishes a `AckRangeReceived` event to the publisher's subscriber"]
+        fn on_ack_range_received(&mut self, event: builder::AckRangeReceived);
         #[doc = "Publishes a `PacketDropped` event to the publisher's subscriber"]
         fn on_packet_dropped(&mut self, event: builder::PacketDropped);
         #[doc = "Publishes a `KeyUpdate` event to the publisher's subscriber"]
@@ -5358,10 +5613,29 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        #[allow(deprecated)]
         fn on_ack_processed(&mut self, event: builder::AckProcessed) {
             let event = event.into_event();
             self.subscriber
                 .on_ack_processed(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_rx_ack_range_dropped(&mut self, event: builder::RxAckRangeDropped) {
+            let event = event.into_event();
+            self.subscriber
+                .on_rx_ack_range_dropped(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_ack_range_received(&mut self, event: builder::AckRangeReceived) {
+            let event = event.into_event();
+            self.subscriber
+                .on_ack_range_received(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -5596,6 +5870,8 @@ pub mod testing {
         pub recovery_metrics: u32,
         pub congestion: u32,
         pub ack_processed: u32,
+        pub rx_ack_range_dropped: u32,
+        pub ack_range_received: u32,
         pub packet_dropped: u32,
         pub key_update: u32,
         pub key_space_discarded: u32,
@@ -5668,6 +5944,8 @@ pub mod testing {
                 recovery_metrics: 0,
                 congestion: 0,
                 ack_processed: 0,
+                rx_ack_range_dropped: 0,
+                ack_range_received: 0,
                 packet_dropped: 0,
                 key_update: 0,
                 key_space_discarded: 0,
@@ -5836,6 +6114,7 @@ pub mod testing {
                 self.output.push(format!("{:?} {:?}", meta, event));
             }
         }
+        #[allow(deprecated)]
         fn on_ack_processed(
             &mut self,
             _context: &mut Self::ConnectionContext,
@@ -5843,6 +6122,28 @@ pub mod testing {
             event: &api::AckProcessed,
         ) {
             self.ack_processed += 1;
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
+        }
+        fn on_rx_ack_range_dropped(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::RxAckRangeDropped,
+        ) {
+            self.rx_ack_range_dropped += 1;
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
+        }
+        fn on_ack_range_received(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::AckRangeReceived,
+        ) {
+            self.ack_range_received += 1;
             if self.location.is_some() {
                 self.output.push(format!("{:?} {:?}", meta, event));
             }
@@ -6202,6 +6503,8 @@ pub mod testing {
         pub recovery_metrics: u32,
         pub congestion: u32,
         pub ack_processed: u32,
+        pub rx_ack_range_dropped: u32,
+        pub ack_range_received: u32,
         pub packet_dropped: u32,
         pub key_update: u32,
         pub key_space_discarded: u32,
@@ -6264,6 +6567,8 @@ pub mod testing {
                 recovery_metrics: 0,
                 congestion: 0,
                 ack_processed: 0,
+                rx_ack_range_dropped: 0,
+                ack_range_received: 0,
                 packet_dropped: 0,
                 key_update: 0,
                 key_space_discarded: 0,
@@ -6462,8 +6767,23 @@ pub mod testing {
                 self.output.push(format!("{:?}", event));
             }
         }
+        #[allow(deprecated)]
         fn on_ack_processed(&mut self, event: builder::AckProcessed) {
             self.ack_processed += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
+        }
+        fn on_rx_ack_range_dropped(&mut self, event: builder::RxAckRangeDropped) {
+            self.rx_ack_range_dropped += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
+        }
+        fn on_ack_range_received(&mut self, event: builder::AckRangeReceived) {
+            self.ack_range_received += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 self.output.push(format!("{:?}", event));

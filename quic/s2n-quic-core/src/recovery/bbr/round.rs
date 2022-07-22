@@ -10,6 +10,11 @@ use crate::recovery::bandwidth::PacketInfo;
 //# elapsed so far.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Counter {
+    //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.1
+    //# BBRInitRoundCounting():
+    //#   BBR.next_round_delivered = 0
+    //#   BBR.round_start = false
+    //#   BBR.round_count = 0
     /// The `delivered_bytes` at which the next round begins
     next_round_delivered_bytes: u64,
     /// True if the current ack being processed started a new round
@@ -21,6 +26,15 @@ pub(crate) struct Counter {
 impl Counter {
     /// Called for each acknowledgement of one or more packets
     pub fn on_ack(&mut self, packet_info: PacketInfo, delivered_bytes: u64) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.1
+        //# BBRUpdateRound():
+        //#   if (packet.delivered >= BBR.next_round_delivered)
+        //#     BBRStartRound()
+        //#     BBR.round_count++
+        //#     BBR.rounds_since_probe++
+        //#     BBR.round_start = true
+        //#   else
+        //#     BBR.round_start = false
         if packet_info.delivered_bytes >= self.next_round_delivered_bytes {
             self.set_round_end(delivered_bytes);
             self.round_count += 1;
@@ -32,6 +46,10 @@ impl Counter {
 
     /// Sets the end of the current round to the given `delivered_bytes`
     pub fn set_round_end(&mut self, delivered_bytes: u64) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.1
+        //# BBRStartRound():
+        //#   BBR.next_round_delivered = C.delivered
+
         debug_assert!(
             delivered_bytes >= self.next_round_delivered_bytes,
             "The end of the round can only be extended, not shortened"
@@ -45,7 +63,6 @@ impl Counter {
     }
 
     /// The number of rounds counted since initialization
-    #[allow(dead_code)] // TODO: Remove when used
     pub fn round_count(&self) -> u64 {
         self.round_count
     }
@@ -68,6 +85,7 @@ mod tests {
             delivered_bytes: 0,
             delivered_time: now,
             lost_bytes: 0,
+            ecn_ce_count: 0,
             first_sent_time: now,
             bytes_in_flight: 0,
             is_app_limited: false,
@@ -113,6 +131,7 @@ mod tests {
             delivered_bytes: 0,
             delivered_time: now,
             lost_bytes: 0,
+            ecn_ce_count: 0,
             first_sent_time: now,
             bytes_in_flight: 0,
             is_app_limited: false,

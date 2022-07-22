@@ -570,9 +570,9 @@ fn validate_capable_congestion_experienced() {
         ..Default::default()
     };
     let now = s2n_quic_platform::time::now();
-    let expected_ecn_counts = helper_ecn_counts(2, 0, 0);
-    let ack_frame_ecn_counts = helper_ecn_counts(1, 0, 1);
-    let sent_packet_ecn_counts = helper_ecn_counts(2, 0, 0);
+    let expected_ecn_counts = helper_ecn_counts(2, 0, 5);
+    let ack_frame_ecn_counts = helper_ecn_counts(1, 0, 12);
+    let sent_packet_ecn_counts = helper_ecn_counts(2, 0, 5);
     let rtt = Duration::from_millis(50);
     let outcome = controller.validate(
         expected_ecn_counts,
@@ -585,7 +585,10 @@ fn validate_capable_congestion_experienced() {
         &mut publisher,
     );
 
-    assert_eq!(ValidationOutcome::CongestionExperienced, outcome);
+    assert_eq!(
+        ValidationOutcome::CongestionExperienced(7_u8.into()),
+        outcome
+    );
     assert!(controller.is_capable());
     if let State::Capable(timer) = controller.state {
         assert_eq!(
@@ -730,7 +733,10 @@ fn validate_capable_after_restart() {
         &mut publisher,
     );
 
-    assert_eq!(ValidationOutcome::CongestionExperienced, outcome);
+    assert_eq!(
+        ValidationOutcome::CongestionExperienced(1_u8.into()),
+        outcome
+    );
     assert!(controller.is_capable());
     if let State::Capable(timer) = controller.state {
         assert_eq!(

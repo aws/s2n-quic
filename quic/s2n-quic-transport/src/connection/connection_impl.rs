@@ -18,7 +18,7 @@ use crate::{
     endpoint,
     path::{self, path_event},
     processed_packet::ProcessedPacket,
-    recovery::RttEstimator,
+    recovery::{recovery_event, RttEstimator},
     space::{PacketSpace, PacketSpaceManager},
     stream, transmission,
     transmission::interest::Provider as _,
@@ -36,6 +36,7 @@ use s2n_quic_core::{
     application::ServerName,
     connection::{id::Generator as _, InitialId, PeerId},
     crypto::{tls, CryptoSuite},
+    datagram::{Receiver, Sender},
     event::{
         self,
         builder::{DatagramDropReason, MtuUpdatedCause, RxStreamProgress, TxStreamProgress},
@@ -762,6 +763,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             self.state = ConnectionState::Finished;
         }
 
+        // Notify the datagram manager that the connection has closed
+        if let Some((space, _)) = self.space_manager.application_mut() {
+            space.datagram_manager.sender.on_connection_error(error);
+            space.datagram_manager.receiver.on_connection_error(error);
+        }
+
         //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
         //# In the closing state, an endpoint retains only enough information to
         //# generate a packet containing a CONNECTION_CLOSE frame and to identify
@@ -903,6 +910,19 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         self.timers.pacing_timer.set(edt);
                     }
                 }
+
+                let meta = event::builder::ConnectionMeta {
+                    endpoint_type: Config::ENDPOINT_TYPE,
+                    id: self.internal_connection_id().into(),
+                    timestamp,
+                };
+                let path_id = self.path_manager.active_path_id().as_u8();
+                let path = self.path_manager.active_path();
+                subscriber.on_recovery_metrics(
+                    &mut self.event_context.context,
+                    &meta.into_event(),
+                    &recovery_event!(path_id, path).into_event(),
+                );
 
                 // PathValidationOnly handles transmission on non-active paths. Transmission
                 // on the active path should be handled prior to this.
@@ -1832,12 +1852,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     #[inline]
     fn datagram_mut(&mut self, query: &mut dyn event::query::QueryMut) {
         if let Some((space, _)) = self.space_manager.application_mut() {
-            // Try to execute the query on the sender side. If that fails, try the receiver side.
-            match query.execute_mut(&mut space.datagram_manager.sender) {
-                event::query::ControlFlow::Continue => {
-                    query.execute_mut(&mut space.datagram_manager.receiver);
-                }
-                event::query::ControlFlow::Break => (),
+            if space.datagram_manager.datagram_mut(query).is_ready() {
+                self.wakeup_handle.wakeup();
             }
         }
     }

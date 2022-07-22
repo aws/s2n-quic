@@ -42,7 +42,7 @@ public class StateMachineStack extends Stack {
         super(parent, id, props);
 
         Bucket bucket = props.getBucket();
-
+        
         Function timestampFunction = Function.Builder.create(this, "timestamp-function")
                 .runtime(Runtime.NODEJS_14_X)
                 .handler("timestamp.handler")

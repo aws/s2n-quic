@@ -14,7 +14,7 @@ use s2n_quic_crypto::{
     ring::{aead, hkdf},
     Prk, SecretPair, Suite,
 };
-use s2n_tls::raw::{connection::Connection, error::Fallible, ffi::*};
+use s2n_tls::{connection::Connection, error::Fallible, ffi::*};
 
 /// The preallocated size of the outgoing buffer
 ///

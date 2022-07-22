@@ -3,7 +3,7 @@
 
 use netbench::{multiplex, scenario, Result};
 use netbench_driver::Allocator;
-use s2n_tls::raw::{
+use s2n_tls::{
     config::{Builder, Config},
     error::Error,
     security::DEFAULT_TLS13,
@@ -71,7 +71,7 @@ impl Server {
         ) -> Result<()> {
             let connection = acceptor.accept(connection).await?;
             let server_name = connection
-                .get_ref()
+                .as_ref()
                 .server_name()
                 .ok_or("missing server name")?;
             let scenario = scenario.on_server_name(server_name)?;

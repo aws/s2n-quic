@@ -29,8 +29,12 @@ impl Sender for DisabledSender {
     fn has_transmission_interest(&self) -> bool {
         false
     }
+
+    fn on_connection_error(&mut self, _error: crate::connection::Error) {}
 }
 
 impl Receiver for DisabledReceiver {
     fn on_datagram(&mut self, _datagram: &[u8]) {}
+
+    fn on_connection_error(&mut self, _error: crate::connection::Error) {}
 }

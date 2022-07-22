@@ -14,6 +14,8 @@ pub struct PacketInfo {
     pub delivered_time: Timestamp,
     /// `Estimator::lost_bytes` at the time this packet was sent.
     pub lost_bytes: u64,
+    /// `Estimator::ecn_ce_count` at the time this packet was sent.
+    pub ecn_ce_count: u64,
     /// `Estimator::first_sent_time` at the time this packet was sent.
     pub first_sent_time: Timestamp,
     /// The volume of data that was estimated to be in flight at the
@@ -39,7 +41,7 @@ impl Bandwidth {
     };
 
     /// Constructs a new `Bandwidth` with the given bytes per interval
-    pub fn new(bytes: u64, interval: Duration) -> Self {
+    pub const fn new(bytes: u64, interval: Duration) -> Self {
         if interval.is_zero() {
             Bandwidth::ZERO
         } else {
@@ -82,6 +84,20 @@ impl core::ops::Mul<Duration> for Bandwidth {
     }
 }
 
+/// Divides a count of bytes represented as a u64 by the given `Bandwidth`
+///
+/// Since `Bandwidth` is a rate of bytes over a time period, this division
+/// results in a `Duration` being returned, representing how long a path
+/// with the given `Bandwidth` would take to transmit the given number of
+/// bytes.
+impl core::ops::Div<Bandwidth> for u64 {
+    type Output = Duration;
+
+    fn div(self, rhs: Bandwidth) -> Self::Output {
+        Duration::from_micros(self * MICRO_BITS_PER_BYTE / rhs.bits_per_second)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 /// A bandwidth delivery rate estimate with associated metadata
 pub struct RateSample {
@@ -91,6 +107,8 @@ pub struct RateSample {
     pub delivered_bytes: u64,
     /// The amount of data in bytes marked as lost over the sampling interval
     pub lost_bytes: u64,
+    /// The number of packets marked as explicit congestion experienced over the sampling interval
+    pub ecn_ce_count: u64,
     /// [PacketInfo::is_app_limited] from the most recent acknowledged packet
     pub is_app_limited: bool,
     /// [PacketInfo::delivered_bytes] from the most recent acknowledged packet
@@ -99,6 +117,8 @@ pub struct RateSample {
     pub bytes_in_flight: u32,
     /// [PacketInfo::lost_bytes] from the most recent acknowledged packet
     pub prior_lost_bytes: u64,
+    /// [PacketInfo::ecn_ce_count] from the most recent acknowledged packet
+    pub prior_ecn_ce_count: u64,
 }
 
 impl RateSample {
@@ -112,6 +132,7 @@ impl RateSample {
         self.is_app_limited = packet_info.is_app_limited;
         self.prior_delivered_bytes = packet_info.delivered_bytes;
         self.prior_lost_bytes = packet_info.lost_bytes;
+        self.prior_ecn_ce_count = packet_info.ecn_ce_count;
         self.bytes_in_flight = packet_info.bytes_in_flight;
     }
 
@@ -136,6 +157,8 @@ pub struct Estimator {
     /// The total amount of data in bytes declared lost so far over the lifetime of the path, not including
     /// non-congestion-controlled packets such as pure ACK packets.
     lost_bytes: u64,
+    /// The total amount of explicit congestion experienced packets over the lifetime of the path
+    ecn_ce_count: u64,
     /// The send time of the packet that was most recently marked as delivered, or if the connection
     /// was recently idle, the send time of the first packet sent after resuming from idle.
     first_sent_time: Option<Timestamp>,
@@ -152,9 +175,19 @@ impl Estimator {
         self.delivered_bytes
     }
 
+    /// Gets the total amount of data in bytes lost so far over the lifetime of the path
+    pub fn lost_bytes(&self) -> u64 {
+        self.lost_bytes
+    }
+
     /// Gets the latest [RateSample]
     pub fn rate_sample(&self) -> RateSample {
         self.rate_sample
+    }
+
+    /// Returns true if the path is currently in an application-limited period
+    pub fn is_app_limited(&self) -> bool {
+        self.app_limited_delivered_bytes.is_some()
     }
 
     /// Called when a packet is transmitted
@@ -175,7 +208,7 @@ impl Estimator {
         }
 
         if app_limited.unwrap_or(false) {
-            self.app_limited_delivered_bytes = Some(self.delivered_bytes + bytes_in_flight as u64);
+            self.on_app_limited(bytes_in_flight);
         }
 
         PacketInfo {
@@ -184,6 +217,7 @@ impl Estimator {
                 .delivered_time
                 .expect("initialized on first sent packet"),
             lost_bytes: self.lost_bytes,
+            ecn_ce_count: self.ecn_ce_count,
             first_sent_time: self
                 .first_sent_time
                 .expect("initialized on first sent packet"),
@@ -248,6 +282,22 @@ impl Estimator {
     pub fn on_loss(&mut self, lost_bytes: usize) {
         self.lost_bytes += lost_bytes as u64;
         self.rate_sample.lost_bytes = self.lost_bytes - self.rate_sample.prior_lost_bytes;
+    }
+
+    /// Called each time explicit congestion is recorded
+    #[inline]
+    pub fn on_explicit_congestion(&mut self, ce_count: u64) {
+        self.ecn_ce_count += ce_count;
+        self.rate_sample.ecn_ce_count = self.ecn_ce_count - self.rate_sample.prior_ecn_ce_count;
+    }
+
+    /// Mark the path as app limited until the given `bytes_in_flight` are acknowledged
+    pub fn on_app_limited(&mut self, bytes_in_flight: u32) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.4.4
+        //# MarkConnectionAppLimited():
+        //#   C.app_limited =
+        //#     (C.delivered + packets_in_flight) ? : 1
+        self.app_limited_delivered_bytes = Some(self.delivered_bytes + bytes_in_flight as u64);
     }
 }
 

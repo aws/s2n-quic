@@ -405,43 +405,13 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
-    fn on_congestion_event(&mut self, event_time: Timestamp) {
-        // Reset bytes_in_flight_hi
-        self.bytes_in_flight_hi = BytesInFlight::new(0);
-
-        // No reaction if already in a recovery period.
-        if matches!(self.state, Recovery(_, _)) {
-            return;
-        }
-
-        // Enter recovery period.
-
-        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.1
-        //# The sender MUST exit slow start and enter a recovery period when a
-        //# packet is lost or when the ECN-CE count reported by its peer
-        //# increases.
-
-        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
-        //# If the congestion window is reduced immediately, a
-        //# single packet can be sent prior to reduction.  This speeds up loss
-        //# recovery if the data in the lost packet is retransmitted and is
-        //# similar to TCP as described in Section 5 of [RFC6675].
-        self.state = Recovery(event_time, RequiresTransmission);
-
-        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
-        //# Implementations MAY reduce the congestion window immediately upon
-        //# entering a recovery period or use other mechanisms, such as
-        //# Proportional Rate Reduction [PRR], to reduce the congestion window
-        //# more gradually.
-
-        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
-        //# The minimum congestion window is the smallest value the congestion
-        //# window can attain in response to loss, an increase in the peer-
-        //# reported ECN-CE count, or persistent congestion.
-        self.congestion_window = self.cubic.multiplicative_decrease(self.congestion_window);
-
-        // Update Hybrid Slow Start with the decreased congestion window.
-        self.slow_start.on_congestion_event(self.congestion_window);
+    fn on_explicit_congestion(&mut self, _ce_count: u64, event_time: Timestamp) {
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.1
+        //# If a path has been validated to support Explicit Congestion
+        //# Notification (ECN) [RFC3168] [RFC8311], QUIC treats a Congestion
+        //# Experienced (CE) codepoint in the IP header as a signal of
+        //# congestion.
+        self.on_congestion_event(event_time);
     }
 
     //= https://www.rfc-editor.org/rfc/rfc8899#section-3
@@ -605,6 +575,46 @@ impl CubicCongestionController {
 
             self.congestion_window = (self.congestion_window + window_increment).min(max_cwnd);
         }
+    }
+
+    #[inline]
+    fn on_congestion_event(&mut self, event_time: Timestamp) {
+        // Reset bytes_in_flight_hi
+        self.bytes_in_flight_hi = BytesInFlight::new(0);
+
+        // No reaction if already in a recovery period.
+        if matches!(self.state, Recovery(_, _)) {
+            return;
+        }
+
+        // Enter recovery period.
+
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.1
+        //# The sender MUST exit slow start and enter a recovery period when a
+        //# packet is lost or when the ECN-CE count reported by its peer
+        //# increases.
+
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
+        //# If the congestion window is reduced immediately, a
+        //# single packet can be sent prior to reduction.  This speeds up loss
+        //# recovery if the data in the lost packet is retransmitted and is
+        //# similar to TCP as described in Section 5 of [RFC6675].
+        self.state = Recovery(event_time, RequiresTransmission);
+
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
+        //# Implementations MAY reduce the congestion window immediately upon
+        //# entering a recovery period or use other mechanisms, such as
+        //# Proportional Rate Reduction [PRR], to reduce the congestion window
+        //# more gradually.
+
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
+        //# The minimum congestion window is the smallest value the congestion
+        //# window can attain in response to loss, an increase in the peer-
+        //# reported ECN-CE count, or persistent congestion.
+        self.congestion_window = self.cubic.multiplicative_decrease(self.congestion_window);
+
+        // Update Hybrid Slow Start with the decreased congestion window.
+        self.slow_start.on_congestion_event(self.congestion_window);
     }
 
     #[inline]

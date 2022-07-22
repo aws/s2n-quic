@@ -98,9 +98,12 @@ macro_rules! recovery_event {
             pto_count: ($path.pto_backoff as f32).log2() as u32,
             congestion_window: $path.congestion_controller.congestion_window(),
             bytes_in_flight: $path.congestion_controller.bytes_in_flight(),
+            congestion_limited: $path.transmission_constraint().is_congestion_limited(),
         }
     };
 }
+
+pub(crate) use recovery_event;
 
 // Since `SentPacketInfo` is generic over a type supplied by the Congestion Controller implementation,
 // the type definition is particularly lengthy, especially since rust requires the fully-qualified
@@ -330,12 +333,14 @@ impl<Config: endpoint::Config> Manager<Config> {
         &mut self,
         timestamp: Timestamp,
         frame: frame::Ack<A>,
+        packet_number: PacketNumber,
         random_generator: &mut Config::RandomGenerator,
         context: &mut Ctx,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         let space = self.space;
         let largest_acked_packet_number = space.new_packet_number(frame.largest_acknowledged());
+
         self.process_acks(
             timestamp,
             frame.ack_ranges().map(|ack_range| {
@@ -345,6 +350,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             largest_acked_packet_number,
             frame.ack_delay(),
             frame.ecn_counts,
+            packet_number,
             random_generator,
             context,
             publisher,
@@ -362,6 +368,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         largest_acked_packet_number: PacketNumber,
         ack_delay: Duration,
         ecn_counts: Option<EcnCounts>,
+        packet_number: PacketNumber,
         random_generator: &mut Config::RandomGenerator,
         context: &mut Ctx,
         publisher: &mut Pub,
@@ -381,6 +388,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         let (largest_newly_acked, includes_ack_eliciting) = self.process_ack_range(
             &mut newly_acked_packets,
             timestamp,
+            packet_number,
             ranges,
             context,
             publisher,
@@ -431,6 +439,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             [SentPacketInfo<packet_info_type!()>; ACKED_PACKETS_INITIAL_CAPACITY],
         >,
         timestamp: Timestamp,
+        packet_number: PacketNumber,
         ranges: impl Iterator<Item = PacketNumberRange>,
         context: &mut Ctx,
         publisher: &mut Pub,
@@ -439,6 +448,18 @@ impl<Config: endpoint::Config> Manager<Config> {
         let mut includes_ack_eliciting = false;
 
         for pn_range in ranges {
+            // The path the ack was received on
+            let rx_path_id = context.path_id();
+            let rx_path = context.path_mut();
+            publisher.on_ack_range_received(event::builder::AckRangeReceived {
+                packet_header: event::builder::PacketHeader::new(
+                    packet_number,
+                    publisher.quic_version(),
+                ),
+                path: path_event!(rx_path, rx_path_id),
+                ack_range: pn_range.into_event(),
+            });
+
             context.validate_packet_ack(timestamp, &pn_range)?;
             // notify components of packets acked
             context.on_packet_ack(timestamp, &pn_range);
@@ -681,7 +702,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             publisher,
         );
 
-        if matches!(outcome, ValidationOutcome::CongestionExperienced) {
+        if let ValidationOutcome::CongestionExperienced(ce_count) = outcome {
             let slow_start = context.path().congestion_controller.is_slow_start();
             let congestion_window = context.path().congestion_controller.congestion_window();
             //= https://www.rfc-editor.org/rfc/rfc9002#section-7.1
@@ -692,7 +713,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             context
                 .path_mut()
                 .congestion_controller
-                .on_congestion_event(timestamp);
+                .on_explicit_congestion(ce_count.as_u64(), timestamp);
             if slow_start && !context.path().congestion_controller.is_slow_start() {
                 let path = context.path();
                 publisher.on_slow_start_exited(event::builder::SlowStartExited {

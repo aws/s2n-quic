@@ -3,7 +3,7 @@
 
 use bytes::Bytes;
 use s2n_quic::{
-    provider::datagram::{default::Endpoint, default::Sender},
+    provider::datagram::default::{Endpoint, Sender},
     Server,
 };
 use std::error::Error;
@@ -38,22 +38,30 @@ async fn main() -> Result<(), Box<dyn Error>> {
         tokio::spawn(async move {
             eprintln!("Connection accepted from {:?}", connection.remote_addr());
 
-            // Add datagrams to the send queue by passing in a closure that calls
-            // the desired datagram send function
-            let send_func = |x: &mut Sender| {
-                match x.send_datagram(Bytes::from_static(&[1, 2, 3])) {
-                    Ok(_) => {
-                        // The datagram was successfully inserted into the send queue
+            loop {
+                // Add datagrams to the send queue by passing in a closure that calls
+                // the desired datagram send function
+                let send_func = |x: &mut Sender| {
+                    match x.send_datagram(Bytes::from_static(&[1, 2, 3])) {
+                        Ok(_) => {
+                            // The datagram was successfully inserted into the send queue
+                        }
+                        Err(err) => {
+                            eprintln!("{}", err);
+                            // An error was encountered while calling the send_datagram
+                            // method. Either the peer didn't advertise support for datagrams
+                            // or the send queue is at capacity.
+                        }
                     }
-                    Err(err) => {
-                        eprintln!("{}", err);
-                        // An error was encountered while calling the send_datagram
-                        // method. Either the peer didn't advertise support for datagrams
-                        // or the send queue is at capacity.
-                    }
+                };
+
+                if connection.datagram_mut(send_func).is_err() {
+                    eprintln!("closed");
+                    return;
                 }
-            };
-            let _ = connection.datagram_mut(send_func);
+
+                tokio::time::sleep(core::time::Duration::from_secs(1)).await;
+            }
         });
     }
 

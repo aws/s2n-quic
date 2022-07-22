@@ -4,6 +4,7 @@ name = "netbench-driver"
 version = "0.1.0"
 authors = ["AWS s2n"]
 edition = "2021"
+rust-version = "1.60"
 license = "Apache-2.0"
 publish = false
 
@@ -15,8 +16,8 @@ netbench = { version = "0.1", path = "../netbench" }
 probe = "0.3"
 s2n-quic = { path = "../../quic/s2n-quic", features = ["provider-tls-s2n"] }
 s2n-quic-core = { path = "../../quic/s2n-quic-core", features = ["testing"] }
-s2n-tls = { version = "0.0.8" }
-s2n-tls-tokio = { version = "0.0.8" }
+s2n-tls = { version = "=0.0.9" }
+s2n-tls-tokio = { version = "=0.0.9" }
 structopt = "0.3"
 tokio = { version = "1", features = ["io-util", "net", "time"] }
 tokio-native-tls = "0.3"

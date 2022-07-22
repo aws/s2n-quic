@@ -35,9 +35,28 @@ impl State {
         is_probing_bw: bool,
         cwnd: u32,
     ) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
+        //# BBRUpdateLatestDeliverySignals():
+        //#   BBR.loss_round_start = 0
+        //#   BBR.bw_latest       = max(BBR.bw_latest,       rs.delivery_rate)
+        //#   BBR.inflight_latest = max(BBR.inflight_latest, rs.delivered)
+        //#   if (rs.prior_delivered >= BBR.loss_round_delivered)
+        //#     BBR.loss_round_delivered = C.delivered
+        //#     BBR.loss_round_start = 1
+
         self.loss_round_counter.on_ack(packet_info, delivered_bytes);
         self.bw_latest = self.bw_latest.max(rate_sample.delivery_rate());
         self.inflight_latest = self.inflight_latest.max(rate_sample.delivered_bytes);
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
+        //# BBRUpdateCongestionSignals():
+        //#   BBRUpdateMaxBw()
+        //#   if (rs.losses > 0)
+        //#     BBR.loss_in_round = 1
+        //#   if (!BBR.loss_round_start)
+        //#     return  /* wait until end of round trip */
+        //#   BBRAdaptLowerBoundsFromCongestion()
+        //#   BBR.loss_in_round = 0
 
         data_rate_model.update_max_bw(rate_sample);
 
@@ -46,7 +65,20 @@ impl State {
         }
 
         if self.loss_round_counter.round_start() {
+            // TODO: Check for ecn_in_round as in bbr2_adapt_lower_bounds
+            // See https://github.com/aws/s2n-quic/issues/1423
+
+            //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
+            //# BBRAdaptLowerBoundsFromCongestion():
+            //#   if (BBRIsProbingBW())
+            //#     return
+            //#   if (BBR.loss_in_round())
+            //#     BBRInitLowerBounds()
+            //#     BBRLossLowerBounds()
+
             if !is_probing_bw && self.loss_in_round {
+                // The following update_lower_bound methods combine the functionality of
+                // BBRInitLowerBounds() and BBRLossLowerBounds()
                 data_rate_model.update_lower_bound(self.bw_latest);
                 data_volume_model.update_lower_bound(cwnd, self.inflight_latest);
             }
@@ -59,6 +91,11 @@ impl State {
     ///
     /// Called near the end of ACK processing
     pub fn advance(&mut self, rate_sample: RateSample) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
+        //# BBRAdvanceLatestDeliverySignals():
+        //#   if (BBR.loss_round_start)
+        //#     BBR.bw_latest       = rs.delivery_rate
+        //#     BBR.inflight_latest = rs.delivered
         if self.loss_round_counter.round_start() {
             self.bw_latest = rate_sample.delivery_rate();
             self.inflight_latest = rate_sample.delivered_bytes;
@@ -66,8 +103,12 @@ impl State {
     }
 
     /// Resets the congestion signals
-    #[allow(dead_code)] // TODO: Remove when used
     pub fn reset(&mut self) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
+        //# BBRResetCongestionSignals():
+        //#   BBR.loss_in_round = 0
+        //#   BBR.bw_latest = 0
+        //#   BBR.inflight_latest = 0
         self.loss_in_round = false;
         self.bw_latest = Bandwidth::ZERO;
         self.inflight_latest = 0;
@@ -101,6 +142,7 @@ pub mod testing {
             delivered_bytes: 100,
             delivered_time: now,
             lost_bytes: 0,
+            ecn_ce_count: 0,
             first_sent_time: now,
             bytes_in_flight: 0,
             is_app_limited: false,
@@ -143,6 +185,7 @@ mod tests {
             delivered_bytes: 100,
             delivered_time: now,
             lost_bytes: 0,
+            ecn_ce_count: 0,
             first_sent_time: now,
             bytes_in_flight: 0,
             is_app_limited: false,
@@ -234,6 +277,7 @@ mod tests {
             delivered_bytes: 100,
             delivered_time: now,
             lost_bytes: 0,
+            ecn_ce_count: 0,
             first_sent_time: now,
             bytes_in_flight: 0,
             is_app_limited: false,

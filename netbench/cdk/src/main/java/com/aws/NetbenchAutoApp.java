@@ -91,6 +91,8 @@ public class NetbenchAutoApp {
             .serverRegion(serverRegion)
             .build());
 
+        serverEcsStack.addDependency(vpcStack);
+
         EcsStack clientEcsStack = new EcsStack(app, "ClientEcsStack", EcsStackProps.builder()
             .env(makeEnv(awsAccount, clientRegion))
             .bucket(vpcStack.getBucket())

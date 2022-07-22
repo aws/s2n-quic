@@ -5,7 +5,10 @@ use crate::{Output, Result};
 use heck::ToSnakeCase;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens};
-use syn::parse::{Parse, ParseStream};
+use syn::{
+    parse::{Parse, ParseStream},
+    Meta,
+};
 
 #[derive(Debug, Default)]
 pub struct File {
@@ -71,6 +74,7 @@ impl Struct {
         } = self;
 
         let derive_attrs = &attrs.derive_attrs;
+        let builder_derive_attrs = &attrs.builder_derive_attrs;
         let extra_attrs = &attrs.extra;
         let deprecated = &attrs.deprecated;
         let allow_deprecated = &attrs.allow_deprecated;
@@ -79,6 +83,12 @@ impl Struct {
         let builder_fields = fields.iter().map(Field::builder);
         let builder_field_impls = fields.iter().map(Field::builder_impl);
         let api_fields = fields.iter().map(Field::api);
+
+        if attrs.builder_derive {
+            output.builders.extend(quote!(
+                #[#builder_derive_attrs]
+            ));
+        }
 
         output.builders.extend(quote!(
             #[derive(Clone, Debug)]
@@ -114,6 +124,7 @@ impl Struct {
             #derive_attrs
             #extra_attrs
             #deprecated
+            #allow_deprecated
             pub struct #ident #generics {
                 #(#api_fields)*
             }
@@ -326,6 +337,7 @@ impl Enum {
         );
 
         let derive_attrs = &attrs.derive_attrs;
+        let builder_derive_attrs = &attrs.builder_derive_attrs;
         let extra_attrs = &attrs.extra;
         let deprecated = &attrs.deprecated;
         let allow_deprecated = &attrs.allow_deprecated;
@@ -333,6 +345,12 @@ impl Enum {
         let builder_fields = variants.iter().map(Variant::builder);
         let builder_field_impls = variants.iter().map(Variant::builder_impl);
         let api_fields = variants.iter().map(Variant::api);
+
+        if attrs.builder_derive {
+            output.builders.extend(quote!(
+                #[#builder_derive_attrs]
+            ));
+        }
 
         output.builders.extend(quote!(
             #[derive(Clone, Debug)]
@@ -381,6 +399,8 @@ struct ContainerAttrs {
     exhaustive: bool,
     derive: bool,
     derive_attrs: TokenStream,
+    builder_derive: bool,
+    builder_derive_attrs: TokenStream,
     extra: TokenStream,
 }
 
@@ -397,6 +417,8 @@ impl ContainerAttrs {
             exhaustive: false,
             derive: true,
             derive_attrs: quote!(),
+            builder_derive: false,
+            builder_derive_attrs: quote!(),
             extra: quote!(),
         };
 
@@ -416,6 +438,11 @@ impl ContainerAttrs {
             } else if attr.path.is_ident("derive") {
                 v.derive = false;
                 attr.to_tokens(&mut v.derive_attrs);
+            } else if attr.path.is_ident("builder_derive") {
+                v.builder_derive = true;
+                if let Meta::List(list) = attr.parse_args().unwrap() {
+                    list.to_tokens(&mut v.builder_derive_attrs);
+                }
             } else {
                 attr.to_tokens(&mut v.extra)
             }
