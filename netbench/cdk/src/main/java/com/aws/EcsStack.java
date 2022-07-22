@@ -41,6 +41,9 @@ import software.amazon.awscdk.services.iam.Effect;
 import software.amazon.awscdk.services.iam.ServicePrincipal;
 import software.amazon.awscdk.services.iam.ArnPrincipal;
 
+import software.amazon.awscdk.services.stepfunctions.tasks.TaskEnvironmentVariable;
+import software.amazon.awscdk.services.stepfunctions.JsonPath;
+
 import software.amazon.awscdk.services.ec2.Vpc;
 import software.amazon.awscdk.services.ec2.InstanceType;
 import software.amazon.awscdk.services.ec2.SecurityGroup;
@@ -206,6 +209,10 @@ class EcsStack extends Stack {
                 .resultPath("$.client_result")
                 .containerOverrides(List.of(ContainerOverride.builder()
                 .containerDefinition(clientContainer)
+                .environment(List.of(TaskEnvironmentVariable.builder()
+                    .name("TIMESTAMP")
+                    .value(JsonPath.stringAt("$.timestamp"))
+                    .build()))
                 .build()))
                 .build();
         }
