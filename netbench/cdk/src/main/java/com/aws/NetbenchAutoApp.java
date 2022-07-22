@@ -111,7 +111,7 @@ public class NetbenchAutoApp {
             .bucket(vpcStack.getBucket())
             .logsLambda(serverEcsStack.getLogsLambda())
             .cluster(clientEcsStack.getCluster())
-            .driver(protocol)
+            .protocol(protocol)
             .build());
 
         stateMachineStack.addDependency(clientEcsStack);

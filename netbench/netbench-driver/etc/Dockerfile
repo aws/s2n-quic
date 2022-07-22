@@ -68,7 +68,7 @@ RUN set -eux; \
 RUN set -eux; \
   cd netbench; \
   cargo build --bin netbench-scenarios; \
-  ./target/debug/netbench-scenarios --request_response.response_size 1GB; \
+  ./target/debug/netbench-scenarios --request_response.count 10 --request_response.request_size 100KB --request_response.response_size 1GB; \
   cp target/netbench/request_response.json /app/bin; \
   rm -rf target;
 
@@ -85,7 +85,7 @@ RUN set -eux; \
     export SERVER_0=\$(dig +short \$DNS_ADDRESS):\$SERVER_PORT\n \
     printenv\n \
     eval /usr/bin/netbench-collector /usr/bin/$TARGET \$@ > client.json\n \
-    aws s3 cp ./client.json s3://\$S3_BUCKET/$DRIVER-client.json" > /app/bin/start; \
+    aws s3 cp ./client.json s3://\$S3_BUCKET/\$TIMESTAMP/$DRIVER-client.json" > /app/bin/start; \
   fi; \
   cd netbench; \
   if [ "$release" = "true" ]; then \
@@ -105,9 +105,11 @@ ARG ENDPOINT="client"
 # copy driver
 COPY --from=builder /app/bin /tmp/netbench
 ENV DEBIAN_FRONTEND=noninteractive
+
 RUN set -eux; \
+  cd; \
   if [ "$ENDPOINT" = "client" ]; then \
-    apt-get update && apt-get install -y dnsutils curl unzip sudo; \
+    apt-get update && apt-get install -y dnsutils curl sudo unzip; \
     curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"; \
     unzip awscliv2.zip; \
     sudo ./aws/install; \

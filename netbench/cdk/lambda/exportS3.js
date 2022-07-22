@@ -7,13 +7,15 @@ const cloudwatchlogs = new AWS.CloudWatchLogs(cloudconfig)
 exports.handler =  async (event, context) => {
    const params = {
     destination: process.env.BUCKET_NAME, 
-    from: new Date().getTime() - 600000, //TODO: will be replaced with the timestamp of the start of statemachine execution
+    from: new Date().getTime() - 6000000, //TODO: will be replaced with the timestamp of the start of statemachine execution
     logGroupName: process.env.LOG_GROUP_NAME,
-    to: new Date().getTime()
+    to: new Date().getTime(),
+    destinationPrefix: event.Payload.timestamp
   };
+  console.log(params);
 
-  const body = await cloudwatchlogs.createExportTask(params).promise();
-
-  return { body };
+  var data = await cloudwatchlogs.createExportTask(params).promise();
+  console.log(data);
+  return data;
 }
 

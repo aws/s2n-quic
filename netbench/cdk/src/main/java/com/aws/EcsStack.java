@@ -3,6 +3,7 @@
 package com.aws;
 
 import software.constructs.Construct;
+import software.amazon.awscdk.RemovalPolicy;
 import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.services.s3.Bucket;
 import software.amazon.awscdk.services.autoscaling.AutoScalingGroup;
@@ -57,9 +58,8 @@ class EcsStack extends Stack {
     private EcsRunTask ecsTask;
     private Function exportLogsLambda;
     private Cluster cluster;
-    static final String bucketName = "BUCKET_NAME";
-    static final String logGroupName = "LOG_GROUP_NAME";
-
+    private static final String bucketName = "BUCKET_NAME";
+    private static final String logGroupName = "lOG_GROUP_NAME";
 
     public EcsStack(final Construct parent, final String id, final EcsStackProps props) {
         super(parent, id, props);
@@ -110,7 +110,8 @@ class EcsStack extends Stack {
 
             LogGroup serviceLogGroup = LogGroup.Builder.create(this, "server-log-group")
                 .retention(RetentionDays.ONE_DAY)
-                .logGroupName("server-logs" + new SimpleDateFormat("dd-MM-yyyy-HH-mm-ss").format(new Date()).toString())
+                .logGroupName("server-logs" + new SimpleDateFormat("MM-dd-yyyy-HH-mm-ss").format(new Date()).toString())
+                .removalPolicy(RemovalPolicy.DESTROY)
                 .build();
 
             bucket.grantPut(new ServicePrincipal("logs." + props.getServerRegion() + ".amazonaws.com"));
@@ -122,9 +123,8 @@ class EcsStack extends Stack {
                 .build());
 
             Map<String, String> exportLambdaLogsEnv = new HashMap<>();
-            exportLambdaLogsEnv.put(EcsStack.bucketName, bucket.getBucketName());
-            //exportLambdaLogsEnv.put("REGION", props.getServerRegion());
-            exportLambdaLogsEnv.put(EcsStack.logGroupName, serviceLogGroup.getLogGroupName());
+            exportLambdaLogsEnv.put(bucketName, bucket.getBucketName());
+            exportLambdaLogsEnv.put(logGroupName, serviceLogGroup.getLogGroupName());
 
             exportLogsLambda = Function.Builder.create(this, "export-logs-lambda")
                 .runtime(Runtime.NODEJS_14_X)
@@ -155,6 +155,7 @@ class EcsStack extends Stack {
                 .logging(LogDriver.awsLogs(AwsLogDriverProps.builder().logGroup(serviceLogGroup).streamPrefix(stackType + "-ecs-task").build()))
                 .portMappings(List.of(PortMapping.builder().containerPort(3000).hostPort(3000)
                     .protocol(software.amazon.awscdk.services.ecs.Protocol.UDP).build()))
+                .privileged(true)
                 .build());
 
             bucket.grantWrite(task.getTaskRole());
@@ -191,6 +192,7 @@ class EcsStack extends Stack {
                 .logging(LogDriver.awsLogs(AwsLogDriverProps.builder().logRetention(RetentionDays.ONE_DAY).streamPrefix(stackType + "-ecs-task").build()))
                 .portMappings(List.of(PortMapping.builder().containerPort(3000).hostPort(3000)
                     .protocol(software.amazon.awscdk.services.ecs.Protocol.UDP).build()))
+                .privileged(true)
                 .build()); 
 
             bucket.grantWrite(task.getTaskRole());
@@ -200,6 +202,8 @@ class EcsStack extends Stack {
                 .cluster(cluster)
                 .taskDefinition(task)
                 .launchTarget(EcsEc2LaunchTarget.Builder.create().build())
+                .inputPath("$.Payload")
+                .resultPath("$.client_result")
                 .containerOverrides(List.of(ContainerOverride.builder()
                 .containerDefinition(clientContainer)
                 .build()))

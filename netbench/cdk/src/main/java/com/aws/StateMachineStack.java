@@ -7,13 +7,11 @@ import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.services.stepfunctions.tasks.EcsRunTask;
 import software.amazon.awscdk.services.stepfunctions.StateMachine;
 import software.amazon.awscdk.services.s3.Bucket;
-import software.amazon.awscdk.Duration;
 import software.amazon.awscdk.services.logs.RetentionDays;
 
 import software.amazon.awscdk.services.stepfunctions.tasks.LambdaInvoke;
 import software.amazon.awscdk.services.stepfunctions.tasks.LambdaInvocationType;
-import software.amazon.awscdk.services.stepfunctions.Wait;
-import software.amazon.awscdk.services.stepfunctions.WaitTime;
+
 import software.amazon.awscdk.services.stepfunctions.tasks.ContainerOverride;
 import software.amazon.awscdk.services.stepfunctions.tasks.TaskEnvironmentVariable;
 import software.amazon.awscdk.services.stepfunctions.JsonPath;
@@ -26,6 +24,9 @@ import software.amazon.awscdk.services.ecs.Ec2TaskDefinition;
 import software.amazon.awscdk.services.ecs.ContainerImage;
 import software.amazon.awscdk.services.ecs.AwsLogDriverProps;
 import software.amazon.awscdk.services.ecs.LogDriver;
+
+import software.amazon.awscdk.services.iam.PolicyStatement;
+import software.amazon.awscdk.services.iam.Effect;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -40,17 +41,25 @@ public class StateMachineStack extends Stack {
 
         EcsRunTask clientTask = props.getClientTask();
 
-        Wait waitFunction = Wait.Builder.create(this, "wait-step")
-            .time(WaitTime.duration(Duration.seconds(20)))
-            .build();
+        LambdaInvoke exportServerLogsLambdaInvoke = LambdaInvoke.Builder.create(this, "export-server-logs-task")
+                .lambdaFunction(props.getLogsLambda())
+                .resultPath("$.Payload.body")
+                .invocationType(LambdaInvocationType.REQUEST_RESPONSE)
+                .build();
 
         Ec2TaskDefinition reportGenerationTask = Ec2TaskDefinition.Builder
             .create(this, "report-generation-task")
             .build();
 
+        reportGenerationTask.addToTaskRolePolicy(PolicyStatement.Builder.create()
+            .actions(List.of("logs:DescribeExportTasks"))
+            .effect(Effect.ALLOW)
+            .resources(List.of("*"))
+            .build());
+
         Map<String, String> reportGenerationEnv = new HashMap<>();
         reportGenerationEnv.put("S3_BUCKET", bucket.getBucketName());
-        reportGenerationEnv.put("DRIVER", props.getDriver());
+        reportGenerationEnv.put("PROTOCOL", props.getProtocol());
 
         ContainerDefinition reportGenerationContainer = reportGenerationTask.addContainer("report-generation", ContainerDefinitionOptions.builder()
             .image(ContainerImage.fromRegistry("public.ecr.aws/d2r9y8c2/netbench-cli"))
@@ -71,21 +80,20 @@ public class StateMachineStack extends Stack {
                 .containerDefinition(reportGenerationContainer)
                 .environment(List.of(TaskEnvironmentVariable.builder()
                     .name("EXPORT_TASK_ID")
-                    .value(JsonPath.stringAt("$.body.taskId"))
+                    .value(JsonPath.stringAt("$.body.Payload.taskId"))
+                    .build(),
+                TaskEnvironmentVariable.builder()
+                    .name("TIMESTAMP")
+                    .value(JsonPath.stringAt("$.timestamp"))
                     .build()))
                 .build()))
             .build();
-
-        LambdaInvoke exportServerLogsLambdaInvoke = LambdaInvoke.Builder.create(this, "export-server-logs-task")
-                .lambdaFunction(props.getLogsLambda())
-                .invocationType(LambdaInvocationType.REQUEST_RESPONSE)
-                .build();
+            
+        timestampLambdaInvoke.next(clientTask);
 
         clientTask.next(exportServerLogsLambdaInvoke);
 
-        exportServerLogsLambdaInvoke.next(waitFunction);
-        
-        waitFunction.next(reportGenerationStep);
+        exportServerLogsLambdaInvoke.next(reportGenerationStep);
 
         StateMachine stateMachine = StateMachine.Builder.create(this, "ecs-state-machine")
             .definition(clientTask)
@@ -93,4 +101,3 @@ public class StateMachineStack extends Stack {
         
     }
 }                                         
-

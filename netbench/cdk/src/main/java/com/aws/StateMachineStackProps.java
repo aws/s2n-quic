@@ -23,7 +23,7 @@ public interface StateMachineStackProps extends StackProps {
 
     Cluster getCluster();
 
-    String getDriver();
+    String getProtocol();
 
     public static class Builder {
         private EcsRunTask clientTask;
@@ -31,7 +31,7 @@ public interface StateMachineStackProps extends StackProps {
         private Bucket bucket;
         private Function logsLambda;
         private Cluster cluster;
-        private String driver;
+        private String protocol;
 
         public Builder clientTask(EcsRunTask clientTask) {
             this.clientTask = clientTask;
@@ -58,8 +58,8 @@ public interface StateMachineStackProps extends StackProps {
             return this;
         }
 
-        public Builder driver(String driver) {
-            this.driver = driver;
+        public Builder protocol(String protocol) {
+            this.protocol = protocol;
             return this;
         }
 
@@ -92,10 +92,9 @@ public interface StateMachineStackProps extends StackProps {
                 }
 
                 @Override
-                public String getDriver() {
-                    return driver;
+                public String getProtocol() {
+                    return protocol;
                 }
-
             };
         }
     }
