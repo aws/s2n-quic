@@ -22,6 +22,7 @@ use core::{
     task::{Context, Poll, Waker},
     time::Duration,
 };
+use futures_core::ready;
 use s2n_quic_core::{
     ack, endpoint,
     frame::{
@@ -29,7 +30,7 @@ use s2n_quic_core::{
         StopSending, StreamDataBlocked, StreamsBlocked,
     },
     packet::number::PacketNumberSpace,
-    stream::{ops, StreamId, StreamType},
+    stream::{iter::StreamIter, ops, StreamId, StreamType},
     time::{timer, Timestamp},
     transport::{self, parameters::InitialFlowControlLimits},
     varint::VarInt,
@@ -201,11 +202,11 @@ impl<S: StreamTrait> StreamManagerState<S> {
         result
     }
 
-    /// Opens the `Stream` with the given `StreamId`.
+    /// Inserts the `Stream` into the StreamContainer.
+    ///
     /// This method does not perform any validation whether it is allowed to
-    /// open the `Stream`, since the necessary validation depends on which side
-    /// opens the `Stream`.
-    fn open_stream(&mut self, stream_id: StreamId) {
+    /// open the `Stream`.
+    fn insert_stream(&mut self, stream_id: StreamId) {
         // The receive window is announced by us towards to the peer
         let initial_receive_window = self
             .initial_local_limits
@@ -228,8 +229,6 @@ impl<S: StreamTrait> StreamManagerState<S> {
             initial_receive_window <= VarInt::from_u32(core::u32::MAX),
             "Receive window must not exceed 32bit range"
         );
-
-        self.stream_controller.on_open_stream(stream_id);
 
         self.streams.insert_stream(S::new(StreamConfig {
             incoming_connection_flow_controller: self.incoming_connection_flow_controller.clone(),
@@ -278,25 +277,19 @@ impl<S: StreamTrait> StreamManagerState<S> {
                 //# that receives a frame with a stream ID exceeding the limit it has
                 //# sent MUST treat this as a connection error of type
                 //# STREAM_LIMIT_ERROR; see Section 11 for details on error handling.
-                self.stream_controller.on_remote_open_stream(stream_id)?;
+                let stream_iter = StreamIter::new(first_unopened_id, stream_id);
 
-                // We must create ALL streams which a lower Stream ID too:
+                // Validate that there is enough capacity to open all streams.
+                self.stream_controller.on_open_remote_stream(stream_iter)?;
 
+                // We must create ALL streams with a lower Stream ID too:
+                //
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-3.2
                 //# Before a stream is created, all streams of the same type with lower-
                 //# numbered stream IDs MUST be created.  This ensures that the creation
                 //# order for streams is consistent on both endpoints.
-
-                let mut stream_id_iter = first_unopened_id;
-                while stream_id_iter <= stream_id {
-                    self.open_stream(stream_id_iter);
-
-                    // The Stream ID can be expected to be valid, since we check upfront
-                    // whether the highest stream id (`stream_id`) is still valid,
-                    // and all IDs we iterate over are lower.
-                    stream_id_iter = stream_id_iter
-                        .next_of_type()
-                        .expect("Expect a valid Stream ID");
+                for stream_id in stream_iter {
+                    self.insert_stream(stream_id);
                 }
 
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-2.1
@@ -317,7 +310,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
                 }
             }
         } else {
-            // Check if the peer is sending us a frame for a Stream with
+            // Check if the peer is sending us a frame for a local initiated Stream with
             // a higher Stream ID than we ever used.
             // In this case the peer seems to be time-travelling and know about
             // Future Stream IDs we might use. We also will not accept this and
@@ -330,6 +323,34 @@ impl<S: StreamTrait> StreamManagerState<S> {
         }
 
         Ok(())
+    }
+
+    fn poll_open_local_stream(
+        &mut self,
+        stream_type: StreamType,
+        open_token: &mut connection::OpenToken,
+        context: &Context,
+    ) -> Poll<Result<StreamId, connection::Error>> {
+        let first_unopened_id = self
+            .next_stream_ids
+            .get_mut(self.local_endpoint_type, stream_type)
+            .ok_or_else(connection::Error::stream_id_exhausted)?;
+
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
+        //# Endpoints MUST NOT exceed the limit set by their peer.
+        //
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
+        //# An endpoint MUST NOT open more streams than permitted by the current
+        //# stream limit set by its peer.
+        let poll_open =
+            self.stream_controller
+                .poll_open_local_stream(stream_type, open_token, context);
+
+        // returns Pending if there is no capacity available
+        ready!(poll_open);
+
+        self.insert_stream(first_unopened_id);
+        Poll::Ready(Ok(first_unopened_id))
     }
 
     fn close(&mut self, error: connection::Error, flush: bool) {
@@ -532,8 +553,8 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         }
     }
 
-    /// Opens the next outgoing stream of a certain type
-    pub fn poll_open(
+    /// Opens the next local initiated stream of a certain type
+    pub fn poll_open_local_stream(
         &mut self,
         stream_type: StreamType,
         open_token: &mut connection::OpenToken,
@@ -544,36 +565,17 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             return Err(error).into();
         }
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
-        //# Endpoints MUST NOT exceed the limit set by their peer.
-
-        //= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
-        //# An endpoint MUST NOT open more streams than permitted by the current
-        //# stream limit set by its peer.
-        if self
-            .inner
-            .stream_controller
-            .poll_local_open_stream(stream_type, open_token, context)
-            .is_pending()
-        {
-            return Poll::Pending;
-        }
-
-        let local_endpoint_type = self.inner.local_endpoint_type;
-
-        let first_unopened_id = self
-            .inner
-            .next_stream_ids
-            .get_mut(local_endpoint_type, stream_type)
-            .ok_or_else(connection::Error::stream_id_exhausted)?;
+        let first_unopened_id =
+            ready!(self
+                .inner
+                .poll_open_local_stream(stream_type, open_token, context))?;
 
         // Increase the next utilized Stream ID
         *self
             .inner
             .next_stream_ids
-            .get_mut(local_endpoint_type, stream_type) = first_unopened_id.next_of_type();
-
-        self.inner.open_stream(first_unopened_id);
+            .get_mut(self.inner.local_endpoint_type, stream_type) =
+            first_unopened_id.next_of_type();
 
         Ok(first_unopened_id).into()
     }

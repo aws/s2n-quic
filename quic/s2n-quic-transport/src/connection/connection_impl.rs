@@ -1760,7 +1760,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         space
             .stream_manager
-            .poll_open(stream_type, open_token, context)
+            .poll_open_local_stream(stream_type, open_token, context)
     }
 
     fn application_close(&mut self, error: Option<application::Error>) {

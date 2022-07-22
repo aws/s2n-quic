@@ -10,6 +10,10 @@ use crate::{
 /// The default send buffer size for Streams
 const DEFAULT_STREAM_MAX_SEND_BUFFER_SIZE: u32 = 512 * 1024;
 
+pub trait LocalLimits {
+    fn as_varint(&self) -> VarInt;
+}
+
 /// Per-stream limits
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Limits {
@@ -53,8 +57,9 @@ macro_rules! varint_local_limits {
     ($name:ident($encodable_type:ty)) => {
         local_limits!($name($encodable_type));
 
-        impl $name {
-            pub const fn as_varint(&self) -> VarInt {
+        impl LocalLimits for $name {
+            #[inline]
+            fn as_varint(&self) -> VarInt {
                 self.0
             }
         }
@@ -62,6 +67,7 @@ macro_rules! varint_local_limits {
         impl TryFrom<u64> for $name {
             type Error = ValidationError;
 
+            #[inline]
             fn try_from(value: u64) -> Result<Self, Self::Error> {
                 let value = VarInt::new(value)?;
                 Ok(Self(value))
@@ -75,6 +81,7 @@ local_limits!(MaxSendBufferSize(u32));
 impl MaxSendBufferSize {
     pub const RECOMMENDED: Self = Self(DEFAULT_STREAM_MAX_SEND_BUFFER_SIZE);
 
+    #[inline]
     pub fn as_u32(self) -> u32 {
         self.0
     }
@@ -83,6 +90,7 @@ impl MaxSendBufferSize {
 impl TryFrom<u32> for MaxSendBufferSize {
     type Error = ValidationError;
 
+    #[inline]
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         Ok(Self(value))
     }

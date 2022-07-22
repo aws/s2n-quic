@@ -1095,8 +1095,8 @@ optional_transport_parameter!(RetrySourceConnectionId);
 pub struct InitialFlowControlLimits {
     pub stream_limits: InitialStreamLimits,
     pub max_data: VarInt,
-    pub max_streams_bidi: VarInt,
-    pub max_streams_uni: VarInt,
+    pub max_open_remote_bidirectional_streams: VarInt,
+    pub max_open_remote_unidirectional_streams: VarInt,
 }
 
 /// Associated flow control limits from a set of TransportParameters
@@ -1150,8 +1150,8 @@ impl<
         InitialFlowControlLimits {
             stream_limits: self.stream_limits(),
             max_data: **initial_max_data,
-            max_streams_bidi: **initial_max_streams_bidi,
-            max_streams_uni: **initial_max_streams_uni,
+            max_open_remote_bidirectional_streams: **initial_max_streams_bidi,
+            max_open_remote_unidirectional_streams: **initial_max_streams_uni,
         }
     }
 
@@ -1472,7 +1472,11 @@ impl<
             initial_max_stream_data_bidi_remote
         );
         load!(unidirectional_data_window, initial_max_stream_data_uni);
-        load!(max_open_bidirectional_streams, initial_max_streams_bidi);
+        load!(
+            max_open_remote_bidirectional_streams,
+            initial_max_streams_bidi
+        );
+
         load!(
             max_open_remote_unidirectional_streams,
             initial_max_streams_uni
