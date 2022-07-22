@@ -44,7 +44,7 @@ impl Iterator for StreamIter {
         }
 
         match self.start_stream_id.cmp(&self.max_stream_id) {
-            std::cmp::Ordering::Less => {
+            core::cmp::Ordering::Less => {
                 let ret = self.start_stream_id;
                 // The Stream ID can be expected to be valid, since `max_stream_id`
                 // is a valid `StreamId` and all IDs we iterate over are lower.
@@ -54,13 +54,13 @@ impl Iterator for StreamIter {
                     .expect("Expect a valid Stream ID");
                 Some(ret)
             }
-            std::cmp::Ordering::Equal => {
+            core::cmp::Ordering::Equal => {
                 // Avoid incrementing beyond `max_stream_id` and mark finished to
                 // to avoid returning max value again
                 self.finished = true;
                 Some(self.start_stream_id)
             }
-            std::cmp::Ordering::Greater => {
+            core::cmp::Ordering::Greater => {
                 debug_assert!(false, "The `new` method should verify valid ranges");
 
                 // finished
