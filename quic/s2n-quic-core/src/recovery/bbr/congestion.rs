@@ -5,6 +5,7 @@ use crate::recovery::{
     bandwidth::{Bandwidth, PacketInfo, RateSample},
     bbr::{data_rate, data_volume, round},
 };
+use num_rational::Ratio;
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct State {
@@ -18,6 +19,8 @@ pub(crate) struct State {
     inflight_latest: u64,
     /// True if loss was encountered at any point in the current round trip
     loss_in_round: bool,
+    /// True if packets were marked with ECN CE at any point in the current round trip
+    ecn_in_round: bool,
 }
 
 impl State {
@@ -34,6 +37,7 @@ impl State {
         data_volume_model: &mut data_volume::Model,
         is_probing_bw: bool,
         cwnd: u32,
+        ecn_alpha: Ratio<u64>,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
         //# BBRUpdateLatestDeliverySignals():
@@ -63,27 +67,41 @@ impl State {
         if rate_sample.lost_bytes > 0 {
             self.loss_in_round = true;
         }
+        if rate_sample.ecn_ce_count > 0 {
+            self.ecn_in_round = true;
+        }
 
         if self.loss_round_counter.round_start() {
             // TODO: Check for ecn_in_round as in bbr2_adapt_lower_bounds
             // See https://github.com/aws/s2n-quic/issues/1423
 
-            //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
-            //# BBRAdaptLowerBoundsFromCongestion():
-            //#   if (BBRIsProbingBW())
-            //#     return
-            //#   if (BBR.loss_in_round())
-            //#     BBRInitLowerBounds()
-            //#     BBRLossLowerBounds()
+            if !is_probing_bw {
+                //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
+                //# BBRAdaptLowerBoundsFromCongestion():
+                //#   if (BBRIsProbingBW())
+                //#     return
+                //#   if (BBR.loss_in_round())
+                //#     BBRInitLowerBounds()
+                //#     BBRLossLowerBounds()
 
-            if !is_probing_bw && self.loss_in_round {
-                // The following update_lower_bound methods combine the functionality of
-                // BBRInitLowerBounds() and BBRLossLowerBounds()
-                data_rate_model.update_lower_bound(self.bw_latest);
-                data_volume_model.update_lower_bound(cwnd, self.inflight_latest);
+                if self.loss_in_round {
+                    // The following update_lower_bound method combines the functionality of
+                    // BBRInitLowerBounds() and BBRLossLowerBounds()
+                    data_rate_model.update_lower_bound(self.bw_latest);
+                }
+
+                // Update inflight_lo to the lower of the ECN and the Loss based values
+                // if there is loss or ECN in the round
+                data_volume_model.update_lower_bound(
+                    cwnd,
+                    self.inflight_latest,
+                    self.loss_in_round,
+                    self.ecn_in_round,
+                    ecn_alpha,
+                );
             }
-
             self.loss_in_round = false;
+            self.ecn_in_round = false;
         }
     }
 
@@ -110,8 +128,17 @@ impl State {
         //#   BBR.bw_latest = 0
         //#   BBR.inflight_latest = 0
         self.loss_in_round = false;
+        self.ecn_in_round = false;
         self.bw_latest = Bandwidth::ZERO;
         self.inflight_latest = 0;
+    }
+
+    #[inline]
+    pub fn on_packet_lost(&mut self, delivered_bytes: u64) {
+        if !self.loss_in_round {
+            self.loss_round_counter.set_round_end(delivered_bytes);
+        }
+        self.loss_in_round = true;
     }
 }
 
@@ -124,11 +151,14 @@ pub mod testing {
         },
         time::{Clock, NoopClock},
     };
+    use num_rational::Ratio;
+    use num_traits::One;
     use std::time::Duration;
 
     /// Asserts that the given `congestion::State` has been reset
     pub(crate) fn assert_reset(state: congestion::State) {
         assert!(!state.loss_in_round);
+        assert!(!state.ecn_in_round);
         assert_eq!(Bandwidth::ZERO, state.bw_latest);
         assert_eq!(0, state.inflight_latest);
     }
@@ -164,6 +194,7 @@ pub mod testing {
             &mut data_volume_model,
             false,
             100,
+            Ratio::one(),
         );
 
         state
@@ -175,6 +206,7 @@ mod tests {
     use super::*;
     use crate::time::{Clock, NoopClock};
     use core::time::Duration;
+    use num_traits::One;
 
     #[test]
     fn update() {
@@ -207,6 +239,7 @@ mod tests {
             &mut data_volume_model,
             false,
             100,
+            Ratio::one(),
         );
 
         assert!(state.loss_round_counter.round_start());
@@ -216,8 +249,9 @@ mod tests {
         // Since there was loss in the round, the lower bounds are updated
         assert_eq!(rate_sample.delivery_rate(), data_rate_model.bw_lo());
         assert_eq!(rate_sample.delivered_bytes, data_volume_model.inflight_lo());
-        // Loss in round is reset
+        // Loss and ecn in round are reset
         assert!(!state.loss_in_round);
+        assert!(!state.ecn_in_round);
 
         packet_info.delivered_bytes = 400;
 
@@ -225,6 +259,7 @@ mod tests {
             interval: Duration::from_millis(10),
             delivered_bytes: 1000,
             lost_bytes: 50,
+            ecn_ce_count: 5,
             ..Default::default()
         };
 
@@ -236,6 +271,7 @@ mod tests {
             &mut data_volume_model,
             false,
             100,
+            Ratio::one(),
         );
 
         assert!(!state.loss_round_counter.round_start());
@@ -246,6 +282,7 @@ mod tests {
         assert_eq!(rate_sample.delivery_rate(), data_rate_model.bw_lo());
         assert_eq!(rate_sample.delivered_bytes, data_volume_model.inflight_lo());
         assert!(state.loss_in_round);
+        assert!(state.ecn_in_round);
 
         // This packet ends the rounds
         packet_info.delivered_bytes = 500;
@@ -258,14 +295,16 @@ mod tests {
             &mut data_volume_model,
             true, // we are probing bw, so lower bounds should not update
             100,
+            Ratio::one(),
         );
 
         assert!(state.loss_round_counter.round_start());
         // we are probing bw, so lower bounds should not update
         assert_eq!(rate_sample.delivery_rate(), data_rate_model.bw_lo());
         assert_eq!(rate_sample.delivered_bytes, data_volume_model.inflight_lo());
-        // loss in round is still reset though
+        // loss and ecn in round are still reset though
         assert!(!state.loss_in_round);
+        assert!(!state.ecn_in_round);
     }
 
     #[test]
@@ -296,6 +335,7 @@ mod tests {
             &mut data_volume::Model::new(now),
             false,
             100,
+            Ratio::one(),
         );
 
         assert!(state.loss_round_counter.round_start());
@@ -316,11 +356,13 @@ mod tests {
             loss_in_round: true,
             inflight_latest: 100,
             bw_latest: Bandwidth::MAX,
+            ecn_in_round: true,
         };
 
         state.reset();
 
         assert!(!state.loss_in_round);
+        assert!(!state.ecn_in_round);
         assert_eq!(Bandwidth::ZERO, state.bw_latest);
         assert_eq!(0, state.inflight_latest);
     }
