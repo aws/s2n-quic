@@ -41,7 +41,7 @@ impl BbrCongestionController {
             self.full_pipe_estimator.on_round_start(
                 self.bw_estimator.rate_sample(),
                 self.data_rate_model.max_bw(),
-                self.ecn_state.ecn_ce_too_high(),
+                self.ecn_state.is_ce_too_high_in_round(),
             );
         }
 
