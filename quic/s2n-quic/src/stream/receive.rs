@@ -357,7 +357,7 @@ macro_rules! impl_receive_stream_trait {
                     Bytes::new(),
                 ];
 
-                let high_watermark = buf.capacity();
+                let high_watermark = buf.remaining();
 
                 let response = futures::ready!(self
                     .rx_request()?
