@@ -108,11 +108,11 @@ impl State {
         false
     }
 
-    /// Called when a congestion event occurs (packet loss or ECN CE count increase)
+    /// Called when packet loss occurs
     ///
-    /// Returns `true` if the congestion event caused recovery to be entered
+    /// Returns `true` if the packet loss caused recovery to be entered
     #[inline]
-    pub fn on_congestion_event(&mut self, now: Timestamp) -> bool {
+    pub fn on_loss(&mut self, now: Timestamp) -> bool {
         match self {
             State::Recovered => {
                 //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
@@ -190,8 +190,8 @@ mod tests {
         assert!(!state.on_ack(true, now));
         assert_eq!(state, State::Recovered);
 
-        // Congestion event moves Recovered to Conservation
-        assert!(state.on_congestion_event(now));
+        // Packet loss moves Recovered to Conservation
+        assert!(state.on_loss(now));
         assert_eq!(
             state,
             State::Conservation(now, FastRetransmission::RequiresTransmission)
@@ -208,16 +208,16 @@ mod tests {
 
         // Congestion moves the recovery start time forward
         let now = now + Duration::from_secs(5);
-        assert!(!state.on_congestion_event(now));
+        assert!(!state.on_loss(now));
         assert_eq!(state, State::Conservation(now, FastRetransmission::Idle));
 
         // Ack received that starts a new round moves Conservation to Growth
         assert!(!state.on_ack(true, now));
         assert_eq!(state, State::Growth(now));
 
-        // Congestion moves the recovery start time forward
+        // Packet loss moves the recovery start time forward
         let now = now + Duration::from_secs(10);
-        assert!(!state.on_congestion_event(now));
+        assert!(!state.on_loss(now));
         assert_eq!(state, State::Growth(now));
 
         // Ack for a packet sent before the recovery start time does not exit recovery

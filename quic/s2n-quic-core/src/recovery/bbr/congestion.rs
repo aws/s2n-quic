@@ -28,7 +28,7 @@ impl State {
     ///
     /// Called near the start of ACK processing
     #[allow(clippy::too_many_arguments)]
-    pub fn update(
+    pub(super) fn update(
         &mut self,
         packet_info: PacketInfo,
         rate_sample: RateSample,
@@ -108,7 +108,7 @@ impl State {
     /// Initializes the congestion state for the next round
     ///
     /// Called near the end of ACK processing
-    pub fn advance(&mut self, rate_sample: RateSample) {
+    pub(super) fn advance(&mut self, rate_sample: RateSample) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
         //# BBRAdvanceLatestDeliverySignals():
         //#   if (BBR.loss_round_start)
@@ -121,7 +121,7 @@ impl State {
     }
 
     /// Resets the congestion signals
-    pub fn reset(&mut self) {
+    pub(super) fn reset(&mut self) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
         //# BBRResetCongestionSignals():
         //#   BBR.loss_in_round = 0
@@ -134,11 +134,17 @@ impl State {
     }
 
     #[inline]
-    pub fn on_packet_lost(&mut self, delivered_bytes: u64) {
+    pub(super) fn on_packet_lost(&mut self, delivered_bytes: u64) {
         if !self.loss_in_round {
             self.loss_round_counter.set_round_end(delivered_bytes);
         }
         self.loss_in_round = true;
+    }
+
+    #[inline]
+    /// Returns true if this is the beginning of a new loss round
+    pub(super) fn loss_round_start(&self) -> bool {
+        self.loss_round_counter.round_start()
     }
 }
 

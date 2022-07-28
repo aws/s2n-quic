@@ -387,7 +387,7 @@ impl CongestionController for BbrCongestionController {
         timestamp: Timestamp,
     ) {
         self.bw_estimator.on_loss(lost_bytes as usize);
-        if self.recovery_state.on_congestion_event(timestamp) {
+        if self.recovery_state.on_loss(timestamp) {
             // this congestion event caused the connection to enter recovery
             self.on_enter_fast_recovery();
         }
@@ -402,9 +402,8 @@ impl CongestionController for BbrCongestionController {
         self.handle_lost_packet(lost_bytes, packet_info, random_generator, timestamp);
     }
 
-    fn on_explicit_congestion(&mut self, ce_count: u64, event_time: Timestamp) {
+    fn on_explicit_congestion(&mut self, ce_count: u64, _event_time: Timestamp) {
         self.bw_estimator.on_explicit_congestion(ce_count);
-        self.recovery_state.on_congestion_event(event_time);
         self.ecn_state.on_explicit_congestion(ce_count);
     }
 
