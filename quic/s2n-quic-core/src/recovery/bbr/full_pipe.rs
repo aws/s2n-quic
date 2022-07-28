@@ -30,8 +30,6 @@ pub(crate) struct Estimator {
     loss_bursts: Counter<u8, Saturating>,
     /// The number of rounds where the ECN CE markings exceed ECN_THRESH
     ecn_ce_rounds: Counter<u8, Saturating>,
-    /// True if BBR was in fast recovery in the last round
-    in_recovery_last_round: bool,
 }
 
 impl Estimator {
