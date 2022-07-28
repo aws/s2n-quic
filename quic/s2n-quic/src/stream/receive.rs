@@ -343,7 +343,7 @@ macro_rules! impl_receive_stream_trait {
             ) -> core::task::Poll<std::io::Result<()>> {
                 use bytes::Bytes;
 
-                if buf.capacity() == 0 {
+                if buf.remaining() == 0 {
                     return Ok(()).into();
                 }
 
