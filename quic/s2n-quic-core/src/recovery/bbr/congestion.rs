@@ -3,7 +3,7 @@
 
 use crate::recovery::{
     bandwidth::{Bandwidth, PacketInfo, RateSample},
-    bbr::{data_rate, data_volume, round},
+    bbr::{data_rate, data_volume, round, BbrCongestionController},
 };
 use num_rational::Ratio;
 
@@ -145,6 +145,24 @@ impl State {
     /// Returns true if this is the beginning of a new loss round
     pub(super) fn loss_round_start(&self) -> bool {
         self.loss_round_counter.round_start()
+    }
+}
+
+/// Methods related to Congestion state
+impl BbrCongestionController {
+    /// Updates delivery and congestion signals according to
+    /// BBRUpdateLatestDeliverySignals() and BBRUpdateCongestionSignals()
+    pub(super) fn update_latest_signals(&mut self, packet_info: PacketInfo) {
+        self.congestion_state.update(
+            packet_info,
+            self.bw_estimator.rate_sample(),
+            self.bw_estimator.delivered_bytes(),
+            &mut self.data_rate_model,
+            &mut self.data_volume_model,
+            self.state.is_probing_bw(),
+            self.cwnd,
+            self.ecn_state.alpha(),
+        );
     }
 }
 

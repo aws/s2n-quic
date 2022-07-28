@@ -318,17 +318,8 @@ impl CongestionController for BbrCongestionController {
         //# BBRUpdateModelAndState():
         //#   BBRUpdateLatestDeliverySignals()
         //#   BBRUpdateCongestionSignals()
-        self.congestion_state.update(
-            // implements BBRUpdateLatestDeliverySignals() and BBRUpdateCongestionSignals()
-            newest_acked_packet_info,
-            self.bw_estimator.rate_sample(),
-            self.bw_estimator.delivered_bytes(),
-            &mut self.data_rate_model,
-            &mut self.data_volume_model,
-            self.state.is_probing_bw(),
-            self.cwnd,
-            self.ecn_state.alpha(),
-        );
+        // implements BBRUpdateLatestDeliverySignals() and BBRUpdateCongestionSignals()
+        self.update_latest_signals(newest_acked_packet_info);
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
         //# BBRUpdateACKAggregation()
         self.data_volume_model.update_ack_aggregation(
