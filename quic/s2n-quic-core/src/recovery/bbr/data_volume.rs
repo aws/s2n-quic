@@ -153,7 +153,7 @@ impl Model {
         self.inflight_hi = inflight_hi;
     }
 
-    /// Updates `inflight_lo` according to if there is loss or ECN in the round
+    /// Updates `inflight_lo` if there is loss or ECN in the round
     pub fn update_lower_bound(
         &mut self,
         cwnd: u32,
@@ -181,14 +181,16 @@ impl Model {
             u64::MAX
         };
 
-        if loss_in_round {
+        let loss_inflight_lo = if loss_in_round {
             //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
             //# BBR.inflight_lo = max(BBR.inflight_latest,
             //#                       BBRBeta * BBR.infligh_lo)
-            self.inflight_lo = inflight_latest.max((BETA * self.inflight_lo).to_integer());
-        }
+            inflight_latest.max((BETA * self.inflight_lo).to_integer())
+        } else {
+            u64::MAX
+        };
 
-        self.inflight_lo = self.inflight_lo.min(ecn_inflight_lo);
+        self.inflight_lo = loss_inflight_lo.min(ecn_inflight_lo);
     }
 
     /// Resets `inflight_lo` to its initial value

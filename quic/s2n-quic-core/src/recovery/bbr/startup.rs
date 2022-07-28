@@ -46,11 +46,8 @@ impl BbrCongestionController {
         }
 
         if self.congestion_state.loss_round_start() {
-            self.full_pipe_estimator.on_loss_round_start(
-                self.bw_estimator.rate_sample(),
-                self.recovery_state.in_recovery(),
-                self.max_datagram_size,
-            )
+            self.full_pipe_estimator
+                .on_loss_round_start(self.bw_estimator.rate_sample(), self.max_datagram_size)
         }
 
         if self.state.is_startup() && self.full_pipe_estimator.filled_pipe() {

@@ -67,14 +67,13 @@ impl Estimator {
     pub fn on_loss_round_start(
         &mut self,
         rate_sample: bandwidth::RateSample,
-        in_recovery: bool,
         max_datagram_size: u16,
     ) {
         if self.filled_pipe {
             return;
         }
 
-        self.filled_pipe = self.excessive_inflight(rate_sample, in_recovery, max_datagram_size);
+        self.filled_pipe = self.excessive_inflight(rate_sample, max_datagram_size);
     }
 
     /// Determines if the rate of increase of bandwidth has decreased enough to estimate the
@@ -136,7 +135,6 @@ impl Estimator {
     fn excessive_inflight(
         &mut self,
         rate_sample: bandwidth::RateSample,
-        in_recovery: bool,
         max_datagram_size: u16,
     ) -> bool {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.1.3
@@ -148,15 +146,17 @@ impl Estimator {
         //#    *  There are at least BBRStartupFullLossCnt=3 discontiguous sequence ranges lost in that round trip.
         const STARTUP_FULL_LOSS_COUNT: u8 = 3;
 
-        if in_recovery
-            && self.in_recovery_last_round
-            && BbrCongestionController::is_inflight_too_high(rate_sample, max_datagram_size)
+        // The BBRv2 RFC reference to "fast recovery" here seems more applicable to TCP, rather than
+        // QUIC. Instead, we just consider the loss rate and number of loss bursts over the round trip.
+        // This is more in line with the Chromium BBRv2 implementation.
+        // See: https://source.chromium.org/chromium/chromium/src/+/main:net/third_party/quiche/src/quiche/quic/core/congestion_control/bbr2_startup.cc;l=104
+
+        if BbrCongestionController::is_inflight_too_high(rate_sample, max_datagram_size)
             && self.loss_bursts >= STARTUP_FULL_LOSS_COUNT
         {
             return true;
         }
 
-        self.in_recovery_last_round = in_recovery;
         self.loss_bursts = Counter::default();
 
         false
@@ -255,14 +255,11 @@ mod tests {
             ..Default::default()
         };
 
-        // In recovery the first round
-        fp_estimator.on_loss_round_start(rate_sample, true, MINIMUM_MTU);
-
         // Only 2 loss bursts, not enough to be considered excessive loss
         fp_estimator.on_packet_lost(true);
         fp_estimator.on_packet_lost(true);
 
-        fp_estimator.on_loss_round_start(rate_sample, true, MINIMUM_MTU);
+        fp_estimator.on_loss_round_start(rate_sample, MINIMUM_MTU);
         // The pipe has not been filled yet since there were only 2 loss bursts
         assert!(!fp_estimator.filled_pipe());
 
@@ -271,7 +268,7 @@ mod tests {
         fp_estimator.on_packet_lost(true);
         fp_estimator.on_packet_lost(true);
 
-        fp_estimator.on_loss_round_start(rate_sample, true, MINIMUM_MTU);
+        fp_estimator.on_loss_round_start(rate_sample, MINIMUM_MTU);
         // The pipe has been filled due to loss
         assert!(fp_estimator.filled_pipe());
     }
@@ -289,13 +286,13 @@ mod tests {
         };
 
         // In recovery the first round
-        fp_estimator.on_loss_round_start(rate_sample, true, MINIMUM_MTU);
+        fp_estimator.on_loss_round_start(rate_sample, MINIMUM_MTU);
 
         // Only 2 loss bursts, not enough to be considered excessive loss
         fp_estimator.on_packet_lost(true);
         fp_estimator.on_packet_lost(true);
 
-        fp_estimator.on_loss_round_start(rate_sample, true, MINIMUM_MTU);
+        fp_estimator.on_loss_round_start(rate_sample, MINIMUM_MTU);
         // The pipe has not been filled yet since there were only 2 loss bursts
         assert!(!fp_estimator.filled_pipe());
 
@@ -304,7 +301,7 @@ mod tests {
         fp_estimator.on_packet_lost(true);
         fp_estimator.on_packet_lost(true);
 
-        fp_estimator.on_loss_round_start(rate_sample, true, MINIMUM_MTU);
+        fp_estimator.on_loss_round_start(rate_sample, MINIMUM_MTU);
         // The pipe has been filled due to ECN
         assert!(fp_estimator.filled_pipe());
     }
@@ -322,40 +319,15 @@ mod tests {
         };
 
         // In recovery the first round
-        fp_estimator.on_loss_round_start(rate_sample, true, MINIMUM_MTU);
+        fp_estimator.on_loss_round_start(rate_sample, MINIMUM_MTU);
 
         // 3 loss bursts, enough to be considered excessive loss
         fp_estimator.on_packet_lost(true);
         fp_estimator.on_packet_lost(true);
         fp_estimator.on_packet_lost(true);
 
-        fp_estimator.on_loss_round_start(rate_sample, true, MINIMUM_MTU);
+        fp_estimator.on_loss_round_start(rate_sample, MINIMUM_MTU);
         // The pipe has not been filled yet since the loss rate was not high enough
-        assert!(!fp_estimator.filled_pipe());
-    }
-
-    #[test]
-    fn excessive_inflight_not_in_recovery_long_enough() {
-        let mut fp_estimator = full_pipe::Estimator::default();
-        let rate_sample = RateSample {
-            // Set app_limited to true to ignore bandwidth plateau check
-            is_app_limited: true,
-            // More than 2% bytes lost
-            bytes_in_flight: 1000,
-            lost_bytes: 21,
-            ..Default::default()
-        };
-
-        // Not in recovery the first round
-        fp_estimator.on_loss_round_start(rate_sample, false, MINIMUM_MTU);
-
-        // 3 loss bursts, enough to be considered excessive loss
-        fp_estimator.on_packet_lost(true);
-        fp_estimator.on_packet_lost(true);
-        fp_estimator.on_packet_lost(true);
-
-        fp_estimator.on_loss_round_start(rate_sample, true, MINIMUM_MTU);
-        // The pipe has not been filled yet since we haven't been in recovery for a full round
         assert!(!fp_estimator.filled_pipe());
     }
 
