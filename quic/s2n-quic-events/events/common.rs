@@ -344,10 +344,16 @@ enum Frame {
         stream_type: StreamType,
         value: u64,
     },
-    DataBlocked,
-    StreamDataBlocked,
+    DataBlocked {
+        data_limit: u64,
+    },
+    StreamDataBlocked {
+        stream_id: u64,
+        stream_data_limit: u64,
+    },
     StreamsBlocked {
         stream_type: StreamType,
+        stream_limit: u64
     },
     NewConnectionId,
     RetireConnectionId,
@@ -440,13 +446,18 @@ impl IntoEvent<builder::Frame> for &crate::frame::MaxStreams {
 
 impl IntoEvent<builder::Frame> for &crate::frame::DataBlocked {
     fn into_event(self) -> builder::Frame {
-        builder::Frame::DataBlocked {}
+        builder::Frame::DataBlocked {
+            data_limit: self.data_limit.as_u64(),
+        }
     }
 }
 
 impl IntoEvent<builder::Frame> for &crate::frame::StreamDataBlocked {
     fn into_event(self) -> builder::Frame {
-        builder::Frame::StreamDataBlocked {}
+        builder::Frame::StreamDataBlocked {
+            stream_id: self.stream_id.as_u64(),
+            stream_data_limit: self.stream_data_limit.as_u64(),
+        }
     }
 }
 
@@ -454,6 +465,7 @@ impl IntoEvent<builder::Frame> for &crate::frame::StreamsBlocked {
     fn into_event(self) -> builder::Frame {
         builder::Frame::StreamsBlocked {
             stream_type: self.stream_type.into_event(),
+            stream_limit: self.stream_limit.as_u64(),
         }
     }
 }

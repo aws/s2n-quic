@@ -149,11 +149,17 @@ pub mod api {
         #[non_exhaustive]
         MaxStreams { stream_type: StreamType, value: u64 },
         #[non_exhaustive]
-        DataBlocked {},
+        DataBlocked { data_limit: u64 },
         #[non_exhaustive]
-        StreamDataBlocked {},
+        StreamDataBlocked {
+            stream_id: u64,
+            stream_data_limit: u64,
+        },
         #[non_exhaustive]
-        StreamsBlocked { stream_type: StreamType },
+        StreamsBlocked {
+            stream_type: StreamType,
+            stream_limit: u64,
+        },
         #[non_exhaustive]
         NewConnectionId {},
         #[non_exhaustive]
@@ -1285,18 +1291,24 @@ pub mod api {
     }
     impl IntoEvent<builder::Frame> for &crate::frame::DataBlocked {
         fn into_event(self) -> builder::Frame {
-            builder::Frame::DataBlocked {}
+            builder::Frame::DataBlocked {
+                data_limit: self.data_limit.as_u64(),
+            }
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::StreamDataBlocked {
         fn into_event(self) -> builder::Frame {
-            builder::Frame::StreamDataBlocked {}
+            builder::Frame::StreamDataBlocked {
+                stream_id: self.stream_id.as_u64(),
+                stream_data_limit: self.stream_data_limit.as_u64(),
+            }
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::StreamsBlocked {
         fn into_event(self) -> builder::Frame {
             builder::Frame::StreamsBlocked {
                 stream_type: self.stream_type.into_event(),
+                stream_limit: self.stream_limit.as_u64(),
             }
         }
     }
@@ -2405,10 +2417,16 @@ pub mod builder {
             stream_type: StreamType,
             value: u64,
         },
-        DataBlocked,
-        StreamDataBlocked,
+        DataBlocked {
+            data_limit: u64,
+        },
+        StreamDataBlocked {
+            stream_id: u64,
+            stream_data_limit: u64,
+        },
         StreamsBlocked {
             stream_type: StreamType,
+            stream_limit: u64,
         },
         NewConnectionId,
         RetireConnectionId,
@@ -2481,10 +2499,22 @@ pub mod builder {
                     stream_type: stream_type.into_event(),
                     value: value.into_event(),
                 },
-                Self::DataBlocked => DataBlocked {},
-                Self::StreamDataBlocked => StreamDataBlocked {},
-                Self::StreamsBlocked { stream_type } => StreamsBlocked {
+                Self::DataBlocked { data_limit } => DataBlocked {
+                    data_limit: data_limit.into_event(),
+                },
+                Self::StreamDataBlocked {
+                    stream_id,
+                    stream_data_limit,
+                } => StreamDataBlocked {
+                    stream_id: stream_id.into_event(),
+                    stream_data_limit: stream_data_limit.into_event(),
+                },
+                Self::StreamsBlocked {
+                    stream_type,
+                    stream_limit,
+                } => StreamsBlocked {
                     stream_type: stream_type.into_event(),
+                    stream_limit: stream_limit.into_event(),
                 },
                 Self::NewConnectionId => NewConnectionId {},
                 Self::RetireConnectionId => RetireConnectionId {},
