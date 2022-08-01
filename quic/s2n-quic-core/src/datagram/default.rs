@@ -15,12 +15,12 @@ use core::{
     task::{Context, Poll, Waker},
 };
 
-/// A struct that handles configuring unreliable datagram support.
+/// Handles configuring unreliable datagram support.
 ///
 /// The datagram endpoint allows users to configure their unreliable datagram
 /// behavior. It contains two types, the Sender and Receiver, which are necessary
 /// for configuring sending and receiving behavior separately. The default Sender
-/// and Receiver behavior swapped out by implementing the respective [`Sender`](s2n-quic-core::datagram::traits::Sender) and
+/// and Receiver behavior can be swapped out by implementing the respective [`Sender`](s2n-quic-core::datagram::traits::Sender) and
 /// [`Receiver`](s2n-quic-core::datagram::traits::Receiver) traits.
 ///
 #[derive(Debug, Default)]
@@ -63,8 +63,6 @@ impl fmt::Display for BuilderError {
 }
 
 /// Builder for the datagram endpoint
-///
-/// Use these methods to configure send/recv queue capacity
 impl EndpointBuilder {
     pub fn with_send_capacity(mut self, capacity: usize) -> Result<Self, BuilderError> {
         if capacity == 0 {
@@ -114,9 +112,9 @@ impl super::Endpoint for Endpoint {
     }
 }
 
-/// A struct to handle receiving unreliable datagrams.
+/// Handles receiving unreliable datagrams.
 ///
-/// The Receiver struct contains the queue of datagrams received from the peer.
+/// Stores the queue of datagrams received from the peer.
 /// Old datagrams will be popped off the queue in favor of new datagrams if the
 /// queue capacity is reached.
 pub struct Receiver {

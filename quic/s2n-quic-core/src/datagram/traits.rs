@@ -54,7 +54,7 @@ impl PreConnectionInfo {
     }
 }
 
-/// A trait that allows users to configure the behavior of receiving datagrams.
+/// Allows users to configure the behavior of receiving datagrams.
 pub trait Receiver: 'static + Send {
     /// A callback that gives users direct access to datagrams as they are read off a packet
     fn on_datagram(&mut self, datagram: &[u8]);
@@ -63,7 +63,7 @@ pub trait Receiver: 'static + Send {
     fn on_connection_error(&mut self, error: connection::Error);
 }
 
-/// A trait that allows users to configure the behavior of sending datagrams.
+/// Allows users to configure the behavior of sending datagrams.
 pub trait Sender: 'static + Send {
     /// A callback that allows users to write datagrams directly to the packet
     fn on_transmit<P: Packet>(&mut self, packet: &mut P);
