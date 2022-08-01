@@ -24,7 +24,7 @@ zeroize = { version = "1", default-features = false, features = ["zeroize_derive
 
 [dev-dependencies]
 aes = "0.8"
-aes-gcm = "0.9"
+aes-gcm = "0.10"
 bolero = "0.7"
 ctr = "0.9"
 ghash = "0.4"
