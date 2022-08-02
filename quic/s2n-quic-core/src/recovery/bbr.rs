@@ -208,6 +208,8 @@ struct BbrCongestionController {
     next_departure_time: Option<Timestamp>,
     /// The maximum size of a data aggregate scheduled and transmitted together
     send_quantum: usize,
+    /// If true, we can attempt to avoid updating control parameters and/or model parameters
+    try_fast_path: bool,
 }
 
 type BytesInFlight = Counter<u32>;
@@ -474,6 +476,7 @@ impl BbrCongestionController {
             pacing_rate,
             next_departure_time: None,
             send_quantum: MAX_SEND_QUANTUM,
+            try_fast_path: false,
         }
     }
     /// The bandwidth-delay product
@@ -734,13 +737,23 @@ impl BbrCongestionController {
         let initial_cwnd = Self::initial_window(self.max_datagram_size);
         let mut cwnd = self.cwnd;
 
+        // Enable fast path if the cwnd has reached max_inflight
+        self.try_fast_path = false;
+
         if self.recovery_state.packet_conservation() {
             // Limit the cwnd as prescribed in BBRModulateCwndForRecovery()
             cwnd = cwnd.max(self.bytes_in_flight.saturating_add(newly_acked as u32));
         } else if self.full_pipe_estimator.filled_pipe() {
-            cwnd = (cwnd + newly_acked as u32).min(max_inflight);
-        } else if cwnd < max_inflight || self.bw_estimator.delivered_bytes() < initial_cwnd as u64 {
             cwnd += newly_acked as u32;
+            if cwnd >= max_inflight {
+                cwnd = max_inflight;
+                self.try_fast_path = true;
+            }
+        } else if cwnd < max_inflight || self.bw_estimator.delivered_bytes() < initial_cwnd as u64 {
+            // cwnd has room to grow, or so little data has been delivered that max_inflight should not be used
+            cwnd += newly_acked as u32;
+        } else {
+            self.try_fast_path = true;
         }
 
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.5
@@ -881,6 +894,10 @@ impl BbrCongestionController {
         debug_assert!(!self.recovery_state.packet_conservation());
 
         self.restore_cwnd();
+
+        // Since we are exiting a recovery period, we need to make sure the model is updated
+        // and the congestion window is bound appropriately
+        self.try_fast_path = false;
     }
 
     fn handle_lost_packet<Rnd: random::Generator>(

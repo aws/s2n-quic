@@ -422,6 +422,9 @@ impl BbrCongestionController {
             state.start_cruise();
         }
 
+        // New phase, so need to update cwnd and pacing rate
+        self.try_fast_path = false;
+
         self.state.transition_to(bbr::State::ProbeBw(state));
     }
 
@@ -477,6 +480,8 @@ impl BbrCongestionController {
         let time_to_cruise = self.is_time_to_cruise();
 
         if let bbr::State::ProbeBw(ref mut probe_bw_state) = self.state {
+            let prior_cycle_phase = probe_bw_state.cycle_phase();
+
             if self.round_counter.round_start() {
                 probe_bw_state.on_round_start();
             }
@@ -529,6 +534,11 @@ impl BbrCongestionController {
                         );
                     }
                 }
+            }
+
+            if prior_cycle_phase != probe_bw_state.cycle_phase() {
+                // New phase, so need to update cwnd and pacing rate
+                self.try_fast_path = false;
             }
         }
     }
