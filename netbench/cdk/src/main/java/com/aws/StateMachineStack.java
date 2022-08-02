@@ -8,6 +8,7 @@ import software.amazon.awscdk.services.stepfunctions.tasks.EcsRunTask;
 import software.amazon.awscdk.services.stepfunctions.StateMachine;
 import software.amazon.awscdk.services.s3.Bucket;
 import software.amazon.awscdk.services.logs.RetentionDays;
+import software.amazon.awscdk.Duration;
 
 import software.amazon.awscdk.services.stepfunctions.tasks.LambdaInvoke;
 import software.amazon.awscdk.services.stepfunctions.tasks.LambdaInvocationType;
@@ -17,6 +18,8 @@ import software.amazon.awscdk.services.stepfunctions.tasks.TaskEnvironmentVariab
 import software.amazon.awscdk.services.stepfunctions.JsonPath;
 import software.amazon.awscdk.services.stepfunctions.IntegrationPattern;
 import software.amazon.awscdk.services.stepfunctions.tasks.EcsEc2LaunchTarget;
+import software.amazon.awscdk.services.stepfunctions.Wait;
+import software.amazon.awscdk.services.stepfunctions.WaitTime;
 
 import software.amazon.awscdk.services.lambda.Function;
 import software.amazon.awscdk.services.lambda.Runtime;
@@ -55,6 +58,10 @@ public class StateMachineStack extends Stack {
                 .build();
 
         EcsRunTask clientTask = props.getClientTask();
+
+        Wait waitTask = Wait.Builder.create(this, "wait-step")
+            .time(WaitTime.duration(Duration.seconds(60)))
+            .build();
 
         LambdaInvoke exportServerLogsLambdaInvoke = LambdaInvoke.Builder.create(this, "export-server-logs-task")
                 .lambdaFunction(props.getLogsLambda())
@@ -106,7 +113,9 @@ public class StateMachineStack extends Stack {
             
         timestampLambdaInvoke.next(clientTask);
 
-        clientTask.next(exportServerLogsLambdaInvoke);
+        clientTask.next(waitTask);
+
+        waitTask.next(exportServerLogsLambdaInvoke);
 
         exportServerLogsLambdaInvoke.next(reportGenerationStep);
 

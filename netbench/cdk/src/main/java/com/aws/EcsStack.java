@@ -92,9 +92,12 @@ class EcsStack extends Stack {
 
         AsgCapacityProvider asgProvider = AsgCapacityProvider.Builder.create(this, stackType + "-asg-provider")
             .autoScalingGroup(asg)
+            .enableManagedTerminationProtection(false)
+            .enableManagedScaling(false)
             .build();
         
         cluster.addAsgCapacityProvider(asgProvider);
+        cluster.applyRemovalPolicy(RemovalPolicy.DESTROY);
 
         Ec2TaskDefinition task = Ec2TaskDefinition.Builder
             .create(this, stackType + "-task")
@@ -158,7 +161,6 @@ class EcsStack extends Stack {
                 .logging(LogDriver.awsLogs(AwsLogDriverProps.builder().logGroup(serviceLogGroup).streamPrefix(stackType + "-ecs-task").build()))
                 .portMappings(List.of(PortMapping.builder().containerPort(3000).hostPort(3000)
                     .protocol(software.amazon.awscdk.services.ecs.Protocol.UDP).build()))
-                .privileged(true)
                 .build());
 
             bucket.grantWrite(task.getTaskRole());
@@ -186,16 +188,15 @@ class EcsStack extends Stack {
             ecrEnv.put("DNS_ADDRESS", props.getDnsAddress() + ".serverecs.com");
             ecrEnv.put("SERVER_PORT", "3000");
             ecrEnv.put("S3_BUCKET", bucket.getBucketName());
+            ecrEnv.put("LOCAL_IP", "0.0.0.0");
 
             ContainerDefinition clientContainer = task.addContainer(stackType + "-driver", ContainerDefinitionOptions.builder()
                 .image(ContainerImage.fromRegistry(props.getEcrUri()))
                 .environment(ecrEnv)
                 .memoryLimitMiB(2048)
-
                 .logging(LogDriver.awsLogs(AwsLogDriverProps.builder().logRetention(RetentionDays.ONE_DAY).streamPrefix(stackType + "-ecs-task").build()))
                 .portMappings(List.of(PortMapping.builder().containerPort(3000).hostPort(3000)
                     .protocol(software.amazon.awscdk.services.ecs.Protocol.UDP).build()))
-                .privileged(true)
                 .build()); 
 
             bucket.grantWrite(task.getTaskRole());

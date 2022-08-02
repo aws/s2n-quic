@@ -68,7 +68,7 @@ RUN set -eux; \
 RUN set -eux; \
   cd netbench; \
   cargo build --bin netbench-scenarios; \
-  ./target/debug/netbench-scenarios --request_response.count 10 --request_response.request_size 100KB --request_response.response_size 1GB; \
+  ./target/debug/netbench-scenarios --request_response.request_size 100KB --request_response.response_size 1GB; \
   cp target/netbench/request_response.json /app/bin; \
   rm -rf target;
 
@@ -79,10 +79,12 @@ RUN set -eux; \
   export TARGET="netbench-driver-$DRIVER-$ENDPOINT"; \
   if [ "$ENDPOINT" = "server" ]; then \
     echo "#!/usr/bin/env bash\n \
+    export DISABLE_GSO=1\n \
     eval /usr/bin/netbench-collector /usr/bin/$TARGET \$@" > /app/bin/start; \
   else \
     echo "#!/usr/bin/env bash\n \
     export SERVER_0=\$(dig +short \$DNS_ADDRESS):\$SERVER_PORT\n \
+    export DISABLE_GSO=1\n \
     printenv\n \
     eval /usr/bin/netbench-collector /usr/bin/$TARGET \$@ > client.json\n \
     aws s3 cp ./client.json s3://\$S3_BUCKET/\$TIMESTAMP/$DRIVER-client.json" > /app/bin/start; \

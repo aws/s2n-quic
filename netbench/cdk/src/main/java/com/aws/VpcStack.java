@@ -42,8 +42,7 @@ public class VpcStack extends Stack {
 
         metricsBucket = Bucket.Builder.create(this, "MetricsReportBucket")
             .bucketName(PhysicalName.GENERATE_IF_NEEDED)
-            .removalPolicy(RemovalPolicy.DESTROY)
-            .autoDeleteObjects(true)
+            .removalPolicy(RemovalPolicy.RETAIN)
             .build();
     }
 

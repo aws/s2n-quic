@@ -7,6 +7,7 @@ use s2n_quic::{provider::io, Connection};
 use std::{collections::HashSet, sync::Arc};
 use structopt::StructOpt;
 use tokio::spawn;
+use std::env;
 
 #[global_allocator]
 static ALLOCATOR: Allocator = Allocator::new();
@@ -78,8 +79,15 @@ impl Server {
 
         let mut io_builder =
             io::Default::builder().with_receive_address((self.opts.ip, self.opts.port).into())?;
+        
+        match env::var("DISABLE_GSO") {
+            Ok(_v) => io_builder = io_builder.with_gso_disabled()?,
+            Err(_e) => io_builder = io_builder,
+        }
 
-        io_builder = io_builder.with_gso_disabled()?;
+        if self.disable_gso {
+            io_builder = io_builder.with_gso_disabled()?;
+        }
 
         let io = io_builder.build()?;
 

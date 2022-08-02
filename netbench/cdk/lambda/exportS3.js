@@ -12,10 +12,8 @@ exports.handler =  async (event, context) => {
     to: new Date().getTime(),
     destinationPrefix: event.Payload.timestamp
   };
-  console.log(params);
 
   var data = await cloudwatchlogs.createExportTask(params).promise();
-  console.log(data);
   return data;
 }
 
