@@ -4005,6 +4005,8 @@ pub mod supervisor {
 }
 pub use traits::*;
 mod traits {
+    use crate::query;
+
     use super::*;
     use api::*;
     use core::fmt;

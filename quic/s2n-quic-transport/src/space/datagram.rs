@@ -13,8 +13,8 @@ use core::task::Poll;
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{
     datagram::{Endpoint, Receiver, Sender, WriteError},
-    event,
     frame::{self, datagram::DatagramRef},
+    query,
     varint::VarInt,
 };
 
@@ -63,13 +63,13 @@ impl<Config: endpoint::Config> Manager<Config> {
         self.receiver.on_datagram(datagram.data);
     }
 
-    pub fn datagram_mut(&mut self, query: &mut dyn event::query::QueryMut) -> Poll<()> {
+    pub fn datagram_mut(&mut self, query: &mut dyn query::QueryMut) -> Poll<()> {
         // Try to execute the query on the sender side. If that fails, try the receiver side.
         match query.execute_mut(&mut self.sender) {
-            event::query::ControlFlow::Continue => {
+            query::ControlFlow::Continue => {
                 query.execute_mut(&mut self.receiver);
             }
-            event::query::ControlFlow::Break => (),
+            query::ControlFlow::Break => (),
         }
 
         if self.has_transmission_interest() {

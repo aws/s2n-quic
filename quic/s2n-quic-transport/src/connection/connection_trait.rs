@@ -33,6 +33,7 @@ use s2n_quic_core::{
         ProtectedPacket,
     },
     path::{Handle as _, MaxMtu},
+    query,
     time::Timestamp,
 };
 
@@ -443,11 +444,11 @@ pub trait ConnectionTrait: 'static + Send + Sized {
 
     fn error(&self) -> Option<connection::Error>;
 
-    fn query_event_context(&self, query: &mut dyn event::query::Query);
+    fn query_event_context(&self, query: &mut dyn query::Query);
 
-    fn query_event_context_mut(&mut self, query: &mut dyn event::query::QueryMut);
+    fn query_event_context_mut(&mut self, query: &mut dyn query::QueryMut);
 
-    fn datagram_mut(&mut self, query: &mut dyn event::query::QueryMut);
+    fn datagram_mut(&mut self, query: &mut dyn query::QueryMut);
 
     fn with_event_publisher<F>(
         &mut self,

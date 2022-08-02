@@ -33,11 +33,9 @@ use intrusive_collections::{
 use s2n_quic_core::{
     application,
     application::ServerName,
-    event::{
-        query::{Query, QueryMut},
-        supervisor,
-    },
+    event::supervisor,
     inet::SocketAddress,
+    query::{Query, QueryMut},
     recovery::K_GRANULARITY,
     time::Timestamp,
     transport,

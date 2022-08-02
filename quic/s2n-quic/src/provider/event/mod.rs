@@ -9,8 +9,9 @@ pub use s2n_quic_core::{
     event::{
         api as events,
         api::{ConnectionInfo, ConnectionMeta},
-        query, supervisor, Event, Meta, Subscriber, Timestamp,
+        supervisor, Event, Meta, Subscriber, Timestamp,
     },
+    query,
 };
 
 /// Provides event handling support for an endpoint
