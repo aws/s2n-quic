@@ -48,8 +48,8 @@ impl Model {
 
         Self {
             max_bw_filter: WindowedMaxFilter::new(MAX_BW_FILTER_LEN),
-            bw_hi: Bandwidth::MAX,
-            bw_lo: Bandwidth::MAX,
+            bw_hi: Bandwidth::INFINITY,
+            bw_lo: Bandwidth::INFINITY,
             bw: Bandwidth::ZERO,
             cycle_count: Default::default(),
         }
@@ -121,7 +121,7 @@ impl Model {
         //# BBRInitLowerBounds():
         //#   if (BBR.bw_lo == Infinity)
         //#     BBR.bw_lo = BBR.max_bw
-        if self.bw_lo == Bandwidth::MAX {
+        if self.bw_lo == Bandwidth::INFINITY {
             self.bw_lo = self.max_bw()
         }
 
@@ -137,7 +137,7 @@ impl Model {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
         //# BBRResetLowerBounds():
         //#   BBR.bw_lo       = Infinity
-        self.bw_lo = Bandwidth::MAX
+        self.bw_lo = Bandwidth::INFINITY
     }
 
     /// Bounds `bw` to min(`max_bw`, `bw_lo`, `bw_hi)
@@ -160,8 +160,8 @@ mod tests {
 
         assert_eq!(Bandwidth::ZERO, model.max_bw());
         assert_eq!(Bandwidth::ZERO, model.bw());
-        assert_eq!(Bandwidth::MAX, model.bw_hi());
-        assert_eq!(Bandwidth::MAX, model.bw_lo());
+        assert_eq!(Bandwidth::INFINITY, model.bw_hi());
+        assert_eq!(Bandwidth::INFINITY, model.bw_lo());
     }
 
     #[test]
@@ -246,7 +246,7 @@ mod tests {
 
         // Resetting the lower bound sets bw_lo to Bandwidth::MAX
         model.reset_lower_bound();
-        assert_eq!(Bandwidth::MAX, model.bw_lo());
+        assert_eq!(Bandwidth::INFINITY, model.bw_lo());
     }
 
     #[test]

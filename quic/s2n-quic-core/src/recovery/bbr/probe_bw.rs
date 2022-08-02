@@ -905,7 +905,7 @@ mod tests {
         assert_eq!(CyclePhase::Refill, state.cycle_phase());
         // Lower bounds are reset
         assert_eq!(u64::MAX, data_volume_model.inflight_lo());
-        assert_eq!(Bandwidth::MAX, data_rate_model.bw_lo());
+        assert_eq!(Bandwidth::INFINITY, data_rate_model.bw_lo());
 
         assert_eq!(0, state.bw_probe_up_rounds);
         assert_eq!(0, state.bw_probe_up_acks);

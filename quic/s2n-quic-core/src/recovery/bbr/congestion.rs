@@ -376,7 +376,7 @@ mod tests {
             loss_round_counter: Default::default(),
             loss_in_round: true,
             inflight_latest: 100,
-            bw_latest: Bandwidth::MAX,
+            bw_latest: Bandwidth::INFINITY,
             ecn_in_round: true,
         };
 

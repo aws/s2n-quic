@@ -15,6 +15,14 @@ use core::{
     task::{Context, Poll, Waker},
 };
 
+/// Handles configuring unreliable datagram support.
+///
+/// The datagram endpoint allows users to configure their unreliable datagram
+/// behavior. It contains two types, the Sender and Receiver, which are necessary
+/// for configuring sending and receiving behavior separately. The default Sender
+/// and Receiver behavior can be swapped out by implementing the respective [`Sender`](s2n-quic-core::datagram::traits::Sender) and
+/// [`Receiver`](s2n-quic-core::datagram::traits::Receiver) traits.
+///
 #[derive(Debug, Default)]
 pub struct Endpoint {
     send_queue_capacity: usize,
@@ -54,6 +62,7 @@ impl fmt::Display for BuilderError {
     }
 }
 
+/// Builder for the datagram endpoint
 impl EndpointBuilder {
     pub fn with_send_capacity(mut self, capacity: usize) -> Result<Self, BuilderError> {
         if capacity == 0 {
@@ -103,6 +112,11 @@ impl super::Endpoint for Endpoint {
     }
 }
 
+/// Handles receiving unreliable datagrams.
+///
+/// Stores the queue of datagrams received from the peer.
+/// Old datagrams will be popped off the queue in favor of new datagrams if the
+/// queue capacity is reached.
 pub struct Receiver {
     queue: VecDeque<Bytes>,
     capacity: usize,
@@ -125,8 +139,6 @@ impl Receiver {
     /// Dequeues a datagram received from the peer.
     ///
     /// # Return value
-    ///
-    /// The function returns:
     ///
     /// - `Poll::Pending` if there are no datagrams to be received on the queue. In this case,
     ///   the caller should retry receiving after the [`Waker`](core::task::Waker) on the provided
@@ -180,7 +192,7 @@ impl super::Receiver for Receiver {
 /// Use to configure a datagram recv queue size and how large of
 /// a datagram we can receive.
 #[derive(Debug)]
-pub struct ReceiverBuilder {
+struct ReceiverBuilder {
     queue_capacity: usize,
     max_datagram_frame_size: u64,
 }
@@ -218,6 +230,23 @@ impl ReceiverBuilder {
     }
 }
 
+/// A struct to handle sending unreliable datagrams.
+///
+/// The Sender struct contains the queue of unreliable datagrams to be sent.
+/// During transmission time, we alternate between sending datagrams and sending stream
+/// data. This is to ensure there is a balance between the amount of reliable
+/// and unreliable data getting sent.
+///
+/// Datagrams are written to the packet in the order they are added to the queue.
+/// A datagram that is too large to fit in the packet will be dropped, unless the
+/// packet already contains written datagrams. This attempts to prevent
+/// the case where all datagrams are dropped because only a small amount of packet
+/// space remains.
+///
+/// Note that there is currently no expiration date for datagrams to live on the queue.
+/// Implement the [`Sender`](s2n-quic-core::datagram::traits::Sender) trait if
+/// this behavior is necessary for your use-case.
+///
 #[derive(Debug)]
 pub struct Sender {
     queue: VecDeque<Datagram>,
@@ -276,8 +305,6 @@ impl Sender {
     ///
     /// # Return value
     ///
-    /// The function returns:
-    ///
     /// - `Poll::Pending` if the datagram's send buffer capacity is currently exhausted
     ///   and the datagram was not added to the queue. In this case, the caller should
     ///   retry sending after the [`Waker`](core::task::Waker) on the provided
@@ -316,6 +343,11 @@ impl Sender {
     ///
     /// If the datagram queue is at capacity the oldest datagram will be popped
     /// off the queue and returned to make space for the newest datagram.
+    ///
+    /// # Return value
+    /// - `Ok(None)` if the datagram was enqueued for sending
+    /// - `Ok(Some(Bytes))` if the queue is at capacity this will be the oldest datagram on the queue
+    /// - `Err(DatagramError)` if some error occurred
     pub fn send_datagram_forced(
         &mut self,
         data: bytes::Bytes,
@@ -348,6 +380,10 @@ impl Sender {
     /// Adds datagrams on the queue to be sent
     ///
     /// If the queue is full the newest datagram is not added and an error is returned.
+    ///
+    /// # Return value
+    /// - `Ok()` if the datagram was enqueued for sending
+    /// - `Err(DatagramError)` if some error occurred
     pub fn send_datagram(&mut self, data: bytes::Bytes) -> Result<(), DatagramError> {
         if data.len() as u64 > self.max_datagram_payload {
             return Err(DatagramError::ExceedsPeerTransportLimits);
@@ -430,7 +466,6 @@ impl super::Sender for Sender {
                     match packet.write_datagram(&datagram.data) {
                         Ok(()) => has_written = true,
                         Err(_error) => {
-                            // TODO emit datagram dropped event
                             continue;
                         }
                     }
@@ -446,8 +481,6 @@ impl super::Sender for Sender {
                     if has_written {
                         self.queue.push_front(datagram);
                         return;
-                    } else {
-                        // TODO emit datagram dropped event
                     }
                 }
             } else {
@@ -474,7 +507,7 @@ impl super::Sender for Sender {
 ///
 /// Use to configure a datagram send queue size
 #[derive(Debug)]
-pub struct SenderBuilder {
+struct SenderBuilder {
     queue_capacity: usize,
     max_datagram_payload: u64,
 }
@@ -845,7 +878,7 @@ mod tests {
     // The MockPacket mocks writing datagrams to a packet, but is not
     // a fully functional mock. It is used to test the logic in the
     // on_transmit function.
-    pub struct MockPacket {
+    struct MockPacket {
         has_pending_streams: bool,
         datagrams_prioritized: bool,
         remaining_capacity: usize,
