@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::time::Timestamp;
-use core::{cmp::max, time::Duration};
+use core::{
+    cmp::{max, Ordering},
+    time::Duration,
+};
 use num_rational::Ratio;
+use num_traits::Inv;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 /// Bandwidth-related data tracked for each sent packet
@@ -26,36 +30,47 @@ pub struct PacketInfo {
     pub is_app_limited: bool,
 }
 
-const MICRO_BITS_PER_BYTE: u64 = 8 * 1000000;
-
-#[derive(Copy, Clone, Debug, Default, Eq, Ord, PartialOrd, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Bandwidth {
-    bits_per_second: u64,
+    nanos_per_byte: u64,
 }
 
 impl Bandwidth {
-    pub const ZERO: Bandwidth = Bandwidth { bits_per_second: 0 };
-
-    pub const MAX: Bandwidth = Bandwidth {
-        bits_per_second: u64::MAX,
+    pub const ZERO: Bandwidth = Bandwidth {
+        nanos_per_byte: u64::MAX,
     };
+
+    pub const INFINITY: Bandwidth = Bandwidth { nanos_per_byte: 0 };
 
     /// Constructs a new `Bandwidth` with the given bytes per interval
     pub const fn new(bytes: u64, interval: Duration) -> Self {
-        if interval.is_zero() {
+        if interval.is_zero() || bytes == 0 {
             Bandwidth::ZERO
         } else {
             Self {
-                // Prefer multiplying by MICRO_BITS_PER_BYTE first to avoid losing resolution
-                bits_per_second: match bytes.checked_mul(MICRO_BITS_PER_BYTE) {
-                    Some(micro_bits) => micro_bits / interval.as_micros() as u64,
-                    None => {
-                        // If that overflows, divide first by the interval
-                        (bytes / interval.as_micros() as u64).saturating_mul(MICRO_BITS_PER_BYTE)
-                    }
-                },
+                nanos_per_byte: interval.as_nanos() as u64 / bytes,
             }
         }
+    }
+}
+
+impl Default for Bandwidth {
+    fn default() -> Self {
+        Bandwidth::ZERO
+    }
+}
+
+impl core::cmp::PartialOrd for Bandwidth {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl core::cmp::Ord for Bandwidth {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // The higher the nano_per_byte, the lower the bandwidth,
+        // so reverse the ordering when comparing
+        self.nanos_per_byte.cmp(&other.nanos_per_byte).reverse()
     }
 }
 
@@ -63,8 +78,15 @@ impl core::ops::Mul<Ratio<u64>> for Bandwidth {
     type Output = Bandwidth;
 
     fn mul(self, rhs: Ratio<u64>) -> Self::Output {
+        if self == Bandwidth::ZERO {
+            return Bandwidth::ZERO;
+        }
+
         Bandwidth {
-            bits_per_second: (rhs * self.bits_per_second).to_integer(),
+            // Since `Bandwidth` is represented as time/byte and not bytes/time, we should divide
+            // by the given ratio to result in a higher nanos_per_byte value (lower bandwidth).
+            // To avoid division, we can multiply by the inverse of the ratio instead
+            nanos_per_byte: (rhs.inv() * self.nanos_per_byte).to_integer(),
         }
     }
 }
@@ -73,14 +95,10 @@ impl core::ops::Mul<Duration> for Bandwidth {
     type Output = u64;
 
     fn mul(self, rhs: Duration) -> Self::Output {
-        // Prefer multiplying by the duration first to avoid losing resolution
-        match self.bits_per_second.checked_mul(rhs.as_micros() as u64) {
-            Some(micro_bits) => micro_bits / MICRO_BITS_PER_BYTE,
-            None => {
-                // If that overflows, divide first by MICRO_BITS_PER_BYTE
-                (self.bits_per_second / MICRO_BITS_PER_BYTE).saturating_mul(rhs.as_micros() as u64)
-            }
+        if self == Bandwidth::INFINITY {
+            return u64::MAX;
         }
+        rhs.as_nanos() as u64 / self.nanos_per_byte
     }
 }
 
@@ -94,7 +112,7 @@ impl core::ops::Div<Bandwidth> for u64 {
     type Output = Duration;
 
     fn div(self, rhs: Bandwidth) -> Self::Output {
-        Duration::from_micros(self * MICRO_BITS_PER_BYTE / rhs.bits_per_second)
+        Duration::from_nanos(rhs.nanos_per_byte.saturating_mul(self))
     }
 }
 

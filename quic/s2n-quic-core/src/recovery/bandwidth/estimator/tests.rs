@@ -8,24 +8,15 @@ use crate::time::{Clock, NoopClock};
 fn bandwidth() {
     let result = Bandwidth::new(1000, Duration::from_secs(10));
 
-    assert_eq!(100 * 8, result.bits_per_second);
+    // 10 seconds = 10^10 nanoseconds, nanos_per_byte = 10^10 / 1000 = 10_000_000
+    assert_eq!(10_000_000, result.nanos_per_byte);
 }
 
 #[test]
 fn bandwidth_saturating() {
     let result = Bandwidth::new(u64::MAX, Duration::from_secs(1));
 
-    assert_eq!(Bandwidth::MAX, result);
-}
-
-#[test]
-fn bandwidth_overflow() {
-    let result = Bandwidth::new(u64::MAX, Duration::from_secs(8));
-
-    let expected_bits_per_second =
-        u64::MAX / (Duration::from_secs(8).as_micros() as u64) * MICRO_BITS_PER_BYTE;
-
-    assert_eq!(expected_bits_per_second, result.bits_per_second);
+    assert_eq!(Bandwidth::INFINITY, result);
 }
 
 #[test]
@@ -45,6 +36,11 @@ fn bandwidth_mul_ratio() {
 }
 
 #[test]
+fn bandwidth_zero_mul_ratio() {
+    assert_eq!(Bandwidth::ZERO, Bandwidth::ZERO * Ratio::new(3, 7));
+}
+
+#[test]
 fn bandwidth_mul_duration() {
     let bandwidth = Bandwidth::new(7000, Duration::from_secs(2));
 
@@ -55,23 +51,11 @@ fn bandwidth_mul_duration() {
 
 #[test]
 fn bandwidth_mul_saturation() {
-    let bandwidth = Bandwidth::MAX;
+    let bandwidth = Bandwidth::INFINITY;
 
     let result = bandwidth * Duration::from_secs(10);
 
     assert_eq!(result, u64::MAX);
-}
-
-#[test]
-fn bandwidth_mul_overflow() {
-    let bandwidth = Bandwidth {
-        bits_per_second: 18446744073704000000, // closest value to u64::MAX that divides evenly by MICRO_BITS_PER_BYTE
-    };
-
-    let result = bandwidth * Duration::from_millis(500);
-
-    // Divide by 8 to convert to bytes and divide by 2 since we multiplied by .5 seconds
-    assert_eq!(result, 18446744073704000000 / 8 / 2);
 }
 
 #[test]
@@ -83,6 +67,15 @@ fn u64_div_bandwidth() {
     let bandwidth = Bandwidth::new(10_000, Duration::from_secs(1));
     let bytes = 2_000;
     assert_eq!(bytes / bandwidth, Duration::from_millis(200));
+}
+
+#[test]
+fn bandwidth_ordering() {
+    let low = Bandwidth::new(10_000, Duration::from_secs(1));
+    let high = Bandwidth::new(20_000, Duration::from_secs(1));
+
+    assert!(high > low);
+    assert_eq!(high, low.max(high));
 }
 
 // first_sent_time and delivered_time typically hold values from recently acknowledged packets. However,
