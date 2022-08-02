@@ -38,6 +38,8 @@ pub struct PacketInfo {
 /// of data (nanoseconds per byte, in this case). This allows for some of the  
 /// math operations needed on `Bandwidth` to avoid division, while reducing the
 /// likelihood of panicking due to overflow.
+///
+/// The maximum (non-infinite) value that can be represented is 1 GB/second.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Bandwidth {
     nanos_per_byte: u64,
