@@ -120,7 +120,6 @@ class EcsStack extends Stack {
                 .retention(RetentionDays.ONE_DAY)
                 .logGroupName("server-logs" + new SimpleDateFormat("MM-dd-yyyy-HH-mm-ss").format(new Date()).toString())
                 .removalPolicy(RemovalPolicy.DESTROY)
-
                 .build();
 
             bucket.grantPut(new ServicePrincipal("logs." + props.getServerRegion() + ".amazonaws.com"));
