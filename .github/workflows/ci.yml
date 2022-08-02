@@ -65,7 +65,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        toolchain: [stable, beta]
+        include:
+          - toolchain: stable
+            # fail on stable warnings
+            args: "-D warnings"
+          - toolchain: beta
+            # deriving Eq may break API compatibility so we disable it
+            # See https://github.com/rust-lang/rust-clippy/issues/9063
+            args: "-A derive_partial_eq_without_eq"
     steps:
       - uses: actions/checkout@v3
         with:
@@ -86,7 +93,7 @@ jobs:
         uses: actions-rs/cargo@v1.0.3
         with:
           command: clippy
-          args: --all-features --all-targets -- -D warnings
+          args: --all-features --all-targets -- ${{ matrix.args }}
 
   udeps:
     runs-on: ubuntu-latest

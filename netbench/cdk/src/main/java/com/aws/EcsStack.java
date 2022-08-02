@@ -44,6 +44,7 @@ import software.amazon.awscdk.services.iam.ArnPrincipal;
 import software.amazon.awscdk.services.stepfunctions.tasks.TaskEnvironmentVariable;
 import software.amazon.awscdk.services.stepfunctions.JsonPath;
 
+
 import software.amazon.awscdk.services.ec2.Vpc;
 import software.amazon.awscdk.services.ec2.InstanceType;
 import software.amazon.awscdk.services.ec2.SecurityGroup;
@@ -63,6 +64,7 @@ class EcsStack extends Stack {
     private Cluster cluster;
     private static final String bucketName = "BUCKET_NAME";
     private static final String logGroupName = "LOG_GROUP_NAME";
+
 
     public EcsStack(final Construct parent, final String id, final EcsStackProps props) {
         super(parent, id, props);
@@ -118,6 +120,7 @@ class EcsStack extends Stack {
                 .retention(RetentionDays.ONE_DAY)
                 .logGroupName("server-logs" + new SimpleDateFormat("MM-dd-yyyy-HH-mm-ss").format(new Date()).toString())
                 .removalPolicy(RemovalPolicy.DESTROY)
+
                 .build();
 
             bucket.grantPut(new ServicePrincipal("logs." + props.getServerRegion() + ".amazonaws.com"));
@@ -131,6 +134,7 @@ class EcsStack extends Stack {
             Map<String, String> exportLambdaLogsEnv = new HashMap<>();
             exportLambdaLogsEnv.put(bucketName, bucket.getBucketName());
             exportLambdaLogsEnv.put(logGroupName, serviceLogGroup.getLogGroupName());
+
 
             exportLogsLambda = Function.Builder.create(this, "export-logs-lambda")
                 .runtime(Runtime.NODEJS_14_X)

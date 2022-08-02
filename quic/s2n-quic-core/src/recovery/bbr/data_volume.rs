@@ -44,7 +44,6 @@ pub(crate) struct Model {
     inflight_lo: u64,
 }
 
-#[allow(dead_code)] // TODO: Remove when used
 impl Model {
     /// Constructs a new `data_volume::Model`
     pub fn new(now: Timestamp) -> Self {
@@ -112,6 +111,26 @@ impl Model {
         round_count: u64,
         now: Timestamp,
     ) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.5
+        //# BBRUpdateACKAggregation():
+        //#   /* Find excess ACKed beyond expected amount over this interval */
+        //#   interval = (Now() - BBR.extra_acked_interval_start)
+        //#   expected_delivered = BBR.bw * interval
+        //#   /* Reset interval if ACK rate is below expected rate: */
+        //#   if (BBR.extra_acked_delivered <= expected_delivered)
+        //#       BBR.extra_acked_delivered = 0
+        //#       BBR.extra_acked_interval_start = Now()
+        //#       expected_delivered = 0
+        //#   BBR.extra_acked_delivered += rs.newly_acked
+        //#   extra = BBR.extra_acked_delivered - expected_delivered
+        //#   extra = min(extra, cwnd)
+        //#   BBR.extra_acked =
+        //#     update_windowed_max_filter(
+        //#       filter=BBR.ExtraACKedFilter,
+        //#       value=extra,
+        //#       time=BBR.round_count,
+        //#       window_length=BBRExtraAckedFilterLen)
+
         // Find excess ACKed beyond expected amount over this interval
         let interval = now - self.extra_acked_interval_start;
         let mut expected_delivered = bw * interval;
@@ -134,16 +153,29 @@ impl Model {
     /// Updates `inflight_lo` with the given `inflight_latest` if it exceeds
     /// the current `inflight_lo` * `bbr::BETA`
     pub fn update_lower_bound(&mut self, cwnd: u32, inflight_latest: u64) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
+        //# if (BBR.inflight_lo == Infinity)
+        //#     BBR.inflight_lo = cwnd
         if self.inflight_lo == u64::MAX {
             self.inflight_lo = cwnd as u64;
         }
 
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
+        //# BBR.inflight_lo = max(BBR.inflight_latest,
+        //#                       BBRBeta * BBR.infligh_lo)
         self.inflight_lo = inflight_latest.max((BETA * self.inflight_lo).to_integer());
     }
 
     /// Resets `inflight_lo` to its initial value
     pub fn reset_lower_bound(&mut self) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
+        //# BBR.inflight_lo = Infinity
         self.inflight_lo = u64::MAX
+    }
+
+    /// Sets the `extra_acked_interval_start` to the given `timestamp`
+    pub fn set_extra_acked_interval_start(&mut self, timestamp: Timestamp) {
+        self.extra_acked_interval_start = timestamp;
     }
 }
 

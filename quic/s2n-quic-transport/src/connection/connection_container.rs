@@ -562,7 +562,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
     fn remove_node(&mut self, connection: &ConnectionNode<C, L>) {
         // And remove the Connection from all other interest lists it might be
         // part of.
-        let connection_ptr = &*connection as *const ConnectionNode<C, L>;
+        let connection_ptr = connection as *const ConnectionNode<C, L>;
 
         macro_rules! remove_connection_from_list {
             ($list_name:ident, $link_name:ident) => {

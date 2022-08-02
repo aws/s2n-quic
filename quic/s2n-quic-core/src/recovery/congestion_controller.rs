@@ -115,9 +115,10 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
         timestamp: Timestamp,
     );
 
-    /// Invoked from on_packets_lost, but is also directly invoked when
-    /// the Explicit Congestion Notification counter increases.
-    fn on_congestion_event(&mut self, event_time: Timestamp);
+    /// Invoked when the Explicit Congestion Notification counter increases.
+    ///
+    /// `ce_count` represents the incremental number of packets marked with the ECN CE codepoint
+    fn on_explicit_congestion(&mut self, ce_count: u64, event_time: Timestamp);
 
     /// Invoked when the path maximum transmission unit is updated.
     fn on_mtu_update(&mut self, max_data_size: u16);
@@ -233,7 +234,7 @@ pub mod testing {
             ) {
             }
 
-            fn on_congestion_event(&mut self, _event_time: Timestamp) {}
+            fn on_explicit_congestion(&mut self, _ce_count: u64, _event_time: Timestamp) {}
 
             fn on_mtu_update(&mut self, _max_data_size: u16) {}
 
@@ -380,7 +381,7 @@ pub mod testing {
                 }
             }
 
-            fn on_congestion_event(&mut self, _event_time: Timestamp) {
+            fn on_explicit_congestion(&mut self, _ce_count: u64, _event_time: Timestamp) {
                 self.congestion_events += 1;
                 self.slow_start = false;
             }

@@ -1164,13 +1164,11 @@ fn stream_limit_error_on_peer_open_stream_too_large() {
     for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
         let current_max_streams =
             manager.with_stream_controller(|ctrl| ctrl.max_streams_latest_value(stream_type));
+        // stream_id is 0-indexed
+        let current_max_streams = current_max_streams.as_u64() - 1;
 
-        let max_stream_id = StreamId::nth(
-            endpoint::Type::Client,
-            stream_type,
-            current_max_streams.as_u64(),
-        )
-        .unwrap();
+        let max_stream_id =
+            StreamId::nth(endpoint::Type::Client, stream_type, current_max_streams).unwrap();
 
         assert!(manager
             .with_stream_controller(|ctrl| ctrl.on_remote_open_stream(max_stream_id))

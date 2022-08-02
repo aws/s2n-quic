@@ -46,7 +46,6 @@ pub(crate) enum State {
 
 impl State {
     /// True if packet conservation dynamics should be used to bound cwnd
-    #[allow(dead_code)] // TODO: Remove when used
     #[inline]
     pub fn packet_conservation(&self) -> bool {
         matches!(self, State::Conservation(_, _))
@@ -70,12 +69,12 @@ impl State {
     /// Called when a packet is transmitted
     #[inline]
     pub fn on_packet_sent(&mut self) {
-        if let State::Conservation(recovery_start_time, FastRetransmission::RequiresTransmission) =
+        if let State::Conservation(_, transmission @ FastRetransmission::RequiresTransmission) =
             self
         {
             // A packet has been sent since we entered recovery (fast retransmission)
             // so flip the state back to idle.
-            *self = State::Conservation(*recovery_start_time, FastRetransmission::Idle)
+            *transmission = FastRetransmission::Idle;
         }
     }
 
@@ -110,8 +109,10 @@ impl State {
     }
 
     /// Called when a congestion event occurs (packet loss or ECN CE count increase)
+    ///
+    /// Returns `true` if the congestion event caused recovery to be entered
     #[inline]
-    pub fn on_congestion_event(&mut self, now: Timestamp) {
+    pub fn on_congestion_event(&mut self, now: Timestamp) -> bool {
         match self {
             State::Recovered => {
                 //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
@@ -120,13 +121,27 @@ impl State {
                 //# recovery if the data in the lost packet is retransmitted and is
                 //# similar to TCP as described in Section 5 of [RFC6675].
                 *self = State::Conservation(now, FastRetransmission::RequiresTransmission);
+                true
             }
             State::Conservation(ref mut recovery_start_time, _)
             | State::Growth(ref mut recovery_start_time) => {
                 // BBR only allows recovery to end when there has been no congestion in a round, so
                 // extend the recovery period when congestion occurs while in recovery
-                *recovery_start_time = now
+                *recovery_start_time = now;
+                false
             }
+        }
+    }
+
+    #[inline]
+    pub fn on_packet_discarded(&mut self) {
+        if let State::Conservation(_, transmission @ FastRetransmission::RequiresTransmission) =
+            self
+        {
+            // If any of the discarded packets were lost, they will no longer be retransmitted
+            // so flip the Recovery status back to Idle so it is not waiting for a
+            // retransmission that may never come.
+            *transmission = FastRetransmission::Idle;
         }
     }
 }
@@ -176,7 +191,7 @@ mod tests {
         assert_eq!(state, State::Recovered);
 
         // Congestion event moves Recovered to Conservation
-        state.on_congestion_event(now);
+        assert!(state.on_congestion_event(now));
         assert_eq!(
             state,
             State::Conservation(now, FastRetransmission::RequiresTransmission)
@@ -193,7 +208,7 @@ mod tests {
 
         // Congestion moves the recovery start time forward
         let now = now + Duration::from_secs(5);
-        state.on_congestion_event(now);
+        assert!(!state.on_congestion_event(now));
         assert_eq!(state, State::Conservation(now, FastRetransmission::Idle));
 
         // Ack received that starts a new round moves Conservation to Growth
@@ -202,7 +217,7 @@ mod tests {
 
         // Congestion moves the recovery start time forward
         let now = now + Duration::from_secs(10);
-        state.on_congestion_event(now);
+        assert!(!state.on_congestion_event(now));
         assert_eq!(state, State::Growth(now));
 
         // Ack for a packet sent before the recovery start time does not exit recovery
@@ -219,5 +234,10 @@ mod tests {
         let mut state = State::Conservation(now, FastRetransmission::RequiresTransmission);
         assert!(state.on_ack(true, sent_time));
         assert_eq!(state, State::Recovered);
+
+        // Discarded packet sets FastRetransmission back to Idle
+        let mut state = State::Conservation(now, FastRetransmission::RequiresTransmission);
+        state.on_packet_discarded();
+        assert_eq!(state, State::Conservation(now, FastRetransmission::Idle));
     }
 }

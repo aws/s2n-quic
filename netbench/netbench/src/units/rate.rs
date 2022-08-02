@@ -6,7 +6,7 @@ use core::fmt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Hash, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct Rate {
     pub bytes: Byte,
     #[serde(with = "duration_format", rename = "period_ms")]

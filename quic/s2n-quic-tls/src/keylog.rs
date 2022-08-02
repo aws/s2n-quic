@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use libc::{c_int, c_void};
-use s2n_tls::raw::ffi::*;
+use s2n_tls::ffi::*;
 use std::{
     fs::{File, OpenOptions},
     io::{BufWriter, Write},

@@ -37,7 +37,7 @@ pub(crate) struct Model {
     //# The virtual time used by the BBR.max_bw filter window.
     cycle_count: core::num::Wrapping<u8>,
 }
-#[allow(dead_code)] // TODO: Remove when used
+
 impl Model {
     /// Constructs a new `data_rate::Model`
     pub fn new() -> Self {
@@ -80,11 +80,24 @@ impl Model {
 
     /// Increments the virtual time tracked for counting cyclical progression through ProbeBW cycles
     pub fn advance_max_bw_filter(&mut self) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.2.5
+        //# BBRAdvanceMaxBwFilter():
+        //#   BBR.cycle_count++
         self.cycle_count += core::num::Wrapping(1)
     }
 
     /// Updates `max_bw` with the given `rate_sample`
     pub fn update_max_bw(&mut self, rate_sample: RateSample) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.2.4
+        //# BBRUpdateMaxBw()
+        //#   BBRUpdateRound()
+        //#   if (rs.delivery_rate >= BBR.max_bw || !rs.is_app_limited)
+        //#       BBR.max_bw = update_windowed_max_filter(
+        //#                     filter=BBR.MaxBwFilter,
+        //#                     value=rs.delivery_rate,
+        //#                     time=BBR.cycle_count,
+        //#                     window_length=MaxBwFilterLen)
+
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.2.3
         //# By default, the estimator discards application-limited samples, since by definition they
         //# reflect application limits.  However, the estimator does use application-limited samples
@@ -97,27 +110,42 @@ impl Model {
     }
 
     /// Updates `bw_hi` with the given `bw`
+    #[allow(dead_code)] // TODO: See note in probe_bw.rs about updating bw_hi
     pub fn update_upper_bound(&mut self, bw: Bandwidth) {
         self.bw_hi = bw
     }
 
     /// Updates `bw_lo` with the given `bw` if it exceeds the current `bw_lo` * `bbr::BETA`
     pub fn update_lower_bound(&mut self, bw: Bandwidth) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
+        //# BBRInitLowerBounds():
+        //#   if (BBR.bw_lo == Infinity)
+        //#     BBR.bw_lo = BBR.max_bw
         if self.bw_lo == Bandwidth::MAX {
             self.bw_lo = self.max_bw()
         }
 
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
+        //# BBRLossLowerBounds():
+        //#   BBR.bw_lo       = max(BBR.bw_latest,
+        //#                         BBRBeta * BBR.bw_lo)
         self.bw_lo = bw.max(self.bw_lo * BETA);
     }
 
     /// Resets `bw_lo` to its initial value
     pub fn reset_lower_bound(&mut self) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
+        //# BBRResetLowerBounds():
+        //#   BBR.bw_lo       = Infinity
         self.bw_lo = Bandwidth::MAX
     }
 
     /// Bounds `bw` to min(`max_bw`, `bw_lo`, `bw_hi)
     pub fn bound_bw_for_model(&mut self) {
-        self.bw = self.max_bw().min(self.bw_lo).min(self.bw_hi)
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
+        //# BBRBoundBWForModel():
+        //#   BBR.bw = min(BBR.max_bw, BBR.bw_lo, BBR.bw_hi)
+        self.bw = self.max_bw().min(self.bw_lo()).min(self.bw_hi())
     }
 }
 

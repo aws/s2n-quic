@@ -62,6 +62,7 @@ macro_rules! frames {
 
         impl<'a, $ack, $data> event::IntoEvent<event::builder::Frame> for &Frame<'a, $ack, $data>
         where
+            $ack: crate::frame::ack::AckRanges,
             $data: EncoderValue,
         {
             #[inline]
