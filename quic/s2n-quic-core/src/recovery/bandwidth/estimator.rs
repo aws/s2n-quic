@@ -30,6 +30,14 @@ pub struct PacketInfo {
     pub is_app_limited: bool,
 }
 
+/// Represents a rate at which data is transferred
+///
+/// While bandwidth is typically thought of as an amount of data over a fixed
+/// amount of time (bytes per second, for example), in this case we internally
+/// represent bandwidth as the inverse: an amount of time to send a fixed amount
+/// of data (nanoseconds per byte, in this case). This allows for some of the  
+/// math operations needed on `Bandwidth` to avoid division, while reducing the
+/// likelihood of panicking due to overflow.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Bandwidth {
     nanos_per_byte: u64,
