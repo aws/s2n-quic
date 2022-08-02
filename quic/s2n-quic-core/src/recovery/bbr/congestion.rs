@@ -139,6 +139,11 @@ impl State {
     }
 
     #[inline]
+    pub(super) fn on_explicit_congestion(&mut self) {
+        self.ecn_in_round = true;
+    }
+
+    #[inline]
     /// Returns true if this is the beginning of a new loss round
     pub(super) fn loss_round_start(&self) -> bool {
         self.loss_round_counter.round_start()

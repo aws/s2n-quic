@@ -396,6 +396,7 @@ impl CongestionController for BbrCongestionController {
     fn on_explicit_congestion(&mut self, ce_count: u64, _event_time: Timestamp) {
         self.bw_estimator.on_explicit_congestion(ce_count);
         self.ecn_state.on_explicit_congestion(ce_count);
+        self.congestion_state.on_explicit_congestion();
     }
 
     fn on_mtu_update(&mut self, max_datagram_size: u16) {
