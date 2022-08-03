@@ -148,6 +148,18 @@ impl State {
     pub(super) fn loss_round_start(&self) -> bool {
         self.loss_round_counter.round_start()
     }
+
+    #[inline]
+    /// Returns true if there was loss in the current round
+    pub(super) fn loss_in_round(&self) -> bool {
+        self.loss_in_round
+    }
+
+    #[inline]
+    /// Returns true if there was ECN CE marked packets in the current round
+    pub(super) fn ecn_in_round(&self) -> bool {
+        self.ecn_in_round
+    }
 }
 
 /// Methods related to Congestion state

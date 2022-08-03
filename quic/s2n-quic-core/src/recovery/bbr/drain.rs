@@ -34,6 +34,8 @@ impl BbrCongestionController {
         //#   BBR.cwnd_gain = BBRStartupCwndGain      /* maintain cwnd */
         // pacing_gain and cwnd_gain are managed with the State enum
 
+        // New BBR state requires updating the model
+        self.try_fast_path = false;
         self.state.transition_to(State::Drain);
     }
 

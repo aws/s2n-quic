@@ -422,9 +422,8 @@ impl BbrCongestionController {
             state.start_cruise();
         }
 
-        // New phase, so need to update cwnd and pacing rate
+        // New BBR state requires updating the model
         self.try_fast_path = false;
-
         self.state.transition_to(bbr::State::ProbeBw(state));
     }
 
