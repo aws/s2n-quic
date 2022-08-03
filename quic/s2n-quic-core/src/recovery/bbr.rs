@@ -438,7 +438,7 @@ impl CongestionController for BbrCongestionController {
 impl BbrCongestionController {
     /// Constructs a new `BbrCongestionController`
     #[allow(dead_code)] // TODO: Remove when used
-    pub fn new(max_datagram_size: u16, now: Timestamp) -> Self {
+    pub fn new(max_datagram_size: u16) -> Self {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.1
         //# BBROnInit():
         //#   init_windowed_max_filter(filter=BBR.MaxBwFilter, value=0, time=0)
@@ -483,7 +483,7 @@ impl BbrCongestionController {
             ecn_state: Default::default(),
             data_rate_model: data_rate::Model::new(),
             // initialize extra_acked_interval_start and extra_acked_delivered
-            data_volume_model: data_volume::Model::new(now),
+            data_volume_model: data_volume::Model::new(),
             max_datagram_size,
             idle_restart: false,
             bw_probe_samples: false,

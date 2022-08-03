@@ -222,7 +222,7 @@ pub mod testing {
             ..Default::default()
         };
         let mut data_rate_model = data_rate::Model::new();
-        let mut data_volume_model = data_volume::Model::new(now);
+        let mut data_volume_model = data_volume::Model::new();
 
         state.update(
             packet_info,
@@ -267,7 +267,7 @@ mod tests {
             ..Default::default()
         };
         let mut data_rate_model = data_rate::Model::new();
-        let mut data_volume_model = data_volume::Model::new(now);
+        let mut data_volume_model = data_volume::Model::new();
 
         state.update(
             packet_info,
@@ -370,7 +370,7 @@ mod tests {
             rate_sample,
             100,
             &mut data_rate::Model::new(),
-            &mut data_volume::Model::new(now),
+            &mut data_volume::Model::new(),
             false,
             100,
             Ratio::one(),

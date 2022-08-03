@@ -801,10 +801,9 @@ mod tests {
     #[test]
     fn probe_inflight_hi_upward() {
         let mut state = State::new();
-        let now = NoopClock.get_time();
 
         let bytes_acknowledged = 2400;
-        let mut data_volume_model = data_volume::Model::new(now);
+        let mut data_volume_model = data_volume::Model::new();
         let cwnd = 12000;
         let max_data_size = 1200;
         let round_start = true;
@@ -895,8 +894,7 @@ mod tests {
         let mut state = State::new();
         let mut round_counter = round::Counter::default();
         let delivered_bytes = 100;
-        let now = NoopClock.get_time();
-        let mut data_volume_model = data_volume::Model::new(now);
+        let mut data_volume_model = data_volume::Model::new();
         let mut data_rate_model = data_rate::Model::new();
         data_volume_model.update_lower_bound(12000, 12000, true, false, Ratio::one());
         data_rate_model.update_lower_bound(Bandwidth::ZERO);
