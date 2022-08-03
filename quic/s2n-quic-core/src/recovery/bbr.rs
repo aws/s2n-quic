@@ -5,8 +5,10 @@ use crate::{
     counter::Counter,
     random,
     recovery::{
-        bandwidth, bandwidth::Bandwidth, bbr::probe_bw::CyclePhase, CongestionController,
-        RttEstimator,
+        bandwidth,
+        bandwidth::{Bandwidth, RateSample},
+        bbr::probe_bw::CyclePhase,
+        CongestionController, RttEstimator,
     },
     time::Timestamp,
 };
@@ -22,6 +24,7 @@ mod congestion;
 mod data_rate;
 mod data_volume;
 mod drain;
+mod ecn;
 mod full_pipe;
 mod probe_bw;
 mod probe_rtt;
@@ -33,10 +36,6 @@ mod windowed_filter;
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.8
 //# The maximum tolerated per-round-trip packet loss rate when probing for bandwidth (the default is 2%).
 const LOSS_THRESH: Ratio<u32> = Ratio::new_raw(1, 50);
-
-// The maximum tolerated ratio of packets containing ECN CE markings
-// Value from https://github.com/google/bbr/blob/1a45fd4faf30229a3d3116de7bfe9d2f933d3562/net/ipv4/tcp_bbr2.c#L2306
-const ECN_THRESH: Ratio<u64> = Ratio::new_raw(1, 2);
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.8
 //# The default multiplicative decrease to make upon each round trip during which
@@ -195,6 +194,7 @@ struct BbrCongestionController {
     prior_cwnd: u32,
     recovery_state: recovery::State,
     congestion_state: congestion::State,
+    ecn_state: ecn::State,
     data_rate_model: data_rate::Model,
     data_volume_model: data_volume::Model,
     max_datagram_size: u16,
@@ -301,6 +301,10 @@ impl CongestionController for BbrCongestionController {
             // This ack caused recovery to be exited
             self.on_exit_fast_recovery();
         }
+        if self.round_counter.round_start() {
+            self.ecn_state
+                .on_round_start(self.bw_estimator.delivered_bytes(), self.max_datagram_size);
+        }
 
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
         //# On every ACK, the BBR algorithm executes the following BBRUpdateOnACK() steps in order
@@ -314,16 +318,8 @@ impl CongestionController for BbrCongestionController {
         //# BBRUpdateModelAndState():
         //#   BBRUpdateLatestDeliverySignals()
         //#   BBRUpdateCongestionSignals()
-        self.congestion_state.update(
-            // implements BBRUpdateLatestDeliverySignals() and BBRUpdateCongestionSignals()
-            newest_acked_packet_info,
-            self.bw_estimator.rate_sample(),
-            self.bw_estimator.delivered_bytes(),
-            &mut self.data_rate_model,
-            &mut self.data_volume_model,
-            self.state.is_probing_bw(),
-            self.cwnd,
-        );
+        // implements BBRUpdateLatestDeliverySignals() and BBRUpdateCongestionSignals()
+        self.update_latest_signals(newest_acked_packet_info);
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
         //# BBRUpdateACKAggregation()
         self.data_volume_model.update_ack_aggregation(
@@ -386,6 +382,8 @@ impl CongestionController for BbrCongestionController {
             // this congestion event caused the connection to enter recovery
             self.on_enter_fast_recovery();
         }
+        self.congestion_state
+            .on_packet_lost(self.bw_estimator.delivered_bytes());
         self.full_pipe_estimator.on_packet_lost(new_loss_burst);
         self.modulate_cwnd_for_recovery(lost_bytes);
 
@@ -397,7 +395,11 @@ impl CongestionController for BbrCongestionController {
 
     fn on_explicit_congestion(&mut self, ce_count: u64, event_time: Timestamp) {
         self.bw_estimator.on_explicit_congestion(ce_count);
-        self.recovery_state.on_congestion_event(event_time);
+        self.ecn_state.on_explicit_congestion(ce_count);
+        self.congestion_state.on_explicit_congestion();
+        if self.recovery_state.on_congestion_event(event_time) {
+            self.on_enter_fast_recovery();
+        }
     }
 
     fn on_mtu_update(&mut self, max_datagram_size: u16) {
@@ -465,6 +467,7 @@ impl BbrCongestionController {
             prior_cwnd: 0,
             recovery_state: recovery::State::Recovered,
             congestion_state: Default::default(),
+            ecn_state: Default::default(),
             data_rate_model: data_rate::Model::new(),
             // initialize extra_acked_interval_start and extra_acked_delivered
             data_volume_model: data_volume::Model::new(now),
@@ -662,14 +665,22 @@ impl BbrCongestionController {
     }
 
     /// True if the amount of loss or ECN CE markings exceed the BBR thresholds
-    fn is_inflight_too_high(&self) -> bool {
-        let rate_sample = self.bw_estimator.rate_sample();
-        Self::is_loss_too_high(rate_sample.lost_bytes, rate_sample.bytes_in_flight)
-            || Self::is_ecn_ce_too_high(
+    #[inline]
+    fn is_inflight_too_high(rate_sample: RateSample, max_datagram_size: u16) -> bool {
+        if Self::is_loss_too_high(rate_sample.lost_bytes, rate_sample.bytes_in_flight) {
+            return true;
+        }
+
+        if rate_sample.delivered_bytes > 0 {
+            let ecn_ce_ratio = ecn::ce_ratio(
                 rate_sample.ecn_ce_count,
                 rate_sample.delivered_bytes,
-                self.max_datagram_size,
-            )
+                max_datagram_size,
+            );
+            return ecn::is_ce_too_high(ecn_ce_ratio);
+        }
+
+        false
     }
 
     /// True if the amount of `lost_bytes` exceeds the BBR loss threshold
@@ -679,17 +690,6 @@ impl BbrCongestionController {
         //# IsInflightTooHigh()
         //#   return (rs.lost > rs.tx_in_flight * BBRLossThresh)
         lost_bytes > (LOSS_THRESH * bytes_inflight).to_integer() as u64
-    }
-
-    /// True if the `ecn_ce_count` exceeds the BBR ECN threshold
-    #[inline]
-    fn is_ecn_ce_too_high(ecn_ce_count: u64, delivered_bytes: u64, max_datagram_size: u16) -> bool {
-        // Estimate the number of bytes experiencing explicit congestion by multiplying
-        // the ecn_ce_count by max_datagram_size
-        let ecn_ce_bytes = ecn_ce_count.saturating_mul(max_datagram_size as u64);
-        let ecn_ce_threshold = (ECN_THRESH * delivered_bytes).to_integer();
-
-        ecn_ce_bytes > ecn_ce_threshold
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2

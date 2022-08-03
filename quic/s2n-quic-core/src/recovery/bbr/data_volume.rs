@@ -5,6 +5,7 @@ use crate::{
     recovery::{
         bandwidth::Bandwidth,
         bbr::{
+            ecn::ECN_FACTOR,
             windowed_filter::{MinRttWindowedFilter, WindowedMaxFilter},
             BETA,
         },
@@ -12,6 +13,8 @@ use crate::{
     time::Timestamp,
 };
 use core::time::Duration;
+use num_rational::Ratio;
+use num_traits::One;
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.9.2
 //# The data volume model parameters together estimate both the volume of in-flight data required to
@@ -150,9 +153,19 @@ impl Model {
         self.inflight_hi = inflight_hi;
     }
 
-    /// Updates `inflight_lo` with the given `inflight_latest` if it exceeds
-    /// the current `inflight_lo` * `bbr::BETA`
-    pub fn update_lower_bound(&mut self, cwnd: u32, inflight_latest: u64) {
+    /// Updates `inflight_lo` if there is loss or ECN in the round
+    pub fn update_lower_bound(
+        &mut self,
+        cwnd: u32,
+        inflight_latest: u64,
+        loss_in_round: bool,
+        ecn_in_round: bool,
+        ecn_alpha: Ratio<u64>,
+    ) {
+        if !loss_in_round && !ecn_in_round {
+            return;
+        }
+
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
         //# if (BBR.inflight_lo == Infinity)
         //#     BBR.inflight_lo = cwnd
@@ -160,10 +173,24 @@ impl Model {
             self.inflight_lo = cwnd as u64;
         }
 
-        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
-        //# BBR.inflight_lo = max(BBR.inflight_latest,
-        //#                       BBRBeta * BBR.infligh_lo)
-        self.inflight_lo = inflight_latest.max((BETA * self.inflight_lo).to_integer());
+        // Update inflight_lo to the lower of the values determined when loss_in_round or ecn_in_round
+        // Based on https://github.com/google/bbr/blob/1a45fd4faf30229a3d3116de7bfe9d2f933d3562/net/ipv4/tcp_bbr2.c#L1618
+        let ecn_inflight_lo = if ecn_in_round {
+            ((Ratio::one() - (ecn_alpha * ECN_FACTOR)) * self.inflight_lo).to_integer()
+        } else {
+            u64::MAX
+        };
+
+        let loss_inflight_lo = if loss_in_round {
+            //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
+            //# BBR.inflight_lo = max(BBR.inflight_latest,
+            //#                       BBRBeta * BBR.infligh_lo)
+            inflight_latest.max((BETA * self.inflight_lo).to_integer())
+        } else {
+            u64::MAX
+        };
+
+        self.inflight_lo = loss_inflight_lo.min(ecn_inflight_lo);
     }
 
     /// Resets `inflight_lo` to its initial value
@@ -232,25 +259,37 @@ mod tests {
         let now = NoopClock.get_time();
         let mut model = Model::new(now);
 
-        model.update_lower_bound(1000, 100);
+        model.update_lower_bound(1000, 100, true, false, Ratio::one());
 
         // We didn't have a valid inflight_lo value yet, and the given inflight_latest is lower than cwnd * BETA,
         // so inflight_lo is set to cwnd * BETA
         assert_eq!((BETA * 1000).to_integer(), model.inflight_lo());
 
-        model.update_upper_bound(50);
-
-        // The new sample is lower than inflight_lo, so don't update inflight_lo
-        assert_eq!((BETA * 1000).to_integer(), model.inflight_lo());
-
-        let inflight_lo = 1500;
-        model.update_lower_bound(1000, inflight_lo);
+        let inflight_latest = 1500;
+        model.update_lower_bound(1000, inflight_latest, true, false, Ratio::one());
 
         // The new sample is higher than inflight_lo, so update inflight_lo
-        assert_eq!(inflight_lo, model.inflight_lo());
+        assert_eq!(inflight_latest, model.inflight_lo());
+
+        let ecn_alpha = Ratio::new(4, 5);
+        model.update_lower_bound(1000, inflight_latest, false, true, ecn_alpha);
+
+        // There was ecn_in_round, so lower inflight_lo according to ecn_alpha
+        // (1 - 4/5 * 1/3) * 1500 = 1100
+        assert_eq!(1100, model.inflight_lo());
 
         // Resetting the lower bound sets inflight_lo to u64::MAX
         model.reset_lower_bound();
         assert_eq!(u64::MAX, model.inflight_lo());
+
+        // There is both ECN and Loss in the round, but the Loss reduced value is lower, so use the Loss value
+        model.update_lower_bound(1500, 100, true, true, ecn_alpha);
+        assert_eq!(1050, model.inflight_lo());
+
+        model.reset_lower_bound();
+
+        // There is both ECN and Loss in the round, but the Loss reduced value is higher, so use the ECN value
+        model.update_lower_bound(1500, 1200, true, true, ecn_alpha);
+        assert_eq!(1100, model.inflight_lo());
     }
 }
