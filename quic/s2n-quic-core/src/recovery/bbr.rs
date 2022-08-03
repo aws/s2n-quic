@@ -8,7 +8,7 @@ use crate::{
         bandwidth,
         bandwidth::{Bandwidth, RateSample},
         bbr::probe_bw::CyclePhase,
-        CongestionController, RttEstimator,
+        congestion_controller, CongestionController, RttEstimator,
     },
     time::Timestamp,
 };
@@ -175,7 +175,7 @@ impl State {
 /// Based in part on the Chromium BBRv2 implementation, see <https://source.chromium.org/chromium/chromium/src/+/main:net/third_party/quiche/src/quic/core/congestion_control/bbr2_sender.cc>
 /// and the Linux Kernel TCP BBRv2 implementation, see <https://github.com/google/bbr/blob/v2alpha/net/ipv4/tcp_bbr2.c>
 #[derive(Debug, Clone)]
-struct BbrCongestionController {
+pub struct BbrCongestionController {
     state: State,
     round_counter: round::Counter,
     bw_estimator: bandwidth::Estimator,
@@ -437,7 +437,6 @@ impl CongestionController for BbrCongestionController {
 
 impl BbrCongestionController {
     /// Constructs a new `BbrCongestionController`
-    #[allow(dead_code)] // TODO: Remove when used
     pub fn new(max_datagram_size: u16) -> Self {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.1
         //# BBROnInit():
@@ -1049,5 +1048,19 @@ impl BbrCongestionController {
         // and the BBR state and min rtt did not change. `try_fast_path` is set to false
         // when the BBR state is changed.
         !self.try_fast_path || model_updated || prev_min_rtt != self.data_volume_model.min_rtt()
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Endpoint {}
+
+impl congestion_controller::Endpoint for Endpoint {
+    type CongestionController = BbrCongestionController;
+
+    fn new_congestion_controller(
+        &mut self,
+        path_info: congestion_controller::PathInfo,
+    ) -> Self::CongestionController {
+        BbrCongestionController::new(path_info.max_datagram_size)
     }
 }
