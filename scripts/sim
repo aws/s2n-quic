@@ -3,12 +3,12 @@
 set -e
 
 # ensure the tool is built
-if [ ! -f target/release/s2n-quic-sim ]; then
-  cargo build --release --bin s2n-quic-sim
+if [ ! -f s2n-quic-sim/target/release/s2n-quic-sim ]; then
+  cargo build --manifest-path s2n-quic-sim/Cargo.toml --release
 fi
 
 if [ ! "$@" ]; then
-  ./target/release/s2n-quic-sim batch quic/s2n-quic-sim/plans/*.toml
+  ./s2n-quic-sim/target/release/s2n-quic-sim batch s2n-quic-sim/plans/*.toml
 else
-  ./target/release/s2n-quic-sim $@
+  ./s2n-quic-sim/target/release/s2n-quic-sim $@
 fi

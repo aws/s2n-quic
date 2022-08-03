@@ -476,7 +476,7 @@ jobs:
         uses: actions-rs/cargo@v1.0.3
         with:
           command: build
-          args: --bin s2n-quic-sim --release
+          args: --manifest-path s2n-quic-sim/Cargo.toml --release
 
       - name: Run simulations
         run: |
