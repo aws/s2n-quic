@@ -208,6 +208,8 @@ struct BbrCongestionController {
     next_departure_time: Option<Timestamp>,
     /// The maximum size of a data aggregate scheduled and transmitted together
     send_quantum: usize,
+    /// If true, we can attempt to avoid updating control parameters and/or model parameters
+    try_fast_path: bool,
 }
 
 type BytesInFlight = Counter<u32>;
@@ -319,21 +321,27 @@ impl CongestionController for BbrCongestionController {
         //#   BBRUpdateLatestDeliverySignals()
         //#   BBRUpdateCongestionSignals()
         // implements BBRUpdateLatestDeliverySignals() and BBRUpdateCongestionSignals()
-        self.update_latest_signals(newest_acked_packet_info);
-        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
-        //# BBRUpdateACKAggregation()
-        self.data_volume_model.update_ack_aggregation(
-            self.data_rate_model.bw(),
-            bytes_acknowledged,
-            self.cwnd,
-            self.round_counter.round_count(),
-            ack_receive_time,
-        );
 
-        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
-        //# BBRCheckStartupDone()
-        //# BBRCheckDrain()
-        self.check_startup_done();
+        // Check if we need to update model parameters
+        let update_model = self.model_update_required();
+
+        if update_model {
+            self.update_latest_signals(newest_acked_packet_info);
+            //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
+            //# BBRUpdateACKAggregation()
+            self.data_volume_model.update_ack_aggregation(
+                self.data_rate_model.bw(),
+                bytes_acknowledged,
+                self.cwnd,
+                self.round_counter.round_count(),
+                ack_receive_time,
+            );
+
+            //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
+            //# BBRCheckStartupDone()
+            //# BBRCheckDrain()
+            self.check_startup_done();
+        }
         self.check_drain_done(random_generator, ack_receive_time);
 
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
@@ -351,21 +359,26 @@ impl CongestionController for BbrCongestionController {
         //# BBRCheckProbeRTT()
         //# BBRAdvanceLatestDeliverySignals()
         //# BBRBoundBWForModel()
+        let prev_min_rtt = self.data_volume_model.min_rtt();
         self.data_volume_model
             .update_min_rtt(rtt_estimator.latest_rtt(), ack_receive_time);
         self.check_probe_rtt(random_generator, ack_receive_time);
-        self.congestion_state
-            .advance(self.bw_estimator.rate_sample());
-        self.data_rate_model.bound_bw_for_model();
 
-        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
-        //# BBRUpdateControlParameters():
-        //#   BBRSetPacingRate()
-        //#   BBRSetSendQuantum()
-        //#   BBRSetCwnd()
-        self.set_pacing_rate(self.state.pacing_gain());
-        self.set_send_quantum();
-        self.set_cwnd(bytes_acknowledged);
+        // Update control parameters if required
+        if self.control_update_required(update_model, prev_min_rtt) {
+            self.congestion_state
+                .advance(self.bw_estimator.rate_sample());
+            self.data_rate_model.bound_bw_for_model();
+
+            //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
+            //# BBRUpdateControlParameters():
+            //#   BBRSetPacingRate()
+            //#   BBRSetSendQuantum()
+            //#   BBRSetCwnd()
+            self.set_pacing_rate(self.state.pacing_gain());
+            self.set_send_quantum();
+            self.set_cwnd(bytes_acknowledged);
+        }
     }
 
     fn on_packet_lost<Rnd: random::Generator>(
@@ -477,6 +490,7 @@ impl BbrCongestionController {
             pacing_rate,
             next_departure_time: None,
             send_quantum: MAX_SEND_QUANTUM,
+            try_fast_path: false,
         }
     }
     /// The bandwidth-delay product
@@ -737,13 +751,23 @@ impl BbrCongestionController {
         let initial_cwnd = Self::initial_window(self.max_datagram_size);
         let mut cwnd = self.cwnd;
 
+        // Enable fast path if the cwnd has reached max_inflight
+        self.try_fast_path = false;
+
         if self.recovery_state.packet_conservation() {
             // Limit the cwnd as prescribed in BBRModulateCwndForRecovery()
             cwnd = cwnd.max(self.bytes_in_flight.saturating_add(newly_acked as u32));
         } else if self.full_pipe_estimator.filled_pipe() {
-            cwnd = (cwnd + newly_acked as u32).min(max_inflight);
-        } else if cwnd < max_inflight || self.bw_estimator.delivered_bytes() < initial_cwnd as u64 {
             cwnd += newly_acked as u32;
+            if cwnd >= max_inflight {
+                cwnd = max_inflight;
+                self.try_fast_path = true;
+            }
+        } else if cwnd < max_inflight || self.bw_estimator.delivered_bytes() < initial_cwnd as u64 {
+            // cwnd has room to grow, or so little data has been delivered that max_inflight should not be used
+            cwnd += newly_acked as u32;
+        } else {
+            self.try_fast_path = true;
         }
 
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.5
@@ -884,6 +908,10 @@ impl BbrCongestionController {
         debug_assert!(!self.recovery_state.packet_conservation());
 
         self.restore_cwnd();
+
+        // Since we are exiting a recovery period, we need to make sure the model is updated
+        // and the congestion window is bound appropriately
+        self.try_fast_path = false;
     }
 
     fn handle_lost_packet<Rnd: random::Generator>(
@@ -995,5 +1023,31 @@ impl BbrCongestionController {
         //# ProbeRTT then often it will have met those exit conditions by the time it restarts, so
         //# that the connection can restore the cwnd to its full value before it starts transmitting
         //# a new flight of data.
+    }
+
+    /// Determines if the BBR model does not need to be updated
+    ///
+    /// Based on `bbr2_fast_path` in the Linux TCP BBRv2.
+    /// See https://github.com/google/bbr/blob/1a45fd4faf30229a3d3116de7bfe9d2f933d3562/net/ipv4/tcp_bbr2.c#L2208
+    #[inline]
+    fn model_update_required(&self) -> bool {
+        let rate_sample = self.bw_estimator.rate_sample();
+
+        // We can skip updating the model when app limited and there is no congestion,
+        // and the bandwidth sample is less than the estimated maximum bandwidth
+        !self.try_fast_path
+            || !rate_sample.is_app_limited
+            || rate_sample.delivery_rate() >= self.data_rate_model.max_bw()
+            || self.congestion_state.loss_in_round()
+            || self.congestion_state.ecn_in_round()
+    }
+
+    /// Determines if the BBR control parameters do not need to be updated
+    #[inline]
+    fn control_update_required(&self, model_updated: bool, prev_min_rtt: Option<Duration>) -> bool {
+        // We can skip updating the control parameters if we had skipped updating the model
+        // and the BBR state and min rtt did not change. `try_fast_path` is set to false
+        // when the BBR state is changed.
+        !self.try_fast_path || model_updated || prev_min_rtt != self.data_volume_model.min_rtt()
     }
 }
