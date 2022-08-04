@@ -3,6 +3,7 @@
 package com.aws;
 
 import software.constructs.Construct;
+import software.amazon.awscdk.RemovalPolicy;
 import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.services.s3.Bucket;
 import software.amazon.awscdk.services.autoscaling.AutoScalingGroup;
@@ -40,6 +41,10 @@ import software.amazon.awscdk.services.iam.Effect;
 import software.amazon.awscdk.services.iam.ServicePrincipal;
 import software.amazon.awscdk.services.iam.ArnPrincipal;
 
+import software.amazon.awscdk.services.stepfunctions.tasks.TaskEnvironmentVariable;
+import software.amazon.awscdk.services.stepfunctions.JsonPath;
+
+
 import software.amazon.awscdk.services.ec2.Vpc;
 import software.amazon.awscdk.services.ec2.InstanceType;
 import software.amazon.awscdk.services.ec2.SecurityGroup;
@@ -57,6 +62,8 @@ class EcsStack extends Stack {
     private EcsRunTask ecsTask;
     private Function exportLogsLambda;
     private Cluster cluster;
+    private static final String bucketName = "BUCKET_NAME";
+    private static final String logGroupName = "LOG_GROUP_NAME";
 
 
     public EcsStack(final Construct parent, final String id, final EcsStackProps props) {
@@ -87,9 +94,12 @@ class EcsStack extends Stack {
 
         AsgCapacityProvider asgProvider = AsgCapacityProvider.Builder.create(this, stackType + "-asg-provider")
             .autoScalingGroup(asg)
+            .enableManagedTerminationProtection(false)
+            .enableManagedScaling(false)
             .build();
         
         cluster.addAsgCapacityProvider(asgProvider);
+        cluster.applyRemovalPolicy(RemovalPolicy.DESTROY);
 
         Ec2TaskDefinition task = Ec2TaskDefinition.Builder
             .create(this, stackType + "-task")
@@ -108,7 +118,8 @@ class EcsStack extends Stack {
 
             LogGroup serviceLogGroup = LogGroup.Builder.create(this, "server-log-group")
                 .retention(RetentionDays.ONE_DAY)
-                .logGroupName("server-logs" + new SimpleDateFormat("dd-MM-yyyy-HH-mm-ss").format(new Date()).toString())
+                .logGroupName("server-logs" + new SimpleDateFormat("MM-dd-yyyy-HH-mm-ss").format(new Date()).toString())
+                .removalPolicy(RemovalPolicy.DESTROY)
                 .build();
 
             bucket.grantPut(new ServicePrincipal("logs." + props.getServerRegion() + ".amazonaws.com"));
@@ -120,9 +131,9 @@ class EcsStack extends Stack {
                 .build());
 
             Map<String, String> exportLambdaLogsEnv = new HashMap<>();
-            exportLambdaLogsEnv.put("BUCKET_NAME", bucket.getBucketName());
-            exportLambdaLogsEnv.put("REGION", props.getServerRegion());
-            exportLambdaLogsEnv.put("LOG_GROUP_NAME", serviceLogGroup.getLogGroupName());
+            exportLambdaLogsEnv.put(bucketName, bucket.getBucketName());
+            exportLambdaLogsEnv.put(logGroupName, serviceLogGroup.getLogGroupName());
+
 
             exportLogsLambda = Function.Builder.create(this, "export-logs-lambda")
                 .runtime(Runtime.NODEJS_14_X)
@@ -180,12 +191,12 @@ class EcsStack extends Stack {
             ecrEnv.put("DNS_ADDRESS", props.getDnsAddress() + ".serverecs.com");
             ecrEnv.put("SERVER_PORT", "3000");
             ecrEnv.put("S3_BUCKET", bucket.getBucketName());
+            ecrEnv.put("LOCAL_IP", "0.0.0.0");
 
             ContainerDefinition clientContainer = task.addContainer(stackType + "-driver", ContainerDefinitionOptions.builder()
                 .image(ContainerImage.fromRegistry(props.getEcrUri()))
                 .environment(ecrEnv)
                 .memoryLimitMiB(2048)
-
                 .logging(LogDriver.awsLogs(AwsLogDriverProps.builder().logRetention(RetentionDays.ONE_DAY).streamPrefix(stackType + "-ecs-task").build()))
                 .portMappings(List.of(PortMapping.builder().containerPort(3000).hostPort(3000)
                     .protocol(software.amazon.awscdk.services.ecs.Protocol.UDP).build()))
@@ -198,8 +209,14 @@ class EcsStack extends Stack {
                 .cluster(cluster)
                 .taskDefinition(task)
                 .launchTarget(EcsEc2LaunchTarget.Builder.create().build())
+                .inputPath("$.Payload")
+                .resultPath("$.client_result")
                 .containerOverrides(List.of(ContainerOverride.builder()
                 .containerDefinition(clientContainer)
+                .environment(List.of(TaskEnvironmentVariable.builder()
+                    .name("TIMESTAMP")
+                    .value(JsonPath.stringAt("$.timestamp"))
+                    .build()))
                 .build()))
                 .build();
         }
