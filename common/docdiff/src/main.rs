@@ -79,11 +79,18 @@ impl fmt::Display for Dump {
 
 impl Dump {
     fn new(crate_name: &str) -> Result<Self> {
-        cmd!("cargo", "doc", "--all-features", "--workspace", "--target-dir", "target/docdiff")
-            .env("RUSTFLAGS", "--cfg docdiff")
-            .env("RUSTDOCFLAGS", "--cfg docdiff")
-            .stdout_path("/dev/null")
-            .run()?;
+        cmd!(
+            "cargo",
+            "doc",
+            "--all-features",
+            "--workspace",
+            "--target-dir",
+            "target/docdiff"
+        )
+        .env("RUSTFLAGS", "--cfg docdiff")
+        .env("RUSTDOCFLAGS", "--cfg docdiff")
+        .stdout_path("/dev/null")
+        .run()?;
 
         let paths = glob(&format!(
             "target/docdiff/doc/{}/**/*.html",
@@ -294,38 +301,37 @@ fn index_file(path: &Path) -> Result<Vec<Entry>> {
         }
     }
 
-    for trait_impl in document.select(sel!("#trait-implementations-list details")) {
-        let types = trait_impl
-            .select(sel!(".impl-items .trait-impl.type:not(.hidden)"))
-            .map(|t| (t, Kind::Type));
-        let constants = trait_impl
-            .select(sel!(
-                ".impl-items .trait-impl.associatedconstant:not(.hidden)"
-            ))
-            .map(|t| (t, Kind::Constant));
-
-        let items = types.chain(constants);
-
-        let signature = el_to_string(trait_impl.select(sel!(".impl")).next().unwrap());
-
+    let trait_impl_details = document.select(sel!("#trait-implementations-list details"));
+    for trait_impl in document.select(sel!("#trait-implementations-list details .impl")) {
+        let signature = el_to_string(trait_impl);
         results.push(Entry {
             kind: Kind::Trait,
             signature: signature.clone(),
             context: context.clone(),
         });
 
-        let context = Arc::new(Fqn {
-            kind: Kind::Trait,
-            path: signature,
-        });
-
-        for (item, kind) in items {
-            let signature = el_to_string(item);
-            results.push(Entry {
-                kind,
-                signature,
-                context: context.clone(),
-            })
+        for trait_impl in trait_impl_details {
+            let context = Arc::new(Fqn {
+                kind: Kind::Trait,
+                path: signature.clone(),
+            });
+            let constants = trait_impl
+                .select(sel!(
+                    ".impl-items .trait-impl.associatedconstant:not(.hidden)"
+                ))
+                .map(|t| (t, Kind::Constant));
+            let types = trait_impl
+                .select(sel!(".impl-items .trait-impl.type:not(.hidden)"))
+                .map(|t| (t, Kind::Type));
+            let items = types.chain(constants);
+            for (item, kind) in items {
+                let signature = el_to_string(item);
+                results.push(Entry {
+                    kind,
+                    signature,
+                    context: context.clone(),
+                })
+            }
         }
     }
 
@@ -344,17 +350,16 @@ fn index_file(path: &Path) -> Result<Vec<Entry>> {
         // look for the non-exhaustive marker
         for sibling in variant.next_siblings().flat_map(ElementRef::wrap) {
             // we're on to the next section
-            if sibling.value().name() != "div"
-                || sibling
-                    .value()
-                    .has_class(".variant", CaseSensitivity::CaseSensitive)
+            if sibling
+                .value()
+                .has_class(".variant", CaseSensitivity::CaseSensitive)
             {
                 break;
             }
 
             if sibling
                 .value()
-                .has_class("non-exhaustive-variant", CaseSensitivity::CaseSensitive)
+                .has_class("non-exhaustive", CaseSensitivity::CaseSensitive)
             {
                 let path = format!("{}::{}", context.path, name);
                 let context = Arc::new(Fqn {
