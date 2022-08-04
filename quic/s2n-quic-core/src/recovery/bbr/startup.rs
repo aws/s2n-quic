@@ -41,12 +41,21 @@ impl BbrCongestionController {
             self.full_pipe_estimator.on_round_start(
                 self.bw_estimator.rate_sample(),
                 self.data_rate_model.max_bw(),
-                self.recovery_state.in_recovery(),
-                self.max_datagram_size,
+                self.ecn_state.is_ce_too_high_in_round(),
             );
-            if self.state.is_startup() && self.full_pipe_estimator.filled_pipe() {
-                self.enter_drain();
-            }
+        }
+
+        if self.congestion_state.loss_round_start() {
+            // Excessive inflight is checked at the end of a loss round, not a regular round, as done
+            // in tcp_bbr2.c/bbr2_check_loss_too_high_in_startup
+            //
+            // See https://github.com/google/bbr/blob/1a45fd4faf30229a3d3116de7bfe9d2f933d3562/net/ipv4/tcp_bbr2.c#L2133
+            self.full_pipe_estimator
+                .on_loss_round_start(self.bw_estimator.rate_sample(), self.max_datagram_size)
+        }
+
+        if self.state.is_startup() && self.full_pipe_estimator.filled_pipe() {
+            self.enter_drain();
         }
     }
 }

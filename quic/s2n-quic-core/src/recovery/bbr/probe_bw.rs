@@ -569,7 +569,7 @@ impl BbrCongestionController {
             self.update_ack_phase(rate_sample);
         }
 
-        if self.is_inflight_too_high() {
+        if Self::is_inflight_too_high(rate_sample, self.max_datagram_size) {
             if self.bw_probe_samples {
                 // Inflight is too high and the sample is from bandwidth probing: lower inflight downward
                 self.on_inflight_too_high(
@@ -889,7 +889,7 @@ mod tests {
         let now = NoopClock.get_time();
         let mut data_volume_model = data_volume::Model::new(now);
         let mut data_rate_model = data_rate::Model::new();
-        data_volume_model.update_lower_bound(12000, 12000);
+        data_volume_model.update_lower_bound(12000, 12000, true, false, 1.0);
         data_rate_model.update_lower_bound(Bandwidth::ZERO);
 
         state.ack_phase = AckPhase::ProbeStopping;
