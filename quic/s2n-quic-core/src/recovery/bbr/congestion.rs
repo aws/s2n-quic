@@ -5,7 +5,6 @@ use crate::recovery::{
     bandwidth::{Bandwidth, PacketInfo, RateSample},
     bbr::{data_rate, data_volume, round, BbrCongestionController},
 };
-use num_rational::Ratio;
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct State {
@@ -37,7 +36,7 @@ impl State {
         data_volume_model: &mut data_volume::Model,
         is_probing_bw: bool,
         cwnd: u32,
-        ecn_alpha: Ratio<u64>,
+        ecn_alpha: f64,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
         //# BBRUpdateLatestDeliverySignals():
@@ -177,8 +176,6 @@ pub mod testing {
         },
         time::{Clock, NoopClock},
     };
-    use num_rational::Ratio;
-    use num_traits::One;
     use std::time::Duration;
 
     /// Asserts that the given `congestion::State` has been reset
@@ -220,7 +217,7 @@ pub mod testing {
             &mut data_volume_model,
             false,
             100,
-            Ratio::one(),
+            1.0,
         );
 
         state
@@ -232,7 +229,6 @@ mod tests {
     use super::*;
     use crate::time::{Clock, NoopClock};
     use core::time::Duration;
-    use num_traits::One;
 
     #[test]
     fn update() {
@@ -265,7 +261,7 @@ mod tests {
             &mut data_volume_model,
             false,
             100,
-            Ratio::one(),
+            1.0,
         );
 
         assert!(state.loss_round_counter.round_start());
@@ -297,7 +293,7 @@ mod tests {
             &mut data_volume_model,
             false,
             100,
-            Ratio::one(),
+            1.0,
         );
 
         assert!(!state.loss_round_counter.round_start());
@@ -321,7 +317,7 @@ mod tests {
             &mut data_volume_model,
             true, // we are probing bw, so lower bounds should not update
             100,
-            Ratio::one(),
+            1.0,
         );
 
         assert!(state.loss_round_counter.round_start());
@@ -361,7 +357,7 @@ mod tests {
             &mut data_volume::Model::new(now),
             false,
             100,
-            Ratio::one(),
+            1.0,
         );
 
         assert!(state.loss_round_counter.round_start());
