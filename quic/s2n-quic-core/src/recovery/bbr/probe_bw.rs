@@ -896,7 +896,7 @@ mod tests {
         let delivered_bytes = 100;
         let mut data_volume_model = data_volume::Model::new();
         let mut data_rate_model = data_rate::Model::new();
-        data_volume_model.update_lower_bound(12000, 12000, true, false, Ratio::one());
+        data_volume_model.update_lower_bound(12000, 12000, true, false, 1.0);
         data_rate_model.update_lower_bound(Bandwidth::ZERO);
 
         state.ack_phase = AckPhase::ProbeStopping;

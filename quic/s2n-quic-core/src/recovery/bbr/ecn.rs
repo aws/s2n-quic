@@ -1,20 +1,17 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use num_rational::Ratio;
-use num_traits::One;
-
 // Gain factor for ECN CE mark ratio samples
 // Value from https://github.com/google/bbr/blob/1a45fd4faf30229a3d3116de7bfe9d2f933d3562/net/ipv4/tcp_bbr2.c#L2290
-const ECN_ALPHA_GAIN: Ratio<u64> = Ratio::new_raw(1, 16);
+const ECN_ALPHA_GAIN: f64 = 1.0 / 16.0;
 
 // The maximum tolerated ratio of packets containing ECN CE markings
 // Value from https://github.com/google/bbr/blob/1a45fd4faf30229a3d3116de7bfe9d2f933d3562/net/ipv4/tcp_bbr2.c#L2306
-const ECN_THRESH: Ratio<u64> = Ratio::new_raw(1, 2);
+const ECN_THRESH: f64 = 0.5;
 
 // On ECN CE markings, cut inflight_lo to (1 - ECN_FACTOR * ecn_alpha)
 // Value from https://github.com/google/bbr/blob/1a45fd4faf30229a3d3116de7bfe9d2f933d3562/net/ipv4/tcp_bbr2.c#L2301
-pub(super) const ECN_FACTOR: Ratio<u64> = Ratio::new_raw(1, 3);
+pub(super) const ECN_FACTOR: f64 = 0.33;
 
 #[derive(Clone, Debug)]
 pub(crate) struct State {
@@ -23,7 +20,7 @@ pub(crate) struct State {
     /// The amount of bytes delivered in the current round trip
     round_start_delivered_bytes: u64,
     /// Weighted average ratio of ECN CE marked packets with `ECN_ALPHA_GAIN` applied
-    alpha: Ratio<u64>,
+    alpha: f64,
     /// True if the ECN CE count over the current round trip was too high
     ce_too_high: bool,
 }
@@ -33,7 +30,7 @@ impl Default for State {
         Self {
             ce_count_in_round: 0,
             round_start_delivered_bytes: 0,
-            alpha: Ratio::one(),
+            alpha: 1.0,
             ce_too_high: false,
         }
     }
@@ -73,33 +70,29 @@ impl State {
 
     /// Returns the ECN alpha value
     #[inline]
-    pub(super) fn alpha(&self) -> Ratio<u64> {
+    pub(super) fn alpha(&self) -> f64 {
         self.alpha
     }
 }
 
 /// Calculate the ratio of ECN CE marked bytes to overall delivered bytes
 #[inline]
-pub(super) fn ce_ratio(
-    ecn_ce_count: u64,
-    delivered_bytes: u64,
-    max_datagram_size: u16,
-) -> Ratio<u64> {
+pub(super) fn ce_ratio(ecn_ce_count: u64, delivered_bytes: u64, max_datagram_size: u16) -> f64 {
     // Estimate the number of bytes experiencing explicit congestion by multiplying
     // the ecn_ce_count by max_datagram_size
-    let ecn_ce_bytes = ecn_ce_count.saturating_mul(max_datagram_size as u64);
-    Ratio::new(ecn_ce_bytes, delivered_bytes)
+    let ecn_ce_bytes = ecn_ce_count.saturating_mul(max_datagram_size as u64) as f64;
+    ecn_ce_bytes / delivered_bytes as f64
 }
 
 /// True if the given ECN `ce_ratio` exceeds the BBR ECN threshold
 #[inline]
-pub(super) fn is_ce_too_high(ce_ratio: Ratio<u64>) -> bool {
+pub(super) fn is_ce_too_high(ce_ratio: f64) -> bool {
     ce_ratio > ECN_THRESH
 }
 
 #[inline]
-fn calculate_alpha(alpha: Ratio<u64>, ce_ratio: Ratio<u64>) -> Ratio<u64> {
-    ((Ratio::one() - ECN_ALPHA_GAIN) * alpha + ECN_ALPHA_GAIN * ce_ratio).min(Ratio::one())
+fn calculate_alpha(alpha: f64, ce_ratio: f64) -> f64 {
+    ((1.0 - ECN_ALPHA_GAIN) * alpha + ECN_ALPHA_GAIN * ce_ratio).min(1.0)
 }
 
 #[cfg(test)]
@@ -110,14 +103,14 @@ mod tests {
     #[test]
     fn on_round_start() {
         let mut state = ecn::State::default();
-        assert_eq!(Ratio::one(), state.alpha());
+        assert_eq!(1.0, state.alpha());
 
         let delivered_bytes = 1000;
         state.on_round_start(delivered_bytes, MINIMUM_MTU);
 
         // No ECN CE yet and alpha is currently at the initial value of 1,
         // so alpha is just 1 - alpha gain
-        assert_eq!(Ratio::one() - ECN_ALPHA_GAIN, state.alpha());
+        assert_eq!(1.0 - ECN_ALPHA_GAIN, state.alpha());
         assert!(!state.is_ce_too_high_in_round());
         assert_eq!(delivered_bytes, state.round_start_delivered_bytes);
 
@@ -132,7 +125,7 @@ mod tests {
         state.on_round_start(delivered_bytes, MINIMUM_MTU);
 
         assert_eq!(
-            (Ratio::one() - ECN_ALPHA_GAIN) * alpha + ECN_ALPHA_GAIN * Ratio::new(1, 2),
+            (1.0 - ECN_ALPHA_GAIN) * alpha + ECN_ALPHA_GAIN * 0.5,
             state.alpha()
         );
         // ECN ce count is not above the 50% `ECN_THRESH`
@@ -152,7 +145,7 @@ mod tests {
         state.on_round_start(delivered_bytes, MINIMUM_MTU);
 
         assert_eq!(
-            (Ratio::one() - ECN_ALPHA_GAIN) * alpha + ECN_ALPHA_GAIN * Ratio::new(11, 20),
+            (1.0 - ECN_ALPHA_GAIN) * alpha + ECN_ALPHA_GAIN * 11.0 / 20.0,
             state.alpha()
         );
         // ECN ce count is above the 50% `ECN_THRESH`
