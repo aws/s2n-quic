@@ -1,0 +1,15 @@
+   impl core::marker::Unpin for s2n_quic::provider::event::query::ControlFlow
+ 
+ enum s2n_quic::provider::event::query::ControlFlow implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::provider::event::query::ControlFlow
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::event::query::ControlFlow
+ 
+ enum s2n_quic::provider::event::query::ControlFlow implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::provider::event::query::ControlFlow
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::event::query::ControlFlow
++
++enum s2n_quic::provider::event::query::ControlFlow exports function:
++  pub fn and_then(self, f: impl core::ops::function::FnOnce() -> s2n_quic::provider::event::query::ControlFlow) -> s2n_quic::provider::event::query::ControlFlow
+ 
+ enum s2n_quic::provider::event::query::Error is non-exhaustive
+ 

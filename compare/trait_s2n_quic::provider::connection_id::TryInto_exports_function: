@@ -1,0 +1,8 @@
+   fn try_into(self) -> core::result::Result<Self::s2n_quic::provider::connection_id::TryInto::Provider, Self::s2n_quic::provider::connection_id::TryInto::Error>
+ 
+ trait s2n_quic::provider::connection_id::Validator exports function:
+-  pub fn validate(
++  fn validate(
+   &self,
+   connection_info: &s2n_quic::provider::connection_id::ConnectionInfo<'_>,
+   buffer: &[u8]) -> core::option::Option<usize>

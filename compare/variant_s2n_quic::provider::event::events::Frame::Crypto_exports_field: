@@ -1,0 +1,40 @@
+ 
+ variant s2n_quic::provider::event::events::Frame::DataBlocked is non-exhaustive
+ 
++variant s2n_quic::provider::event::events::Frame::DataBlocked exports field:
++  data_limit:
++  u64
++
+ variant s2n_quic::provider::event::events::Frame::Datagram is non-exhaustive
+ 
+ variant s2n_quic::provider::event::events::Frame::Datagram exports field:
+   len:
+   u16
+ 
+-variant s2n_quic::provider::event::events::Frame::HandshakeDone is non-exhaustive
++variant s2n_quic::provider::event::events::Frame::HandshakeDone is non-exhaustive
++
++variant s2n_quic::provider::event::events::Frame::MaxData is non-exhaustive
++
++variant s2n_quic::provider::event::events::Frame::MaxData exports field:
++  value:
++  u64
++
++variant s2n_quic::provider::event::events::Frame::MaxStreamData is non-exhaustive
++
++variant s2n_quic::provider::event::events::Frame::MaxStreamData exports field:
++  id:
++  u64
+ 
+-variant s2n_quic::provider::event::events::Frame::MaxData is non-exhaustive
++variant s2n_quic::provider::event::events::Frame::MaxStreamData exports field:
++  stream_type:
++  s2n_quic::provider::event::events::StreamType
+ 
+-variant s2n_quic::provider::event::events::Frame::MaxStreamData is non-exhaustive
++variant s2n_quic::provider::event::events::Frame::MaxStreamData exports field:
++  value:
++  u64
+ 
+ variant s2n_quic::provider::event::events::Frame::MaxStreams is non-exhaustive
+ 

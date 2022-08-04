@@ -1,0 +1,9 @@
+ struct s2n_quic::application::Error exports constant:
+   pub const UNKNOWN: s2n_quic::application::Error
+ 
+-struct s2n_quic::application::Error exports function:
+-  pub fn as_ne_bytes(&self) -> &[u8; 8]
+-
+ struct s2n_quic::application::Error exports function:
+   pub fn new(value: u64) -> core::result::Result<s2n_quic::application::Error, s2n_quic_core::varint::VarIntError>
+ 

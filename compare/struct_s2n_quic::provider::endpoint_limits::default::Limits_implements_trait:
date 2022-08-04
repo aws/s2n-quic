@@ -1,0 +1,16 @@
+   impl core::marker::Unpin for s2n_quic::provider::endpoint_limits::default::Limits
+ 
+ struct s2n_quic::provider::endpoint_limits::default::Limits implements trait:
+-  impl s2n_quic::provider::endpoint_limits::Limiter for s2n_quic::provider::endpoint_limits::default::Limits
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::endpoint_limits::default::Limits
+ 
+ struct s2n_quic::provider::endpoint_limits::default::Limits implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::provider::endpoint_limits::default::Limits
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::endpoint_limits::default::Limits
+ 
+ struct s2n_quic::provider::endpoint_limits::default::Limits implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::provider::endpoint_limits::default::Limits
++  impl s2n_quic::provider::endpoint_limits::Limiter for s2n_quic::provider::endpoint_limits::default::Limits
+ 
+ struct s2n_quic::provider::endpoint_limits::default::Limits exports function:
+   pub fn builder() -> s2n_quic::provider::endpoint_limits::default::Builder

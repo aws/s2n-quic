@@ -1,0 +1,9 @@
+ struct s2n_quic::provider::event::events::RecoveryMetrics exports field:
+   bytes_in_flight: u32
+ 
++struct s2n_quic::provider::event::events::RecoveryMetrics exports field:
++  congestion_limited: bool
++
+ struct s2n_quic::provider::event::events::RecoveryMetrics exports field:
+   congestion_window: u32
+ 

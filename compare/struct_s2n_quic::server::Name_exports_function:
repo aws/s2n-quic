@@ -1,0 +1,12 @@
+   pub unsafe fn slice_unchecked(&self, begin: usize, end: usize) -> &str
+ 
+ struct s2n_quic::server::Server implements trait:
+-  impl !std::panic::RefUnwindSafe for s2n_quic::server::Server
++  impl !core::panic::unwind_safe::RefUnwindSafe for s2n_quic::server::Server
+ 
+ struct s2n_quic::server::Server implements trait:
+-  impl !std::panic::UnwindSafe for s2n_quic::server::Server
++  impl !core::panic::unwind_safe::UnwindSafe for s2n_quic::server::Server
+ 
+ struct s2n_quic::server::Server implements trait:
+   impl core::fmt::Debug for s2n_quic::server::Server

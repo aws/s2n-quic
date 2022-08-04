@@ -1,0 +1,18 @@
+   pub fn stop_sending(&mut self, error_code: s2n_quic::application::Error) -> s2n_quic::stream::Result<()>
+ 
+ typedef s2n_quic::stream::Result exports typedef:
+-  type Result<T, E
++  pub type Result<T, E
+   =
+   s2n_quic::stream::Error> = core::result::Result<T, E>;
+ 
+ struct s2n_quic::stream::SendStream implements trait:
+-  impl !std::panic::RefUnwindSafe for s2n_quic::stream::SendStream
++  impl !core::panic::unwind_safe::RefUnwindSafe for s2n_quic::stream::SendStream
+ 
+ struct s2n_quic::stream::SendStream implements trait:
+-  impl !std::panic::UnwindSafe for s2n_quic::stream::SendStream
++  impl !core::panic::unwind_safe::UnwindSafe for s2n_quic::stream::SendStream
+ 
+ struct s2n_quic::stream::SendStream implements trait:
+   impl core::convert::From<s2n_quic::stream::SendStream> for s2n_quic::stream::LocalStream

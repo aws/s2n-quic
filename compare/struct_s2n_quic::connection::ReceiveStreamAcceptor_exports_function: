@@ -1,0 +1,18 @@
+   cx: &mut core::task::wake::Context<'_>) -> core::task::poll::Poll<s2n_quic::connection::Result<core::option::Option<s2n_quic::stream::ReceiveStream>>>
+ 
+ typedef s2n_quic::connection::Result exports typedef:
+-  type Result<T, E
++  pub type Result<T, E
+   =
+   s2n_quic::connection::Error> = core::result::Result<T, E>;
+ 
+ struct s2n_quic::connection::StreamAcceptor implements trait:
+-  impl !std::panic::RefUnwindSafe for s2n_quic::connection::StreamAcceptor
++  impl !core::panic::unwind_safe::RefUnwindSafe for s2n_quic::connection::StreamAcceptor
+ 
+ struct s2n_quic::connection::StreamAcceptor implements trait:
+-  impl !std::panic::UnwindSafe for s2n_quic::connection::StreamAcceptor
++  impl !core::panic::unwind_safe::UnwindSafe for s2n_quic::connection::StreamAcceptor
+ 
+ struct s2n_quic::connection::StreamAcceptor implements trait:
+   impl core::fmt::Debug for s2n_quic::connection::StreamAcceptor

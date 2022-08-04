@@ -1,0 +1,16 @@
+   impl core::marker::Unpin for s2n_quic::provider::limits::default::Provider
+ 
+ struct s2n_quic::provider::limits::default::Provider implements trait:
+-  impl s2n_quic::provider::limits::Provider for s2n_quic::provider::limits::default::Provider
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::limits::default::Provider
+ 
+ struct s2n_quic::provider::limits::default::Provider implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::provider::limits::default::Provider
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::limits::default::Provider
+ 
+ struct s2n_quic::provider::limits::default::Provider implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::provider::limits::default::Provider
++  impl s2n_quic::provider::limits::Provider for s2n_quic::provider::limits::default::Provider
+ 
+ module s2n_quic::provider::stateless_reset_token exports struct:
+   s2n_quic::provider::stateless_reset_token::Default

@@ -1,0 +1,47 @@
+   cid:
+   &'a [u8]
+ 
++struct s2n_quic::provider::event::events::RxAckRangeDropped is non-exhaustive
++
++struct s2n_quic::provider::event::events::RxAckRangeDropped exports field:
++  capacity: usize
++
++struct s2n_quic::provider::event::events::RxAckRangeDropped implements trait:
++  impl<'a> core::clone::Clone for s2n_quic::provider::event::events::RxAckRangeDropped<'a>
++
++struct s2n_quic::provider::event::events::RxAckRangeDropped implements trait:
++  impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::RxAckRangeDropped<'a>
++
++struct s2n_quic::provider::event::events::RxAckRangeDropped implements trait:
++  impl<'a> core::marker::Send for s2n_quic::provider::event::events::RxAckRangeDropped<'a>
++
++struct s2n_quic::provider::event::events::RxAckRangeDropped implements trait:
++  impl<'a> core::marker::Sync for s2n_quic::provider::event::events::RxAckRangeDropped<'a>
++
++struct s2n_quic::provider::event::events::RxAckRangeDropped implements trait:
++  impl<'a> core::marker::Unpin for s2n_quic::provider::event::events::RxAckRangeDropped<'a>
++
++struct s2n_quic::provider::event::events::RxAckRangeDropped implements trait:
++  impl<'a> core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::event::events::RxAckRangeDropped<'a>
++
++struct s2n_quic::provider::event::events::RxAckRangeDropped implements trait:
++  impl<'a> core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::event::events::RxAckRangeDropped<'a>
++
++struct s2n_quic::provider::event::events::RxAckRangeDropped implements trait:
++  impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::RxAckRangeDropped<'a>
++
++struct s2n_quic::provider::event::events::RxAckRangeDropped exports field:
++  packet_number_range: core::ops::range::RangeInclusive<u64>
++
++struct s2n_quic::provider::event::events::RxAckRangeDropped exports field:
++  path: s2n_quic::provider::event::events::Path<'a>
++
++struct s2n_quic::provider::event::events::RxAckRangeDropped exports constant:
++  pub const NAME: &'static str
++
++struct s2n_quic::provider::event::events::RxAckRangeDropped exports field:
++  stored_range: core::ops::range::RangeInclusive<u64>
++
+ struct s2n_quic::provider::event::events::RxStreamProgress is non-exhaustive
+ 
+ struct s2n_quic::provider::event::events::RxStreamProgress exports field:

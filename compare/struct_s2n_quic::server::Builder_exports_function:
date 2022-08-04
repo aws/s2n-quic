@@ -1,0 +1,12 @@
+   Self: With<T::s2n_quic::provider::tls::TryInto::Provider, Output = s2n_quic::server::Builder<U>>,
+ 
+ struct s2n_quic::server::DefaultProviders implements trait:
+-  impl !std::panic::RefUnwindSafe for s2n_quic::server::DefaultProviders
++  impl !core::panic::unwind_safe::RefUnwindSafe for s2n_quic::server::DefaultProviders
+ 
+ struct s2n_quic::server::DefaultProviders implements trait:
+-  impl !std::panic::UnwindSafe for s2n_quic::server::DefaultProviders
++  impl !core::panic::unwind_safe::UnwindSafe for s2n_quic::server::DefaultProviders
+ 
+ struct s2n_quic::server::DefaultProviders implements trait:
+   impl core::default::Default for s2n_quic::server::DefaultProviders

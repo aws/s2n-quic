@@ -1,0 +1,27 @@
+ enum s2n_quic::provider::event::Location exports function:
+   pub fn is_remote(self) -> bool
+ 
++enum s2n_quic::provider::event::Location exports function:
++  pub fn peer_type(self) -> s2n_quic::provider::event::Location
++
+ trait s2n_quic::provider::event::Meta exports function:
+-  pub fn endpoint_type(&self) -> &s2n_quic::provider::event::events::EndpointType
++  fn endpoint_type(&self) -> &s2n_quic::provider::event::events::EndpointType
+ 
+ trait s2n_quic::provider::event::Meta exports function:
+-  pub fn subject(&self) -> s2n_quic::provider::event::events::Subject
++  fn subject(&self) -> s2n_quic::provider::event::events::Subject
+ 
+ trait s2n_quic::provider::event::Meta exports function:
+-  pub fn timestamp(&self) -> &s2n_quic::provider::event::Timestamp
++  fn timestamp(&self) -> &s2n_quic::provider::event::Timestamp
+ 
+ trait s2n_quic::provider::event::Provider exports function:
+   fn start(self) -> core::result::Result<Self::s2n_quic::provider::event::Provider::Subscriber, Self::s2n_quic::provider::event::Provider::Error>
+ 
+ trait s2n_quic::provider::event::Subscriber exports function:
+-  pub fn create_connection_context(
++  fn create_connection_context(
+   &mut self,
+   meta: &s2n_quic::provider::event::ConnectionMeta,
+   info: &s2n_quic::provider::event::ConnectionInfo) -> Self::s2n_quic::provider::event::Subscriber::ConnectionContext

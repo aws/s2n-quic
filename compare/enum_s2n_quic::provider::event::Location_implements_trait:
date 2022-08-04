@@ -1,0 +1,16 @@
+   impl core::marker::Unpin for s2n_quic::provider::event::Location
+ 
+ enum s2n_quic::provider::event::Location implements trait:
+-  impl s2n_quic_core::event::IntoEvent<s2n_quic::provider::event::Location> for s2n_quic::provider::event::Location
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::event::Location
+ 
+ enum s2n_quic::provider::event::Location implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::provider::event::Location
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::event::Location
+ 
+ enum s2n_quic::provider::event::Location implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::provider::event::Location
++  impl s2n_quic_core::event::IntoEvent<s2n_quic::provider::event::Location> for s2n_quic::provider::event::Location
+ 
+ enum s2n_quic::provider::event::Location exports function:
+   pub fn is_local(self) -> bool

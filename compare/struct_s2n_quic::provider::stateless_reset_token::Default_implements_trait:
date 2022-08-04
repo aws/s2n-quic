@@ -1,0 +1,20 @@
+   impl core::marker::Unpin for s2n_quic::provider::stateless_reset_token::Default
+ 
+ struct s2n_quic::provider::stateless_reset_token::Default implements trait:
+-  impl s2n_quic::provider::stateless_reset_token::Provider for s2n_quic::provider::stateless_reset_token::Default
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::stateless_reset_token::Default
+ 
+ struct s2n_quic::provider::stateless_reset_token::Default implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::provider::stateless_reset_token::Default
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::stateless_reset_token::Default
+ 
+ struct s2n_quic::provider::stateless_reset_token::Default implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::provider::stateless_reset_token::Default
++  impl s2n_quic::provider::stateless_reset_token::Provider for s2n_quic::provider::stateless_reset_token::Default
+ 
+ trait s2n_quic::provider::stateless_reset_token::Generator exports function:
+-  pub fn generate(&mut self, local_connection_id: &[u8]) -> s2n_quic_core::stateless_reset::token::Token
++  fn generate(&mut self, local_connection_id: &[u8]) -> s2n_quic_core::stateless_reset::token::Token
+ 
+ trait s2n_quic::provider::stateless_reset_token::Provider exports function:
+   fn start(self) -> core::result::Result<Self::s2n_quic::provider::stateless_reset_token::Provider::Generator, Self::s2n_quic::provider::stateless_reset_token::Provider::Error>

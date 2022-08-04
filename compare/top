@@ -1,0 +1,1427 @@
+-trait impl core::convert::TryFrom<s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::PlainMessage> for s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::Message associates type:
++trait impl bolero_generator::TypeGenerator for s2n_quic::provider::connection_id::LocalId where
++[u8; 20]: bolero_generator::TypeGenerator,
++ associates type:
++  type Error = s2n_quic_core::connection::id::Error
++
++trait impl core::clone::Clone for s2n_quic::application::Error associates type:
++  type Error = s2n_quic_core::varint::VarIntError
++
++trait impl core::clone::Clone for s2n_quic::application::Error associates type:
++  type Target = u64
++
++trait impl core::clone::Clone for s2n_quic::provider::connection_id::LocalId associates type:
++  type Error = s2n_quic_core::connection::id::Error
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::ConnectionClosed associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::ConnectionMigrationDenied associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::DatagramDropped associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::DatagramReceived associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::DatagramSent associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::EndpointConnectionAttemptFailed associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::EndpointDatagramDropped associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::EndpointDatagramReceived associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::EndpointDatagramSent associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::EndpointPacketReceived associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::EndpointPacketSent associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::FrameSent associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::HandshakeStatusUpdated associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::KeepAliveTimerExpired associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::KeySpaceDiscarded associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::KeyUpdate associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::MtuUpdated associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::PacketReceived associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::PacketSent associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::PlatformEventLoopSleep associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::PlatformEventLoopWakeup associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::PlatformFeatureConfigured associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::PlatformRx associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::PlatformRxError associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::PlatformTx associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::PlatformTxError associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::RxStreamProgress associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::events::TxStreamProgress associates constant:
++  pub const NAME: &'static str
++
++trait impl core::clone::Clone for s2n_quic::provider::event::tracing::Subscriber associates type:
++  type ConnectionContext = tracing::span::Span
++
++trait impl core::clone::Clone for s2n_quic::provider::tls::rustls::rustls::ServerName associates type:
++  type Error = s2n_quic::provider::tls::rustls::rustls::client::InvalidDnsNameError
++
++trait impl core::clone::Clone for s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::PlainMessage associates type:
+   type Error = s2n_quic::provider::tls::rustls::rustls::Error
+ 
+-trait impl core::convert::TryFrom<u64> for s2n_quic::application::Error associates type:
++trait impl core::clone::Clone for s2n_quic::server::Name associates type:
++  type Target = str
++
++trait impl core::cmp::Ord for s2n_quic::provider::connection_id::LocalId associates type:
++  type Error = s2n_quic_core::connection::id::Error
++
++trait impl core::cmp::PartialEq<s2n_quic::application::Error> for s2n_quic::application::Error associates type:
+   type Error = s2n_quic_core::varint::VarIntError
+ 
+-trait impl core::future::future::Future for s2n_quic::client::ConnectionAttempt associates type:
+-  type Output = core::result::Result<s2n_quic::connection::Connection, s2n_quic::connection::Error>
++trait impl core::cmp::PartialEq<s2n_quic::application::Error> for s2n_quic::application::Error associates type:
++  type Target = u64
+ 
+-trait impl core::ops::deref::Deref for s2n_quic::application::Error associates type:
++trait impl core::cmp::PartialEq<s2n_quic::provider::connection_id::LocalId> for s2n_quic::provider::connection_id::LocalId associates type:
++  type Error = s2n_quic_core::connection::id::Error
++
++trait impl core::cmp::PartialEq<s2n_quic::provider::tls::rustls::rustls::ServerName> for s2n_quic::provider::tls::rustls::rustls::ServerName associates type:
++  type Error = s2n_quic::provider::tls::rustls::rustls::client::InvalidDnsNameError
++
++trait impl core::cmp::PartialOrd<s2n_quic::provider::connection_id::LocalId> for s2n_quic::provider::connection_id::LocalId associates type:
++  type Error = s2n_quic_core::connection::id::Error
++
++trait impl core::convert::AsRef<[u8]> for s2n_quic::provider::connection_id::LocalId associates type:
++  type Error = s2n_quic_core::connection::id::Error
++
++trait impl core::convert::From<[u8; 20]> for s2n_quic::provider::connection_id::LocalId associates type:
++  type Error = s2n_quic_core::connection::id::Error
++
++trait impl core::convert::From<alloc::string::String> for s2n_quic::server::Name associates type:
++  type Target = str
++
++trait impl core::convert::From<s2n_quic::application::Error> for u64 associates type:
++  type Error = s2n_quic_core::varint::VarIntError
++
++trait impl core::convert::From<s2n_quic::application::Error> for u64 associates type:
+   type Target = u64
+ 
+-trait impl core::ops::deref::Deref for s2n_quic::provider::tls::rustls::rustls::ClientConnection associates type:
++trait impl core::convert::From<s2n_quic::provider::tls::rustls::rustls::ClientConfig> for s2n_quic::provider::tls::rustls::Client associates type:
++  type Client = Self
++
++trait impl core::convert::From<s2n_quic::provider::tls::rustls::rustls::ClientConfig> for s2n_quic::provider::tls::rustls::Client associates type:
++  type Error = core::convert::Infallible
++
++trait impl core::convert::From<s2n_quic::provider::tls::rustls::rustls::ClientConfig> for s2n_quic::provider::tls::rustls::Client associates type:
++  type Server = s2n_quic::provider::tls::rustls::Server
++
++trait impl core::convert::From<s2n_quic::provider::tls::rustls::rustls::ClientConfig> for s2n_quic::provider::tls::rustls::Client associates type:
++  type Session = Session
++
++trait impl core::convert::From<s2n_quic::provider::tls::rustls::rustls::ClientConnection> for s2n_quic::provider::tls::rustls::rustls::Connection associates type:
++  type Target = s2n_quic::provider::tls::rustls::rustls::CommonState
++
++trait impl core::convert::From<s2n_quic::provider::tls::rustls::rustls::ClientConnection> for s2n_quic::provider::tls::rustls::rustls::Connection associates type:
+   type Target = s2n_quic::provider::tls::rustls::rustls::ConnectionCommon<s2n_quic::provider::tls::rustls::rustls::client::ClientConnectionData>
+ 
+-trait impl core::ops::deref::Deref for s2n_quic::provider::tls::rustls::rustls::Connection associates type:
++trait impl core::convert::From<s2n_quic::provider::tls::rustls::rustls::ServerConfig> for s2n_quic::provider::tls::rustls::Server associates type:
++  type Client = s2n_quic::provider::tls::rustls::Client
++
++trait impl core::convert::From<s2n_quic::provider::tls::rustls::rustls::ServerConfig> for s2n_quic::provider::tls::rustls::Server associates type:
++  type Error = core::convert::Infallible
++
++trait impl core::convert::From<s2n_quic::provider::tls::rustls::rustls::ServerConfig> for s2n_quic::provider::tls::rustls::Server associates type:
++  type Server = Self
++
++trait impl core::convert::From<s2n_quic::provider::tls::rustls::rustls::ServerConfig> for s2n_quic::provider::tls::rustls::Server associates type:
++  type Session = Session
++
++trait impl core::convert::From<s2n_quic::provider::tls::rustls::rustls::ServerConnection> for s2n_quic::provider::tls::rustls::rustls::Connection associates type:
+   type Target = s2n_quic::provider::tls::rustls::rustls::CommonState
+ 
+-trait impl core::ops::deref::Deref for s2n_quic::provider::tls::rustls::rustls::ServerConnection associates type:
++trait impl core::convert::From<s2n_quic::provider::tls::rustls::rustls::ServerConnection> for s2n_quic::provider::tls::rustls::rustls::Connection associates type:
+   type Target = s2n_quic::provider::tls::rustls::rustls::ConnectionCommon<s2n_quic::provider::tls::rustls::rustls::server::ServerConnectionData>
+ 
+-trait impl core::ops::deref::Deref for s2n_quic::provider::tls::rustls::rustls::internal::msgs::persist::Tls12ClientSessionValue associates type:
++trait impl core::convert::From<s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::Message> for s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::PlainMessage associates type:
++  type Error = s2n_quic::provider::tls::rustls::rustls::Error
++
++trait impl core::convert::From<s2n_quic::provider::tls::rustls::rustls::internal::msgs::persist::Tls12ClientSessionValue> for s2n_quic::provider::tls::rustls::rustls::internal::msgs::persist::ClientSessionValue associates type:
+   type Target = s2n_quic::provider::tls::rustls::rustls::internal::msgs::persist::ClientSessionCommon
+ 
+-trait impl core::ops::deref::Deref for s2n_quic::provider::tls::rustls::rustls::internal::msgs::persist::Tls13ClientSessionValue associates type:
++trait impl core::convert::From<s2n_quic::provider::tls::rustls::rustls::internal::msgs::persist::Tls13ClientSessionValue> for s2n_quic::provider::tls::rustls::rustls::internal::msgs::persist::ClientSessionValue associates type:
+   type Target = s2n_quic::provider::tls::rustls::rustls::internal::msgs::persist::ClientSessionCommon
+ 
+-trait impl core::ops::deref::Deref for s2n_quic::server::Name associates type:
+-  type Target = str
++trait impl core::convert::From<s2n_quic::stream::BidirectionalStream> for s2n_quic::stream::LocalStream associates type:
++  type Error = s2n_quic::stream::Error
+ 
+-trait impl futures_core::stream::Stream for s2n_quic::connection::BidirectionalStreamAcceptor associates type:
+-  type Item = s2n_quic::connection::Result<s2n_quic::stream::BidirectionalStream>
++trait impl core::convert::From<s2n_quic::stream::BidirectionalStream> for s2n_quic::stream::LocalStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
+ 
+-trait impl futures_core::stream::Stream for s2n_quic::connection::ReceiveStreamAcceptor associates type:
+-  type Item = s2n_quic::connection::Result<s2n_quic::stream::ReceiveStream>
++trait impl core::convert::From<s2n_quic::stream::BidirectionalStream> for s2n_quic::stream::PeerStream associates type:
++  type Error = s2n_quic::stream::Error
+ 
+-trait impl futures_core::stream::Stream for s2n_quic::connection::StreamAcceptor associates type:
+-  type Item = s2n_quic::connection::Result<s2n_quic::stream::PeerStream>
++trait impl core::convert::From<s2n_quic::stream::BidirectionalStream> for s2n_quic::stream::PeerStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
+ 
+-trait impl futures_core::stream::Stream for s2n_quic::server::Server associates type:
+-  type Item = s2n_quic::connection::Connection
++trait impl core::convert::From<s2n_quic::stream::BidirectionalStream> for s2n_quic::stream::Stream associates type:
++  type Error = s2n_quic::stream::Error
+ 
+-trait impl futures_core::stream::Stream for s2n_quic::stream::BidirectionalStream associates type:
++trait impl core::convert::From<s2n_quic::stream::BidirectionalStream> for s2n_quic::stream::Stream associates type:
+   type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
+ 
+-trait impl futures_core::stream::Stream for s2n_quic::stream::LocalStream associates type:
+-  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++trait impl core::convert::From<s2n_quic::stream::ReceiveStream> for s2n_quic::stream::PeerStream associates type:
++  type Error = s2n_quic::stream::Error
+ 
+-trait impl futures_core::stream::Stream for s2n_quic::stream::PeerStream associates type:
++trait impl core::convert::From<s2n_quic::stream::ReceiveStream> for s2n_quic::stream::PeerStream associates type:
+   type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
+ 
+-trait impl futures_core::stream::Stream for s2n_quic::stream::ReceiveStream associates type:
+-  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++trait impl core::convert::From<s2n_quic::stream::ReceiveStream> for s2n_quic::stream::Stream associates type:
++  type Error = s2n_quic::stream::Error
+ 
+-trait impl futures_core::stream::Stream for s2n_quic::stream::Stream associates type:
++trait impl core::convert::From<s2n_quic::stream::ReceiveStream> for s2n_quic::stream::Stream associates type:
+   type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
+ 
+-trait impl futures_sink::Sink<bytes::bytes::Bytes> for s2n_quic::stream::BidirectionalStream associates type:
++trait impl core::convert::From<s2n_quic::stream::SendStream> for s2n_quic::stream::LocalStream associates type:
+   type Error = s2n_quic::stream::Error
+ 
+-trait impl futures_sink::Sink<bytes::bytes::Bytes> for s2n_quic::stream::LocalStream associates type:
+-  type Error = s2n_quic::stream::Error
++trait impl core::convert::From<s2n_quic::stream::SendStream> for s2n_quic::stream::LocalStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
+ 
+-trait impl futures_sink::Sink<bytes::bytes::Bytes> for s2n_quic::stream::PeerStream associates type:
++trait impl core::convert::From<s2n_quic::stream::SendStream> for s2n_quic::stream::Stream associates type:
+   type Error = s2n_quic::stream::Error
+ 
+-trait impl futures_sink::Sink<bytes::bytes::Bytes> for s2n_quic::stream::SendStream associates type:
+-  type Error = s2n_quic::stream::Error
++trait impl core::convert::From<s2n_quic::stream::SendStream> for s2n_quic::stream::Stream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
+ 
+-trait impl futures_sink::Sink<bytes::bytes::Bytes> for s2n_quic::stream::Stream associates type:
+-  type Error = s2n_quic::stream::Error
++trait impl core::convert::From<s2n_quic_core::varint::VarInt> for s2n_quic::application::Error associates type:
++  type Error = s2n_quic_core::varint::VarIntError
+ 
+-trait impl s2n_quic::provider::address_token::Provider for s2n_quic::provider::address_token::default::Provider associates type:
++trait impl core::convert::From<s2n_quic_core::varint::VarInt> for s2n_quic::application::Error associates type:
++  type Target = u64
++
++trait impl core::convert::From<u16> for s2n_quic::application::Error associates type:
++  type Error = s2n_quic_core::varint::VarIntError
++
++trait impl core::convert::From<u16> for s2n_quic::application::Error associates type:
++  type Target = u64
++
++trait impl core::convert::From<u32> for s2n_quic::application::Error associates type:
++  type Error = s2n_quic_core::varint::VarIntError
++
++trait impl core::convert::From<u32> for s2n_quic::application::Error associates type:
++  type Target = u64
++
++trait impl core::convert::From<u8> for s2n_quic::application::Error associates type:
++  type Error = s2n_quic_core::varint::VarIntError
++
++trait impl core::convert::From<u8> for s2n_quic::application::Error associates type:
++  type Target = u64
++
++trait impl core::convert::TryFrom<s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::PlainMessage> for s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::Message associates type:
++  type Error = s2n_quic::provider::tls::rustls::rustls::Error
++
++trait impl core::convert::TryFrom<u64> for s2n_quic::application::Error associates type:
++  type Error = s2n_quic_core::varint::VarIntError
++
++trait impl core::convert::TryFrom<u64> for s2n_quic::application::Error associates type:
++  type Target = u64
++
++trait impl core::default::Default for s2n_quic::provider::address_token::default::Provider associates type:
+   type Error = core::convert::Infallible
+ 
+-trait impl s2n_quic::provider::address_token::Provider for s2n_quic::provider::address_token::default::Provider associates type:
++trait impl core::default::Default for s2n_quic::provider::address_token::default::Provider associates type:
+   type Format = s2n_quic::provider::address_token::default::Format
+ 
+-trait impl s2n_quic::provider::connection_id::Provider for s2n_quic::provider::connection_id::default::Provider associates type:
++trait impl core::default::Default for s2n_quic::provider::connection_id::LocalId associates type:
++  type Error = s2n_quic_core::connection::id::Error
++
++trait impl core::default::Default for s2n_quic::provider::connection_id::default::Provider associates type:
+   type Error = core::convert::Infallible
+ 
+-trait impl s2n_quic::provider::connection_id::Provider for s2n_quic::provider::connection_id::default::Provider associates type:
++trait impl core::default::Default for s2n_quic::provider::connection_id::default::Provider associates type:
+   type Format = s2n_quic::provider::connection_id::default::Format
+ 
+-trait impl s2n_quic::provider::event::Provider for s2n_quic::provider::event::disabled::Provider associates type:
+-  type Error = core::convert::Infallible
++trait impl core::default::Default for s2n_quic::provider::event::disabled::Provider associates type:
++  type Error = core::convert::Infallible
++
++trait impl core::default::Default for s2n_quic::provider::event::disabled::Provider associates type:
++  type Subscriber = s2n_quic::provider::event::disabled::Subscriber
++
++trait impl core::default::Default for s2n_quic::provider::event::tracing::Provider associates type:
++  type Error = core::convert::Infallible
++
++trait impl core::default::Default for s2n_quic::provider::event::tracing::Provider associates type:
++  type Subscriber = s2n_quic::provider::event::tracing::Subscriber
++
++trait impl core::default::Default for s2n_quic::provider::event::tracing::Subscriber associates type:
++  type ConnectionContext = tracing::span::Span
++
++trait impl core::default::Default for s2n_quic::provider::io::Default associates type:
++  type Error = std::io::error::Error
++
++trait impl core::default::Default for s2n_quic::provider::io::Default associates type:
++  type PathHandle = s2n_quic_platform::io::tokio::PathHandle
++
++trait impl core::default::Default for s2n_quic::provider::limits::default::Provider associates type:
++  type Error = core::convert::Infallible
++
++trait impl core::default::Default for s2n_quic::provider::limits::default::Provider associates type:
++  type Limits = s2n_quic::provider::limits::Limits
++
++trait impl core::default::Default for s2n_quic::provider::stateless_reset_token::Default associates type:
++  type Error = core::convert::Infallible
++
++trait impl core::default::Default for s2n_quic::provider::stateless_reset_token::Default associates type:
++  type Generator = Generator
++
++trait impl core::default::Default for s2n_quic::provider::tls::Default associates type:
++  type Client = s2n_quic::provider::tls::s2n_tls::Client
++
++trait impl core::default::Default for s2n_quic::provider::tls::Default associates type:
++  type Error = core::convert::Infallible
++
++trait impl core::default::Default for s2n_quic::provider::tls::Default associates type:
++  type Server = s2n_quic::provider::tls::s2n_tls::Server
++
++trait impl core::default::Default for s2n_quic::provider::tls::rustls::Client associates type:
++  type Client = Self
++
++trait impl core::default::Default for s2n_quic::provider::tls::rustls::Client associates type:
++  type Error = core::convert::Infallible
++
++trait impl core::default::Default for s2n_quic::provider::tls::rustls::Client associates type:
++  type Server = s2n_quic::provider::tls::rustls::Server
++
++trait impl core::default::Default for s2n_quic::provider::tls::rustls::Client associates type:
++  type Session = Session
++
++trait impl core::default::Default for s2n_quic::provider::tls::rustls::Server associates type:
++  type Client = s2n_quic::provider::tls::rustls::Client
++
++trait impl core::default::Default for s2n_quic::provider::tls::rustls::Server associates type:
++  type Error = core::convert::Infallible
++
++trait impl core::default::Default for s2n_quic::provider::tls::rustls::Server associates type:
++  type Server = Self
++
++trait impl core::default::Default for s2n_quic::provider::tls::rustls::Server associates type:
++  type Session = Session
++
++trait impl core::default::Default for s2n_quic::provider::tls::s2n_tls::Client associates type:
++  type Client = Self
++
++trait impl core::default::Default for s2n_quic::provider::tls::s2n_tls::Client associates type:
++  type Error = core::convert::Infallible
++
++trait impl core::default::Default for s2n_quic::provider::tls::s2n_tls::Client associates type:
++  type Server = s2n_quic::provider::tls::s2n_tls::Server
++
++trait impl core::default::Default for s2n_quic::provider::tls::s2n_tls::Client associates type:
++  type Session = Session
++
++trait impl core::default::Default for s2n_quic::provider::tls::s2n_tls::Server associates type:
++  type Client = s2n_quic::provider::tls::s2n_tls::Client
++
++trait impl core::default::Default for s2n_quic::provider::tls::s2n_tls::Server associates type:
++  type Error = core::convert::Infallible
++
++trait impl core::default::Default for s2n_quic::provider::tls::s2n_tls::Server associates type:
++  type Server = Self
++
++trait impl core::default::Default for s2n_quic::provider::tls::s2n_tls::Server associates type:
++  type Session = Session
++
++trait impl core::fmt::Debug for s2n_quic::application::Error associates type:
++  type Error = s2n_quic_core::varint::VarIntError
++
++trait impl core::fmt::Debug for s2n_quic::application::Error associates type:
++  type Target = u64
++
++trait impl core::fmt::Debug for s2n_quic::connection::BidirectionalStreamAcceptor associates type:
++  type Item = s2n_quic::connection::Result<s2n_quic::stream::BidirectionalStream>
++
++trait impl core::fmt::Debug for s2n_quic::connection::ReceiveStreamAcceptor associates type:
++  type Item = s2n_quic::connection::Result<s2n_quic::stream::ReceiveStream>
++
++trait impl core::fmt::Debug for s2n_quic::connection::StreamAcceptor associates type:
++  type Item = s2n_quic::connection::Result<s2n_quic::stream::PeerStream>
++
++trait impl core::fmt::Debug for s2n_quic::provider::address_token::default::Provider associates type:
++  type Error = core::convert::Infallible
++
++trait impl core::fmt::Debug for s2n_quic::provider::address_token::default::Provider associates type:
++  type Format = s2n_quic::provider::address_token::default::Format
++
++trait impl core::fmt::Debug for s2n_quic::provider::connection_id::LocalId associates type:
++  type Error = s2n_quic_core::connection::id::Error
++
++trait impl core::fmt::Debug for s2n_quic::provider::connection_id::default::Provider associates type:
++  type Error = core::convert::Infallible
++
++trait impl core::fmt::Debug for s2n_quic::provider::connection_id::default::Provider associates type:
++  type Format = s2n_quic::provider::connection_id::default::Format
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::disabled::Provider associates type:
++  type Error = core::convert::Infallible
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::disabled::Provider associates type:
++  type Subscriber = s2n_quic::provider::event::disabled::Subscriber
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::ConnectionClosed associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::ConnectionMigrationDenied associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::DatagramDropped associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::DatagramReceived associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::DatagramSent associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::EndpointConnectionAttemptFailed associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::EndpointDatagramDropped associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::EndpointDatagramReceived associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::EndpointDatagramSent associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::EndpointPacketReceived associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::EndpointPacketSent associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::FrameSent associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::HandshakeStatusUpdated associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::KeepAliveTimerExpired associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::KeySpaceDiscarded associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::KeyUpdate associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::MtuUpdated associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::PacketReceived associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::PacketSent associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::PlatformEventLoopSleep associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::PlatformEventLoopWakeup associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::PlatformFeatureConfigured associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::PlatformRx associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::PlatformRxError associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::PlatformTx associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::PlatformTxError associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::RxStreamProgress associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::events::TxStreamProgress associates constant:
++  pub const NAME: &'static str
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::tracing::Provider associates type:
++  type Error = core::convert::Infallible
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::tracing::Provider associates type:
++  type Subscriber = s2n_quic::provider::event::tracing::Subscriber
++
++trait impl core::fmt::Debug for s2n_quic::provider::event::tracing::Subscriber associates type:
++  type ConnectionContext = tracing::span::Span
++
++trait impl core::fmt::Debug for s2n_quic::provider::io::Default associates type:
++  type Error = std::io::error::Error
++
++trait impl core::fmt::Debug for s2n_quic::provider::io::Default associates type:
++  type PathHandle = s2n_quic_platform::io::tokio::PathHandle
++
++trait impl core::fmt::Debug for s2n_quic::provider::limits::default::Provider associates type:
++  type Error = core::convert::Infallible
++
++trait impl core::fmt::Debug for s2n_quic::provider::limits::default::Provider associates type:
++  type Limits = s2n_quic::provider::limits::Limits
++
++trait impl core::fmt::Debug for s2n_quic::provider::stateless_reset_token::Default associates type:
++  type Error = core::convert::Infallible
++
++trait impl core::fmt::Debug for s2n_quic::provider::stateless_reset_token::Default associates type:
++  type Generator = Generator
++
++trait impl core::fmt::Debug for s2n_quic::provider::tls::Default associates type:
++  type Client = s2n_quic::provider::tls::s2n_tls::Client
++
++trait impl core::fmt::Debug for s2n_quic::provider::tls::Default associates type:
++  type Error = core::convert::Infallible
++
++trait impl core::fmt::Debug for s2n_quic::provider::tls::Default associates type:
++  type Server = s2n_quic::provider::tls::s2n_tls::Server
++
++trait impl core::fmt::Debug for s2n_quic::provider::tls::rustls::rustls::ClientConnection associates type:
++  type Target = s2n_quic::provider::tls::rustls::rustls::ConnectionCommon<s2n_quic::provider::tls::rustls::rustls::client::ClientConnectionData>
++
++trait impl core::fmt::Debug for s2n_quic::provider::tls::rustls::rustls::ServerConnection associates type:
++  type Target = s2n_quic::provider::tls::rustls::rustls::ConnectionCommon<s2n_quic::provider::tls::rustls::rustls::server::ServerConnectionData>
++
++trait impl core::fmt::Debug for s2n_quic::provider::tls::rustls::rustls::ServerName associates type:
++  type Error = s2n_quic::provider::tls::rustls::rustls::client::InvalidDnsNameError
++
++trait impl core::fmt::Debug for s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::Message associates type:
++  type Error = s2n_quic::provider::tls::rustls::rustls::Error
++
++trait impl core::fmt::Debug for s2n_quic::provider::tls::rustls::rustls::internal::msgs::message::PlainMessage associates type:
++  type Error = s2n_quic::provider::tls::rustls::rustls::Error
++
++trait impl core::fmt::Debug for s2n_quic::provider::tls::rustls::rustls::internal::msgs::persist::Tls12ClientSessionValue associates type:
++  type Target = s2n_quic::provider::tls::rustls::rustls::internal::msgs::persist::ClientSessionCommon
++
++trait impl core::fmt::Debug for s2n_quic::provider::tls::rustls::rustls::internal::msgs::persist::Tls13ClientSessionValue associates type:
++  type Target = s2n_quic::provider::tls::rustls::rustls::internal::msgs::persist::ClientSessionCommon
++
++trait impl core::fmt::Debug for s2n_quic::server::Name associates type:
++  type Target = str
++
++trait impl core::fmt::Debug for s2n_quic::server::Server associates type:
++  type Item = s2n_quic::connection::Connection
++
++trait impl core::fmt::Debug for s2n_quic::stream::BidirectionalStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl core::fmt::Debug for s2n_quic::stream::BidirectionalStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl core::fmt::Debug for s2n_quic::stream::LocalStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl core::fmt::Debug for s2n_quic::stream::LocalStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl core::fmt::Debug for s2n_quic::stream::PeerStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl core::fmt::Debug for s2n_quic::stream::PeerStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl core::fmt::Debug for s2n_quic::stream::ReceiveStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl core::fmt::Debug for s2n_quic::stream::SendStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl core::fmt::Debug for s2n_quic::stream::Stream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl core::fmt::Debug for s2n_quic::stream::Stream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl core::future::future::Future for s2n_quic::client::ConnectionAttempt associates type:
++  type Output = core::result::Result<s2n_quic::connection::Connection, s2n_quic::connection::Error>
++
++trait impl core::hash::Hash for s2n_quic::provider::connection_id::LocalId associates type:
++  type Error = s2n_quic_core::connection::id::Error
++
++trait impl core::ops::deref::Deref for s2n_quic::application::Error associates type:
++  type Error = s2n_quic_core::varint::VarIntError
++
++trait impl core::ops::deref::Deref for s2n_quic::application::Error associates type:
++  type Target = u64
++
++trait impl core::ops::deref::Deref for s2n_quic::provider::tls::rustls::rustls::ClientConnection associates type:
++  type Target = s2n_quic::provider::tls::rustls::rustls::ConnectionCommon<s2n_quic::provider::tls::rustls::rustls::client::ClientConnectionData>
++
++trait impl core::ops::deref::Deref for s2n_quic::provider::tls::rustls::rustls::Connection associates type:
++  type Target = s2n_quic::provider::tls::rustls::rustls::CommonState
++
++trait impl core::ops::deref::Deref for s2n_quic::provider::tls::rustls::rustls::ServerConnection associates type:
++  type Target = s2n_quic::provider::tls::rustls::rustls::ConnectionCommon<s2n_quic::provider::tls::rustls::rustls::server::ServerConnectionData>
++
++trait impl core::ops::deref::Deref for s2n_quic::provider::tls::rustls::rustls::internal::msgs::persist::Tls12ClientSessionValue associates type:
++  type Target = s2n_quic::provider::tls::rustls::rustls::internal::msgs::persist::ClientSessionCommon
++
++trait impl core::ops::deref::Deref for s2n_quic::provider::tls::rustls::rustls::internal::msgs::persist::Tls13ClientSessionValue associates type:
++  type Target = s2n_quic::provider::tls::rustls::rustls::internal::msgs::persist::ClientSessionCommon
++
++trait impl core::ops::deref::Deref for s2n_quic::server::Name associates type:
++  type Target = str
++
++trait impl core::ops::deref::DerefMut for s2n_quic::provider::tls::rustls::rustls::ClientConnection associates type:
++  type Target = s2n_quic::provider::tls::rustls::rustls::ConnectionCommon<s2n_quic::provider::tls::rustls::rustls::client::ClientConnectionData>
++
++trait impl core::ops::deref::DerefMut for s2n_quic::provider::tls::rustls::rustls::Connection associates type:
++  type Target = s2n_quic::provider::tls::rustls::rustls::CommonState
++
++trait impl core::ops::deref::DerefMut for s2n_quic::provider::tls::rustls::rustls::ServerConnection associates type:
++  type Target = s2n_quic::provider::tls::rustls::rustls::ConnectionCommon<s2n_quic::provider::tls::rustls::rustls::server::ServerConnectionData>
++
++trait impl futures_core::stream::Stream for s2n_quic::connection::BidirectionalStreamAcceptor associates type:
++  type Item = s2n_quic::connection::Result<s2n_quic::stream::BidirectionalStream>
++
++trait impl futures_core::stream::Stream for s2n_quic::connection::ReceiveStreamAcceptor associates type:
++  type Item = s2n_quic::connection::Result<s2n_quic::stream::ReceiveStream>
++
++trait impl futures_core::stream::Stream for s2n_quic::connection::StreamAcceptor associates type:
++  type Item = s2n_quic::connection::Result<s2n_quic::stream::PeerStream>
++
++trait impl futures_core::stream::Stream for s2n_quic::server::Server associates type:
++  type Item = s2n_quic::connection::Connection
++
++trait impl futures_core::stream::Stream for s2n_quic::stream::BidirectionalStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl futures_core::stream::Stream for s2n_quic::stream::BidirectionalStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl futures_core::stream::Stream for s2n_quic::stream::LocalStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl futures_core::stream::Stream for s2n_quic::stream::LocalStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl futures_core::stream::Stream for s2n_quic::stream::PeerStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl futures_core::stream::Stream for s2n_quic::stream::PeerStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl futures_core::stream::Stream for s2n_quic::stream::ReceiveStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl futures_core::stream::Stream for s2n_quic::stream::Stream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl futures_core::stream::Stream for s2n_quic::stream::Stream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl futures_io::if_std::AsyncRead for s2n_quic::stream::BidirectionalStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl futures_io::if_std::AsyncRead for s2n_quic::stream::BidirectionalStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl futures_io::if_std::AsyncRead for s2n_quic::stream::LocalStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl futures_io::if_std::AsyncRead for s2n_quic::stream::LocalStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl futures_io::if_std::AsyncRead for s2n_quic::stream::PeerStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl futures_io::if_std::AsyncRead for s2n_quic::stream::PeerStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl futures_io::if_std::AsyncRead for s2n_quic::stream::ReceiveStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl futures_io::if_std::AsyncRead for s2n_quic::stream::Stream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl futures_io::if_std::AsyncRead for s2n_quic::stream::Stream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl futures_io::if_std::AsyncWrite for s2n_quic::stream::BidirectionalStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl futures_io::if_std::AsyncWrite for s2n_quic::stream::BidirectionalStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl futures_io::if_std::AsyncWrite for s2n_quic::stream::LocalStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl futures_io::if_std::AsyncWrite for s2n_quic::stream::LocalStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl futures_io::if_std::AsyncWrite for s2n_quic::stream::PeerStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl futures_io::if_std::AsyncWrite for s2n_quic::stream::PeerStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl futures_io::if_std::AsyncWrite for s2n_quic::stream::SendStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl futures_io::if_std::AsyncWrite for s2n_quic::stream::Stream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl futures_io::if_std::AsyncWrite for s2n_quic::stream::Stream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl futures_sink::Sink<bytes::bytes::Bytes> for s2n_quic::stream::BidirectionalStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl futures_sink::Sink<bytes::bytes::Bytes> for s2n_quic::stream::BidirectionalStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl futures_sink::Sink<bytes::bytes::Bytes> for s2n_quic::stream::LocalStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl futures_sink::Sink<bytes::bytes::Bytes> for s2n_quic::stream::LocalStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl futures_sink::Sink<bytes::bytes::Bytes> for s2n_quic::stream::PeerStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl futures_sink::Sink<bytes::bytes::Bytes> for s2n_quic::stream::PeerStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl futures_sink::Sink<bytes::bytes::Bytes> for s2n_quic::stream::SendStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl futures_sink::Sink<bytes::bytes::Bytes> for s2n_quic::stream::Stream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl futures_sink::Sink<bytes::bytes::Bytes> for s2n_quic::stream::Stream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl s2n_codec::encoder::value::EncoderValue for s2n_quic::provider::connection_id::LocalId associates type:
++  type Error = s2n_quic_core::connection::id::Error
++
++trait impl s2n_quic::provider::address_token::Format for s2n_quic::provider::address_token::default::Format associates constant:
++  const TOKEN_LEN: usize
++
++trait impl s2n_quic::provider::address_token::Provider for s2n_quic::provider::address_token::default::Provider associates type:
++  type Error = core::convert::Infallible
++
++trait impl s2n_quic::provider::address_token::Provider for s2n_quic::provider::address_token::default::Provider associates type:
++  type Format = s2n_quic::provider::address_token::default::Format
++
++trait impl s2n_quic::provider::connection_id::Provider for s2n_quic::provider::connection_id::default::Provider associates type:
++  type Error = core::convert::Infallible
++
++trait impl s2n_quic::provider::connection_id::Provider for s2n_quic::provider::connection_id::default::Provider associates type:
++  type Format = s2n_quic::provider::connection_id::default::Format
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::ConnectionClosed associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::ConnectionMigrationDenied associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::DatagramDropped associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::DatagramReceived associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::DatagramSent associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::EndpointConnectionAttemptFailed associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::EndpointDatagramDropped associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::EndpointDatagramReceived associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::EndpointDatagramSent associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::EndpointPacketReceived associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::EndpointPacketSent associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::FrameSent associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::HandshakeStatusUpdated associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::KeepAliveTimerExpired associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::KeySpaceDiscarded associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::KeyUpdate associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::MtuUpdated associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::PacketReceived associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::PacketSent associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::PlatformEventLoopSleep associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::PlatformEventLoopWakeup associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::PlatformFeatureConfigured associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::PlatformRx associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::PlatformRxError associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::PlatformTx associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::PlatformTxError associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::RxStreamProgress associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::TxStreamProgress associates constant:
++  pub const NAME: &'static str
++
++trait impl s2n_quic::provider::event::Provider for s2n_quic::provider::event::disabled::Provider associates type:
++  type Error = core::convert::Infallible
++
++trait impl s2n_quic::provider::event::Provider for s2n_quic::provider::event::disabled::Provider associates type:
++  type Subscriber = s2n_quic::provider::event::disabled::Subscriber
++
++trait impl s2n_quic::provider::event::Provider for s2n_quic::provider::event::tracing::Provider associates type:
++  type Error = core::convert::Infallible
++
++trait impl s2n_quic::provider::event::Provider for s2n_quic::provider::event::tracing::Provider associates type:
++  type Subscriber = s2n_quic::provider::event::tracing::Subscriber
++
++trait impl s2n_quic::provider::event::Subscriber for s2n_quic::provider::event::disabled::Subscriber associates type:
++  type ConnectionContext = ()
++
++trait impl s2n_quic::provider::event::Subscriber for s2n_quic::provider::event::tracing::Subscriber associates type:
++  type ConnectionContext = tracing::span::Span
++
++trait impl s2n_quic::provider::io::Provider for s2n_quic::provider::io::Default associates type:
++  type Error = std::io::error::Error
++
++trait impl s2n_quic::provider::io::Provider for s2n_quic::provider::io::Default associates type:
++  type PathHandle = s2n_quic_platform::io::tokio::PathHandle
++
++trait impl s2n_quic::provider::limits::Provider for s2n_quic::provider::limits::default::Provider associates type:
++  type Error = core::convert::Infallible
++
++trait impl s2n_quic::provider::limits::Provider for s2n_quic::provider::limits::default::Provider associates type:
++  type Limits = s2n_quic::provider::limits::Limits
++
++trait impl s2n_quic::provider::stateless_reset_token::Provider for s2n_quic::provider::stateless_reset_token::Default associates type:
++  type Error = core::convert::Infallible
++
++trait impl s2n_quic::provider::stateless_reset_token::Provider for s2n_quic::provider::stateless_reset_token::Default associates type:
++  type Generator = Generator
++
++trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::Default associates type:
++  type Client = s2n_quic::provider::tls::s2n_tls::Client
++
++trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::Default associates type:
++  type Error = core::convert::Infallible
++
++trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::Default associates type:
++  type Server = s2n_quic::provider::tls::s2n_tls::Server
++
++trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::rustls::Client associates type:
++  type Client = Self
++
++trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::rustls::Client associates type:
++  type Error = core::convert::Infallible
++
++trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::rustls::Client associates type:
++  type Server = s2n_quic::provider::tls::rustls::Server
++
++trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::rustls::Client associates type:
++  type Session = Session
++
++trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::rustls::Server associates type:
++  type Client = s2n_quic::provider::tls::rustls::Client
++
++trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::rustls::Server associates type:
++  type Error = core::convert::Infallible
++
++trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::rustls::Server associates type:
++  type Server = Self
++
++trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::rustls::Server associates type:
++  type Session = Session
++
++trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::s2n_tls::Client associates type:
++  type Client = Self
++
++trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::s2n_tls::Client associates type:
++  type Error = core::convert::Infallible
++
++trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::s2n_tls::Client associates type:
++  type Server = s2n_quic::provider::tls::s2n_tls::Server
++
++trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::s2n_tls::Client associates type:
++  type Session = Session
++
++trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::s2n_tls::Server associates type:
++  type Client = s2n_quic::provider::tls::s2n_tls::Client
++
++trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::s2n_tls::Server associates type:
++  type Error = core::convert::Infallible
++
++trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::s2n_tls::Server associates type:
++  type Server = Self
++
++trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::s2n_tls::Server associates type:
++  type Session = Session
++
++trait impl s2n_quic::provider::tls::rustls::rustls::quic::ClientQuicExt for s2n_quic::provider::tls::rustls::rustls::ClientConnection associates type:
++  type Target = s2n_quic::provider::tls::rustls::rustls::ConnectionCommon<s2n_quic::provider::tls::rustls::rustls::client::ClientConnectionData>
++
++trait impl s2n_quic::provider::tls::rustls::rustls::quic::QuicExt for s2n_quic::provider::tls::rustls::rustls::ClientConnection associates type:
++  type Target = s2n_quic::provider::tls::rustls::rustls::ConnectionCommon<s2n_quic::provider::tls::rustls::rustls::client::ClientConnectionData>
++
++trait impl s2n_quic::provider::tls::rustls::rustls::quic::QuicExt for s2n_quic::provider::tls::rustls::rustls::Connection associates type:
++  type Target = s2n_quic::provider::tls::rustls::rustls::CommonState
++
++trait impl s2n_quic::provider::tls::rustls::rustls::quic::QuicExt for s2n_quic::provider::tls::rustls::rustls::ServerConnection associates type:
++  type Target = s2n_quic::provider::tls::rustls::rustls::ConnectionCommon<s2n_quic::provider::tls::rustls::rustls::server::ServerConnectionData>
++
++trait impl s2n_quic::provider::tls::rustls::rustls::quic::ServerQuicExt for s2n_quic::provider::tls::rustls::rustls::ServerConnection associates type:
++  type Target = s2n_quic::provider::tls::rustls::rustls::ConnectionCommon<s2n_quic::provider::tls::rustls::rustls::server::ServerConnectionData>
++
++trait impl s2n_quic::stream::SplittableStream for s2n_quic::stream::BidirectionalStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl s2n_quic::stream::SplittableStream for s2n_quic::stream::BidirectionalStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl s2n_quic::stream::SplittableStream for s2n_quic::stream::LocalStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl s2n_quic::stream::SplittableStream for s2n_quic::stream::LocalStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl s2n_quic::stream::SplittableStream for s2n_quic::stream::PeerStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl s2n_quic::stream::SplittableStream for s2n_quic::stream::PeerStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl s2n_quic::stream::SplittableStream for s2n_quic::stream::ReceiveStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl s2n_quic::stream::SplittableStream for s2n_quic::stream::SendStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl s2n_quic::stream::SplittableStream for s2n_quic::stream::Stream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl s2n_quic::stream::SplittableStream for s2n_quic::stream::Stream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl s2n_quic_core::application::error::TryInto for s2n_quic::application::Error associates type:
++  type Error = s2n_quic_core::varint::VarIntError
++
++trait impl s2n_quic_core::application::error::TryInto for s2n_quic::application::Error associates type:
++  type Target = u64
++
++trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::rustls::Client associates type:
++  type Client = Self
++
++trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::rustls::Client associates type:
++  type Error = core::convert::Infallible
++
++trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::rustls::Client associates type:
++  type Server = s2n_quic::provider::tls::rustls::Server
++
++trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::rustls::Client associates type:
++  type Session = Session
++
++trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::rustls::Server associates type:
++  type Client = s2n_quic::provider::tls::rustls::Client
++
++trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::rustls::Server associates type:
++  type Error = core::convert::Infallible
++
++trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::rustls::Server associates type:
++  type Server = Self
++
++trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::rustls::Server associates type:
++  type Session = Session
++
++trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::s2n_tls::Client associates type:
++  type Client = Self
++
++trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::s2n_tls::Client associates type:
++  type Error = core::convert::Infallible
++
++trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::s2n_tls::Client associates type:
++  type Server = s2n_quic::provider::tls::s2n_tls::Server
++
++trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::s2n_tls::Client associates type:
++  type Session = Session
++
++trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::s2n_tls::Server associates type:
++  type Client = s2n_quic::provider::tls::s2n_tls::Client
++
++trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::s2n_tls::Server associates type:
++  type Error = core::convert::Infallible
++
++trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::s2n_tls::Server associates type:
++  type Server = Self
++
++trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::s2n_tls::Server associates type:
++  type Session = Session
++
++trait impl tokio::io::async_read::AsyncRead for s2n_quic::stream::BidirectionalStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl tokio::io::async_read::AsyncRead for s2n_quic::stream::BidirectionalStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl tokio::io::async_read::AsyncRead for s2n_quic::stream::LocalStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl tokio::io::async_read::AsyncRead for s2n_quic::stream::LocalStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl tokio::io::async_read::AsyncRead for s2n_quic::stream::PeerStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl tokio::io::async_read::AsyncRead for s2n_quic::stream::PeerStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl tokio::io::async_read::AsyncRead for s2n_quic::stream::ReceiveStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl tokio::io::async_read::AsyncRead for s2n_quic::stream::Stream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl tokio::io::async_read::AsyncRead for s2n_quic::stream::Stream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl tokio::io::async_write::AsyncWrite for s2n_quic::stream::BidirectionalStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl tokio::io::async_write::AsyncWrite for s2n_quic::stream::BidirectionalStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl tokio::io::async_write::AsyncWrite for s2n_quic::stream::LocalStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl tokio::io::async_write::AsyncWrite for s2n_quic::stream::LocalStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl tokio::io::async_write::AsyncWrite for s2n_quic::stream::PeerStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl tokio::io::async_write::AsyncWrite for s2n_quic::stream::PeerStream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl tokio::io::async_write::AsyncWrite for s2n_quic::stream::SendStream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl tokio::io::async_write::AsyncWrite for s2n_quic::stream::Stream associates type:
++  type Error = s2n_quic::stream::Error
++
++trait impl tokio::io::async_write::AsyncWrite for s2n_quic::stream::Stream associates type:
++  type Item = s2n_quic::stream::Result<bytes::bytes::Bytes>
++
++trait impl<'_> core::convert::From<&'_ str> for s2n_quic::server::Name associates type:
++  type Target = str
++
++trait impl<'_> core::convert::TryFrom<&'_ [u8]> for s2n_quic::provider::connection_id::LocalId associates type:
++  type Error = s2n_quic_core::connection::id::Error
++
++trait impl<'_> core::convert::TryFrom<&'_ str> for s2n_quic::provider::tls::rustls::rustls::ServerName associates type:
++  type Error = s2n_quic::provider::tls::rustls::rustls::client::InvalidDnsNameError
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::AckProcessed<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::AckRangeReceived<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::ActivePathUpdated<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::ApplicationProtocolInformation<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::Congestion<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::ConnectionIdUpdated<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::ConnectionStarted<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::DuplicatePacket<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::EcnStateChanged<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::FrameReceived<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::PacketDropped<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::PacketLost<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::PathChallengeUpdated<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::PathCreated<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::RecoveryMetrics<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::RxAckRangeDropped<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::ServerNameInformation<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::SlowStartExited<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::TlsClientHello<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::TlsServerHello<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::TransportParametersReceived<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::clone::Clone for s2n_quic::provider::event::events::VersionInformation<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::convert::From<s2n_quic::application::Error> for s2n_quic_core::frame::connection_close::ConnectionClose<'a> associates type:
++  type Error = s2n_quic_core::varint::VarIntError
++
++trait impl<'a> core::convert::From<s2n_quic::application::Error> for s2n_quic_core::frame::connection_close::ConnectionClose<'a> associates type:
++  type Target = u64
++
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::AckProcessed<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::AckRangeReceived<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::ActivePathUpdated<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::ApplicationProtocolInformation<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::Congestion<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::ConnectionIdUpdated<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::ConnectionStarted<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::DuplicatePacket<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::EcnStateChanged<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::FrameReceived<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::PacketDropped<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::PacketLost<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::PathChallengeUpdated<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::PathCreated<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::RecoveryMetrics<'a> associates constant:
++  pub const NAME: &'static str
++
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::RxAckRangeDropped<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::event::Provider for s2n_quic::provider::event::disabled::Provider associates type:
+-  type Subscriber = s2n_quic::provider::event::disabled::Subscriber
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::ServerNameInformation<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::event::Provider for s2n_quic::provider::event::tracing::Provider associates type:
+-  type Error = core::convert::Infallible
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::SlowStartExited<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::event::Provider for s2n_quic::provider::event::tracing::Provider associates type:
+-  type Subscriber = s2n_quic::provider::event::tracing::Subscriber
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::TlsClientHello<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::event::Subscriber for s2n_quic::provider::event::disabled::Subscriber associates type:
+-  type ConnectionContext = ()
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::TlsServerHello<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::event::Subscriber for s2n_quic::provider::event::tracing::Subscriber associates type:
+-  type ConnectionContext = tracing::span::Span
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::TransportParametersReceived<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::io::Provider for s2n_quic::provider::io::Default associates type:
+-  type Error = std::io::error::Error
++trait impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::VersionInformation<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::io::Provider for s2n_quic::provider::io::Default associates type:
+-  type PathHandle = s2n_quic_platform::io::tokio::PathHandle
++trait impl<'a> s2n_codec::decoder::value::DecoderValue<'a> for s2n_quic::provider::connection_id::LocalId associates type:
++  type Error = s2n_quic_core::connection::id::Error
+ 
+-trait impl s2n_quic::provider::limits::Provider for s2n_quic::provider::limits::default::Provider associates type:
+-  type Error = core::convert::Infallible
++trait impl<'a> s2n_codec::decoder::value::DecoderValueMut<'a> for s2n_quic::provider::connection_id::LocalId associates type:
++  type Error = s2n_quic_core::connection::id::Error
+ 
+-trait impl s2n_quic::provider::limits::Provider for s2n_quic::provider::limits::default::Provider associates type:
+-  type Limits = s2n_quic::provider::limits::Limits
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::AckProcessed<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::stateless_reset_token::Provider for s2n_quic::provider::stateless_reset_token::Default associates type:
+-  type Error = core::convert::Infallible
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::AckRangeReceived<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::stateless_reset_token::Provider for s2n_quic::provider::stateless_reset_token::Default associates type:
+-  type Generator = Generator
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::ActivePathUpdated<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::Default associates type:
+-  type Client = s2n_quic::provider::tls::s2n_tls::Client
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::ApplicationProtocolInformation<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::Default associates type:
+-  type Error = core::convert::Infallible
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::Congestion<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::Default associates type:
+-  type Server = s2n_quic::provider::tls::s2n_tls::Server
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::ConnectionIdUpdated<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::rustls::Client associates type:
+-  type Client = Self
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::ConnectionStarted<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::rustls::Client associates type:
+-  type Error = core::convert::Infallible
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::DuplicatePacket<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::rustls::Client associates type:
+-  type Server = s2n_quic::provider::tls::rustls::Server
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::EcnStateChanged<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::rustls::Server associates type:
+-  type Client = s2n_quic::provider::tls::rustls::Client
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::FrameReceived<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::rustls::Server associates type:
+-  type Error = core::convert::Infallible
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::PacketDropped<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::rustls::Server associates type:
+-  type Server = Self
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::PacketLost<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::s2n_tls::Client associates type:
+-  type Client = Self
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::PathChallengeUpdated<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::s2n_tls::Client associates type:
+-  type Error = core::convert::Infallible
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::PathCreated<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::s2n_tls::Client associates type:
+-  type Server = s2n_quic::provider::tls::s2n_tls::Server
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::RecoveryMetrics<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::s2n_tls::Server associates type:
+-  type Client = s2n_quic::provider::tls::s2n_tls::Client
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::RxAckRangeDropped<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::s2n_tls::Server associates type:
+-  type Error = core::convert::Infallible
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::ServerNameInformation<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::s2n_tls::Server associates type:
+-  type Server = Self
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::SlowStartExited<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::rustls::Client associates type:
+-  type Session = Session
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::TlsClientHello<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::rustls::Server associates type:
+-  type Session = Session
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::TlsServerHello<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::s2n_tls::Client associates type:
+-  type Session = Session
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::TransportParametersReceived<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::s2n_tls::Server associates type:
+-  type Session = Session
++trait impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::VersionInformation<'a> associates constant:
++  pub const NAME: &'static str
+ 
+-trait impl<'_> core::convert::TryFrom<&'_ [u8]> for s2n_quic::provider::connection_id::LocalId associates type:
++trait impl<'a> s2n_quic_core::event::IntoEvent<s2n_quic_core::event::generated::builder::ConnectionId<'a>> for &'a s2n_quic::provider::connection_id::LocalId associates type:
+   type Error = s2n_quic_core::connection::id::Error
+ 
+-trait impl<'_> core::convert::TryFrom<&'_ str> for s2n_quic::provider::tls::rustls::rustls::ServerName associates type:
+-  type Error = s2n_quic::provider::tls::rustls::rustls::client::InvalidDnsNameError
+-
+ trait impl<T> core::ops::deref::Deref for s2n_quic::provider::tls::rustls::rustls::ConnectionCommon<T> associates type:
+   type Target = s2n_quic::provider::tls::rustls::rustls::CommonState
+ 
+ trait impl<T> core::ops::deref::Deref for s2n_quic::provider::tls::rustls::rustls::internal::msgs::persist::Retrieved<T> associates type:
+   type Target = T
+ 
++trait impl<T> core::ops::deref::DerefMut for s2n_quic::provider::tls::rustls::rustls::ConnectionCommon<T> associates type:
++  type Target = s2n_quic::provider::tls::rustls::rustls::CommonState
++
+ crate s2n_quic exports module:
+   s2n_quic::application
+ 

@@ -1,0 +1,24 @@
+   impl core::marker::Unpin for s2n_quic::provider::tls::s2n_tls::certificate::Certificate
+ 
+ struct s2n_quic::provider::tls::s2n_tls::certificate::Certificate implements trait:
+-  impl s2n_quic::provider::tls::s2n_tls::certificate::IntoCertificate for s2n_quic::provider::tls::s2n_tls::certificate::Certificate
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::tls::s2n_tls::certificate::Certificate
+ 
+ struct s2n_quic::provider::tls::s2n_tls::certificate::Certificate implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::provider::tls::s2n_tls::certificate::Certificate
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::tls::s2n_tls::certificate::Certificate
+ 
+ struct s2n_quic::provider::tls::s2n_tls::certificate::Certificate implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::provider::tls::s2n_tls::certificate::Certificate
++  impl s2n_quic::provider::tls::s2n_tls::certificate::IntoCertificate for s2n_quic::provider::tls::s2n_tls::certificate::Certificate
+ 
+ trait s2n_quic::provider::tls::s2n_tls::certificate::IntoCertificate exports function:
+-  pub fn into_certificate(self) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::certificate::Certificate, s2n_tls::raw::error::Error>
++  fn into_certificate(self) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::certificate::Certificate, s2n_tls::error::Error>
+ 
+ trait s2n_quic::provider::tls::s2n_tls::certificate::IntoPrivateKey exports function:
+-  pub fn into_private_key(self) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::certificate::PrivateKey, s2n_tls::raw::error::Error>
++  fn into_private_key(self) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::certificate::PrivateKey, s2n_tls::error::Error>
+ 
+ struct s2n_quic::provider::tls::s2n_tls::certificate::PrivateKey implements trait:
+   impl core::marker::Send for s2n_quic::provider::tls::s2n_tls::certificate::PrivateKey

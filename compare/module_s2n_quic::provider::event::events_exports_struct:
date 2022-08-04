@@ -1,0 +1,21 @@
+ module s2n_quic::provider::event::events exports enum:
+   s2n_quic::provider::event::events::RetryDiscardReason
+ 
++module s2n_quic::provider::event::events exports struct:
++  s2n_quic::provider::event::events::RxAckRangeDropped
++
+ module s2n_quic::provider::event::events exports struct:
+   s2n_quic::provider::event::events::RxStreamProgress
+ 
+ module s2n_quic::provider::event::events exports struct:
+   s2n_quic::provider::event::events::ServerNameInformation
+ 
++module s2n_quic::provider::event::events exports enum:
++  s2n_quic::provider::event::events::SlowStartExitCause
++
++module s2n_quic::provider::event::events exports struct:
++  s2n_quic::provider::event::events::SlowStartExited
++
+ module s2n_quic::provider::event::events exports enum:
+   s2n_quic::provider::event::events::SocketAddress
+ 

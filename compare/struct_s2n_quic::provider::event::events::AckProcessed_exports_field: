@@ -1,0 +1,44 @@
+ struct s2n_quic::provider::event::events::AckProcessed exports constant:
+   pub const NAME: &'static str
+ 
++struct s2n_quic::provider::event::events::AckRangeReceived is non-exhaustive
++
++struct s2n_quic::provider::event::events::AckRangeReceived exports field:
++  ack_range: core::ops::range::RangeInclusive<u64>
++
++struct s2n_quic::provider::event::events::AckRangeReceived implements trait:
++  impl<'a> core::clone::Clone for s2n_quic::provider::event::events::AckRangeReceived<'a>
++
++struct s2n_quic::provider::event::events::AckRangeReceived implements trait:
++  impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::AckRangeReceived<'a>
++
++struct s2n_quic::provider::event::events::AckRangeReceived implements trait:
++  impl<'a> core::marker::Send for s2n_quic::provider::event::events::AckRangeReceived<'a>
++
++struct s2n_quic::provider::event::events::AckRangeReceived implements trait:
++  impl<'a> core::marker::Sync for s2n_quic::provider::event::events::AckRangeReceived<'a>
++
++struct s2n_quic::provider::event::events::AckRangeReceived implements trait:
++  impl<'a> core::marker::Unpin for s2n_quic::provider::event::events::AckRangeReceived<'a>
++
++struct s2n_quic::provider::event::events::AckRangeReceived implements trait:
++  impl<'a> core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::event::events::AckRangeReceived<'a>
++
++struct s2n_quic::provider::event::events::AckRangeReceived implements trait:
++  impl<'a> core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::event::events::AckRangeReceived<'a>
++
++struct s2n_quic::provider::event::events::AckRangeReceived implements trait:
++  impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::AckRangeReceived<'a>
++
++struct s2n_quic::provider::event::events::AckRangeReceived exports field:
++  packet_header: s2n_quic::provider::event::events::PacketHeader
++
++struct s2n_quic::provider::event::events::AckRangeReceived exports field:
++  path: s2n_quic::provider::event::events::Path<'a>
++
++struct s2n_quic::provider::event::events::AckRangeReceived exports constant:
++  pub const NAME: &'static str
++
+ struct s2n_quic::provider::event::events::ActivePathUpdated is non-exhaustive
+ 
+ struct s2n_quic::provider::event::events::ActivePathUpdated exports field:

@@ -1,0 +1,14 @@
+ enum s2n_quic::stream::LocalStream exports function:
+   pub fn stop_sending(&mut self, error_code: s2n_quic::application::Error) -> s2n_quic::stream::Result<()>
+ 
++variant s2n_quic::stream::LocalStream::Bidirectional exports field:
++  0:
++  s2n_quic::stream::BidirectionalStream
++
++variant s2n_quic::stream::LocalStream::Send exports field:
++  0:
++  s2n_quic::stream::SendStream
++
+ enum s2n_quic::stream::PeerStream exports variant:
+   Bidirectional(s2n_quic::stream::BidirectionalStream)
+ 

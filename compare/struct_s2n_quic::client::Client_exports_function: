@@ -1,0 +1,11 @@
+ struct s2n_quic::client::Client exports function:
+   pub fn local_addr(&self) -> core::result::Result<std::net::addr::SocketAddr, std::io::error::Error>
+ 
+-struct s2n_quic::client::Connect exports function:
+-  #[must_use]
+-  pub fn with_server_name<Name>(self, server_name: Name) -> s2n_quic::client::Connect where
+-  Name: core::convert::Into<s2n_quic::server::Name>,
+-
+ struct s2n_quic::client::Connect implements trait:
+   impl core::clone::Clone for s2n_quic::client::Connect
+ 

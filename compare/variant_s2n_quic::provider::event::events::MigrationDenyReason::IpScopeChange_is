@@ -1,0 +1,82 @@
+ 
+ variant s2n_quic::provider::event::events::MigrationDenyReason::PortScopeChanged is non-exhaustive
+ 
++struct s2n_quic::provider::event::events::MtuUpdated is non-exhaustive
++
++struct s2n_quic::provider::event::events::MtuUpdated exports field:
++  cause: s2n_quic::provider::event::events::MtuUpdatedCause
++
++struct s2n_quic::provider::event::events::MtuUpdated implements trait:
++  impl core::clone::Clone for s2n_quic::provider::event::events::MtuUpdated
++
++struct s2n_quic::provider::event::events::MtuUpdated implements trait:
++  impl core::fmt::Debug for s2n_quic::provider::event::events::MtuUpdated
++
++struct s2n_quic::provider::event::events::MtuUpdated implements trait:
++  impl core::marker::Send for s2n_quic::provider::event::events::MtuUpdated
++
++struct s2n_quic::provider::event::events::MtuUpdated implements trait:
++  impl core::marker::Sync for s2n_quic::provider::event::events::MtuUpdated
++
++struct s2n_quic::provider::event::events::MtuUpdated implements trait:
++  impl core::marker::Unpin for s2n_quic::provider::event::events::MtuUpdated
++
++struct s2n_quic::provider::event::events::MtuUpdated implements trait:
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::event::events::MtuUpdated
++
++struct s2n_quic::provider::event::events::MtuUpdated implements trait:
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::event::events::MtuUpdated
++
++struct s2n_quic::provider::event::events::MtuUpdated implements trait:
++  impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::MtuUpdated
++
++struct s2n_quic::provider::event::events::MtuUpdated exports field:
++  mtu: u16
++
++struct s2n_quic::provider::event::events::MtuUpdated exports field:
++  path_id: u64
++
++struct s2n_quic::provider::event::events::MtuUpdated exports constant:
++  pub const NAME: &'static str
++
++enum s2n_quic::provider::event::events::MtuUpdatedCause is non-exhaustive
++
++enum s2n_quic::provider::event::events::MtuUpdatedCause exports variant:
++  Blackhole
++
++enum s2n_quic::provider::event::events::MtuUpdatedCause exports variant:
++  NewPath
++
++enum s2n_quic::provider::event::events::MtuUpdatedCause exports variant:
++  ProbeAcknowledged
++
++enum s2n_quic::provider::event::events::MtuUpdatedCause implements trait:
++  impl core::clone::Clone for s2n_quic::provider::event::events::MtuUpdatedCause
++
++enum s2n_quic::provider::event::events::MtuUpdatedCause implements trait:
++  impl core::fmt::Debug for s2n_quic::provider::event::events::MtuUpdatedCause
++
++enum s2n_quic::provider::event::events::MtuUpdatedCause implements trait:
++  impl core::marker::Send for s2n_quic::provider::event::events::MtuUpdatedCause
++
++enum s2n_quic::provider::event::events::MtuUpdatedCause implements trait:
++  impl core::marker::Sync for s2n_quic::provider::event::events::MtuUpdatedCause
++
++enum s2n_quic::provider::event::events::MtuUpdatedCause implements trait:
++  impl core::marker::Unpin for s2n_quic::provider::event::events::MtuUpdatedCause
++
++enum s2n_quic::provider::event::events::MtuUpdatedCause implements trait:
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::event::events::MtuUpdatedCause
++
++enum s2n_quic::provider::event::events::MtuUpdatedCause implements trait:
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::event::events::MtuUpdatedCause
++
++variant s2n_quic::provider::event::events::MtuUpdatedCause::Blackhole is non-exhaustive
++
++variant s2n_quic::provider::event::events::MtuUpdatedCause::NewPath is non-exhaustive
++
++variant s2n_quic::provider::event::events::MtuUpdatedCause::ProbeAcknowledged is non-exhaustive
++
+ enum s2n_quic::provider::event::events::PacketDropReason is non-exhaustive
+ 
+ enum s2n_quic::provider::event::events::PacketDropReason exports variant:

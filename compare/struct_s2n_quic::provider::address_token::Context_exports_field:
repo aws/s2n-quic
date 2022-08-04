@@ -1,0 +1,35 @@
+ trait s2n_quic::provider::address_token::Format associates constant:
+   const TOKEN_LEN: usize
+ 
+-trait s2n_quic::provider::address_token::Format associates constant:
+-  pub const TOKEN_LEN: usize
+-
+ trait s2n_quic::provider::address_token::Format exports function:
+-  pub fn generate_new_token(
++  fn generate_new_token(
+   &mut self,
+   context: &mut s2n_quic::provider::address_token::Context<'_>,
+   source_connection_id: &s2n_quic::provider::connection_id::LocalId,
+   output_buffer: &mut [u8]) -> core::option::Option<()>
+ 
+ trait s2n_quic::provider::address_token::Format exports function:
+-  pub fn generate_retry_token(
++  fn generate_retry_token(
+   &mut self,
+   context: &mut s2n_quic::provider::address_token::Context<'_>,
+   original_destination_connection_id: &s2n_quic_core::connection::id::InitialId,
+   output_buffer: &mut [u8]) -> core::option::Option<()>
+ 
+ trait s2n_quic::provider::address_token::Format exports function:
+-  pub fn validate_token(
++  fn validate_token(
+   &mut self,
+   context: &mut s2n_quic::provider::address_token::Context<'_>,
+   token: &[u8]) -> core::option::Option<s2n_quic_core::connection::id::InitialId>
+ 
++trait s2n_quic::provider::address_token::Format associates constant:
++  pub const TOKEN_LEN: usize
++
+ trait s2n_quic::provider::address_token::Provider exports function:
+   fn start(self) -> core::result::Result<Self::s2n_quic::provider::address_token::Provider::Format, Self::s2n_quic::provider::address_token::Provider::Error>
+ 

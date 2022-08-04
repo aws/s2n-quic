@@ -1,0 +1,16 @@
+   impl core::marker::Unpin for s2n_quic::provider::connection_id::LocalId
+ 
+ struct s2n_quic::provider::connection_id::LocalId implements trait:
+-  impl s2n_codec::encoder::value::EncoderValue for s2n_quic::provider::connection_id::LocalId
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::connection_id::LocalId
+ 
+ struct s2n_quic::provider::connection_id::LocalId implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::provider::connection_id::LocalId
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::connection_id::LocalId
+ 
+ struct s2n_quic::provider::connection_id::LocalId implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::provider::connection_id::LocalId
++  impl s2n_codec::encoder::value::EncoderValue for s2n_quic::provider::connection_id::LocalId
+ 
+ struct s2n_quic::provider::connection_id::LocalId implements trait:
+   impl<'_> core::convert::TryFrom<&'_ [u8]> for s2n_quic::provider::connection_id::LocalId

@@ -1,0 +1,20 @@
+   impl core::marker::Unpin for s2n_quic::provider::connection_id::default::Format
+ 
+ struct s2n_quic::provider::connection_id::default::Format implements trait:
+-  impl s2n_quic::provider::connection_id::Generator for s2n_quic::provider::connection_id::default::Format
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::connection_id::default::Format
+ 
+ struct s2n_quic::provider::connection_id::default::Format implements trait:
+-  impl s2n_quic::provider::connection_id::Validator for s2n_quic::provider::connection_id::default::Format
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::connection_id::default::Format
+ 
+ struct s2n_quic::provider::connection_id::default::Format implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::provider::connection_id::default::Format
++  impl s2n_quic::provider::connection_id::Generator for s2n_quic::provider::connection_id::default::Format
+ 
+ struct s2n_quic::provider::connection_id::default::Format implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::provider::connection_id::default::Format
++  impl s2n_quic::provider::connection_id::Validator for s2n_quic::provider::connection_id::default::Format
+ 
+ struct s2n_quic::provider::connection_id::default::Format exports function:
+   pub fn builder() -> s2n_quic::provider::connection_id::default::Builder

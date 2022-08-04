@@ -1,0 +1,101 @@
+   impl<'a> core::marker::Unpin for s2n_quic::provider::event::events::ServerNameInformation<'a>
+ 
+ struct s2n_quic::provider::event::events::ServerNameInformation implements trait:
+-  impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::ServerNameInformation<'a>
++  impl<'a> core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::event::events::ServerNameInformation<'a>
+ 
+ struct s2n_quic::provider::event::events::ServerNameInformation implements trait:
+-  impl<'a> std::panic::RefUnwindSafe for s2n_quic::provider::event::events::ServerNameInformation<'a>
++  impl<'a> core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::event::events::ServerNameInformation<'a>
+ 
+ struct s2n_quic::provider::event::events::ServerNameInformation implements trait:
+-  impl<'a> std::panic::UnwindSafe for s2n_quic::provider::event::events::ServerNameInformation<'a>
++  impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::ServerNameInformation<'a>
+ 
+ struct s2n_quic::provider::event::events::ServerNameInformation exports constant:
+   pub const NAME: &'static str
+ 
++enum s2n_quic::provider::event::events::SlowStartExitCause is non-exhaustive
++
++enum s2n_quic::provider::event::events::SlowStartExitCause exports variant:
++  Ecn
++
++enum s2n_quic::provider::event::events::SlowStartExitCause exports variant:
++  Other
++
++enum s2n_quic::provider::event::events::SlowStartExitCause exports variant:
++  PacketLoss
++
++enum s2n_quic::provider::event::events::SlowStartExitCause exports variant:
++  Rtt
++
++enum s2n_quic::provider::event::events::SlowStartExitCause implements trait:
++  impl core::clone::Clone for s2n_quic::provider::event::events::SlowStartExitCause
++
++enum s2n_quic::provider::event::events::SlowStartExitCause implements trait:
++  impl core::fmt::Debug for s2n_quic::provider::event::events::SlowStartExitCause
++
++enum s2n_quic::provider::event::events::SlowStartExitCause implements trait:
++  impl core::marker::Send for s2n_quic::provider::event::events::SlowStartExitCause
++
++enum s2n_quic::provider::event::events::SlowStartExitCause implements trait:
++  impl core::marker::Sync for s2n_quic::provider::event::events::SlowStartExitCause
++
++enum s2n_quic::provider::event::events::SlowStartExitCause implements trait:
++  impl core::marker::Unpin for s2n_quic::provider::event::events::SlowStartExitCause
++
++enum s2n_quic::provider::event::events::SlowStartExitCause implements trait:
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::event::events::SlowStartExitCause
++
++enum s2n_quic::provider::event::events::SlowStartExitCause implements trait:
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::event::events::SlowStartExitCause
++
++variant s2n_quic::provider::event::events::SlowStartExitCause::Ecn is non-exhaustive
++
++variant s2n_quic::provider::event::events::SlowStartExitCause::Other is non-exhaustive
++
++variant s2n_quic::provider::event::events::SlowStartExitCause::PacketLoss is non-exhaustive
++
++variant s2n_quic::provider::event::events::SlowStartExitCause::Rtt is non-exhaustive
++
++struct s2n_quic::provider::event::events::SlowStartExited is non-exhaustive
++
++struct s2n_quic::provider::event::events::SlowStartExited exports field:
++  cause: s2n_quic::provider::event::events::SlowStartExitCause
++
++struct s2n_quic::provider::event::events::SlowStartExited exports field:
++  congestion_window: u32
++
++struct s2n_quic::provider::event::events::SlowStartExited implements trait:
++  impl<'a> core::clone::Clone for s2n_quic::provider::event::events::SlowStartExited<'a>
++
++struct s2n_quic::provider::event::events::SlowStartExited implements trait:
++  impl<'a> core::fmt::Debug for s2n_quic::provider::event::events::SlowStartExited<'a>
++
++struct s2n_quic::provider::event::events::SlowStartExited implements trait:
++  impl<'a> core::marker::Send for s2n_quic::provider::event::events::SlowStartExited<'a>
++
++struct s2n_quic::provider::event::events::SlowStartExited implements trait:
++  impl<'a> core::marker::Sync for s2n_quic::provider::event::events::SlowStartExited<'a>
++
++struct s2n_quic::provider::event::events::SlowStartExited implements trait:
++  impl<'a> core::marker::Unpin for s2n_quic::provider::event::events::SlowStartExited<'a>
++
++struct s2n_quic::provider::event::events::SlowStartExited implements trait:
++  impl<'a> core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::event::events::SlowStartExited<'a>
++
++struct s2n_quic::provider::event::events::SlowStartExited implements trait:
++  impl<'a> core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::event::events::SlowStartExited<'a>
++
++struct s2n_quic::provider::event::events::SlowStartExited implements trait:
++  impl<'a> s2n_quic::provider::event::Event for s2n_quic::provider::event::events::SlowStartExited<'a>
++
++struct s2n_quic::provider::event::events::SlowStartExited exports field:
++  path: s2n_quic::provider::event::events::Path<'a>
++
++struct s2n_quic::provider::event::events::SlowStartExited exports constant:
++  pub const NAME: &'static str
++
+ enum s2n_quic::provider::event::events::SocketAddress is non-exhaustive
+ 
+ enum s2n_quic::provider::event::events::SocketAddress exports variant:

@@ -1,0 +1,27 @@
+   impl core::marker::Unpin for s2n_quic::stream::Error
+ 
+ enum s2n_quic::stream::Error implements trait:
+-  impl s2n_quic_core::application::error::TryInto for s2n_quic::stream::Error
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::stream::Error
+ 
+ enum s2n_quic::stream::Error implements trait:
+-  impl std::error::Error for s2n_quic::stream::Error
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::stream::Error
+ 
+ enum s2n_quic::stream::Error implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::stream::Error
++  impl s2n_quic_core::application::error::TryInto for s2n_quic::stream::Error
+ 
+ enum s2n_quic::stream::Error implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::stream::Error
++  impl std::error::Error for s2n_quic::stream::Error
+ 
+ enum s2n_quic::stream::Error implements trait:
+   impl<'a> core::convert::From<s2n_quic_core::frame::connection_close::ConnectionClose<'a>> for s2n_quic::stream::Error
+ 
+ enum s2n_quic::stream::Error exports function:
+-  pub fn source(&self) -> &'static core::panic::Location<'static>
++  pub fn source(&self) -> &'static core::panic::location::Location<'static>
+ 
+ variant s2n_quic::stream::Error::ConnectionError is non-exhaustive
+ 

@@ -1,0 +1,27 @@
+   impl core::marker::Unpin for s2n_quic::provider::event::events::Frame
+ 
+ enum s2n_quic::provider::event::events::Frame implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::provider::event::events::Frame
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::event::events::Frame
+ 
+ enum s2n_quic::provider::event::events::Frame implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::provider::event::events::Frame
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::event::events::Frame
+ 
+ variant s2n_quic::provider::event::events::Frame::Ack is non-exhaustive
+ 
++variant s2n_quic::provider::event::events::Frame::Ack exports field:
++  ack_range_count:
++  u64
++
++variant s2n_quic::provider::event::events::Frame::Ack exports field:
++  ecn_counts:
++  core::option::Option<s2n_quic::provider::event::events::EcnCounts>
++
++variant s2n_quic::provider::event::events::Frame::Ack exports field:
++  largest_acknowledged:
++  u64
++
+ variant s2n_quic::provider::event::events::Frame::ConnectionClose is non-exhaustive
+ 
+ variant s2n_quic::provider::event::events::Frame::Crypto is non-exhaustive

@@ -1,0 +1,12 @@
+   impl core::ops::deref::Deref for s2n_quic::server::Name
+ 
+ struct s2n_quic::server::Name implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::server::Name
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::server::Name
+ 
+ struct s2n_quic::server::Name implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::server::Name
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::server::Name
+ 
+ struct s2n_quic::server::Name implements trait:
+   impl<'_> core::convert::From<&'_ str> for s2n_quic::server::Name

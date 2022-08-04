@@ -1,0 +1,16 @@
+   impl core::ops::deref::Deref for s2n_quic::application::Error
+ 
+ struct s2n_quic::application::Error implements trait:
+-  impl s2n_quic_core::application::error::TryInto for s2n_quic::application::Error
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::application::Error
+ 
+ struct s2n_quic::application::Error implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::application::Error
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::application::Error
+ 
+ struct s2n_quic::application::Error implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::application::Error
++  impl s2n_quic_core::application::error::TryInto for s2n_quic::application::Error
+ 
+ struct s2n_quic::application::Error implements trait:
+   impl<'a> core::convert::From<s2n_quic::application::Error> for s2n_quic_core::frame::connection_close::ConnectionClose<'a>

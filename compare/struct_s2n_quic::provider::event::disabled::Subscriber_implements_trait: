@@ -1,0 +1,16 @@
+   impl core::marker::Unpin for s2n_quic::provider::event::disabled::Subscriber
+ 
+ struct s2n_quic::provider::event::disabled::Subscriber implements trait:
+-  impl s2n_quic::provider::event::Subscriber for s2n_quic::provider::event::disabled::Subscriber
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::event::disabled::Subscriber
+ 
+ struct s2n_quic::provider::event::disabled::Subscriber implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::provider::event::disabled::Subscriber
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::event::disabled::Subscriber
+ 
+ struct s2n_quic::provider::event::disabled::Subscriber implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::provider::event::disabled::Subscriber
++  impl s2n_quic::provider::event::Subscriber for s2n_quic::provider::event::disabled::Subscriber
+ 
+ module s2n_quic::provider::event::events exports enum:
+   s2n_quic::provider::event::events::AckAction

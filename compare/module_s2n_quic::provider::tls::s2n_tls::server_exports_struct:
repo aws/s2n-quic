@@ -1,0 +1,38 @@
+ module s2n_quic::provider::tls::s2n_tls::server exports struct:
+   s2n_quic::provider::tls::s2n_tls::server::Server
+ 
+-struct s2n_quic::provider::tls::s2n_tls::server::Builder implements trait:
+-  impl !core::marker::Sync for s2n_quic::provider::tls::s2n_tls::server::Builder
+-
+ struct s2n_quic::provider::tls::s2n_tls::server::Builder implements trait:
+   impl core::default::Default for s2n_quic::provider::tls::s2n_tls::server::Builder
+ 
+ struct s2n_quic::provider::tls::s2n_tls::server::Builder implements trait:
+   impl core::marker::Send for s2n_quic::provider::tls::s2n_tls::server::Builder
+ 
++struct s2n_quic::provider::tls::s2n_tls::server::Builder implements trait:
++  impl core::marker::Sync for s2n_quic::provider::tls::s2n_tls::server::Builder
++
+ struct s2n_quic::provider::tls::s2n_tls::server::Builder implements trait:
+   impl core::marker::Unpin for s2n_quic::provider::tls::s2n_tls::server::Builder
+ 
+ struct s2n_quic::provider::tls::s2n_tls::server::Builder implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::provider::tls::s2n_tls::server::Builder
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::tls::s2n_tls::server::Builder
+ 
+ struct s2n_quic::provider::tls::s2n_tls::server::Builder implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::provider::tls::s2n_tls::server::Builder
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::tls::s2n_tls::server::Builder
+ 
+ struct s2n_quic::provider::tls::s2n_tls::server::Builder exports function:
+-  pub fn build(self) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::Server, s2n_tls::raw::error::Error>
++  pub fn build(self) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::Server, s2n_tls::error::Error>
+ 
+ struct s2n_quic::provider::tls::s2n_tls::server::Builder exports function:
+   pub fn with_application_protocols<P, I>(
+   self,
+-  protocols: P) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::server::Builder, s2n_tls::raw::error::Error> where
++  protocols: P) -> core::result::Result<s2n_quic::provider::tls::s2n_tls::server::Builder, s2n_tls::error::Error> where
+   P: core::iter::traits::collect::IntoIterator<Item = I>,
+   I: core::convert::AsRef<[u8]>,
+ 

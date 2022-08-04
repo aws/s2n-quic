@@ -1,0 +1,16 @@
+   Providers: core::marker::Unpin,
+ 
+ struct s2n_quic::server::Builder implements trait:
+-  impl<Providers> std::panic::RefUnwindSafe for s2n_quic::server::Builder<Providers> where
+-  Providers: std::panic::RefUnwindSafe,
++  impl<Providers> core::panic::unwind_safe::RefUnwindSafe for s2n_quic::server::Builder<Providers> where
++  Providers: core::panic::unwind_safe::RefUnwindSafe,
+ 
+ struct s2n_quic::server::Builder implements trait:
+-  impl<Providers> std::panic::UnwindSafe for s2n_quic::server::Builder<Providers> where
+-  Providers: std::panic::UnwindSafe,
++  impl<Providers> core::panic::unwind_safe::UnwindSafe for s2n_quic::server::Builder<Providers> where
++  Providers: core::panic::unwind_safe::UnwindSafe,
+ 
+ struct s2n_quic::server::Builder exports function:
+   pub fn start(self) -> core::result::Result<s2n_quic::server::Server, s2n_quic::provider::StartError>

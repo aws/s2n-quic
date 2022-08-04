@@ -1,0 +1,16 @@
+   impl core::marker::Unpin for s2n_quic::provider::connection_id::default::Provider
+ 
+ struct s2n_quic::provider::connection_id::default::Provider implements trait:
+-  impl s2n_quic::provider::connection_id::Provider for s2n_quic::provider::connection_id::default::Provider
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::connection_id::default::Provider
+ 
+ struct s2n_quic::provider::connection_id::default::Provider implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::provider::connection_id::default::Provider
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::connection_id::default::Provider
+ 
+ struct s2n_quic::provider::connection_id::default::Provider implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::provider::connection_id::default::Provider
++  impl s2n_quic::provider::connection_id::Provider for s2n_quic::provider::connection_id::default::Provider
+ 
+ module s2n_quic::provider::endpoint_limits exports struct:
+   s2n_quic::provider::endpoint_limits::ConnectionAttempt

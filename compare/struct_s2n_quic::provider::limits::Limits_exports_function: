@@ -1,0 +1,21 @@
+   self,
+   value: u64) -> core::result::Result<s2n_quic::provider::limits::Limits, s2n_quic_core::transport::parameters::ValidationError>
+ 
++struct s2n_quic::provider::limits::Limits exports function:
++  pub fn with_max_open_local_bidirectional_streams(
++  self,
++  value: u64) -> core::result::Result<s2n_quic::provider::limits::Limits, s2n_quic_core::transport::parameters::ValidationError>
++
+ struct s2n_quic::provider::limits::Limits exports function:
+   pub fn with_max_open_local_unidirectional_streams(
+   self,
+   value: u64) -> core::result::Result<s2n_quic::provider::limits::Limits, s2n_quic_core::transport::parameters::ValidationError>
+ 
++struct s2n_quic::provider::limits::Limits exports function:
++  pub fn with_max_open_remote_bidirectional_streams(
++  self,
++  value: u64) -> core::result::Result<s2n_quic::provider::limits::Limits, s2n_quic_core::transport::parameters::ValidationError>
++
+ struct s2n_quic::provider::limits::Limits exports function:
+   pub fn with_max_open_remote_unidirectional_streams(
+   self,

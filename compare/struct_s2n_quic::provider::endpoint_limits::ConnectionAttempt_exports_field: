@@ -1,0 +1,8 @@
+   timestamp: s2n_quic::provider::event::Timestamp
+ 
+ trait s2n_quic::provider::endpoint_limits::Limiter exports function:
+-  pub fn on_connection_attempt(&mut self, info: &s2n_quic::provider::endpoint_limits::ConnectionAttempt<'_>) -> s2n_quic::provider::endpoint_limits::Outcome
++  fn on_connection_attempt(&mut self, info: &s2n_quic::provider::endpoint_limits::ConnectionAttempt<'_>) -> s2n_quic::provider::endpoint_limits::Outcome
+ 
+ enum s2n_quic::provider::endpoint_limits::Outcome is non-exhaustive
+ 

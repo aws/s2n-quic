@@ -1,0 +1,16 @@
+   impl core::marker::Unpin for s2n_quic::stream::Type
+ 
+ enum s2n_quic::stream::Type implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::stream::Type
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::stream::Type
+ 
+ enum s2n_quic::stream::Type implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::stream::Type
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::stream::Type
+ 
+ enum s2n_quic::stream::Type implements trait:
+-  impl<'a, '_> s2n_quic_core::event::IntoEvent<s2n_quic_core::event::generated::builder::StreamType> for &'_ s2n_quic::stream::Type
++  impl<'_> s2n_quic_core::event::IntoEvent<s2n_quic_core::event::generated::builder::StreamType> for &'_ s2n_quic::stream::Type
+ 
+ enum s2n_quic::stream::Type exports function:
+   pub fn is_bidirectional(self) -> bool

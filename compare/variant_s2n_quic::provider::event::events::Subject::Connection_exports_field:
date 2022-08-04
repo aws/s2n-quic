@@ -1,0 +1,8 @@
+ variant s2n_quic::provider::event::events::Subject::Endpoint is non-exhaustive
+ 
+ trait s2n_quic::provider::event::events::Subscriber exports function:
+-  pub fn create_connection_context(
++  fn create_connection_context(
+   &mut self,
+   meta: &s2n_quic::provider::event::ConnectionMeta,
+   info: &s2n_quic::provider::event::ConnectionInfo) -> Self::s2n_quic::provider::event::Subscriber::ConnectionContext

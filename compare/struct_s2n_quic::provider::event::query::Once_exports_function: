@@ -1,0 +1,12 @@
+   pub fn new_mut(query: F) -> s2n_quic::provider::event::query::Once<F, ConnectionContext, Outcome>
+ 
+ trait s2n_quic::provider::event::query::Query exports function:
+-  pub fn execute(&mut self, context: &(dyn core::any::Any + 'static)) -> s2n_quic::provider::event::query::ControlFlow
++  fn execute(&mut self, context: &(dyn core::any::Any + 'static)) -> s2n_quic::provider::event::query::ControlFlow
+ 
+ trait s2n_quic::provider::event::query::QueryMut exports function:
+-  pub fn execute_mut(&mut self, context: &mut (dyn core::any::Any + 'static)) -> s2n_quic::provider::event::query::ControlFlow
++  fn execute_mut(&mut self, context: &mut (dyn core::any::Any + 'static)) -> s2n_quic::provider::event::query::ControlFlow
+ 
+ module s2n_quic::provider::event::supervisor exports struct:
+   s2n_quic::provider::event::supervisor::Context

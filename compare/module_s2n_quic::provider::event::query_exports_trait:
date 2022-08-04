@@ -1,0 +1,10 @@
+ module s2n_quic::provider::event::query exports trait:
+   s2n_quic::provider::event::query::QueryMut
+ 
+-enum s2n_quic::provider::event::query::ControlFlow exports function:
+-  #[must_use]
+-  pub fn and_then(self, f: impl core::ops::function::FnOnce() -> s2n_quic::provider::event::query::ControlFlow) -> s2n_quic::provider::event::query::ControlFlow
+-
+ enum s2n_quic::provider::event::query::ControlFlow exports variant:
+   Break
+ 

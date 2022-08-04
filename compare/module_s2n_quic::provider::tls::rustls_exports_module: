@@ -1,0 +1,9 @@
+ module s2n_quic::provider::tls::rustls exports module:
+   s2n_quic::provider::tls::rustls::server
+ 
++struct s2n_quic::provider::tls::rustls::Certificate exports field:
++  0: alloc::vec::Vec<u8, alloc::alloc::Global>
++
+ struct s2n_quic::provider::tls::rustls::Certificate implements trait:
+   impl core::clone::Clone for s2n_quic::provider::tls::rustls::Certificate
+ 

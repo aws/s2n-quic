@@ -1,0 +1,10 @@
+ trait s2n_quic::provider::event::Event associates constant:
+   pub const NAME: &'static str
+ 
+-enum s2n_quic::provider::event::Location exports function:
+-  #[must_use]
+-  pub fn peer_type(self) -> s2n_quic::provider::event::Location
+-
+ enum s2n_quic::provider::event::Location exports variant:
+   Local
+ 

@@ -1,0 +1,21 @@
+ enum s2n_quic::stream::PeerStream exports function:
+   pub fn stop_sending(&mut self, error_code: s2n_quic::application::Error) -> s2n_quic::stream::Result<()>
+ 
++variant s2n_quic::stream::PeerStream::Bidirectional exports field:
++  0:
++  s2n_quic::stream::BidirectionalStream
++
++variant s2n_quic::stream::PeerStream::Receive exports field:
++  0:
++  s2n_quic::stream::ReceiveStream
++
+ struct s2n_quic::stream::ReceiveStream implements trait:
+-  impl !std::panic::RefUnwindSafe for s2n_quic::stream::ReceiveStream
++  impl !core::panic::unwind_safe::RefUnwindSafe for s2n_quic::stream::ReceiveStream
+ 
+ struct s2n_quic::stream::ReceiveStream implements trait:
+-  impl !std::panic::UnwindSafe for s2n_quic::stream::ReceiveStream
++  impl !core::panic::unwind_safe::UnwindSafe for s2n_quic::stream::ReceiveStream
+ 
+ struct s2n_quic::stream::ReceiveStream implements trait:
+   impl core::convert::From<s2n_quic::stream::ReceiveStream> for s2n_quic::stream::PeerStream

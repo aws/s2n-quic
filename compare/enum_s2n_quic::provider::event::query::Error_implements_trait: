@@ -1,0 +1,16 @@
+   impl core::marker::Unpin for s2n_quic::provider::event::query::Error
+ 
+ enum s2n_quic::provider::event::query::Error implements trait:
+-  impl std::error::Error for s2n_quic::provider::event::query::Error
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::event::query::Error
+ 
+ enum s2n_quic::provider::event::query::Error implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::provider::event::query::Error
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::event::query::Error
+ 
+ enum s2n_quic::provider::event::query::Error implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::provider::event::query::Error
++  impl std::error::Error for s2n_quic::provider::event::query::Error
+ 
+ struct s2n_quic::provider::event::query::Once implements trait:
+   impl<F, EventContext, Outcome> core::marker::Send for s2n_quic::provider::event::query::Once<F, EventContext, Outcome> where

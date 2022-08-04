@@ -1,0 +1,70 @@
+ module s2n_quic::provider::tls::s2n_tls exports module:
+   s2n_quic::provider::tls::s2n_tls::server
+ 
+-struct s2n_quic::provider::tls::s2n_tls::Client implements trait:
+-  impl !core::marker::Sync for s2n_quic::provider::tls::s2n_tls::Client
+-
+ struct s2n_quic::provider::tls::s2n_tls::Client implements trait:
+   impl core::default::Default for s2n_quic::provider::tls::s2n_tls::Client
+ 
+ struct s2n_quic::provider::tls::s2n_tls::Client implements trait:
+   impl core::marker::Send for s2n_quic::provider::tls::s2n_tls::Client
+ 
++struct s2n_quic::provider::tls::s2n_tls::Client implements trait:
++  impl core::marker::Sync for s2n_quic::provider::tls::s2n_tls::Client
++
+ struct s2n_quic::provider::tls::s2n_tls::Client implements trait:
+   impl core::marker::Unpin for s2n_quic::provider::tls::s2n_tls::Client
+ 
+ struct s2n_quic::provider::tls::s2n_tls::Client implements trait:
+-  impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::s2n_tls::Client
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::tls::s2n_tls::Client
+ 
+ struct s2n_quic::provider::tls::s2n_tls::Client implements trait:
+-  impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::s2n_tls::Client
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::tls::s2n_tls::Client
+ 
+ struct s2n_quic::provider::tls::s2n_tls::Client implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::provider::tls::s2n_tls::Client
++  impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::s2n_tls::Client
+ 
+ struct s2n_quic::provider::tls::s2n_tls::Client implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::provider::tls::s2n_tls::Client
++  impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::s2n_tls::Client
+ 
+ struct s2n_quic::provider::tls::s2n_tls::Client exports function:
+   pub fn builder() -> s2n_quic::provider::tls::s2n_tls::client::Builder
+ 
+-struct s2n_quic::provider::tls::s2n_tls::Server implements trait:
+-  impl !core::marker::Sync for s2n_quic::provider::tls::s2n_tls::Server
+-
+ struct s2n_quic::provider::tls::s2n_tls::Server implements trait:
+   impl core::default::Default for s2n_quic::provider::tls::s2n_tls::Server
+ 
+ struct s2n_quic::provider::tls::s2n_tls::Server implements trait:
+   impl core::marker::Send for s2n_quic::provider::tls::s2n_tls::Server
+ 
++struct s2n_quic::provider::tls::s2n_tls::Server implements trait:
++  impl core::marker::Sync for s2n_quic::provider::tls::s2n_tls::Server
++
+ struct s2n_quic::provider::tls::s2n_tls::Server implements trait:
+   impl core::marker::Unpin for s2n_quic::provider::tls::s2n_tls::Server
+ 
+ struct s2n_quic::provider::tls::s2n_tls::Server implements trait:
+-  impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::s2n_tls::Server
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::tls::s2n_tls::Server
+ 
+ struct s2n_quic::provider::tls::s2n_tls::Server implements trait:
+-  impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::s2n_tls::Server
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::tls::s2n_tls::Server
+ 
+ struct s2n_quic::provider::tls::s2n_tls::Server implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::provider::tls::s2n_tls::Server
++  impl s2n_quic::provider::tls::Provider for s2n_quic::provider::tls::s2n_tls::Server
+ 
+ struct s2n_quic::provider::tls::s2n_tls::Server implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::provider::tls::s2n_tls::Server
++  impl s2n_quic_core::crypto::tls::Endpoint for s2n_quic::provider::tls::s2n_tls::Server
+ 
+ struct s2n_quic::provider::tls::s2n_tls::Server exports function:
+   pub fn builder() -> s2n_quic::provider::tls::s2n_tls::server::Builder

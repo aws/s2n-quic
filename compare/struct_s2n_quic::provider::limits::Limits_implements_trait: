@@ -1,0 +1,16 @@
+   impl core::marker::Unpin for s2n_quic::provider::limits::Limits
+ 
+ struct s2n_quic::provider::limits::Limits implements trait:
+-  impl s2n_quic::provider::limits::Limiter for s2n_quic::provider::limits::Limits
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::limits::Limits
+ 
+ struct s2n_quic::provider::limits::Limits implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::provider::limits::Limits
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::limits::Limits
+ 
+ struct s2n_quic::provider::limits::Limits implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::provider::limits::Limits
++  impl s2n_quic::provider::limits::Limiter for s2n_quic::provider::limits::Limits
+ 
+ struct s2n_quic::provider::limits::Limits exports function:
+   pub const fn new() -> s2n_quic::provider::limits::Limits

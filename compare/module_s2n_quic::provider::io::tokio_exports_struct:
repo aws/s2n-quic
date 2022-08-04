@@ -1,0 +1,17 @@
+ module s2n_quic::provider::io::tokio exports struct:
+   s2n_quic::provider::io::tokio::Provider
+ 
+-struct s2n_quic::provider::io::tokio::Builder exports function:
+-  #[must_use]
+-  pub fn with_handle(self, handle: tokio::runtime::handle::Handle) -> s2n_quic::provider::io::tokio::Builder
+-
+ struct s2n_quic::provider::io::tokio::Builder implements trait:
+-  impl !std::panic::RefUnwindSafe for s2n_quic::provider::io::tokio::Builder
++  impl !core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::io::tokio::Builder
+ 
+ struct s2n_quic::provider::io::tokio::Builder implements trait:
+-  impl !std::panic::UnwindSafe for s2n_quic::provider::io::tokio::Builder
++  impl !core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::io::tokio::Builder
+ 
+ struct s2n_quic::provider::io::tokio::Builder implements trait:
+   impl core::default::Default for s2n_quic::provider::io::tokio::Builder

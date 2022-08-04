@@ -1,0 +1,12 @@
+   impl core::marker::Unpin for s2n_quic::client::Connect
+ 
+ struct s2n_quic::client::Connect implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::client::Connect
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::client::Connect
+ 
+ struct s2n_quic::client::Connect implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::client::Connect
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::client::Connect
+ 
+ struct s2n_quic::client::Connect implements trait:
+   impl<T> core::convert::From<T> for s2n_quic::client::Connect where

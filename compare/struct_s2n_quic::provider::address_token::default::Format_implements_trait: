@@ -1,0 +1,16 @@
+   impl core::marker::Unpin for s2n_quic::provider::address_token::default::Format
+ 
+ struct s2n_quic::provider::address_token::default::Format implements trait:
+-  impl s2n_quic::provider::address_token::Format for s2n_quic::provider::address_token::default::Format
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::address_token::default::Format
+ 
+ struct s2n_quic::provider::address_token::default::Format implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::provider::address_token::default::Format
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::address_token::default::Format
+ 
+ struct s2n_quic::provider::address_token::default::Format implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::provider::address_token::default::Format
++  impl s2n_quic::provider::address_token::Format for s2n_quic::provider::address_token::default::Format
+ 
+ struct s2n_quic::provider::address_token::default::Provider implements trait:
+   impl core::default::Default for s2n_quic::provider::address_token::default::Provider

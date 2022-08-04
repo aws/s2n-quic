@@ -1,0 +1,49 @@
+   impl core::marker::Unpin for s2n_quic::provider::event::events::DuplicatePacketError
+ 
+ enum s2n_quic::provider::event::events::DuplicatePacketError implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::provider::event::events::DuplicatePacketError
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::event::events::DuplicatePacketError
+ 
+ enum s2n_quic::provider::event::events::DuplicatePacketError implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::provider::event::events::DuplicatePacketError
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::event::events::DuplicatePacketError
+ 
+ variant s2n_quic::provider::event::events::DuplicatePacketError::Duplicate is non-exhaustive
+ 
+ variant s2n_quic::provider::event::events::DuplicatePacketError::TooOld is non-exhaustive
+ 
++struct s2n_quic::provider::event::events::EcnCounts is non-exhaustive
++
++struct s2n_quic::provider::event::events::EcnCounts exports field:
++  ce_count: u64
++
++struct s2n_quic::provider::event::events::EcnCounts exports field:
++  ect_0_count: u64
++
++struct s2n_quic::provider::event::events::EcnCounts exports field:
++  ect_1_count: u64
++
++struct s2n_quic::provider::event::events::EcnCounts implements trait:
++  impl core::clone::Clone for s2n_quic::provider::event::events::EcnCounts
++
++struct s2n_quic::provider::event::events::EcnCounts implements trait:
++  impl core::fmt::Debug for s2n_quic::provider::event::events::EcnCounts
++
++struct s2n_quic::provider::event::events::EcnCounts implements trait:
++  impl core::marker::Send for s2n_quic::provider::event::events::EcnCounts
++
++struct s2n_quic::provider::event::events::EcnCounts implements trait:
++  impl core::marker::Sync for s2n_quic::provider::event::events::EcnCounts
++
++struct s2n_quic::provider::event::events::EcnCounts implements trait:
++  impl core::marker::Unpin for s2n_quic::provider::event::events::EcnCounts
++
++struct s2n_quic::provider::event::events::EcnCounts implements trait:
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::event::events::EcnCounts
++
++struct s2n_quic::provider::event::events::EcnCounts implements trait:
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::event::events::EcnCounts
++
+ enum s2n_quic::provider::event::events::EcnState is non-exhaustive
+ 
+ enum s2n_quic::provider::event::events::EcnState exports variant:

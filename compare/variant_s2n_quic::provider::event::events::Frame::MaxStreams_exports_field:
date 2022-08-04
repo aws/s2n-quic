@@ -1,0 +1,10 @@
+   stream_type:
+   s2n_quic::provider::event::events::StreamType
+ 
++variant s2n_quic::provider::event::events::Frame::MaxStreams exports field:
++  value:
++  u64
++
+ variant s2n_quic::provider::event::events::Frame::NewConnectionId is non-exhaustive
+ 
+ variant s2n_quic::provider::event::events::Frame::NewToken is non-exhaustive

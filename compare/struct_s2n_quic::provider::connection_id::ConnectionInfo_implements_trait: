@@ -1,0 +1,19 @@
+   impl<'a> core::marker::Unpin for s2n_quic::provider::connection_id::ConnectionInfo<'a>
+ 
+ struct s2n_quic::provider::connection_id::ConnectionInfo implements trait:
+-  impl<'a> std::panic::RefUnwindSafe for s2n_quic::provider::connection_id::ConnectionInfo<'a>
++  impl<'a> core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::connection_id::ConnectionInfo<'a>
+ 
+ struct s2n_quic::provider::connection_id::ConnectionInfo implements trait:
+-  impl<'a> std::panic::UnwindSafe for s2n_quic::provider::connection_id::ConnectionInfo<'a>
++  impl<'a> core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::connection_id::ConnectionInfo<'a>
+ 
+ struct s2n_quic::provider::connection_id::ConnectionInfo exports field:
+   remote_address: s2n_quic::provider::event::events::SocketAddress<'a>
+ 
+ trait s2n_quic::provider::connection_id::Generator exports function:
+-  pub fn generate(&mut self, connection_info: &s2n_quic::provider::connection_id::ConnectionInfo<'_>) -> s2n_quic::provider::connection_id::LocalId
++  fn generate(&mut self, connection_info: &s2n_quic::provider::connection_id::ConnectionInfo<'_>) -> s2n_quic::provider::connection_id::LocalId
+ 
+ struct s2n_quic::provider::connection_id::LocalId implements trait:
+   impl bolero_generator::TypeGenerator for s2n_quic::provider::connection_id::LocalId where

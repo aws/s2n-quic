@@ -1,0 +1,13 @@
+ struct s2n_quic::connection::Connection exports function:
+   pub fn close(&self, error_code: s2n_quic::application::Error)
+ 
++struct s2n_quic::connection::Connection exports function:
++  pub fn datagram_mut<Query, ProviderType, Outcome>(
++  &mut self,
++  query: Query) -> core::result::Result<Outcome, s2n_quic::provider::event::query::Error> where
++  Query: core::ops::function::FnOnce(&mut ProviderType) -> Outcome,
++  ProviderType: 'static,
++
+ struct s2n_quic::connection::Connection exports function:
+   pub fn handle(&self) -> s2n_quic::connection::Handle
+ 

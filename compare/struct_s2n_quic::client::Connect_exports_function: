@@ -1,0 +1,17 @@
+   pub fn new<Addr>(addr: Addr) -> s2n_quic::client::Connect where
+   Addr: core::convert::Into<s2n_quic_core::inet::ip::SocketAddress>,
+ 
++struct s2n_quic::client::Connect exports function:
++  pub fn with_server_name<Name>(self, server_name: Name) -> s2n_quic::client::Connect where
++  Name: core::convert::Into<s2n_quic::server::Name>,
++
+ struct s2n_quic::client::ConnectionAttempt implements trait:
+-  impl !std::panic::RefUnwindSafe for s2n_quic::client::ConnectionAttempt
++  impl !core::panic::unwind_safe::RefUnwindSafe for s2n_quic::client::ConnectionAttempt
+ 
+ struct s2n_quic::client::ConnectionAttempt implements trait:
+-  impl !std::panic::UnwindSafe for s2n_quic::client::ConnectionAttempt
++  impl !core::panic::unwind_safe::UnwindSafe for s2n_quic::client::ConnectionAttempt
+ 
+ struct s2n_quic::client::ConnectionAttempt implements trait:
+   impl core::future::future::Future for s2n_quic::client::ConnectionAttempt

@@ -1,0 +1,19 @@
+   impl<'a> core::marker::Unpin for s2n_quic::provider::limits::ConnectionInfo<'a>
+ 
+ struct s2n_quic::provider::limits::ConnectionInfo implements trait:
+-  impl<'a> std::panic::RefUnwindSafe for s2n_quic::provider::limits::ConnectionInfo<'a>
++  impl<'a> core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::limits::ConnectionInfo<'a>
+ 
+ struct s2n_quic::provider::limits::ConnectionInfo implements trait:
+-  impl<'a> std::panic::UnwindSafe for s2n_quic::provider::limits::ConnectionInfo<'a>
++  impl<'a> core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::limits::ConnectionInfo<'a>
+ 
+ struct s2n_quic::provider::limits::ConnectionInfo exports field:
+   remote_address: s2n_quic::provider::event::events::SocketAddress<'a>
+ 
+ trait s2n_quic::provider::limits::Limiter exports function:
+-  pub fn on_connection(&mut self, info: &s2n_quic::provider::limits::ConnectionInfo<'_>) -> s2n_quic::provider::limits::Limits
++  fn on_connection(&mut self, info: &s2n_quic::provider::limits::ConnectionInfo<'_>) -> s2n_quic::provider::limits::Limits
+ 
+ struct s2n_quic::provider::limits::Limits implements trait:
+   impl core::clone::Clone for s2n_quic::provider::limits::Limits

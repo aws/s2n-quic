@@ -1,0 +1,16 @@
+   impl core::marker::Unpin for s2n_quic::provider::tls::s2n_tls::certificate::PrivateKey
+ 
+ struct s2n_quic::provider::tls::s2n_tls::certificate::PrivateKey implements trait:
+-  impl s2n_quic::provider::tls::s2n_tls::certificate::IntoPrivateKey for s2n_quic::provider::tls::s2n_tls::certificate::PrivateKey
++  impl core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::tls::s2n_tls::certificate::PrivateKey
+ 
+ struct s2n_quic::provider::tls::s2n_tls::certificate::PrivateKey implements trait:
+-  impl std::panic::RefUnwindSafe for s2n_quic::provider::tls::s2n_tls::certificate::PrivateKey
++  impl core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::tls::s2n_tls::certificate::PrivateKey
+ 
+ struct s2n_quic::provider::tls::s2n_tls::certificate::PrivateKey implements trait:
+-  impl std::panic::UnwindSafe for s2n_quic::provider::tls::s2n_tls::certificate::PrivateKey
++  impl s2n_quic::provider::tls::s2n_tls::certificate::IntoPrivateKey for s2n_quic::provider::tls::s2n_tls::certificate::PrivateKey
+ 
+ module s2n_quic::provider::tls::s2n_tls::client exports struct:
+   s2n_quic::provider::tls::s2n_tls::client::Builder

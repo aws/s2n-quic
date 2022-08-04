@@ -1,0 +1,16 @@
+   impl<'a> core::marker::Unpin for s2n_quic::provider::event::events::SocketAddress<'a>
+ 
+ enum s2n_quic::provider::event::events::SocketAddress implements trait:
+-  impl<'a> s2n_quic_core::event::IntoEvent<s2n_quic::provider::event::events::SocketAddress<'a>> for &'a s2n_quic_core::inet::ip::SocketAddress
++  impl<'a> core::panic::unwind_safe::RefUnwindSafe for s2n_quic::provider::event::events::SocketAddress<'a>
+ 
+ enum s2n_quic::provider::event::events::SocketAddress implements trait:
+-  impl<'a> std::panic::RefUnwindSafe for s2n_quic::provider::event::events::SocketAddress<'a>
++  impl<'a> core::panic::unwind_safe::UnwindSafe for s2n_quic::provider::event::events::SocketAddress<'a>
+ 
+ enum s2n_quic::provider::event::events::SocketAddress implements trait:
+-  impl<'a> std::panic::UnwindSafe for s2n_quic::provider::event::events::SocketAddress<'a>
++  impl<'a> s2n_quic_core::event::IntoEvent<s2n_quic::provider::event::events::SocketAddress<'a>> for &'a s2n_quic_core::inet::ip::SocketAddress
+ 
+ enum s2n_quic::provider::event::events::SocketAddress exports function:
+   pub fn ip(&self) -> &'a [u8]

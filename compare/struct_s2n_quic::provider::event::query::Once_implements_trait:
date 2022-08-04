@@ -1,0 +1,18 @@
+   EventContext: 'static,
+   F: core::ops::function::FnOnce(&mut EventContext) -> Outcome,
+ 
+-struct s2n_quic::provider::event::query::Once implements trait:
+-  impl<F, EventContext, Outcome> std::panic::RefUnwindSafe for s2n_quic::provider::event::query::Once<F, EventContext, Outcome> where
+-  EventContext: std::panic::RefUnwindSafe,
+-  F: std::panic::RefUnwindSafe,
+-  Outcome: std::panic::RefUnwindSafe,
+-
+-struct s2n_quic::provider::event::query::Once implements trait:
+-  impl<F, EventContext, Outcome> std::panic::UnwindSafe for s2n_quic::provider::event::query::Once<F, EventContext, Outcome> where
+-  EventContext: std::panic::UnwindSafe,
+-  F: std::panic::UnwindSafe,
+-  Outcome: std::panic::UnwindSafe,
+-
+ struct s2n_quic::provider::event::query::Once exports function:
+   pub fn new(query: F) -> s2n_quic::provider::event::query::Once<F, ConnectionContext, Outcome>
+ 

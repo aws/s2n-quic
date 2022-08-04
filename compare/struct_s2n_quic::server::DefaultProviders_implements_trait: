@@ -1,0 +1,56 @@
+ struct s2n_quic::server::DefaultProviders implements trait:
+   impl core::marker::Unpin for s2n_quic::server::DefaultProviders
+ 
+-struct s2n_quic::server::Name exports function:
+-  #[must_use = "this returns the remaining substring as a new slice, \         without modifying the original"]
+-  pub fn strip_prefix<'a, P>(&'a self, prefix: P) -> core::option::Option<&'a str> where
+-  P: core::str::pattern::Pattern<'a>,
+-
+-struct s2n_quic::server::Name exports function:
+-  #[must_use = "this returns the remaining substring as a new slice, \         without modifying the original"]
+-  pub fn strip_suffix<'a, P>(&'a self, suffix: P) -> core::option::Option<&'a str> where
+-  P: core::str::pattern::Pattern<'a>,
+-  <P as core::str::pattern::Pattern<'a>>::core::str::pattern::Pattern::Searcher: core::str::pattern::ReverseSearcher<'a>,
+-
+-struct s2n_quic::server::Name exports function:
+-  #[must_use = "this returns the replaced string as a new allocation, \         without modifying the original"]
+-  pub fn replace<'a, P>(&'a self, from: P, to: &str) -> alloc::string::String where
+-  P: core::str::pattern::Pattern<'a>,
+-
+-struct s2n_quic::server::Name exports function:
+-  #[must_use = "this returns the replaced string as a new allocation, \         without modifying the original"]
+-  pub fn replacen<'a, P>(&'a self, pat: P, to: &str, count: usize) -> alloc::string::String where
+-  P: core::str::pattern::Pattern<'a>,
+-
+-struct s2n_quic::server::Name exports function:
+-  #[must_use = "this returns the trimmed string as a new slice, \         without modifying the original"]
+-  pub fn trim_end(&self) -> &str
+-
+-struct s2n_quic::server::Name exports function:
+-  #[must_use = "this returns the trimmed string as a new slice, \         without modifying the original"]
+-  pub fn trim_end_matches<'a, P>(&'a self, pat: P) -> &'a str where
+-  P: core::str::pattern::Pattern<'a>,
+-  <P as core::str::pattern::Pattern<'a>>::core::str::pattern::Pattern::Searcher: core::str::pattern::ReverseSearcher<'a>,
+-
+-struct s2n_quic::server::Name exports function:
+-  #[must_use = "this returns the trimmed string as a new slice, \         without modifying the original"]
+-  pub fn trim_matches<'a, P>(&'a self, pat: P) -> &'a str where
+-  P: core::str::pattern::Pattern<'a>,
+-  <P as core::str::pattern::Pattern<'a>>::core::str::pattern::Pattern::Searcher: core::str::pattern::DoubleEndedSearcher<'a>,
+-
+-struct s2n_quic::server::Name exports function:
+-  #[must_use = "this returns the trimmed string as a new slice, \         without modifying the original"]
+-  pub fn trim_start(&self) -> &str
+-
+-struct s2n_quic::server::Name exports function:
+-  #[must_use = "this returns the trimmed string as a new slice, \         without modifying the original"]
+-  pub fn trim_start_matches<'a, P>(&'a self, pat: P) -> &'a str where
+-  P: core::str::pattern::Pattern<'a>,
+-
+-struct s2n_quic::server::Name exports function:
+-  #[must_use = "this returns the trimmed string as a slice, \         without modifying the original"]
+-  pub fn trim(&self) -> &str
+-
+ struct s2n_quic::server::Name implements trait:
+   impl core::clone::Clone for s2n_quic::server::Name
+ 

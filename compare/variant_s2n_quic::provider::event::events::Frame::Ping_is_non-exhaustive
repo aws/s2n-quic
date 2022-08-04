@@ -1,0 +1,30 @@
+ 
+ variant s2n_quic::provider::event::events::Frame::ResetStream is non-exhaustive
+ 
++variant s2n_quic::provider::event::events::Frame::ResetStream exports field:
++  error_code:
++  u64
++
++variant s2n_quic::provider::event::events::Frame::ResetStream exports field:
++  final_size:
++  u64
++
++variant s2n_quic::provider::event::events::Frame::ResetStream exports field:
++  id:
++  u64
++
+ variant s2n_quic::provider::event::events::Frame::RetireConnectionId is non-exhaustive
+ 
+ variant s2n_quic::provider::event::events::Frame::StopSending is non-exhaustive
+ 
++variant s2n_quic::provider::event::events::Frame::StopSending exports field:
++  error_code:
++  u64
++
++variant s2n_quic::provider::event::events::Frame::StopSending exports field:
++  id:
++  u64
++
+ variant s2n_quic::provider::event::events::Frame::Stream is non-exhaustive
+ 
+ variant s2n_quic::provider::event::events::Frame::Stream exports field:
