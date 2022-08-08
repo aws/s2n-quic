@@ -90,6 +90,10 @@ pub(super) fn is_ce_too_high(ce_ratio: f64) -> bool {
     ce_ratio > ECN_THRESH
 }
 
+/// Calculates the new ECN alpha value
+///
+/// Based on `bbr2_update_ecn_alpha` from the Linux TCP BBRv2 implementation
+/// See https://github.com/google/bbr/blob/1a45fd4faf30229a3d3116de7bfe9d2f933d3562/net/ipv4/tcp_bbr2.c#L1392
 #[inline]
 fn calculate_alpha(alpha: f64, ce_ratio: f64) -> f64 {
     ((1.0 - ECN_ALPHA_GAIN) * alpha + ECN_ALPHA_GAIN * ce_ratio).min(1.0)
