@@ -155,27 +155,9 @@ impl State {
     }
 
     #[inline]
-    /// Returns true if there was ECN CE marked packets in the current round
+    /// Returns true if there were ECN CE marked packets in the current round
     pub(super) fn ecn_in_round(&self) -> bool {
         self.ecn_in_round
-    }
-}
-
-/// Methods related to Congestion state
-impl BbrCongestionController {
-    /// Updates delivery and congestion signals according to
-    /// BBRUpdateLatestDeliverySignals() and BBRUpdateCongestionSignals()
-    pub(super) fn update_latest_signals(&mut self, packet_info: PacketInfo) {
-        self.congestion_state.update(
-            packet_info,
-            self.bw_estimator.rate_sample(),
-            self.bw_estimator.delivered_bytes(),
-            &mut self.data_rate_model,
-            &mut self.data_volume_model,
-            self.state.is_probing_bw(),
-            self.cwnd,
-            self.ecn_state.alpha(),
-        );
     }
 }
 
