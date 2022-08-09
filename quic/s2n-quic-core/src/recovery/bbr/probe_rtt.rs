@@ -116,6 +116,8 @@ impl BbrCongestionController {
             && self.data_volume_model.probe_rtt_expired()
             && !self.idle_restart
         {
+            // New BBR state requires updating the model
+            self.try_fast_path = false;
             self.state
                 .transition_to(bbr::State::ProbeRtt(State::default()));
             self.save_cwnd();
