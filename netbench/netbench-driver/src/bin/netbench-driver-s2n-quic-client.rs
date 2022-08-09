@@ -21,7 +21,7 @@ pub struct Client {
     opts: netbench_driver::Client,
 
     #[structopt(long, env = "DISABLE_GSO")]
-    disable_gso: bool
+    disable_gso: bool,
 }
 
 impl Client {
