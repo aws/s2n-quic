@@ -1053,6 +1053,7 @@ impl BbrCongestionController {
     }
 }
 
+#[non_exhaustive]
 #[derive(Debug, Default)]
 pub struct Endpoint {}
 

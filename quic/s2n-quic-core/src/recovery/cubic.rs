@@ -835,6 +835,7 @@ impl Cubic {
     }
 }
 
+#[non_exhaustive]
 #[derive(Debug, Default)]
 pub struct Endpoint {}
 
