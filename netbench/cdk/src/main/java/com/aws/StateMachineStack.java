@@ -9,7 +9,6 @@ import software.amazon.awscdk.services.stepfunctions.StateMachine;
 import software.amazon.awscdk.services.s3.Bucket;
 import software.amazon.awscdk.services.logs.RetentionDays;
 import software.amazon.awscdk.Duration;
-import software.amazon.awscdk.services.logs.RetentionDays;
 
 import software.amazon.awscdk.services.stepfunctions.tasks.LambdaInvoke;
 import software.amazon.awscdk.services.stepfunctions.tasks.LambdaInvocationType;
