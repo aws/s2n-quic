@@ -155,7 +155,7 @@ impl State {
     }
 
     #[inline]
-    /// Returns true if there was ECN CE marked packets in the current round
+    /// Returns true if there were ECN CE marked packets in the current round
     pub(super) fn ecn_in_round(&self) -> bool {
         self.ecn_in_round
     }

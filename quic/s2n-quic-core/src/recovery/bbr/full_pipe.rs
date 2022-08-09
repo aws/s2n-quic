@@ -127,8 +127,8 @@ impl Estimator {
         self.full_bw_count >= BANDWIDTH_PLATEAU_ROUND_COUNT
     }
 
-    /// Determines if inflight has been too high (due to either loss or ECN markings) for enough
-    /// round trips to estimate the available bandwidth has been fully utilized.
+    /// Determines if inflight has been too high (due to either loss or ECN markings) and enough
+    /// distinct loss bursts have been observed to estimate the available bandwidth has been fully utilized.
     #[inline]
     fn excessive_inflight(
         &mut self,
@@ -143,6 +143,11 @@ impl Estimator {
         //#    *  The loss rate over the time scale of a single full round trip exceeds BBRLossThresh (2%).
         //#    *  There are at least BBRStartupFullLossCnt=3 discontiguous sequence ranges lost in that round trip.
         const STARTUP_FULL_LOSS_COUNT: u8 = 3;
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.1.3
+        //= type=exception
+        //= reason=The BBRv2 RFC reference to "fast recovery" here is more applicable to TCP.
+        //#    *  The connection has been in fast recovery for at least one full round trip.
 
         // The BBRv2 RFC reference to "fast recovery" here seems more applicable to TCP, rather than
         // QUIC. Instead, we just consider the loss rate and number of loss bursts over the round trip.

@@ -61,12 +61,12 @@ public class NetbenchAutoApp {
 
         String serverEcrUri = (String)app.getNode().tryGetContext("server-ecr-uri");
         serverEcrUri = (serverEcrUri == null) 
-            ? "public.ecr.aws/d2r9y8c2/s2n-quic-collector-server-scenario" 
+            ? "public.ecr.aws/d2r9y8c2/s2n-quic-collector-server-scenario:latest" 
             : serverEcrUri;
 
         String clientEcrUri = (String)app.getNode().tryGetContext("client-ecr-uri");
         clientEcrUri = (clientEcrUri == null) 
-            ? "public.ecr.aws/d2r9y8c2/s2n-quic-collector-client-scenario"
+            ? "public.ecr.aws/d2r9y8c2/s2n-quic-collector-client-scenario:latest"
             : clientEcrUri;
 
         String scenarioFile = (String)app.getNode().tryGetContext("scenario");
@@ -107,14 +107,13 @@ public class NetbenchAutoApp {
         
         clientEcsStack.addDependency(serverEcsStack);
 
-
         StateMachineStack stateMachineStack = new StateMachineStack(app, "StateMachineStack", StateMachineStackProps.builder()
             .env(makeEnv(awsAccount, clientRegion))
             .clientTask(clientEcsStack.getEcsTask())
             .bucket(vpcStack.getBucket())
             .logsLambda(serverEcsStack.getLogsLambda())
             .cluster(clientEcsStack.getCluster())
-            .driver(protocol)
+            .protocol(protocol)
             .build());
 
         stateMachineStack.addDependency(clientEcsStack);

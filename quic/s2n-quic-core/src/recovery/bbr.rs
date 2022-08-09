@@ -751,6 +751,8 @@ impl BbrCongestionController {
         let mut cwnd = self.cwnd;
 
         // Enable fast path if the cwnd has reached max_inflight
+        // Adapted from the Linux TCP BBRv2 implementation
+        // See https://github.com/google/bbr/blob/1a45fd4faf30229a3d3116de7bfe9d2f933d3562/net/ipv4/tcp_bbr2.c#L923
         self.try_fast_path = false;
 
         if self.recovery_state.packet_conservation() {
