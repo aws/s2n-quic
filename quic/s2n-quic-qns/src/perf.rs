@@ -119,6 +119,8 @@ impl Limits {
             .unwrap()
             .with_bidirectional_local_data_window(data_window)
             .unwrap()
+            .with_bidirectional_remote_data_window(data_window)
+            .unwrap()
             .with_unidirectional_data_window(data_window)
             .unwrap()
     }
