@@ -230,6 +230,17 @@ impl Estimator {
         //# at the current time, since we know that any ACKs after now indicate that the network
         //# was able to deliver those packets completely in the sampling interval between now
         //# and the next ACK.
+
+        //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#3.2
+        //# Upon each packet transmission, the sender executes the following steps:
+        //#
+        //# SendPacket(Packet P):
+        //#   if (SND.NXT == SND.UNA)  /* no packets in flight yet? */
+        //#     C.first_sent_time  = C.delivered_time = Now()
+        //#   P.first_sent_time = C.first_sent_time
+        //#   P.delivered_time  = C.delivered_time
+        //#   P.delivered       = C.delivered
+        //#   P.is_app_limited  = (C.app_limited != 0)
         if bytes_in_flight == 0 {
             self.first_sent_time = Some(now);
             self.delivered_time = Some(now);
@@ -303,6 +314,10 @@ impl Estimator {
 
         self.rate_sample.delivered_bytes =
             self.delivered_bytes - self.rate_sample.prior_delivered_bytes;
+        // Lost bytes and ECN CE Count are updated here as well as in `on_loss` and `on_explicit_congestion`
+        // so the values are up to date even when no loss or ECN CE markings are received.
+        self.rate_sample.lost_bytes = self.lost_bytes - self.rate_sample.prior_lost_bytes;
+        self.rate_sample.ecn_ce_count = self.ecn_ce_count - self.rate_sample.prior_ecn_ce_count;
     }
 
     /// Called when packets are declared lost

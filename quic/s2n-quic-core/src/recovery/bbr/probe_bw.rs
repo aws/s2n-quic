@@ -114,13 +114,17 @@ impl AckPhase {
     fn transition_to(&mut self, new_phase: AckPhase) {
         if cfg!(debug_assertions) {
             match new_phase {
-                AckPhase::Init => assert_eq!(*self, AckPhase::ProbeStopping),
                 AckPhase::ProbeStopping => {
-                    assert!(*self == AckPhase::Init || *self == AckPhase::ProbeStarting)
+                    assert!(
+                        *self == AckPhase::Init
+                            || *self == AckPhase::ProbeStarting
+                            || *self == AckPhase::ProbeFeedback
+                    )
                 }
                 AckPhase::Refilling => assert_eq!(*self, AckPhase::ProbeStopping),
                 AckPhase::ProbeStarting => assert_eq!(*self, AckPhase::Refilling),
                 AckPhase::ProbeFeedback => assert_eq!(*self, AckPhase::ProbeStarting),
+                AckPhase::Init => unreachable!("cannot transition to AckPhase::Init"),
             }
         }
 
@@ -629,6 +633,17 @@ impl BbrCongestionController {
 
     /// Update AckPhase and advance the Max BW filter if necessary
     fn update_ack_phase(&mut self, rate_sample: RateSample) {
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
+        //#   if (BBR.ack_phase == ACKS_PROBE_STARTING and BBR.round_start)
+        //#      /* starting to get bw probing samples */
+        //#      BBR.ack_phase = ACKS_PROBE_FEEDBACK
+        //#    if (BBR.ack_phase == ACKS_PROBE_STOPPING and BBR.round_start)
+        //#      /* end of samples from bw probing phase */
+        //#      if (IsInAProbeBWState() and !rs.is_app_limited)
+        //#        BBRAdvanceMaxBwFilter()
+
+        debug_assert!(self.round_counter.round_start());
+
         if let bbr::State::ProbeBw(ref mut probe_bw_state) = self.state {
             match probe_bw_state.ack_phase {
                 AckPhase::ProbeStarting => {
@@ -638,9 +653,8 @@ impl BbrCongestionController {
                         .transition_to(AckPhase::ProbeFeedback);
                 }
                 AckPhase::ProbeStopping => {
+                    // end of samples from bw probing phase
                     self.bw_probe_samples = false;
-                    probe_bw_state.ack_phase.transition_to(AckPhase::Init);
-
                     if !rate_sample.is_app_limited {
                         self.data_rate_model.advance_max_bw_filter();
                     }
@@ -976,5 +990,26 @@ mod tests {
         packet_info.delivered_bytes = expected_end;
         round_counter.on_ack(packet_info, expected_end);
         assert!(round_counter.round_start());
+    }
+
+    #[test]
+    fn ack_phase_valid_transitions() {
+        let mut ack_phase = AckPhase::Init;
+        ack_phase.transition_to(AckPhase::ProbeStopping);
+        assert_eq!(ack_phase, AckPhase::ProbeStopping);
+        ack_phase.transition_to(AckPhase::Refilling);
+        assert_eq!(ack_phase, AckPhase::Refilling);
+        ack_phase.transition_to(AckPhase::ProbeStarting);
+        assert_eq!(ack_phase, AckPhase::ProbeStarting);
+        ack_phase.transition_to(AckPhase::ProbeFeedback);
+        assert_eq!(ack_phase, AckPhase::ProbeFeedback);
+        ack_phase.transition_to(AckPhase::ProbeStopping);
+        assert_eq!(ack_phase, AckPhase::ProbeStopping);
+        ack_phase.transition_to(AckPhase::Refilling);
+        assert_eq!(ack_phase, AckPhase::Refilling);
+        ack_phase.transition_to(AckPhase::ProbeStarting);
+        assert_eq!(ack_phase, AckPhase::ProbeStarting);
+        ack_phase.transition_to(AckPhase::ProbeStopping);
+        assert_eq!(ack_phase, AckPhase::ProbeStopping);
     }
 }
