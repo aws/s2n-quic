@@ -17,7 +17,6 @@ pub mod stateless_reset_token;
 pub mod tls;
 
 // These providers are not currently exposed to applications
-pub(crate) mod congestion_controller;
 pub(crate) mod connection_close_formatter;
 pub(crate) mod path_migration;
 pub(crate) mod sync;
@@ -43,6 +42,14 @@ cfg_if!(
         pub mod datagram;
     } else {
         pub(crate) mod datagram;
+    }
+);
+
+cfg_if!(
+    if #[cfg(any(test, all(not(docdiff), feature = "unstable-provider-congestion-controller")))] {
+        pub mod congestion_controller;
+    } else {
+        pub(crate) mod congestion_controller;
     }
 );
 
