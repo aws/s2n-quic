@@ -193,12 +193,16 @@ fn on_packet_ack_rate_sample() {
     let t2 = t0 + Duration::from_secs(2);
     let mut bw_estimator = Estimator::default();
 
-    // Send three packets. In between each send, other packets were acknowledged, and thus the
-    // delivered_bytes amount is increased.
+    // Send three packets. In between each send, other packets were acknowledged, lost or had ECN CE,
+    // and thus the delivered_bytes amount, lost_bytes amount, and ecn ce count is increased.
     let packet_1 = bw_estimator.on_packet_sent(0, Some(false), t0);
     bw_estimator.delivered_bytes = 100000;
+    bw_estimator.lost_bytes = 100;
+    bw_estimator.ecn_ce_count = 5;
     let packet_2 = bw_estimator.on_packet_sent(1500, Some(true), t1);
     bw_estimator.delivered_bytes = 200000;
+    bw_estimator.lost_bytes = 150;
+    bw_estimator.ecn_ce_count = 15;
     let packet_3 = bw_estimator.on_packet_sent(3000, Some(false), t2);
 
     let now = t0 + Duration::from_secs(10);
@@ -228,6 +232,18 @@ fn on_packet_ack_rate_sample() {
     assert_eq!(Some(t0), bw_estimator.first_sent_time);
     assert_eq!(now - t0, bw_estimator.rate_sample.interval);
 
+    // Delivered bytes, lost bytes, and ECN CE counts reflect the total lifetime counts,
+    // since there was no prior delivered packets
+    assert_eq!(
+        bw_estimator.delivered_bytes,
+        bw_estimator.rate_sample.delivered_bytes
+    );
+    assert_eq!(bw_estimator.lost_bytes, bw_estimator.rate_sample.lost_bytes);
+    assert_eq!(
+        bw_estimator.ecn_ce_count,
+        bw_estimator.rate_sample.ecn_ce_count
+    );
+
     // Ack a newer packet
     let now = now + Duration::from_secs(1);
     let delivered_bytes = bw_estimator.delivered_bytes;
@@ -256,6 +272,13 @@ fn on_packet_ack_rate_sample() {
     );
     assert_eq!(Some(t2), bw_estimator.first_sent_time);
     assert_eq!(now - t0, bw_estimator.rate_sample.interval);
+
+    // Now the delivered_bytes in the rate sample should reflect the current lifetime delivered bytes (200000 + 1500 + 1500)
+    // minus the delivered bytes value at the time this packet was transmitted (200000)
+    assert_eq!(3000, bw_estimator.rate_sample.delivered_bytes);
+    // Lost bytes and ECN CE count are 0 since no additional loss or ECN CE was received since this packet was transmitted
+    assert_eq!(0, bw_estimator.rate_sample.lost_bytes);
+    assert_eq!(0, bw_estimator.rate_sample.ecn_ce_count);
 
     // Ack an older packet
     let now = now + Duration::from_secs(1);
@@ -289,6 +312,11 @@ fn on_packet_ack_rate_sample() {
         bw_estimator.rate_sample.bytes_in_flight
     );
     assert_eq!(Some(t2), bw_estimator.first_sent_time);
+
+    // Delivered bytes is increased to include packet 2, as it is within the sampling interval
+    assert_eq!(4500, bw_estimator.rate_sample.delivered_bytes);
+    assert_eq!(0, bw_estimator.rate_sample.lost_bytes);
+    assert_eq!(0, bw_estimator.rate_sample.ecn_ce_count);
 }
 
 //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#2.2.4
