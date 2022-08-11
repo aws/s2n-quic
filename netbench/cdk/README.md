@@ -3,11 +3,9 @@
 An automated version of netbench that deploys and runs tests on the cloud automatically.
 
 ## Why does this exist?
-***
 Manual netbench though useful, is complicated to run and deploy to the cloud. Automated netbench simplifies this process for the user, allowing netbench to be more easily used in different scenarios.
 
 ## How it works
-***
 The first step to using Automated Netbench is building the report generation image using this [Docker file](https://github.com/aws/s2n-quic/blob/main/netbench/netbench-cli/etc/Dockerfile). This can be done with a command such as 
 
 ```shell
