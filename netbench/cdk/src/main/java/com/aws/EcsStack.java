@@ -83,10 +83,17 @@ class EcsStack extends Stack {
             .vpc(vpc)
             .build();
         
+        EcsOptimizedImage ecsMachineImage;
+        if (props.getArm().equals("true")) {
+            ecsMachineImage = EcsOptimizedImage.amazonLinux2(AmiHardwareType.ARM);
+        } else {
+            ecsMachineImage = EcsOptimizedImage.amazonLinux2();
+        }
+        
         AutoScalingGroup asg = AutoScalingGroup.Builder.create(this, stackType + "-asg")
             .vpc(vpc)
             .instanceType(new InstanceType(instanceType))
-            .machineImage(EcsOptimizedImage.amazonLinux2(AmiHardwareType.ARM))
+            .machineImage(ecsMachineImage)
             .minCapacity(0)
             .desiredCapacity(1)
             .securityGroup(sg)
