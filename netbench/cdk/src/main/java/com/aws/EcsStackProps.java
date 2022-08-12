@@ -30,6 +30,8 @@ public interface EcsStackProps extends StackProps {
     String getEcrUri();
 
     String getScenario();
+    
+    String getArm();
 
     public static class Builder {
         private Bucket bucket;
@@ -42,6 +44,7 @@ public interface EcsStackProps extends StackProps {
         private String dnsAddress;
         private String ecrUri;
         private String scenario;
+        private String arm;
 
         public Builder bucket(Bucket bucket) {
             this.bucket = bucket;
@@ -90,6 +93,11 @@ public interface EcsStackProps extends StackProps {
 
         public Builder scenario(String scenario) {
             this.scenario = scenario;
+            return this;
+        }
+
+        public Builder arm(String arm) {
+            this.arm = arm;
             return this;
         }
 
@@ -142,6 +150,11 @@ public interface EcsStackProps extends StackProps {
                 @Override
                 public String getScenario() {
                     return scenario;
+                }
+
+                @Override
+                public String getArm() {
+                    return arm;
                 }
             };
         }
