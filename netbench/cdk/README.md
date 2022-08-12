@@ -30,7 +30,7 @@ cdk deploy --all --require-approval never -c instance-type=t4g.xlarge -c server-
 The following parameters are configurable by passing in context variables through the -c flag. The default parameters can also be set within the following [file](https://github.com/aws/s2n-quic/blob/main/netbench/cdk/src/main/java/com/aws/NetbenchAutoApp.java), for example, if the same ECR repositories are always used.
 
 1. protocol - The netbench supported transport protocol used in the current run. This is to set the type of traffic for the port mappings on the Docker containers, currently only s2n-quic with UDP is supported.
-2. aws-account - The aws_access_key_id of the AWS account used to deploy the CDK resources, likely to just be the default account used to configure CDK/AWS CLI.
+2. aws-account - The AWS account ID of the AWS account used to deploy the CDK resources, likely to just be the default account used to configure CDK/AWS CLI.
 3. client-region - The AWS region to deploy the client instance to, currently must be the same as the server. Default option is the default region configured for CDK.
 4. server-region - The AWS region to deploy the client instance to, currently must be the same as the server. Default option is the default region configured for CDK.
 5. instance-type - The EC2 instance type for the client and servers to be deployed to. 
