@@ -28,6 +28,7 @@ public class ServerEcsStackTest {
     private Template vpcTemplate;
     private EcsStack serverEcsStack;
     private VpcStack vpcStack;
+    private String arm;
 
     public ServerEcsStackTest() {
         App app = new App();
@@ -37,6 +38,8 @@ public class ServerEcsStackTest {
         instanceType = "t4g.xlarge";
         ecrUri = "public.ecr.aws/d2r9y8c2/s2n-quic-collector-server-scenario";
         scenarioFile = "/usr/bin/request_response.json";
+        arm = "true";
+
 
         vpcStack = new VpcStack(app, "VpcStack", VpcStackProps.builder()
             .env(makeEnv(System.getenv("CDK_DEFAULT_ACCOUNT"), region))
@@ -52,6 +55,7 @@ public class ServerEcsStackTest {
             .ecrUri(ecrUri)
             .scenario(scenarioFile)
             .serverRegion(region)
+            .arm(arm)
             .build());
         
         serverTemplate = Template.fromStack(serverEcsStack);
