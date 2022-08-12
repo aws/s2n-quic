@@ -29,7 +29,7 @@ pub(crate) struct Model {
     extra_acked_filter: WindowedMaxFilter<u64, u64, u64>,
     //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.12
     //# the start of the time interval for estimating the excess amount of data acknowledged due to aggregation effects.
-    extra_acked_interval_start: Timestamp,
+    extra_acked_interval_start: Option<Timestamp>,
     //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.12
     //# the volume of data marked as delivered since BBR.extra_acked_interval_start.
     extra_acked_delivered: u64,
@@ -47,7 +47,7 @@ pub(crate) struct Model {
 
 impl Model {
     /// Constructs a new `data_volume::Model`
-    pub fn new(now: Timestamp) -> Self {
+    pub fn new() -> Self {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.12
         //# The window length of the BBR.ExtraACKedFilter max filter window:
         //# 10 (in units of packet-timed round trips).
@@ -56,7 +56,7 @@ impl Model {
         Self {
             min_rtt_filter: MinRttWindowedFilter::new(),
             extra_acked_filter: WindowedMaxFilter::new(EXTRA_ACKED_FILTER_LEN),
-            extra_acked_interval_start: now,
+            extra_acked_interval_start: None,
             extra_acked_delivered: 0,
             inflight_hi: u64::MAX,
             inflight_lo: u64::MAX,
@@ -132,15 +132,23 @@ impl Model {
         //#       time=BBR.round_count,
         //#       window_length=BBRExtraAckedFilterLen)
 
-        // Find excess ACKed beyond expected amount over this interval
-        let interval = now - self.extra_acked_interval_start;
-        let mut expected_delivered = bw * interval;
+        let mut expected_delivered = 0;
+
+        if let Some(extra_acked_interval_start) = self.extra_acked_interval_start {
+            // Find excess ACKed beyond expected amount over this interval
+            let interval = now - extra_acked_interval_start;
+            expected_delivered = bw * interval;
+        }
+
         // Reset interval if ACK rate is below expected rate
-        if self.extra_acked_delivered <= expected_delivered {
+        if self.extra_acked_delivered <= expected_delivered
+            || self.extra_acked_interval_start.is_none()
+        {
             self.extra_acked_delivered = 0;
-            self.extra_acked_interval_start = now;
+            self.extra_acked_interval_start = Some(now);
             expected_delivered = 0;
         }
+
         self.extra_acked_delivered += bytes_acknowledged as u64;
         let extra = (self.extra_acked_delivered - expected_delivered).min(cwnd as u64);
         self.extra_acked_filter.update(extra, round_count);
@@ -200,7 +208,7 @@ impl Model {
 
     /// Sets the `extra_acked_interval_start` to the given `timestamp`
     pub fn set_extra_acked_interval_start(&mut self, timestamp: Timestamp) {
-        self.extra_acked_interval_start = timestamp;
+        self.extra_acked_interval_start = Some(timestamp);
     }
 }
 
@@ -211,8 +219,7 @@ mod tests {
 
     #[test]
     fn new() {
-        let now = NoopClock.get_time();
-        let model = Model::new(now);
+        let model = Model::new();
 
         assert_eq!(0, model.extra_acked());
         assert_eq!(None, model.min_rtt());
@@ -223,7 +230,7 @@ mod tests {
     #[test]
     fn update_ack_aggregation() {
         let now = NoopClock.get_time();
-        let mut model = Model::new(now);
+        let mut model = Model::new();
 
         let now = now + Duration::from_millis(200);
         let bw = Bandwidth::new(1500, Duration::from_secs(1));
@@ -232,7 +239,7 @@ mod tests {
         model.update_ack_aggregation(bw, 1600, 12000, 0, now);
 
         assert_eq!(1600, model.extra_acked());
-        assert_eq!(now, model.extra_acked_interval_start);
+        assert_eq!(Some(now), model.extra_acked_interval_start);
         assert_eq!(1600, model.extra_acked_delivered);
 
         let now = now + Duration::from_secs(1);
@@ -254,8 +261,7 @@ mod tests {
 
     #[test]
     fn update_lower_bound() {
-        let now = NoopClock.get_time();
-        let mut model = Model::new(now);
+        let mut model = Model::new();
 
         model.update_lower_bound(1000, 100, true, false, 1.0);
 

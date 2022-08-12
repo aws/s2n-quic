@@ -8,7 +8,7 @@ use crate::{
         bandwidth,
         bandwidth::{Bandwidth, RateSample},
         bbr::probe_bw::CyclePhase,
-        CongestionController, RttEstimator,
+        congestion_controller, CongestionController, RttEstimator,
     },
     time::Timestamp,
 };
@@ -18,7 +18,7 @@ use core::{
     time::Duration,
 };
 use num_rational::Ratio;
-use num_traits::One;
+use num_traits::{Inv, One};
 
 mod congestion;
 mod data_rate;
@@ -175,7 +175,7 @@ impl State {
 /// Based in part on the Chromium BBRv2 implementation, see <https://source.chromium.org/chromium/chromium/src/+/main:net/third_party/quiche/src/quic/core/congestion_control/bbr2_sender.cc>
 /// and the Linux Kernel TCP BBRv2 implementation, see <https://github.com/google/bbr/blob/v2alpha/net/ipv4/tcp_bbr2.c>
 #[derive(Debug, Clone)]
-struct BbrCongestionController {
+pub struct BbrCongestionController {
     state: State,
     round_counter: round::Counter,
     bw_estimator: bandwidth::Estimator,
@@ -247,6 +247,8 @@ impl CongestionController for BbrCongestionController {
         app_limited: Option<bool>,
         _rtt_estimator: &RttEstimator,
     ) -> Self::PacketInfo {
+        let prior_bytes_in_flight = *self.bytes_in_flight;
+
         if sent_bytes > 0 {
             self.recovery_state.on_packet_sent();
 
@@ -262,7 +264,7 @@ impl CongestionController for BbrCongestionController {
         }
 
         self.bw_estimator
-            .on_packet_sent(*self.bytes_in_flight, app_limited, time_sent)
+            .on_packet_sent(prior_bytes_in_flight, app_limited, time_sent)
     }
 
     fn on_rtt_update(
@@ -390,6 +392,9 @@ impl CongestionController for BbrCongestionController {
         random_generator: &mut Rnd,
         timestamp: Timestamp,
     ) {
+        debug_assert!(lost_bytes > 0);
+
+        self.bytes_in_flight -= lost_bytes;
         self.bw_estimator.on_loss(lost_bytes as usize);
         if self.recovery_state.on_congestion_event(timestamp) {
             // this congestion event caused the connection to enter recovery
@@ -437,8 +442,7 @@ impl CongestionController for BbrCongestionController {
 
 impl BbrCongestionController {
     /// Constructs a new `BbrCongestionController`
-    #[allow(dead_code)] // TODO: Remove when used
-    pub fn new(max_datagram_size: u16, now: Timestamp) -> Self {
+    pub fn new(max_datagram_size: u16) -> Self {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.1
         //# BBROnInit():
         //#   init_windowed_max_filter(filter=BBR.MaxBwFilter, value=0, time=0)
@@ -483,7 +487,7 @@ impl BbrCongestionController {
             ecn_state: Default::default(),
             data_rate_model: data_rate::Model::new(),
             // initialize extra_acked_interval_start and extra_acked_delivered
-            data_volume_model: data_volume::Model::new(now),
+            data_volume_model: data_volume::Model::new(),
             max_datagram_size,
             idle_restart: false,
             bw_probe_samples: false,
@@ -578,16 +582,16 @@ impl BbrCongestionController {
             return u32::MAX;
         }
 
-        let headroom = max(
-            1,
-            (HEADROOM * self.data_volume_model.inflight_hi()).to_integer(),
-        );
-        max(
-            self.data_volume_model.inflight_hi() - headroom,
-            self.minimum_window() as u64,
-        )
-        .try_into()
-        .unwrap_or(u32::MAX) // TODO: change type
+        // The RFC pseudocode mistakenly subtracts headroom (representing 85% of inflight_hi)
+        // from inflight_hi, resulting a reduction to 15% of inflight_hi. Since the intention is
+        // to reduce inflight_hi to 85% of inflight_hi, we can just multiply by `HEADROOM`.
+        // See https://groups.google.com/g/bbr-dev/c/xmley7VkeoE/m/uXDlnxiuCgAJ
+        let inflight_with_headroom = (HEADROOM * self.data_volume_model.inflight_hi())
+            .to_integer()
+            .try_into()
+            .unwrap_or(u32::MAX);
+
+        inflight_with_headroom.max(self.minimum_window())
     }
 
     /// Calculates the quantization budget
@@ -944,7 +948,7 @@ impl BbrCongestionController {
 
         if Self::is_loss_too_high(lost_since_transmit as u64, packet_info.bytes_in_flight) {
             let inflight_hi_from_lost_packet =
-                self.inflight_hi_from_lost_packet(lost_bytes, lost_since_transmit, packet_info);
+                Self::inflight_hi_from_lost_packet(lost_bytes, lost_since_transmit, packet_info);
             self.on_inflight_too_high(
                 packet_info.is_app_limited,
                 packet_info.bytes_in_flight,
@@ -957,7 +961,6 @@ impl BbrCongestionController {
 
     /// Returns the prefix of packet where losses exceeded `LOSS_THRESH`
     fn inflight_hi_from_lost_packet(
-        &self,
         size: u32,
         lost_since_transmit: u32,
         packet_info: <BbrCongestionController as CongestionController>::PacketInfo,
@@ -983,8 +986,12 @@ impl BbrCongestionController {
         let inflight_prev = packet_info.bytes_in_flight - size;
         // What was lost before this packet?
         let lost_prev = lost_since_transmit - size;
-        let lost_prefix =
-            ((LOSS_THRESH * inflight_prev - lost_prev) / (Ratio::one() - LOSS_THRESH)).to_integer();
+        // BBRLossThresh * inflight_prev - lost_prev
+        let loss_budget = (LOSS_THRESH * inflight_prev)
+            .to_integer()
+            .saturating_sub(lost_prev);
+        // Multiply by the inverse of 1 - LOSS_THRESH instead of dividing
+        let lost_prefix = ((Ratio::one() - LOSS_THRESH).inv() * loss_budget).to_integer();
         // At what inflight value did losses cross BBRLossThresh?
         inflight_prev + lost_prefix
     }
@@ -1053,3 +1060,21 @@ impl BbrCongestionController {
         !self.try_fast_path || model_updated || prev_min_rtt != self.data_volume_model.min_rtt()
     }
 }
+
+#[non_exhaustive]
+#[derive(Debug, Default)]
+pub struct Endpoint {}
+
+impl congestion_controller::Endpoint for Endpoint {
+    type CongestionController = BbrCongestionController;
+
+    fn new_congestion_controller(
+        &mut self,
+        path_info: congestion_controller::PathInfo,
+    ) -> Self::CongestionController {
+        BbrCongestionController::new(path_info.max_datagram_size)
+    }
+}
+
+#[cfg(test)]
+mod tests;

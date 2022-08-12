@@ -13,23 +13,15 @@ pub trait Provider {
     fn start(self) -> Result<Self::Endpoint, Self::Error>;
 }
 
-pub use cubic as default;
-pub use default::Provider as Default;
+pub use s2n_quic_core::recovery::{bbr::Endpoint as Bbr, cubic::Endpoint as Default};
 
 impl_provider_utils!();
 
-pub mod cubic {
-    use s2n_quic_core::recovery::cubic::Endpoint;
+impl<T: Endpoint> Provider for T {
+    type Endpoint = T;
+    type Error = core::convert::Infallible;
 
-    #[derive(Debug, Default)]
-    pub struct Provider(());
-
-    impl super::Provider for Provider {
-        type Endpoint = Endpoint;
-        type Error = core::convert::Infallible;
-
-        fn start(self) -> Result<Self::Endpoint, Self::Error> {
-            Ok(Endpoint::default())
-        }
+    fn start(self) -> Result<Self::Endpoint, Self::Error> {
+        Ok(self)
     }
 }
