@@ -31,4 +31,4 @@ mod sent_packets;
 //= tracking-issue=1073
 //# A sender with knowledge that the network path to the
 //# receiver can absorb larger bursts MAY use a higher limit.
-pub const MAX_BURST_PACKETS: u16 = 10;
+pub const MAX_BURST_PACKETS: u32 = 10;

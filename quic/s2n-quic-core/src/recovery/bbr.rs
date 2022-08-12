@@ -983,7 +983,7 @@ impl BbrCongestionController {
         // the required information directly.
 
         // What was in flight before this packet?
-        let inflight_prev = packet_info.bytes_in_flight - size;
+        let inflight_prev = packet_info.bytes_in_flight.saturating_sub(size);
         // What was lost before this packet?
         let lost_prev = lost_since_transmit - size;
         // BBRLossThresh * inflight_prev - lost_prev

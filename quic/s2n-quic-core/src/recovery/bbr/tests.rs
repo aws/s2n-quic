@@ -56,4 +56,28 @@ fn inflight_hi_from_lost_packet() {
             packet_info
         )
     );
+
+    // Test losing the first sent packet when nothing is inflight yet
+    let packet_info = PacketInfo {
+        delivered_bytes: 0,
+        delivered_time: now,
+        lost_bytes: 0,
+        ecn_ce_count: 0,
+        first_sent_time: now,
+        bytes_in_flight: 0,
+        is_app_limited: false,
+    };
+
+    // inflight_prev = 0 since bytes_in_flight when the lost packet was sent was 0
+    let inflight_prev = 0;
+
+    // lost prefix is zero since inflight_prev = 0
+    assert_eq!(
+        inflight_prev,
+        BbrCongestionController::inflight_hi_from_lost_packet(
+            MINIMUM_MTU as u32,
+            MINIMUM_MTU as u32,
+            packet_info
+        )
+    );
 }
