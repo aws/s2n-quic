@@ -30,6 +30,7 @@ public class StateMachineStackTest {
     private VpcStack vpcStack;
     private StateMachineStack stateMachineStack;
     private String protocol;
+    private String arm;
 
     public StateMachineStackTest() {
         App app = new App();
@@ -41,6 +42,7 @@ public class StateMachineStackTest {
         serverEcrUri = "public.ecr.aws/d2r9y8c2/s2n-quic-collector-server-scenario";
         clientEcrUri = "public.ecr.aws/d2r9y8c2/s2n-quic-collector-client-scenario";
         scenarioFile = "/usr/bin/request_response.json";
+        arm = "arm";
 
         vpcStack = new VpcStack(app, "VpcStack", VpcStackProps.builder()
             .env(makeEnv(System.getenv("CDK_DEFAULT_ACCOUNT"), region))
@@ -56,6 +58,7 @@ public class StateMachineStackTest {
             .ecrUri(serverEcrUri)
             .scenario(scenarioFile)
             .serverRegion(region)
+            .arm(arm)
             .build());
         
         clientEcsStack = new EcsStack(app, "ClientEcsStack", EcsStackProps.builder()
@@ -68,6 +71,7 @@ public class StateMachineStackTest {
             .dnsAddress(serverEcsStack.getDnsAddress())
             .ecrUri(clientEcrUri)
             .scenario(scenarioFile)
+            .arm(arm)
             .build());
         
         stateMachineStack = new StateMachineStack(app, "StateMachineStack", StateMachineStackProps.builder()

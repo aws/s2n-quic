@@ -29,6 +29,7 @@ public class ClientEcsStackTest {
     private EcsStack clientEcsStack;
     private EcsStack serverEcsStack;
     private VpcStack vpcStack;
+    private String arm;
 
     public ClientEcsStackTest() {
         App app = new App();
@@ -39,6 +40,7 @@ public class ClientEcsStackTest {
         serverEcrUri = "public.ecr.aws/d2r9y8c2/s2n-quic-collector-server-scenario";
         clientEcrUri = "public.ecr.aws/d2r9y8c2/s2n-quic-collector-client-scenario";
         scenarioFile = "/usr/bin/request_response.json";
+        arm = "true";
 
         vpcStack = new VpcStack(app, "VpcStack", VpcStackProps.builder()
             .env(makeEnv(System.getenv("CDK_DEFAULT_ACCOUNT"), region))
@@ -54,6 +56,7 @@ public class ClientEcsStackTest {
             .ecrUri(serverEcrUri)
             .scenario(scenarioFile)
             .serverRegion(region)
+            .arm(arm)
             .build());
         
         clientEcsStack = new EcsStack(app, "ClientEcsStack", EcsStackProps.builder()
@@ -66,6 +69,7 @@ public class ClientEcsStackTest {
             .dnsAddress(serverEcsStack.getDnsAddress())
             .ecrUri(clientEcrUri)
             .scenario(scenarioFile)
+            .arm(arm)
             .build());
         
         clientTemplate = Template.fromStack(clientEcsStack);
