@@ -29,19 +29,22 @@ enum Operation {
     PacketSent {
         #[generator(1..=255)]
         count: u8,
-        #[generator(1200..=9000)]
+        #[generator(0..=9000)]
         bytes_sent: u16,
         app_limited: Option<bool>,
     },
     RttUpdated {
         #[generator(1..=2000)]
-        millis: u64,
+        millis: u16,
     },
     AckReceived {
+        index: u8,
         #[generator(1..=255)]
         count: u8,
     },
-    PacketLost,
+    PacketLost {
+        index: u8,
+    },
     ExplicitCongestion {
         #[generator(1..=255)]
         ce_count: u64,
@@ -86,12 +89,14 @@ impl<CC: CongestionController> Model<CC> {
             } => {
                 self.on_packet_sent(*count, *bytes_sent, *app_limited);
             }
-            Operation::RttUpdated { millis } => self.on_rtt_updated(Duration::from_millis(*millis)),
-            Operation::AckReceived { count } => {
-                self.on_ack_received(*count, rng);
+            Operation::RttUpdated { millis } => {
+                self.on_rtt_updated(Duration::from_millis(*millis as u64))
             }
-            Operation::PacketLost => {
-                self.on_packet_lost(rng);
+            Operation::AckReceived { index, count } => {
+                self.on_ack_received(*index, *count, rng);
+            }
+            Operation::PacketLost { index } => {
+                self.on_packet_lost(*index, rng);
             }
             Operation::ExplicitCongestion { ce_count } => self.on_explicit_congestion(*ce_count),
             Operation::MtuUpdated { mtu } => self.on_mtu_updated(*mtu),
@@ -115,33 +120,45 @@ impl<CC: CongestionController> Model<CC> {
         }
     }
 
-    fn on_ack_received<Rnd: random::Generator>(&mut self, count: u8, rng: &mut Rnd) {
+    fn on_ack_received<Rnd: random::Generator>(&mut self, index: u8, count: u8, rng: &mut Rnd) {
+        let index = (index as usize).min(self.sent_packets.len().saturating_sub(1));
+
+        // Acknowledge `count` amount of packets, starting at the random `index`
         for _ in 0..count {
-            if let Some(sent_packet_info) = self.sent_packets.pop_front() {
-                self.subject.on_ack(
-                    sent_packet_info.time_sent,
-                    sent_packet_info.sent_bytes as usize,
-                    sent_packet_info.cc_packet_info,
-                    &self.rtt_estimator,
-                    rng,
-                    self.timestamp,
-                );
+            if let Some(sent_packet_info) = self.sent_packets.remove(index) {
+                if sent_packet_info.sent_bytes > 0 {
+                    // `recovery::Manager` does not call `on_ack` if sent_bytes = 0
+                    self.subject.on_ack(
+                        sent_packet_info.time_sent,
+                        sent_packet_info.sent_bytes as usize,
+                        sent_packet_info.cc_packet_info,
+                        &self.rtt_estimator,
+                        rng,
+                        self.timestamp,
+                    );
+                }
             } else {
                 break;
             }
         }
     }
 
-    fn on_packet_lost<Rnd: random::Generator>(&mut self, rng: &mut Rnd) {
-        if let Some(sent_packet_info) = self.sent_packets.pop_front() {
-            self.subject.on_packet_lost(
-                sent_packet_info.sent_bytes as u32,
-                sent_packet_info.cc_packet_info,
-                false,
-                false,
-                rng,
-                self.timestamp,
-            );
+    fn on_packet_lost<Rnd: random::Generator>(&mut self, index: u8, rng: &mut Rnd) {
+        let index = (index as usize).min(self.sent_packets.len().saturating_sub(1));
+
+        // Report the packet at the random `index` as lost
+        if let Some(sent_packet_info) = self.sent_packets.remove(index) {
+            if sent_packet_info.sent_bytes > 0 {
+                // `recovery::Manager` does not call `on_packet_lost` if sent_bytes = 0
+                self.subject.on_packet_lost(
+                    sent_packet_info.sent_bytes as u32,
+                    sent_packet_info.cc_packet_info,
+                    false,
+                    false,
+                    rng,
+                    self.timestamp,
+                );
+            }
         }
     }
 
@@ -193,7 +210,7 @@ impl<CC: CongestionController> Model<CC> {
 #[test]
 fn cubic_fuzz() {
     check!()
-        .with_generator((MINIMUM_MTU..=9000, 0..255, gen::<Vec<Operation>>()))
+        .with_generator((MINIMUM_MTU..=9000, gen(), gen::<Vec<Operation>>()))
         .for_each(|(max_datagram_size, seed, operations)| {
             let mut model = Model::new(CubicCongestionController::new(*max_datagram_size));
             let mut rng = random::testing::Generator(*seed);
@@ -209,7 +226,7 @@ fn cubic_fuzz() {
 #[test]
 fn bbr_fuzz() {
     check!()
-        .with_generator((MINIMUM_MTU..=9000, 0..255, gen::<Vec<Operation>>()))
+        .with_generator((MINIMUM_MTU..=9000, gen(), gen::<Vec<Operation>>()))
         .for_each(|(max_datagram_size, seed, operations)| {
             let mut model = Model::new(BbrCongestionController::new(*max_datagram_size));
             let mut rng = random::testing::Generator(*seed);

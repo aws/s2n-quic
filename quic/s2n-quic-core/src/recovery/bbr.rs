@@ -983,6 +983,8 @@ impl BbrCongestionController {
         // the required information directly.
 
         // What was in flight before this packet?
+        // Note: The TCP BBRv2 impl treats a negative inflight_prev as an error case
+        // see https://github.com/aws/s2n-quic/issues/1456
         let inflight_prev = packet_info.bytes_in_flight.saturating_sub(size);
         // What was lost before this packet?
         let lost_prev = lost_since_transmit - size;
