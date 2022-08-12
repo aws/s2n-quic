@@ -10,6 +10,7 @@ use crate::{
         cubic::{FastRetransmission::*, State::*},
         hybrid_slow_start::HybridSlowStart,
         pacing::Pacer,
+        prr::Prr,
         RttEstimator,
     },
     time::Timestamp,
@@ -170,6 +171,7 @@ pub struct CubicCongestionController {
     // The highest number of bytes in flight seen when an ACK was received,
     // since the last congestion event.
     bytes_in_flight_hi: BytesInFlight,
+    prr: Prr,
 }
 
 type BytesInFlight = Counter<u32>;
@@ -231,10 +233,23 @@ impl CongestionController for CubicCongestionController {
             self.under_utilized = self.is_congestion_window_under_utilized();
         }
 
-        if let Recovery(recovery_start_time, RequiresTransmission) = self.state {
-            // A packet has been sent since we entered recovery (fast retransmission)
-            // so flip the state back to idle.
-            self.state = Recovery(recovery_start_time, Idle);
+        if self.prr.is_enabled() {
+            self.prr.on_packet_sent(bytes_sent);
+
+            if let Recovery(recovery_start_time, _) = self.state {
+                self.state = if self.prr.can_transmit(self.max_datagram_size) {
+                    Recovery(recovery_start_time, RequiresTransmission)
+                } else {
+                    Recovery(recovery_start_time, Idle)
+                };
+            }
+        } else {
+            // Without PRR, use default fast retransmission algorithm
+            if let Recovery(recovery_start_time, RequiresTransmission) = self.state {
+                // A packet has been sent since we entered recovery (fast retransmission)
+                // so flip the state back to idle.
+                self.state = Recovery(recovery_start_time, Idle);
+            }
         }
 
         self.time_of_last_sent_packet = Some(time_sent);
@@ -311,8 +326,23 @@ impl CongestionController for CubicCongestionController {
             return;
         }
 
-        // Check if this ack causes the controller to exit recovery
         if let State::Recovery(recovery_start_time, _) = self.state {
+            if self.prr.is_enabled() {
+                self.prr.on_ack(
+                    bytes_acknowledged,
+                    self.bytes_in_flight,
+                    self.slow_start.threshold as usize,
+                    self.max_datagram_size,
+                );
+
+                self.state = if self.prr.can_transmit(self.max_datagram_size) {
+                    Recovery(recovery_start_time, RequiresTransmission)
+                } else {
+                    Recovery(recovery_start_time, Idle)
+                };
+            }
+
+            // Check if this ack causes the controller to exit recovery
             if newest_acked_time_sent > recovery_start_time {
                 //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2
                 //# A recovery period ends and the sender enters congestion avoidance
@@ -508,6 +538,7 @@ impl CubicCongestionController {
             time_of_last_sent_packet: None,
             under_utilized: true,
             bytes_in_flight_hi: Counter::new(0),
+            prr: Prr::new(),
         }
     }
 
@@ -633,6 +664,7 @@ impl CubicCongestionController {
         //# entering a recovery period or use other mechanisms, such as
         //# Proportional Rate Reduction [PRR], to reduce the congestion window
         //# more gradually.
+        self.prr.on_congestion_event(self.bytes_in_flight);
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
         //# The minimum congestion window is the smallest value the congestion
