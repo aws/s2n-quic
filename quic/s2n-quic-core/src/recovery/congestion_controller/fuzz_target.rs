@@ -33,14 +33,12 @@ enum Operation {
         bytes_sent: u16,
         app_limited: Option<bool>,
     },
-    RttUpdated {
-        #[generator(1..=2000)]
-        millis: u16,
-    },
     AckReceived {
         index: u8,
         #[generator(1..=255)]
         count: u8,
+        #[generator(1..=2000)]
+        rtt: u16,
     },
     PacketLost {
         index: u8,
@@ -89,11 +87,8 @@ impl<CC: CongestionController> Model<CC> {
             } => {
                 self.on_packet_sent(*count, *bytes_sent, *app_limited);
             }
-            Operation::RttUpdated { millis } => {
-                self.on_rtt_updated(Duration::from_millis(*millis as u64))
-            }
-            Operation::AckReceived { index, count } => {
-                self.on_ack_received(*index, *count, rng);
+            Operation::AckReceived { index, count, rtt } => {
+                self.on_ack_received(*index, *count, Duration::from_millis(*rtt as u64), rng);
             }
             Operation::PacketLost { index } => {
                 self.on_packet_lost(*index, rng);
@@ -120,13 +115,26 @@ impl<CC: CongestionController> Model<CC> {
         }
     }
 
-    fn on_ack_received<Rnd: random::Generator>(&mut self, index: u8, count: u8, rng: &mut Rnd) {
+    fn on_ack_received<Rnd: random::Generator>(
+        &mut self,
+        index: u8,
+        count: u8,
+        rtt: Duration,
+        rng: &mut Rnd,
+    ) {
         let index = (index as usize).min(self.sent_packets.len().saturating_sub(1));
+        let mut rtt_updated = false;
 
         // Acknowledge `count` amount of packets, starting at the random `index`
         for _ in 0..count {
             if let Some(sent_packet_info) = self.sent_packets.remove(index) {
                 if sent_packet_info.sent_bytes > 0 {
+                    // Update the RTT once for each ack range received
+                    if !rtt_updated {
+                        self.on_rtt_updated(sent_packet_info.time_sent, rtt);
+                        rtt_updated = true;
+                    }
+
                     // `recovery::Manager` does not call `on_ack` if sent_bytes = 0
                     self.subject.on_ack(
                         sent_packet_info.time_sent,
@@ -162,21 +170,16 @@ impl<CC: CongestionController> Model<CC> {
         }
     }
 
-    fn on_rtt_updated(&mut self, rtt: Duration) {
-        if let Some(sent_packet_info) = self.sent_packets.front() {
-            self.rtt_estimator.update_rtt(
-                Duration::ZERO,
-                rtt,
-                self.timestamp,
-                false,
-                PacketNumberSpace::Initial,
-            );
-            self.subject.on_rtt_update(
-                sent_packet_info.time_sent,
-                self.timestamp,
-                &self.rtt_estimator,
-            );
-        }
+    fn on_rtt_updated(&mut self, time_sent: Timestamp, rtt: Duration) {
+        self.rtt_estimator.update_rtt(
+            Duration::ZERO,
+            rtt,
+            self.timestamp,
+            false,
+            PacketNumberSpace::Initial,
+        );
+        self.subject
+            .on_rtt_update(time_sent, self.timestamp, &self.rtt_estimator);
     }
 
     fn on_explicit_congestion(&mut self, ce_count: u64) {
