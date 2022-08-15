@@ -210,6 +210,7 @@ impl<CC: CongestionController> Model<CC> {
     }
 }
 
+#[cfg_attr(miri, ignore)]
 #[test]
 fn cubic_fuzz() {
     check!()
@@ -226,6 +227,7 @@ fn cubic_fuzz() {
         });
 }
 
+#[cfg_attr(miri, ignore)]
 #[test]
 fn bbr_fuzz() {
     check!()
