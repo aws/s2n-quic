@@ -79,7 +79,7 @@ impl Pacer {
             } else {
                 self.next_packet_departure_time = Some(now + INITIAL_INTERVAL);
             }
-            self.capacity = Counter::new((MAX_BURST_PACKETS * max_datagram_size) as u32);
+            self.capacity = Counter::new(MAX_BURST_PACKETS * max_datagram_size as u32);
         }
 
         self.capacity -= bytes_sent as u32;
@@ -106,7 +106,7 @@ impl Pacer {
 
         // `MAX_BURST_PACKETS` is incorporated into the formula since we are trying to spread
         // bursts of packets evenly over time.
-        let packet_size = (MAX_BURST_PACKETS * max_datagram_size) as u32;
+        let packet_size = MAX_BURST_PACKETS * max_datagram_size as u32;
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-7.7
         //# A perfectly paced sender spreads packets exactly evenly over time.

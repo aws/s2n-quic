@@ -400,3 +400,6 @@ pub mod testing {
         }
     }
 }
+
+#[cfg(test)]
+mod fuzz_target;

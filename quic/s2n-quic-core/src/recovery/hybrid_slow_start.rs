@@ -26,7 +26,7 @@ pub struct HybridSlowStart {
 
 /// Minimum slow start threshold in multiples of the max_datagram_size.
 /// Defined as "hystart_low_window" in tcp_cubic.c
-const LOW_SSTHRESH: u16 = 16;
+const LOW_SSTHRESH: f32 = 16.0;
 /// Factor for dividing the RTT to determine the threshold. Defined in tcp_cubic.c (not a constant)
 //= https://tools.ietf.org/id/draft-ietf-tcpm-hystartplusplus-04.txt#section-4.2
 //#   o  RttThresh = clamp(MIN_RTT_THRESH, lastRoundMinRTT / 8, MAX_RTT_THRESH)
@@ -190,7 +190,7 @@ impl HybridSlowStart {
     }
 
     fn low_ssthresh(&self) -> f32 {
-        (LOW_SSTHRESH * self.max_datagram_size) as f32
+        LOW_SSTHRESH * self.max_datagram_size as f32
     }
 
     #[cfg(feature = "std")]
