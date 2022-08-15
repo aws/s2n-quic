@@ -1209,7 +1209,7 @@ fn no_rtt_update_when_receiving_packet_on_different_path() {
     // clear the cc counts
     context.path_mut().congestion_controller.on_rtt_update = 0;
 
-    // Ack packet 0 on diffent path as it was sent.. expect no rtt update
+    // Ack packet 0 on different path as it was sent.. expect no rtt update
     let ack_receive_time = time_sent + Duration::from_millis(500);
     helper_ack_packets_on_path(
         0..=0,
