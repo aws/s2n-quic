@@ -17,8 +17,8 @@ use core::{
 use s2n_quic_core::{
     application,
     application::ServerName,
-    event::query::{Query, QueryMut},
     inet::SocketAddress,
+    query::{Query, QueryMut},
     stream::{ops, StreamId, StreamType},
 };
 

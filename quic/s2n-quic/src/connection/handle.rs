@@ -219,7 +219,7 @@ macro_rules! impl_handle_api {
         /// represents the type of `ConnectionContext`. If the `EventContext` type matches
         /// any of the types of the configured Subscriber's context, the query is executed
         /// and `Ok(Outcome)` is returned, else
-        /// `Err(`[`query::Error`](s2n_quic_core::event::query::Error)`)`.
+        /// `Err(`[`query::Error`](s2n_quic_core::query::Error)`)`.
         ///
         /// Given that it is possible to compose Subscriber, which can have different
         /// ConnectionContext types, this function traverses all Subscribers, executes
@@ -333,12 +333,12 @@ macro_rules! impl_handle_api {
         pub fn query_event_context<Query, EventContext, Outcome>(
             &self,
             query: Query,
-        ) -> core::result::Result<Outcome, s2n_quic_core::event::query::Error>
+        ) -> core::result::Result<Outcome, s2n_quic_core::query::Error>
         where
             Query: FnOnce(&EventContext) -> Outcome,
             EventContext: 'static,
         {
-            use s2n_quic_core::event::query;
+            use s2n_quic_core::query;
             let mut query = query::Once::new(query);
 
             self.0
@@ -363,12 +363,12 @@ macro_rules! impl_handle_api {
         pub fn query_event_context_mut<Query, EventContext, Outcome>(
             &mut self,
             query: Query,
-        ) -> core::result::Result<Outcome, s2n_quic_core::event::query::Error>
+        ) -> core::result::Result<Outcome, s2n_quic_core::query::Error>
         where
             Query: FnOnce(&mut EventContext) -> Outcome,
             EventContext: 'static,
         {
-            use s2n_quic_core::event::query;
+            use s2n_quic_core::query;
             let mut query = query::Once::new_mut(query);
 
             self.0
@@ -391,12 +391,12 @@ macro_rules! impl_handle_api {
         pub fn datagram_mut<Query, ProviderType, Outcome>(
             &mut self,
             query: Query,
-        ) -> core::result::Result<Outcome, s2n_quic_core::event::query::Error>
+        ) -> core::result::Result<Outcome, s2n_quic_core::query::Error>
         where
             Query: FnOnce(&mut ProviderType) -> Outcome,
             ProviderType: 'static,
         {
-            use s2n_quic_core::event::query;
+            use s2n_quic_core::query;
             let mut query = query::Once::new_mut(query);
 
             self.0

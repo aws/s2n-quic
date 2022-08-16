@@ -54,6 +54,7 @@ use s2n_quic_core::{
         zero_rtt::ProtectedZeroRtt,
     },
     path::{Handle as _, MaxMtu},
+    query,
     recovery::CongestionController,
     stateless_reset::token::Generator as _,
     time::{timer, Timestamp},
@@ -1837,12 +1838,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     #[inline]
-    fn query_event_context(&self, query: &mut dyn event::query::Query) {
+    fn query_event_context(&self, query: &mut dyn query::Query) {
         <Config::EventSubscriber as event::Subscriber>::query(&self.event_context.context, query);
     }
 
     #[inline]
-    fn query_event_context_mut(&mut self, query: &mut dyn event::query::QueryMut) {
+    fn query_event_context_mut(&mut self, query: &mut dyn query::QueryMut) {
         <Config::EventSubscriber as event::Subscriber>::query_mut(
             &mut self.event_context.context,
             query,
@@ -1850,7 +1851,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     #[inline]
-    fn datagram_mut(&mut self, query: &mut dyn event::query::QueryMut) {
+    fn datagram_mut(&mut self, query: &mut dyn query::QueryMut) {
         if let Some((space, _)) = self.space_manager.application_mut() {
             if space.datagram_manager.datagram_mut(query).is_ready() {
                 self.wakeup_handle.wakeup();

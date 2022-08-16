@@ -180,6 +180,7 @@ impl ToTokens for Output {
                 use super::*;
                 use api::*;
                 use core::fmt;
+                use crate::query;
 
                 /// Provides metadata related to an event
                 pub trait Meta: fmt::Debug {

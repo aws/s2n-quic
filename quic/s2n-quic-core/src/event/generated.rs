@@ -4006,6 +4006,7 @@ pub mod supervisor {
 pub use traits::*;
 mod traits {
     use super::*;
+    use crate::query;
     use api::*;
     use core::fmt;
     #[doc = r" Provides metadata related to an event"]
