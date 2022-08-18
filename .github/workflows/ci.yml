@@ -68,7 +68,9 @@ jobs:
         include:
           - toolchain: stable
             # fail on stable warnings
-            args: "-D warnings"
+            # deriving Eq may break API compatibility so we disable it
+            # See https://github.com/rust-lang/rust-clippy/issues/9063
+            args: "-D warnings -A derive_partial_eq_without_eq"
           - toolchain: beta
             # deriving Eq may break API compatibility so we disable it
             # See https://github.com/rust-lang/rust-clippy/issues/9063
