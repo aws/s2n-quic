@@ -27,7 +27,7 @@ aes = "0.8"
 aes-gcm = "0.9"
 bolero = "0.7"
 ctr = "0.9"
-ghash = "0.4"
+ghash = "0.5"
 hex-literal = "0.3"
 insta = { version = "1", features = ["json"] }
 pretty-hex = "0.3"
