@@ -19,5 +19,5 @@ s2n-quic-core = { version = "=0.10.0", path = "../s2n-quic-core", default-featur
 s2n-quic-crypto = { version = "=0.10.0", path = "../s2n-quic-crypto", default-features = false }
 
 [dev-dependencies]
-insta = "1"
+insta = { version = "1", features = ["json"] }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
