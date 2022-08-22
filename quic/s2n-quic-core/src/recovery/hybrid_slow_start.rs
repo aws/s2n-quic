@@ -3,6 +3,8 @@
 
 use crate::time::Timestamp;
 use core::time::Duration;
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
 
 /// An implementation of the Hybrid Slow Start algorithm described in
 /// "Hybrid Slow Start for High-Bandwidth and Long-Distance Networks"
