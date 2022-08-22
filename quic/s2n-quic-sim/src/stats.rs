@@ -750,9 +750,9 @@ impl FromStr for Filter {
 
     fn from_str(filter: &str) -> Result<Self, Self::Err> {
         let (query, op, value): (_, Op, _) = if let Some((q, v)) = filter.split_once("!=") {
-            (q, |a, b| a != b, v)
+            (q, |a, b| (a - b).abs() > f64::EPSILON, v)
         } else if let Some((q, v)) = filter.split_once("==") {
-            (q, |a, b| a == b, v)
+            (q, |a, b| (a - b).abs() < f64::EPSILON, v)
         } else if let Some((q, v)) = filter.split_once(">=") {
             (q, |a, b| a >= b, v)
         } else if let Some((q, v)) = filter.split_once('>') {
@@ -762,7 +762,7 @@ impl FromStr for Filter {
         } else if let Some((q, v)) = filter.split_once('<') {
             (q, |a, b| a < b, v)
         } else if let Some((q, v)) = filter.split_once('=') {
-            (q, |a, b| a == b, v)
+            (q, |a, b| (a - b).abs() < f64::EPSILON, v)
         } else {
             (filter, |a, _b| a != 0.0, "0")
         };
