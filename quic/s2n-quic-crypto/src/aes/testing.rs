@@ -27,7 +27,10 @@ macro_rules! aes_impl {
 
             lazy_static! {
                 static ref IMPLEMENTATIONS: Vec<Implementation> = {
+                    #[cfg(any(target_arch = "x86", target_arch = "x86_64", test))]
                     let mut impls = vec![];
+                    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", test)))]
+                    let impls = vec![];
 
                     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                     crate::aes::x86::testing::$name::implementations(&mut impls);

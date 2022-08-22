@@ -29,6 +29,7 @@ where
     C: Ctr,
     G: GHash,
 {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[inline(always)]
     pub fn new(aes: A, ghash: G) -> Self {
         Self {

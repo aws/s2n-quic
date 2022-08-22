@@ -10,11 +10,13 @@ pub mod x86;
 pub mod testing;
 
 pub const TAG_LEN: usize = 16;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64", test))]
 pub const KEY_LEN: usize = 16;
 
 pub trait Constructor {
     type GHash: GHash;
 
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64", test))]
     fn create(&self, key: [u8; KEY_LEN]) -> Self::GHash;
 }
 
