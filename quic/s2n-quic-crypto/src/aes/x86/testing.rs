@@ -68,13 +68,14 @@ macro_rules! impl_aes {
                 }
             }
 
-            pub fn implementations(impls: &mut Vec<Implementation>) {
+            pub fn implementations(mut impls: Vec<Implementation>) -> Vec<Implementation> {
                 Avx2::call_supported(|| {
                     impls.push(Implementation {
                         name: "s2n_quic/avx2",
                         new: |key| Box::new(<Impl<Avx2>>::new(key)),
                     });
                 });
+                impls
             }
         }
     };

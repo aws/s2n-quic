@@ -22,9 +22,10 @@ impl GHash for Impl {
     }
 }
 
-pub fn implementations(impls: &mut Vec<Implementation>) {
+pub fn implementations(mut impls: Vec<Implementation>) -> Vec<Implementation> {
     impls.push(Implementation {
         name: "RustCrypto",
         new: |key| Box::new(Impl::new(&key.into())),
     });
+    impls
 }

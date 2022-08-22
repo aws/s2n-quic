@@ -26,16 +26,13 @@ pub trait GHash {
 
 lazy_static! {
     static ref IMPLEMENTATIONS: Vec<Implementation> = {
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64", test))]
-        let mut impls = vec![];
-        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", test)))]
         let impls = vec![];
 
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        super::x86::testing::implementations(&mut impls);
+        let impls = super::x86::testing::implementations(impls);
 
         #[cfg(test)]
-        rust_crypto::implementations(&mut impls);
+        let impls = rust_crypto::implementations(impls);
 
         impls
     };
