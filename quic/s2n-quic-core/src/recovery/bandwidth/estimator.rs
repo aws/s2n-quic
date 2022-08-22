@@ -280,11 +280,11 @@ impl Estimator {
         self.delivered_bytes += bytes_acknowledged as u64;
         self.delivered_time = Some(now);
 
+        let is_app_limited_period_over =
+            |app_limited_bytes| self.delivered_bytes > app_limited_bytes;
         if self
             .app_limited_delivered_bytes
-            .map_or(false, |app_limited_bytes| {
-                self.delivered_bytes > app_limited_bytes
-            })
+            .map_or(false, is_app_limited_period_over)
         {
             // Clear app-limited field if bubble is ACKed and gone
             self.app_limited_delivered_bytes = None;
