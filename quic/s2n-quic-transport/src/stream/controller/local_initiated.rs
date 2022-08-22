@@ -4,7 +4,7 @@
 use crate::{
     connection::open_token,
     contexts::OnTransmitError,
-    sync::{PeriodicSync, ValueToFrameWriter},
+    sync::{OnceSync, PeriodicSync, ValueToFrameWriter},
     transmission,
     transmission::WriteContext,
 };
@@ -14,7 +14,7 @@ use core::{
 };
 use s2n_quic_core::{
     ack,
-    frame::{MaxStreams, StreamsBlocked},
+    frame::{self, MaxStreams, StreamsBlocked},
     packet::number::PacketNumber,
     stream::{limits::LocalLimits, StreamId},
     time::{timer, Timestamp},
@@ -27,7 +27,7 @@ const WAKERS_INITIAL_CAPACITY: usize = 5;
 
 /// The LocalInitiated controller controls streams initiated locally
 #[derive(Debug)]
-pub(super) struct LocalInitiated<L: LocalLimits> {
+pub(super) struct LocalInitiated<L: LocalLimits, OpenNotify: OpenNotifyBehavior> {
     /// The max stream limit specified by the local endpoint.
     ///
     /// Used to restrict the number of concurrent streams the local
@@ -47,9 +47,10 @@ pub(super) struct LocalInitiated<L: LocalLimits> {
     token_counter: open_token::Counter,
     /// Keeps track of all of the expired open tokens
     expired_token: open_token::Token,
+    open_notify: OpenNotify,
 }
 
-impl<L: LocalLimits> LocalInitiated<L> {
+impl<L: LocalLimits, OpenNotify: OpenNotifyBehavior> LocalInitiated<L, OpenNotify> {
     pub fn new(initial_peer_maximum_streams: VarInt, max_local_limit: L) -> Self {
         Self {
             max_local_limit,
@@ -60,6 +61,7 @@ impl<L: LocalLimits> LocalInitiated<L> {
             closed_streams: VarInt::from_u8(0),
             token_counter: open_token::Counter::new(),
             expired_token: open_token::Token::new(),
+            open_notify: Default::default(),
         }
     }
 
@@ -131,6 +133,7 @@ impl<L: LocalLimits> LocalInitiated<L> {
     #[inline]
     pub fn on_open_stream(&mut self) {
         self.opened_streams += 1;
+        self.open_notify.on_open_stream();
 
         self.check_integrity();
     }
@@ -190,17 +193,24 @@ impl<L: LocalLimits> LocalInitiated<L> {
     }
 
     #[inline]
+    pub fn total_open_stream_count(&self) -> VarInt {
+        self.opened_streams
+    }
+
+    #[inline]
     pub fn on_timeout(&mut self, now: Timestamp) {
         self.streams_blocked_sync.on_timeout(now);
     }
 
     #[inline]
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+        self.open_notify.on_packet_ack(ack_set);
         self.streams_blocked_sync.on_packet_ack(ack_set)
     }
 
     #[inline]
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+        self.open_notify.on_packet_loss(ack_set);
         self.streams_blocked_sync.on_packet_loss(ack_set)
     }
 
@@ -221,15 +231,19 @@ impl<L: LocalLimits> LocalInitiated<L> {
             //# has no ack-eliciting packets in flight.
             self.streams_blocked_sync
                 .skip_delivery(context.current_time());
-            Ok(())
         } else {
-            self.streams_blocked_sync.on_transmit(stream_id, context)
+            self.streams_blocked_sync.on_transmit(stream_id, context)?;
         }
+
+        self.open_notify.on_transmit(stream_id, context)?;
+
+        Ok(())
     }
 
     pub fn close(&mut self) {
         self.wake_all();
         self.streams_blocked_sync.stop_sync();
+        self.open_notify.close();
     }
 
     #[inline]
@@ -248,7 +262,9 @@ impl<L: LocalLimits> LocalInitiated<L> {
     }
 }
 
-impl<L: LocalLimits> timer::Provider for LocalInitiated<L> {
+impl<L: LocalLimits, OpenNotify: OpenNotifyBehavior> timer::Provider
+    for LocalInitiated<L, OpenNotify>
+{
     #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
         self.streams_blocked_sync.timers(query)?;
@@ -256,13 +272,17 @@ impl<L: LocalLimits> timer::Provider for LocalInitiated<L> {
     }
 }
 
-impl<L: LocalLimits> transmission::interest::Provider for LocalInitiated<L> {
+impl<L: LocalLimits, OpenNotify: OpenNotifyBehavior> transmission::interest::Provider
+    for LocalInitiated<L, OpenNotify>
+{
     #[inline]
     fn transmission_interest<Q: transmission::interest::Query>(
         &self,
         query: &mut Q,
     ) -> transmission::interest::Result {
-        self.streams_blocked_sync.transmission_interest(query)
+        self.streams_blocked_sync.transmission_interest(query)?;
+        self.open_notify.transmission_interest(query)?;
+        Ok(())
     }
 }
 
@@ -271,6 +291,7 @@ impl<L: LocalLimits> transmission::interest::Provider for LocalInitiated<L> {
 pub(super) struct StreamsBlockedToFrameWriter {}
 
 impl ValueToFrameWriter<VarInt> for StreamsBlockedToFrameWriter {
+    #[inline]
     fn write_value_as_frame<W: WriteContext>(
         &self,
         value: VarInt,
@@ -280,6 +301,132 @@ impl ValueToFrameWriter<VarInt> for StreamsBlockedToFrameWriter {
         context.write_frame(&StreamsBlocked {
             stream_type: stream_id.stream_type(),
             stream_limit: value,
+        })
+    }
+}
+
+/// Interface for determining what to do for notifying the peer about opening
+/// the stream.
+///
+/// By default, the trait provides no-op implementations for all of the methods.
+pub trait OpenNotifyBehavior: Default + transmission::interest::Provider {
+    #[inline]
+    fn on_open_stream(&mut self) {}
+
+    #[inline]
+    fn on_transmit<W: WriteContext>(
+        &mut self,
+        stream_id: StreamId,
+        context: &mut W,
+    ) -> Result<(), OnTransmitError> {
+        let _ = stream_id;
+        let _ = context;
+        Ok(())
+    }
+
+    #[inline]
+    fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+        let _ = ack_set;
+    }
+
+    #[inline]
+    fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+        let _ = ack_set;
+    }
+
+    #[inline]
+    fn close(&mut self) {}
+}
+
+/// Defines the open notify behavior for unidirectional streams
+///
+/// Since locally-initiated, unidirectional streams can only send data, all of
+/// these operations are no-op, as the peer will become aware of the stream once
+/// the local application starts sending on it.
+#[derive(Debug, Default)]
+pub(super) struct OpenNotifyUnidirectional;
+
+impl OpenNotifyBehavior for OpenNotifyUnidirectional {}
+
+impl transmission::interest::Provider for OpenNotifyUnidirectional {
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        _query: &mut Q,
+    ) -> transmission::interest::Result {
+        Ok(())
+    }
+}
+
+/// Defines the open notify behavior for bidirectional streams
+///
+/// This will send an empty STREAM frame to the peer for the largest
+/// opened, locally-initiated bidirectional stream. This prevents a deadlock
+/// where the local application opens the stream and tries to receive on it.
+#[derive(Debug, Default)]
+pub(super) struct OpenNotifyBidirectional {
+    max_opened: OnceSync<(), OpenNotifyFrameWriter>,
+}
+
+impl OpenNotifyBehavior for OpenNotifyBidirectional {
+    #[inline]
+    fn on_open_stream(&mut self) {
+        self.max_opened.force_delivery(())
+    }
+
+    #[inline]
+    fn on_transmit<W: WriteContext>(
+        &mut self,
+        stream_id: StreamId,
+        context: &mut W,
+    ) -> Result<(), OnTransmitError> {
+        self.max_opened.on_transmit(stream_id, context)
+    }
+
+    #[inline]
+    fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+        let _ = self.max_opened.on_packet_ack(ack_set);
+    }
+
+    #[inline]
+    fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+        self.max_opened.on_packet_loss(ack_set)
+    }
+
+    #[inline]
+    fn close(&mut self) {
+        self.max_opened.stop_sync();
+    }
+}
+
+impl transmission::interest::Provider for OpenNotifyBidirectional {
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.max_opened.transmission_interest(query)
+    }
+}
+
+/// Writes an empty STREAM frame to the peer, indicating the stream has been created
+#[derive(Debug, Default)]
+struct OpenNotifyFrameWriter;
+
+impl ValueToFrameWriter<()> for OpenNotifyFrameWriter {
+    #[inline]
+    fn write_value_as_frame<W: WriteContext>(
+        &self,
+        _value: (),
+        stream_id: StreamId,
+        context: &mut W,
+    ) -> Option<PacketNumber> {
+        context.write_frame(&frame::Stream {
+            stream_id: stream_id.into(),
+            is_last_frame: false,
+            is_fin: false,
+            offset: VarInt::from_u32(0),
+            data: &[][..],
         })
     }
 }

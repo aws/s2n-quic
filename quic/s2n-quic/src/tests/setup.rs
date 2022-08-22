@@ -73,12 +73,16 @@ pub fn server(handle: &Handle) -> Result<SocketAddr> {
     })
 }
 
-pub fn client(handle: &Handle, server_addr: SocketAddr) -> Result {
-    let client = Client::builder()
+pub fn build_server(handle: &Handle) -> Result<Server> {
+    Ok(Server::builder()
         .with_io(handle.builder().build().unwrap())?
-        .with_tls(certificates::CERT_PEM)?
+        .with_tls(SERVER_CERTS)?
         .with_event(events())?
-        .start()?;
+        .start()?)
+}
+
+pub fn client(handle: &Handle, server_addr: SocketAddr) -> Result {
+    let client = build_client(handle)?;
 
     primary::spawn(async move {
         let connect = Connect::new(server_addr).with_server_name("localhost");
