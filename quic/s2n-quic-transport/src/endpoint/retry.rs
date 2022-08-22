@@ -35,16 +35,15 @@ impl<Path: path::Handle> Dispatch<Path> {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn queue<T: token::Format, C: RetryKey, R: random::Generator>(
+    pub fn queue<T: token::Format, C: RetryKey>(
         &mut self,
         path_handle: Path,
         packet: &packet::initial::ProtectedInitial,
         local_connection_id: connection::LocalId,
-        random: &mut R,
+        random: &mut dyn random::Generator,
         token_format: &mut T,
     ) {
-        if let Some(transmission) = Transmission::new::<_, C, _>(
+        if let Some(transmission) = Transmission::new::<_, C>(
             path_handle,
             packet,
             local_connection_id,
@@ -101,15 +100,15 @@ impl<Path: path::Handle> core::fmt::Debug for Transmission<Path> {
 }
 
 impl<Path: path::Handle> Transmission<Path> {
-    pub fn new<T: token::Format, C: RetryKey, R: random::Generator>(
+    pub fn new<T: token::Format, C: RetryKey>(
         path: Path,
         packet: &packet::initial::ProtectedInitial,
         local_connection_id: connection::LocalId,
-        random: &mut R,
+        random: &mut dyn random::Generator,
         token_format: &mut T,
     ) -> Option<Self> {
         let mut packet_buf = [0u8; MINIMUM_MTU as usize];
-        let packet_range = packet::retry::Retry::encode_packet::<_, C, _>(
+        let packet_range = packet::retry::Retry::encode_packet::<_, C>(
             &path.remote_address(),
             packet,
             &local_connection_id,

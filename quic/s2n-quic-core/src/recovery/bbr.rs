@@ -284,13 +284,13 @@ impl CongestionController for BbrCongestionController {
     }
 
     #[inline]
-    fn on_ack<Rnd: random::Generator>(
+    fn on_ack(
         &mut self,
         newest_acked_time_sent: Timestamp,
         bytes_acknowledged: usize,
         newest_acked_packet_info: Self::PacketInfo,
         rtt_estimator: &RttEstimator,
-        random_generator: &mut Rnd,
+        random_generator: &mut dyn random::Generator,
         ack_receive_time: Timestamp,
     ) {
         self.bytes_in_flight
@@ -392,13 +392,13 @@ impl CongestionController for BbrCongestionController {
     }
 
     #[inline]
-    fn on_packet_lost<Rnd: random::Generator>(
+    fn on_packet_lost(
         &mut self,
         lost_bytes: u32,
         packet_info: Self::PacketInfo,
         _persistent_congestion: bool,
         new_loss_burst: bool,
-        random_generator: &mut Rnd,
+        random_generator: &mut dyn random::Generator,
         timestamp: Timestamp,
     ) {
         debug_assert!(lost_bytes > 0);
@@ -946,11 +946,11 @@ impl BbrCongestionController {
     }
 
     #[inline]
-    fn handle_lost_packet<Rnd: random::Generator>(
+    fn handle_lost_packet(
         &mut self,
         lost_bytes: u32,
         packet_info: <BbrCongestionController as CongestionController>::PacketInfo,
-        random_generator: &mut Rnd,
+        random_generator: &mut dyn random::Generator,
         now: Timestamp,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2

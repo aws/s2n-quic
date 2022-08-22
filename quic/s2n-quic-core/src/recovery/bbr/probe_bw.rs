@@ -350,12 +350,12 @@ impl State {
     }
 
     /// Start the `Down` cycle phase
-    fn start_down<Rnd: random::Generator>(
+    fn start_down(
         &mut self,
         congestion_state: &mut congestion::State,
         round_counter: &mut round::Counter,
         delivered_bytes: u64,
-        random_generator: &mut Rnd,
+        random_generator: &mut dyn random::Generator,
         now: Timestamp,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
@@ -381,7 +381,7 @@ impl State {
     ///
     /// Note: This uses a method for determining a number in a random range that has a very slight
     ///       bias. In practice, this bias should not result in a detectable impact to BBR performance.
-    fn pick_probe_wait<Rnd: random::Generator>(&mut self, random_generator: &mut Rnd) {
+    fn pick_probe_wait(&mut self, random_generator: &mut dyn random::Generator) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.5.3
         //# BBRPickProbeWait()
         //#    /* Decide random round-trip bound for wait: */
@@ -404,10 +404,10 @@ impl BbrCongestionController {
     /// If `cruise_immediately` is true, `CyclePhase::Cruise` will be entered immediately
     /// after entering `CyclePhase::Down`
     #[inline]
-    pub(super) fn enter_probe_bw<Rnd: random::Generator>(
+    pub(super) fn enter_probe_bw(
         &mut self,
         cruise_immediately: bool,
-        random_generator: &mut Rnd,
+        random_generator: &mut dyn random::Generator,
         now: Timestamp,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
@@ -434,9 +434,9 @@ impl BbrCongestionController {
 
     /// Transition the current Probe BW cycle phase if necessary
     #[inline]
-    pub(super) fn update_probe_bw_cycle_phase<Rnd: random::Generator>(
+    pub(super) fn update_probe_bw_cycle_phase(
         &mut self,
-        random_generator: &mut Rnd,
+        random_generator: &mut dyn random::Generator,
         now: Timestamp,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
@@ -550,10 +550,10 @@ impl BbrCongestionController {
 
     /// Adapt the upper bounds lower or higher depending on the loss rate
     #[inline]
-    pub(super) fn adapt_upper_bounds<Rnd: random::Generator>(
+    pub(super) fn adapt_upper_bounds(
         &mut self,
         bytes_acknowledged: usize,
-        random_generator: &mut Rnd,
+        random_generator: &mut dyn random::Generator,
         now: Timestamp,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
@@ -672,12 +672,12 @@ impl BbrCongestionController {
 
     /// Called when loss indicates the current inflight amount is too high
     #[inline]
-    pub(super) fn on_inflight_too_high<Rnd: random::Generator>(
+    pub(super) fn on_inflight_too_high(
         &mut self,
         is_app_limited: bool,
         bytes_in_flight: u32,
         target_inflight: u32,
-        random_generator: &mut Rnd,
+        random_generator: &mut dyn random::Generator,
         now: Timestamp,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2

@@ -42,9 +42,9 @@ impl BbrCongestionController {
 
     /// Checks if the `Drain` state is done and enters `ProbeBw` if so
     #[inline]
-    pub(super) fn check_drain_done<Rnd: random::Generator>(
+    pub(super) fn check_drain_done(
         &mut self,
-        random_generator: &mut Rnd,
+        random_generator: &mut dyn random::Generator,
         now: Timestamp,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.2

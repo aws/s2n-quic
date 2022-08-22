@@ -224,11 +224,11 @@ impl<Config: endpoint::Config> Path<Config> {
     }
 
     #[inline]
-    pub fn on_timeout<Rnd: random::Generator, Pub: event::ConnectionPublisher>(
+    pub fn on_timeout<Pub: event::ConnectionPublisher>(
         &mut self,
         timestamp: Timestamp,
         path_id: Id,
-        random_generator: &mut Rnd,
+        random_generator: &mut dyn random::Generator,
         publisher: &mut Pub,
     ) {
         self.challenge

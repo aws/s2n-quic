@@ -116,11 +116,11 @@ pub type EncryptedRetry<'a> = Retry<'a>;
 pub type CleartextRetry<'a> = Retry<'a>;
 
 impl<'a> Retry<'a> {
-    pub fn encode_packet<T: token::Format, C: RetryKey, R: random::Generator>(
+    pub fn encode_packet<T: token::Format, C: RetryKey>(
         remote_address: &SocketAddress,
         packet: &ProtectedInitial,
         local_connection_id: &connection::LocalId,
-        random: &mut R,
+        random: &mut dyn random::Generator,
         token_format: &mut T,
         packet_buf: &mut [u8],
     ) -> Option<Range<usize>> {

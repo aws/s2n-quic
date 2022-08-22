@@ -97,11 +97,11 @@ impl Controller {
     }
 
     /// Called when the connection timer expires
-    pub fn on_timeout<Rnd: random::Generator, Pub: event::ConnectionPublisher>(
+    pub fn on_timeout<Pub: event::ConnectionPublisher>(
         &mut self,
         now: Timestamp,
         path: event::builder::Path,
-        random_generator: &mut Rnd,
+        random_generator: &mut dyn random::Generator,
         rtt: Duration,
         publisher: &mut Pub,
     ) {
@@ -169,8 +169,8 @@ impl Controller {
     /// bias in the resulting count, but does not result in any reduction in security for this
     /// usage. Other usages that require uniform sampling should implement rejection sampling or
     /// other methodologies and not copy this implementation.
-    fn next_ce_packet_duration<Rnd: random::Generator>(
-        random_generator: &mut Rnd,
+    fn next_ce_packet_duration(
+        random_generator: &mut dyn random::Generator,
         rtt: Duration,
     ) -> Duration {
         let mut bytes = [0; core::mem::size_of::<u16>()];

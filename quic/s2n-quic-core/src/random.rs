@@ -23,7 +23,7 @@ pub trait Generator: 'static + Send {
 /// NOTE: This will have slight bias towards the lower end of the range. Usages that
 /// require uniform sampling should implement rejection sampling or other methodologies
 /// and not copy this implementation.
-pub(crate) fn gen_range_biased<R: Generator>(
+pub(crate) fn gen_range_biased<R: Generator + ?Sized>(
     random_generator: &mut R,
     range: RangeInclusive<usize>,
 ) -> usize {

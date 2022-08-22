@@ -27,7 +27,7 @@ pub struct HashState {
 
 impl HashState {
     /// Generates hash state by using the given random generator to produce random keys.
-    fn new<R: random::Generator>(random_generator: &mut R) -> HashState {
+    fn new(random_generator: &mut dyn random::Generator) -> HashState {
         let mut k0 = [0u8; core::mem::size_of::<u64>()];
         let mut k1 = [0u8; core::mem::size_of::<u64>()];
 
@@ -197,7 +197,7 @@ pub(crate) struct ConnectionIdMapperState {
 }
 
 impl ConnectionIdMapperState {
-    fn new<R: random::Generator>(random_generator: &mut R) -> Self {
+    fn new(random_generator: &mut dyn random::Generator) -> Self {
         Self {
             local_id_map: LocalIdMap::new(HashState::new(random_generator)),
             stateless_reset_map: StatelessResetMap::new(HashState::new(random_generator)),
@@ -219,8 +219,8 @@ pub struct ConnectionIdMapper {
 
 impl ConnectionIdMapper {
     /// Creates a new `ConnectionIdMapper`
-    pub fn new<R: random::Generator>(
-        random_generator: &mut R,
+    pub fn new(
+        random_generator: &mut dyn random::Generator,
         endpoint_type: endpoint::Type,
     ) -> Self {
         Self {
