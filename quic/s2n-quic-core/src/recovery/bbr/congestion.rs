@@ -165,6 +165,7 @@ impl State {
 impl BbrCongestionController {
     /// Updates delivery and congestion signals according to
     /// BBRUpdateLatestDeliverySignals() and BBRUpdateCongestionSignals()
+    #[inline]
     pub(super) fn update_latest_signals(&mut self, packet_info: PacketInfo) {
         self.congestion_state.update(
             packet_info,

@@ -403,6 +403,7 @@ impl BbrCongestionController {
     ///
     /// If `cruise_immediately` is true, `CyclePhase::Cruise` will be entered immediately
     /// after entering `CyclePhase::Down`
+    #[inline]
     pub(super) fn enter_probe_bw<Rnd: random::Generator>(
         &mut self,
         cruise_immediately: bool,
@@ -432,6 +433,7 @@ impl BbrCongestionController {
     }
 
     /// Transition the current Probe BW cycle phase if necessary
+    #[inline]
     pub(super) fn update_probe_bw_cycle_phase<Rnd: random::Generator>(
         &mut self,
         random_generator: &mut Rnd,
@@ -547,6 +549,7 @@ impl BbrCongestionController {
     }
 
     /// Adapt the upper bounds lower or higher depending on the loss rate
+    #[inline]
     pub(super) fn adapt_upper_bounds<Rnd: random::Generator>(
         &mut self,
         bytes_acknowledged: usize,
@@ -632,6 +635,7 @@ impl BbrCongestionController {
     }
 
     /// Update AckPhase and advance the Max BW filter if necessary
+    #[inline]
     fn update_ack_phase(&mut self, rate_sample: RateSample) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //#   if (BBR.ack_phase == ACKS_PROBE_STARTING and BBR.round_start)
@@ -667,6 +671,7 @@ impl BbrCongestionController {
     }
 
     /// Called when loss indicates the current inflight amount is too high
+    #[inline]
     pub(super) fn on_inflight_too_high<Rnd: random::Generator>(
         &mut self,
         is_app_limited: bool,
@@ -705,6 +710,7 @@ impl BbrCongestionController {
     }
 
     /// Returns true if it is time to transition from `Down` to `Cruise`
+    #[inline]
     fn is_time_to_cruise(&self) -> bool {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRCheckTimeToCruise())

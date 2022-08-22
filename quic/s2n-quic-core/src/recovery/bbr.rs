@@ -217,14 +217,17 @@ type BytesInFlight = Counter<u32>;
 impl CongestionController for BbrCongestionController {
     type PacketInfo = bandwidth::PacketInfo;
 
+    #[inline]
     fn congestion_window(&self) -> u32 {
         self.cwnd
     }
 
+    #[inline]
     fn bytes_in_flight(&self) -> u32 {
         *self.bytes_in_flight
     }
 
+    #[inline]
     fn is_congestion_limited(&self) -> bool {
         let available_congestion_window = self
             .congestion_window()
@@ -232,14 +235,17 @@ impl CongestionController for BbrCongestionController {
         available_congestion_window < self.max_datagram_size as u32
     }
 
+    #[inline]
     fn is_slow_start(&self) -> bool {
         self.state.is_startup()
     }
 
+    #[inline]
     fn requires_fast_retransmission(&self) -> bool {
         self.recovery_state.requires_fast_retransmission()
     }
 
+    #[inline]
     fn on_packet_sent(
         &mut self,
         time_sent: Timestamp,
@@ -267,6 +273,7 @@ impl CongestionController for BbrCongestionController {
             .on_packet_sent(prior_bytes_in_flight, app_limited, time_sent)
     }
 
+    #[inline]
     fn on_rtt_update(
         &mut self,
         _time_sent: Timestamp,
@@ -276,6 +283,7 @@ impl CongestionController for BbrCongestionController {
         // BBRUpdateMinRTT() called in `on_ack`
     }
 
+    #[inline]
     fn on_ack<Rnd: random::Generator>(
         &mut self,
         newest_acked_time_sent: Timestamp,
@@ -383,6 +391,7 @@ impl CongestionController for BbrCongestionController {
         }
     }
 
+    #[inline]
     fn on_packet_lost<Rnd: random::Generator>(
         &mut self,
         lost_bytes: u32,
@@ -411,6 +420,7 @@ impl CongestionController for BbrCongestionController {
         self.handle_lost_packet(lost_bytes, packet_info, random_generator, timestamp);
     }
 
+    #[inline]
     fn on_explicit_congestion(&mut self, ce_count: u64, event_time: Timestamp) {
         self.bw_estimator.on_explicit_congestion(ce_count);
         self.ecn_state.on_explicit_congestion(ce_count);
@@ -420,10 +430,12 @@ impl CongestionController for BbrCongestionController {
         }
     }
 
+    #[inline]
     fn on_mtu_update(&mut self, max_datagram_size: u16) {
         self.max_datagram_size = max_datagram_size;
     }
 
+    #[inline]
     fn on_packet_discarded(&mut self, bytes_sent: usize) {
         self.bytes_in_flight
             .try_sub(bytes_sent)
@@ -431,10 +443,12 @@ impl CongestionController for BbrCongestionController {
         self.recovery_state.on_packet_discarded();
     }
 
+    #[inline]
     fn earliest_departure_time(&self) -> Option<Timestamp> {
         self.next_departure_time
     }
 
+    #[inline]
     fn send_quantum(&self) -> Option<usize> {
         Some(self.send_quantum)
     }
@@ -500,11 +514,13 @@ impl BbrCongestionController {
     /// The bandwidth-delay product
     ///
     /// Based on the current estimate of maximum sending bandwidth and minimum RTT
+    #[inline]
     fn bdp(&self) -> u64 {
         self.bdp_multiple(self.data_rate_model.bw(), Ratio::one())
     }
 
     /// Calculates a bandwidth-delay product using the supplied `Bandwidth` and `gain`
+    #[inline]
     fn bdp_multiple(&self, bw: Bandwidth, gain: Ratio<u64>) -> u64 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
         //# BBRBDPMultiple(gain):
@@ -523,6 +539,7 @@ impl BbrCongestionController {
     /// How much data do we want in flight
     ///
     /// Based on the estimated BDP, unless congestion reduced the cwnd
+    #[inline]
     fn target_inflight(&self) -> u32 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.5.3
         //# BBRTargetInflight()
@@ -536,6 +553,7 @@ impl BbrCongestionController {
     ///
     /// Based on the BDP estimate (BBR.bdp), the aggregation estimate (BBR.extra_acked), the
     /// offload budget (BBR.offload_budget), and BBRMinPipeCwnd.
+    #[inline]
     fn max_inflight(&self) -> u64 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
         //# BBRUpdateMaxInflight()
@@ -553,6 +571,7 @@ impl BbrCongestionController {
     }
 
     /// Inflight based on min RTT and the estimated bottleneck bandwidth
+    #[inline]
     fn inflight(&self, bw: Bandwidth, gain: Ratio<u64>) -> u32 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
         //# BBRInflight(gain)
@@ -569,6 +588,7 @@ impl BbrCongestionController {
 
     /// The volume of data that tries to leave free headroom in the bottleneck buffer or link for
     /// other flows, for fairness convergence and lower RTTs and loss
+    #[inline]
     fn inflight_with_headroom(&self) -> u32 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRInflightWithHeadroom()
@@ -595,6 +615,7 @@ impl BbrCongestionController {
     }
 
     /// Calculates the quantization budget
+    #[inline]
     fn quantization_budget(&self, inflight: u64) -> u64 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
         //# BBRQuantizationBudget(inflight)
@@ -731,6 +752,7 @@ impl BbrCongestionController {
     }
 
     /// Updates the congestion window based on the latest model
+    #[inline]
     fn set_cwnd(&mut self, newly_acked: usize) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.6
         //# BBRSetCwnd():
@@ -792,6 +814,7 @@ impl BbrCongestionController {
     }
 
     /// Returns the maximum congestion window bound by recent congestion
+    #[inline]
     fn bound_cwnd_for_model(&self) -> u32 {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.7
         //# BBRBoundCwndForModel():
@@ -830,6 +853,7 @@ impl BbrCongestionController {
     }
 
     /// Saves the last-known good congestion window (the latest cwnd unmodulated by loss recovery or ProbeRTT)
+    #[inline]
     fn save_cwnd(&mut self) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
         //# BBRSaveCwnd()
@@ -846,6 +870,7 @@ impl BbrCongestionController {
     }
 
     /// Restores the last-known good congestion window (the latest cwnd unmodulated by loss recovery or ProbeRTT)
+    #[inline]
     fn restore_cwnd(&mut self) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
         //# BBRRestoreCwnd()
@@ -920,6 +945,7 @@ impl BbrCongestionController {
         self.try_fast_path = false;
     }
 
+    #[inline]
     fn handle_lost_packet<Rnd: random::Generator>(
         &mut self,
         lost_bytes: u32,
@@ -960,6 +986,7 @@ impl BbrCongestionController {
     }
 
     /// Returns the prefix of packet where losses exceeded `LOSS_THRESH`
+    #[inline]
     fn inflight_hi_from_lost_packet(
         size: u32,
         lost_since_transmit: u32,

@@ -31,7 +31,7 @@ macro_rules! impl_aes {
             use super::*;
             use crate::aes::testing::$lower::Implementation;
 
-            pub fn implementations(impls: &mut Vec<Implementation>) {
+            pub fn implementations(mut impls: Vec<Implementation>) -> Vec<Implementation> {
                 impls.push(Implementation {
                     name: "RustCrypto",
                     new: |key| {
@@ -39,6 +39,7 @@ macro_rules! impl_aes {
                         Box::new(aes)
                     },
                 });
+                impls
             }
         }
     };

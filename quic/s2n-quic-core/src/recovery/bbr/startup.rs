@@ -17,6 +17,7 @@ pub(crate) const CWND_GAIN: Ratio<u64> = Ratio::new_raw(2, 1);
 /// Methods related to the Startup state
 impl BbrCongestionController {
     /// Enter the `Startup` state
+    #[inline]
     pub(super) fn enter_startup(&mut self) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.1.1
         //# BBREnterStartup():
@@ -32,6 +33,7 @@ impl BbrCongestionController {
     }
 
     /// Checks if the `Startup` state is done and enters `Drain` if so
+    #[inline]
     pub(super) fn check_startup_done(&mut self) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.1.1
         //# BBRCheckStartupDone():

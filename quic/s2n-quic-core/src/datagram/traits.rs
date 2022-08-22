@@ -54,6 +54,12 @@ impl PreConnectionInfo {
     }
 }
 
+impl Default for PreConnectionInfo {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Allows users to configure the behavior of receiving datagrams.
 pub trait Receiver: 'static + Send {
     /// A callback that gives users direct access to datagrams as they are read off a packet

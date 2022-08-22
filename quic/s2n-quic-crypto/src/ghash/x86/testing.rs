@@ -53,7 +53,7 @@ where
     }
 }
 
-pub fn implementations(impls: &mut Vec<Implementation>) {
+pub fn implementations(mut impls: Vec<Implementation>) -> Vec<Implementation> {
     Avx2::call_supported(|| {
         impls.push(Implementation {
             name: "s2n_quic/std/avx2",
@@ -77,4 +77,5 @@ pub fn implementations(impls: &mut Vec<Implementation>) {
             },
         });
     });
+    impls
 }

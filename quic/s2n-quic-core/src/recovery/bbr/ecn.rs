@@ -102,19 +102,19 @@ fn calculate_alpha(alpha: f64, ce_ratio: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{path::MINIMUM_MTU, recovery::bbr::ecn};
+    use crate::{assert_delta, path::MINIMUM_MTU, recovery::bbr::ecn};
 
     #[test]
     fn on_round_start() {
         let mut state = ecn::State::default();
-        assert_eq!(1.0, state.alpha());
+        assert_delta!(1.0, state.alpha(), 0.0001);
 
         let delivered_bytes = 1000;
         state.on_round_start(delivered_bytes, MINIMUM_MTU);
 
         // No ECN CE yet and alpha is currently at the initial value of 1,
         // so alpha is just 1 - alpha gain
-        assert_eq!(1.0 - ECN_ALPHA_GAIN, state.alpha());
+        assert_delta!(1.0 - ECN_ALPHA_GAIN, state.alpha(), 0.0001);
         assert!(!state.is_ce_too_high_in_round());
         assert_eq!(delivered_bytes, state.round_start_delivered_bytes);
 
@@ -128,9 +128,10 @@ mod tests {
 
         state.on_round_start(delivered_bytes, MINIMUM_MTU);
 
-        assert_eq!(
+        assert_delta!(
             (1.0 - ECN_ALPHA_GAIN) * alpha + ECN_ALPHA_GAIN * 0.5,
-            state.alpha()
+            state.alpha(),
+            0.0001
         );
         // ECN ce count is not above the 50% `ECN_THRESH`
         assert!(!state.is_ce_too_high_in_round());
@@ -148,9 +149,10 @@ mod tests {
         // 20 packets delivered, 11 of which were ECN CE marked
         state.on_round_start(delivered_bytes, MINIMUM_MTU);
 
-        assert_eq!(
+        assert_delta!(
             (1.0 - ECN_ALPHA_GAIN) * alpha + ECN_ALPHA_GAIN * 11.0 / 20.0,
-            state.alpha()
+            state.alpha(),
+            0.0001
         );
         // ECN ce count is above the 50% `ECN_THRESH`
         assert!(state.is_ce_too_high_in_round());

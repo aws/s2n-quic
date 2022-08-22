@@ -27,13 +27,13 @@ macro_rules! aes_impl {
 
             lazy_static! {
                 static ref IMPLEMENTATIONS: Vec<Implementation> = {
-                    let mut impls = vec![];
+                    let impls = vec![];
 
                     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-                    crate::aes::x86::testing::$name::implementations(&mut impls);
+                    let impls = crate::aes::x86::testing::$name::implementations(impls);
 
                     #[cfg(test)]
-                    super::rust_crypto::$name::implementations(&mut impls);
+                    let impls = super::rust_crypto::$name::implementations(impls);
 
                     impls
                 };
