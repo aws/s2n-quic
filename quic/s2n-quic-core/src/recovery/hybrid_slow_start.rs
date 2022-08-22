@@ -174,7 +174,7 @@ impl HybridSlowStart {
     /// should be called from on_packet_ack
     pub fn cwnd_increment(&self, sent_bytes: usize) -> f32 {
         if cfg!(debug_assertions) && !self.use_hystart_plus_plus {
-            assert_eq!(self.ss_growth_divisor, 1.0);
+            assert!((self.ss_growth_divisor - 1.0).abs() < f32::EPSILON);
         }
         (sent_bytes as f32) / self.ss_growth_divisor
     }
