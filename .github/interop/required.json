@@ -233,9 +233,7 @@
     "msquic": [],
     "mvfst": [],
     "neqo": [],
-    "ngtcp2": [
-      "client"
-    ],
+    "ngtcp2": [],
     "picoquic": [
       "client"
     ],
