@@ -111,6 +111,11 @@ impl RemoteInitiated {
     }
 
     #[inline]
+    pub fn total_open_stream_count(&self) -> VarInt {
+        self.opened_streams
+    }
+
+    #[inline]
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.max_streams_sync.on_packet_ack(ack_set)
     }

@@ -23,6 +23,7 @@ use s2n_quic_core::{
     time::{timer, Timestamp},
     transport,
     transport::parameters::InitialFlowControlLimits,
+    varint::VarInt,
 };
 
 pub use remote_initiated::MAX_STREAMS_SYNC_FRACTION;
@@ -36,9 +37,15 @@ pub use remote_initiated::MAX_STREAMS_SYNC_FRACTION;
 #[derive(Debug)]
 pub struct Controller {
     local_endpoint_type: endpoint::Type,
-    local_bidi_controller: LocalInitiated<stream::limits::LocalBidirectional>,
+    local_bidi_controller: LocalInitiated<
+        stream::limits::LocalBidirectional,
+        local_initiated::OpenNotifyBidirectional,
+    >,
     remote_bidi_controller: RemoteInitiated,
-    local_uni_controller: LocalInitiated<stream::limits::LocalUnidirectional>,
+    local_uni_controller: LocalInitiated<
+        stream::limits::LocalUnidirectional,
+        local_initiated::OpenNotifyUnidirectional,
+    >,
     remote_uni_controller: RemoteInitiated,
 }
 
@@ -235,16 +242,43 @@ impl Controller {
             return Ok(());
         }
 
-        // Only the stream_type from the StreamId is transmitted
-        let stream_id = StreamId::initial(self.local_endpoint_type, StreamType::Bidirectional);
-        self.local_bidi_controller.on_transmit(stream_id, context)?;
-        self.remote_bidi_controller
-            .on_transmit(stream_id, context)?;
+        let peer_endpoint_type = self.local_endpoint_type.peer_type();
 
-        // Only the stream_type from the StreamId is transmitted
-        let stream_id = StreamId::initial(self.local_endpoint_type, StreamType::Unidirectional);
-        self.remote_uni_controller.on_transmit(stream_id, context)?;
-        self.local_uni_controller.on_transmit(stream_id, context)?;
+        macro_rules! on_transmit {
+            ($controller:ident, $endpoint:expr, $ty:expr) => {
+                if let Some(nth) = self
+                    .$controller
+                    .total_open_stream_count()
+                    .checked_sub(VarInt::from_u32(1))
+                {
+                    if let Some(stream_id) = StreamId::nth($endpoint, $ty, nth.as_u64()) {
+                        self.$controller.on_transmit(stream_id, context)?;
+                    }
+                }
+            };
+        }
+
+        on_transmit!(
+            local_bidi_controller,
+            self.local_endpoint_type,
+            StreamType::Bidirectional
+        );
+        on_transmit!(
+            remote_bidi_controller,
+            peer_endpoint_type,
+            StreamType::Bidirectional
+        );
+
+        on_transmit!(
+            local_uni_controller,
+            self.local_endpoint_type,
+            StreamType::Unidirectional
+        );
+        on_transmit!(
+            remote_uni_controller,
+            peer_endpoint_type,
+            StreamType::Unidirectional
+        );
 
         Ok(())
     }

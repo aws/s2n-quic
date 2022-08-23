@@ -1241,6 +1241,46 @@ fn blocked_on_local_concurrent_stream_limit() {
             .poll_open_local_stream(stream_type, &mut token, &Context::from_waker(&waker))
             .is_pending());
 
+        if stream_type.is_bidirectional() {
+            // if we have a bidirectional stream, then the controller should transmit an empty STREAM frame in order
+            // to notify the peer of its existence.
+
+            let mut frame_buffer = OutgoingFrameBuffer::new();
+            let mut write_context = MockWriteContext::new(
+                s2n_quic_platform::time::now(),
+                &mut frame_buffer,
+                transmission::Constraint::None,
+                transmission::Mode::Normal,
+                endpoint::Type::Server,
+            );
+
+            manager.on_transmit(&mut write_context).unwrap();
+
+            let mut stream_frame = frame_buffer
+                .pop_front()
+                .expect("missing empty STREAM frame");
+
+            match stream_frame.as_frame() {
+                Frame::Stream(frame) => {
+                    assert_eq!(
+                        frame.stream_id,
+                        StreamId::nth(
+                            endpoint::Type::Server,
+                            stream_type,
+                            available_outgoing_stream_capacity.as_u64() - 1
+                        )
+                        .unwrap()
+                        .as_varint()
+                    );
+                    assert_eq!(frame.offset, VarInt::default());
+                    assert!(frame.data.is_empty());
+                }
+                frame => panic!("unexpected frame: {:?}", frame),
+            }
+
+            assert!(frame_buffer.is_empty());
+        }
+
         // No STREAMS_BLOCKED frame should be transmitted since we are blocked on the local
         // limit not the peer's limit.
         assert!(manager.get_transmission_interest().is_none());
@@ -2321,8 +2361,8 @@ fn on_transmit_queries_streams_for_data() {
         assert_stream_write_state(&mut manager, *stream_id, 1, 0);
     }
 
-    // All streams have written a frame
-    assert_eq!(4, frame_buffer.len());
+    // All 4 streams have written a frame plus there should also be an empty STREAM frame for the open notify
+    assert_eq!(5, frame_buffer.len());
     frame_buffer.clear();
     assert!(manager.streams_waiting_for_transmission().is_empty());
 
@@ -2781,7 +2821,6 @@ fn forwards_poll_pop() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert!(manager.get_transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_matches!(
         manager.poll_request(
@@ -2834,7 +2873,6 @@ fn forwards_stop_sending() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert!(manager.get_transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_matches!(
         manager.poll_request(
@@ -2889,7 +2927,6 @@ fn forwards_poll_push() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert!(manager.get_transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_matches!(
         manager.poll_request(
@@ -2943,7 +2980,6 @@ fn forwards_poll_finish() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert!(manager.get_transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_matches!(
         manager.poll_request(
@@ -2996,7 +3032,6 @@ fn forwards_reset() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert!(manager.get_transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_matches!(
         manager.poll_request(

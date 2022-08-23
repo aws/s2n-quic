@@ -59,6 +59,11 @@ impl<T: Copy + Clone + Eq + PartialEq, S: ValueToFrameWriter<T>> OnceSync<T, S> 
         }
     }
 
+    /// Forces transmission of the given value.
+    pub fn force_delivery(&mut self, value: T) {
+        self.delivery = DeliveryState::Requested(value);
+    }
+
     /// Stop to synchronize the value to the peer
     #[inline]
     pub fn stop_sync(&mut self) {
