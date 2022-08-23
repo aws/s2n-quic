@@ -101,7 +101,7 @@ mod tests {
             }
         {
             let local_conn_id = connection::LocalId::try_from_bytes(&retry::example::SCID).unwrap();
-            if let Some(range) = packet::retry::Retry::encode_packet::<_, RetryKey, _>(
+            if let Some(range) = packet::retry::Retry::encode_packet::<_, RetryKey>(
                 &remote_address,
                 &packet,
                 &local_conn_id,
@@ -151,7 +151,7 @@ mod tests {
             //# Connection ID field of the packet sent by the client.
             let local_conn_id =
                 connection::LocalId::try_from_bytes(&retry::example::ODCID).unwrap();
-            assert!(packet::retry::Retry::encode_packet::<_, RetryKey, _>(
+            assert!(packet::retry::Retry::encode_packet::<_, RetryKey>(
                 &remote_address,
                 &packet,
                 &local_conn_id,

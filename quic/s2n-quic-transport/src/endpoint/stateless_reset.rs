@@ -26,13 +26,13 @@ impl<Path: path::Handle> Dispatch<Path> {
         }
     }
 
-    pub fn queue<R: random::Generator>(
+    pub fn queue(
         &mut self,
         path: Path,
         token: stateless_reset::Token,
         max_tag_len: usize,
         triggering_packet_len: usize,
-        random_generator: &mut R,
+        random_generator: &mut dyn random::Generator,
     ) {
         if let Some(transmission) = Transmission::new(
             path,
@@ -89,12 +89,12 @@ impl<Handle: path::Handle> core::fmt::Debug for Transmission<Handle> {
 }
 
 impl<Path: path::Handle> Transmission<Path> {
-    pub fn new<R: random::Generator>(
+    pub fn new(
         path: Path,
         token: stateless_reset::Token,
         max_tag_len: usize,
         triggering_packet_len: usize,
-        random_generator: &mut R,
+        random_generator: &mut dyn random::Generator,
     ) -> Option<Self> {
         let mut packet_buf = [0u8; MINIMUM_MTU as usize];
 

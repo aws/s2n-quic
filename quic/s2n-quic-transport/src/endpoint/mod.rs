@@ -370,7 +370,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 self.retry_dispatch.queue::<
                     _,
                     <<<Cfg as Config>::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::RetryKey,
-                    _,
                 >(
                     header.path,
                     packet,

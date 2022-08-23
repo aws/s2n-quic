@@ -75,7 +75,7 @@ impl<CC: CongestionController> Model<CC> {
         }
     }
 
-    fn apply<Rnd: random::Generator>(&mut self, operation: &Operation, rng: &mut Rnd) {
+    fn apply(&mut self, operation: &Operation, rng: &mut dyn random::Generator) {
         match operation {
             Operation::IncrementTime { millis } => {
                 self.timestamp += Duration::from_millis(*millis as u64);
@@ -115,12 +115,12 @@ impl<CC: CongestionController> Model<CC> {
         }
     }
 
-    fn on_ack_received<Rnd: random::Generator>(
+    fn on_ack_received(
         &mut self,
         index: u8,
         count: u8,
         rtt: Duration,
-        rng: &mut Rnd,
+        rng: &mut dyn random::Generator,
     ) {
         let index = (index as usize).min(self.sent_packets.len().saturating_sub(1));
         let mut rtt_updated = false;
@@ -151,7 +151,7 @@ impl<CC: CongestionController> Model<CC> {
         }
     }
 
-    fn on_packet_lost<Rnd: random::Generator>(&mut self, index: u8, rng: &mut Rnd) {
+    fn on_packet_lost(&mut self, index: u8, rng: &mut dyn random::Generator) {
         let index = (index as usize).min(self.sent_packets.len().saturating_sub(1));
 
         // Report the packet at the random `index` as lost

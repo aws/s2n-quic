@@ -35,11 +35,11 @@ pub fn min_indistinguishable_packet_len(max_tag_len: usize) -> usize {
 }
 
 /// Encodes a stateless reset packet into the given packet buffer.
-pub fn encode_packet<R: random::Generator>(
+pub fn encode_packet(
     token: stateless_reset::Token,
     max_tag_len: usize,
     triggering_packet_len: usize,
-    random_generator: &mut R,
+    random_generator: &mut dyn random::Generator,
     packet_buf: &mut [u8],
 ) -> Option<usize> {
     //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3
@@ -100,8 +100,8 @@ pub fn encode_packet<R: random::Generator>(
 
 /// Fills the given buffer with a random amount of random data at least of the
 /// given `min_len`. Returns the length of the unpredictable bits that were generated.
-fn generate_unpredictable_bits<R: random::Generator>(
-    random_generator: &mut R,
+fn generate_unpredictable_bits(
+    random_generator: &mut dyn random::Generator,
     min_len: usize,
     buffer: &mut [u8],
 ) -> usize {
