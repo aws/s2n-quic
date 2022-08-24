@@ -101,17 +101,22 @@ impl<CC: CongestionController> Model<CC> {
 
     fn on_packet_sent(&mut self, count: u8, bytes_sent: u16, app_limited: Option<bool>) {
         for _ in 0..count {
-            let packet_info = self.subject.on_packet_sent(
-                self.timestamp,
-                bytes_sent as usize,
-                app_limited,
-                &self.rtt_estimator,
-            );
-            self.sent_packets.push_back(SentPacketInfo {
-                sent_bytes: bytes_sent,
-                time_sent: self.timestamp,
-                cc_packet_info: packet_info,
-            });
+            if !self.subject.is_congestion_limited()
+                || self.subject.requires_fast_retransmission()
+                || bytes_sent == 0
+            {
+                let packet_info = self.subject.on_packet_sent(
+                    self.timestamp,
+                    bytes_sent as usize,
+                    app_limited,
+                    &self.rtt_estimator,
+                );
+                self.sent_packets.push_back(SentPacketInfo {
+                    sent_bytes: bytes_sent,
+                    time_sent: self.timestamp,
+                    cc_packet_info: packet_info,
+                });
+            }
         }
     }
 

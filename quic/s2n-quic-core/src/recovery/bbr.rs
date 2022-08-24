@@ -18,7 +18,7 @@ use core::{
     time::Duration,
 };
 use num_rational::Ratio;
-use num_traits::{Inv, One};
+use num_traits::{CheckedMul, Inv, One};
 
 mod congestion;
 mod data_rate;
@@ -530,7 +530,8 @@ impl BbrCongestionController {
         //#     return gain * BBR.bdp
 
         if let Some(min_rtt) = self.data_volume_model.min_rtt() {
-            (gain * (bw * min_rtt)).to_integer()
+            gain.checked_mul(&(bw * min_rtt).into())
+                .map_or(u64::MAX, |bdp| bdp.to_integer())
         } else {
             Self::initial_window(self.max_datagram_size).into()
         }
@@ -566,7 +567,7 @@ impl BbrCongestionController {
         // as needed, rather than maintained as a field
 
         let bdp = self.bdp_multiple(self.data_rate_model.bw(), self.state.cwnd_gain());
-        let inflight = bdp + self.data_volume_model.extra_acked();
+        let inflight = bdp.saturating_add(self.data_volume_model.extra_acked());
         self.quantization_budget(inflight)
     }
 
@@ -636,7 +637,7 @@ impl BbrCongestionController {
             .max(self.minimum_window() as u64);
 
         if self.state.is_probing_bw_up() {
-            inflight += 2 * self.max_datagram_size as u64;
+            inflight = inflight.saturating_add(2 * self.max_datagram_size as u64);
         }
 
         inflight
@@ -786,7 +787,7 @@ impl BbrCongestionController {
             // Limit the cwnd as prescribed in BBRModulateCwndForRecovery()
             cwnd = cwnd.max(self.bytes_in_flight.saturating_add(newly_acked as u32));
         } else if self.full_pipe_estimator.filled_pipe() {
-            cwnd += newly_acked as u32;
+            cwnd = cwnd.saturating_add(newly_acked as u32);
             if cwnd >= max_inflight {
                 cwnd = max_inflight;
                 self.try_fast_path = true;
