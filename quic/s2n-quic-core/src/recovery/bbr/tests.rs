@@ -322,6 +322,40 @@ fn inflight() {
     // bdp = 2000bytes/ms * 100ms = 200000bytes
     // max_inflight = quantization_budget(200000) = 200000
     assert_eq!(200000, bbr.inflight(bandwidth, Ratio::one()));
+
+    // Infinite bandwidth should not panic
+    assert_eq!(
+        u32::MAX,
+        bbr.inflight(Bandwidth::INFINITY, Ratio::new(2, 1))
+    );
+}
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
+//= type=test
+//# BBRInflightWithHeadroom()
+//#   if (BBR.inflight_hi == Infinity)
+//#     return Infinity
+//#   headroom = max(1, BBRHeadroom * BBR.inflight_hi)
+//#     return max(BBR.inflight_hi - headroom,
+//#                BBRMinPipeCwnd)
+#[test]
+fn inflight_with_headroom() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+
+    // inflight_hi has not been initialized so inflight is u32::MAX
+    assert_eq!(u32::MAX, bbr.inflight_with_headroom());
+
+    bbr.data_volume_model.update_upper_bound(10_000);
+
+    // inflight_with_headroom = HEADROOM * inflight_hi = .85 * 10_0000 = 8500
+    assert_eq!(8500, bbr.inflight_with_headroom());
+
+    // Set a lower inflight_hi so that the minimum window is larger
+    bbr.data_volume_model.update_upper_bound(1000);
+
+    // inflight_with_headroom = HEADROOM * inflight_hi = .85 * 1000 = 850
+    // inflight_with_headroom < minimum_window, return minimum_window
+    assert_eq!(4800, bbr.inflight_with_headroom());
 }
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
