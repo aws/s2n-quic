@@ -6,12 +6,14 @@ use crate::{
     path::MINIMUM_MTU,
     random,
     recovery::{
-        bandwidth::PacketInfo,
+        bandwidth::{Bandwidth, PacketInfo},
+        bbr,
         bbr::{probe_rtt, BbrCongestionController, State},
     },
     time::{Clock, NoopClock},
 };
 use num_traits::{Inv, ToPrimitive};
+use std::time::Duration;
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
 //= type=test
@@ -161,4 +163,58 @@ fn pacing_cwnd_gain() {
         0.5,
         0.001
     );
+}
+
+#[test]
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.1
+//= type=test
+//# BBROnInit():
+//#   init_windowed_max_filter(filter=BBR.MaxBwFilter, value=0, time=0)
+//#   BBR.min_rtt = SRTT ? SRTT : Inf
+//#   BBR.min_rtt_stamp = Now()
+//#   BBR.probe_rtt_done_stamp = 0
+//#   BBR.probe_rtt_round_done = false
+//#   BBR.prior_cwnd = 0
+//#   BBR.idle_restart = false
+//#   BBR.extra_acked_interval_start = Now()
+//#   BBR.extra_acked_delivered = 0
+//#   BBRResetCongestionSignals()
+//#   BBRResetLowerBounds()
+//#   BBRInitRoundCounting()
+//#   BBRInitFullPipe()
+//#   BBRInitPacingRate()
+//#   BBREnterStartup()
+fn new() {
+    let bbr = BbrCongestionController::new(MINIMUM_MTU);
+
+    assert_eq!(Bandwidth::ZERO, bbr.data_rate_model.max_bw());
+    assert_eq!(None, bbr.data_volume_model.min_rtt());
+    assert_eq!(0, bbr.prior_cwnd);
+    assert!(!bbr.idle_restart);
+    assert_eq!(0, bbr.data_volume_model.extra_acked());
+
+    // BBRResetCongestionSignals()
+    bbr::congestion::testing::assert_reset(bbr.congestion_state);
+
+    // BBRResetLowerBounds()
+    assert_eq!(u64::MAX, bbr.data_volume_model.inflight_lo());
+    assert_eq!(Bandwidth::INFINITY, bbr.data_rate_model.bw_lo());
+
+    // BBRInitRoundCounting()
+    assert!(!bbr.round_counter.round_start());
+    assert_eq!(0, bbr.round_counter.round_count());
+
+    // BBRInitFullPipe()
+    assert!(!bbr.full_pipe_estimator.filled_pipe());
+
+    // BBRInitPacingRate():
+    //     nominal_bandwidth = InitialCwnd / (SRTT ? SRTT : 1ms)
+    //     BBR.pacing_rate =  BBRStartupPacingGain * nominal_bandwidth
+    // nominal_bandwidth = 12_000 / 1ms = ~83nanos/byte
+    // pacing_rate = 2.77 * 83nanos/byte = ~29nanos/byte
+
+    assert_eq!(Bandwidth::new(1, Duration::from_nanos(29)), bbr.pacing_rate);
+
+    // BBREnterStartup()
+    assert!(bbr.state.is_startup());
 }
