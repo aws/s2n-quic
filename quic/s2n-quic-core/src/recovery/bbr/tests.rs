@@ -416,3 +416,47 @@ fn set_pacing_rate() {
         bbr.pacing_rate
     );
 }
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.3
+//= type=test
+//# if (BBR.pacing_rate < 1.2 Mbps)
+//#   floor = 1 * SMSS
+//# else
+//#   floor = 2 * SMSS
+//# BBR.send_quantum = min(BBR.pacing_rate * 1ms, 64KBytes)
+//# BBR.send_quantum = max(BBR.send_quantum, floor)
+#[test]
+fn set_send_quantum() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    // pacing_rate < 1.2 Mbps, floor = MINIMUM_MTU
+    bbr.pacing_rate = Bandwidth::new(1_100_000 / 8, Duration::from_secs(1));
+    bbr.set_send_quantum();
+    // pacing_Rate * 1ms = 137 bytes
+    // send_quantum = min(137, 64_000) = 137
+    // send_quantum = max(137, MINIMUM_MTU) = MINIMUM_MTU
+    assert_eq!(MINIMUM_MTU as usize, bbr.send_quantum);
+
+    // pacing_rate = 1.2 Mbps, floor = 2 * MINIMUM_MTU
+    bbr.pacing_rate = Bandwidth::new(1_200_000 / 8, Duration::from_secs(1));
+    bbr.set_send_quantum();
+    // pacing_Rate * 1ms = 150 bytes
+    // send_quantum = min(150, 64_000) = 150
+    // send_quantum = max(150, 2 * MINIMUM_MTU) = 2 * MINIMUM_MTU
+    assert_eq!(2 * MINIMUM_MTU as usize, bbr.send_quantum);
+
+    // pacing_rate = 10.0 MBps, floor = 2 * MINIMUM_MTU
+    bbr.pacing_rate = Bandwidth::new(10_000_000, Duration::from_secs(1));
+    bbr.set_send_quantum();
+    // pacing_Rate * 1ms = 10000 bytes
+    // send_quantum = min(10000, 64_000) = 10000
+    // send_quantum = max(10000, 2 * MINIMUM_MTU) = 10000
+    assert_eq!(10000, bbr.send_quantum);
+
+    // pacing_rate = 100.0 MBps, floor = 2 * MINIMUM_MTU
+    bbr.pacing_rate = Bandwidth::new(100_000_000, Duration::from_secs(1));
+    bbr.set_send_quantum();
+    // pacing_Rate * 1ms = 100000 bytes
+    // send_quantum = min(100000, 64_000) = 64_000
+    // send_quantum = max(64_000, 2 * MINIMUM_MTU) = 64_000
+    assert_eq!(64_000, bbr.send_quantum);
+}
