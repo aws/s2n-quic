@@ -9,6 +9,7 @@ use crate::{
         bandwidth::{Bandwidth, PacketInfo, RateSample},
         bbr,
         bbr::{probe_rtt, BbrCongestionController, State},
+        CongestionController,
     },
     time::{Clock, NoopClock},
 };
@@ -459,4 +460,24 @@ fn set_send_quantum() {
     // send_quantum = min(100000, 64_000) = 64_000
     // send_quantum = max(64_000, 2 * MINIMUM_MTU) = 64_000
     assert_eq!(64_000, bbr.send_quantum);
+}
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.2
+//= type=test
+//# BBR.next_departure_time = max(Now(), BBR.next_departure_time)
+//# packet.departure_time = BBR.next_departure_time
+//# pacing_delay = packet.size / BBR.pacing_rate
+//# BBR.next_departure_time = BBR.next_departure_time + pacing_delay
+#[test]
+fn set_next_departure_time() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let now = NoopClock.get_time();
+
+    bbr.pacing_rate = Bandwidth::new(100, Duration::from_millis(1));
+    bbr.set_next_departure_time(1000, now);
+
+    assert_eq!(
+        Some(now + Duration::from_millis(10)),
+        bbr.earliest_departure_time()
+    );
 }
