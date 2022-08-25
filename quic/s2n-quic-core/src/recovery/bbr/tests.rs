@@ -284,3 +284,33 @@ fn target_inflight() {
     // bdp > cwnd, so bdp is returned
     assert_eq!(100000, bbr.target_inflight());
 }
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
+//= type=test
+//# BBRQuantizationBudget(inflight)
+//#   BBRUpdateOffloadBudget()
+//#   inflight = max(inflight, BBR.offload_budget)
+//#   inflight = max(inflight, BBRMinPipeCwnd)
+//#   if (BBR.state == ProbeBW && BBR.cycle_idx == ProbeBW_UP)
+//#     inflight += 2
+//#   return inflight
+#[test]
+fn quantization_budget() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    bbr.send_quantum = 4000;
+
+    // offload_budget = 3 * send_quantum = 12000
+
+    // offload_budget > inflight > minimum_window, return offload_budget
+    assert_eq!(12000, bbr.quantization_budget(6000));
+
+    // offload_budget < inflight, return inflight
+    assert_eq!(14000, bbr.quantization_budget(14000));
+
+    bbr.send_quantum = 1000;
+    // offload_budget = 3 * send_quantum = 3000
+
+    // minimum_window = 4 * mtu = 4800
+    // offload_budget < inflight < minimum_window
+    assert_eq!(4800, bbr.quantization_budget(2000));
+}
