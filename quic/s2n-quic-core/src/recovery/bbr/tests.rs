@@ -12,7 +12,8 @@ use crate::{
     },
     time::{Clock, NoopClock},
 };
-use num_traits::{Inv, ToPrimitive};
+use num_rational::Ratio;
+use num_traits::{Inv, One, ToPrimitive};
 use std::time::Duration;
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
@@ -165,7 +166,6 @@ fn pacing_cwnd_gain() {
     );
 }
 
-#[test]
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.1
 //= type=test
 //# BBROnInit():
@@ -184,6 +184,7 @@ fn pacing_cwnd_gain() {
 //#   BBRInitFullPipe()
 //#   BBRInitPacingRate()
 //#   BBREnterStartup()
+#[test]
 fn new() {
     let bbr = BbrCongestionController::new(MINIMUM_MTU);
 
@@ -217,4 +218,37 @@ fn new() {
 
     // BBREnterStartup()
     assert!(bbr.state.is_startup());
+}
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
+//= type=test
+//# BBRBDPMultiple(gain):
+//#   if (BBR.min_rtt == Inf)
+//#       return InitialCwnd /* no valid RTT samples yet */
+//#     BBR.bdp = BBR.bw * BBR.min_rtt
+//#     return gain * BBR.bdp
+#[test]
+fn bdp_multiple() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let now = NoopClock.get_time();
+
+    // No min_rtt yet, so bdp is the initial window
+    assert_eq!(12_000, bbr.bdp_multiple(Bandwidth::ZERO, Ratio::one()));
+
+    // Set an RTT so min_rtt is populated
+    let rtt = Duration::from_millis(100);
+    bbr.data_volume_model.update_min_rtt(rtt, now);
+    assert_eq!(Some(rtt), bbr.data_volume_model.min_rtt());
+
+    let bandwidth = Bandwidth::new(1000, Duration::from_millis(1));
+    let gain = Ratio::new(2, 1);
+
+    // bdp_multiple = bandwidth * min_rtt * gain = 1000bytes/ms * 100ms * 2 = 200000 bytes
+    assert_eq!(200000, bbr.bdp_multiple(bandwidth, gain));
+
+    // Infinite bandwidth should not panic
+    assert_eq!(u64::MAX, bbr.bdp_multiple(Bandwidth::INFINITY, gain));
+
+    // Zero bandwidth should not panic
+    assert_eq!(0, bbr.bdp_multiple(Bandwidth::ZERO, gain));
 }
