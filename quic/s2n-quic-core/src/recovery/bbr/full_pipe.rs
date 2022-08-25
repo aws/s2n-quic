@@ -195,6 +195,11 @@ impl Estimator {
             self.loss_bursts += 1;
         }
     }
+
+    #[cfg(test)]
+    pub fn set_filled_pipe_for_test(&mut self, filled_pipe: bool) {
+        self.filled_pipe = filled_pipe;
+    }
 }
 
 #[cfg(test)]

@@ -387,3 +387,32 @@ fn quantization_budget() {
     // offload_budget < inflight < minimum_window
     assert_eq!(4800, bbr.quantization_budget(2000));
 }
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.2
+//= type=test
+//# BBRSetPacingRateWithGain(pacing_gain):
+//#   rate = pacing_gain * bw * (100 - BBRPacingMarginPercent) / 100
+//#   if (BBR.filled_pipe || rate > BBR.pacing_rate)
+//#     BBR.pacing_rate = rate
+#[test]
+fn set_pacing_rate() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let rate_sample = RateSample {
+        delivered_bytes: 1000,
+        interval: Duration::from_millis(1),
+        ..Default::default()
+    };
+    bbr.data_rate_model.update_max_bw(rate_sample);
+    bbr.data_rate_model.bound_bw_for_model();
+
+    bbr.full_pipe_estimator.set_filled_pipe_for_test(true);
+    bbr.set_pacing_rate(Ratio::new(5, 4));
+
+    // pacing rate = pacing_gain * bw * (100 - BBRPacingMarginPercent) / 100
+    //             = 1.25 * 1000bytes/ms * 99/100
+    //             = 1237.5bytes/ms
+    assert_eq!(
+        Bandwidth::new(12375, Duration::from_millis(10)),
+        bbr.pacing_rate
+    );
+}
