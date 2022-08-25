@@ -6,7 +6,7 @@ use crate::{
     path::MINIMUM_MTU,
     random,
     recovery::{
-        bandwidth::{Bandwidth, PacketInfo},
+        bandwidth::{Bandwidth, PacketInfo, RateSample},
         bbr,
         bbr::{probe_rtt, BbrCongestionController, State},
     },
@@ -251,4 +251,36 @@ fn bdp_multiple() {
 
     // Zero bandwidth should not panic
     assert_eq!(0, bbr.bdp_multiple(Bandwidth::ZERO, gain));
+}
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.5.3
+//# BBRTargetInflight()
+//#   return min(BBR.bdp, cwnd)
+#[test]
+fn target_inflight() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let now = NoopClock.get_time();
+
+    let rate_sample = RateSample {
+        delivered_bytes: 1000,
+        interval: Duration::from_millis(1),
+        ..Default::default()
+    };
+    bbr.data_rate_model.update_max_bw(rate_sample);
+    bbr.data_rate_model.bound_bw_for_model();
+
+    // Set an RTT so min_rtt is populated
+    let rtt = Duration::from_millis(100);
+    bbr.data_volume_model.update_min_rtt(rtt, now);
+    assert_eq!(Some(rtt), bbr.data_volume_model.min_rtt());
+
+    // bdp = 100ms * 1000bytes/ms = 100000bytes
+    // cwnd = 12000
+    // bdp < cwnd, so cwnd is returned
+    assert_eq!(12000, bbr.target_inflight());
+
+    bbr.cwnd = 200000;
+
+    // bdp > cwnd, so bdp is returned
+    assert_eq!(100000, bbr.target_inflight());
 }
