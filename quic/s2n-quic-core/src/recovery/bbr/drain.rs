@@ -14,6 +14,15 @@ use num_traits::One;
 //# pacing_gain well below 1.0, until any estimated queue has been drained. It uses a
 //# pacing_gain that is the inverse of the value used during Startup, chosen to try to
 //# drain the queue in one round
+
+// The wording above is somewhat ambiguous over whether the drain pacing_gain should be
+// the inverse of the startup pacing_gain or startup cwnd_gain. However, the citation below
+// makes it clear it is the inverse of the startup cwnd_gain. This is also supported
+// by the following derivation:
+// https://github.com/google/bbr/blob/master/Documentation/startup/gain/analysis/bbr_drain_gain.pdf
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.2
+//#     BBR.pacing_gain = 1/BBRStartupCwndGain  /* pace slowly */
 pub(crate) const PACING_GAIN: Ratio<u64> = Ratio::new_raw(1, 2);
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.2
