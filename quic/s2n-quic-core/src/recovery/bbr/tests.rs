@@ -305,6 +305,27 @@ fn max_inflight() {
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
 //= type=test
+//# BBRInflight(gain)
+//#   inflight = BBRBDPMultiple(gain)
+//#   return BBRQuantizationBudget(inflight)
+#[test]
+fn inflight() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let now = NoopClock.get_time();
+
+    // Set an RTT so min_rtt is populated
+    let rtt = Duration::from_millis(100);
+    bbr.data_volume_model.update_min_rtt(rtt, now);
+    assert_eq!(Some(rtt), bbr.data_volume_model.min_rtt());
+
+    let bandwidth = Bandwidth::new(2000, Duration::from_millis(1));
+    // bdp = 2000bytes/ms * 100ms = 200000bytes
+    // max_inflight = quantization_budget(200000) = 200000
+    assert_eq!(200000, bbr.inflight(bandwidth, Ratio::one()));
+}
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
+//= type=test
 //# BBRQuantizationBudget(inflight)
 //#   BBRUpdateOffloadBudget()
 //#   inflight = max(inflight, BBR.offload_budget)
