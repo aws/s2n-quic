@@ -3,6 +3,17 @@
 
 use crate::{crypto::OneRttKey, path::MaxMtu};
 
+use std::sync::Mutex;
+
+lazy_static::lazy_static! {
+    pub static ref MAX_MTU: Mutex<MaxMtu> = Mutex::new(MaxMtu::default());
+}
+
+#[inline]
+pub fn set_global_max_mtu(max_mtu: u16) {
+    *MAX_MTU.lock().unwrap() = MaxMtu::try_from(max_mtu).unwrap();
+}
+
 //= https://www.rfc-editor.org/rfc/rfc9001#section-6.6
 //# Endpoints MUST count the number of encrypted packets for each set of
 //# keys.

@@ -12,11 +12,46 @@ mod negotiated;
 #[path = "cipher_suite/x86.rs"]
 mod platform;
 mod ring;
+use s2n_quic_core::crypto::application::limited::MAX_MTU;
 
 #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
 use self::ring as platform;
 
 pub use negotiated::NegotiatedCipherSuite;
+
+/// If packet size is limited, then the confidentiality limit can be increased.
+#[derive(Debug)]
+struct RestrictedAeadConfidentialityLimit {
+    pub packet_size_limit: u64,
+    pub confidentiality_limit: u64,
+}
+
+impl RestrictedAeadConfidentialityLimit {
+    pub const fn new(packet_size_limit: u64, confidentiality_limit: u64) -> Self {
+        Self {
+            packet_size_limit,
+            confidentiality_limit,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct AeadConfidentialityLimit {
+    pub default_confidentiality_limit: u64,
+    pub restricted_confidentiality_limit: Option<RestrictedAeadConfidentialityLimit>,
+}
+
+impl AeadConfidentialityLimit {
+    pub const fn new(
+        default_confidentiality_limit: u64,
+        restricted_confidentiality_limit: Option<RestrictedAeadConfidentialityLimit>,
+    ) -> Self {
+        Self {
+            default_confidentiality_limit,
+            restricted_confidentiality_limit,
+        }
+    }
+}
 
 macro_rules! impl_cipher_suite {
     (
@@ -191,7 +226,15 @@ macro_rules! impl_cipher_suite {
                 //# margins for confidentiality and integrity.
                 #[inline]
                 fn aead_confidentiality_limit(&self) -> u64 {
-                    $confidentiality_limit
+                    if let Some(restriction) =
+                        $confidentiality_limit.restricted_confidentiality_limit
+                    {
+                        let max_mtu: u16 = MAX_MTU.lock().unwrap().clone().into();
+                        if (max_mtu as u64) <= restriction.packet_size_limit {
+                            return restriction.confidentiality_limit;
+                        }
+                    }
+                    $confidentiality_limit.default_confidentiality_limit
                 }
 
                 #[inline]
@@ -269,6 +312,25 @@ macro_rules! impl_cipher_suite {
     };
 }
 
+//= https://www.rfc-editor.org/rfc/rfc9001#name-analysis-of-aead_aes_128_gc
+//# Endpoints that do not send packets larger than 2^11 bytes cannot protect more than
+//# 2^28 packets in a single connection without causing an attacker to gain a more significant
+// advantage than the target of 2^-57.
+const AEAD_AES_GCM_CONF_LIMIT_RESTRICTION: RestrictedAeadConfidentialityLimit =
+    RestrictedAeadConfidentialityLimit::new(u64::pow(2, 11), u64::pow(2, 28));
+
+//= https://www.rfc-editor.org/rfc/rfc9001#name-limits-on-aead-usage
+//# For AEAD_AES_128_GCM and AEAD_AES_256_GCM, the confidentiality limit is 2^23 encrypted
+//# packets; see Appendix B.1.
+const AEAD_AES_GCM_CONFIDENTIALITY_LIMIT: AeadConfidentialityLimit =
+    AeadConfidentialityLimit::new(u64::pow(2, 23), Some(AEAD_AES_GCM_CONF_LIMIT_RESTRICTION));
+
+//= https://www.rfc-editor.org/rfc/rfc9001#name-limits-on-aead-usage
+//# For AEAD_CHACHA20_POLY1305, the confidentiality limit is greater than the number of
+//# possible packets (2^62) and so can be disregarded.
+const AEAD_CHACHA20_CONFIDENTIALITY_LIMIT: AeadConfidentialityLimit =
+    AeadConfidentialityLimit::new(u64::pow(2, 62), None);
+
 //= https://www.rfc-editor.org/rfc/rfc9001#section-6.6
 //# For AEAD_AES_128_GCM and AEAD_AES_256_GCM, the confidentiality limit
 //# is 2^23 encrypted packets; see Appendix B.1.
@@ -283,7 +345,7 @@ impl_cipher_suite!(
     label::QUIC_IV_12,
     label::QUIC_HP_32,
     label::QUIC_KU_48,
-    u64::pow(2, 23), // Confidentiality limit
+    AEAD_AES_GCM_CONFIDENTIALITY_LIMIT,
     u64::pow(2, 52), // Integrity limit
     tls_aes_256_gcm_sha384_test
 );
@@ -303,7 +365,7 @@ impl_cipher_suite!(
     label::QUIC_IV_12,
     label::QUIC_HP_32,
     label::QUIC_KU_32,
-    u64::pow(2, 62), // Confidentiality limit even though specification notes it can be disregarded
+    AEAD_CHACHA20_CONFIDENTIALITY_LIMIT,
     u64::pow(2, 36), // Integrity limit
     tls_chacha20_poly1305_sha256_test
 );
@@ -320,7 +382,50 @@ impl_cipher_suite!(
     label::QUIC_IV_12,
     label::QUIC_HP_16,
     label::QUIC_KU_32,
-    u64::pow(2, 23), // Confidentiality limit
+    AEAD_AES_GCM_CONFIDENTIALITY_LIMIT,
     u64::pow(2, 52), // Integrity limit
     tls_aes_128_gcm_sha256_test
 );
+
+// Disabling warnings; Key and global functions required for these tests
+#[allow(unused_imports)]
+mod tests {
+    use super::*;
+    use s2n_quic_core::crypto::limited::set_global_max_mtu;
+    use s2n_quic_core::crypto::Key;
+
+    #[test]
+    fn tls_aead_limit_tests() {
+        let previous_global_max_mtu: u16 = MAX_MTU.lock().unwrap().clone().into();
+
+        let algorithm: hkdf::Algorithm = hkdf::HKDF_SHA384;
+        let prk = hkdf::Prk::new_less_safe(algorithm, &[]);
+        let (aes_256, _) = TLS_AES_256_GCM_SHA384::new(prk.clone());
+        let (aes_128, _) = TLS_AES_128_GCM_SHA256::new(prk.clone());
+        let (chacha_20, _) = TLS_CHACHA20_POLY1305_SHA256::new(prk.clone());
+
+        // setting the mtu right below the limit
+        set_global_max_mtu(u16::pow(2, 11) - 1);
+        assert_eq!(aes_256.aead_confidentiality_limit(), u64::pow(2, 28));
+        assert_eq!(aes_128.aead_confidentiality_limit(), u64::pow(2, 28));
+        assert_eq!(chacha_20.aead_confidentiality_limit(), u64::pow(2, 62));
+
+        // setting the mtu right at the limit
+        set_global_max_mtu(u16::pow(2, 11));
+        assert_eq!(aes_256.aead_confidentiality_limit(), u64::pow(2, 28));
+        assert_eq!(aes_128.aead_confidentiality_limit(), u64::pow(2, 28));
+        assert_eq!(chacha_20.aead_confidentiality_limit(), u64::pow(2, 62));
+
+        // setting the mtu right above the limit
+        set_global_max_mtu(u16::pow(2, 11) + 1);
+        assert_eq!(aes_256.aead_confidentiality_limit(), u64::pow(2, 23));
+        assert_eq!(aes_128.aead_confidentiality_limit(), u64::pow(2, 23));
+        assert_eq!(chacha_20.aead_confidentiality_limit(), u64::pow(2, 62));
+
+        // Restore the global max mtu
+        set_global_max_mtu(previous_global_max_mtu);
+        assert_eq!(aes_256.aead_integrity_limit(), u64::pow(2, 52));
+        assert_eq!(aes_128.aead_integrity_limit(), u64::pow(2, 52));
+        assert_eq!(chacha_20.aead_integrity_limit(), u64::pow(2, 36));
+    }
+}

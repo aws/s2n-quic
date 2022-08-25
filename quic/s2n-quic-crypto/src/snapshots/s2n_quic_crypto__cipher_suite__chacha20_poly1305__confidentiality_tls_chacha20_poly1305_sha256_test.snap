@@ -1,6 +1,8 @@
 ---
 source: quic/s2n-quic-crypto/src/cipher_suite.rs
-assertion_line: 271
-expression: "u64::pow(2, 62)"
+expression: AEAD_CHACHA20_CONFIDENTIALITY_LIMIT
 ---
-4611686018427387904
+AeadConfidentialityLimit {
+    default_confidentiality_limit: 4611686018427387904,
+    restricted_confidentiality_limit: None,
+}

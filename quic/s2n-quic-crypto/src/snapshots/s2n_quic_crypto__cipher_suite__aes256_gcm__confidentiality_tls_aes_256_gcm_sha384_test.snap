@@ -1,6 +1,13 @@
 ---
 source: quic/s2n-quic-crypto/src/cipher_suite.rs
-assertion_line: 251
-expression: "u64::pow(2, 23)"
+expression: AEAD_AES_GCM_CONFIDENTIALITY_LIMIT
 ---
-8388608
+AeadConfidentialityLimit {
+    default_confidentiality_limit: 8388608,
+    restricted_confidentiality_limit: Some(
+        RestrictedAeadConfidentialityLimit {
+            packet_size_limit: 2048,
+            confidentiality_limit: 268435456,
+        },
+    ),
+}

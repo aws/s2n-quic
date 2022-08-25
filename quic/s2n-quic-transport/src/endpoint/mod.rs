@@ -58,6 +58,7 @@ mod version;
 // exports
 pub use config::{Config, Context};
 pub use packet_buffer::Buffer as PacketBuffer;
+use s2n_quic_core::crypto::limited::set_global_max_mtu;
 pub use s2n_quic_core::endpoint::*;
 
 const DEFAULT_MAX_PEERS: usize = 1024;
@@ -262,6 +263,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
 
     #[inline]
     fn set_max_mtu(&mut self, max_mtu: MaxMtu) {
+        set_global_max_mtu(max_mtu.into());
         self.max_mtu = max_mtu
     }
 
