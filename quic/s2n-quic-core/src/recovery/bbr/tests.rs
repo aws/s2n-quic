@@ -287,6 +287,24 @@ fn target_inflight() {
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
 //= type=test
+//# BBRUpdateMaxInflight()
+//#   BBRUpdateAggregationBudget()
+//#   inflight = BBRBDPMultiple(BBR.cwnd_gain)
+//#   inflight += BBR.extra_acked
+//#   BBR.max_inflight = BBRQuantizationBudget(inflight)
+#[test]
+fn max_inflight() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+
+    bbr.data_volume_model.set_extra_acked_for_test(1000, 0);
+    // bdp = initial_window = 12000 since min_rtt is not populated
+    // inflight = bdp + extra_acked = 13000
+    // max_inflight = quantization_budget(13000) = 3 * MAX_SEND_QUANTUM = 192000
+    assert_eq!(192000, bbr.max_inflight());
+}
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
+//= type=test
 //# BBRQuantizationBudget(inflight)
 //#   BBRUpdateOffloadBudget()
 //#   inflight = max(inflight, BBR.offload_budget)

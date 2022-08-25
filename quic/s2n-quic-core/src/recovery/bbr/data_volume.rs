@@ -210,6 +210,11 @@ impl Model {
     pub fn set_extra_acked_interval_start(&mut self, timestamp: Timestamp) {
         self.extra_acked_interval_start = Some(timestamp);
     }
+
+    #[cfg(test)]
+    pub fn set_extra_acked_for_test(&mut self, sample: u64, round_count: u64) {
+        self.extra_acked_filter.update(sample, round_count);
+    }
 }
 
 #[cfg(test)]
