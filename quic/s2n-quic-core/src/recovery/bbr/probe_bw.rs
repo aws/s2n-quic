@@ -395,6 +395,11 @@ impl State {
         self.bw_probe_wait =
             Duration::from_millis(random::gen_range_biased(random_generator, 2000..=3000) as u64);
     }
+
+    #[cfg(test)]
+    pub fn set_cycle_phase_for_test(&mut self, cycle_phase: CyclePhase) {
+        self.cycle_phase = cycle_phase
+    }
 }
 
 /// Methods related to the ProbeBW state

@@ -8,7 +8,7 @@ use crate::{
     recovery::{
         bandwidth::{Bandwidth, PacketInfo, RateSample},
         bbr,
-        bbr::{probe_rtt, BbrCongestionController, State},
+        bbr::{probe_bw::CyclePhase, probe_rtt, BbrCongestionController, State},
         CongestionController,
     },
     time::{Clock, NoopClock},
@@ -387,6 +387,12 @@ fn quantization_budget() {
     // minimum_window = 4 * mtu = 4800
     // offload_budget < inflight < minimum_window
     assert_eq!(4800, bbr.quantization_budget(2000));
+
+    enter_probe_bw_state(&mut bbr, CyclePhase::Up);
+    assert!(bbr.state.is_probing_bw_up());
+
+    // since probe bw up, add 2 packets to the budget
+    assert_eq!(4800 + 2 * MINIMUM_MTU as u64, bbr.quantization_budget(2000));
 }
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.2
@@ -527,4 +533,76 @@ fn is_inflight_too_high() {
         rate_sample,
         MINIMUM_MTU
     ));
+}
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.7
+//= type=test
+//# BBRBoundCwndForModel():
+//#   cap = Infinity
+//#   if (IsInAProbeBWState() and
+//#       BBR.state != ProbeBW_CRUISE)
+//#     cap = BBR.inflight_hi
+//#   else if (BBR.state == ProbeRTT or
+//#            BBR.state == ProbeBW_CRUISE)
+//#     cap = BBRInflightWithHeadroom()
+//#
+//#   /* apply inflight_lo (possibly infinite): */
+//#   cap = min(cap, BBR.inflight_lo)
+//#   cap = max(cap, BBRMinPipeCwnd)
+//#   cwnd = min(cwnd, cap)
+#[test]
+fn bound_cwnd_for_model() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    enter_probe_bw_state(&mut bbr, CyclePhase::Down);
+
+    bbr.data_volume_model.update_upper_bound(10000);
+
+    assert_eq!(10000, bbr.bound_cwnd_for_model());
+
+    enter_probe_bw_state(&mut bbr, CyclePhase::Cruise);
+
+    // inflight_with_headroom = .85 * 10000 = 8500
+    assert_eq!(8500, bbr.bound_cwnd_for_model());
+
+    bbr.state = State::ProbeRtt(probe_rtt::State::default());
+    // inflight_with_headroom = .85 * 10000 = 8500
+    assert_eq!(8500, bbr.bound_cwnd_for_model());
+
+    // now the limiting factor is inflight_lo
+    bbr.state = State::Startup;
+    // Set inflight_lo to 5000
+    bbr.data_volume_model
+        .update_lower_bound(1000, 5000, true, false, 0.0);
+    assert_eq!(5000, bbr.data_volume_model.inflight_lo());
+
+    assert_eq!(5000, bbr.bound_cwnd_for_model());
+
+    // now the limiting factor is minimum window (4800)
+    // Set inflight_lo to 4000
+    bbr.data_volume_model
+        .update_lower_bound(1000, 4000, true, false, 0.0);
+    assert_eq!(4000, bbr.data_volume_model.inflight_lo());
+
+    assert_eq!(4800, bbr.bound_cwnd_for_model());
+}
+
+/// Helper method to move the given BBR congestion controller into the
+/// ProbeBW state with the given CyclePhase
+fn enter_probe_bw_state(bbr: &mut BbrCongestionController, cycle_phase: CyclePhase) {
+    let now = NoopClock.get_time();
+
+    match bbr.state {
+        State::Startup => {
+            bbr.enter_drain();
+            bbr.enter_probe_bw(false, &mut random::testing::Generator::default(), now);
+        }
+        State::Drain | State::ProbeRtt(_) => {
+            bbr.enter_probe_bw(false, &mut random::testing::Generator::default(), now);
+        }
+        State::ProbeBw(_) => {}
+    }
+
+    if let State::ProbeBw(ref mut probe_bw_state) = bbr.state {
+        probe_bw_state.set_cycle_phase_for_test(cycle_phase);
+    }
 }
