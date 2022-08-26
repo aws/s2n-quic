@@ -651,6 +651,26 @@ fn restore_cwnd() {
     assert_eq!(2000, bbr.cwnd);
 }
 
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
+//= type=test
+//# BBRModulateCwndForRecovery():
+//#   if (rs.newly_lost > 0)
+//#     cwnd = max(cwnd - rs.newly_lost, 1)
+#[test]
+fn modulate_cwnd_for_recovery() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+
+    bbr.cwnd = 100_000;
+
+    bbr.modulate_cwnd_for_recovery(1000);
+    assert_eq!(99_000, bbr.congestion_window());
+
+    // Don't drop below the minimum window
+    bbr.cwnd = bbr.minimum_window();
+    bbr.modulate_cwnd_for_recovery(1000);
+    assert_eq!(bbr.minimum_window(), bbr.congestion_window());
+}
+
 /// Helper method to move the given BBR congestion controller into the
 /// ProbeBW state with the given CyclePhase
 fn enter_probe_bw_state(bbr: &mut BbrCongestionController, cycle_phase: CyclePhase) {
