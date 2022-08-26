@@ -978,7 +978,6 @@ impl BbrCongestionController {
                 Self::inflight_hi_from_lost_packet(lost_bytes, lost_since_transmit, packet_info);
             self.on_inflight_too_high(
                 packet_info.is_app_limited,
-                packet_info.bytes_in_flight,
                 inflight_hi_from_lost_packet,
                 random_generator,
                 now,
