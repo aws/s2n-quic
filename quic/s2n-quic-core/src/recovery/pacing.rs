@@ -35,11 +35,11 @@ const SLOW_START_N: PacingGain = PacingGain(Ratio::new_raw(2, 1)); // 2/1 = 2.00
 // value to a Duration greater than zero will introduce that delay into the second packet.
 // See https://www.ietf.org/proceedings/88/slides/slides-88-tsvarea-10.pdf
 // TODO: Determine an appropriate value for this that balances improvements to 2nd packet loss and delay
-const INITIAL_INTERVAL: Duration = Duration::from_millis(0);
+pub const INITIAL_INTERVAL: Duration = Duration::from_millis(0);
 
 /// low RTT networks should not be using pacing since it'll take longer to wake up from
 /// a timer than it would to deliver a packet
-const MINIMUM_PACING_RTT: Duration = Duration::from_millis(2);
+pub const MINIMUM_PACING_RTT: Duration = Duration::from_millis(2);
 
 /// A packet pacer that returns departure times that evenly distribute bursts of packets over time
 #[derive(Clone, Debug, Default)]
