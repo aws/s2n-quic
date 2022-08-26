@@ -140,10 +140,6 @@ impl Pacer {
         //# BBR.next_departure_time = max(Now(), BBR.next_departure_time)
         //# packet.departure_time = BBR.next_departure_time
         //# pacing_delay = packet.size / BBR.pacing_rate
-        //# BBR.next_departure_time = BBR.next_departure_time + pacing_delay
-
-        // The packet currently being sent has already been delayed by the `next_departure_time`
-        // so we only need to base the `next_departure_time` on the current time + pacing_delay
 
         self.send_quantum as u64 / self.pacing_rate
     }
