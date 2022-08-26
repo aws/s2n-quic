@@ -628,6 +628,29 @@ fn save_cwnd() {
     assert_eq!(2000, bbr.prior_cwnd);
 }
 
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
+//= type=test
+//# BBRRestoreCwnd()
+//#   cwnd = max(cwnd, BBR.prior_cwnd)
+#[test]
+fn restore_cwnd() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+
+    bbr.prior_cwnd = 1000;
+    bbr.cwnd = 2000;
+
+    bbr.restore_cwnd();
+
+    assert_eq!(2000, bbr.cwnd);
+
+    bbr.prior_cwnd = 2000;
+    bbr.cwnd = 1000;
+
+    bbr.restore_cwnd();
+
+    assert_eq!(2000, bbr.cwnd);
+}
+
 /// Helper method to move the given BBR congestion controller into the
 /// ProbeBW state with the given CyclePhase
 fn enter_probe_bw_state(bbr: &mut BbrCongestionController, cycle_phase: CyclePhase) {
