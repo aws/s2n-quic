@@ -398,7 +398,14 @@ impl State {
 
     #[cfg(test)]
     pub fn set_cycle_phase_for_test(&mut self, cycle_phase: CyclePhase) {
-        self.cycle_phase = cycle_phase
+        self.cycle_phase = cycle_phase;
+
+        match cycle_phase {
+            CyclePhase::Down => self.ack_phase = AckPhase::ProbeStopping,
+            CyclePhase::Refill => self.ack_phase = AckPhase::Refilling,
+            CyclePhase::Up => self.ack_phase = AckPhase::ProbeStarting,
+            CyclePhase::Cruise => {}
+        }
     }
 }
 
@@ -596,7 +603,6 @@ impl BbrCongestionController {
                 self.on_inflight_too_high(
                     rate_sample.is_app_limited,
                     rate_sample.bytes_in_flight,
-                    self.target_inflight(),
                     random_generator,
                     now,
                 );
@@ -681,7 +687,6 @@ impl BbrCongestionController {
         &mut self,
         is_app_limited: bool,
         bytes_in_flight: u32,
-        target_inflight: u32,
         random_generator: &mut dyn random::Generator,
         now: Timestamp,
     ) {
@@ -697,7 +702,8 @@ impl BbrCongestionController {
         self.bw_probe_samples = false; // only react once per bw probe
         if !is_app_limited {
             self.data_volume_model.update_upper_bound(
-                (bytes_in_flight as u64).max((bbr::BETA * target_inflight as u64).to_integer()),
+                (bytes_in_flight as u64)
+                    .max((bbr::BETA * self.target_inflight() as u64).to_integer()),
             )
         }
 

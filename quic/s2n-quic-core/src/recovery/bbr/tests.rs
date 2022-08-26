@@ -716,6 +716,98 @@ fn on_enter_and_exit_fast_recovery() {
     assert!(!bbr.try_fast_path)
 }
 
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
+//= type=test
+//# if (!BBR.bw_probe_samples)
+//#   return /* not a packet sent while probing bandwidth */
+//# rs.tx_in_flight = packet.tx_in_flight /* inflight at transmit */
+//# rs.lost = C.lost - packet.lost /* data lost since transmit */
+//# rs.is_app_limited = packet.is_app_limited;
+//# if (IsInflightTooHigh(rs))
+//#   rs.tx_in_flight = BBRInflightHiFromLostPacket(rs, packet)
+//#   BBRHandleInflightTooHigh(rs)
+#[test]
+fn handle_lost_packet() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let now = NoopClock.get_time();
+    bbr.bw_probe_samples = true;
+
+    bbr.bw_estimator.on_loss(1000);
+
+    let lost_packet = PacketInfo {
+        delivered_bytes: 0,
+        delivered_time: now,
+        lost_bytes: 0,
+        ecn_ce_count: 0,
+        first_sent_time: now,
+        bytes_in_flight: 10000,
+        is_app_limited: false,
+    };
+
+    enter_probe_bw_state(&mut bbr, CyclePhase::Up);
+    bbr.handle_lost_packet(
+        1000,
+        lost_packet,
+        &mut random::testing::Generator::default(),
+        now,
+    );
+
+    let inflight_hi_from_lost_packet =
+        BbrCongestionController::inflight_hi_from_lost_packet(1000, 1000, lost_packet) as u64;
+
+    // Only react once per bw probe
+    assert!(!bbr.bw_probe_samples);
+
+    // inflight_hi_from_lost_packet > BETA * target_inflight, so that becomes inflight_hi
+    assert!(inflight_hi_from_lost_packet > (bbr::BETA * bbr.target_inflight() as u64).to_integer());
+    assert_eq!(
+        inflight_hi_from_lost_packet,
+        bbr.data_volume_model.inflight_hi()
+    );
+
+    if let State::ProbeBw(probe_bw_state) = bbr.state {
+        assert_eq!(CyclePhase::Down, probe_bw_state.cycle_phase());
+    } else {
+        panic!("Must be in ProbeBw Down state");
+    }
+
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    bbr.bw_estimator.on_loss(1000);
+
+    // This time set cwnd and max_bw higher so that BETA * target_inflight is higher than inflight_hi_from_lost_packet
+    bbr.bw_probe_samples = true;
+    bbr.cwnd = 100_000;
+    let rate_sample = RateSample {
+        delivered_bytes: 100_000,
+        interval: Duration::from_millis(1),
+        ..Default::default()
+    };
+    bbr.data_volume_model
+        .update_min_rtt(Duration::from_millis(10), now);
+    bbr.data_rate_model.update_max_bw(rate_sample);
+    bbr.data_rate_model.bound_bw_for_model();
+
+    bbr.handle_lost_packet(
+        1000,
+        lost_packet,
+        &mut random::testing::Generator::default(),
+        now,
+    );
+
+    let inflight_hi_from_lost_packet =
+        BbrCongestionController::inflight_hi_from_lost_packet(1000, 1000, lost_packet) as u64;
+
+    // Only react once per bw probe
+    assert!(!bbr.bw_probe_samples);
+
+    // inflight_hi_from_lost_packet < BETA * target_inflight, so that becomes inflight_hi
+    assert!(inflight_hi_from_lost_packet < (bbr::BETA * bbr.target_inflight() as u64).to_integer());
+    assert_eq!(
+        (bbr::BETA * bbr.target_inflight() as u64).to_integer(),
+        bbr.data_volume_model.inflight_hi()
+    );
+}
+
 /// Helper method to move the given BBR congestion controller into the
 /// ProbeBW state with the given CyclePhase
 fn enter_probe_bw_state(bbr: &mut BbrCongestionController, cycle_phase: CyclePhase) {
