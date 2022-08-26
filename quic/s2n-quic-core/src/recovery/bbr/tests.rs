@@ -3,6 +3,7 @@
 
 use crate::{
     assert_delta,
+    counter::Counter,
     path::MINIMUM_MTU,
     random,
     recovery::{
@@ -659,7 +660,6 @@ fn restore_cwnd() {
 #[test]
 fn modulate_cwnd_for_recovery() {
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
-
     bbr.cwnd = 100_000;
 
     bbr.modulate_cwnd_for_recovery(1000);
@@ -669,6 +669,51 @@ fn modulate_cwnd_for_recovery() {
     bbr.cwnd = bbr.minimum_window();
     bbr.modulate_cwnd_for_recovery(1000);
     assert_eq!(bbr.minimum_window(), bbr.congestion_window());
+}
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
+//= type=test
+//# Upon entering Fast Recovery, set cwnd to the number of packets still in flight
+//# (allowing at least one for a fast retransmit):
+//#
+//# BBROnEnterFastRecovery():
+//#   BBR.prior_cwnd = BBRSaveCwnd()
+//#   cwnd = packets_in_flight + max(rs.newly_acked, 1)
+//#   BBR.packet_conservation = true
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
+//= type=test
+//# Upon exiting loss recovery (RTO recovery or Fast Recovery), either by repairing all
+//# losses or undoing recovery, BBR restores the best-known cwnd value we had upon entering
+//# loss recovery:
+//#
+//#   BBR.packet_conservation = false
+//#   BBRRestoreCwnd()
+#[test]
+fn on_enter_and_exit_fast_recovery() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    bbr.cwnd = 100_000;
+    bbr.bytes_in_flight = Counter::new(75_000);
+
+    // Enter recovery
+    let now = NoopClock.get_time();
+    bbr.recovery_state.on_congestion_event(now);
+    assert!(bbr.recovery_state.in_recovery());
+
+    bbr.on_enter_fast_recovery();
+
+    assert_eq!(75_000, bbr.congestion_window());
+
+    // Exit recovery
+    bbr.recovery_state
+        .on_ack(true, now + Duration::from_millis(1));
+    assert!(!bbr.recovery_state.in_recovery());
+    bbr.try_fast_path = true;
+
+    bbr.on_exit_fast_recovery();
+
+    assert_eq!(100_000, bbr.cwnd);
+    assert!(!bbr.try_fast_path)
 }
 
 /// Helper method to move the given BBR congestion controller into the
