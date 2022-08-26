@@ -481,3 +481,50 @@ fn set_next_departure_time() {
         bbr.earliest_departure_time()
     );
 }
+
+#[test]
+fn is_inflight_too_high() {
+    let rate_sample = RateSample {
+        lost_bytes: 3,
+        bytes_in_flight: 100,
+        ..Default::default()
+    };
+    // loss rate higher than 2% threshold
+    assert!(BbrCongestionController::is_inflight_too_high(
+        rate_sample,
+        MINIMUM_MTU
+    ));
+
+    let rate_sample = RateSample {
+        lost_bytes: 2,
+        bytes_in_flight: 100,
+        ..Default::default()
+    };
+    // loss rate <= 2% threshold
+    assert!(!BbrCongestionController::is_inflight_too_high(
+        rate_sample,
+        MINIMUM_MTU
+    ));
+
+    let rate_sample = RateSample {
+        delivered_bytes: 100 * MINIMUM_MTU as u64,
+        ecn_ce_count: 51,
+        ..Default::default()
+    };
+    // ecn rate higher than 50% threshold
+    assert!(BbrCongestionController::is_inflight_too_high(
+        rate_sample,
+        MINIMUM_MTU
+    ));
+
+    let rate_sample = RateSample {
+        delivered_bytes: 100 * MINIMUM_MTU as u64,
+        ecn_ce_count: 50,
+        ..Default::default()
+    };
+    // ecn rate <= 50% threshold
+    assert!(!BbrCongestionController::is_inflight_too_high(
+        rate_sample,
+        MINIMUM_MTU
+    ));
+}
