@@ -8,7 +8,7 @@ use crate::{
     recovery::{
         bandwidth::{Bandwidth, PacketInfo, RateSample},
         bbr,
-        bbr::{probe_bw::CyclePhase, probe_rtt, BbrCongestionController, State},
+        bbr::{probe_bw::CyclePhase, probe_rtt, BbrCongestionController, State, State::ProbeRtt},
         CongestionController,
     },
     time::{Clock, NoopClock},
@@ -584,6 +584,48 @@ fn bound_cwnd_for_model() {
     assert_eq!(4000, bbr.data_volume_model.inflight_lo());
 
     assert_eq!(4800, bbr.bound_cwnd_for_model());
+}
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
+//= type=test
+//# BBRSaveCwnd()
+//#   if (!InLossRecovery() and BBR.state != ProbeRTT)
+//#     return cwnd
+//#   else
+//#     return max(BBR.prior_cwnd, cwnd)
+#[test]
+fn save_cwnd() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+
+    // Not in recovery
+    bbr.prior_cwnd = 1000;
+    bbr.cwnd = 2000;
+    bbr.save_cwnd();
+
+    assert_eq!(2000, bbr.prior_cwnd);
+
+    bbr.prior_cwnd = 2000;
+    bbr.cwnd = 1000;
+    bbr.save_cwnd();
+    assert_eq!(1000, bbr.prior_cwnd);
+
+    // Enter probe RTT
+    bbr.state = ProbeRtt(probe_rtt::State::default());
+    assert!(bbr.state.is_probing_rtt());
+
+    bbr.prior_cwnd = 2000;
+    bbr.cwnd = 1000;
+    assert_eq!(2000, bbr.prior_cwnd);
+
+    // Enter recovery
+    bbr.state = State::Startup;
+    let now = NoopClock.get_time();
+    bbr.recovery_state.on_congestion_event(now);
+    assert!(bbr.recovery_state.in_recovery());
+
+    bbr.prior_cwnd = 2000;
+    bbr.cwnd = 1000;
+    assert_eq!(2000, bbr.prior_cwnd);
 }
 
 /// Helper method to move the given BBR congestion controller into the
