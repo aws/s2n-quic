@@ -14,7 +14,7 @@ use crate::{
 use num_rational::Ratio;
 
 /// A packet pacer that returns departure times that evenly distribute bursts of packets over time
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Pacer {
     // The capacity of the current departure time slot
     capacity: Counter<u32, Saturating>,
@@ -154,7 +154,12 @@ impl Pacer {
 mod tests {
     use crate::{
         path::MINIMUM_MTU,
-        recovery::{bandwidth::Bandwidth, bbr::pacing::Pacer},
+        recovery::{
+            bandwidth::Bandwidth,
+            bbr::{pacing::Pacer, State},
+            pacing::INITIAL_INTERVAL,
+        },
+        time::{Clock, NoopClock},
     };
     use core::time::Duration;
     use num_rational::Ratio;
@@ -253,5 +258,40 @@ mod tests {
         // send_quantum = min(100000, 12_000) = 12_000
         // send_quantum = max(12_000, 2 * MINIMUM_MTU) = 12_000
         assert_eq!(12_000, pacer.send_quantum);
+    }
+
+    #[test]
+    fn test_one_rtt() {
+        let mut pacer = Pacer::new(MINIMUM_MTU);
+        let now = NoopClock.get_time();
+
+        let rtt = Duration::from_millis(100);
+        let bw = Bandwidth::new(100_000, rtt);
+
+        pacer.set_pacing_rate(bw, State::Startup.pacing_gain(), true);
+
+        let bytes_to_send = pacer.pacing_rate * rtt;
+
+        // Send one packet to move beyond the initial interval
+        pacer.on_packet_sent(now, MINIMUM_MTU as usize, rtt);
+        assert_eq!(
+            Some(now + INITIAL_INTERVAL),
+            pacer.earliest_departure_time()
+        );
+
+        let mut sent_bytes = 0;
+        let now = now + INITIAL_INTERVAL;
+        while sent_bytes < bytes_to_send {
+            // Confirm the current departure time is less than 1 rtt
+            assert!(pacer
+                .earliest_departure_time()
+                .map_or(true, |departure_time| departure_time < now + rtt));
+            pacer.on_packet_sent(now, MINIMUM_MTU as usize, rtt);
+            sent_bytes += MINIMUM_MTU as u64;
+        }
+        assert!(pacer
+            .earliest_departure_time()
+            .unwrap()
+            .has_elapsed(now + rtt));
     }
 }
