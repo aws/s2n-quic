@@ -210,14 +210,6 @@ fn new() {
     // BBRInitFullPipe()
     assert!(!bbr.full_pipe_estimator.filled_pipe());
 
-    // BBRInitPacingRate():
-    //     nominal_bandwidth = InitialCwnd / (SRTT ? SRTT : 1ms)
-    //     BBR.pacing_rate =  BBRStartupPacingGain * nominal_bandwidth
-    // nominal_bandwidth = 12_000 / 1ms = ~83nanos/byte
-    // pacing_rate = 2.77 * 83nanos/byte = ~29nanos/byte
-
-    assert_eq!(Bandwidth::new(1, Duration::from_nanos(29)), bbr.pacing_rate);
-
     // BBREnterStartup()
     assert!(bbr.state.is_startup());
 }
@@ -301,8 +293,8 @@ fn max_inflight() {
     bbr.data_volume_model.set_extra_acked_for_test(1000, 0);
     // bdp = initial_window = 12000 since min_rtt is not populated
     // inflight = bdp + extra_acked = 13000
-    // max_inflight = quantization_budget(13000) = 3 * MAX_SEND_QUANTUM = 192000
-    assert_eq!(192000, bbr.max_inflight());
+    // max_inflight = quantization_budget(13000) = 3 * MAX_BURST_PACKETS * MINIMUM_MTU = 36000
+    assert_eq!(36000, bbr.max_inflight());
 }
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.2
@@ -372,17 +364,19 @@ fn inflight_with_headroom() {
 #[test]
 fn quantization_budget() {
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
-    bbr.send_quantum = 4000;
+    bbr.pacer.set_send_quantum_for_test(4000);
 
-    // offload_budget = 3 * send_quantum = 12000
+    let send_quantum = bbr.pacer.send_quantum();
+
+    // offload_budget = 3 * send_quantum
 
     // offload_budget > inflight > minimum_window, return offload_budget
-    assert_eq!(12000, bbr.quantization_budget(6000));
+    assert_eq!(3 * send_quantum as u64, bbr.quantization_budget(6000));
 
     // offload_budget < inflight, return inflight
     assert_eq!(14000, bbr.quantization_budget(14000));
 
-    bbr.send_quantum = 1000;
+    bbr.pacer.set_send_quantum_for_test(1000);
     // offload_budget = 3 * send_quantum = 3000
 
     // minimum_window = 4 * mtu = 4800
@@ -394,99 +388,6 @@ fn quantization_budget() {
 
     // since probe bw up, add 2 packets to the budget
     assert_eq!(4800 + 2 * MINIMUM_MTU as u64, bbr.quantization_budget(2000));
-}
-
-//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.2
-//= type=test
-//# BBRSetPacingRateWithGain(pacing_gain):
-//#   rate = pacing_gain * bw * (100 - BBRPacingMarginPercent) / 100
-//#   if (BBR.filled_pipe || rate > BBR.pacing_rate)
-//#     BBR.pacing_rate = rate
-#[test]
-fn set_pacing_rate() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
-    let rate_sample = RateSample {
-        delivered_bytes: 1000,
-        interval: Duration::from_millis(1),
-        ..Default::default()
-    };
-    bbr.data_rate_model.update_max_bw(rate_sample);
-    bbr.data_rate_model.bound_bw_for_model();
-
-    bbr.full_pipe_estimator.set_filled_pipe_for_test(true);
-    bbr.set_pacing_rate(Ratio::new(5, 4));
-
-    // pacing rate = pacing_gain * bw * (100 - BBRPacingMarginPercent) / 100
-    //             = 1.25 * 1000bytes/ms * 99/100
-    //             = 1237.5bytes/ms
-    assert_eq!(
-        Bandwidth::new(12375, Duration::from_millis(10)),
-        bbr.pacing_rate
-    );
-}
-
-//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.3
-//= type=test
-//# if (BBR.pacing_rate < 1.2 Mbps)
-//#   floor = 1 * SMSS
-//# else
-//#   floor = 2 * SMSS
-//# BBR.send_quantum = min(BBR.pacing_rate * 1ms, 64KBytes)
-//# BBR.send_quantum = max(BBR.send_quantum, floor)
-#[test]
-fn set_send_quantum() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
-    // pacing_rate < 1.2 Mbps, floor = MINIMUM_MTU
-    bbr.pacing_rate = Bandwidth::new(1_100_000 / 8, Duration::from_secs(1));
-    bbr.set_send_quantum();
-    // pacing_Rate * 1ms = 137 bytes
-    // send_quantum = min(137, 64_000) = 137
-    // send_quantum = max(137, MINIMUM_MTU) = MINIMUM_MTU
-    assert_eq!(MINIMUM_MTU as usize, bbr.send_quantum);
-
-    // pacing_rate = 1.2 Mbps, floor = 2 * MINIMUM_MTU
-    bbr.pacing_rate = Bandwidth::new(1_200_000 / 8, Duration::from_secs(1));
-    bbr.set_send_quantum();
-    // pacing_Rate * 1ms = 150 bytes
-    // send_quantum = min(150, 64_000) = 150
-    // send_quantum = max(150, 2 * MINIMUM_MTU) = 2 * MINIMUM_MTU
-    assert_eq!(2 * MINIMUM_MTU as usize, bbr.send_quantum);
-
-    // pacing_rate = 10.0 MBps, floor = 2 * MINIMUM_MTU
-    bbr.pacing_rate = Bandwidth::new(10_000_000, Duration::from_secs(1));
-    bbr.set_send_quantum();
-    // pacing_Rate * 1ms = 10000 bytes
-    // send_quantum = min(10000, 64_000) = 10000
-    // send_quantum = max(10000, 2 * MINIMUM_MTU) = 10000
-    assert_eq!(10000, bbr.send_quantum);
-
-    // pacing_rate = 100.0 MBps, floor = 2 * MINIMUM_MTU
-    bbr.pacing_rate = Bandwidth::new(100_000_000, Duration::from_secs(1));
-    bbr.set_send_quantum();
-    // pacing_Rate * 1ms = 100000 bytes
-    // send_quantum = min(100000, 64_000) = 64_000
-    // send_quantum = max(64_000, 2 * MINIMUM_MTU) = 64_000
-    assert_eq!(64_000, bbr.send_quantum);
-}
-
-//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.2
-//= type=test
-//# BBR.next_departure_time = max(Now(), BBR.next_departure_time)
-//# packet.departure_time = BBR.next_departure_time
-//# pacing_delay = packet.size / BBR.pacing_rate
-//# BBR.next_departure_time = BBR.next_departure_time + pacing_delay
-#[test]
-fn set_next_departure_time() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
-    let now = NoopClock.get_time();
-
-    bbr.pacing_rate = Bandwidth::new(100, Duration::from_millis(1));
-    bbr.set_next_departure_time(1000, now);
-
-    assert_eq!(
-        Some(now + Duration::from_millis(10)),
-        bbr.earliest_departure_time()
-    );
 }
 
 #[test]
