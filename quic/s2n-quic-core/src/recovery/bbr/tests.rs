@@ -490,6 +490,146 @@ fn bound_cwnd_for_model() {
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
 //= type=test
+//#   if (BBR.packet_conservation)
+//#     cwnd = max(cwnd, packets_in_flight + rs.newly_acked)
+#[test]
+fn set_cwnd_packet_conservation() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let now = NoopClock.get_time();
+    assert_eq!(36_000, bbr.max_inflight());
+
+    bbr.recovery_state.on_congestion_event(now);
+    assert!(bbr.recovery_state.packet_conservation());
+
+    bbr.cwnd = 12_000;
+    bbr.bytes_in_flight = Counter::new(12_500);
+    bbr.set_cwnd(1000);
+    assert_eq!(13_500, bbr.cwnd);
+
+    bbr.cwnd = 14_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(14_000, bbr.cwnd);
+
+    assert!(!bbr.try_fast_path);
+}
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.6
+//= type=test
+//#     if (BBR.filled_pipe)
+//#       cwnd = min(cwnd + rs.newly_acked, BBR.max_inflight)
+#[test]
+fn set_cwnd_filled_pipe() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    assert_eq!(36_000, bbr.max_inflight());
+
+    bbr.full_pipe_estimator.set_filled_pipe_for_test(true);
+    assert!(bbr.full_pipe_estimator.filled_pipe());
+
+    bbr.cwnd = 12_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(13_000, bbr.cwnd);
+    assert!(!bbr.try_fast_path);
+
+    bbr.cwnd = 40_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(36_000, bbr.cwnd);
+    assert!(bbr.try_fast_path);
+}
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.6
+//= type=test
+//#     else if (cwnd < BBR.max_inflight || C.delivered < InitialCwnd)
+//#       cwnd = cwnd + rs.newly_acked
+#[test]
+fn set_cwnd_not_filled_pipe() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let now = NoopClock.get_time();
+    assert_eq!(36_000, bbr.max_inflight());
+
+    assert!(!bbr.full_pipe_estimator.filled_pipe());
+
+    bbr.cwnd = 12_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(13_000, bbr.cwnd);
+
+    // cwnd > BBR.max_inflight, but C.delivered < InitialCwnd
+    bbr.cwnd = 40_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(41_000, bbr.cwnd);
+
+    // Set C.delivered > InitialCwnd
+    let packet_info = PacketInfo {
+        delivered_bytes: 0,
+        delivered_time: now,
+        lost_bytes: 0,
+        ecn_ce_count: 0,
+        first_sent_time: now,
+        bytes_in_flight: 0,
+        is_app_limited: false,
+    };
+    bbr.bw_estimator.on_ack(
+        BbrCongestionController::initial_window(MINIMUM_MTU) as usize + 1,
+        now,
+        packet_info,
+        now,
+    );
+    bbr.cwnd = 12_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(13_000, bbr.cwnd);
+    assert!(!bbr.try_fast_path);
+
+    // cwnd > BBR.max_inflight and C.delivered > InitialCwnd
+    bbr.cwnd = 40_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(40_000, bbr.cwnd); // No change
+    assert!(bbr.try_fast_path);
+}
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.5
+//= type=test
+//# BBRBoundCwndForProbeRTT():
+//#   if (BBR.state == ProbeRTT)
+//#     cwnd = min(cwnd, BBRProbeRTTCwnd())
+#[test]
+fn set_cwnd_probing_rtt() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    assert_eq!(36_000, bbr.max_inflight());
+    assert_eq!(12_000, bbr.probe_rtt_cwnd());
+
+    bbr.state = State::ProbeRtt(probe_rtt::State::default());
+
+    // cwnd > probe_rtt_cwnd
+    bbr.cwnd = 13_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(12_000, bbr.cwnd);
+
+    // cwnd < probe_rtt_cwnd. Since cwnd < max_flight, newly_acked is added
+    bbr.cwnd = 10_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(11_000, bbr.cwnd);
+}
+
+#[test]
+fn set_cwnd_clamp() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    assert_eq!(36_000, bbr.max_inflight());
+
+    // cwnd < min
+    bbr.cwnd = bbr.minimum_window() - 1000;
+    bbr.set_cwnd(500);
+    assert_eq!(bbr.minimum_window(), bbr.cwnd);
+
+    // cwnd > bound_cwnd_for_model
+    bbr.data_volume_model.set_inflight_lo_for_test(30_000);
+    assert_eq!(30_000, bbr.bound_cwnd_for_model());
+
+    bbr.cwnd = 40_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(30_000, bbr.cwnd);
+}
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
+//= type=test
 //# BBRSaveCwnd()
 //#   if (!InLossRecovery() and BBR.state != ProbeRTT)
 //#     return cwnd
