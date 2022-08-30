@@ -985,6 +985,38 @@ fn model_update_required() {
     assert!(!bbr.model_update_required());
 }
 
+#[test]
+fn control_update_required() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let now = NoopClock.get_time();
+
+    bbr.try_fast_path = true;
+    let mut model_updated = false;
+    assert!(bbr.data_volume_model.min_rtt().is_none());
+
+    assert!(!bbr.control_update_required(model_updated, None));
+
+    // try_fast_path
+    bbr.try_fast_path = false;
+    assert!(bbr.control_update_required(model_updated, None));
+    bbr.try_fast_path = true;
+    assert!(!bbr.control_update_required(model_updated, None));
+
+    // model_updated
+    model_updated = true;
+    assert!(bbr.control_update_required(model_updated, None));
+    model_updated = false;
+    assert!(!bbr.control_update_required(model_updated, None));
+
+    // prev_min_rtt != self.data_volume_model.min_rtt()
+    assert!(bbr.control_update_required(model_updated, Some(Duration::from_millis(100))));
+    bbr.data_volume_model
+        .update_min_rtt(Duration::from_millis(100), now);
+    assert!(bbr.control_update_required(model_updated, None));
+    assert!(bbr.control_update_required(model_updated, Some(Duration::from_millis(200))));
+    assert!(!bbr.control_update_required(model_updated, Some(Duration::from_millis(100))));
+}
+
 /// Helper method to move the given BBR congestion controller into the
 /// ProbeBW state with the given CyclePhase
 fn enter_probe_bw_state(bbr: &mut BbrCongestionController, cycle_phase: CyclePhase) {
