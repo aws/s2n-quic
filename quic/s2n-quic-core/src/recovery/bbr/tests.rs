@@ -905,6 +905,86 @@ fn handle_restart_from_idle() {
     assert!(bbr.pacer.pacing_rate() > pacing_rate);
 }
 
+#[test]
+fn model_update_required() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let rate_sample = RateSample {
+        delivered_bytes: 100_000,
+        interval: Duration::from_millis(1),
+        ..Default::default()
+    };
+    bbr.data_rate_model.update_max_bw(rate_sample);
+    bbr.data_rate_model.bound_bw_for_model();
+    let rate_sample = RateSample {
+        delivered_bytes: 10_000,
+        interval: Duration::from_millis(1),
+        is_app_limited: true,
+        ..Default::default()
+    };
+    bbr.bw_estimator.set_rate_sample_for_test(rate_sample);
+
+    assert!(bbr.bw_estimator.rate_sample().is_app_limited);
+    assert!(bbr.bw_estimator.rate_sample().delivery_rate() < bbr.data_rate_model.max_bw());
+    assert!(!bbr.congestion_state.loss_in_round());
+    assert!(!bbr.congestion_state.ecn_in_round());
+
+    // try_fast_path
+    bbr.try_fast_path = false;
+    assert!(bbr.model_update_required());
+    bbr.try_fast_path = true;
+    assert!(!bbr.model_update_required());
+
+    // app limited
+    let rate_sample = RateSample {
+        delivered_bytes: 10_000,
+        interval: Duration::from_millis(1),
+        is_app_limited: false,
+        ..Default::default()
+    };
+    bbr.bw_estimator.set_rate_sample_for_test(rate_sample);
+    assert!(bbr.model_update_required());
+    let rate_sample = RateSample {
+        delivered_bytes: 10_000,
+        interval: Duration::from_millis(1),
+        is_app_limited: true,
+        ..Default::default()
+    };
+    bbr.bw_estimator.set_rate_sample_for_test(rate_sample);
+    assert!(!bbr.model_update_required());
+
+    // delivery_rate >= max_bw
+    let rate_sample = RateSample {
+        delivered_bytes: 500_000,
+        interval: Duration::from_millis(1),
+        is_app_limited: true,
+        ..Default::default()
+    };
+    bbr.bw_estimator.set_rate_sample_for_test(rate_sample);
+    assert!(bbr.bw_estimator.rate_sample().delivery_rate() >= bbr.data_rate_model.max_bw());
+    assert!(bbr.model_update_required());
+    let rate_sample = RateSample {
+        delivered_bytes: 10_000,
+        interval: Duration::from_millis(1),
+        is_app_limited: true,
+        ..Default::default()
+    };
+    bbr.bw_estimator.set_rate_sample_for_test(rate_sample);
+    assert!(bbr.bw_estimator.rate_sample().delivery_rate() < bbr.data_rate_model.max_bw());
+    assert!(!bbr.model_update_required());
+
+    // loss in round
+    bbr.congestion_state.on_packet_lost(100);
+    assert!(bbr.model_update_required());
+    bbr.congestion_state.reset();
+    assert!(!bbr.model_update_required());
+
+    // ecn in round
+    bbr.congestion_state.on_explicit_congestion();
+    assert!(bbr.model_update_required());
+    bbr.congestion_state.reset();
+    assert!(!bbr.model_update_required());
+}
+
 /// Helper method to move the given BBR congestion controller into the
 /// ProbeBW state with the given CyclePhase
 fn enter_probe_bw_state(bbr: &mut BbrCongestionController, cycle_phase: CyclePhase) {
