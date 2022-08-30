@@ -67,3 +67,63 @@ impl BbrCongestionController {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        counter::Counter,
+        path::MINIMUM_MTU,
+        random,
+        recovery::{
+            bandwidth::RateSample,
+            bbr::{BbrCongestionController, State},
+        },
+        time::{Clock, NoopClock},
+    };
+    use std::time::Duration;
+
+    #[test]
+    fn enter_drain() {
+        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+
+        bbr.enter_drain();
+
+        assert!(bbr.state.is_drain());
+        assert!(!bbr.try_fast_path);
+    }
+
+    //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.2
+    //= type=test
+    //# BBRCheckDrain():
+    //#   if (BBR.state == Drain and packets_in_flight <= BBRInflight(1.0))
+    //#     BBREnterProbeBW()  /* BBR estimates the queue was drained */
+    #[test]
+    fn check_drain_done() {
+        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+        let now = NoopClock.get_time();
+        let mut rng = random::testing::Generator::default();
+
+        // Not in drain yet
+        bbr.check_drain_done(&mut rng, now);
+        assert!(bbr.state.is_startup());
+
+        bbr.enter_drain();
+        bbr.bytes_in_flight = Counter::new(100);
+
+        // bytes_in_flight > inflight
+        bbr.check_drain_done(&mut rng, now);
+        assert!(!bbr.state.is_drain());
+
+        let rate_sample = RateSample {
+            delivered_bytes: 100_000,
+            interval: Duration::from_millis(1),
+            ..Default::default()
+        };
+        bbr.data_rate_model.update_max_bw(rate_sample);
+        bbr.data_rate_model.bound_bw_for_model();
+
+        // Now drain is done
+        bbr.check_drain_done(&mut rng, now);
+        assert!(bbr.state.is_probing_bw());
+    }
+}
