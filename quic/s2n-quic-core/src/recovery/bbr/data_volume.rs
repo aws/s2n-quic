@@ -220,6 +220,11 @@ impl Model {
     pub fn set_inflight_lo_for_test(&mut self, inflight_lo: u64) {
         self.inflight_lo = inflight_lo;
     }
+
+    #[cfg(test)]
+    pub fn extra_acked_interval_start(&self) -> Option<Timestamp> {
+        self.extra_acked_interval_start
+    }
 }
 
 #[cfg(test)]

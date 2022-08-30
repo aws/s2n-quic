@@ -849,6 +849,62 @@ fn handle_lost_packet() {
     );
 }
 
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.4.3
+//= type=test
+//# BBRHandleRestartFromIdle():
+//#   if (packets_in_flight == 0 and C.app_limited)
+//#     BBR.idle_restart = true
+//#        BBR.extra_acked_interval_start = Now()
+//#     if (IsInAProbeBWState())
+//#       BBRSetPacingRateWithGain(1)
+#[test]
+fn handle_restart_from_idle() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let now = NoopClock.get_time();
+    let pacing_rate = bbr.pacer.pacing_rate();
+
+    bbr.handle_restart_from_idle(now);
+
+    // Not app limited
+    assert!(!bbr.idle_restart);
+
+    // App limited, but bytes in flight > 0
+    bbr.bytes_in_flight = Counter::new(1);
+    bbr.bw_estimator.on_app_limited(100);
+    bbr.handle_restart_from_idle(now);
+
+    assert!(!bbr.idle_restart);
+
+    bbr.bytes_in_flight = Counter::default();
+
+    bbr.handle_restart_from_idle(now);
+    assert!(bbr.idle_restart);
+    assert_eq!(
+        Some(now),
+        bbr.data_volume_model.extra_acked_interval_start()
+    );
+    assert_eq!(pacing_rate, bbr.pacer.pacing_rate());
+
+    enter_probe_bw_state(&mut bbr, CyclePhase::Down);
+    let rate_sample = RateSample {
+        delivered_bytes: 100_000,
+        interval: Duration::from_millis(1),
+        ..Default::default()
+    };
+    bbr.data_rate_model.update_max_bw(rate_sample);
+    bbr.data_rate_model.bound_bw_for_model();
+    assert!(bbr.data_rate_model.bw() > bbr.pacer.pacing_rate());
+
+    let now = now + Duration::from_secs(5);
+    bbr.handle_restart_from_idle(now);
+    assert!(bbr.idle_restart);
+    assert_eq!(
+        Some(now),
+        bbr.data_volume_model.extra_acked_interval_start()
+    );
+    assert!(bbr.pacer.pacing_rate() > pacing_rate);
+}
+
 /// Helper method to move the given BBR congestion controller into the
 /// ProbeBW state with the given CyclePhase
 fn enter_probe_bw_state(bbr: &mut BbrCongestionController, cycle_phase: CyclePhase) {
