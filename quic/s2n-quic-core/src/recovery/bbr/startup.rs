@@ -86,6 +86,13 @@ mod tests {
         assert!(!bbr.try_fast_path);
     }
 
+    //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.1.1
+    //= type=test
+    //# BBRCheckStartupDone():
+    //#   BBRCheckStartupFullBandwidth()
+    //#   BBRCheckStartupHighLoss()
+    //#   if (BBR.state == Startup and BBR.filled_pipe)
+    //#     BBREnterDrain()
     #[test]
     fn check_startup_done() {
         let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
