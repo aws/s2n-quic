@@ -1017,6 +1017,19 @@ fn control_update_required() {
     assert!(!bbr.control_update_required(model_updated, Some(Duration::from_millis(100))));
 }
 
+#[test]
+fn on_mtu_update() {
+    let mut mtu = 5000;
+    let mut bbr = BbrCongestionController::new(mtu);
+    bbr.cwnd = 100_000;
+
+    mtu = 10000;
+    bbr.on_mtu_update(mtu);
+
+    assert_eq!(bbr.max_datagram_size, mtu);
+    assert_eq!(bbr.cwnd, 200_000);
+}
+
 /// Helper method to move the given BBR congestion controller into the
 /// ProbeBW state with the given CyclePhase
 fn enter_probe_bw_state(bbr: &mut BbrCongestionController, cycle_phase: CyclePhase) {
