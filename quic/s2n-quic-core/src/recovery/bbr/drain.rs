@@ -74,13 +74,10 @@ mod tests {
         counter::Counter,
         path::MINIMUM_MTU,
         random,
-        recovery::{
-            bandwidth::RateSample,
-            bbr::{BbrCongestionController, State},
-        },
+        recovery::{bandwidth::RateSample, bbr::BbrCongestionController},
         time::{Clock, NoopClock},
     };
-    use std::time::Duration;
+    use core::time::Duration;
 
     #[test]
     fn enter_drain() {
