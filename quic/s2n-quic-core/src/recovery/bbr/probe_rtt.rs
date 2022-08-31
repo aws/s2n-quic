@@ -207,7 +207,7 @@ impl BbrCongestionController {
         //# BBRProbeRTTCwnd():
         //#    probe_rtt_cwnd = BBRBDPMultiple(BBR.bw, BBRProbeRTTCwndGain)
         //#    probe_rtt_cwnd = max(probe_rtt_cwnd, BBRMinPipeCwnd)
-        //#    return probe_rtt_cwnd#
+        //#    return probe_rtt_cwnd
 
         self.bdp_multiple(self.data_rate_model.bw(), probe_rtt::CWND_GAIN)
             .try_into()
@@ -218,5 +218,155 @@ impl BbrCongestionController {
 
 #[cfg(test)]
 mod tests {
-    // TODO
+    use super::*;
+    use crate::{
+        path::MINIMUM_MTU,
+        recovery::{
+            bandwidth::{Bandwidth, PacketInfo, RateSample},
+            bbr::windowed_filter::PROBE_RTT_INTERVAL,
+        },
+        time::{Clock, NoopClock},
+    };
+
+    #[test]
+    fn check_probe_rtt_enter_probe_rtt() {
+        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+        let now = NoopClock.get_time();
+        let mut rng = random::testing::Generator::default();
+        bbr.bw_estimator.set_delivered_bytes_for_test(1000);
+
+        bbr.data_volume_model
+            .update_min_rtt(Duration::from_millis(100), now);
+        let now = now + PROBE_RTT_INTERVAL;
+        bbr.data_volume_model
+            .update_min_rtt(Duration::from_millis(100), now);
+        assert!(bbr.data_volume_model.probe_rtt_expired());
+        assert!(!bbr.idle_restart);
+
+        bbr.check_probe_rtt(&mut rng, now);
+        assert!(bbr.state.is_probing_rtt());
+        assert!(!bbr.try_fast_path);
+        assert_eq!(bbr.prior_cwnd, bbr.cwnd);
+        assert_eq!(1000, bbr.round_counter.round_end());
+    }
+
+    #[test]
+    fn check_probe_rtt_exit_probe_rtt() {
+        let mut bbr = bbr_in_probe_rtt_ready_to_exit();
+        let mut rng = random::testing::Generator::default();
+        let now = NoopClock.get_time();
+        bbr.idle_restart = true;
+        bbr.check_probe_rtt(&mut rng, now);
+        assert!(!bbr.state.is_probing_rtt());
+        // No delivered bytes in the rate sample, so remain in idle restart
+        assert!(bbr.idle_restart);
+
+        // Next probe rtt is scheduled
+        assert_eq!(
+            Some(now + PROBE_RTT_INTERVAL),
+            bbr.data_volume_model.next_probe_rtt()
+        );
+
+        let mut bbr = bbr_in_probe_rtt_ready_to_exit();
+        bbr.idle_restart = true;
+        bbr.bw_estimator.set_rate_sample_for_test(RateSample {
+            delivered_bytes: 1000,
+            ..Default::default()
+        });
+
+        bbr.check_probe_rtt(&mut rng, now);
+        assert!(!bbr.state.is_probing_rtt());
+        // Positive elivered bytes in the rate sample, so set idle restart to false
+        assert!(!bbr.idle_restart);
+
+        // Next probe rtt is scheduled
+        assert_eq!(
+            Some(now + PROBE_RTT_INTERVAL),
+            bbr.data_volume_model.next_probe_rtt()
+        );
+    }
+
+    #[test]
+    fn exit_probe_rtt() {
+        let mut bbr = bbr_in_probe_rtt_ready_to_exit();
+        let mut rng = random::testing::Generator::default();
+        let now = NoopClock.get_time();
+        bbr.cwnd = 1000;
+        bbr.prior_cwnd = 2000;
+        bbr.data_volume_model.set_inflight_lo_for_test(100_000);
+        bbr.data_rate_model
+            .update_lower_bound(Bandwidth::new(1000, Duration::from_millis(1)));
+        bbr.exit_probe_rtt(&mut rng, now);
+
+        // cwnd restored
+        assert_eq!(2000, bbr.cwnd);
+        // lower bounds reset
+        assert_eq!(u64::MAX, bbr.data_volume_model.inflight_lo());
+        assert_eq!(Bandwidth::INFINITY, bbr.data_rate_model.bw_lo());
+        assert!(bbr.state.is_startup());
+
+        // If full pipe then transition to probe bw cruise
+        let mut bbr = bbr_in_probe_rtt_ready_to_exit();
+        bbr.full_pipe_estimator.set_filled_pipe_for_test(true);
+        bbr.exit_probe_rtt(&mut rng, now);
+        assert!(bbr.state.is_probing_bw_cruise());
+
+        // Next probe rtt is scheduled
+        assert_eq!(
+            Some(now + PROBE_RTT_INTERVAL),
+            bbr.data_volume_model.next_probe_rtt()
+        );
+    }
+
+    //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.5
+    //= type=test
+    //# BBRProbeRTTCwnd():
+    //#    probe_rtt_cwnd = BBRBDPMultiple(BBR.bw, BBRProbeRTTCwndGain)
+    //#    probe_rtt_cwnd = max(probe_rtt_cwnd, BBRMinPipeCwnd)
+    //#    return probe_rtt_cwnd
+    #[test]
+    fn probe_rtt_cwnd() {
+        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+        let now = NoopClock.get_time();
+
+        // bdp_multiple > minimum_window
+        assert_eq!(
+            BbrCongestionController::initial_window(MINIMUM_MTU),
+            bbr.probe_rtt_cwnd()
+        );
+
+        bbr.data_volume_model
+            .update_min_rtt(Duration::from_millis(100), now);
+
+        // bdp_multiple < minimum_window
+        assert_eq!(bbr.minimum_window(), bbr.probe_rtt_cwnd());
+    }
+
+    /// Helper method to return a BBR congestion controller in the ProbeRtt
+    /// but ready to exit that state
+    fn bbr_in_probe_rtt_ready_to_exit() -> BbrCongestionController {
+        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+        let now = NoopClock.get_time();
+        let mut probe_rtt_state = probe_rtt::State {
+            timer: Default::default(),
+            round_done: false,
+        };
+        probe_rtt_state.timer.set(now);
+        probe_rtt_state.round_done = true;
+        bbr.state = bbr::State::ProbeRtt(probe_rtt_state);
+        bbr.round_counter.set_round_end(100);
+        let packet_info = PacketInfo {
+            delivered_bytes: 100,
+            delivered_time: now,
+            lost_bytes: 0,
+            ecn_ce_count: 0,
+            first_sent_time: now,
+            bytes_in_flight: 0,
+            is_app_limited: false,
+        };
+        bbr.round_counter.on_ack(packet_info, 200);
+        assert!(bbr.round_counter.round_start());
+        bbr.bw_estimator.set_delivered_bytes_for_test(200);
+        bbr
+    }
 }

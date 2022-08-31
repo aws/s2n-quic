@@ -347,6 +347,11 @@ impl Estimator {
     pub fn set_rate_sample_for_test(&mut self, rate_sample: RateSample) {
         self.rate_sample = rate_sample
     }
+
+    #[cfg(test)]
+    pub fn set_delivered_bytes_for_test(&mut self, delivered_bytes: u64) {
+        self.delivered_bytes = delivered_bytes
+    }
 }
 
 #[cfg(test)]

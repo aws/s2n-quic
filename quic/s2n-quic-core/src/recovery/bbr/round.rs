@@ -66,6 +66,11 @@ impl Counter {
     pub fn round_count(&self) -> u64 {
         self.round_count
     }
+
+    #[cfg(test)]
+    pub fn round_end(&self) -> u64 {
+        self.next_round_delivered_bytes
+    }
 }
 
 #[cfg(test)]

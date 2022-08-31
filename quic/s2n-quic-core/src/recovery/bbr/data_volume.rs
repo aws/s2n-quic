@@ -225,6 +225,11 @@ impl Model {
     pub fn extra_acked_interval_start(&self) -> Option<Timestamp> {
         self.extra_acked_interval_start
     }
+
+    #[cfg(test)]
+    pub fn next_probe_rtt(&self) -> Option<Timestamp> {
+        self.min_rtt_filter.next_probe_rtt()
+    }
 }
 
 #[cfg(test)]
