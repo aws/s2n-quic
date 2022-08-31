@@ -743,6 +743,7 @@ impl BbrCongestionController {
 mod tests {
     use super::*;
     use crate::{
+        path::MINIMUM_MTU,
         recovery::bandwidth::{Bandwidth, PacketInfo},
         time::{Clock, NoopClock},
     };
@@ -1028,5 +1029,28 @@ mod tests {
         assert_eq!(ack_phase, AckPhase::ProbeStarting);
         ack_phase.transition_to(AckPhase::ProbeStopping);
         assert_eq!(ack_phase, AckPhase::ProbeStopping);
+    }
+
+    #[test]
+    fn enter_probe_bw() {
+        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+        let mut rng = random::testing::Generator::default();
+        let now = NoopClock.get_time();
+        bbr.state = bbr::State::Drain;
+
+        // cruise_immediately = false
+        bbr.enter_probe_bw(false, &mut rng, now);
+
+        assert!(bbr.state.is_probing_bw());
+        if let bbr::State::ProbeBw(probe_bw_state) = bbr.state {
+            assert_eq!(CyclePhase::Down, probe_bw_state.cycle_phase());
+        }
+
+        assert!(!bbr.try_fast_path);
+
+        // cruise_immediately = true
+        bbr.state = bbr::State::Drain;
+        bbr.enter_probe_bw(true, &mut rng, now);
+        assert!(bbr.state.is_probing_bw_cruise());
     }
 }
