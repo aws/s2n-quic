@@ -215,6 +215,21 @@ impl Model {
     pub fn set_extra_acked_for_test(&mut self, sample: u64, round_count: u64) {
         self.extra_acked_filter.update(sample, round_count);
     }
+
+    #[cfg(test)]
+    pub fn set_inflight_lo_for_test(&mut self, inflight_lo: u64) {
+        self.inflight_lo = inflight_lo;
+    }
+
+    #[cfg(test)]
+    pub fn extra_acked_interval_start(&self) -> Option<Timestamp> {
+        self.extra_acked_interval_start
+    }
+
+    #[cfg(test)]
+    pub fn next_probe_rtt(&self) -> Option<Timestamp> {
+        self.min_rtt_filter.next_probe_rtt()
+    }
 }
 
 #[cfg(test)]

@@ -490,6 +490,146 @@ fn bound_cwnd_for_model() {
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
 //= type=test
+//#   if (BBR.packet_conservation)
+//#     cwnd = max(cwnd, packets_in_flight + rs.newly_acked)
+#[test]
+fn set_cwnd_packet_conservation() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let now = NoopClock.get_time();
+    assert_eq!(36_000, bbr.max_inflight());
+
+    bbr.recovery_state.on_congestion_event(now);
+    assert!(bbr.recovery_state.packet_conservation());
+
+    bbr.cwnd = 12_000;
+    bbr.bytes_in_flight = Counter::new(12_500);
+    bbr.set_cwnd(1000);
+    assert_eq!(13_500, bbr.cwnd);
+
+    bbr.cwnd = 14_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(14_000, bbr.cwnd);
+
+    assert!(!bbr.try_fast_path);
+}
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.6
+//= type=test
+//#     if (BBR.filled_pipe)
+//#       cwnd = min(cwnd + rs.newly_acked, BBR.max_inflight)
+#[test]
+fn set_cwnd_filled_pipe() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    assert_eq!(36_000, bbr.max_inflight());
+
+    bbr.full_pipe_estimator.set_filled_pipe_for_test(true);
+    assert!(bbr.full_pipe_estimator.filled_pipe());
+
+    bbr.cwnd = 12_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(13_000, bbr.cwnd);
+    assert!(!bbr.try_fast_path);
+
+    bbr.cwnd = 40_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(36_000, bbr.cwnd);
+    assert!(bbr.try_fast_path);
+}
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.6
+//= type=test
+//#     else if (cwnd < BBR.max_inflight || C.delivered < InitialCwnd)
+//#       cwnd = cwnd + rs.newly_acked
+#[test]
+fn set_cwnd_not_filled_pipe() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let now = NoopClock.get_time();
+    assert_eq!(36_000, bbr.max_inflight());
+
+    assert!(!bbr.full_pipe_estimator.filled_pipe());
+
+    bbr.cwnd = 12_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(13_000, bbr.cwnd);
+
+    // cwnd > BBR.max_inflight, but C.delivered < InitialCwnd
+    bbr.cwnd = 40_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(41_000, bbr.cwnd);
+
+    // Set C.delivered > InitialCwnd
+    let packet_info = PacketInfo {
+        delivered_bytes: 0,
+        delivered_time: now,
+        lost_bytes: 0,
+        ecn_ce_count: 0,
+        first_sent_time: now,
+        bytes_in_flight: 0,
+        is_app_limited: false,
+    };
+    bbr.bw_estimator.on_ack(
+        BbrCongestionController::initial_window(MINIMUM_MTU) as usize + 1,
+        now,
+        packet_info,
+        now,
+    );
+    bbr.cwnd = 12_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(13_000, bbr.cwnd);
+    assert!(!bbr.try_fast_path);
+
+    // cwnd > BBR.max_inflight and C.delivered > InitialCwnd
+    bbr.cwnd = 40_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(40_000, bbr.cwnd); // No change
+    assert!(bbr.try_fast_path);
+}
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.5
+//= type=test
+//# BBRBoundCwndForProbeRTT():
+//#   if (BBR.state == ProbeRTT)
+//#     cwnd = min(cwnd, BBRProbeRTTCwnd())
+#[test]
+fn set_cwnd_probing_rtt() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    assert_eq!(36_000, bbr.max_inflight());
+    assert_eq!(12_000, bbr.probe_rtt_cwnd());
+
+    bbr.state = State::ProbeRtt(probe_rtt::State::default());
+
+    // cwnd > probe_rtt_cwnd
+    bbr.cwnd = 13_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(12_000, bbr.cwnd);
+
+    // cwnd < probe_rtt_cwnd. Since cwnd < max_flight, newly_acked is added
+    bbr.cwnd = 10_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(11_000, bbr.cwnd);
+}
+
+#[test]
+fn set_cwnd_clamp() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    assert_eq!(36_000, bbr.max_inflight());
+
+    // cwnd < min
+    bbr.cwnd = bbr.minimum_window() - 1000;
+    bbr.set_cwnd(500);
+    assert_eq!(bbr.minimum_window(), bbr.cwnd);
+
+    // cwnd > bound_cwnd_for_model
+    bbr.data_volume_model.set_inflight_lo_for_test(30_000);
+    assert_eq!(30_000, bbr.bound_cwnd_for_model());
+
+    bbr.cwnd = 40_000;
+    bbr.set_cwnd(1000);
+    assert_eq!(30_000, bbr.cwnd);
+}
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
+//= type=test
 //# BBRSaveCwnd()
 //#   if (!InLossRecovery() and BBR.state != ProbeRTT)
 //#     return cwnd
@@ -707,6 +847,174 @@ fn handle_lost_packet() {
         (bbr::BETA * bbr.target_inflight() as u64).to_integer(),
         bbr.data_volume_model.inflight_hi()
     );
+}
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.4.3
+//= type=test
+//# BBRHandleRestartFromIdle():
+//#   if (packets_in_flight == 0 and C.app_limited)
+//#     BBR.idle_restart = true
+//#        BBR.extra_acked_interval_start = Now()
+//#     if (IsInAProbeBWState())
+//#       BBRSetPacingRateWithGain(1)
+#[test]
+fn handle_restart_from_idle() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let now = NoopClock.get_time();
+    let pacing_rate = bbr.pacer.pacing_rate();
+
+    bbr.handle_restart_from_idle(now);
+
+    // Not app limited
+    assert!(!bbr.idle_restart);
+
+    // App limited, but bytes in flight > 0
+    bbr.bytes_in_flight = Counter::new(1);
+    bbr.bw_estimator.on_app_limited(100);
+    bbr.handle_restart_from_idle(now);
+
+    assert!(!bbr.idle_restart);
+
+    bbr.bytes_in_flight = Counter::default();
+
+    bbr.handle_restart_from_idle(now);
+    assert!(bbr.idle_restart);
+    assert_eq!(
+        Some(now),
+        bbr.data_volume_model.extra_acked_interval_start()
+    );
+    assert_eq!(pacing_rate, bbr.pacer.pacing_rate());
+
+    enter_probe_bw_state(&mut bbr, CyclePhase::Down);
+    let rate_sample = RateSample {
+        delivered_bytes: 100_000,
+        interval: Duration::from_millis(1),
+        ..Default::default()
+    };
+    bbr.data_rate_model.update_max_bw(rate_sample);
+    bbr.data_rate_model.bound_bw_for_model();
+    assert!(bbr.data_rate_model.bw() > bbr.pacer.pacing_rate());
+
+    let now = now + Duration::from_secs(5);
+    bbr.handle_restart_from_idle(now);
+    assert!(bbr.idle_restart);
+    assert_eq!(
+        Some(now),
+        bbr.data_volume_model.extra_acked_interval_start()
+    );
+    assert!(bbr.pacer.pacing_rate() > pacing_rate);
+}
+
+#[test]
+fn model_update_required() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let rate_sample = RateSample {
+        delivered_bytes: 100_000,
+        interval: Duration::from_millis(1),
+        ..Default::default()
+    };
+    bbr.data_rate_model.update_max_bw(rate_sample);
+    bbr.data_rate_model.bound_bw_for_model();
+    let rate_sample = RateSample {
+        delivered_bytes: 10_000,
+        interval: Duration::from_millis(1),
+        is_app_limited: true,
+        ..Default::default()
+    };
+    bbr.bw_estimator.set_rate_sample_for_test(rate_sample);
+
+    assert!(bbr.bw_estimator.rate_sample().is_app_limited);
+    assert!(bbr.bw_estimator.rate_sample().delivery_rate() < bbr.data_rate_model.max_bw());
+    assert!(!bbr.congestion_state.loss_in_round());
+    assert!(!bbr.congestion_state.ecn_in_round());
+
+    // try_fast_path
+    bbr.try_fast_path = false;
+    assert!(bbr.model_update_required());
+    bbr.try_fast_path = true;
+    assert!(!bbr.model_update_required());
+
+    // app limited
+    let rate_sample = RateSample {
+        delivered_bytes: 10_000,
+        interval: Duration::from_millis(1),
+        is_app_limited: false,
+        ..Default::default()
+    };
+    bbr.bw_estimator.set_rate_sample_for_test(rate_sample);
+    assert!(bbr.model_update_required());
+    let rate_sample = RateSample {
+        delivered_bytes: 10_000,
+        interval: Duration::from_millis(1),
+        is_app_limited: true,
+        ..Default::default()
+    };
+    bbr.bw_estimator.set_rate_sample_for_test(rate_sample);
+    assert!(!bbr.model_update_required());
+
+    // delivery_rate >= max_bw
+    let rate_sample = RateSample {
+        delivered_bytes: 500_000,
+        interval: Duration::from_millis(1),
+        is_app_limited: true,
+        ..Default::default()
+    };
+    bbr.bw_estimator.set_rate_sample_for_test(rate_sample);
+    assert!(bbr.bw_estimator.rate_sample().delivery_rate() >= bbr.data_rate_model.max_bw());
+    assert!(bbr.model_update_required());
+    let rate_sample = RateSample {
+        delivered_bytes: 10_000,
+        interval: Duration::from_millis(1),
+        is_app_limited: true,
+        ..Default::default()
+    };
+    bbr.bw_estimator.set_rate_sample_for_test(rate_sample);
+    assert!(bbr.bw_estimator.rate_sample().delivery_rate() < bbr.data_rate_model.max_bw());
+    assert!(!bbr.model_update_required());
+
+    // loss in round
+    bbr.congestion_state.on_packet_lost(100);
+    assert!(bbr.model_update_required());
+    bbr.congestion_state.reset();
+    assert!(!bbr.model_update_required());
+
+    // ecn in round
+    bbr.congestion_state.on_explicit_congestion();
+    assert!(bbr.model_update_required());
+    bbr.congestion_state.reset();
+    assert!(!bbr.model_update_required());
+}
+
+#[test]
+fn control_update_required() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let now = NoopClock.get_time();
+
+    bbr.try_fast_path = true;
+    let mut model_updated = false;
+    assert!(bbr.data_volume_model.min_rtt().is_none());
+
+    assert!(!bbr.control_update_required(model_updated, None));
+
+    // try_fast_path
+    bbr.try_fast_path = false;
+    assert!(bbr.control_update_required(model_updated, None));
+    bbr.try_fast_path = true;
+    assert!(!bbr.control_update_required(model_updated, None));
+
+    // model_updated
+    model_updated = true;
+    assert!(bbr.control_update_required(model_updated, None));
+    model_updated = false;
+    assert!(!bbr.control_update_required(model_updated, None));
+
+    // prev_min_rtt != self.data_volume_model.min_rtt()
+    assert!(bbr.control_update_required(model_updated, Some(Duration::from_millis(100))));
+    bbr.data_volume_model
+        .update_min_rtt(Duration::from_millis(100), now);
+    assert!(bbr.control_update_required(model_updated, None));
+    assert!(bbr.control_update_required(model_updated, Some(Duration::from_millis(200))));
+    assert!(!bbr.control_update_required(model_updated, Some(Duration::from_millis(100))));
 }
 
 /// Helper method to move the given BBR congestion controller into the

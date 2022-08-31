@@ -110,7 +110,7 @@ pub(crate) struct MinRttWindowedFilter {
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.14.2
 //# A constant specifying the minimum time interval between ProbeRTT states: 5 secs.
-const PROBE_RTT_INTERVAL: Duration = Duration::from_secs(5);
+pub const PROBE_RTT_INTERVAL: Duration = Duration::from_secs(5);
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.14.1
 //# A constant specifying the length of the BBR.min_rtt min filter window,
@@ -180,6 +180,13 @@ impl MinRttWindowedFilter {
     /// the next `PROBE_RTT_INTERVAL`.
     pub fn schedule_next_probe_rtt(&mut self, now: Timestamp) {
         self.min_probe_rtt.last_updated = Some(now);
+    }
+
+    #[cfg(test)]
+    pub fn next_probe_rtt(&self) -> Option<Timestamp> {
+        self.min_probe_rtt
+            .last_updated
+            .map(|last_updated| last_updated + PROBE_RTT_INTERVAL)
     }
 }
 

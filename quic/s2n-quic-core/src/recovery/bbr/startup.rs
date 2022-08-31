@@ -63,3 +63,135 @@ impl BbrCongestionController {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        path::MINIMUM_MTU,
+        recovery::{bandwidth::PacketInfo, bbr::probe_rtt},
+        time::{Clock, NoopClock},
+    };
+
+    #[test]
+    fn enter_startup() {
+        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+
+        // Startup can only be re-entered from ProbeRtt
+        bbr.state = State::ProbeRtt(probe_rtt::State::default());
+
+        bbr.enter_startup();
+
+        assert!(bbr.state.is_startup());
+        assert!(!bbr.try_fast_path);
+    }
+
+    //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.1.1
+    //= type=test
+    //# BBRCheckStartupDone():
+    //#   BBRCheckStartupFullBandwidth()
+    //#   BBRCheckStartupHighLoss()
+    //#   if (BBR.state == Startup and BBR.filled_pipe)
+    //#     BBREnterDrain()
+    #[test]
+    fn check_startup_done() {
+        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+
+        // Not in startup
+        bbr.state = State::ProbeRtt(probe_rtt::State::default());
+        bbr.full_pipe_estimator.set_filled_pipe_for_test(true);
+
+        bbr.check_startup_done();
+
+        assert!(bbr.state.is_probing_rtt());
+
+        bbr.state = State::Startup;
+        bbr.full_pipe_estimator.set_filled_pipe_for_test(false);
+
+        // Filled pipe = false
+        bbr.check_startup_done();
+        assert!(bbr.state.is_startup());
+
+        // Now startup is done
+        bbr.state = State::Startup;
+        bbr.full_pipe_estimator.set_filled_pipe_for_test(true);
+        bbr.check_startup_done();
+        assert!(bbr.state.is_drain());
+    }
+
+    #[test]
+    fn check_startup_done_filled_pipe_on_round_start() {
+        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+        let now = NoopClock.get_time();
+
+        // Set ECN state to be too high, which would cause the full pipe estimator to be filled
+        bbr.ecn_state.on_explicit_congestion(1000);
+        bbr.ecn_state
+            .on_round_start(1000 * MINIMUM_MTU as u64, MINIMUM_MTU);
+        assert!(!bbr.round_counter.round_start());
+
+        // ECN must be too high over 2 rounds to fill the pipe
+        bbr.check_startup_done();
+        bbr.check_startup_done();
+
+        // Still in startup since it wasn't the start of a round when ECN was measured
+        assert!(!bbr.full_pipe_estimator.filled_pipe());
+        assert!(bbr.state.is_startup());
+
+        bbr.round_counter.set_round_end(100);
+        let packet_info = PacketInfo {
+            delivered_bytes: 100,
+            delivered_time: now,
+            lost_bytes: 0,
+            ecn_ce_count: 0,
+            first_sent_time: now,
+            bytes_in_flight: 0,
+            is_app_limited: false,
+        };
+        bbr.round_counter.on_ack(packet_info, 200);
+        assert!(bbr.round_counter.round_start());
+
+        // ECN must be too high over 2 rounds to fill the pipe
+        bbr.check_startup_done();
+        bbr.check_startup_done();
+
+        assert!(bbr.full_pipe_estimator.filled_pipe());
+        assert!(bbr.state.is_drain());
+    }
+
+    #[test]
+    fn check_startup_done_filled_pipe_on_loss_round_start() {
+        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+        let now = NoopClock.get_time();
+
+        // Set loss to be too high, which would cause the full pipe estimator to be filled
+        bbr.bw_estimator.on_loss(1000);
+        // 3 loss bursts must occur for the pipe to be full
+        bbr.full_pipe_estimator.on_packet_lost(true);
+        bbr.full_pipe_estimator.on_packet_lost(true);
+        bbr.full_pipe_estimator.on_packet_lost(true);
+        assert!(!bbr.congestion_state.loss_round_start());
+        bbr.check_startup_done();
+
+        // Still in startup since it wasn't the start of a loss round when loss was measured
+        assert!(!bbr.full_pipe_estimator.filled_pipe());
+        assert!(bbr.state.is_startup());
+
+        let packet_info = PacketInfo {
+            delivered_bytes: 100,
+            delivered_time: now,
+            lost_bytes: 0,
+            ecn_ce_count: 0,
+            first_sent_time: now,
+            bytes_in_flight: 0,
+            is_app_limited: false,
+        };
+        bbr.update_latest_signals(packet_info);
+        assert!(bbr.congestion_state.loss_round_start());
+
+        bbr.check_startup_done();
+
+        assert!(bbr.full_pipe_estimator.filled_pipe());
+        assert!(bbr.state.is_drain());
+    }
+}

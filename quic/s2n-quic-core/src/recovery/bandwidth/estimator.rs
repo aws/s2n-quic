@@ -342,6 +342,16 @@ impl Estimator {
         //#     (C.delivered + packets_in_flight) ? : 1
         self.app_limited_delivered_bytes = Some(self.delivered_bytes + bytes_in_flight as u64);
     }
+
+    #[cfg(test)]
+    pub fn set_rate_sample_for_test(&mut self, rate_sample: RateSample) {
+        self.rate_sample = rate_sample
+    }
+
+    #[cfg(test)]
+    pub fn set_delivered_bytes_for_test(&mut self, delivered_bytes: u64) {
+        self.delivered_bytes = delivered_bytes
+    }
 }
 
 #[cfg(test)]

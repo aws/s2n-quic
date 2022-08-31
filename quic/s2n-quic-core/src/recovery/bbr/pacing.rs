@@ -148,6 +148,11 @@ impl Pacer {
     pub fn set_send_quantum_for_test(&mut self, send_quantum: usize) {
         self.send_quantum = send_quantum
     }
+
+    #[cfg(test)]
+    pub fn pacing_rate(&self) -> Bandwidth {
+        self.pacing_rate
+    }
 }
 
 #[cfg(test)]
