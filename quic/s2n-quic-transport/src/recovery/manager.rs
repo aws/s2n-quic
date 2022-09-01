@@ -667,6 +667,8 @@ impl<Config: endpoint::Config> Manager<Config> {
         let path = context.path_mut();
 
         if current_path_acked_bytes > 0 {
+            let slow_start = path.congestion_controller.is_slow_start();
+            let congestion_window = path.congestion_controller.congestion_window();
             path.congestion_controller.on_ack(
                 largest_newly_acked.time_sent,
                 current_path_acked_bytes,
@@ -675,6 +677,13 @@ impl<Config: endpoint::Config> Manager<Config> {
                 random_generator,
                 timestamp,
             );
+            if slow_start && !path.congestion_controller.is_slow_start() {
+                publisher.on_slow_start_exited(event::builder::SlowStartExited {
+                    path: path_event!(path, current_path_id),
+                    cause: SlowStartExitCause::Other,
+                    congestion_window,
+                });
+            }
 
             self.update_pto_timer(path, timestamp, is_handshake_confirmed);
         }
