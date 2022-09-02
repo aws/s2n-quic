@@ -742,7 +742,7 @@ impl Cubic {
     // This does not change the units of the congestion window
     #[inline]
     fn multiplicative_decrease(&mut self, cwnd: f32) -> f32 {
-        self.w_max = self.bytes_to_packets(cwnd);
+        self.w_max = self.bytes_to_packets(cwnd).max(self.bytes_to_packets(self.minimum_window()));
 
         //= https://www.rfc-editor.org/rfc/rfc8312#section-4.6
         //# To speed up this bandwidth release by
