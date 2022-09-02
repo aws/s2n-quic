@@ -37,31 +37,9 @@ runs:
 
     - uses: camshaft/rust-cache@v1
 
-    - name: Clean up cache
-      working-directory: ${{ inputs.s2n-quic-dir }}
-      run: |
-        rm -f target/release/duvet
-        rm -f common/duvet/target/release/duvet
-      shell: bash
-
-    - name: Cache duvet
-      uses: actions/cache@v3.0.3
-      continue-on-error: true
+    - uses: camshaft/install@v1
       with:
-        path: ${{ inputs.s2n-quic-dir }}/target/release/duvet
-        key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-duvet-${{ hashFiles(format('{0}/**/Cargo.lock', inputs.s2n-quic-dir)) }}-${{ hashFiles(format('{0}/common/duvet/**', inputs.s2n-quic-dir)) }}
-
-    - name: Install duvet
-      working-directory: ${{ inputs.s2n-quic-dir }}/common/duvet
-      run: |
-        if [ ! -f ../../target/release/duvet ]; then
-          mkdir -p ../../target/release
-          cargo build --release
-          cp target/release/duvet ../../target/release/duvet
-        fi
-        
-        echo "${{ inputs.s2n-quic-dir }}/target/release" >> $GITHUB_PATH
-      shell: bash
+        crate: duvet
 
     - name: Generate Duvet report
       run: ${{ inputs.report-script }} ${{ github.sha }}
@@ -83,17 +61,17 @@ runs:
         else
           REPORT_PATH=$(dirname "${{ inputs.report-script }}")/report.html
         fi
-        
+
         TARGET="${{ github.sha }}/compliance.html"
         aws s3 cp "$REPORT_PATH" "s3://${{ inputs.aws-s3-bucket-name }}/$TARGET" --acl private --follow-symlinks
-        
+
         if [ -n "${{ inputs.cdn }}" ]; then
           PREFIX="${{ inputs.cdn }}"
         else
           PREFIX="https://${{ inputs.aws-s3-bucket-name }}.s3.amazonaws.com"
         fi
         URL="$PREFIX/$TARGET"
-        
+
         echo "::set-output name=URL::$URL"
       shell: bash
 
