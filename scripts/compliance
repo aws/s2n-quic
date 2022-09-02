@@ -6,16 +6,11 @@ mkdir -p target/compliance
 
 BLOB=${1:-main}
 
-# ensure the tool is built
-if [ ! -f target/release/duvet ]; then
-  mkdir -p target/release
-  cd common/duvet
-  cargo build --release
-  cp target/release/duvet ../../target/release/duvet
-  cd ../..
+if ! command -v duvet &> /dev/null; then
+    cargo install duvet
 fi
 
-./target/release/duvet \
+duvet \
   report \
   --spec-pattern 'specs/**/*.toml' \
   --source-pattern 'quic/**/*.rs' \
