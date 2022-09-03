@@ -9,7 +9,7 @@ use crate::{
     contexts::{OnTransmitError, WriteContext},
     interval_set::{Interval, IntervalSet},
 };
-use core::{convert::TryInto, num::NonZeroU16};
+use core::num::NonZeroU16;
 use s2n_quic_core::{
     ack,
     packet::number::{Map as PacketNumberMap, PacketNumber, PacketNumberRange},
@@ -135,7 +135,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
             interval_len = capacity;
         }
 
-        let window_len = {
+        let window_len: u64 = {
             //= https://www.rfc-editor.org/rfc/rfc9000#section-2.2
             //# An endpoint MUST NOT send data on any stream without ensuring that it
             //# is within the flow control limits set by its peer.
@@ -146,8 +146,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
                 .acquire_flow_control_window(interval.end_exclusive())
                 .checked_sub(interval.start)
                 .ok_or(OnTransmitError::CouldNotAcquireEnoughSpace)?
-                .try_into()
-                .unwrap_or_default()
+                .into()
         };
 
         // ensure the window is non-zero
@@ -155,8 +154,8 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
             return Err(OnTransmitError::CouldNotAcquireEnoughSpace);
         }
 
-        if window_len < interval_len {
-            interval.set_len(window_len);
+        if window_len < interval_len as u64 {
+            interval.set_len(window_len as usize);
         }
 
         let packet_number = context.packet_number();
