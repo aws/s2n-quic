@@ -772,10 +772,12 @@ impl Cubic {
         //# time for the new flow to catch up to its congestion window size.
         let w_max = self.w_max;
         if w_max < self.w_last_max {
+            self.w_last_max = w_max;
             self.w_max = (w_max * (1.0 + BETA_CUBIC) / 2.0)
                 .max(self.bytes_to_packets(self.minimum_window()));
+        } else {
+            self.w_last_max = w_max;
         }
-        self.w_last_max = w_max;
 
         let cwnd_start = (cwnd * BETA_CUBIC).max(self.minimum_window());
 
