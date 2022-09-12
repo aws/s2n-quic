@@ -98,7 +98,7 @@ fn interceptor_success_test() {
 #[should_panic]
 fn interceptor_failure_test() {
     intercept_loss(
-        Loss::builder(Random::with_seed(123))
+        Loss::builder(Random::with_seed(789))
             .with_rx_loss(0..20)
             .with_rx_pass(1..4)
             .build(),

@@ -633,7 +633,10 @@ mod tests {
 
     #[test]
     fn size_of_snapshots() {
+        #[cfg(target_pointer_width = "64")]
         assert_debug_snapshot!("AckManager", size_of::<AckManager>());
+        #[cfg(target_pointer_width = "32")]
+        assert_debug_snapshot!("AckManager32", size_of::<AckManager>());
     }
 
     #[test]

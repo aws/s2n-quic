@@ -515,8 +515,14 @@ mod tests {
 
     #[test]
     fn size_test() {
+        #[cfg(target_pointer_width = "64")]
         assert_debug_snapshot!(
             "transmission_entry_size",
+            size_of::<TransmissionSlabEntry>()
+        );
+        #[cfg(target_pointer_width = "32")]
+        assert_debug_snapshot!(
+            "transmission_entry_size32",
             size_of::<TransmissionSlabEntry>()
         );
         assert_eq!(

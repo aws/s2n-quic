@@ -607,8 +607,8 @@ pub mod testing {
                 return start;
             }
 
-            let value = self.gen_u64() as usize;
-            start + value % variance
+            let value = self.gen_u64();
+            start + (value % variance as u64) as usize
         }
     }
 }

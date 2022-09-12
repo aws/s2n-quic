@@ -311,6 +311,9 @@ mod tests {
         use core::mem::size_of;
         use insta::assert_debug_snapshot;
 
+        #[cfg(target_pointer_width = "64")]
         assert_debug_snapshot!("AckTransmissionState", size_of::<AckTransmissionState>());
+        #[cfg(target_pointer_width = "32")]
+        assert_debug_snapshot!("AckTransmissionState32", size_of::<AckTransmissionState>());
     }
 }

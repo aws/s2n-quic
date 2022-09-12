@@ -1,0 +1,6 @@
+---
+source: quic/s2n-quic-transport/src/ack/ack_manager.rs
+assertion_line: 636
+expression: "size_of::<AckManager>()"
+---
+128

@@ -288,7 +288,10 @@ mod tests {
         use core::mem::size_of;
         use insta::assert_debug_snapshot;
 
+        #[cfg(target_pointer_width = "64")]
         assert_debug_snapshot!("AckRanges", size_of::<AckRanges>());
+        #[cfg(target_pointer_width = "32")]
+        assert_debug_snapshot!("AckRanges32", size_of::<AckRanges>());
     }
 
     #[test]

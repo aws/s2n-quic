@@ -142,7 +142,12 @@ impl havoc::Random for Random {
     }
 
     fn gen_range(&mut self, range: std::ops::Range<usize>) -> usize {
-        self.inner.gen_range(range)
+        // make sure 32-bit and 64-bit platforms have the same generation in tests
+        let range = std::ops::Range {
+            start: range.start as u32,
+            end: range.end as u32,
+        };
+        self.inner.gen_range(range) as usize
     }
 }
 
