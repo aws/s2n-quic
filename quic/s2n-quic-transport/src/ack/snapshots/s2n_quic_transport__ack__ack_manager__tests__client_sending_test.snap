@@ -1,8 +1,7 @@
 ---
 source: quic/s2n-quic-transport/src/ack/ack_manager.rs
-assertion_line: 552
+assertion_line: 644
 expression: "Simulation{network:\n               Network{client:\n                           Application::new(Endpoint::new(ack::Settings{max_ack_delay:\n                                                                            Duration::from_millis(25),\n                                                                        ack_delay_exponent:\n                                                                            1,\n                                                                                 ..Default::default()}),\n                                            [Duration::from_millis(5)].iter().cycle().take(100).cloned()).into(),\n                       server:\n                           Application::new(Endpoint::new(ack::Settings{max_ack_delay:\n                                                                            Duration::from_millis(25),\n                                                                        ack_delay_exponent:\n                                                                            1,\n                                                                                 ..Default::default()}),\n                                            empty()).into(),},\n           events: empty().collect(),\n           delay: Duration::from_millis(0),}.run()"
-
 ---
 Report {
     client: EndpointReport {
@@ -10,40 +9,40 @@ Report {
             {
                 PacketNumber(
                     ApplicationData,
-                    19,
+                    16,
                 )..=PacketNumber(
                     ApplicationData,
-                    19,
+                    16,
                 ),
             },
         ),
-        total_transmissions: 101,
+        total_transmissions: 100,
         ack_eliciting_transmissions: 100,
-        ack_transmissions: 20,
+        ack_transmissions: 16,
         congested_transmissions: 0,
         dropped_transmissions: 0,
         delayed_transmissions: 0,
-        processed_transmissions: 101,
+        processed_transmissions: 100,
     },
     server: EndpointReport {
         pending_ack_ranges: AckRanges(
             {
                 PacketNumber(
                     ApplicationData,
-                    100,
+                    90,
                 )..=PacketNumber(
                     ApplicationData,
-                    100,
+                    99,
                 ),
             },
         ),
-        total_transmissions: 20,
-        ack_eliciting_transmissions: 4,
-        ack_transmissions: 20,
+        total_transmissions: 17,
+        ack_eliciting_transmissions: 3,
+        ack_transmissions: 17,
         congested_transmissions: 0,
         dropped_transmissions: 0,
         delayed_transmissions: 0,
-        processed_transmissions: 20,
+        processed_transmissions: 17,
     },
-    iterations: 122,
+    iterations: 118,
 }
