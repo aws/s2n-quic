@@ -187,12 +187,14 @@ impl Limits {
     // internal APIs
 
     #[doc(hidden)]
+    #[inline]
     pub fn load_peer<A, B, C, D>(&mut self, peer_parameters: &TransportParameters<A, B, C, D>) {
         self.max_idle_timeout
             .load_peer(&peer_parameters.max_idle_timeout);
     }
 
     #[doc(hidden)]
+    #[inline]
     pub const fn ack_settings(&self) -> ack::Settings {
         ack::Settings {
             ack_delay_exponent: self.ack_delay_exponent.as_u8(),
@@ -203,6 +205,7 @@ impl Limits {
     }
 
     #[doc(hidden)]
+    #[inline]
     pub const fn initial_flow_control_limits(&self) -> InitialFlowControlLimits {
         InitialFlowControlLimits {
             stream_limits: self.initial_stream_limits(),
@@ -217,6 +220,7 @@ impl Limits {
     }
 
     #[doc(hidden)]
+    #[inline]
     pub const fn initial_stream_limits(&self) -> InitialStreamLimits {
         InitialStreamLimits {
             max_data_bidi_local: self.bidirectional_local_data_window.as_varint(),
@@ -226,6 +230,7 @@ impl Limits {
     }
 
     #[doc(hidden)]
+    #[inline]
     pub fn stream_limits(&self) -> stream::Limits {
         stream::Limits {
             max_send_buffer_size: self.max_send_buffer_size,
@@ -235,16 +240,19 @@ impl Limits {
     }
 
     #[doc(hidden)]
+    #[inline]
     pub fn max_idle_timeout(&self) -> Option<Duration> {
         self.max_idle_timeout.as_duration()
     }
 
     #[doc(hidden)]
+    #[inline]
     pub fn max_handshake_duration(&self) -> Duration {
         self.max_handshake_duration
     }
 
     #[doc(hidden)]
+    #[inline]
     pub fn max_keep_alive_period(&self) -> Duration {
         self.max_keep_alive_period
     }

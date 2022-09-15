@@ -23,6 +23,7 @@ use s2n_quic_core::{
     ack, connection, endpoint,
     event::{self, IntoEvent},
     frame,
+    memo::Memo,
     packet::number::PacketNumber,
     stateless_reset, transport,
 };
@@ -57,10 +58,16 @@ pub struct PeerIdRegistry {
     /// The shared state between mapper and registration
     state: Arc<Mutex<ConnectionIdMapperState>>,
     /// The connection IDs which are currently registered
-    registered_ids: SmallVec<[PeerIdInfo; NR_STATIC_REGISTRABLE_IDS]>,
+    registered_ids: RegisteredIds,
     /// The largest retire prior to value that has been received from the peer
     retire_prior_to: u32,
+    /// Memoized query to track if there is any ACK interest
+    ack_interest: Memo<bool, RegisteredIds>,
+    /// Memoized query to track if there is any transmission interest
+    transmission_interest: Memo<transmission::Interest, RegisteredIds>,
 }
+
+type RegisteredIds = SmallVec<[PeerIdInfo; NR_STATIC_REGISTRABLE_IDS]>;
 
 #[derive(Debug, Clone)]
 struct PeerIdInfo {
@@ -81,7 +88,7 @@ struct PeerIdInfo {
 impl PeerIdInfo {
     /// Returns true if this ID is ready to be retired
     fn is_retire_ready(&self, retire_prior_to: u32) -> bool {
-        self.status.is_active() && self.sequence_number < retire_prior_to
+        self.is_active() && self.sequence_number < retire_prior_to
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9000#section-19.15
@@ -120,6 +127,21 @@ impl PeerIdInfo {
         // This was a valid non-duplicate new connection ID
         Ok(false)
     }
+
+    /// Returns true if this PeerId may be used to send packets to the peer
+    fn is_active(&self) -> bool {
+        matches!(self.status, New | InUse | InUsePendingNewConnectionId)
+    }
+
+    /// Returns true if the status of this ID allows for transmission
+    /// based on the transmission constraint
+    fn transmission_interest(&self) -> transmission::Interest {
+        match self.status {
+            PendingRetirementRetransmission => transmission::Interest::LostData,
+            PendingRetirement => transmission::Interest::NewData,
+            _ => transmission::Interest::None,
+        }
+    }
 }
 
 /// The current status of the connection ID.
@@ -144,23 +166,6 @@ enum PeerIdStatus {
     /// the retire frame. When acknowledgement of that packet is received, the connection ID is
     /// removed.
     PendingAcknowledgement(PacketNumber),
-}
-
-impl PeerIdStatus {
-    /// Returns true if this PeerId may be used to send packets to the peer
-    fn is_active(&self) -> bool {
-        matches!(self, New | InUse | InUsePendingNewConnectionId)
-    }
-
-    /// Returns true if the status of this ID allows for transmission
-    /// based on the transmission constraint
-    fn can_transmit(&self, constraint: transmission::Constraint) -> bool {
-        match self {
-            PendingRetirementRetransmission => constraint.can_retransmit(),
-            PendingRetirement => constraint.can_transmit(),
-            _ => false,
-        }
-    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -224,18 +229,15 @@ impl From<PeerIdRegistrationError> for transport::Error {
 
 impl Drop for PeerIdRegistry {
     fn drop(&mut self) {
-        let mut guard = self
-            .state
-            .lock()
-            .expect("should succeed unless the lock is poisoned");
-
-        // Stop tracking all associated stateless reset tokens
-        for token in self
-            .registered_ids
-            .iter()
-            .flat_map(|id_info| id_info.stateless_reset_token)
-        {
-            guard.stateless_reset_map.remove(&token);
+        if let Ok(mut guard) = self.state.lock() {
+            // Stop tracking all associated stateless reset tokens
+            for token in self
+                .registered_ids
+                .iter()
+                .flat_map(|id_info| id_info.stateless_reset_token)
+            {
+                guard.stateless_reset_map.remove(&token);
+            }
         }
     }
 }
@@ -251,6 +253,24 @@ impl PeerIdRegistry {
             state,
             registered_ids: SmallVec::new(),
             retire_prior_to: 0,
+            ack_interest: Memo::new(|ids| {
+                for id in ids.iter() {
+                    if matches!(id.status, PendingAcknowledgement(_)) {
+                        return true;
+                    }
+                }
+
+                false
+            }),
+            transmission_interest: Memo::new(|ids| {
+                let mut interest = transmission::Interest::None;
+
+                for id_info in ids {
+                    interest = interest.max(id_info.transmission_interest());
+                }
+
+                interest
+            }),
         }
     }
 
@@ -273,6 +293,8 @@ impl PeerIdRegistry {
             // during the handshake is rotated as soon as the peer sends a new connection ID
             status: PeerIdStatus::InUsePendingNewConnectionId,
         });
+
+        self.check_consistency();
     }
 
     /// Used to register the initial peer stateless reset token that applies to the connection ID
@@ -339,9 +361,10 @@ impl PeerIdRegistry {
                 //# RETIRE_CONNECTION_ID frames before adding the newly provided
                 //# connection ID to the set of active connection IDs.
                 id_info.status = PendingRetirement;
+                self.transmission_interest.clear();
             }
 
-            if id_info.status.is_active() {
+            if id_info.is_active() {
                 active_id_count += 1;
             }
 
@@ -371,9 +394,10 @@ impl PeerIdRegistry {
             //# ID, unless it has already done so for that sequence number.
             if new_id_info.is_retire_ready(self.retire_prior_to) {
                 new_id_info.status = PendingRetirement;
+                self.transmission_interest.clear();
             }
 
-            if new_id_info.status.is_active() {
+            if new_id_info.is_active() {
                 active_id_count += 1;
 
                 if let Some(mut id_pending_new_connection_id) = id_pending_new_connection_id {
@@ -381,6 +405,7 @@ impl PeerIdRegistry {
                     // now that we know we aren't processing a duplicate NEW_CONNECTION_ID and the
                     // new connection ID wasn't immediately retired.
                     id_pending_new_connection_id.status = PendingRetirement;
+                    self.transmission_interest.clear();
                     // We retired one active connection ID
                     active_id_count -= 1;
                 }
@@ -400,7 +425,7 @@ impl PeerIdRegistry {
 
         self.check_retired_connection_id_limit(retired_id_count)?;
 
-        self.ensure_no_duplicates();
+        self.check_consistency();
 
         Ok(())
     }
@@ -409,21 +434,37 @@ impl PeerIdRegistry {
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         let constraint = context.transmission_constraint();
 
+        if !self
+            .transmission_interest
+            .get(&self.registered_ids)
+            .can_transmit(constraint)
+        {
+            return;
+        }
+
         for id_info in self
             .registered_ids
             .iter_mut()
-            .filter(|id_info| id_info.status.can_transmit(constraint))
+            .filter(|id_info| id_info.transmission_interest().can_transmit(constraint))
         {
             if let Some(packet_number) = context.write_frame(&frame::RetireConnectionId {
                 sequence_number: id_info.sequence_number.into(),
             }) {
                 id_info.status = PendingAcknowledgement(packet_number);
+                self.transmission_interest.clear();
+                self.ack_interest.clear();
             }
         }
+
+        self.check_consistency();
     }
 
     /// Removes connection IDs that were pending acknowledgement
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+        if !self.ack_interest.get(&self.registered_ids) {
+            return;
+        }
+
         let mut mapper_state = self
             .state
             .lock()
@@ -440,6 +481,9 @@ impl PeerIdRegistry {
                         //# been retired.
                         mapper_state.stateless_reset_map.remove(&token);
                     }
+
+                    self.ack_interest.clear();
+
                     //= https://www.rfc-editor.org/rfc/rfc9000#section-5.1.2
                     //# An endpoint MUST NOT forget a connection ID without retiring it
                     // Don't retain the ID since the retirement was acknowledged
@@ -450,25 +494,35 @@ impl PeerIdRegistry {
             // Retain IDs that weren't PendingAcknowledgement or weren't acknowledged
             true
         });
+
+        self.check_consistency();
     }
 
     /// Sets the retransmit flag to true for connection IDs pending acknowledgement with a lost
     /// packet number
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+        if !self.ack_interest.get(&self.registered_ids) {
+            return;
+        }
+
         for id_info in self.registered_ids.iter_mut() {
             if let PendingAcknowledgement(packet_number) = id_info.status {
                 if ack_set.contains(packet_number) {
                     id_info.status = PendingRetirementRetransmission;
+                    self.ack_interest.clear();
+                    self.transmission_interest.clear();
                 }
             }
         }
+
+        self.check_consistency();
     }
 
     /// Checks if the peer_id exists and if it is active.
     pub fn is_active(&self, peer_id: &connection::PeerId) -> bool {
         self.registered_ids
             .iter()
-            .any(|id_info| peer_id == &id_info.id && id_info.status.is_active())
+            .any(|id_info| peer_id == &id_info.id && id_info.is_active())
     }
 
     /// Tries to consume a new peer_id if one is available.
@@ -534,7 +588,7 @@ impl PeerIdRegistry {
             active_id_count,
             self.registered_ids
                 .iter()
-                .filter(|id_info| id_info.status.is_active())
+                .filter(|id_info| id_info.is_active())
                 .count()
         );
 
@@ -560,7 +614,7 @@ impl PeerIdRegistry {
             retired_id_count,
             self.registered_ids
                 .iter()
-                .filter(|id_info| !id_info.status.is_active())
+                .filter(|id_info| !id_info.is_active())
                 .count()
         );
 
@@ -580,8 +634,12 @@ impl PeerIdRegistry {
         Ok(())
     }
 
-    fn ensure_no_duplicates(&self) {
+    fn check_consistency(&self) {
         if cfg!(debug_assertions) {
+            self.ack_interest.check_consistency(&self.registered_ids);
+            self.transmission_interest
+                .check_consistency(&self.registered_ids);
+
             let before_count = self.registered_ids.len();
             let mut registered_id_copy = self.registered_ids.to_vec();
             registered_id_copy.sort_by_key(|id_info| id_info.sequence_number);
@@ -607,21 +665,8 @@ impl transmission::interest::Provider for PeerIdRegistry {
         &self,
         query: &mut Q,
     ) -> transmission::interest::Result {
-        for id_info in self.registered_ids.iter() {
-            match id_info.status {
-                PendingRetirement => {
-                    query.on_new_data()?;
-                }
-                PendingRetirementRetransmission => {
-                    query.on_lost_data()?;
-                    // `LostData` is the highest precedent interest we provide,
-                    // so we don't need to keep iterating to check other IDs
-                    break;
-                }
-                _ => {}
-            }
-        }
-
+        let interest = self.transmission_interest.get(&self.registered_ids);
+        query.on_interest(interest)?;
         Ok(())
     }
 }

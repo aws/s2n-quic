@@ -19,6 +19,7 @@ pub mod frame;
 pub mod havoc;
 pub mod inet;
 pub mod io;
+pub mod memo;
 pub mod number;
 pub mod packet;
 pub mod path;

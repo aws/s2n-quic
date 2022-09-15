@@ -571,6 +571,7 @@ fn on_transmit() {
 
     // Switch ID 3 to PendingReissue
     reg1.get_connection_id_info_mut(&ext_id_3).unwrap().status = PendingReissue;
+    reg1.transmission_interest.clear();
 
     assert_eq!(
         transmission::Interest::LostData,
@@ -638,6 +639,7 @@ fn on_transmit_constrained() {
     assert!(write_context.frame_buffer.is_empty());
 
     reg1.get_connection_id_info_mut(&ext_id_2).unwrap().status = PendingReissue;
+    reg1.transmission_interest.clear();
 
     assert_eq!(
         transmission::Interest::LostData,
@@ -744,19 +746,16 @@ fn timers() {
     reg1.get_connection_id_info_mut(&ext_id_1)
         .unwrap()
         .retire(Some(now));
-    reg1.update_timers();
+    reg1.next_expiration.clear();
 
     // Expiration timer is armed based on removal time
     assert_eq!(1, reg1.armed_timer_count());
-    assert_eq!(
-        Some(now + EXPIRATION_BUFFER),
-        reg1.expiration_timer.next_expiration()
-    );
+    assert_eq!(Some(now + EXPIRATION_BUFFER), reg1.next_expiration());
 
     reg1.get_connection_id_info_mut(&ext_id_2)
         .unwrap()
         .retire(Some(now));
-    reg1.update_timers();
+    reg1.next_expiration.clear();
 
     // Expiration timer is armed based on removal time
     assert_eq!(1, reg1.armed_timer_count());
@@ -789,17 +788,14 @@ fn on_timeout() {
     // Too early, no timer is ready
     reg1.on_timeout(now);
 
-    assert_eq!(
-        Some(handshake_expiration),
-        reg1.expiration_timer.next_expiration()
-    );
+    assert_eq!(Some(handshake_expiration), reg1.next_expiration());
     assert!(reg1.get_connection_id_info(&ext_id_1).is_some());
 
     // Now the expiration timer is ready
     reg1.on_timeout(handshake_expiration);
     // ID 1 was removed since it expired
     assert!(reg1.get_connection_id_info(&ext_id_1).is_none());
-    assert!(!reg1.expiration_timer.is_armed());
+    assert!(reg1.next_expiration().is_none());
 
     let expiration_2 = now + Duration::from_secs(60);
     let expiration_3 = now + Duration::from_secs(120);
@@ -814,7 +810,7 @@ fn on_timeout() {
     // Expiration timer is set based on the retirement time of ID 2
     assert_eq!(
         Some(expiration_2 - EXPIRATION_BUFFER),
-        reg1.expiration_timer.next_expiration()
+        reg1.next_expiration()
     );
 
     reg1.on_timeout(expiration_2 - EXPIRATION_BUFFER);
@@ -825,7 +821,7 @@ fn on_timeout() {
         reg1.get_connection_id_info(&ext_id_2).unwrap().status
     );
     // Expiration timer is set to the expiration time of ID 2
-    assert_eq!(Some(expiration_2), reg1.expiration_timer.next_expiration());
+    assert_eq!(Some(expiration_2), reg1.next_expiration());
 
     reg1.on_timeout(expiration_2);
 
@@ -834,7 +830,7 @@ fn on_timeout() {
     // Expiration timer is set to the retirement time of ID 3
     assert_eq!(
         Some(expiration_3 - EXPIRATION_BUFFER),
-        reg1.expiration_timer.next_expiration()
+        reg1.next_expiration()
     );
 }
 

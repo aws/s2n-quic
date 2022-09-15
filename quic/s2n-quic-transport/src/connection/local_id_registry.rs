@@ -12,6 +12,7 @@ use crate::{
 use core::convert::TryInto;
 use s2n_quic_core::{
     ack, connection, frame,
+    memo::Memo,
     packet::number::PacketNumber,
     stateless_reset,
     time::{timer, Duration, Timer, Timestamp},
@@ -70,16 +71,24 @@ pub struct LocalIdRegistry {
     /// The shared state between mapper and registration
     state: Arc<Mutex<ConnectionIdMapperState>>,
     /// The connection IDs which are currently registered at the ConnectionIdMapper
-    registered_ids: SmallVec<[LocalIdInfo; NR_STATIC_REGISTRABLE_IDS]>,
+    registered_ids: RegisteredIds,
     /// The sequence number to use the next time a new connection ID is registered
     next_sequence_number: u32,
     /// The current sequence number below which all connection IDs are considered retired
     retire_prior_to: u32,
     /// The maximum number of connection IDs to give to the peer
     active_connection_id_limit: u8,
-    /// Timer set to track retiring and expired connection IDs
-    expiration_timer: Timer,
+    /// Memoized query to track retiring and expired connection IDs
+    next_expiration: Memo<Option<Timestamp>, RegisteredIds>,
+    /// Memoized query to track if there is any ACK interest
+    ack_interest: Memo<bool, RegisteredIds>,
+    /// Memoized query to track if there is any transmission interest
+    transmission_interest: Memo<transmission::Interest, RegisteredIds>,
+    /// Memoized query to track the number of active CIDs
+    active_id_count: Memo<u8, RegisteredIds>,
 }
+
+type RegisteredIds = SmallVec<[LocalIdInfo; NR_STATIC_REGISTRABLE_IDS]>;
 
 #[derive(Debug)]
 struct LocalIdInfo {
@@ -124,6 +133,7 @@ impl LocalIdInfo {
     }
 
     // The time this connection ID should be removed
+    #[inline]
     fn removal_time(&self) -> Option<Timestamp> {
         match self.status {
             PendingRetirementConfirmation(removal_time) => removal_time,
@@ -137,6 +147,24 @@ impl LocalIdInfo {
     fn retire(&mut self, timestamp: Option<Timestamp>) {
         debug_assert!(!self.is_retired());
         self.status = PendingRetirementConfirmation(timestamp.map(|time| time + EXPIRATION_BUFFER))
+    }
+
+    #[inline]
+    fn transmission_interest(&self) -> transmission::Interest {
+        match self.status {
+            PendingIssuance => transmission::Interest::NewData,
+            PendingReissue => transmission::Interest::LostData,
+            _ => transmission::Interest::None,
+        }
+    }
+
+    /// Returns true if this status counts towards the active_connection_id_limit
+    #[inline]
+    fn counts_towards_limit(&self) -> bool {
+        !matches!(
+            self.status,
+            PendingRetirementConfirmation(_) | PendingRemoval(_)
+        )
     }
 }
 
@@ -170,22 +198,6 @@ pub enum LocalIdStatus {
     PendingRemoval(Timestamp),
 }
 
-impl LocalIdStatus {
-    /// Returns true if this status counts towards the active_connection_id_limit
-    fn counts_towards_limit(&self) -> bool {
-        !matches!(self, PendingRetirementConfirmation(_) | PendingRemoval(_))
-    }
-
-    /// Returns true if this status allows for transmission based on the transmission constraint
-    fn can_transmit(&self, constraint: transmission::Constraint) -> bool {
-        match self {
-            PendingReissue => constraint.can_retransmit(),
-            PendingIssuance => constraint.can_transmit(),
-            _ => false,
-        }
-    }
-}
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum LocalIdRegistrationError {
     /// The Connection ID had already been registered
@@ -205,18 +217,15 @@ impl LocalIdRegistrationError {
 
 impl Drop for LocalIdRegistry {
     fn drop(&mut self) {
-        let mut guard = self
-            .state
-            .lock()
-            .expect("should succeed unless the lock is poisoned");
+        if let Ok(mut guard) = self.state.lock() {
+            // Unregister all previously registered IDs
+            for id_info in &self.registered_ids {
+                guard.local_id_map.remove(&id_info.id);
+            }
 
-        // Unregister all previously registered IDs
-        for id_info in &self.registered_ids {
-            guard.local_id_map.remove(&id_info.id);
+            // Also clean up the initial ID if it had not already been removed
+            guard.initial_id_map.remove(&self.internal_id);
         }
-
-        // Also clean up the initial ID if it had not already been removed
-        guard.initial_id_map.remove(&self.internal_id);
     }
 }
 
@@ -238,7 +247,38 @@ impl LocalIdRegistry {
             // Initialize to 1 until we know the actual limit
             // from the peer transport parameters
             active_connection_id_limit: 1,
-            expiration_timer: Timer::default(),
+            next_expiration: Memo::new(|ids| {
+                ids.iter()
+                    .filter_map(|id_info| id_info.next_status_change_time())
+                    .min()
+            }),
+            ack_interest: Memo::new(|ids| {
+                for id in ids.iter() {
+                    if matches!(id.status, PendingAcknowledgement(_)) {
+                        return true;
+                    }
+                }
+
+                false
+            }),
+            transmission_interest: Memo::new(|ids| {
+                let mut interest = transmission::Interest::None;
+
+                for id_info in ids {
+                    interest = interest.max(id_info.transmission_interest());
+                }
+
+                interest
+            }),
+            active_id_count: Memo::new(|ids| {
+                let mut count = 0;
+                for id in ids {
+                    if id.counts_towards_limit() {
+                        count += 1;
+                    }
+                }
+                count
+            }),
         };
 
         let _ = registry.register_connection_id(
@@ -256,10 +296,13 @@ impl LocalIdRegistry {
         // The handshake connection ID is sent in the Initial packet,
         // so it starts in the `Active` status.
         handshake_connection_id_info.status = Active;
+        registry.transmission_interest.clear();
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-5.1.1
         //# The sequence number of the initial connection ID is 0.
         debug_assert_eq!(handshake_connection_id_info.sequence_number, 0);
+
+        registry.check_consistency();
 
         registry
     }
@@ -301,39 +344,40 @@ impl LocalIdRegistry {
         self.validate_new_connection_id(stateless_reset_token);
 
         // Try to insert into the global map
-        if self
-            .state
+        self.state
             .lock()
             .expect("should succeed unless the lock is poisoned")
             .local_id_map
             .try_insert(id, self.internal_id)
-            .is_ok()
-        {
-            let sequence_number = self.next_sequence_number;
-            let retirement_time = expiration.map(|expiration| expiration - EXPIRATION_BUFFER);
+            .map_err(|_| LocalIdRegistrationError::ConnectionIdInUse)?;
 
-            // Track the inserted connection ID info
-            self.registered_ids.push(LocalIdInfo {
-                id: *id,
-                sequence_number,
-                retirement_time,
-                stateless_reset_token,
-                status: PendingIssuance,
-            });
-            //= https://www.rfc-editor.org/rfc/rfc9000#section-5.1.1
-            //# The sequence number on
-            //# each newly issued connection ID MUST increase by 1.
-            self.next_sequence_number += 1;
+        let sequence_number = self.next_sequence_number;
+        let retirement_time = expiration.map(|expiration| expiration - EXPIRATION_BUFFER);
 
-            // If we are provided an expiration, update the timers
-            if expiration.is_some() {
-                self.update_timers();
-            }
+        // Track the inserted connection ID info
+        self.registered_ids.push(LocalIdInfo {
+            id: *id,
+            sequence_number,
+            retirement_time,
+            stateless_reset_token,
+            status: PendingIssuance,
+        });
+        self.active_id_count.clear();
+        self.transmission_interest.clear();
 
-            Ok(())
-        } else {
-            Err(LocalIdRegistrationError::ConnectionIdInUse)
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-5.1.1
+        //# The sequence number on
+        //# each newly issued connection ID MUST increase by 1.
+        self.next_sequence_number += 1;
+
+        // If we are provided an expiration, update the timers
+        if expiration.is_some() {
+            self.next_expiration.clear();
         }
+
+        self.check_consistency();
+
+        Ok(())
     }
 
     /// Unregisters connection IDs that have expired
@@ -351,6 +395,13 @@ impl LocalIdRegistry {
                         remove_result.is_some(),
                         "Connection ID should have been stored in mapper"
                     );
+
+                    // clear all of the memoized values
+                    self.ack_interest.clear();
+                    self.transmission_interest.clear();
+                    self.active_id_count.clear();
+                    self.next_expiration.clear();
+
                     false // Don't retain
                 } else {
                     true // Retain
@@ -358,8 +409,7 @@ impl LocalIdRegistry {
             });
         }
 
-        // Update the timers since we may have just removed the next retiring or expired id
-        self.update_timers()
+        self.check_consistency();
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9000#section-5.1.1
@@ -396,7 +446,7 @@ impl LocalIdRegistry {
             .filter(|id_info| !matches!(id_info.status, PendingRemoval(_)))
             .find(|id_info| id_info.sequence_number == sequence_number);
 
-        if let Some(mut id_info) = id_info {
+        if let Some(id_info) = id_info {
             if id_info.id == *destination_connection_id {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-19.16
                 //# The sequence number specified in a RETIRE_CONNECTION_ID frame MUST
@@ -414,19 +464,23 @@ impl LocalIdRegistry {
             let removal_time = timestamp + rtt * RTT_MULTIPLIER;
 
             id_info.status = PendingRemoval(removal_time);
-            self.update_timers();
+
+            // clear all of the memoized values
+            self.ack_interest.clear();
+            self.transmission_interest.clear();
+            self.active_id_count.clear();
+            self.next_expiration.clear();
         }
+
+        self.check_consistency();
 
         Ok(())
     }
 
     /// Returns the mappers interest in new connection IDs
+    #[inline]
     pub fn connection_id_interest(&self) -> connection::id::Interest {
-        let active_connection_id_count = self
-            .registered_ids
-            .iter()
-            .filter(|id_info| id_info.status.counts_towards_limit())
-            .count() as u8;
+        let active_connection_id_count = self.active_id_count.get(&self.registered_ids);
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-5.1.1
         //# An endpoint SHOULD ensure that its peer has a sufficient number of
@@ -461,28 +515,44 @@ impl LocalIdRegistry {
     ///
     /// `timestamp` passes the current time.
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
-        if self.expiration_timer.poll_expiration(timestamp).is_ready() {
+        if self.timer().poll_expiration(timestamp).is_ready() {
             for id_info in self
                 .registered_ids
                 .iter_mut()
                 .filter(|id_info| id_info.is_retire_ready(timestamp))
             {
                 id_info.retire(Some(timestamp));
-                self.retire_prior_to = self.retire_prior_to.max(id_info.sequence_number + 1)
+                self.retire_prior_to = self.retire_prior_to.max(id_info.sequence_number + 1);
+
+                // clear all of the memoized values
+                self.ack_interest.clear();
+                self.transmission_interest.clear();
+                self.active_id_count.clear();
+                self.next_expiration.clear();
             }
 
             self.unregister_expired_ids(timestamp);
         }
+
+        self.check_consistency();
     }
 
     /// Writes any NEW_CONNECTION_ID frames necessary to the given context
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         let constraint = context.transmission_constraint();
 
+        if !self
+            .transmission_interest
+            .get(&self.registered_ids)
+            .can_transmit(constraint)
+        {
+            return;
+        }
+
         for mut id_info in self
             .registered_ids
             .iter_mut()
-            .filter(|id_info| id_info.status.can_transmit(constraint))
+            .filter(|id_info| id_info.transmission_interest().can_transmit(constraint))
         {
             if let Some(packet_number) = context.write_frame(&frame::NewConnectionId {
                 sequence_number: id_info.sequence_number.into(),
@@ -495,12 +565,20 @@ impl LocalIdRegistry {
                     .expect("Length is already checked"),
             }) {
                 id_info.status = PendingAcknowledgement(packet_number);
+                self.transmission_interest.clear();
+                self.ack_interest.clear();
             }
         }
+
+        self.check_consistency();
     }
 
     /// Activates connection IDs that were pending acknowledgement
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+        if !self.ack_interest.get(&self.registered_ids) {
+            return;
+        }
+
         for mut id_info in self.registered_ids.iter_mut() {
             if let PendingAcknowledgement(packet_number) = id_info.status {
                 if ack_set.contains(packet_number) {
@@ -508,20 +586,33 @@ impl LocalIdRegistry {
                     // Once the NEW_CONNECTION_ID is acknowledged, we don't need the
                     // stateless reset token anymore.
                     id_info.stateless_reset_token = stateless_reset::Token::ZEROED;
+
+                    self.ack_interest.clear();
                 }
             }
         }
+
+        self.check_consistency();
     }
 
     /// Moves connection IDs pending acknowledgement into pending reissue
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+        if !self.ack_interest.get(&self.registered_ids) {
+            return;
+        }
+
         for mut id_info in self.registered_ids.iter_mut() {
             if let PendingAcknowledgement(packet_number) = id_info.status {
                 if ack_set.contains(packet_number) {
                     id_info.status = PendingReissue;
+
+                    self.ack_interest.clear();
+                    self.transmission_interest.clear();
                 }
             }
         }
+
+        self.check_consistency();
     }
 
     /// Requests the peer to retire the connection id used during the handshake
@@ -546,36 +637,23 @@ impl LocalIdRegistry {
             self.retire_prior_to = self
                 .retire_prior_to
                 .max(handshake_id_info.sequence_number + 1);
+
+            self.active_id_count.clear();
+            self.next_expiration.clear();
+            self.transmission_interest.clear();
         }
 
-        self.update_timers();
-    }
-
-    /// Updates the expiration timer based on the current registered connection IDs
-    fn update_timers(&mut self) {
-        if let Some(timestamp) = self.next_status_change_time() {
-            self.expiration_timer.set(timestamp);
-        } else {
-            self.expiration_timer.cancel();
-        }
-    }
-
-    /// Gets the next time any of the registered IDs are expected to change their status
-    fn next_status_change_time(&self) -> Option<Timestamp> {
-        self.registered_ids
-            .iter()
-            .filter_map(|id_info| id_info.next_status_change_time())
-            .min()
+        self.check_consistency();
     }
 
     /// Validate that the current expiration timer is based on the next status change time
-    fn check_timer_integrity(&self) {
+    fn check_consistency(&self) {
         if cfg!(debug_assertions) {
-            use timer::Provider;
-            assert_eq!(
-                self.expiration_timer.next_expiration(),
-                self.next_status_change_time()
-            );
+            self.next_expiration.check_consistency(&self.registered_ids);
+            self.ack_interest.check_consistency(&self.registered_ids);
+            self.transmission_interest
+                .check_consistency(&self.registered_ids);
+            self.active_id_count.check_consistency(&self.registered_ids);
         }
     }
 
@@ -603,14 +681,16 @@ impl LocalIdRegistry {
         }
     }
 
+    #[inline]
+    fn timer(&self) -> Timer {
+        Timer::from(self.next_expiration.get(&self.registered_ids))
+    }
+
     fn validate_new_connection_id(&self, new_token: stateless_reset::Token) {
         if cfg!(debug_assertions) {
+            let active_count = self.active_id_count.get(&self.registered_ids);
             assert!(
-                self.registered_ids
-                    .iter()
-                    .filter(|id_info| id_info.status.counts_towards_limit())
-                    .count()
-                    < self.active_connection_id_limit as usize,
+                active_count < self.active_connection_id_limit,
                 "Attempted to register more connection IDs than the active connection id limit: {}",
                 self.active_connection_id_limit
             );
@@ -630,9 +710,7 @@ impl LocalIdRegistry {
 impl timer::Provider for LocalIdRegistry {
     #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
-        self.check_timer_integrity();
-        self.expiration_timer.timers(query)?;
-
+        query.on_timer(&self.timer())?;
         Ok(())
     }
 }
@@ -643,19 +721,8 @@ impl transmission::interest::Provider for LocalIdRegistry {
         &self,
         query: &mut Q,
     ) -> transmission::interest::Result {
-        for id_info in self.registered_ids.iter() {
-            match id_info.status {
-                PendingReissue => {
-                    query.on_lost_data()?;
-                    break;
-                }
-                PendingIssuance => {
-                    query.on_new_data()?;
-                }
-                _ => {}
-            }
-        }
-
+        let interest = self.transmission_interest.get(&self.registered_ids);
+        query.on_interest(interest)?;
         Ok(())
     }
 }

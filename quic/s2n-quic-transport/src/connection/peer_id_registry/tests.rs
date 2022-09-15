@@ -146,7 +146,7 @@ fn active_connection_id_limit_must_be_at_least_2() {
         2,
         reg.registered_ids
             .iter()
-            .filter(|id_info| id_info.status.is_active())
+            .filter(|id_info| id_info.is_active())
             .count()
     );
 }

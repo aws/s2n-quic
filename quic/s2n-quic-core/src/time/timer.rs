@@ -59,6 +59,13 @@ impl Timer {
     }
 }
 
+impl From<Option<Timestamp>> for Timer {
+    #[inline]
+    fn from(expiration: Option<Timestamp>) -> Self {
+        Self { expiration }
+    }
+}
+
 /// Returned when a `Query` wants to end a timer query
 #[derive(Clone, Copy, Debug, Default)]
 pub struct QueryBreak;
