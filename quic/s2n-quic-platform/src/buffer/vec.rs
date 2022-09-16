@@ -70,3 +70,10 @@ impl DerefMut for VecBuffer {
         self.region.as_mut()
     }
 }
+
+impl Drop for VecBuffer {
+    fn drop(&mut self) {
+        // The buffer could contain sensitive data so release it before freeing the memory
+        zeroize::Zeroize::zeroize(&mut self.region[..]);
+    }
+}

@@ -64,48 +64,6 @@ impl Behavior for Occupied {
     }
 }
 
-/// Behavior for the Occupied Slice, with optional wiping
-///
-/// After being successfully consumed an occupied message
-/// should reset its payload_len to MTU. Additionally, if enabled
-/// with the `wipe` feature, the payload will be wiped to prevent
-/// sensitive data from persisting in memory.
-///
-/// Cancelling is a no-op.
-#[derive(Debug)]
-pub struct OccupiedWipe {
-    pub(crate) mtu: usize,
-}
-
-impl Behavior for OccupiedWipe {
-    fn advance<Message: message::Message>(
-        &self,
-        primary: &mut [Message],
-        secondary: &mut [Message],
-        start: usize,
-        end: usize,
-        overflow: usize,
-    ) {
-        // Because the primary and secondary messages point to the same
-        // payloads in memory, only wiping the first is required
-        wipe(&mut primary[start..end], self.mtu);
-        wipe(&mut primary[..overflow], self.mtu);
-        reset(&mut secondary[start..end], self.mtu);
-        reset(&mut secondary[..overflow], self.mtu);
-    }
-
-    /// Cancelling an occupied message doesn't mutate any state
-    fn cancel<Message: message::Message>(
-        &self,
-        _primary: &mut [Message],
-        _secondary: &mut [Message],
-        _start: usize,
-        _end: usize,
-        _overflow: usize,
-    ) {
-    }
-}
-
 /// Behavior of the Free Slice
 ///
 /// After successfully writing to free messages, the fields need
@@ -170,24 +128,6 @@ impl Behavior for Free {
 #[inline]
 fn reset<Message: message::Message>(messages: &mut [Message], mtu: usize) {
     for message in messages {
-        unsafe {
-            // Safety: the payloads should always be allocated regions of MTU
-            message.reset(mtu);
-        }
-    }
-}
-
-/// Wipes and resets all of the provided messages to an initial state
-///
-/// If the `wipe` feature is disabled, this behaves exactly like the reset
-#[inline]
-fn wipe<Message: message::Message>(messages: &mut [Message], mtu: usize) {
-    for message in messages {
-        // The payload could potentially contain sensitive data and should
-        // be zeroed out in addition to resetting the state
-        #[cfg(feature = "wipe")]
-        zeroize::Zeroize::zeroize(&mut message.payload_mut().iter_mut());
-
         unsafe {
             // Safety: the payloads should always be allocated regions of MTU
             message.reset(mtu);
