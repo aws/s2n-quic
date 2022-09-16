@@ -410,6 +410,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
 #[derive(Debug)]
 pub struct AbstractStreamManager<S> {
     pub(super) inner: StreamManagerState<S>,
+    last_blocked_sync_period: Duration,
 }
 
 // Sending the `AbstractStreamManager` between threads is safe, since we never expose the `Rc`s
@@ -454,6 +455,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
                 accept_state: AcceptState::new(local_endpoint_type),
                 stream_limits: connection_limits.stream_limits(),
             },
+            last_blocked_sync_period: Duration::ZERO,
         }
     }
 
@@ -627,6 +629,26 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     /// This method gets called when the RTT estimate is updated for the active path
     pub fn on_rtt_update(&mut self, rtt_estimator: &RttEstimator) {
         let blocked_sync_period = self.blocked_sync_period(rtt_estimator);
+
+        {
+            let last_blocked_sync_period = self.last_blocked_sync_period.as_millis() as u64;
+            let current_blocked_sync_period = blocked_sync_period.as_millis() as u64;
+
+            /// The number of milliseconds to which the change comparison is configured
+            ///
+            /// Ideally this number is a power of 2 so the computation is efficient
+            const SENSITIVITY_MS: u64 = 16;
+
+            // If we haven't changed a significant amount, there's no point in updating everything
+            if last_blocked_sync_period / SENSITIVITY_MS
+                == current_blocked_sync_period / SENSITIVITY_MS
+            {
+                return;
+            }
+        }
+
+        self.last_blocked_sync_period = blocked_sync_period;
+
         self.inner
             .stream_controller
             .update_blocked_sync_period(blocked_sync_period);

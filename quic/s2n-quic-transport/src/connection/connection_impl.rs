@@ -342,7 +342,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         //# commits to initiating an immediate close (Section 10.2) if it
         //# abandons the connection prior to the effective value.
 
-        let mut duration = self.limits.max_idle_timeout()?;
+        let mut duration = self.limits.max_idle_timeout()?.as_millis() as u64;
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-10.1
         //# To avoid excessively small idle timeout periods, endpoints MUST
@@ -350,9 +350,9 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         //# current Probe Timeout (PTO).  This allows for multiple PTOs to
         //# expire, and therefore multiple probes to be sent and lost, prior to
         //# idle timeout.
-        duration = duration.max(3 * self.current_pto());
+        duration = duration.max(3 * self.current_pto().as_millis() as u64);
 
-        Some(duration)
+        Some(Duration::from_millis(duration))
     }
 
     fn on_processed_packet(
