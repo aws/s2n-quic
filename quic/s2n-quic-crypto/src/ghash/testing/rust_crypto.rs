@@ -5,9 +5,8 @@ use crate::{
     block::LEN as BLOCK_LEN,
     ghash::testing::{GHash, Implementation},
 };
-use core::convert::TryInto;
 use ghash::{
-    universal_hash::{NewUniversalHash, UniversalHash},
+    universal_hash::{KeyInit, UniversalHash},
     GHash as Impl,
 };
 
@@ -15,10 +14,9 @@ impl GHash for Impl {
     fn hash(&self, input: &[u8]) -> [u8; BLOCK_LEN] {
         let mut state = self.clone();
         for block in input.chunks_exact(BLOCK_LEN) {
-            let block: [u8; BLOCK_LEN] = block.try_into().unwrap();
-            state.update(&block.into());
+            state.update_padded(block);
         }
-        state.finalize().into_bytes().into()
+        state.finalize().into()
     }
 }
 

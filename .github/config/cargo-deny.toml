@@ -4,7 +4,9 @@ unmaintained = "deny"
 notice = "deny"
 yanked = "deny"
 ignore = [
-    "RUSTSEC-2021-0127" # criterion (a test dependency) uses cbor for encoding
+    "RUSTSEC-2021-0127", # criterion (a test dependency) uses cbor for encoding
+    "RUSTSEC-2021-0139", # criterion, structopt, and tracing-subscriber (test dependencies) use ansi_term
+    "RUSTSEC-2022-0041", # bolero (a test dependency) needs to update its libtest-mimic dependency
 ]
 
 [bans]

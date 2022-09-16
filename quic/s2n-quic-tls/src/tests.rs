@@ -224,7 +224,7 @@ fn s2n_client_no_client_auth_s2n_server_requires_client_auth_test() {
     // but the client does not support it.
     assert!(test_result.is_err());
     let e = test_result.unwrap_err();
-    assert_eq!(e.description().unwrap(), "HANDSHAKE_FAILURE");
+    assert_eq!(e.description().unwrap(), "UNEXPECTED_MESSAGE");
 }
 
 #[test]
@@ -239,7 +239,7 @@ fn s2n_client_with_client_auth_s2n_server_does_not_require_client_auth_test() {
     // but the server does not support it.
     assert!(test_result.is_err());
     let e = test_result.unwrap_err();
-    assert_eq!(e.description().unwrap(), "HANDSHAKE_FAILURE");
+    assert_eq!(e.description().unwrap(), "UNEXPECTED_MESSAGE");
 }
 
 #[test]
