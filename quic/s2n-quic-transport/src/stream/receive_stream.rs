@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    buffer::{StreamReceiveBuffer, StreamReceiveBufferError},
     contexts::{OnTransmitError, WriteContext},
     stream::{
         incoming_connection_flow_controller::IncomingConnectionFlowController,
@@ -19,6 +18,9 @@ use core::{
 };
 use s2n_quic_core::{
     ack, application,
+    buffer::{
+        ReceiveBuffer as StreamReceiveBuffer, ReceiveBufferError as StreamReceiveBufferError,
+    },
     frame::{stream::StreamRef, MaxStreamData, ResetStream, StopSending, StreamDataBlocked},
     packet::number::PacketNumber,
     stream::{ops, StreamId},

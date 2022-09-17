@@ -1,15 +1,60 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::buffer::{
-    StreamReceiveBuffer, StreamReceiveBufferError, DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE,
-    MIN_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE,
-};
-use core::ops::Deref;
-use s2n_quic_core::varint::{VarInt, MAX_VARINT_VALUE};
+use super::*;
+use crate::varint::{VarInt, MAX_VARINT_VALUE};
+use bolero::{check, generator::*};
 
-fn new_receive_buffer() -> StreamReceiveBuffer {
-    let buffer = StreamReceiveBuffer::new();
+static BYTES: &[u8] = &[42u8; 9000];
+
+#[derive(Copy, Clone, Debug, TypeGenerator)]
+enum Op {
+    Write {
+        offset: VarInt,
+        #[generator(0..BYTES.len())]
+        len: usize,
+    },
+    Pop {
+        watermark: u16,
+    },
+}
+
+#[test]
+fn model_test() {
+    check!().with_type::<Vec<Op>>().for_each(|ops| {
+        let mut buffer = ReceiveBuffer::new();
+        for op in ops {
+            match *op {
+                Op::Write { offset, len } => {
+                    let _ = buffer.write_at(offset, &BYTES[..len]);
+                }
+                Op::Pop { watermark } => {
+                    if let Some(chunk) = buffer.pop_watermarked(watermark as _) {
+                        assert!(chunk.len() <= watermark as usize);
+                    }
+                }
+            }
+        }
+    })
+}
+
+#[test]
+fn write_and_pop() {
+    let mut buffer = ReceiveBuffer::new();
+    let mut offset = VarInt::default();
+    let mut popped_bytes = 0;
+    for _ in 0..10000 {
+        buffer.write_at(offset, BYTES).unwrap();
+        offset += BYTES.len();
+        while let Some(chunk) = buffer.pop() {
+            popped_bytes += chunk.len();
+        }
+    }
+    assert_eq!(offset, popped_bytes);
+}
+
+fn new_receive_buffer() -> ReceiveBuffer {
+    let buffer = ReceiveBuffer::new();
     assert_eq!(buffer.len(), 0);
     buffer
 }
@@ -302,7 +347,7 @@ fn chunk_partial_larger_after_test() {
 #[test]
 #[allow(clippy::cognitive_complexity)] // several operations are needed to get the buffer in the desired state
 fn write_and_read_buffer() {
-    let mut buf = StreamReceiveBuffer::new();
+    let mut buf = ReceiveBuffer::new();
 
     assert_eq!(0, buf.len());
     assert!(buf.is_empty());
@@ -311,7 +356,7 @@ fn write_and_read_buffer() {
     buf.write_at(0u32.into(), &[0, 1, 2, 3]).unwrap();
     assert_eq!(4, buf.len());
     assert!(!buf.is_empty());
-    assert_eq!(&[0u8, 1, 2, 3], buf.pop().unwrap().deref());
+    assert_eq!(&[0u8, 1, 2, 3], &*buf.pop().unwrap());
     assert_eq!(0, buf.len());
     assert!(buf.is_empty());
     assert_eq!(None, buf.pop());
@@ -322,7 +367,7 @@ fn write_and_read_buffer() {
 
     buf.write_at(2u32.into(), &[2, 3, 4, 5, 6]).unwrap();
     assert_eq!(3, buf.len());
-    assert_eq!(&[4, 5, 6], buf.pop().unwrap().deref());
+    assert_eq!(&[4, 5, 6], &*buf.pop().unwrap());
 
     // Create a gap
     buf.write_at(10u32.into(), &[10, 11, 12]).unwrap();
@@ -332,7 +377,7 @@ fn write_and_read_buffer() {
     // Fill the gap
     buf.write_at(7u32.into(), &[7, 8, 9]).unwrap();
     assert_eq!(6, buf.len());
-    assert_eq!(&[7, 8, 9, 10, 11, 12], buf.pop().unwrap().deref());
+    assert_eq!(&[7, 8, 9, 10, 11, 12], &*buf.pop().unwrap());
     assert_eq!(0, buf.len());
     assert_eq!(None, buf.pop());
 
@@ -347,51 +392,45 @@ fn write_and_read_buffer() {
     buf.write_at(12u32.into(), &[12, 13, 14, 15, 16, 17, 18, 19, 20])
         .unwrap();
     assert_eq!(8, buf.len());
-    assert_eq!(
-        &[13, 14, 15, 16, 17, 18, 19, 20],
-        buf.pop().unwrap().deref()
-    );
+    assert_eq!(&[13, 14, 15, 16, 17, 18, 19, 20], &*buf.pop().unwrap());
     assert_eq!(0, buf.len());
     assert_eq!(None, buf.pop());
 }
 
 #[test]
 fn fill_preallocated_gaps() {
-    let mut buf: StreamReceiveBuffer = StreamReceiveBuffer::new();
+    let mut buf: ReceiveBuffer = ReceiveBuffer::new();
 
-    buf.write_at(
-        (DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE as u32 + 2).into(),
-        &[42, 45],
-    )
-    .unwrap();
+    buf.write_at((MIN_BUFFER_ALLOCATION_SIZE as u32 + 2).into(), &[42, 45])
+        .unwrap();
     assert_eq!(0, buf.len());
     assert_eq!(None, buf.pop());
 
-    let mut first_chunk = [0u8; DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE - 2];
+    let mut first_chunk = [0u8; MIN_BUFFER_ALLOCATION_SIZE - 2];
     for (idx, b) in first_chunk.iter_mut().enumerate() {
         *b = idx as u8;
     }
 
     buf.write_at(0u32.into(), &first_chunk).unwrap();
-    assert_eq!(DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE - 2, buf.len());
+    assert_eq!(MIN_BUFFER_ALLOCATION_SIZE - 2, buf.len());
 
     // Overfill gap
     buf.write_at(
-        (DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE as u32 - 4).into(),
+        (MIN_BUFFER_ALLOCATION_SIZE as u32 - 4).into(),
         &[91, 92, 93, 94, 95, 96, 97, 98, 99],
     )
     .unwrap();
-    assert_eq!(DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE + 5, buf.len());
+    assert_eq!(MIN_BUFFER_ALLOCATION_SIZE + 5, buf.len());
 
     let chunk = buf.pop().unwrap();
-    assert_eq!(DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE, chunk.len());
+    assert_eq!(MIN_BUFFER_ALLOCATION_SIZE, chunk.len());
     let mut expected = 0;
-    for b in &chunk[..DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE - 2] {
+    for b in &chunk[..MIN_BUFFER_ALLOCATION_SIZE - 2] {
         assert_eq!(expected, *b);
         expected = expected.wrapping_add(1);
     }
-    assert_eq!(93, chunk[DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE - 2]);
-    assert_eq!(94, chunk[DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE - 1]);
+    assert_eq!(93, chunk[MIN_BUFFER_ALLOCATION_SIZE - 2]);
+    assert_eq!(94, chunk[MIN_BUFFER_ALLOCATION_SIZE - 1]);
 
     let chunk = buf.pop().unwrap();
     assert_eq!(5, chunk.len());
@@ -406,10 +445,10 @@ fn fill_preallocated_gaps() {
 
 #[test]
 fn create_and_fill_large_gaps() {
-    let mut buf = StreamReceiveBuffer::new();
+    let mut buf = ReceiveBuffer::new();
     // This creates 3 full buffer gaps of full allocation ranges
     buf.write_at(
-        (DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE as u32 * 3 + 2).into(),
+        (MIN_BUFFER_ALLOCATION_SIZE as u32 * 3 + 2).into(),
         &[7, 8, 9],
     )
     .unwrap();
@@ -417,7 +456,7 @@ fn create_and_fill_large_gaps() {
 
     // Insert something in the middle, which still leaves us with 2 gaps
     buf.write_at(
-        (DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE as u32 + 1).into(),
+        (MIN_BUFFER_ALLOCATION_SIZE as u32 + 1).into(),
         &[10, 11, 12],
     )
     .unwrap();
@@ -425,7 +464,7 @@ fn create_and_fill_large_gaps() {
 
     // Close the last gap
     buf.write_at(
-        (DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE as u32 * 2 + 1).into(),
+        (MIN_BUFFER_ALLOCATION_SIZE as u32 * 2 + 1).into(),
         &[14, 15, 16],
     )
     .unwrap();
@@ -436,12 +475,9 @@ fn create_and_fill_large_gaps() {
     assert_eq!(0, buf.len());
 
     // Now fill all the preallocated chunks with data
-    let data = [0u8; DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE * 3 + 20];
+    let data = [0u8; MIN_BUFFER_ALLOCATION_SIZE * 3 + 20];
     buf.write_at(0u32.into(), &data).unwrap();
-    assert_eq!(
-        DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE * 3 + 20,
-        buf.len()
-    );
+    assert_eq!(MIN_BUFFER_ALLOCATION_SIZE * 3 + 20, buf.len());
 
     fn assert_zero_content(slice: &[u8]) {
         for b in slice {
@@ -451,24 +487,24 @@ fn create_and_fill_large_gaps() {
 
     // Check the first allocation range
     let chunk = buf.pop().unwrap();
-    assert_eq!(DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE, chunk.len());
+    assert_eq!(MIN_BUFFER_ALLOCATION_SIZE, chunk.len());
     assert_zero_content(&chunk[..4]);
     assert_eq!(&[4, 5, 6, 7], &chunk[4..8]);
-    assert_zero_content(&chunk[8..DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE]);
+    assert_zero_content(&chunk[8..MIN_BUFFER_ALLOCATION_SIZE]);
 
     // Check the second allocation range
     let chunk = buf.pop().unwrap();
-    assert_eq!(DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE, chunk.len());
+    assert_eq!(MIN_BUFFER_ALLOCATION_SIZE, chunk.len());
     assert_zero_content(&chunk[..1]);
     assert_eq!(&[10, 11, 12], &chunk[1..4]);
-    assert_zero_content(&chunk[4..DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE]);
+    assert_zero_content(&chunk[4..MIN_BUFFER_ALLOCATION_SIZE]);
 
     // Check the third allocation range
     let chunk = buf.pop().unwrap();
-    assert_eq!(DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE, chunk.len());
+    assert_eq!(MIN_BUFFER_ALLOCATION_SIZE, chunk.len());
     assert_zero_content(&chunk[..1]);
     assert_eq!(&[14, 15, 16], &chunk[1..4]);
-    assert_zero_content(&chunk[4..DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE]);
+    assert_zero_content(&chunk[4..MIN_BUFFER_ALLOCATION_SIZE]);
 
     // Check the forth allocation range
     let chunk = buf.pop().unwrap();
@@ -484,16 +520,16 @@ fn create_and_fill_large_gaps() {
 
 #[test]
 fn ignore_already_consumed_data() {
-    let mut buf = StreamReceiveBuffer::new();
+    let mut buf = ReceiveBuffer::new();
     buf.write_at(0u32.into(), &[0, 1, 2, 3]).unwrap();
     assert_eq!(0, buf.consumed_len());
-    assert_eq!(&[0u8, 1, 2, 3], buf.pop().unwrap().deref());
+    assert_eq!(&[0u8, 1, 2, 3], &*buf.pop().unwrap());
     assert_eq!(4, buf.consumed_len());
 
     // Add partially consumed data
     buf.write_at(2u32.into(), &[2, 3, 4]).unwrap();
     assert_eq!(4, buf.consumed_len());
-    assert_eq!(&[4], buf.pop().unwrap().deref());
+    assert_eq!(&[4], &*buf.pop().unwrap());
     assert_eq!(5, buf.consumed_len());
 
     // Add data which had been fully consumed before
@@ -508,116 +544,73 @@ fn ignore_already_consumed_data() {
 
 #[test]
 fn merge_right() {
-    let mut buf = StreamReceiveBuffer::new();
+    let mut buf = ReceiveBuffer::new();
     buf.write_at(4u32.into(), &[4, 5, 6]).unwrap();
     buf.write_at(0u32.into(), &[0, 1, 2, 3]).unwrap();
     assert_eq!(7, buf.len());
-    assert_eq!(&[0u8, 1, 2, 3, 4, 5, 6], buf.pop().unwrap().deref());
+    assert_eq!(&[0u8, 1, 2, 3, 4, 5, 6], &*buf.pop().unwrap());
 }
 
 #[test]
 fn merge_left() {
-    let mut buf = StreamReceiveBuffer::new();
+    let mut buf = ReceiveBuffer::new();
     buf.write_at(0u32.into(), &[0, 1, 2, 3]).unwrap();
     buf.write_at(4u32.into(), &[4, 5, 6]).unwrap();
     assert_eq!(7, buf.len());
-    assert_eq!(&[0u8, 1, 2, 3, 4, 5, 6], buf.pop().unwrap().deref());
+    assert_eq!(&[0u8, 1, 2, 3, 4, 5, 6], &*buf.pop().unwrap());
 }
 
 #[test]
 fn merge_both_sides() {
-    let mut buf = StreamReceiveBuffer::new();
+    let mut buf = ReceiveBuffer::new();
     // Create gaps on all sides, and merge them later
     buf.write_at(4u32.into(), &[4, 5]).unwrap();
     buf.write_at(8u32.into(), &[8, 9]).unwrap();
     buf.write_at(6u32.into(), &[6, 7]).unwrap();
     buf.write_at(0u32.into(), &[0, 1, 2, 3]).unwrap();
     assert_eq!(10, buf.len());
-    assert_eq!(
-        &[0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-        buf.pop().unwrap().deref()
-    );
+    assert_eq!(&[0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9], &*buf.pop().unwrap());
 }
 
 #[test]
 fn do_not_merge_across_allocations_right() {
-    let mut buf = StreamReceiveBuffer::new();
-    let mut data_left = [0u8; DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE];
-    let mut data_right = [0u8; DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE];
+    let mut buf = ReceiveBuffer::new();
+    let mut data_left = [0u8; MIN_BUFFER_ALLOCATION_SIZE];
+    let mut data_right = [0u8; MIN_BUFFER_ALLOCATION_SIZE];
 
-    data_left[DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE - 1] = 13;
+    data_left[MIN_BUFFER_ALLOCATION_SIZE - 1] = 13;
     data_right[0] = 72;
 
-    buf.write_at(
-        (DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE as u32).into(),
-        &data_right[..],
-    )
-    .unwrap();
+    buf.write_at((MIN_BUFFER_ALLOCATION_SIZE as u32).into(), &data_right[..])
+        .unwrap();
     buf.write_at(0u32.into(), &data_left[..]).unwrap();
-    assert_eq!(2 * DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE, buf.len());
+    assert_eq!(2 * MIN_BUFFER_ALLOCATION_SIZE, buf.len());
 
-    assert_eq!(&data_left[..], buf.pop().unwrap().deref());
-    assert_eq!(&data_right[..], buf.pop().unwrap().deref());
+    assert_eq!(&data_left[..], &*buf.pop().unwrap());
+    assert_eq!(&data_right[..], &*buf.pop().unwrap());
 }
 
 #[test]
 fn do_not_merge_across_allocations_left() {
-    let mut buf = StreamReceiveBuffer::new();
-    let mut data_left = [0u8; DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE];
-    let mut data_right = [0u8; DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE];
+    let mut buf = ReceiveBuffer::new();
+    let mut data_left = [0u8; MIN_BUFFER_ALLOCATION_SIZE];
+    let mut data_right = [0u8; MIN_BUFFER_ALLOCATION_SIZE];
 
-    data_left[DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE - 1] = 13;
+    data_left[MIN_BUFFER_ALLOCATION_SIZE - 1] = 13;
     data_right[0] = 72;
 
     buf.write_at(0u32.into(), &data_left[..]).unwrap();
-    buf.write_at(
-        (DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE as u32).into(),
-        &data_right[..],
-    )
-    .unwrap();
-    assert_eq!(2 * DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE, buf.len());
+    buf.write_at((MIN_BUFFER_ALLOCATION_SIZE as u32).into(), &data_right[..])
+        .unwrap();
+    assert_eq!(2 * MIN_BUFFER_ALLOCATION_SIZE, buf.len());
 
-    assert_eq!(&data_left[..], buf.pop().unwrap().deref());
-    assert_eq!(&data_right[..], buf.pop().unwrap().deref());
-}
-
-#[test]
-fn use_custom_buffer_size() {
-    // This must be at least 32 bytes - otherwise the buffers will use
-    // `BytesMut` short-byte optimization, which at least allocates
-    // 4 * sizeof::<usize> - 1 == 31 bytes.
-    // bytes.
-    let mut buf = StreamReceiveBuffer::with_buffer_size(MIN_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE);
-
-    let mut data = [0u8; 3 * MIN_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE + 3];
-    for (i, item) in data.iter_mut().enumerate() {
-        *item = i as u8;
-    }
-
-    buf.write_at(0u32.into(), &data[..]).unwrap();
-    for i in 0..3 {
-        assert_eq!(
-            &data[i * MIN_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE
-                ..(i + 1) * MIN_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE],
-            buf.pop().unwrap().deref()
-        );
-    }
-
-    assert_eq!(
-        &data[3 * MIN_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE..],
-        buf.pop().unwrap().deref()
-    );
-}
-
-#[test]
-#[should_panic]
-fn fails_with_buffer_size_below_minimum() {
-    let _buffer = StreamReceiveBuffer::with_buffer_size(1);
+    assert_eq!(&data_left[..], &*buf.pop().unwrap());
+    assert_eq!(&data_right[..], &*buf.pop().unwrap());
 }
 
 #[test]
 fn reset_buffer() {
-    let mut buf = StreamReceiveBuffer::new();
+    let mut buf = ReceiveBuffer::new();
     buf.write_at(2u32.into(), &[2, 3]).unwrap();
     buf.write_at(0u32.into(), &[0, 1]).unwrap();
     assert_eq!(4, buf.len());
@@ -635,7 +628,7 @@ fn reset_buffer() {
 
 #[test]
 fn write_data_till_end_of_varint() {
-    let mut buffer = StreamReceiveBuffer::with_buffer_size(64);
+    let mut buffer = new_receive_buffer();
 
     for nr_bytes in 0..64 * 2 + 1 {
         let data = vec![0u8; nr_bytes];
@@ -650,12 +643,12 @@ fn write_data_till_end_of_varint() {
 
 #[test]
 fn fail_to_push_out_of_bounds_data() {
-    let mut buffer = StreamReceiveBuffer::with_buffer_size(64);
+    let mut buffer = new_receive_buffer();
 
     for nr_bytes in 0..64 * 2 + 1 {
         let data = vec![0u8; nr_bytes + 1];
         assert_eq!(
-            Err(StreamReceiveBufferError::OutOfRange),
+            Err(ReceiveBufferError::OutOfRange),
             buffer.write_at(
                 VarInt::new(MAX_VARINT_VALUE - nr_bytes as u64).unwrap(),
                 &data[..]
@@ -668,7 +661,7 @@ fn fail_to_push_out_of_bounds_data() {
 #[cfg_attr(miri, ignore)] // miri fails because the slice points to invalid memory
 #[cfg(target_pointer_width = "64")]
 fn fail_to_push_out_of_bounds_data_with_long_buffer() {
-    let mut buffer = StreamReceiveBuffer::new();
+    let mut buffer = ReceiveBuffer::new();
 
     // Overflow the allowed buffers by size 1. This uses an invalid memory
     // reference, due to not wanting to allocate too much memory. This is
@@ -682,7 +675,7 @@ fn fail_to_push_out_of_bounds_data_with_long_buffer() {
 
     for _ in 0..64 * 2 + 1 {
         assert_eq!(
-            Err(StreamReceiveBufferError::OutOfRange),
+            Err(ReceiveBufferError::OutOfRange),
             buffer.write_at(20u32.into(), fake_data)
         );
     }
@@ -690,7 +683,7 @@ fn fail_to_push_out_of_bounds_data_with_long_buffer() {
 
 #[test]
 fn pop_watermarked_test() {
-    let mut buffer = StreamReceiveBuffer::new();
+    let mut buffer = ReceiveBuffer::new();
 
     assert_eq!(
         None,
@@ -731,4 +724,35 @@ fn pop_watermarked_test() {
         buffer.pop_watermarked(1),
         "the receive buffer should be empty after splitting"
     );
+}
+
+#[test]
+fn allocation_size_test() {
+    // | bytes received | allocation size |
+    // |----------------|-----------------|
+    // | 0              | 4096            |
+    // | 65536          | 16384           |
+    // | 262144         | 32768           |
+    // | 1048576        | 65536           |
+
+    let received = [(0, 4096), (65536, 16384), (262144, 32768), (1048576, 65536)];
+
+    for (index, (offset, size)) in received.iter().copied().enumerate() {
+        assert_eq!(
+            ReceiveBuffer::allocation_size(offset),
+            size,
+            "offset = {}",
+            offset
+        );
+
+        if let Some((offset, _)) = received.get(index + 1) {
+            let offset = offset - 1;
+            assert_eq!(
+                ReceiveBuffer::allocation_size(offset),
+                size,
+                "offset = {}",
+                offset
+            );
+        }
+    }
 }
