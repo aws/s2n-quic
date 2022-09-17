@@ -185,12 +185,11 @@ fn packet_decoding_example_test() {
 //#     return candidate_pn - pn_win
 //#   return candidate_pn
 
+#[inline(never)] // prevent the compiler from optimizing call size values and making this non-constant time
 fn decode_packet_number(
     largest_pn: PacketNumber,
     truncated_pn: TruncatedPacketNumber,
 ) -> PacketNumber {
-    use crate::ct::{ConditionallySelectable, Number};
-
     let space = largest_pn.space();
     space.assert_eq(truncated_pn.space());
 
@@ -200,25 +199,36 @@ fn decode_packet_number(
     let pn_win = 1 << pn_nbits;
     let pn_hwin = pn_win / 2;
     let pn_mask = pn_win - 1;
-    let candidate_pn = (expected_pn & !pn_mask) | truncated_pn.into_u64();
+    let mut candidate_pn = (expected_pn & !pn_mask) | truncated_pn.into_u64();
 
-    // convert numbers into checked Number
-    let expected_pn = Number::new(expected_pn);
-    let mut candidate_pn = Number::new(candidate_pn);
+    let a = expected_pn
+        .checked_sub(pn_hwin)
+        .filter(|v| candidate_pn <= *v)
+        .is_some();
+    let b = (1u64 << 62)
+        .checked_sub(pn_win)
+        .filter(|v| candidate_pn < *v)
+        .is_some();
+    let c = expected_pn
+        .checked_add(pn_hwin)
+        .filter(|v| candidate_pn > *v)
+        .is_some();
+    let d = candidate_pn >= pn_win;
 
-    let a_value = candidate_pn + pn_win;
-    let a_choice = candidate_pn.ct_le(expected_pn - pn_hwin)
-        & a_value.ct_le(Number::new(VarInt::MAX.as_u64()));
+    let ab = a && b;
+    let cd = !ab && c && d;
 
-    let b_value = candidate_pn - pn_win;
-    let b_choice = candidate_pn.ct_gt(expected_pn + pn_hwin) & b_value.is_valid();
+    // Make sure the compiler doesn't try and optimize the if statements
+    // See https://godbolt.org/z/348WbbbzM
+    core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
 
-    // apply the choices in reverse since it's easier to emulate the early returns
-    // with the `conditional_assign` calls
-    candidate_pn.conditional_assign(&b_value, b_choice);
-    candidate_pn.conditional_assign(&a_value, a_choice);
+    if ab {
+        candidate_pn += pn_win;
+    }
 
-    let candidate_pn = candidate_pn.unwrap_or_default().min(VarInt::MAX.as_u64());
+    if cd {
+        candidate_pn -= pn_win
+    }
 
     let candidate_pn = unsafe {
         // Safety: the value has already been checked in constant time above
