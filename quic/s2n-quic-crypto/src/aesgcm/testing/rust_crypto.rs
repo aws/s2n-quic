@@ -5,7 +5,7 @@ use crate::{
     aead,
     aesgcm::{testing::NONCE_LEN, TAG_LEN},
 };
-use aes_gcm::{AeadInPlace, Aes128Gcm, Aes256Gcm, NewAead};
+use aes_gcm::{AeadInPlace, Aes128Gcm, Aes256Gcm, KeyInit};
 
 macro_rules! impl_aes {
     ($name:ident, $lower:ident) => {

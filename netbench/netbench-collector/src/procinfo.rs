@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use netbench::stats::Stats;
-use sysinfo::{Pid, ProcessExt, RefreshKind, System, SystemExt};
+use sysinfo::{CpuRefreshKind, Pid, ProcessExt, RefreshKind, System, SystemExt};
 
 #[derive(Debug)]
 pub struct Proc {
@@ -14,7 +14,11 @@ impl Proc {
     pub fn new(pid: u32) -> Self {
         Self {
             pid: Pid::from(pid as i32),
-            system: System::new_with_specifics(RefreshKind::new().with_cpu().with_memory()),
+            system: System::new_with_specifics(
+                RefreshKind::new()
+                    .with_cpu(CpuRefreshKind::new().with_cpu_usage())
+                    .with_memory(),
+            ),
         }
     }
 

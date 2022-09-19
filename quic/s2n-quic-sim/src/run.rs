@@ -97,6 +97,7 @@ impl Run {
             pb.set_style(
                 indicatif::ProgressStyle::default_bar()
                     .template(MSG)
+                    .unwrap()
                     .progress_chars("=> "),
             );
 

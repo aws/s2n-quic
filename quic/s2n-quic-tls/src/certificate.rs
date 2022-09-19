@@ -89,12 +89,12 @@ macro_rules! cert_type {
             fn $method(self) -> Result<$name, Error> {
                 match self.extension() {
                     Some(ext) if ext == "der" => {
-                        let pem = std::fs::read(self).map_err(|_| Error::InvalidInput)?;
+                        let pem = std::fs::read(self).map_err(map_io_error)?;
                         pem.$method()
                     }
                     // assume it's in pem format
                     _ => {
-                        let pem = std::fs::read_to_string(self).map_err(|_| Error::InvalidInput)?;
+                        let pem = std::fs::read_to_string(self).map_err(map_io_error)?;
                         pem.$method()
                     }
                 }
@@ -105,3 +105,10 @@ macro_rules! cert_type {
 
 cert_type!(PrivateKey, IntoPrivateKey, into_private_key);
 cert_type!(Certificate, IntoCertificate, into_certificate);
+
+/// Converts an io::Error into an s2n-tls Error
+fn map_io_error(err: std::io::Error) -> Error {
+    let errno = err.raw_os_error().unwrap_or(1);
+    errno::set_errno(errno::Errno(errno));
+    Error::new(s2n_tls::ffi::s2n_status_code::FAILURE).unwrap_err()
+}

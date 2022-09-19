@@ -5,7 +5,7 @@ description = "Internal crate used by s2n-quic"
 repository = "https://github.com/aws/s2n-quic"
 authors = ["AWS s2n"]
 edition = "2021"
-rust-version = "1.56"
+rust-version = "1.57"
 license = "Apache-2.0"
 # Exclude corpus files when publishing to crates.io
 exclude = ["corpus.tar.gz"]
@@ -24,10 +24,9 @@ zeroize = { version = "1", default-features = false, features = ["zeroize_derive
 
 [dev-dependencies]
 aes = "0.8"
-aes-gcm = "0.9"
+aes-gcm = "0.10"
 bolero = "0.7"
-ctr = "0.9"
-ghash = "0.4"
+ghash = "0.5"
 hex-literal = "0.3"
 insta = { version = "1", features = ["json"] }
 pretty-hex = "0.3"

@@ -1,12 +1,13 @@
 # s2n-quic
 
 `s2n-quic` is a Rust implementation of the [IETF QUIC protocol](https://quicwg.org/), featuring:
-* a simple, easy-to-use API. See [an example](https://github.com/aws/s2n-quic/blob/main/examples/echo/src/bin/quic_echo_server.rs) of an s2n-quic echo server built with just a few API calls
-* high configurability using [providers](https://docs.rs/s2n-quic/latest/s2n_quic/provider/index.html) for granular control of functionality
-* extensive automated testing, including fuzz testing, integration testing, unit testing, snapshot testing, efficiency testing, performance benchmarking, interopability testing and [more](https://github.com/aws/s2n-quic/blob/main/docs/ci.md)
-* integration with [s2n-tls](https://github.com/aws/s2n-tls), AWS's simple, small, fast and secure TLS implementation, as well as [rustls](https://crates.io/crates/rustls)
-* thorough [compliance coverage tracking](https://github.com/aws/s2n-quic/blob/main/docs/ci.md#compliance) of normative language in relevant standards
-* and much more, including [CUBIC congestion controller](https://www.rfc-editor.org/rfc/rfc8312.html) support, [packet pacing](https://www.rfc-editor.org/rfc/rfc9002.html#name-pacing), [Generic Segmentation Offload](https://lwn.net/Articles/188489/) support, [Path MTU discovery](https://www.rfc-editor.org/rfc/rfc8899.html), and unique [connection identifiers](https://www.rfc-editor.org/rfc/rfc9000.html#name-connection-id) detached from the address
+
+- a simple, easy-to-use API. See [an example](https://github.com/aws/s2n-quic/blob/main/examples/echo/src/bin/quic_echo_server.rs) of an s2n-quic echo server built with just a few API calls
+- high configurability using [providers](https://docs.rs/s2n-quic/latest/s2n_quic/provider/index.html) for granular control of functionality
+- extensive automated testing, including fuzz testing, integration testing, unit testing, snapshot testing, efficiency testing, performance benchmarking, interopability testing and [more](https://github.com/aws/s2n-quic/blob/main/docs/ci.md)
+- integration with [s2n-tls](https://github.com/aws/s2n-tls), AWS's simple, small, fast and secure TLS implementation, as well as [rustls](https://crates.io/crates/rustls)
+- thorough [compliance coverage tracking](https://github.com/aws/s2n-quic/blob/main/docs/ci.md#compliance) of normative language in relevant standards
+- and much more, including [CUBIC congestion controller](https://www.rfc-editor.org/rfc/rfc8312.html) support, [packet pacing](https://www.rfc-editor.org/rfc/rfc9002.html#name-pacing), [Generic Segmentation Offload](https://lwn.net/Articles/188489/) support, [Path MTU discovery](https://www.rfc-editor.org/rfc/rfc8899.html), and unique [connection identifiers](https://www.rfc-editor.org/rfc/rfc9000.html#name-connection-id) detached from the address
 
 See the [API documentation](https://docs.rs/s2n-quic) and [examples](https://github.com/aws/s2n-quic/tree/main/examples) to get started with `s2n-quic`.
 
@@ -26,7 +27,7 @@ See the [API documentation](https://docs.rs/s2n-quic) and [examples](https://git
 s2n-quic = "1"
 ```
 
-__NOTE__: On unix-like systems, [`s2n-tls`](https://github.com/aws/s2n-tls) will be used as the default TLS provider and requires a C compiler to be installed.
+**NOTE**: On unix-like systems, [`s2n-tls`](https://github.com/aws/s2n-tls) will be used as the default TLS provider and requires a C compiler to be installed.
 
 ## Example
 
@@ -108,9 +109,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 `s2n-quic` will maintain a rolling MSRV (minimum supported rust version) policy of at least 6 months. The current s2n-quic version is not guaranteed to build on Rust versions earlier than the MSRV.
 
-The current MSRV is [1.56.1][msrv-url].
+The current MSRV is [1.57.0][msrv-url].
 
 ## Security issue notifications
+
 If you discover a potential security issue in s2n-quic we ask that you notify
 AWS Security via our [vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/). Please do **not** create a public github issue.
 
@@ -130,5 +132,5 @@ This project is licensed under the [Apache-2.0 License][license-url].
 [docs-url]: https://docs.rs/s2n-quic
 [dependencies-badge]: https://img.shields.io/librariesio/release/cargo/s2n-quic.svg
 [dependencies-url]: https://crates.io/crates/s2n-quic/dependencies
-[msrv-badge]: https://img.shields.io/badge/MSRV-1.56.1-green
-[msrv-url]: https://blog.rust-lang.org/2021/11/01/Rust-1.56.1.html
+[msrv-badge]: https://img.shields.io/badge/MSRV-1.57.0-green
+[msrv-url]: https://blog.rust-lang.org/2021/12/02/Rust-1.57.0.html
