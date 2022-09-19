@@ -130,6 +130,9 @@ impl AckManager {
             "`on_transmit_complete` was called when `should_transmit` is false"
         );
 
+        // if we transmitted something no need to wake up again to transmit the same thing
+        self.ack_delay_timer.cancel();
+
         let mut is_ack_eliciting = context.ack_elicitation().is_ack_eliciting();
 
         if !is_ack_eliciting {
