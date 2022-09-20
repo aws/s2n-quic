@@ -435,27 +435,20 @@ impl<Config: endpoint::Config> Path<Config> {
     //# A PL MUST NOT send a datagram (other than a probe
     //# packet) with a size at the PL that is larger than the current
     //# PLPMTU.
+
+    /// Clamps payload sizes to the current MTU for the path
+    ///
+    /// # Panics
+    ///
+    /// Panics if this is called when the path is amplification limited
     #[inline]
     pub fn clamp_mtu(&self, requested_size: usize, transmission_mode: transmission::Mode) -> usize {
-        let mtu = self.mtu(transmission_mode);
+        debug_assert!(
+            !self.at_amplification_limit(),
+            "amplification limits should be checked before clamping MTU values"
+        );
 
-        match self.state {
-            State::Validated => requested_size.min(mtu),
-
-            // https://github.com/aws/s2n-quic/issues/695
-            // Note: while a 3X check if performed, the `limit` value is not used
-            // to restrict the MTU. There are two reasons for this:
-            // - Expanding to the full MTU allows for MTU validation during connection migration.
-            // - Networking infrastructure cares more about number of packets than bytes for
-            // anti-amplification.
-            State::AmplificationLimited { tx_allowance } => {
-                if tx_allowance > 0 {
-                    requested_size.min(mtu)
-                } else {
-                    0
-                }
-            }
-        }
+        requested_size.min(self.mtu(transmission_mode))
     }
 
     #[inline]
@@ -489,18 +482,19 @@ impl<Config: endpoint::Config> Path<Config> {
 
     /// Returns whether this path should be limited according to connection establishment amplification limits
     ///
-    /// Note: This method is more conservative than strictly necessary in declaring a path at the
-    ///       amplification limit. The path must be able to transmit at least a packet of the
-    ///       `MINIMUM_MTU` bytes, otherwise the path is considered at the amplification limit.
-    ///       TODO: Evaluate if this approach is too conservative
+    /// Note: As long as the path has _any_ TX credits we don't consider it to be amplification-limited.
+    ///       This may result in sending slightly more than 3x bytes but networking infrastructure mostly
+    ///       cares about the number of packets rather than bytes.
     #[inline]
     pub fn at_amplification_limit(&self) -> bool {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1
         //# Prior to validating the client address, servers MUST NOT send more
         //# than three times as many bytes as the number of bytes they have
         //# received.
-        let mtu = MINIMUM_MTU as usize;
-        self.clamp_mtu(mtu, transmission::Mode::Normal) < mtu
+        match self.state {
+            State::Validated => false,
+            State::AmplificationLimited { tx_allowance } => tx_allowance == 0,
+        }
     }
 
     /// Returns the current PTO period
@@ -1024,8 +1018,7 @@ mod tests {
 
             path.on_bytes_transmitted(1);
             // Verify we can't transmit any more bytes
-            assert_eq!(path.clamp_mtu(1, transmission_mode), 0);
-            assert_eq!(path.clamp_mtu(10, transmission_mode), 0);
+            assert!(path.at_amplification_limit());
 
             path.on_bytes_received(1);
             // Verify we can transmit up to 3 more bytes
@@ -1092,21 +1085,13 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn clamp_mtu_when_tx_more_than_rx() {
         let mut path = testing::helper_path_server();
         let mtu = 1472;
         let probed_size = 1500;
         path.mtu_controller = mtu::testing::test_controller(mtu, probed_size);
 
-        assert_eq!(0, path.clamp_mtu(10000, transmission::Mode::Normal));
-
-        path.on_bytes_received(1);
-        assert_eq!(
-            path.mtu_controller.mtu(),
-            path.clamp_mtu(10000, transmission::Mode::Normal)
-        );
-
-        path.on_bytes_transmitted(100);
         assert_eq!(0, path.clamp_mtu(10000, transmission::Mode::Normal));
     }
 
