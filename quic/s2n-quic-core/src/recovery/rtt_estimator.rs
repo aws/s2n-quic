@@ -25,7 +25,7 @@ pub const K_GRANULARITY: Duration = Duration::from_millis(1);
 //# The RECOMMENDED value for kPersistentCongestionThreshold is 3, which
 //# results in behavior that is approximately equivalent to a TCP sender
 //# declaring an RTO after two TLPs.
-const K_PERSISTENT_CONGESTION_THRESHOLD: u32 = 3;
+const K_PERSISTENT_CONGESTION_THRESHOLD: u64 = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct RttEstimator {
@@ -118,17 +118,23 @@ impl RttEstimator {
     //# an acknowledgement of a sent packet.
     #[inline]
     pub fn pto_period(&self, pto_backoff: u32, space: PacketNumberSpace) -> Duration {
+        // Since K_GRANULARITY is 1ms, we operate on milliseconds rather than `Duration` to improve efficiency.
+        // See https://godbolt.org/z/4o71WPods
+
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# When an ack-eliciting packet is transmitted, the sender schedules a
         //# timer for the PTO period as follows:
         //#
         //# PTO = smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay
-        let mut pto_period = self.smoothed_rtt();
+        let mut pto_period = self.smoothed_rtt().as_millis() as u64;
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# The PTO period MUST be at least kGranularity, to avoid the timer
         //# expiring immediately.
-        pto_period += max(4 * self.rttvar(), K_GRANULARITY);
+        pto_period += max(
+            self.rttvar_4x().as_millis() as u64,
+            K_GRANULARITY.as_millis() as u64,
+        );
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# When the PTO is armed for Initial or Handshake packet number spaces,
@@ -136,7 +142,7 @@ impl RttEstimator {
         //# the peer is expected to not delay these packets intentionally; see
         //# Section 13.2.1 of [QUIC-TRANSPORT].
         if space.is_application_data() {
-            pto_period += self.max_ack_delay;
+            pto_period += self.max_ack_delay.as_millis() as u64;
         }
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
@@ -145,16 +151,14 @@ impl RttEstimator {
         //# all spaces to prevent excess load on the network.  For example, a
         //# timeout in the Initial packet number space doubles the length of
         //# the timeout in the Handshake packet number space.
-        pto_period *= pto_backoff;
+        pto_period *= pto_backoff as u64;
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# The PTO period is the amount of time that a sender ought to wait for
         //# an acknowledgement of a sent packet.
-        pto_period
+        Duration::from_millis(pto_period)
     }
-}
 
-impl RttEstimator {
     /// Sets the `max_ack_delay` value from the peer `MaxAckDelay` transport parameter
     pub fn on_max_ack_delay(&mut self, max_ack_delay: MaxAckDelay) {
         self.max_ack_delay = max_ack_delay.as_duration()
@@ -254,6 +258,9 @@ impl RttEstimator {
     /// Calculates the persistent congestion threshold used for determining
     /// if persistent congestion is being encountered.
     pub fn persistent_congestion_threshold(&self) -> Duration {
+        // Since K_GRANULARITY is 1ms, we operate on milliseconds rather than `Duration` to improve efficiency.
+        // See https://godbolt.org/z/4o71WPods
+
         //= https://www.rfc-editor.org/rfc/rfc9002#section-7.6.1
         //# The persistent congestion duration is computed as follows:
         //#
@@ -268,8 +275,15 @@ impl RttEstimator {
         //# establishing persistent congestion, including some in response to PTO
         //# expiration, as TCP does with Tail Loss Probes [RFC8985] and an RTO
         //# [RFC5681].
-        (self.smoothed_rtt + max(4 * self.rttvar, K_GRANULARITY) + self.max_ack_delay)
-            * K_PERSISTENT_CONGESTION_THRESHOLD
+        Duration::from_millis(
+            (self.smoothed_rtt.as_millis() as u64
+                + max(
+                    self.rttvar_4x().as_millis() as u64,
+                    K_GRANULARITY.as_millis() as u64,
+                )
+                + self.max_ack_delay.as_millis() as u64)
+                * K_PERSISTENT_CONGESTION_THRESHOLD,
+        )
     }
 
     /// Allows min_rtt and smoothed_rtt to be overwritten on the next RTT sample
@@ -279,6 +293,12 @@ impl RttEstimator {
         //# Endpoints SHOULD set the min_rtt to the newest RTT sample after
         //# persistent congestion is established.
         self.first_rtt_sample = None;
+    }
+
+    #[inline]
+    fn rttvar_4x(&self) -> Duration {
+        // Operate on micros instead, as it's more efficient and we don't need the precision Duration gives
+        Duration::from_micros(4 * self.rttvar.as_micros() as u64)
     }
 }
 
@@ -483,7 +503,7 @@ mod test {
         assert_eq!(rtt_estimator.first_rtt_sample, Some(now));
         assert_eq!(
             rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, PacketNumberSpace::ApplicationData),
-            Duration::from_nanos(1551249998)
+            Duration::from_millis(1551)
         );
     }
 
