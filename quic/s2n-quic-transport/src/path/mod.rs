@@ -435,11 +435,18 @@ impl<Config: endpoint::Config> Path<Config> {
     //# A PL MUST NOT send a datagram (other than a probe
     //# packet) with a size at the PL that is larger than the current
     //# PLPMTU.
+
+    /// Clamps payload sizes to the current MTU for the path
+    ///
+    /// # Panics
+    ///
+    /// Panics if this is called when the path is amplification limited
     #[inline]
     pub fn clamp_mtu(&self, requested_size: usize, transmission_mode: transmission::Mode) -> usize {
-        if self.at_amplification_limit() {
-            return 0;
-        }
+        debug_assert!(
+            !self.at_amplification_limit(),
+            "amplication limits should be checked before clamping MTU values"
+        );
 
         requested_size.min(self.mtu(transmission_mode))
     }
