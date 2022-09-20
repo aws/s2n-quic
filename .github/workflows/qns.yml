@@ -30,7 +30,7 @@ env:
 
 jobs:
   env:
-    runs-on: ubuntu-latest
+    runs-on: s2n_ubuntu-20.04_4-core
     outputs:
       matrix: ${{ steps.implementations.outputs.matrix }}
     steps:
