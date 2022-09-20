@@ -445,7 +445,7 @@ impl<Config: endpoint::Config> Path<Config> {
     pub fn clamp_mtu(&self, requested_size: usize, transmission_mode: transmission::Mode) -> usize {
         debug_assert!(
             !self.at_amplification_limit(),
-            "amplication limits should be checked before clamping MTU values"
+            "amplification limits should be checked before clamping MTU values"
         );
 
         requested_size.min(self.mtu(transmission_mode))
