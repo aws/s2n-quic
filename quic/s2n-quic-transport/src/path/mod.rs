@@ -1018,8 +1018,7 @@ mod tests {
 
             path.on_bytes_transmitted(1);
             // Verify we can't transmit any more bytes
-            assert_eq!(path.clamp_mtu(1, transmission_mode), 0);
-            assert_eq!(path.clamp_mtu(10, transmission_mode), 0);
+            assert!(path.at_amplification_limit());
 
             path.on_bytes_received(1);
             // Verify we can transmit up to 3 more bytes
@@ -1086,21 +1085,13 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn clamp_mtu_when_tx_more_than_rx() {
         let mut path = testing::helper_path_server();
         let mtu = 1472;
         let probed_size = 1500;
         path.mtu_controller = mtu::testing::test_controller(mtu, probed_size);
 
-        assert_eq!(0, path.clamp_mtu(10000, transmission::Mode::Normal));
-
-        path.on_bytes_received(1);
-        assert_eq!(
-            path.mtu_controller.mtu(),
-            path.clamp_mtu(10000, transmission::Mode::Normal)
-        );
-
-        path.on_bytes_transmitted(100);
         assert_eq!(0, path.clamp_mtu(10000, transmission::Mode::Normal));
     }
 
