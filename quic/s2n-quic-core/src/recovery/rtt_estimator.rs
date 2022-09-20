@@ -247,9 +247,9 @@ impl RttEstimator {
         //# smoothed_rtt = 7/8 * smoothed_rtt + 1/8 * adjusted_rtt
         //# rttvar_sample = abs(smoothed_rtt - adjusted_rtt)
         //# rttvar = 3/4 * rttvar + 1/4 * rttvar_sample
-        self.smoothed_rtt = weighted_add(self.smoothed_rtt, adjusted_rtt, 8);
+        self.smoothed_rtt = weighted_average(self.smoothed_rtt, adjusted_rtt, 8);
         let rttvar_sample = abs_difference(self.smoothed_rtt, adjusted_rtt);
-        self.rttvar = weighted_add(self.rttvar, rttvar_sample, 4);
+        self.rttvar = weighted_average(self.rttvar, rttvar_sample, 4);
     }
 
     /// Calculates the persistent congestion threshold used for determining
@@ -294,10 +294,10 @@ fn abs_difference<T: core::ops::Sub + PartialOrd>(a: T, b: T) -> <T as core::ops
     }
 }
 
-/// Optimized function for adding two durations with a weight
+/// Optimized function for averaging two durations with a weight
 /// See https://godbolt.org/z/65f9bYEcs
 #[inline]
-fn weighted_add(a: Duration, b: Duration, weight: u64) -> Duration {
+fn weighted_average(a: Duration, b: Duration, weight: u64) -> Duration {
     let mut a = a.as_nanos() as u64;
     // it's more accurate to multiply first but it risks overflow so we divide first
     a /= weight;
@@ -696,5 +696,22 @@ mod test {
 
         let pto_period = rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, space);
         assert!(pto_period >= K_GRANULARITY);
+    }
+
+    #[test]
+    fn weighted_average_test() {
+        bolero::check!()
+            .with_type::<(u32, u32)>()
+            .for_each(|(a, b)| {
+                let a = Duration::from_nanos(*a as _);
+                let b = Duration::from_nanos(*b as _);
+
+                let weight = 8;
+
+                // assert that the unoptimized version matches the optimized to the millisecond
+                let expected = ((weight - 1) as u32 * a) / weight + b / weight;
+                let actual = super::weighted_average(a, b, weight as _);
+                assert_eq!(expected.as_millis(), actual.as_millis());
+            })
     }
 }
