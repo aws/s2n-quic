@@ -132,7 +132,7 @@ impl RttEstimator {
         //# The PTO period MUST be at least kGranularity, to avoid the timer
         //# expiring immediately.
         pto_period += max(
-            self.rttvar4x().as_millis() as u64,
+            self.rttvar_4x().as_millis() as u64,
             K_GRANULARITY.as_millis() as u64,
         );
 
@@ -278,7 +278,7 @@ impl RttEstimator {
         Duration::from_millis(
             (self.smoothed_rtt.as_millis() as u64
                 + max(
-                    self.rttvar4x().as_millis() as u64,
+                    self.rttvar_4x().as_millis() as u64,
                     K_GRANULARITY.as_millis() as u64,
                 )
                 + self.max_ack_delay.as_millis() as u64)
@@ -296,7 +296,7 @@ impl RttEstimator {
     }
 
     #[inline]
-    fn rttvar4x(&self) -> Duration {
+    fn rttvar_4x(&self) -> Duration {
         // Operate on micros instead, as it's more efficient and we don't need the precision Duration gives
         Duration::from_micros(4 * self.rttvar.as_micros() as u64)
     }
