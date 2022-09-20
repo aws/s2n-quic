@@ -165,6 +165,7 @@ impl RttEstimator {
     }
 
     /// Updates the RTT estimate using the given `rtt_sample`
+    #[inline]
     pub fn update_rtt(
         &mut self,
         mut ack_delay: Duration,
@@ -250,13 +251,14 @@ impl RttEstimator {
         //# smoothed_rtt = 7/8 * smoothed_rtt + 1/8 * adjusted_rtt
         //# rttvar_sample = abs(smoothed_rtt - adjusted_rtt)
         //# rttvar = 3/4 * rttvar + 1/4 * rttvar_sample
-        self.smoothed_rtt = 7 * self.smoothed_rtt / 8 + adjusted_rtt / 8;
+        self.smoothed_rtt = weighted_average(self.smoothed_rtt, adjusted_rtt, 8);
         let rttvar_sample = abs_difference(self.smoothed_rtt, adjusted_rtt);
-        self.rttvar = 3 * self.rttvar / 4 + rttvar_sample / 4;
+        self.rttvar = weighted_average(self.rttvar, rttvar_sample, 4);
     }
 
     /// Calculates the persistent congestion threshold used for determining
     /// if persistent congestion is being encountered.
+    #[inline]
     pub fn persistent_congestion_threshold(&self) -> Duration {
         // Since K_GRANULARITY is 1ms, we operate on milliseconds rather than `Duration` to improve efficiency.
         // See https://godbolt.org/z/4o71WPods
@@ -288,6 +290,7 @@ impl RttEstimator {
 
     /// Allows min_rtt and smoothed_rtt to be overwritten on the next RTT sample
     /// after persistent congestion is established.
+    #[inline]
     pub fn on_persistent_congestion(&mut self) {
         //= https://www.rfc-editor.org/rfc/rfc9002#section-5.2
         //# Endpoints SHOULD set the min_rtt to the newest RTT sample after
@@ -302,12 +305,28 @@ impl RttEstimator {
     }
 }
 
+#[inline]
 fn abs_difference<T: core::ops::Sub + PartialOrd>(a: T, b: T) -> <T as core::ops::Sub>::Output {
     if a > b {
         a - b
     } else {
         b - a
     }
+}
+
+/// Optimized function for averaging two durations with a weight
+/// See https://godbolt.org/z/65f9bYEcs
+#[inline]
+fn weighted_average(a: Duration, b: Duration, weight: u64) -> Duration {
+    let mut a = a.as_nanos() as u64;
+    // it's more accurate to multiply first but it risks overflow so we divide first
+    a /= weight;
+    a *= weight - 1;
+
+    let mut b = b.as_nanos() as u64;
+    b /= weight;
+
+    Duration::from_nanos(a + b)
 }
 
 #[cfg(test)]
@@ -697,5 +716,22 @@ mod test {
 
         let pto_period = rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, space);
         assert!(pto_period >= K_GRANULARITY);
+    }
+
+    #[test]
+    fn weighted_average_test() {
+        bolero::check!()
+            .with_type::<(u32, u32)>()
+            .for_each(|(a, b)| {
+                let a = Duration::from_nanos(*a as _);
+                let b = Duration::from_nanos(*b as _);
+
+                let weight = 8;
+
+                // assert that the unoptimized version matches the optimized to the millisecond
+                let expected = ((weight - 1) as u32 * a) / weight + b / weight;
+                let actual = super::weighted_average(a, b, weight as _);
+                assert_eq!(expected.as_millis(), actual.as_millis());
+            })
     }
 }
