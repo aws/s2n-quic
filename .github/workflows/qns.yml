@@ -30,7 +30,7 @@ env:
 
 jobs:
   env:
-    runs-on: s2n_ubuntu-20.04_8-core
+    runs-on: s2n_ubuntu-20.04_16-core
     outputs:
       matrix: ${{ steps.implementations.outputs.matrix }}
     steps:
@@ -66,7 +66,7 @@ jobs:
           echo "::set-output name=matrix::$MATRIX"
 
   s2n-quic-qns:
-    runs-on: s2n_ubuntu-20.04_8-core
+    runs-on: s2n_ubuntu-20.04_16-core
     strategy:
       matrix:
         mode: ["debug", "release"]
@@ -106,7 +106,7 @@ jobs:
           path: s2n-quic-qns/
 
   quinn:
-    runs-on: s2n_ubuntu-20.04_8-core
+    runs-on: s2n_ubuntu-20.04_16-core
     # enable debug information
     env:
       RUSTFLAGS: "-g"
@@ -151,7 +151,7 @@ jobs:
           path: quinn/
 
   tshark:
-    runs-on: s2n_ubuntu-20.04_8-core
+    runs-on: s2n_ubuntu-20.04_16-core
     steps:
       - name: Cache
         id: cache
@@ -187,7 +187,7 @@ jobs:
           path: tshark
 
   interop:
-    runs-on: s2n_ubuntu-20.04_8-core
+    runs-on: s2n_ubuntu-20.04_16-core
     needs: [env, s2n-quic-qns, tshark]
     strategy:
       matrix: ${{ fromJson(needs.env.outputs.matrix) }}
@@ -321,7 +321,7 @@ jobs:
           ! grep -Rq 'The s2n-quic-qns application shut down unexpectedly' results
 
   interop-report:
-    runs-on: s2n_ubuntu-20.04_8-core
+    runs-on: s2n_ubuntu-20.04_16-core
     needs: [interop]
     steps:
       - uses: actions/checkout@v3
@@ -419,7 +419,7 @@ jobs:
             web/logs/latest/result.json
 
   bench:
-    runs-on: s2n_ubuntu-20.04_8-core
+    runs-on: s2n_ubuntu-20.04_16-core
     needs: [env, s2n-quic-qns, tshark]
     steps:
       - uses: actions/checkout@v3
@@ -521,7 +521,7 @@ jobs:
           ! grep -Rq 'The s2n-quic-qns application shut down unexpectedly' target/benchmark/results
 
   h3spec:
-    runs-on: s2n_ubuntu-20.04_8-core
+    runs-on: s2n_ubuntu-20.04_16-core
     needs: [s2n-quic-qns]
     strategy:
       matrix:
@@ -579,7 +579,7 @@ jobs:
             --skip "MUST send no_application_protocol TLS alert if no application protocols are supported [TLS 8.1]" \
 
   perf:
-    runs-on: s2n_ubuntu-20.04_8-core
+    runs-on: s2n_ubuntu-20.04_16-core
     needs: [quinn, s2n-quic-qns]
     strategy:
       matrix:
@@ -657,7 +657,7 @@ jobs:
           path: target/perf/results
 
   perf-report:
-    runs-on: s2n_ubuntu-20.04_8-core
+    runs-on: s2n_ubuntu-20.04_16-core
     needs: [perf]
     steps:
       - uses: actions/checkout@v3
