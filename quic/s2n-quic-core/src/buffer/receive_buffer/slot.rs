@@ -36,7 +36,7 @@ impl Slot {
         Self { start, end, data }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn try_write<'a>(&mut self, request: Request<'a>) -> Outcome<'a> {
         // trim off chunks lower than the start
         let (lower, request) = request.split(self.start());

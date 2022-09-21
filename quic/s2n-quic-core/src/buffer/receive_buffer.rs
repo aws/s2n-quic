@@ -149,8 +149,15 @@ impl ReceiveBuffer {
                         Self::align_offset(next.start(), Self::allocation_size(next.start()));
 
                     if next.start() == end && current_block == next_block {
-                        let next = self.slots.remove(idx + 1).unwrap();
-                        self.slots[idx].unsplit(next);
+                        if let Some(next) = self.slots.remove(idx + 1) {
+                            self.slots[idx].unsplit(next);
+                        } else {
+                            debug_assert!(false, "slot should be available");
+                            unsafe {
+                                // Safety: we've already checked that `idx + 1` exists
+                                core::hint::unreachable_unchecked();
+                            }
+                        }
                     }
                 }
             }
@@ -262,7 +269,7 @@ impl ReceiveBuffer {
         self.start_offset = Default::default();
     }
 
-    #[inline]
+    #[inline(always)]
     fn insert(&mut self, idx: usize, slot: Slot) {
         if self.slots.len() < idx {
             debug_assert_eq!(self.slots.len() + 1, idx);
