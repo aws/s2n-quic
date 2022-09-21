@@ -19,6 +19,9 @@ use s2n_codec::{
     DecoderBufferResult, DecoderError, DecoderValue, DecoderValueMut, Encoder, EncoderValue,
 };
 
+#[cfg(test)]
+mod tests;
+
 /// Trait for an transport parameter value
 pub trait TransportParameter: Sized {
     /// The ID or tag for the TransportParameter

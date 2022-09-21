@@ -1,17 +1,18 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use bolero::{check, generator::*};
-use core::mem::size_of;
-use s2n_codec::{DecoderBufferMut, EncoderBuffer};
-use s2n_quic_core::{
+use crate::{
     crypto::{CryptoError, HeaderKey, HeaderProtectionMask, Key, ProtectedPayload},
     packet::number::{PacketNumber, PacketNumberSpace},
     varint::VarInt,
 };
+use bolero::{check, generator::*};
+use core::mem::size_of;
+use s2n_codec::{DecoderBufferMut, EncoderBuffer};
 use std::convert::TryInto;
 
-fn main() {
+#[test]
+fn round_trip() {
     check!()
         .with_generator((
             gen()
@@ -54,7 +55,7 @@ fn fuzz_unprotect(
     let payload = ProtectedPayload::new(header_len, payload.into_less_safe_slice());
 
     let (truncated_packet_number, payload) =
-        s2n_quic_core::crypto::unprotect(&FuzzCrypto, largest_packet_number.space(), payload)?;
+        crate::crypto::unprotect(&FuzzCrypto, largest_packet_number.space(), payload)?;
 
     let packet_number = truncated_packet_number.expand(largest_packet_number);
 
@@ -64,7 +65,7 @@ fn fuzz_unprotect(
         .filter(|actual| truncated_packet_number.eq(actual))
         .ok_or(CryptoError::DECODE_ERROR)?;
 
-    let (_header, _payload) = s2n_quic_core::crypto::decrypt(&FuzzCrypto, packet_number, payload)?;
+    let (_header, _payload) = crate::crypto::decrypt(&FuzzCrypto, packet_number, payload)?;
 
     Ok((packet_number, header_len))
 }
@@ -82,7 +83,7 @@ fn fuzz_protect(
     let truncated_packet_number = packet_number.truncate(largest_packet_number).unwrap();
     let packet_number_len = truncated_packet_number.len();
 
-    let (payload, _remaining) = s2n_quic_core::crypto::encrypt(
+    let (payload, _remaining) = crate::crypto::encrypt(
         &FuzzCrypto,
         packet_number,
         packet_number_len,
@@ -90,7 +91,7 @@ fn fuzz_protect(
         payload,
     )?;
 
-    let _payload = s2n_quic_core::crypto::protect(&FuzzCrypto, payload)?;
+    let _payload = crate::crypto::protect(&FuzzCrypto, payload)?;
 
     Ok(())
 }
@@ -138,8 +139,8 @@ impl Key for FuzzCrypto {
         0
     }
 
-    fn cipher_suite(&self) -> s2n_quic_core::crypto::tls::CipherSuite {
-        s2n_quic_core::crypto::tls::CipherSuite::Unknown
+    fn cipher_suite(&self) -> crate::crypto::tls::CipherSuite {
+        crate::crypto::tls::CipherSuite::Unknown
     }
 }
 

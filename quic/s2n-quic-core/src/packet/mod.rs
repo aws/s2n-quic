@@ -28,6 +28,9 @@ pub mod long;
 pub mod number;
 pub mod stateless_reset;
 
+#[cfg(test)]
+mod tests;
+
 pub use key_phase::{KeyPhase, ProtectedKeyPhase};
 
 use connection::id::ConnectionInfo;

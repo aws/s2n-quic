@@ -44,39 +44,3 @@ futures-test = "0.3"
 ip_network = "0.4"
 plotters = { version = "0.3", default-features = false, features = ["svg_backend", "line_series"] }
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
-
-# TODO remove this once this is fixed: https://github.com/model-checking/kani/issues/473
-[target.'cfg(kani)'.dependencies]
-bolero = "0.7"
-bolero-generator = "0.7"
-
-[[test]]
-name = "crypto"
-path = "tests/crypto/fuzz_target.rs"
-harness = false
-
-[[test]]
-name = "frame"
-path = "tests/frame/fuzz_target.rs"
-harness = false
-
-[[test]]
-name = "packet"
-path = "tests/packet/fuzz_target.rs"
-harness = false
-required-features = ["testing"]
-
-[[test]]
-name = "transport_parameters"
-path = "tests/transport_parameters/fuzz_target.rs"
-harness = false
-
-[[test]]
-name = "varint"
-path = "tests/varint/fuzz_target.rs"
-harness = false
-
-[[test]]
-name = "recovery-simulation"
-path = "tests/recovery/simulation.rs"
-required-features = ["testing"]

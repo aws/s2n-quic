@@ -1,9 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use bolero::check;
-use s2n_codec::{DecoderBufferMut, Encoder, EncoderBuffer};
-use s2n_quic_core::{
+use crate::{
     connection::id::ConnectionInfo,
     crypto::key::testing,
     inet::SocketAddress,
@@ -12,8 +10,11 @@ use s2n_quic_core::{
     },
     transport,
 };
+use bolero::check;
+use s2n_codec::{DecoderBufferMut, Encoder, EncoderBuffer};
 
-fn main() {
+#[test]
+fn round_trip() {
     let mut encoder_data = vec![];
     check!().for_each(move |data| {
         let mut data = data.to_vec();
