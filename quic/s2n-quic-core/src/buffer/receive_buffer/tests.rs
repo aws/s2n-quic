@@ -20,6 +20,7 @@ enum Op {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
 fn model_test() {
     check!().with_type::<Vec<Op>>().for_each(|ops| {
         let mut buffer = ReceiveBuffer::new();
@@ -39,6 +40,7 @@ fn model_test() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
 fn write_and_pop() {
     let mut buffer = ReceiveBuffer::new();
     let mut offset = VarInt::default();
