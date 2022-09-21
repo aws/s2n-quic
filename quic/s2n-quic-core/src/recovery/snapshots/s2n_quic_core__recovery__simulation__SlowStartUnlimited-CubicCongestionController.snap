@@ -1,8 +1,7 @@
 ---
-source: quic/s2n-quic-core/tests/recovery/simulation.rs
-assertion_line: 148
+source: quic/s2n-quic-core/src/recovery/simulation.rs
+assertion_line: 149
 expression: self
-
 ---
 Simulation {
     name: "Slow Start Unlimited",

@@ -16,7 +16,8 @@ use s2n_quic_crypto::{
     Algorithm, Prk, SecretPair,
 };
 
-fn main() {
+#[test]
+fn round_trip() {
     check!()
         .with_generator((
             gen_crypto(),
@@ -33,7 +34,7 @@ fn main() {
                 } => {
                     let (server_key, server_header_key) = server_keys;
                     let (client_key, client_header_key) = client_keys;
-                    assert!(test_round_trip(
+                    assert!(check_round_trip(
                         server_key,
                         client_key,
                         server_header_key,
@@ -43,7 +44,7 @@ fn main() {
                         payload
                     )
                     .is_ok());
-                    assert!(test_round_trip(
+                    assert!(check_round_trip(
                         client_key,
                         server_key,
                         client_header_key,
@@ -60,7 +61,7 @@ fn main() {
                 } => {
                     let (server_key, server_header_key) = server_keys;
                     let (client_key, client_header_key) = client_keys;
-                    assert!(test_round_trip(
+                    assert!(check_round_trip(
                         server_key,
                         client_key,
                         server_header_key,
@@ -70,7 +71,7 @@ fn main() {
                         payload
                     )
                     .is_ok());
-                    assert!(test_round_trip(
+                    assert!(check_round_trip(
                         client_key,
                         server_key,
                         client_header_key,
@@ -81,7 +82,7 @@ fn main() {
                     )
                     .is_ok());
                     let server_key = server_key.update();
-                    assert!(test_round_trip(
+                    assert!(check_round_trip(
                         &server_key,
                         client_key,
                         server_header_key,
@@ -91,7 +92,7 @@ fn main() {
                         payload
                     )
                     .is_err());
-                    assert!(test_round_trip(
+                    assert!(check_round_trip(
                         client_key,
                         &server_key,
                         client_header_key,
@@ -102,7 +103,7 @@ fn main() {
                     )
                     .is_err());
                     let client_key = client_key.update();
-                    assert!(test_round_trip(
+                    assert!(check_round_trip(
                         &server_key,
                         &client_key,
                         server_header_key,
@@ -112,7 +113,7 @@ fn main() {
                         payload
                     )
                     .is_ok());
-                    assert!(test_round_trip(
+                    assert!(check_round_trip(
                         &client_key,
                         &server_key,
                         client_header_key,
@@ -129,7 +130,7 @@ fn main() {
                 } => {
                     let (server_key, server_header_key) = server_keys;
                     let (client_key, client_header_key) = client_keys;
-                    assert!(test_round_trip(
+                    assert!(check_round_trip(
                         server_key,
                         client_key,
                         server_header_key,
@@ -139,7 +140,7 @@ fn main() {
                         payload
                     )
                     .is_ok());
-                    assert!(test_round_trip(
+                    assert!(check_round_trip(
                         client_key,
                         server_key,
                         client_header_key,
@@ -150,7 +151,7 @@ fn main() {
                     )
                     .is_ok());
                     let server_key = server_key.update();
-                    assert!(test_round_trip(
+                    assert!(check_round_trip(
                         &server_key,
                         client_key,
                         server_header_key,
@@ -160,7 +161,7 @@ fn main() {
                         payload
                     )
                     .is_err());
-                    assert!(test_round_trip(
+                    assert!(check_round_trip(
                         client_key,
                         &server_key,
                         client_header_key,
@@ -171,7 +172,7 @@ fn main() {
                     )
                     .is_err());
                     let client_key = client_key.update();
-                    assert!(test_round_trip(
+                    assert!(check_round_trip(
                         &server_key,
                         &client_key,
                         server_header_key,
@@ -181,7 +182,7 @@ fn main() {
                         payload
                     )
                     .is_ok());
-                    assert!(test_round_trip(
+                    assert!(check_round_trip(
                         &client_key,
                         &server_key,
                         client_header_key,
@@ -194,7 +195,7 @@ fn main() {
                 }
                 CryptoTest::ZeroRtt { ref keys } => {
                     let (key, header_key) = keys;
-                    assert!(test_round_trip(
+                    assert!(check_round_trip(
                         key,
                         key,
                         header_key,
@@ -209,7 +210,7 @@ fn main() {
         });
 }
 
-fn test_round_trip<K: Key, H: HeaderKey>(
+fn check_round_trip<K: Key, H: HeaderKey>(
     sealer_key: &K,
     opener: &K,
     sealer_header_key: &H,

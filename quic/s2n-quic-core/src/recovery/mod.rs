@@ -15,6 +15,9 @@ mod pacing;
 mod rtt_estimator;
 mod sent_packets;
 
+#[cfg(test)]
+mod simulation;
+
 //= https://www.rfc-editor.org/rfc/rfc9002#section-7.7
 //# Senders SHOULD limit bursts to the initial congestion window; see
 //# Section 7.2.

@@ -1,5 +1,6 @@
 ---
-source: quic/s2n-quic-core/tests/recovery/simulation.rs
+source: quic/s2n-quic-core/src/recovery/simulation.rs
+assertion_line: 149
 expression: self
 ---
 Simulation {

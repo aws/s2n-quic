@@ -1,11 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::transport::parameters::{ClientTransportParameters, ServerTransportParameters};
 use bolero::check;
 use s2n_codec::assert_codec_round_trip_bytes;
-use s2n_quic_core::transport::parameters::{ClientTransportParameters, ServerTransportParameters};
 
-fn main() {
+#[test]
+#[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
+fn round_trip() {
     check!().for_each(|input| {
         if input.is_empty() {
             return;

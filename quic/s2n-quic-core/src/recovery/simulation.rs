@@ -1,16 +1,16 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::{fmt, ops::Range, time::Duration};
-use insta::assert_debug_snapshot;
-use plotters::prelude::*;
-use s2n_quic_core::{
+use crate::{
     packet::number::PacketNumberSpace,
     path::MINIMUM_MTU,
     random,
     recovery::{CongestionController, CubicCongestionController, RttEstimator},
     time::{Clock, NoopClock, Timestamp},
 };
+use core::{fmt, ops::Range, time::Duration};
+use insta::assert_debug_snapshot;
+use plotters::prelude::*;
 use std::{
     env,
     path::{Path, PathBuf},

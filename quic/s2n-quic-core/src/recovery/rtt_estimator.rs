@@ -719,6 +719,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
     fn weighted_average_test() {
         bolero::check!()
             .with_type::<(u32, u32)>()

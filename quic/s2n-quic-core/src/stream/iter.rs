@@ -76,6 +76,7 @@ mod fuzz_target {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
     fn fuzz_builder() {
         bolero::check!()
             .with_type::<(StreamId, StreamId)>()

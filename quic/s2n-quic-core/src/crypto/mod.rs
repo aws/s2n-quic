@@ -145,6 +145,9 @@ pub mod retry;
 pub mod tls;
 pub mod zero_rtt;
 
+#[cfg(test)]
+mod tests;
+
 pub use application::*;
 pub use error::*;
 pub use handshake::*;
