@@ -728,10 +728,17 @@ mod test {
 
                 let weight = 8;
 
-                // assert that the unoptimized version matches the optimized to the millisecond
+                // perform the unoptimized version
                 let expected = ((weight - 1) as u32 * a) / weight + b / weight;
                 let actual = super::weighted_average(a, b, weight as _);
-                assert_eq!(expected.as_millis(), actual.as_millis());
+
+                // assert that the unoptimized result matches the optimized to the nearest `weight` nanos
+                assert!(
+                    super::abs_difference(expected.as_nanos(), actual.as_nanos()) as u32 <= weight,
+                    "expected: {:?}; actual: {:?}",
+                    expected,
+                    actual
+                );
             })
     }
 }
