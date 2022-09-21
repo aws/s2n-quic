@@ -12,6 +12,7 @@ use s2n_codec::{DecoderBufferMut, EncoderBuffer};
 use std::convert::TryInto;
 
 #[test]
+#[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
 fn round_trip() {
     check!()
         .with_generator((
