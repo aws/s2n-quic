@@ -769,4 +769,27 @@ mod tests {
             .with_type::<Vec<Operation>>()
             .for_each(|ops| model(ops))
     }
+
+
+    #[test]
+    #[cfg_attr(kani, kani::proof, kani::unwind(9))]
+    fn kani_test() {
+        // Confirm that a 
+        let gen = gen::<VarInt>();
+
+        check!()
+            .with_generator(gen)
+            .cloned()
+            .for_each(|pn| {
+                let space = PacketNumberSpace::ApplicationData;
+                let mut map = Map::default();
+                assert!(map.is_empty());
+                let pn = space.new_packet_number(pn);
+
+                map.insert(pn, ());
+
+                assert!(map.get(pn).is_some());
+                assert!(!map.is_empty());
+            });
+    }
 }
