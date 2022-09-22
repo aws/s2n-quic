@@ -152,9 +152,8 @@ mod tests {
 
     const LEN: usize = if cfg!(kani) { 2 } else { 32 };
 
-    #[cfg_attr(not(kani), test)]
-    #[cfg_attr(kani, kani::proof)]
-    #[cfg_attr(kani, kani::unwind(5))]
+    #[test]
+    #[cfg_attr(kani, kani::proof, kani::unwind(5))]
     #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
     fn vectored_copy_fuzz_test() {
         check!()

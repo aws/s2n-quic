@@ -230,11 +230,7 @@ fn decode_packet_number(
         candidate_pn -= pn_win
     }
 
-    let candidate_pn = unsafe {
-        // Safety: the value has already been checked in constant time above
-        debug_assert!(candidate_pn <= VarInt::MAX.as_u64());
-        VarInt::new_unchecked(candidate_pn)
-    };
+    let candidate_pn = VarInt::new(candidate_pn).unwrap_or(VarInt::MAX);
 
     PacketNumber::from_varint(candidate_pn, space)
 }
