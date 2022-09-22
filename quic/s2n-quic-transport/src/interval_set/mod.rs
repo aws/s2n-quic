@@ -651,7 +651,8 @@ impl<T: IntervalBound> IntervalSet<T> {
         while size > 1 {
             let half = size / 2;
             let mid = base + half;
-            match (&intervals[mid]).partial_cmp(value) {
+            let mid_v = &intervals[mid];
+            match mid_v.partial_cmp(value) {
                 Some(Equal) => return on_equal(mid),
                 Some(Greater) => {}
                 Some(Less) => base = mid,
@@ -660,7 +661,8 @@ impl<T: IntervalBound> IntervalSet<T> {
             size -= half;
         }
 
-        match (&intervals[base]).partial_cmp(value) {
+        let base_v = &intervals[base];
+        match base_v.partial_cmp(value) {
             Some(Equal) => on_equal(base),
             Some(Greater) => on_greater(base),
             Some(Less) => on_less(base),
