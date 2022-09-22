@@ -657,3 +657,16 @@ impl StreamReceiveBuffer {
         *self = StreamReceiveBuffer::with_buffer_size(self.buffer_size)
     }
 }
+
+#[test]
+#[cfg_attr(kani, kani::proof)]
+fn try_merge_receive_buffers() {
+    let mut buffer = StreamReceiveBuffer::new();
+    let index: usize = kani::any();
+    kani::assume(index < usize::MAX);
+    let slot_pos: SlotPosition = SlotPosition {
+        offset: kani::any(),
+        index,
+    };
+    buffer.try_merge_receive_buffers(slot_pos, kani::any(), kani::any());
+}
