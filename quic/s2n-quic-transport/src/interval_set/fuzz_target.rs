@@ -98,6 +98,20 @@ fn interval_set_test() {
     );
 }
 
+#[test]
+#[cfg_attr(kani, kani::proof, kani::unwind(2))]
+fn interval_set_inset_range_test() {
+    // Generate valid ranges (lb <= ub)
+    let gen = gen::<(i32, i32, i32)>().filter_gen(|(a, b, _c)| a <= b);
+
+    check!().with_generator(gen).for_each(|(lb, ub, elem)| {
+        let mut set: IntervalSet<i32> = IntervalSet::new();
+        let range = lb..=ub;
+        assert!(set.insert(range.clone()).is_ok());
+        assert_eq!(range.contains(&elem), set.contains(&elem));
+    });
+}
+
 fn process_operation(
     OperationTest { limit, operations }: &OperationTest,
 ) -> (Oracle, IntervalSet<RangeBound>) {
