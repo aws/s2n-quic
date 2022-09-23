@@ -278,6 +278,7 @@ mod test {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
+    #[cfg_attr(miri, ignore)] // this test is too expensive for miri
     fn insert_test() {
         // Make sure the two packet numbers are not the same
         let gen = gen::<(VarInt, VarInt)>().filter_gen(|(a, b)| a != b);
