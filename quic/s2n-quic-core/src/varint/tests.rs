@@ -161,10 +161,6 @@ fn kani_eight_byte_sequence_test() {
         .with_generator(g)
         .cloned()
         .for_each(|(mut first_byte, second_byte, third_byte, fourth_byte)| {
-            //= https://www.rfc-editor.org/rfc/rfc9000#section-16
-            //= type=test
-            //# Eight byte sequences have the first two MSBs encoded as 11; the
-            //# last 62 bits are the usable values.
             first_byte = (first_byte & 0x3f) | 0xc0;
             let byte_sequence = [
                 first_byte,
