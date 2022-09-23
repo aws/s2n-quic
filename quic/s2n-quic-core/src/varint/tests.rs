@@ -4,8 +4,7 @@
 use super::*;
 use crate::varint::VarInt;
 use bolero::check;
-use s2n_codec::assert_codec_round_trip_bytes;
-use s2n_codec::assert_codec_round_trip_value;
+use s2n_codec::{assert_codec_round_trip_bytes, assert_codec_round_trip_value};
 
 #[test]
 #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
