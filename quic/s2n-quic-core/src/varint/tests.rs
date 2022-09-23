@@ -69,6 +69,19 @@ sequence_test!(two_byte_sequence_test([0x7b, 0xbd], 15293));
 
 sequence_test!(one_byte_sequence_test([0x25], 37));
 
+//= https://www.rfc-editor.org/rfc/rfc9000#section-16
+//= type=test
+// # +======+========+=============+=======================+
+// # | 2MSB | Length | Usable Bits | Range                 |
+// # +======+========+=============+=======================+
+// # | 00   | 1      | 6           | 0-63                  |
+// # +------+--------+-------------+-----------------------+
+// # | 01   | 2      | 14          | 0-16383               |
+// # +------+--------+-------------+-----------------------+
+// # | 10   | 4      | 30          | 0-1073741823          |
+// # +------+--------+-------------+-----------------------+
+// # | 11   | 8      | 62          | 0-4611686018427387903 |
+// # +------+--------+-------------+-----------------------+
 #[test]
 #[cfg_attr(miri, ignore)]
 #[cfg_attr(kani, kani::proof)]
@@ -77,10 +90,6 @@ fn kani_one_byte_sequence_test() {
         .with_type()
         .cloned()
         .for_each(|mut first_byte: u8| {
-            //= https://www.rfc-editor.org/rfc/rfc9000#section-16
-            //= type=test
-            //# One byte sequences have the first two MSBs encoded as 00; the
-            //# last six bits are the usable values.
             first_byte &= 0x3f;
             let byte_sequence = [first_byte];
             let expected = VarInt::new(first_byte as u64).unwrap();
@@ -103,10 +112,6 @@ fn kani_two_byte_sequence_test() {
         .with_generator(g)
         .cloned()
         .for_each(|(mut first_byte, second_byte)| {
-            //= https://www.rfc-editor.org/rfc/rfc9000#section-16
-            //= type=test
-            //# two byte sequences have the first two msbs encoded as 01; the
-            //# last 14 bits are the usable values.
             first_byte = (first_byte & 0x3f) | 0x40;
             let byte_sequence = [first_byte, second_byte];
             let expected_val = u16::from_be_bytes([first_byte & 0x3f, second_byte]);
@@ -131,10 +136,6 @@ fn kani_four_byte_sequence_test() {
         .with_generator(g)
         .cloned()
         .for_each(|(mut first_byte, second_byte, third_byte)| {
-            //= https://www.rfc-editor.org/rfc/rfc9000#section-16
-            //= type=test
-            //# Four byte sequences have the first two MSBs encoded as 10; the
-            //# last 30 bits are the usable values.
             first_byte = (first_byte & 0x3f) | 0x80;
             let byte_sequence = [first_byte, second_byte, third_byte, 0xff];
             let expected_val: u32 =
