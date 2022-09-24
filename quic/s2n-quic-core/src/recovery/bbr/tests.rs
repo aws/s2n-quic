@@ -18,6 +18,35 @@ use num_rational::Ratio;
 use num_traits::{Inv, One, ToPrimitive};
 use std::time::Duration;
 
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
+//= type=test
+//# When not explicitly accelerating to probe for bandwidth (Drain, ProbeRTT,
+//# ProbeBW_DOWN, ProbeBW_CRUISE), BBR responds to loss by slowing down to some extent.
+#[test]
+fn is_probing_for_bandwidth() {
+    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+
+    // States that are not explicitly accelerating to probe for bandwidth
+    // ie Drain, ProbeRtt, ProbeBW_DOWN, ProbeBW_CRUISE
+    assert!(!State::Drain.is_probing_for_bandwidth());
+    assert!(!State::ProbeRtt(probe_rtt::State::default()).is_probing_for_bandwidth());
+
+    enter_probe_bw_state(&mut bbr, CyclePhase::Down);
+    assert!(!bbr.state.is_probing_for_bandwidth());
+
+    enter_probe_bw_state(&mut bbr, CyclePhase::Cruise);
+    assert!(!bbr.state.is_probing_for_bandwidth());
+
+    // States that are explicitly accelerating to probe for bandwidth
+    assert!(State::Startup.is_probing_for_bandwidth());
+
+    enter_probe_bw_state(&mut bbr, CyclePhase::Up);
+    assert!(bbr.state.is_probing_for_bandwidth());
+
+    enter_probe_bw_state(&mut bbr, CyclePhase::Refill);
+    assert!(bbr.state.is_probing_for_bandwidth());
+}
+
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
 //= type=test
 //# BBRInflightHiFromLostPacket(rs, packet):

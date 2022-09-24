@@ -146,9 +146,28 @@ impl State {
         false
     }
 
+    /// True if the current state is ProbeBw and the CyclePhase is `Refill`
+    fn is_probing_bw_refill(&self) -> bool {
+        if let State::ProbeBw(probe_bw_state) = self {
+            return probe_bw_state.cycle_phase() == CyclePhase::Refill;
+        }
+        false
+    }
+
     /// True if the current state is ProbeRtt
     fn is_probing_rtt(&self) -> bool {
         matches!(self, State::ProbeRtt(_))
+    }
+
+    /// True if BBR is accelerating sending in order to probe for bandwidth
+    ///
+    /// Note: This is not the same as `is_probing_bw`, as states other than
+    ///       `State::ProbingBw` are also considered as probing for bandwidth
+    ///       and not every `ProbingBw` sub-state is actually probing.
+    ///
+    /// See https://github.com/google/bbr/blob/a23c4bb59e0c5a505fc0f5cc84c4d095a64ed361/net/ipv4/tcp_bbr2.c#L1348
+    fn is_probing_for_bandwidth(&self) -> bool {
+        self.is_startup() || self.is_probing_bw_up() || self.is_probing_bw_refill()
     }
 
     /// Transition to the given `new_state`
