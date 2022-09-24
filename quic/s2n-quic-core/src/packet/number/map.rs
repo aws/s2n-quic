@@ -770,26 +770,20 @@ mod tests {
             .for_each(|ops| model(ops))
     }
 
-
     #[test]
-    #[cfg_attr(kani, kani::proof, kani::unwind(9))]
-    fn kani_test() {
-        // Confirm that a 
-        let gen = gen::<VarInt>();
+    #[cfg_attr(kani, kani::proof, kani::unwind(9), kani::solver(kissat))]
+    fn insert_value() {
+        // Confirm that a value is inserted
+        check!().with_type().cloned().for_each(|pn| {
+            let space = PacketNumberSpace::ApplicationData;
+            let mut map = Map::default();
+            assert!(map.is_empty());
+            let pn = space.new_packet_number(pn);
 
-        check!()
-            .with_generator(gen)
-            .cloned()
-            .for_each(|pn| {
-                let space = PacketNumberSpace::ApplicationData;
-                let mut map = Map::default();
-                assert!(map.is_empty());
-                let pn = space.new_packet_number(pn);
+            map.insert(pn, ());
 
-                map.insert(pn, ());
-
-                assert!(map.get(pn).is_some());
-                assert!(!map.is_empty());
-            });
+            assert!(map.get(pn).is_some());
+            assert!(!map.is_empty());
+        });
     }
 }
