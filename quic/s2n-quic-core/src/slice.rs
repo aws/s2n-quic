@@ -88,7 +88,7 @@ where
     count
 }
 
-#[cfg(any(test, kani))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use bolero::{check, generator::*};

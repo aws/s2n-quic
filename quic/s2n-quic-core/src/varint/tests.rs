@@ -4,7 +4,7 @@
 use super::*;
 use crate::varint::VarInt;
 use bolero::check;
-use s2n_codec::assert_codec_round_trip_bytes;
+use s2n_codec::{assert_codec_round_trip_bytes, assert_codec_round_trip_value};
 
 #[test]
 #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
@@ -68,3 +68,123 @@ sequence_test!(four_byte_sequence_test(
 sequence_test!(two_byte_sequence_test([0x7b, 0xbd], 15293));
 
 sequence_test!(one_byte_sequence_test([0x25], 37));
+
+//= https://www.rfc-editor.org/rfc/rfc9000#section-16
+//= type=test
+// # +======+========+=============+=======================+
+// # | 2MSB | Length | Usable Bits | Range                 |
+// # +======+========+=============+=======================+
+// # | 00   | 1      | 6           | 0-63                  |
+// # +------+--------+-------------+-----------------------+
+// # | 01   | 2      | 14          | 0-16383               |
+// # +------+--------+-------------+-----------------------+
+// # | 10   | 4      | 30          | 0-1073741823          |
+// # +------+--------+-------------+-----------------------+
+// # | 11   | 8      | 62          | 0-4611686018427387903 |
+// # +------+--------+-------------+-----------------------+
+#[test]
+#[cfg_attr(miri, ignore)]
+#[cfg_attr(kani, kani::proof)]
+fn kani_one_byte_sequence_test() {
+    bolero::check!()
+        .with_type()
+        .cloned()
+        .for_each(|mut first_byte: u8| {
+            first_byte &= 0x3f;
+            let byte_sequence = [first_byte];
+            let expected = VarInt::new(first_byte as u64).unwrap();
+            let actual_bytes = assert_codec_round_trip_value!(VarInt, expected);
+            assert_eq!(&byte_sequence[..], &actual_bytes[..]);
+        });
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+#[cfg_attr(kani, kani::proof)]
+fn kani_two_byte_sequence_test() {
+    // the s2n-quic implementation always chooses the smallest encoding possible.
+    // this means if we wish to test two-byte sequences, we need to encode a number
+    // that is > 63.
+    let g = gen::<(u8, u8)>().filter_gen(|(_, b)| *b > 63);
+
+    bolero::check!()
+        .with_type::<(u8, u8)>()
+        .with_generator(g)
+        .cloned()
+        .for_each(|(mut first_byte, second_byte)| {
+            first_byte = (first_byte & 0x3f) | 0x40;
+            let byte_sequence = [first_byte, second_byte];
+            let expected_val = u16::from_be_bytes([first_byte & 0x3f, second_byte]);
+            assert!(expected_val <= 16383);
+            let expected = VarInt::new(expected_val as u64).unwrap();
+            let actual_bytes = assert_codec_round_trip_value!(VarInt, expected);
+            assert_eq!(&byte_sequence[..], &actual_bytes[..]);
+        });
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+#[cfg_attr(kani, kani::proof)]
+fn kani_four_byte_sequence_test() {
+    // The s2n-quic implementation always chooses the smallest encoding possible.
+    // This means if we wish to test the four-byte sequences, we need to encode a number
+    // that is > 16383 or 0b0011 1111 1111 1111.
+    let g = gen::<(u8, u8, u8)>().filter_gen(|(_, _, c)| *c > 0x3f);
+
+    bolero::check!()
+        .with_type::<(u8, u8, u8)>()
+        .with_generator(g)
+        .cloned()
+        .for_each(|(mut first_byte, second_byte, third_byte)| {
+            first_byte = (first_byte & 0x3f) | 0x80;
+            let byte_sequence = [first_byte, second_byte, third_byte, 0xff];
+            let expected_val: u32 =
+                u32::from_be_bytes([first_byte & 0x3f, second_byte, third_byte, 0xff]);
+            assert!(expected_val <= 1073741823);
+            let expected = VarInt::new(expected_val as u64).unwrap();
+            let actual_bytes = assert_codec_round_trip_value!(VarInt, expected);
+            assert_eq!(&byte_sequence[..], &actual_bytes[..]);
+        });
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+#[cfg_attr(kani, kani::proof)]
+fn kani_eight_byte_sequence_test() {
+    // The s2n-quic implementation always chooses the smallest encoding possible.
+    // This means if we wish to test eight-byte sequences, we need to encode a number
+    // that is > 1073741823 or 0b0011 1111 1111 1111 1111 1111 1111 1111
+    let g = gen::<(u8, u8, u8, u8)>().filter_gen(|(_, _, _, d)| *d > 0x3f);
+
+    bolero::check!()
+        .with_type::<(u8, u8, u8, u8)>()
+        .with_generator(g)
+        .cloned()
+        .for_each(|(mut first_byte, second_byte, third_byte, fourth_byte)| {
+            first_byte = (first_byte & 0x3f) | 0xc0;
+            let byte_sequence = [
+                first_byte,
+                second_byte,
+                third_byte,
+                fourth_byte,
+                0xff,
+                0xff,
+                0xff,
+                0xff,
+            ];
+            let expected_val: u64 = u64::from_be_bytes([
+                first_byte & 0x3f,
+                second_byte,
+                third_byte,
+                fourth_byte,
+                0xff,
+                0xff,
+                0xff,
+                0xff,
+            ]);
+            assert!(expected_val <= 4611686018427387903);
+            let expected = VarInt::new(expected_val).unwrap();
+            let actual_bytes = assert_codec_round_trip_value!(VarInt, expected);
+            assert_eq!(&byte_sequence[..], &actual_bytes[..]);
+        });
+}
