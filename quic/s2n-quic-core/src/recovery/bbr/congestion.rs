@@ -34,7 +34,7 @@ impl State {
         delivered_bytes: u64,
         data_rate_model: &mut data_rate::Model,
         data_volume_model: &mut data_volume::Model,
-        is_probing_bw: bool,
+        is_probing_for_bandwidth: bool,
         cwnd: u32,
         ecn_alpha: f64,
     ) {
@@ -71,7 +71,10 @@ impl State {
         }
 
         if self.loss_round_counter.round_start() {
-            if !is_probing_bw {
+            //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
+            //# When not explicitly accelerating to probe for bandwidth (Drain, ProbeRTT,
+            //# ProbeBW_DOWN, ProbeBW_CRUISE), BBR responds to loss by slowing down to some extent.
+            if !is_probing_for_bandwidth {
                 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
                 //# BBRAdaptLowerBoundsFromCongestion():
                 //#   if (BBRIsProbingBW())
@@ -173,7 +176,7 @@ impl BbrCongestionController {
             self.bw_estimator.delivered_bytes(),
             &mut self.data_rate_model,
             &mut self.data_volume_model,
-            self.state.is_probing_bw(),
+            self.state.is_probing_for_bandwidth(),
             self.cwnd,
             self.ecn_state.alpha(),
         );
