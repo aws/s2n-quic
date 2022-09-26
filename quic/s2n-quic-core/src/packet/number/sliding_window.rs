@@ -136,6 +136,7 @@ mod test {
 
     use super::*;
     use crate::{packet::number::PacketNumberSpace, varint::VarInt};
+    use bolero::{check, generator::*};
     use SlidingWindowError::*;
 
     /// This macro asserts that the output of inserting the given packet number,
@@ -273,5 +274,26 @@ mod test {
         assert_eq!(window.check(large), Err(Duplicate));
         assert_eq!(window.insert(large), Err(Duplicate));
         assert_eq!(window.window, 0b0);
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    #[cfg_attr(miri, ignore)] // this test is too expensive for miri
+    fn insert_test() {
+        // Make sure the two packet numbers are not the same
+        let gen = gen::<(VarInt, VarInt)>().filter_gen(|(a, b)| a != b);
+
+        check!()
+            .with_generator(gen)
+            .cloned()
+            .for_each(|(pn, other_pn)| {
+                let mut window = SlidingWindow::default();
+                let space = PacketNumberSpace::ApplicationData;
+                let packet_number = space.new_packet_number(pn);
+                let other_packet_number = space.new_packet_number(other_pn);
+                assert!(window.insert(packet_number).is_ok());
+                assert_eq!(Err(Duplicate), window.check(packet_number));
+                assert_ne!(Err(Duplicate), window.check(other_packet_number));
+            });
     }
 }
