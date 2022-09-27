@@ -43,7 +43,7 @@ impl Zeroize for Iv {
     #[inline]
     fn zeroize(&mut self) {
         // deref to a slice to we can take advantage of the bulk zeroization
-        self.0.zeroize()
+        (&mut self.0).zeroize()
     }
 }
 
