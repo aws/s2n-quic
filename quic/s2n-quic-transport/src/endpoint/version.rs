@@ -20,7 +20,7 @@ pub struct Negotiator<Config: endpoint::Config> {
     max_peers: usize,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Error;
 
 const SUPPORTED_VERSIONS: &[u32] = &[

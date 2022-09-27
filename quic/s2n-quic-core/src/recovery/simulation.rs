@@ -106,7 +106,7 @@ impl Simulation {
         let root_area = SVGBackend::new(path, CHART_DIMENSIONS).into_drawing_area();
         root_area.fill(&WHITE).expect("Could not fill chart");
         root_area
-            .titled(&*self.name(), ("sans-serif", 40))
+            .titled(&self.name(), ("sans-serif", 40))
             .expect("Could not add title");
 
         let mut ctx = ChartBuilder::on(&root_area)
@@ -127,7 +127,7 @@ impl Simulation {
 
         ctx.draw_series(LineSeries::new(
             self.rounds.iter().map(|x| (x.number as i32, x.cwnd as i32)),
-            &GREEN,
+            GREEN,
         ))
         .expect("Could not draw series");
     }

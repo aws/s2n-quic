@@ -248,7 +248,7 @@ impl Connection {
     }
 }
 
-#[derive(Clone, Copy, Message, PartialEq)]
+#[derive(Clone, Copy, Message, PartialEq, Eq)]
 pub struct Counts {
     #[prost(uint64, tag = "1")]
     pub initial: u64,
@@ -319,7 +319,7 @@ impl Counts {
     }
 }
 
-#[derive(Clone, Copy, Message, PartialEq)]
+#[derive(Clone, Copy, Message, PartialEq, Eq)]
 pub struct Handshake {
     #[prost(message, tag = "1")]
     pub complete: Option<Duration>,
@@ -327,7 +327,7 @@ pub struct Handshake {
     pub confirmed: Option<Duration>,
 }
 
-#[derive(Clone, Copy, Message, PartialEq)]
+#[derive(Clone, Copy, Message, PartialEq, Eq)]
 pub struct Duration {
     #[prost(uint64, tag = "1")]
     pub secs: u64,
@@ -358,7 +358,7 @@ impl From<Duration> for core::time::Duration {
 
 type Q = fn(&Parameters, &Connection, &[Connection]) -> Option<f64>;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Type {
     Integer,
     Percent,

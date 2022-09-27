@@ -37,7 +37,7 @@ impl Socket for std::net::UdpSocket {
     fn send_to(&self, buf: &[u8], addr: &SocketAddress) -> Result<usize, Self::Error> {
         debug_assert!(!buf.is_empty());
         let addr: std::net::SocketAddr = (*addr).into();
-        self.send_to(buf, &addr)
+        self.send_to(buf, addr)
     }
 }
 

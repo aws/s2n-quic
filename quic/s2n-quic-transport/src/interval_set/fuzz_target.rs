@@ -108,7 +108,7 @@ fn interval_set_inset_range_test() {
         let mut set: IntervalSet<i32> = IntervalSet::new();
         let range = lb..=ub;
         assert!(set.insert(range.clone()).is_ok());
-        assert_eq!(range.contains(&elem), set.contains(&elem));
+        assert_eq!(range.contains(&elem), set.contains(elem));
     });
 }
 

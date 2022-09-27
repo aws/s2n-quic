@@ -3,7 +3,7 @@
 
 use crate::{ack::ack_ranges::AckRanges, transmission};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AckTransmissionState {
     /// No ACK frames will be transmitted
     Disabled,

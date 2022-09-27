@@ -20,7 +20,7 @@ use s2n_quic_core::stream::StreamError;
 pub use traits::*;
 
 /// Enumerates states of the [`DataSender`]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum State {
     /// Outgoing data is accepted and transmitted
     Sending,
@@ -60,7 +60,7 @@ impl State {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum FinState {
     Pending,
     InFlight(PacketNumber),
