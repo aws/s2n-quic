@@ -8,7 +8,6 @@
 extern crate alloc;
 
 mod ack;
-mod buffer;
 mod contexts;
 mod interval_set;
 mod processed_packet;

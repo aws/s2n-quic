@@ -8,6 +8,8 @@ extern crate alloc;
 
 pub mod ack;
 pub mod application;
+#[cfg(feature = "alloc")]
+pub mod buffer;
 pub mod connection;
 pub mod counter;
 pub mod crypto;
