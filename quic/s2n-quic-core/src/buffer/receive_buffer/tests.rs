@@ -15,7 +15,7 @@ enum Op {
         len: usize,
     },
     Pop {
-        watermark: u16,
+        watermark: Option<u16>,
     },
 }
 
@@ -30,8 +30,12 @@ fn model_test() {
                     let _ = buffer.write_at(offset, &BYTES[..len]);
                 }
                 Op::Pop { watermark } => {
-                    if let Some(chunk) = buffer.pop_watermarked(watermark as _) {
-                        assert!(chunk.len() <= watermark as usize);
+                    if let Some(watermark) = watermark {
+                        if let Some(chunk) = buffer.pop_watermarked(watermark as _) {
+                            assert!(chunk.len() <= watermark as usize);
+                        }
+                    } else if let Some(chunk) = buffer.pop() {
+                        assert!(!chunk.is_empty(), "popped chunks should never be empty");
                     }
                 }
             }

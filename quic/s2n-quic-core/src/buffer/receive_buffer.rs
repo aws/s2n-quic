@@ -25,6 +25,8 @@ pub enum ReceiveBufferError {
 }
 
 /// The default buffer size for slots that the [`ReceiveBuffer`] uses.
+///
+/// This value was picked as it is typically used for the default memory page size.
 const MIN_BUFFER_ALLOCATION_SIZE: usize = 4096;
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-2.2
@@ -41,7 +43,7 @@ const MIN_BUFFER_ALLOCATION_SIZE: usize = 4096;
 /// `ReceiveBuffer` is optimized for minimizing memory allocations and for
 /// offering it's users chunks of sizes that minimize call overhead.
 ///
-/// If data is retrieved in smaller chunks, only the first chunk will trigger a
+/// If data is received in smaller chunks, only the first chunk will trigger a
 /// memory allocation. All other chunks can be copied into the already allocated
 /// region.
 ///
@@ -229,16 +231,16 @@ impl ReceiveBuffer {
 
         let out = transform(buffer);
 
+        // filter out empty buffers
+        if out.is_empty() {
+            return None;
+        }
+
         slot.add_start(out.len());
 
         if slot.start() == slot.end_allocated() {
             // remove empty buffers
             self.slots.pop_front();
-        }
-
-        // filter out empty buffers
-        if out.is_empty() {
-            return None;
         }
 
         self.start_offset += out.len() as u64;
@@ -253,7 +255,8 @@ impl ReceiveBuffer {
         self.start_offset
     }
 
-    /// Returns the total amount of consecutive received data.
+    /// Returns the total amount of contiguous received data.
+    ///
     /// This includes the already consumed data as well as the data that is still
     /// buffered and available for consumption.
     #[inline]
@@ -262,6 +265,7 @@ impl ReceiveBuffer {
     }
 
     /// Resets the receive buffer.
+    ///
     /// This will drop all previously received data.
     #[inline]
     pub fn reset(&mut self) {
@@ -290,16 +294,19 @@ impl ReceiveBuffer {
 
             let slot::Outcome { lower, mid, upper } = slot.try_write(request);
 
-            debug_assert!(lower.is_empty());
+            debug_assert!(lower.is_empty(), "lower requests should always be empty");
 
+            // first insert the newly-created Slot
             self.insert(idx, slot);
             idx += 1;
 
+            // check if we have a mid-slot and insert that as well
             if let Some(mid) = mid {
                 self.insert(idx, mid);
                 idx += 1;
             }
 
+            // set the current request to the upper slot and loop
             request = upper;
         }
     }
@@ -310,12 +317,30 @@ impl ReceiveBuffer {
         (offset / (alignment as u64)) * (alignment as u64)
     }
 
+    /// Returns the desired allocation size for the given offset
+    ///
+    /// The allocation size gradually increases as the offset increases. This is under
+    /// the assumption that streams that receive a lot of data will continue to receive
+    /// a lot of data.
+    ///
+    /// The current table is as follows:
+    ///
+    /// | offset         | allocation size |
+    /// |----------------|-----------------|
+    /// | 0              | 4096            |
+    /// | 65536          | 16384           |
+    /// | 262144         | 32768           |
+    /// | >=1048575      | 65536           |
     #[inline]
     fn allocation_size(offset: u64) -> usize {
         for pow in (2..=4).rev() {
             let mult = 1 << pow;
-            if offset >= (MIN_BUFFER_ALLOCATION_SIZE * mult * mult) as u64 {
-                return MIN_BUFFER_ALLOCATION_SIZE * mult;
+            let square = mult * mult;
+            let min_offset = (MIN_BUFFER_ALLOCATION_SIZE * square) as u64;
+            let allocation_size = MIN_BUFFER_ALLOCATION_SIZE * mult;
+
+            if offset >= min_offset {
+                return allocation_size;
             }
         }
 

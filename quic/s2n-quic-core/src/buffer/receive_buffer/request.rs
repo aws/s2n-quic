@@ -60,6 +60,9 @@ impl<'a> Request<'a> {
             let len = self.data.len();
             debug_assert!(len <= chunk.len(), "{:?} <= {:?}", len, chunk.len());
 
+            // Safety: `chunk` is always going to be uninitialized memory which is allocated through `BytesMut`.
+            //         Since the receive buffer owns this allocation, it's impossible for the request to overlap
+            //         with this `chunk`.
             core::ptr::copy_nonoverlapping(self.data.as_ptr(), chunk.as_mut_ptr(), len);
             buffer.advance_mut(len);
         }
