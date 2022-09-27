@@ -6,7 +6,7 @@ use crate::varint::VarInt;
 use bytes::{BufMut, BytesMut};
 use core::fmt;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub struct Request<'a> {
     offset: u64,
     data: &'a [u8],

@@ -39,7 +39,7 @@ lazy_static! {
 }
 
 pub fn implementations() -> &'static [Implementation] {
-    &*IMPLEMENTATIONS
+    &IMPLEMENTATIONS
 }
 
 #[cfg(test)]

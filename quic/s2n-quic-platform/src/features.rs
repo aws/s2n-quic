@@ -11,7 +11,7 @@ lazy_static! {
 }
 
 pub fn get() -> &'static Features {
-    &*FEATURES
+    &FEATURES
 }
 
 #[derive(Debug, Default)]

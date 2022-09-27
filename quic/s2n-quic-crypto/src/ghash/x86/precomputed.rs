@@ -91,7 +91,7 @@ impl<H: HKey + DefaultIsZeroes> Zeroize for Allocated<H> {
     #[inline]
     fn zeroize(&mut self) {
         // deref to a slice to we can take advantage of the bulk zeroization
-        (&mut self.state[..]).zeroize()
+        self.state.zeroize()
     }
 }
 
@@ -140,7 +140,7 @@ impl<H: HKey + DefaultIsZeroes, const N: usize> Zeroize for Array<H, N> {
     #[inline]
     fn zeroize(&mut self) {
         // deref to a slice to we can take advantage of the bulk zeroization
-        (&mut self.state[..]).zeroize()
+        self.state.zeroize()
     }
 }
 

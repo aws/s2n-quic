@@ -6,7 +6,7 @@ use bytes::BytesMut;
 use core::fmt;
 
 /// Possible states for slots in the [`ReceiveBuffer`]s queue
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub struct Slot {
     start: u64,
     end: u64,
@@ -24,7 +24,7 @@ impl fmt::Debug for Slot {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Outcome<'a> {
     pub lower: Request<'a>,
     pub mid: Option<Slot>,

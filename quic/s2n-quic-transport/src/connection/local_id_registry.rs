@@ -169,7 +169,7 @@ impl LocalIdInfo {
 }
 
 /// The current status of the connection ID.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum LocalIdStatus {
     /// New Connection IDs are put in the `PendingIssuance` status
     /// upon creation until a NEW_CONNECTION_ID frame has been sent

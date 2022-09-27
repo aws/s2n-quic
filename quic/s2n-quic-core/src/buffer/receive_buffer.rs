@@ -18,7 +18,7 @@ use request::Request;
 use slot::Slot;
 
 /// Enumerates error that can occur while inserting data into the Receive Buffer
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ReceiveBufferError {
     /// An invalid data range was provided
     OutOfRange,

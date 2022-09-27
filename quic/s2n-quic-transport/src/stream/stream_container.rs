@@ -407,7 +407,7 @@ impl<S: StreamTrait> StreamContainer<S> {
             // `Rc` pointers.
             node_ptr = unsafe { stream_node_rc_from_ref(node) };
 
-            let stream: &mut S = &mut *node.inner.borrow_mut();
+            let stream: &mut S = &mut node.inner.borrow_mut();
             result = func(stream);
             interests = stream.get_stream_interests();
         }

@@ -5,7 +5,7 @@ use core::{fmt, marker::PhantomData, str::FromStr, time::Duration};
 use s2n_quic::provider::io::testing::rand;
 use serde::Deserialize;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct CliRange<T> {
     pub start: T,
     pub end: T,

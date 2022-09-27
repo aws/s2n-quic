@@ -35,7 +35,7 @@ impl Batch {
         let out = &self.out;
         let command = std::env::args().next().unwrap();
 
-        fs::create_dir_all(&out)?;
+        fs::create_dir_all(out)?;
         fs::write(out.join("index.html"), INDEX)?;
 
         let mut reports = vec![];
@@ -45,7 +45,7 @@ impl Batch {
         }
 
         for (_title, report) in reports.iter_mut() {
-            *report = report.strip_prefix(&out).unwrap().to_owned();
+            *report = report.strip_prefix(out).unwrap().to_owned();
         }
 
         serde_json::to_writer(fs::File::create(out.join("reports.json"))?, &reports)?;

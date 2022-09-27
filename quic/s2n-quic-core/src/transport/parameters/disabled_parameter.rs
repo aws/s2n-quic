@@ -5,7 +5,7 @@ use super::{TransportParameter, TransportParameterId, TransportParameterValidato
 use core::marker::PhantomData;
 
 /// Struct for marking a field as disabled for a given endpoint type
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct DisabledParameter<T>(PhantomData<T>);
 
 impl<T> Default for DisabledParameter<T> {
