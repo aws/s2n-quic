@@ -231,8 +231,8 @@ impl<B: Buffer> Queue<B> {
         Ok(count)
     }
 
-    pub fn rx_queue(&mut self) -> queue::OccupiedWipe<Message> {
-        self.0.occupied_wipe_mut()
+    pub fn rx_queue(&mut self) -> queue::Occupied<Message> {
+        self.0.occupied_mut()
     }
 
     pub fn tx_queue(&mut self) -> queue::Free<Message> {

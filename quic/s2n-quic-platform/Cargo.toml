@@ -11,13 +11,12 @@ license = "Apache-2.0"
 exclude = ["corpus.tar.gz"]
 
 [features]
-default = ["std", "tokio-runtime", "wipe"]
+default = ["std", "tokio-runtime"]
 std = ["s2n-quic-core/std", "socket2", "lazy_static"]
 testing = ["std", "generator", "futures/std", "io-testing"] # Testing allows to overwrite the system time
 io-testing = ["bach"]
 generator = ["bolero-generator", "s2n-quic-core/generator"]
 tokio-runtime = ["futures", "pin-project", "tokio"]
-wipe = ["zeroize"]
 
 [dependencies]
 bach = { version = "0.0.6", optional = true }
@@ -30,7 +29,7 @@ pin-project = { version = "1", optional = true }
 s2n-quic-core = { version = "=0.10.1", path = "../s2n-quic-core", default-features = false }
 socket2 = { version = "0.4", features = ["all"], optional = true }
 tokio = { version = "1", default-features = false, features = ["macros", "net", "rt", "time"], optional = true }
-zeroize = { version = "1", default-features = false, optional = true }
+zeroize = { version = "1", default-features = false }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

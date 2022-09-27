@@ -11,7 +11,6 @@ pub use slice::Slice;
 
 pub type Free<'a, M> = Slice<'a, M, behavior::Free>;
 pub type Occupied<'a, M> = Slice<'a, M, behavior::Occupied>;
-pub type OccupiedWipe<'a, M> = Slice<'a, M, behavior::OccupiedWipe>;
 
 use crate::message;
 use core::fmt;
@@ -142,23 +141,6 @@ impl<Ring: message::Ring> Queue<Ring> {
             primary: &mut self.occupied,
             secondary: &mut self.free,
             behavior: behavior::Occupied { mtu },
-            max_gso,
-            gso_segment: None,
-            local_address: &self.local_address,
-        }
-    }
-
-    /// Returns a slice of all of the `occupied` messages
-    ///
-    /// The messages will be wiped on release.
-    pub fn occupied_wipe_mut(&mut self) -> OccupiedWipe<Ring::Message> {
-        let mtu = self.mtu();
-        let max_gso = self.max_gso();
-        Slice {
-            messages: self.ring.as_mut_slice(),
-            primary: &mut self.occupied,
-            secondary: &mut self.free,
-            behavior: behavior::OccupiedWipe { mtu },
             max_gso,
             gso_segment: None,
             local_address: &self.local_address,
