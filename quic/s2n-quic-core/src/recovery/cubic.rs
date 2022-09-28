@@ -155,6 +155,9 @@ pub struct CubicCongestionController {
     //# Packets only containing ACK frames do not count toward
     //# bytes_in_flight to ensure congestion control does not impede
     //# congestion feedback.
+
+    // ACK + PADDING packets do not contribute to bytes_in_flight
+    // See https://github.com/aws/s2n-quic/pull/1514
     bytes_in_flight: BytesInFlight,
     time_of_last_sent_packet: Option<Timestamp>,
     under_utilized: bool,

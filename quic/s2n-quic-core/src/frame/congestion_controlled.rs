@@ -31,7 +31,23 @@ impl CongestionControlled for crate::frame::MaxStreamData {}
 impl CongestionControlled for crate::frame::MaxStreams {}
 impl CongestionControlled for crate::frame::NewConnectionId<'_> {}
 impl CongestionControlled for crate::frame::NewToken<'_> {}
-impl CongestionControlled for crate::frame::Padding {}
+impl CongestionControlled for crate::frame::Padding {
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-2
+    //= type=exception
+    //= reason=https://github.com/aws/s2n-quic/pull/1514
+    //# Packets are considered in flight when they are ack-eliciting or contain a PADDING frame
+
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-3
+    //= type=exception
+    //= reason=https://github.com/aws/s2n-quic/pull/1514
+    //# PADDING frames cause packets to contribute toward bytes in
+    //# flight without directly causing an acknowledgment to be sent.
+
+    #[inline]
+    fn is_congestion_controlled(&self) -> bool {
+        false
+    }
+}
 impl CongestionControlled for crate::frame::PathChallenge<'_> {}
 impl CongestionControlled for crate::frame::PathResponse<'_> {}
 impl CongestionControlled for crate::frame::Ping {}

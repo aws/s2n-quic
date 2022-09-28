@@ -107,10 +107,7 @@ impl<'a, 'sub, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
             }
 
             if length > 0 {
-                // Use `write_frame_forced` to bypass congestion controller checks
-                // since we still want to send this packet despite Padding being
-                // congestion controlled.
-                context.write_frame_forced(&Padding { length });
+                context.write_frame(&Padding { length });
             }
 
             {
