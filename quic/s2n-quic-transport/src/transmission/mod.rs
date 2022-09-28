@@ -102,15 +102,24 @@ impl<'a, 'sub, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
             // if we've only got a few bytes left in the buffer may as well pad it to full
             // capacity
             let remaining_capacity = context.buffer.remaining_capacity();
-            if remaining_capacity < stateless_reset::min_indistinguishable_packet_len(tag_len) {
+            let min_indistinguishable_packet_len =
+                stateless_reset::min_indistinguishable_packet_len(tag_len);
+            if remaining_capacity < min_indistinguishable_packet_len {
                 length = remaining_capacity;
             }
 
             if length > 0 {
+                let is_congestion_controlled = context.outcome.is_congestion_controlled;
                 // Use `write_frame_forced` to bypass congestion controller checks
                 // since we still want to send this packet despite Padding being
                 // congestion controlled.
                 context.write_frame_forced(&Padding { length });
+                if length < min_indistinguishable_packet_len {
+                    // Restore previous `is_congestion_controlled` value as we don't want Padding
+                    // alone to cause a small, non-congestion controlled packet (such as an Ack-only
+                    // packet) to become congestion controlled.
+                    context.outcome.is_congestion_controlled = is_congestion_controlled;
+                }
             }
 
             {
