@@ -751,8 +751,13 @@ impl BbrCongestionController {
                 cwnd = max_inflight;
                 self.try_fast_path = true;
             }
-        } else if cwnd < max_inflight || self.bw_estimator.delivered_bytes() < initial_cwnd as u64 {
+        } else if cwnd < max_inflight
+            || self.bw_estimator.delivered_bytes() < 2 * initial_cwnd as u64
+        {
             // cwnd has room to grow, or so little data has been delivered that max_inflight should not be used
+            // The Linux TCP BBRv2 implementation and Chromium BBRv2 implementation both use 2 * initial_cwnd here
+            // See https://github.com/google/bbr/blob/1ee29b79317a3028ed1fcd85cb46da009f45de00/net/ipv4/tcp_bbr2.c#L931
+            // and https://source.chromium.org/chromium/chromium/src/+/main:net/third_party/quiche/src/quiche/quic/core/congestion_control/bbr2_sender.cc;l=404;bpv=1;bpt=1
             cwnd += newly_acked as u32;
         } else {
             self.try_fast_path = true;
