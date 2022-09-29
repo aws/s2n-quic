@@ -10,6 +10,7 @@ use bolero::{check, generator::*};
 use s2n_codec::{testing::encode, DecoderBuffer};
 
 #[test]
+#[cfg_attr(kani, kani::proof)]
 fn round_trip() {
     check!()
         .with_generator(
@@ -106,7 +107,11 @@ fn new(value: VarInt) -> PacketNumber {
 /// easier to ensure it matches.
 #[allow(clippy::blocks_in_if_conditions)]
 fn rfc_decoder(largest_pn: u64, truncated_pn: u64, pn_nbits: usize) -> u64 {
-    use std::panic::catch_unwind as catch;
+    macro_rules! catch {
+        ($expr:expr) => {
+            (|| Some($expr))().unwrap_or(false)
+        };
+    }
 
     //= https://www.rfc-editor.org/rfc/rfc9000#section-A.3
     //= type=test
@@ -140,18 +145,14 @@ fn rfc_decoder(largest_pn: u64, truncated_pn: u64, pn_nbits: usize) -> u64 {
     let pn_mask = pn_win - 1;
 
     let candidate_pn = (expected_pn & !pn_mask) | truncated_pn;
-    if catch(|| {
-        candidate_pn <= expected_pn.checked_sub(pn_hwin).unwrap()
-            && candidate_pn < (1u64 << 62).checked_sub(pn_win).unwrap()
-    })
-    .unwrap_or_default()
-    {
+    if catch!(
+        candidate_pn <= expected_pn.checked_sub(pn_hwin)?
+            && candidate_pn < (1u64 << 62).checked_sub(pn_win)?
+    ) {
         return candidate_pn + pn_win;
     }
 
-    if catch(|| candidate_pn > expected_pn.checked_add(pn_hwin).unwrap() && candidate_pn >= pn_win)
-        .unwrap_or_default()
-    {
+    if catch!(candidate_pn > expected_pn.checked_add(pn_hwin)? && candidate_pn >= pn_win) {
         return candidate_pn - pn_win;
     }
 
@@ -159,6 +160,7 @@ fn rfc_decoder(largest_pn: u64, truncated_pn: u64, pn_nbits: usize) -> u64 {
 }
 
 #[test]
+#[cfg_attr(kani, kani::proof)]
 fn truncate_expand_test() {
     check!()
         .with_type()
@@ -173,6 +175,7 @@ fn truncate_expand_test() {
 }
 
 #[test]
+#[cfg_attr(kani, kani::proof)]
 fn rfc_differential_test() {
     check!()
         .with_type()
@@ -195,15 +198,16 @@ fn rfc_differential_test() {
             assert_eq!(
                 actual_value,
                 rfc_value,
-                "diff: {}",
+                "diff: {:?}",
                 actual_value
                     .checked_sub(rfc_value)
-                    .unwrap_or(rfc_value - actual_value)
+                    .or_else(|| rfc_value.checked_sub(actual_value))
             );
         });
 }
 
 #[test]
+#[cfg_attr(kani, kani::proof)]
 fn example_test() {
     macro_rules! example {
         ($largest:expr, $truncated:expr, $expected:expr) => {{
