@@ -250,7 +250,10 @@ impl CongestionController for BbrCongestionController {
 
     #[inline]
     fn is_slow_start(&self) -> bool {
-        self.state.is_startup()
+        // BBR may enter and exit the ProbeRtt state while still slow starting
+        // so the full pipe estimator, which is only filled once per connection,
+        // provides a more accurate view on whether BBR is still slow starting.
+        !self.full_pipe_estimator.filled_pipe()
     }
 
     #[inline]
