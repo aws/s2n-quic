@@ -556,12 +556,12 @@ fn set_cwnd_not_filled_pipe() {
     bbr.set_cwnd(1000);
     assert_eq!(13_000, bbr.cwnd);
 
-    // cwnd > BBR.max_inflight, but C.delivered < InitialCwnd
+    // cwnd > BBR.max_inflight, but C.delivered < 2 * InitialCwnd
     bbr.cwnd = 40_000;
     bbr.set_cwnd(1000);
     assert_eq!(41_000, bbr.cwnd);
 
-    // Set C.delivered > InitialCwnd
+    // Set C.delivered > 2 * InitialCwnd
     let packet_info = PacketInfo {
         delivered_bytes: 0,
         delivered_time: now,
@@ -572,7 +572,7 @@ fn set_cwnd_not_filled_pipe() {
         is_app_limited: false,
     };
     bbr.bw_estimator.on_ack(
-        BbrCongestionController::initial_window(MINIMUM_MTU) as usize + 1,
+        2 * BbrCongestionController::initial_window(MINIMUM_MTU) as usize + 1,
         now,
         packet_info,
         now,
