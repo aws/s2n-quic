@@ -517,31 +517,6 @@ fn bound_cwnd_for_model() {
     assert_eq!(4800, bbr.bound_cwnd_for_model());
 }
 
-//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
-//= type=test
-//#   if (BBR.packet_conservation)
-//#     cwnd = max(cwnd, packets_in_flight + rs.newly_acked)
-#[test]
-fn set_cwnd_packet_conservation() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
-    let now = NoopClock.get_time();
-    assert_eq!(36_000, bbr.max_inflight());
-
-    bbr.recovery_state.on_congestion_event(now);
-    assert!(bbr.recovery_state.packet_conservation());
-
-    bbr.cwnd = 12_000;
-    bbr.bytes_in_flight = Counter::new(12_500);
-    bbr.set_cwnd(1000);
-    assert_eq!(13_500, bbr.cwnd);
-
-    bbr.cwnd = 14_000;
-    bbr.set_cwnd(1000);
-    assert_eq!(14_000, bbr.cwnd);
-
-    assert!(!bbr.try_fast_path);
-}
-
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.6
 //= type=test
 //#     if (BBR.filled_pipe)
@@ -720,25 +695,6 @@ fn restore_cwnd() {
     bbr.restore_cwnd();
 
     assert_eq!(2000, bbr.cwnd);
-}
-
-//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
-//= type=test
-//# BBRModulateCwndForRecovery():
-//#   if (rs.newly_lost > 0)
-//#     cwnd = max(cwnd - rs.newly_lost, 1)
-#[test]
-fn modulate_cwnd_for_recovery() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
-    bbr.cwnd = 100_000;
-
-    bbr.modulate_cwnd_for_recovery(1000);
-    assert_eq!(99_000, bbr.congestion_window());
-
-    // Don't drop below the minimum window
-    bbr.cwnd = bbr.minimum_window();
-    bbr.modulate_cwnd_for_recovery(1000);
-    assert_eq!(bbr.minimum_window(), bbr.congestion_window());
 }
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
