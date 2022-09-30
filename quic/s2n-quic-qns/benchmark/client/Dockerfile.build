@@ -7,7 +7,7 @@ RUN apt-get update; \
      apt-get install -y git;
 
 RUN git clone https://github.com/quinn-rs/quinn.git .; \
-     git checkout 730fdaf723eef125c175fbcdba1ac3fe3324f7ce;
+     git checkout 6e4bcbb2fcb57ced2ef261c9662521c5baf37f3c;
 RUN cargo chef prepare  --recipe-path recipe.json
 
 FROM rust:latest as cacher
@@ -24,7 +24,7 @@ ARG release="true"
 # copy quinn sources
 RUN git init; \
      git remote add origin https://github.com/quinn-rs/quinn; \
-     git fetch origin 730fdaf723eef125c175fbcdba1ac3fe3324f7ce; \
+     git fetch origin 6e4bcbb2fcb57ced2ef261c9662521c5baf37f3c; \
      git reset --hard FETCH_HEAD;
 
 # Copy over the cached dependencies

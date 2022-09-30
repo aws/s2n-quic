@@ -20,6 +20,20 @@ pub async fn handle_connection(connection: Connection, www_dir: Arc<Path>) {
         .unwrap();
 
     while let Ok(Some((req, stream))) = conn.accept().await {
+        if let Some(amount) = req
+            .uri()
+            .path()
+            .strip_prefix("/_perf/")
+            .and_then(|v| v.parse().ok())
+        {
+            tokio::spawn(async move {
+                if let Err(err) = handle_perf_stream(amount, stream).await {
+                    eprintln!("Stream error: {:?}", err);
+                }
+            });
+            continue;
+        }
+
         let www_dir = www_dir.clone();
         tokio::spawn(async {
             if let Err(err) = handle_stream(req, stream, www_dir).await {
@@ -68,4 +82,22 @@ where
             }
         }
     }
+}
+
+async fn handle_perf_stream<T>(amount: u64, mut stream: RequestStream<T, Bytes>) -> Result<()>
+where
+    T: BidiStream<Bytes>,
+{
+    let mut data = s2n_quic_core::stream::testing::Data::new(amount);
+    let resp = http::Response::builder().status(StatusCode::OK).body(())?;
+
+    stream.send_response(resp).await?;
+
+    while let Some(chunk) = data.send_one(usize::MAX) {
+        stream.send_data(chunk).await?;
+    }
+
+    stream.finish().await?;
+
+    Ok(())
 }

@@ -23,7 +23,7 @@ env:
   CDN: https://dnglbrstg7yg.cloudfront.net
   LOG_URL: logs/latest/SERVER_CLIENT/TEST/index.html
   H3_SPEC_VERSION: v0.1.8
-  QUINN_REF: 18f00de385b0edf49c3fcc169800c80d5dd3abf6
+  QUINN_REF: 6e4bcbb2fcb57ced2ef261c9662521c5baf37f3c
   # enable unstable features for testing
   S2N_UNSTABLE_CRYPTO_OPT_TX: 100
   S2N_UNSTABLE_CRYPTO_OPT_RX: 100

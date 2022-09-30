@@ -9,7 +9,7 @@ use crate::{
 use bytes::Bytes;
 use futures::StreamExt;
 use s2n_quic::{
-    stream::{BidirectionalStream, ReceiveStream},
+    stream::{BidirectionalStream, ReceiveStream, SendStream},
     Connection,
 };
 use std::{convert::TryInto, path::Path, sync::Arc, time::Duration};
@@ -55,6 +55,11 @@ pub(crate) async fn handle_connection(mut connection: Connection, www_dir: Arc<P
 async fn handle_stream(stream: BidirectionalStream, www_dir: Arc<Path>) -> Result<()> {
     let (rx_stream, mut tx_stream) = stream.split();
     let path = read_request(rx_stream).await?;
+
+    if let Some(amount) = path.strip_prefix("/_perf/").and_then(|v| v.parse().ok()) {
+        return handle_perf_stream(amount, tx_stream).await;
+    }
+
     let abs_path = abs_path(&path, &www_dir);
     let mut file = File::open(&abs_path).await?;
     loop {
@@ -83,6 +88,18 @@ async fn handle_stream(stream: BidirectionalStream, www_dir: Arc<Path>) -> Resul
             }
         }
     }
+}
+
+async fn handle_perf_stream(amount: u64, mut stream: SendStream) -> Result<()> {
+    let mut data = s2n_quic_core::stream::testing::Data::new(amount);
+
+    while let Some(chunk) = data.send_one(usize::MAX) {
+        stream.send(chunk).await?;
+    }
+
+    stream.finish()?;
+
+    Ok(())
 }
 
 async fn read_request(mut stream: ReceiveStream) -> Result<String> {
