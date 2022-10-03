@@ -56,7 +56,7 @@ async fn handle_stream(stream: BidirectionalStream, www_dir: Arc<Path>) -> Resul
     let (rx_stream, mut tx_stream) = stream.split();
     let path = read_request(rx_stream).await?;
 
-    if let Some(amount) = path.strip_prefix("/_perf/").and_then(|v| v.parse().ok()) {
+    if let Some(amount) = path.strip_prefix("_perf/").and_then(|v| v.parse().ok()) {
         return handle_perf_stream(amount, tx_stream).await;
     }
 
@@ -149,6 +149,7 @@ fn parse_h09_request(chunks: &[Bytes], path: &mut String, is_open: bool) -> Resu
             Some(b'.') => path.push('.'),
             Some(b'/') => path.push('/'),
             Some(b'-') => path.push('-'),
+            Some(b'_') => path.push('_'),
             Some(b'\n' | b'\r') => return Ok(true),
             // https://www.w3.org/Protocols/HTTP/AsImplemented.html
             // > The document address will consist of a single word (ie no spaces).
