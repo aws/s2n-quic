@@ -92,13 +92,17 @@ async fn create_stream_inner<B: Buf, T: h3::quic::OpenStreams<B>>(
     eprintln!("Headers: {:#?}", resp.headers());
 
     if let Some(download_dir) = download_dir.as_ref() {
-        let mut abs_path = download_dir.to_path_buf();
-        abs_path.push(Path::new(request.path().trim_start_matches('/')));
-        let mut file = File::create(&abs_path).await?;
-        while let Some(mut chunk) = stream.recv_data().await? {
-            file.write_all_buf(&mut chunk).await?;
+        if download_dir == Path::new("/dev/null") {
+            while stream.recv_data().await?.is_some() {}
+        } else {
+            let mut abs_path = download_dir.to_path_buf();
+            abs_path.push(Path::new(request.path().trim_start_matches('/')));
+            let mut file = File::create(&abs_path).await?;
+            while let Some(mut chunk) = stream.recv_data().await? {
+                file.write_all_buf(&mut chunk).await?;
+            }
+            file.flush().await?;
         }
-        file.flush().await?;
     };
 
     Ok(())

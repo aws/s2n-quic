@@ -17,9 +17,6 @@ env:
   # This should be occasionally updated.
   RUST_NIGHTLY_TOOLCHAIN: nightly-2022-09-15
   CDN: https://dnglbrstg7yg.cloudfront.net
-  # enable unstable features for testing
-  S2N_UNSTABLE_CRYPTO_OPT_TX: 100
-  S2N_UNSTABLE_CRYPTO_OPT_RX: 100
 
 jobs:
   rustfmt:
@@ -183,13 +180,13 @@ jobs:
 
       - name: Run server
         run: |
-          sudo SCENARIO=$SCENARIO ./netbench-collector \
+          sudo SCENARIO=$SCENARIO S2N_UNSTABLE_CRYPTO_OPT_TX=1 S2N_UNSTABLE_CRYPTO_OPT_RX=1 ./netbench-collector \
             ./netbench-driver-${{ matrix.driver }}-server > results/${{ matrix.scenario }}/${{ matrix.driver }}/server.json &
 
       - name: Run client
         run: |
           export SERVER_0=localhost:4433
-          sudo SCENARIO=$SCENARIO SERVER_0=$SERVER_0 ./netbench-collector \
+          sudo SCENARIO=$SCENARIO SERVER_0=$SERVER_0 S2N_UNSTABLE_CRYPTO_OPT_TX=1 S2N_UNSTABLE_CRYPTO_OPT_RX=1 ./netbench-collector \
             ./netbench-driver-${{ matrix.driver }}-client > results/${{ matrix.scenario }}/${{ matrix.driver }}/client.json
 
       - uses: actions/upload-artifact@v3
