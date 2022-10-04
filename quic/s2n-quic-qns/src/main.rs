@@ -18,6 +18,9 @@ mod tls;
 /// Do not change it without updating it elsewhere
 const CRASH_ERROR_MESSAGE: &str = "The s2n-quic-qns application shut down unexpectedly";
 
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[tokio::main()]
 async fn main() {
     let format = tracing_subscriber::fmt::format()

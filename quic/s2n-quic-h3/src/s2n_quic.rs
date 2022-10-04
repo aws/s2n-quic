@@ -337,6 +337,7 @@ impl Error for ReadError {
 
 pub struct SendStream<B: Buf> {
     stream: s2n_quic::stream::SendStream,
+    chunk: Option<Bytes>,
     buf: Option<WriteBuf<B>>, // TODO: Replace with buf: PhantomData<B>
                               //       after https://github.com/hyperium/h3/issues/78 is resolved
 }
@@ -348,6 +349,7 @@ where
     fn new(stream: s2n_quic::stream::SendStream) -> SendStream<B> {
         Self {
             stream,
+            chunk: None,
             buf: Default::default(),
         }
     }
@@ -360,14 +362,38 @@ where
     type Error = SendStreamError;
 
     fn poll_ready(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
-        if let Some(ref mut data) = self.buf {
-            while data.has_remaining() {
-                let len = data.chunk().len();
-                let mut chunk = data.copy_to_bytes(len);
-                ready!(self.stream.poll_send(&mut chunk, cx))?;
+        loop {
+            // try to flush the current chunk if we have one
+            if let Some(chunk) = self.chunk.as_mut() {
+                ready!(self.stream.poll_send(chunk, cx))?;
+
+                // s2n-quic will take the whole chunk on send, even if it exceeds the limits
+                debug_assert!(chunk.is_empty());
+                self.chunk = None;
             }
+
+            // try to take the next chunk from the WriteBuf
+            if let Some(ref mut data) = self.buf {
+                let len = data.chunk().len();
+
+                // if the write buf is empty, then clear it and break
+                if len == 0 {
+                    self.buf = None;
+                    break;
+                }
+
+                // copy the first chunk from WriteBuf and prepare it to flush
+                let chunk = data.copy_to_bytes(len);
+                self.chunk = Some(chunk);
+
+                // loop back around to flush the chunk
+                continue;
+            }
+
+            // if we didn't have either a chunk or WriteBuf, then we're ready
+            break;
         }
-        self.buf = None;
+
         Poll::Ready(Ok(()))
 
         // TODO: Replace with following after https://github.com/hyperium/h3/issues/78 is resolved
@@ -393,7 +419,9 @@ where
         // Ok(())
     }
 
-    fn poll_finish(&mut self, _cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_finish(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+        // ensure all chunks are flushed to the QUIC stream before finishing
+        ready!(self.poll_ready(cx))?;
         self.stream.finish()?;
         Ok(()).into()
     }
