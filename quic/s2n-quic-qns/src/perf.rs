@@ -285,15 +285,10 @@ impl Counters {
 }
 
 fn rate(bytes: u64, duration: Duration) -> String {
-    use humansize::{file_size_opts as opts, FileSize};
-
-    let opts = opts::FileSizeOpts {
-        space: false,
-        ..humansize::file_size_opts::DECIMAL
-    };
+    use humansize::{format_size, DECIMAL};
 
     let bits = bytes * 8;
-    let value = bits.file_size(opts).unwrap();
+    let value = format_size(bits, DECIMAL.space_after_value(false));
     let value = value.trim_end_matches('B');
 
     if duration == Duration::from_secs(1) {
@@ -304,12 +299,6 @@ fn rate(bytes: u64, duration: Duration) -> String {
 }
 
 fn bytes(value: u64) -> String {
-    use humansize::{file_size_opts as opts, FileSize};
-
-    let opts = opts::FileSizeOpts {
-        space: false,
-        ..humansize::file_size_opts::DECIMAL
-    };
-
-    value.file_size(opts).unwrap()
+    use humansize::{format_size, DECIMAL};
+    format_size(value, DECIMAL.space_after_value(false))
 }
