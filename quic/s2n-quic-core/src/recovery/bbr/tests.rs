@@ -4,12 +4,14 @@
 use crate::{
     assert_delta,
     counter::Counter,
+    event, path,
     path::MINIMUM_MTU,
     random,
     recovery::{
         bandwidth::{Bandwidth, PacketInfo, RateSample},
         bbr,
         bbr::{probe_bw::CyclePhase, probe_rtt, BbrCongestionController, State, State::ProbeRtt},
+        congestion_controller::PathPublisher,
         CongestionController,
     },
     time::{Clock, NoopClock},
@@ -547,6 +549,8 @@ fn set_cwnd_filled_pipe() {
 #[test]
 fn set_cwnd_not_filled_pipe() {
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     assert_eq!(36_000, bbr.max_inflight());
 
@@ -576,6 +580,7 @@ fn set_cwnd_not_filled_pipe() {
         now,
         packet_info,
         now,
+        &mut publisher,
     );
     bbr.cwnd = 12_000;
     bbr.set_cwnd(1000);
@@ -845,10 +850,12 @@ fn handle_lost_packet() {
 #[test]
 fn handle_restart_from_idle() {
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let pacing_rate = bbr.pacer.pacing_rate();
 
-    bbr.handle_restart_from_idle(now);
+    bbr.handle_restart_from_idle(now, &mut publisher);
 
     // Not app limited
     assert!(!bbr.idle_restart);
@@ -856,13 +863,13 @@ fn handle_restart_from_idle() {
     // App limited, but bytes in flight > 0
     bbr.bytes_in_flight = Counter::new(1);
     bbr.bw_estimator.on_app_limited(100);
-    bbr.handle_restart_from_idle(now);
+    bbr.handle_restart_from_idle(now, &mut publisher);
 
     assert!(!bbr.idle_restart);
 
     bbr.bytes_in_flight = Counter::default();
 
-    bbr.handle_restart_from_idle(now);
+    bbr.handle_restart_from_idle(now, &mut publisher);
     assert!(bbr.idle_restart);
     assert_eq!(
         Some(now),
@@ -881,7 +888,7 @@ fn handle_restart_from_idle() {
     assert!(bbr.data_rate_model.bw() > bbr.pacer.pacing_rate());
 
     let now = now + Duration::from_secs(5);
-    bbr.handle_restart_from_idle(now);
+    bbr.handle_restart_from_idle(now, &mut publisher);
     assert!(bbr.idle_restart);
     assert_eq!(
         Some(now),
@@ -1006,10 +1013,13 @@ fn control_update_required() {
 fn on_mtu_update() {
     let mut mtu = 5000;
     let mut bbr = BbrCongestionController::new(mtu);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
+
     bbr.cwnd = 100_000;
 
     mtu = 10000;
-    bbr.on_mtu_update(mtu);
+    bbr.on_mtu_update(mtu, &mut publisher);
 
     assert_eq!(bbr.max_datagram_size, mtu);
     assert_eq!(bbr.cwnd, 200_000);

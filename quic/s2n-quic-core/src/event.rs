@@ -53,6 +53,7 @@ ident_into_event!(
     i64,
     usize,
     isize,
+    f32,
     Duration,
     bool,
     connection::Error,

@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    event,
     packet::number::PacketNumberSpace,
+    path,
     path::MINIMUM_MTU,
     random,
     recovery::{
-        bbr::BbrCongestionController, CongestionController, CubicCongestionController, RttEstimator,
+        bbr::BbrCongestionController, congestion_controller::PathPublisher, CongestionController,
+        CubicCongestionController, RttEstimator,
     },
     time::{testing::Clock, Clock as _, Timestamp},
 };
@@ -100,6 +103,9 @@ impl<CC: CongestionController> Model<CC> {
     }
 
     fn on_packet_sent(&mut self, count: u8, bytes_sent: u16, app_limited: Option<bool>) {
+        let mut publisher = event::testing::Publisher::no_snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
+
         for _ in 0..count {
             if !self.subject.is_congestion_limited()
                 || self.subject.requires_fast_retransmission()
@@ -110,6 +116,7 @@ impl<CC: CongestionController> Model<CC> {
                     bytes_sent as usize,
                     app_limited,
                     &self.rtt_estimator,
+                    &mut publisher,
                 );
                 self.sent_packets.push_back(SentPacketInfo {
                     sent_bytes: bytes_sent,
@@ -127,6 +134,8 @@ impl<CC: CongestionController> Model<CC> {
         rtt: Duration,
         rng: &mut dyn random::Generator,
     ) {
+        let mut publisher = event::testing::Publisher::no_snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         let index = (index as usize).min(self.sent_packets.len().saturating_sub(1));
         let mut rtt_updated = false;
 
@@ -148,6 +157,7 @@ impl<CC: CongestionController> Model<CC> {
                         &self.rtt_estimator,
                         rng,
                         self.timestamp,
+                        &mut publisher,
                     );
                 }
             } else {
@@ -157,6 +167,8 @@ impl<CC: CongestionController> Model<CC> {
     }
 
     fn on_packet_lost(&mut self, index: u8, rng: &mut dyn random::Generator) {
+        let mut publisher = event::testing::Publisher::no_snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         let index = (index as usize).min(self.sent_packets.len().saturating_sub(1));
 
         // Report the packet at the random `index` as lost
@@ -170,12 +182,16 @@ impl<CC: CongestionController> Model<CC> {
                     false,
                     rng,
                     self.timestamp,
+                    &mut publisher,
                 );
             }
         }
     }
 
     fn on_rtt_updated(&mut self, time_sent: Timestamp, rtt: Duration) {
+        let mut publisher = event::testing::Publisher::no_snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
+
         self.rtt_estimator.update_rtt(
             Duration::ZERO,
             rtt,
@@ -183,25 +199,35 @@ impl<CC: CongestionController> Model<CC> {
             false,
             PacketNumberSpace::Initial,
         );
-        self.subject
-            .on_rtt_update(time_sent, self.timestamp, &self.rtt_estimator);
+        self.subject.on_rtt_update(
+            time_sent,
+            self.timestamp,
+            &self.rtt_estimator,
+            &mut publisher,
+        );
     }
 
     fn on_explicit_congestion(&mut self, ce_count: u64) {
+        let mut publisher = event::testing::Publisher::no_snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         let ce_count = ce_count.min(self.sent_packets.len() as u64);
         self.subject
-            .on_explicit_congestion(ce_count, self.timestamp)
+            .on_explicit_congestion(ce_count, self.timestamp, &mut publisher)
     }
 
     fn on_packet_discarded(&mut self) {
+        let mut publisher = event::testing::Publisher::no_snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         if let Some(sent_packet_info) = self.sent_packets.pop_front() {
             self.subject
-                .on_packet_discarded(sent_packet_info.sent_bytes as usize)
+                .on_packet_discarded(sent_packet_info.sent_bytes as usize, &mut publisher)
         }
     }
 
     fn on_mtu_updated(&mut self, mtu: u16) {
-        self.subject.on_mtu_update(mtu)
+        let mut publisher = event::testing::Publisher::no_snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
+        self.subject.on_mtu_update(mtu, &mut publisher)
     }
 
     fn invariants(&self) {

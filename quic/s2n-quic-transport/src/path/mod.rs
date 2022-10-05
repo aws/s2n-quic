@@ -1119,6 +1119,9 @@ mod tests {
         );
         let now = NoopClock.get_time();
         let random = &mut random::testing::Generator::default();
+        let mut publisher = event::testing::Publisher::snapshot();
+        let mut publisher =
+            congestion_controller::PathPublisher::new(&mut publisher, path::Id::test_id());
         path.on_validated();
 
         assert_eq!(
@@ -1132,6 +1135,7 @@ mod tests {
             path.congestion_controller.congestion_window() as usize,
             None,
             &path.rtt_estimator,
+            &mut publisher,
         );
 
         assert_eq!(
@@ -1140,8 +1144,15 @@ mod tests {
         );
 
         // Lose a byte to enter recovery
-        path.congestion_controller
-            .on_packet_lost(1, packet_info, false, false, random, now);
+        path.congestion_controller.on_packet_lost(
+            1,
+            packet_info,
+            false,
+            false,
+            random,
+            now,
+            &mut publisher,
+        );
         path.congestion_controller.requires_fast_retransmission = true;
 
         assert_eq!(
@@ -1157,6 +1168,7 @@ mod tests {
             false,
             random,
             now,
+            &mut publisher,
         );
         path.congestion_controller.requires_fast_retransmission = false;
 

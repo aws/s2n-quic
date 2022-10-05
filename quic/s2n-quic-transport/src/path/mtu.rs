@@ -5,6 +5,7 @@ use crate::{
     contexts::WriteContext,
     path,
     path::{MaxMtu, MINIMUM_MTU},
+    recovery::congestion_controller,
     transmission,
 };
 use core::time::Duration;
@@ -209,7 +210,10 @@ impl Controller {
             if packet_number == probe_packet_number {
                 self.plpmtu = self.probed_size;
                 // A new MTU has been confirmed, notify the congestion controller
-                congestion_controller.on_mtu_update(self.plpmtu);
+                congestion_controller.on_mtu_update(
+                    self.plpmtu,
+                    &mut congestion_controller::PathPublisher::new(publisher, path_id),
+                );
 
                 publisher.on_mtu_updated(event::builder::MtuUpdated {
                     path_id: path_id.into_event(),
@@ -388,7 +392,10 @@ impl Controller {
         self.largest_acked_mtu_sized_packet = None;
         // Reset the plpmtu back to the BASE_PLPMTU and notify the congestion controller
         self.plpmtu = BASE_PLPMTU;
-        congestion_controller.on_mtu_update(BASE_PLPMTU);
+        congestion_controller.on_mtu_update(
+            BASE_PLPMTU,
+            &mut congestion_controller::PathPublisher::new(publisher, path_id),
+        );
         // Cancel any current probes
         self.state = State::SearchComplete;
         // Arm the PMTU raise timer to try a larger MTU again after a cooling off period

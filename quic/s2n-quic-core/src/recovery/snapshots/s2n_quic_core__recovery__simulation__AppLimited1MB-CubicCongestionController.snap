@@ -1,6 +1,5 @@
 ---
 source: quic/s2n-quic-core/src/recovery/simulation.rs
-assertion_line: 149
 expression: self
 ---
 Simulation {
@@ -88,7 +87,7 @@ Simulation {
          77: pkts: 728,
          78: pkts: 737,
          79: pkts: 747,
-         80: pkts: 758,
+         80: pkts: 757,
          81: pkts: 768,
          82: pkts: 780,
          83: pkts: 792,

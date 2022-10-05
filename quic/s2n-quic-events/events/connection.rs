@@ -284,8 +284,26 @@ struct MtuUpdated {
 
 #[event("recovery:slow_start_exited")]
 /// The slow start congestion controller state has been exited
-struct SlowStartExited<'a> {
-    path: Path<'a>,
+struct SlowStartExited {
+    path_id: u64,
     cause: SlowStartExitCause,
     congestion_window: u32,
+}
+
+#[event("recovery:delivery_rate_sampled")]
+/// A new delivery rate sample has been generated
+/// Note: This event is only recorded for congestion controllers that support
+///       bandwidth estimates, such as BBR
+struct DeliveryRateSampled {
+    path_id: u64,
+    rate_sample: RateSample,
+}
+
+#[event("recovery:pacing_rate_updated")]
+/// The pacing rate has been updated
+struct PacingRateUpdated {
+    path_id: u64,
+    bytes_per_second: u64,
+    burst_size: u32,
+    pacing_gain: f32,
 }

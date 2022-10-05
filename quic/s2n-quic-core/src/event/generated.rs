@@ -83,6 +83,31 @@ pub mod api {
         #[doc = " received with the CE codepoint."]
         pub ce_count: u64,
     }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " A bandwidth delivery rate estimate with associated metadata"]
+    pub struct RateSample {
+        #[doc = " The length of the sampling interval"]
+        pub interval: Duration,
+        #[doc = " The amount of data in bytes marked as delivered over the sampling interval"]
+        pub delivered_bytes: u64,
+        #[doc = " The amount of data in bytes marked as lost over the sampling interval"]
+        pub lost_bytes: u64,
+        #[doc = " The number of packets marked as explicit congestion experienced over the sampling interval"]
+        pub ecn_ce_count: u64,
+        #[doc = " [PacketInfo::is_app_limited] from the most recent acknowledged packet"]
+        pub is_app_limited: bool,
+        #[doc = " [PacketInfo::delivered_bytes] from the most recent acknowledged packet"]
+        pub prior_delivered_bytes: u64,
+        #[doc = " [PacketInfo::bytes_in_flight] from the most recent acknowledged packet"]
+        pub bytes_in_flight: u32,
+        #[doc = " [PacketInfo::lost_bytes] from the most recent acknowledged packet"]
+        pub prior_lost_bytes: u64,
+        #[doc = " [PacketInfo::ecn_ce_count] from the most recent acknowledged packet"]
+        pub prior_ecn_ce_count: u64,
+        #[doc = " The delivery rate for this rate sample"]
+        pub delivery_rate_bytes_per_second: u64,
+    }
     #[non_exhaustive]
     #[derive(Clone)]
     pub enum SocketAddress<'a> {
@@ -864,13 +889,37 @@ pub mod api {
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     #[doc = " The slow start congestion controller state has been exited"]
-    pub struct SlowStartExited<'a> {
-        pub path: Path<'a>,
+    pub struct SlowStartExited {
+        pub path_id: u64,
         pub cause: SlowStartExitCause,
         pub congestion_window: u32,
     }
-    impl<'a> Event for SlowStartExited<'a> {
+    impl Event for SlowStartExited {
         const NAME: &'static str = "recovery:slow_start_exited";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " A new delivery rate sample has been generated"]
+    #[doc = " Note: This event is only recorded for congestion controllers that support"]
+    #[doc = "       bandwidth estimates, such as BBR"]
+    pub struct DeliveryRateSampled {
+        pub path_id: u64,
+        pub rate_sample: RateSample,
+    }
+    impl Event for DeliveryRateSampled {
+        const NAME: &'static str = "recovery:delivery_rate_sampled";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " The pacing rate has been updated"]
+    pub struct PacingRateUpdated {
+        pub path_id: u64,
+        pub bytes_per_second: u64,
+        pub burst_size: u32,
+        pub pacing_gain: f32,
+    }
+    impl Event for PacingRateUpdated {
+        const NAME: &'static str = "recovery:pacing_rate_updated";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1939,11 +1988,41 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::SlowStartExited {
-                path,
+                path_id,
                 cause,
                 congestion_window,
             } = event;
-            tracing :: event ! (target : "slow_start_exited" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , cause = tracing :: field :: debug (cause) , congestion_window = tracing :: field :: debug (congestion_window));
+            tracing :: event ! (target : "slow_start_exited" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , cause = tracing :: field :: debug (cause) , congestion_window = tracing :: field :: debug (congestion_window));
+        }
+        #[inline]
+        fn on_delivery_rate_sampled(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::DeliveryRateSampled,
+        ) {
+            let id = context.id();
+            let api::DeliveryRateSampled {
+                path_id,
+                rate_sample,
+            } = event;
+            tracing :: event ! (target : "delivery_rate_sampled" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , rate_sample = tracing :: field :: debug (rate_sample));
+        }
+        #[inline]
+        fn on_pacing_rate_updated(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::PacingRateUpdated,
+        ) {
+            let id = context.id();
+            let api::PacingRateUpdated {
+                path_id,
+                bytes_per_second,
+                burst_size,
+                pacing_gain,
+            } = event;
+            tracing :: event ! (target : "pacing_rate_updated" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , bytes_per_second = tracing :: field :: debug (bytes_per_second) , burst_size = tracing :: field :: debug (burst_size) , pacing_gain = tracing :: field :: debug (pacing_gain));
         }
         #[inline]
         fn on_version_information(
@@ -2330,6 +2409,59 @@ pub mod builder {
                 ect_0_count: ect_0_count.into_event(),
                 ect_1_count: ect_1_count.into_event(),
                 ce_count: ce_count.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " A bandwidth delivery rate estimate with associated metadata"]
+    pub struct RateSample {
+        #[doc = " The length of the sampling interval"]
+        pub interval: Duration,
+        #[doc = " The amount of data in bytes marked as delivered over the sampling interval"]
+        pub delivered_bytes: u64,
+        #[doc = " The amount of data in bytes marked as lost over the sampling interval"]
+        pub lost_bytes: u64,
+        #[doc = " The number of packets marked as explicit congestion experienced over the sampling interval"]
+        pub ecn_ce_count: u64,
+        #[doc = " [PacketInfo::is_app_limited] from the most recent acknowledged packet"]
+        pub is_app_limited: bool,
+        #[doc = " [PacketInfo::delivered_bytes] from the most recent acknowledged packet"]
+        pub prior_delivered_bytes: u64,
+        #[doc = " [PacketInfo::bytes_in_flight] from the most recent acknowledged packet"]
+        pub bytes_in_flight: u32,
+        #[doc = " [PacketInfo::lost_bytes] from the most recent acknowledged packet"]
+        pub prior_lost_bytes: u64,
+        #[doc = " [PacketInfo::ecn_ce_count] from the most recent acknowledged packet"]
+        pub prior_ecn_ce_count: u64,
+        #[doc = " The delivery rate for this rate sample"]
+        pub delivery_rate_bytes_per_second: u64,
+    }
+    impl IntoEvent<api::RateSample> for RateSample {
+        #[inline]
+        fn into_event(self) -> api::RateSample {
+            let RateSample {
+                interval,
+                delivered_bytes,
+                lost_bytes,
+                ecn_ce_count,
+                is_app_limited,
+                prior_delivered_bytes,
+                bytes_in_flight,
+                prior_lost_bytes,
+                prior_ecn_ce_count,
+                delivery_rate_bytes_per_second,
+            } = self;
+            api::RateSample {
+                interval: interval.into_event(),
+                delivered_bytes: delivered_bytes.into_event(),
+                lost_bytes: lost_bytes.into_event(),
+                ecn_ce_count: ecn_ce_count.into_event(),
+                is_app_limited: is_app_limited.into_event(),
+                prior_delivered_bytes: prior_delivered_bytes.into_event(),
+                bytes_in_flight: bytes_in_flight.into_event(),
+                prior_lost_bytes: prior_lost_bytes.into_event(),
+                prior_ecn_ce_count: prior_ecn_ce_count.into_event(),
+                delivery_rate_bytes_per_second: delivery_rate_bytes_per_second.into_event(),
             }
         }
     }
@@ -3666,23 +3798,69 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     #[doc = " The slow start congestion controller state has been exited"]
-    pub struct SlowStartExited<'a> {
-        pub path: Path<'a>,
+    pub struct SlowStartExited {
+        pub path_id: u64,
         pub cause: SlowStartExitCause,
         pub congestion_window: u32,
     }
-    impl<'a> IntoEvent<api::SlowStartExited<'a>> for SlowStartExited<'a> {
+    impl IntoEvent<api::SlowStartExited> for SlowStartExited {
         #[inline]
-        fn into_event(self) -> api::SlowStartExited<'a> {
+        fn into_event(self) -> api::SlowStartExited {
             let SlowStartExited {
-                path,
+                path_id,
                 cause,
                 congestion_window,
             } = self;
             api::SlowStartExited {
-                path: path.into_event(),
+                path_id: path_id.into_event(),
                 cause: cause.into_event(),
                 congestion_window: congestion_window.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " A new delivery rate sample has been generated"]
+    #[doc = " Note: This event is only recorded for congestion controllers that support"]
+    #[doc = "       bandwidth estimates, such as BBR"]
+    pub struct DeliveryRateSampled {
+        pub path_id: u64,
+        pub rate_sample: RateSample,
+    }
+    impl IntoEvent<api::DeliveryRateSampled> for DeliveryRateSampled {
+        #[inline]
+        fn into_event(self) -> api::DeliveryRateSampled {
+            let DeliveryRateSampled {
+                path_id,
+                rate_sample,
+            } = self;
+            api::DeliveryRateSampled {
+                path_id: path_id.into_event(),
+                rate_sample: rate_sample.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " The pacing rate has been updated"]
+    pub struct PacingRateUpdated {
+        pub path_id: u64,
+        pub bytes_per_second: u64,
+        pub burst_size: u32,
+        pub pacing_gain: f32,
+    }
+    impl IntoEvent<api::PacingRateUpdated> for PacingRateUpdated {
+        #[inline]
+        fn into_event(self) -> api::PacingRateUpdated {
+            let PacingRateUpdated {
+                path_id,
+                bytes_per_second,
+                burst_size,
+                pacing_gain,
+            } = self;
+            api::PacingRateUpdated {
+                path_id: path_id.into_event(),
+                bytes_per_second: bytes_per_second.into_event(),
+                burst_size: burst_size.into_event(),
+                pacing_gain: pacing_gain.into_event(),
             }
         }
     }
@@ -4561,6 +4739,30 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `DeliveryRateSampled` event is triggered"]
+        #[inline]
+        fn on_delivery_rate_sampled(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &DeliveryRateSampled,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `PacingRateUpdated` event is triggered"]
+        #[inline]
+        fn on_pacing_rate_updated(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &PacingRateUpdated,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `VersionInformation` event is triggered"]
         #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
@@ -5133,6 +5335,26 @@ mod traits {
             (self.1).on_slow_start_exited(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_delivery_rate_sampled(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &DeliveryRateSampled,
+        ) {
+            (self.0).on_delivery_rate_sampled(&mut context.0, meta, event);
+            (self.1).on_delivery_rate_sampled(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_pacing_rate_updated(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &PacingRateUpdated,
+        ) {
+            (self.0).on_pacing_rate_updated(&mut context.0, meta, event);
+            (self.1).on_pacing_rate_updated(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
             (self.0).on_version_information(meta, event);
             (self.1).on_version_information(meta, event);
@@ -5505,6 +5727,10 @@ mod traits {
         fn on_mtu_updated(&mut self, event: builder::MtuUpdated);
         #[doc = "Publishes a `SlowStartExited` event to the publisher's subscriber"]
         fn on_slow_start_exited(&mut self, event: builder::SlowStartExited);
+        #[doc = "Publishes a `DeliveryRateSampled` event to the publisher's subscriber"]
+        fn on_delivery_rate_sampled(&mut self, event: builder::DeliveryRateSampled);
+        #[doc = "Publishes a `PacingRateUpdated` event to the publisher's subscriber"]
+        fn on_pacing_rate_updated(&mut self, event: builder::PacingRateUpdated);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
         fn quic_version(&self) -> u32;
         #[doc = r" Returns the [`Subject`] for the current publisher"]
@@ -5873,6 +6099,24 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_delivery_rate_sampled(&mut self, event: builder::DeliveryRateSampled) {
+            let event = event.into_event();
+            self.subscriber
+                .on_delivery_rate_sampled(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_pacing_rate_updated(&mut self, event: builder::PacingRateUpdated) {
+            let event = event.into_event();
+            self.subscriber
+                .on_pacing_rate_updated(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn quic_version(&self) -> u32 {
             self.quic_version
         }
@@ -5925,6 +6169,8 @@ pub mod testing {
         pub keep_alive_timer_expired: u32,
         pub mtu_updated: u32,
         pub slow_start_exited: u32,
+        pub delivery_rate_sampled: u32,
+        pub pacing_rate_updated: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -5999,6 +6245,8 @@ pub mod testing {
                 keep_alive_timer_expired: 0,
                 mtu_updated: 0,
                 slow_start_exited: 0,
+                delivery_rate_sampled: 0,
+                pacing_rate_updated: 0,
                 version_information: 0,
                 endpoint_packet_sent: 0,
                 endpoint_packet_received: 0,
@@ -6421,6 +6669,28 @@ pub mod testing {
                 self.output.push(format!("{:?} {:?}", meta, event));
             }
         }
+        fn on_delivery_rate_sampled(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::DeliveryRateSampled,
+        ) {
+            self.delivery_rate_sampled += 1;
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
+        }
+        fn on_pacing_rate_updated(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::PacingRateUpdated,
+        ) {
+            self.pacing_rate_updated += 1;
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
+        }
         fn on_version_information(
             &mut self,
             meta: &api::EndpointMeta,
@@ -6558,6 +6828,8 @@ pub mod testing {
         pub keep_alive_timer_expired: u32,
         pub mtu_updated: u32,
         pub slow_start_exited: u32,
+        pub delivery_rate_sampled: u32,
+        pub pacing_rate_updated: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -6622,6 +6894,8 @@ pub mod testing {
                 keep_alive_timer_expired: 0,
                 mtu_updated: 0,
                 slow_start_exited: 0,
+                delivery_rate_sampled: 0,
+                pacing_rate_updated: 0,
                 version_information: 0,
                 endpoint_packet_sent: 0,
                 endpoint_packet_received: 0,
@@ -6972,6 +7246,20 @@ pub mod testing {
         }
         fn on_slow_start_exited(&mut self, event: builder::SlowStartExited) {
             self.slow_start_exited += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
+        }
+        fn on_delivery_rate_sampled(&mut self, event: builder::DeliveryRateSampled) {
+            self.delivery_rate_sampled += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
+        }
+        fn on_pacing_rate_updated(&mut self, event: builder::PacingRateUpdated) {
+            self.pacing_rate_updated += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 self.output.push(format!("{:?}", event));

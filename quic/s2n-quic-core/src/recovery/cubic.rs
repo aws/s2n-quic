@@ -3,9 +3,10 @@
 
 use crate::{
     counter::Counter,
+    event::builder::SlowStartExitCause,
     random,
     recovery::{
-        congestion_controller::{self, CongestionController},
+        congestion_controller::{self, CongestionController, Publisher},
         cubic::{FastRetransmission::*, State::*},
         hybrid_slow_start::HybridSlowStart,
         pacing::Pacer,
@@ -73,6 +74,11 @@ impl State {
 
             timing.app_limited_time = Some(timestamp);
         }
+    }
+
+    /// Returns true if the state is `SlowStart`
+    fn is_slow_start(&self) -> bool {
+        matches!(self, SlowStart)
     }
 }
 
@@ -190,22 +196,18 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
-    fn is_slow_start(&self) -> bool {
-        matches!(self.state, SlowStart)
-    }
-
-    #[inline]
     fn requires_fast_retransmission(&self) -> bool {
         matches!(self.state, Recovery(_, RequiresTransmission))
     }
 
     #[inline]
-    fn on_packet_sent(
+    fn on_packet_sent<Pub: Publisher>(
         &mut self,
         time_sent: Timestamp,
         bytes_sent: usize,
         app_limited: Option<bool>,
         rtt_estimator: &RttEstimator,
+        publisher: &mut Pub,
     ) {
         if bytes_sent == 0 {
             // Packet was not congestion controlled
@@ -237,24 +239,24 @@ impl CongestionController for CubicCongestionController {
 
         self.time_of_last_sent_packet = Some(time_sent);
 
-        let slow_start = matches!(self.state, State::SlowStart);
-
         self.pacer.on_packet_sent(
             time_sent,
             bytes_sent,
             rtt_estimator,
             self.congestion_window(),
             self.max_datagram_size,
-            slow_start,
+            self.state.is_slow_start(),
+            publisher,
         );
     }
 
     #[inline]
-    fn on_rtt_update(
+    fn on_rtt_update<Pub: Publisher>(
         &mut self,
         time_sent: Timestamp,
         now: Timestamp,
         rtt_estimator: &RttEstimator,
+        publisher: &mut Pub,
     ) {
         // Update the Slow Start algorithm each time the RTT
         // estimate is updated to find the slow start threshold.
@@ -266,7 +268,8 @@ impl CongestionController for CubicCongestionController {
             rtt_estimator.latest_rtt(),
         );
 
-        if self.is_slow_start() && self.congestion_window >= self.slow_start.threshold {
+        if self.state.is_slow_start() && self.congestion_window >= self.slow_start.threshold {
+            publisher.on_slow_start_exited(SlowStartExitCause::Rtt, self.congestion_window());
             //= https://www.rfc-editor.org/rfc/rfc8312#section-4.8
             //# In the case when CUBIC runs the hybrid slow start [HR08], it may exit
             //# the first slow start without incurring any packet loss and thus W_max
@@ -281,7 +284,7 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
-    fn on_ack(
+    fn on_ack<Pub: Publisher>(
         &mut self,
         newest_acked_time_sent: Timestamp,
         bytes_acknowledged: usize,
@@ -289,6 +292,7 @@ impl CongestionController for CubicCongestionController {
         rtt_estimator: &RttEstimator,
         _random_generator: &mut dyn random::Generator,
         ack_receive_time: Timestamp,
+        publisher: &mut Pub,
     ) {
         self.bytes_in_flight_hi = self.bytes_in_flight_hi.max(self.bytes_in_flight);
         self.bytes_in_flight
@@ -350,6 +354,8 @@ impl CongestionController for CubicCongestionController {
                 if self.congestion_window >= self.slow_start.threshold {
                     // The congestion window has exceeded a previously determined slow start threshold
                     // so transition to congestion avoidance and notify cubic of the slow start exit
+                    publisher
+                        .on_slow_start_exited(SlowStartExitCause::Other, self.congestion_window());
                     self.state = State::congestion_avoidance(ack_receive_time);
                     self.cubic.on_slow_start_exit(self.congestion_window);
                 }
@@ -381,7 +387,7 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
-    fn on_packet_lost(
+    fn on_packet_lost<Pub: Publisher>(
         &mut self,
         lost_bytes: u32,
         _packet_info: Self::PacketInfo,
@@ -389,10 +395,17 @@ impl CongestionController for CubicCongestionController {
         _new_loss_burst: bool,
         _random_generator: &mut dyn random::Generator,
         timestamp: Timestamp,
+        publisher: &mut Pub,
     ) {
         debug_assert!(lost_bytes > 0);
 
         self.bytes_in_flight -= lost_bytes;
+
+        if self.state.is_slow_start() && !persistent_congestion {
+            publisher
+                .on_slow_start_exited(SlowStartExitCause::PacketLoss, self.congestion_window());
+        }
+
         self.on_congestion_event(timestamp);
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-7.6.2
@@ -408,7 +421,16 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
-    fn on_explicit_congestion(&mut self, _ce_count: u64, event_time: Timestamp) {
+    fn on_explicit_congestion<Pub: Publisher>(
+        &mut self,
+        _ce_count: u64,
+        event_time: Timestamp,
+        publisher: &mut Pub,
+    ) {
+        if self.state.is_slow_start() {
+            publisher.on_slow_start_exited(SlowStartExitCause::Ecn, self.congestion_window());
+        }
+
         //= https://www.rfc-editor.org/rfc/rfc9002#section-7.1
         //# If a path has been validated to support Explicit Congestion
         //# Notification (ECN) [RFC3168] [RFC8311], QUIC treats a Congestion
@@ -435,7 +457,7 @@ impl CongestionController for CubicCongestionController {
     //# handshake, the congestion window SHOULD be set to the new initial
     //# congestion window.
     #[inline]
-    fn on_mtu_update(&mut self, max_datagram_size: u16) {
+    fn on_mtu_update<Pub: Publisher>(&mut self, max_datagram_size: u16, _publisher: &mut Pub) {
         let old_max_datagram_size = self.max_datagram_size;
         self.max_datagram_size = max_datagram_size;
         self.cubic.max_datagram_size = max_datagram_size;
@@ -452,7 +474,7 @@ impl CongestionController for CubicCongestionController {
     //# associated with those packets and MUST remove them from the count of
     //# bytes in flight.
     #[inline]
-    fn on_packet_discarded(&mut self, bytes_sent: usize) {
+    fn on_packet_discarded<Pub: Publisher>(&mut self, bytes_sent: usize, _publisher: &mut Pub) {
         self.bytes_in_flight
             .try_sub(bytes_sent)
             .expect("bytes sent should not exceed u32::MAX");
@@ -639,7 +661,7 @@ impl CubicCongestionController {
 
         // In slow start, allow the congestion window to increase as long as half of it is
         // being used. This allows for the window to increase rapidly.
-        if matches!(self.state, SlowStart) && self.bytes_in_flight >= self.congestion_window() / 2 {
+        if self.state.is_slow_start() && self.bytes_in_flight >= self.congestion_window() / 2 {
             return false;
         }
 

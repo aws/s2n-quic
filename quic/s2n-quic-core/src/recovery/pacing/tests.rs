@@ -2,27 +2,41 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    event,
     packet::number::PacketNumberSpace,
+    path,
     path::MINIMUM_MTU,
     recovery::{
+        congestion_controller::PathPublisher,
         pacing::{Pacer, INITIAL_INTERVAL, N, SLOW_START_N},
-        RttEstimator,
+        RttEstimator, MAX_BURST_PACKETS,
     },
     time::{Clock, NoopClock, Timestamp},
 };
+use bolero::{check, generator::*};
 use core::time::Duration;
 use num_traits::ToPrimitive;
 
 #[test]
 fn earliest_departure_time() {
     let mut pacer = Pacer::default();
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     assert_eq!(None, pacer.next_packet_departure_time);
 
     let now = NoopClock.get_time();
     let rtt = RttEstimator::default();
     let cwnd = 12000;
 
-    pacer.on_packet_sent(now, MINIMUM_MTU as usize, &rtt, cwnd, MINIMUM_MTU, false);
+    pacer.on_packet_sent(
+        now,
+        MINIMUM_MTU as usize,
+        &rtt,
+        cwnd,
+        MINIMUM_MTU,
+        false,
+        &mut publisher,
+    );
 
     // The initial interval is added for the second packet
     assert_eq!(
@@ -34,12 +48,22 @@ fn earliest_departure_time() {
 #[test]
 fn on_packet_sent_large_bytes_sent() {
     let mut pacer = Pacer::default();
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
     let now = NoopClock.get_time();
     let rtt = RttEstimator::default();
     let cwnd = 12000;
 
-    pacer.on_packet_sent(now, usize::MAX, &rtt, cwnd, MINIMUM_MTU, false);
+    pacer.on_packet_sent(
+        now,
+        usize::MAX,
+        &rtt,
+        cwnd,
+        MINIMUM_MTU,
+        false,
+        &mut publisher,
+    );
 
     assert_eq!(
         Some(now + INITIAL_INTERVAL),
@@ -61,12 +85,14 @@ fn test_one_rtt(slow_start: bool) {
     let mut pacer = Pacer::default();
     let now = NoopClock.get_time();
     let rtt = RttEstimator::default();
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
     let cwnd = MINIMUM_MTU as u32 * 100;
     let n = if slow_start {
-        SLOW_START_N.0.to_f32().unwrap()
+        SLOW_START_N.to_f32().unwrap()
     } else {
-        N.0.to_f32().unwrap()
+        N.to_f32().unwrap()
     };
     // If in slow start we should be sending 2X the cwnd in one RTT,
     // otherwise we should be sending 1.25X the cwnd.
@@ -80,6 +106,7 @@ fn test_one_rtt(slow_start: bool) {
         cwnd,
         MINIMUM_MTU,
         slow_start,
+        &mut publisher,
     );
     assert_eq!(
         Some(now + INITIAL_INTERVAL),
@@ -101,6 +128,7 @@ fn test_one_rtt(slow_start: bool) {
             cwnd,
             MINIMUM_MTU,
             slow_start,
+            &mut publisher,
         );
         sent_bytes += MINIMUM_MTU as u32;
     }
@@ -115,10 +143,20 @@ fn earliest_departure_time_before_now() {
     let mut pacer = Pacer::default();
     let now = NoopClock.get_time();
     let rtt = RttEstimator::default();
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
     let cwnd = MINIMUM_MTU as u32 * 100;
     loop {
-        pacer.on_packet_sent(now, MINIMUM_MTU as usize, &rtt, cwnd, MINIMUM_MTU, false);
+        pacer.on_packet_sent(
+            now,
+            MINIMUM_MTU as usize,
+            &rtt,
+            cwnd,
+            MINIMUM_MTU,
+            false,
+            &mut publisher,
+        );
         if pacer.capacity == 0 {
             break;
         }
@@ -132,7 +170,15 @@ fn earliest_departure_time_before_now() {
     // next interval. Since the timestamp we pass in is after the next interval, the earliest departure time
     // becomes the new "now".
     let now = now + Duration::from_secs(1);
-    pacer.on_packet_sent(now, MINIMUM_MTU as usize, &rtt, cwnd, MINIMUM_MTU, false);
+    pacer.on_packet_sent(
+        now,
+        MINIMUM_MTU as usize,
+        &rtt,
+        cwnd,
+        MINIMUM_MTU,
+        false,
+        &mut publisher,
+    );
     assert_eq!(Some(now), pacer.earliest_departure_time());
 }
 
@@ -188,6 +234,80 @@ fn interval_change() {
     assert!(new_interval < interval);
 }
 
+/// This test aims to compare the rate based implementation of pacing with the inter-packet interval
+/// based implementation of pacing described in RFC 9002. Due to rounding issues while multiplying
+/// and dividing, the two implementations do not match exactly, so this test asserts that the
+/// two implementations differ by less than 1.1 ms.
+#[test]
+#[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
+fn interval_differential_test() {
+    check!()
+        .with_generator((
+            1_000_000..u32::MAX, // RTT ranges from 1ms to ~4sec
+            2400..u32::MAX, // congestion window ranges from the minimum window (2 * MINIMUM_MTU) to u32::MAX
+            MINIMUM_MTU..=9000, // max_datagram_size ranges from MINIMUM_MTU to 9000
+            gen(),
+        ))
+        .cloned()
+        .for_each(|(rtt, congestion_window, max_datagram_size, slow_start)| {
+            let mut publisher = event::testing::Publisher::no_snapshot();
+            let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
+            let rtt = Duration::from_nanos(rtt as _);
+            let actual = Pacer::interval(
+                rtt,
+                congestion_window,
+                max_datagram_size,
+                slow_start,
+                &mut publisher,
+            );
+
+            let expected = rfc_interval(rtt, congestion_window, max_datagram_size, slow_start);
+
+            assert!(
+                abs_difference(actual, expected) < Duration::from_nanos(1_100_000),
+                "expected: {:?}; actual: {:?}",
+                expected,
+                actual
+            );
+        });
+}
+
+//= https://www.rfc-editor.org/rfc/rfc9002#section-7.7
+//= type=test
+//# A perfectly paced sender spreads packets exactly evenly over time.
+//# For a window-based congestion controller, such as the one in this
+//# document, that rate can be computed by averaging the congestion
+//# window over the RTT. Expressed as a rate in units of bytes per time,
+//# where congestion_window is in bytes:
+//#
+//# rate = N * congestion_window / smoothed_rtt
+//#
+//# Or expressed as an inter-packet interval in units of time:
+//#
+//# interval = ( smoothed_rtt * packet_size / congestion_window ) / N
+//(rtt_estimator.smoothed_rtt() * packet_size / congestion_window) / n
+fn rfc_interval(
+    rtt: Duration,
+    congestion_window: u32,
+    max_datagram_size: u16,
+    slow_start: bool,
+) -> Duration {
+    let packet_size = MAX_BURST_PACKETS * max_datagram_size as u32;
+    let result = rtt * packet_size / congestion_window;
+    let n = if slow_start { SLOW_START_N } else { N };
+
+    // Divide by n by multiplying by the inverse
+    result * *n.denom() as u32 / *n.numer() as u32
+}
+
+fn abs_difference(a: Duration, b: Duration) -> Duration {
+    if a > b {
+        a - b
+    } else {
+        b - a
+    }
+}
+
 // Calls `on_packet_sent` until the earliest departure time has increased, and returns the interval
 // between the new earliest departure time and the original earliest departure time
 fn get_interval(
@@ -198,6 +318,8 @@ fn get_interval(
     max_datagram_size: u16,
     slow_start: bool,
 ) -> Duration {
+    let mut publisher = event::testing::Publisher::no_snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let starting_departure_time = pacer.earliest_departure_time().unwrap_or(now);
 
     loop {
@@ -208,6 +330,7 @@ fn get_interval(
             congestion_window,
             max_datagram_size,
             slow_start,
+            &mut publisher,
         );
         if let Some(departure_time) = pacer.earliest_departure_time() {
             if departure_time > starting_departure_time {

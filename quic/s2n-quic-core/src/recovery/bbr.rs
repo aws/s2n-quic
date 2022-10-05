@@ -8,7 +8,9 @@ use crate::{
         bandwidth,
         bandwidth::{Bandwidth, RateSample},
         bbr::{pacing::Pacer, probe_bw::CyclePhase},
-        congestion_controller, CongestionController, RttEstimator,
+        congestion_controller,
+        congestion_controller::Publisher,
+        CongestionController, RttEstimator,
     },
     time::Timestamp,
 };
@@ -249,25 +251,18 @@ impl CongestionController for BbrCongestionController {
     }
 
     #[inline]
-    fn is_slow_start(&self) -> bool {
-        // BBR may enter and exit the ProbeRtt state while still slow starting
-        // so the full pipe estimator, which is only filled once per connection,
-        // provides a more accurate view on whether BBR is still slow starting.
-        !self.full_pipe_estimator.filled_pipe()
-    }
-
-    #[inline]
     fn requires_fast_retransmission(&self) -> bool {
         self.recovery_state.requires_fast_retransmission()
     }
 
     #[inline]
-    fn on_packet_sent(
+    fn on_packet_sent<Pub: Publisher>(
         &mut self,
         time_sent: Timestamp,
         sent_bytes: usize,
         app_limited: Option<bool>,
         rtt_estimator: &RttEstimator,
+        publisher: &mut Pub,
     ) -> Self::PacketInfo {
         let prior_bytes_in_flight = *self.bytes_in_flight;
 
@@ -277,13 +272,17 @@ impl CongestionController for BbrCongestionController {
             //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.2
             //# BBROnTransmit():
             //#   BBRHandleRestartFromIdle()
-            self.handle_restart_from_idle(time_sent);
+            self.handle_restart_from_idle(time_sent, publisher);
 
             self.bytes_in_flight
                 .try_add(sent_bytes)
                 .expect("sent_bytes should not exceed u32::MAX");
-            self.pacer
-                .on_packet_sent(time_sent, sent_bytes, rtt_estimator.smoothed_rtt());
+            self.pacer.on_packet_sent(
+                time_sent,
+                sent_bytes,
+                rtt_estimator.smoothed_rtt(),
+                publisher,
+            );
         }
 
         self.bw_estimator
@@ -291,17 +290,18 @@ impl CongestionController for BbrCongestionController {
     }
 
     #[inline]
-    fn on_rtt_update(
+    fn on_rtt_update<Pub: Publisher>(
         &mut self,
         _time_sent: Timestamp,
         _now: Timestamp,
         _rtt_estimator: &RttEstimator,
+        _publisher: &mut Pub,
     ) {
         // BBRUpdateMinRTT() called in `on_ack`
     }
 
     #[inline]
-    fn on_ack(
+    fn on_ack<Pub: Publisher>(
         &mut self,
         newest_acked_time_sent: Timestamp,
         bytes_acknowledged: usize,
@@ -309,6 +309,7 @@ impl CongestionController for BbrCongestionController {
         rtt_estimator: &RttEstimator,
         random_generator: &mut dyn random::Generator,
         ack_receive_time: Timestamp,
+        publisher: &mut Pub,
     ) {
         self.bytes_in_flight
             .try_sub(bytes_acknowledged)
@@ -318,6 +319,7 @@ impl CongestionController for BbrCongestionController {
             newest_acked_time_sent,
             newest_acked_packet_info,
             ack_receive_time,
+            publisher,
         );
         self.round_counter.on_ack(
             newest_acked_packet_info,
@@ -367,7 +369,7 @@ impl CongestionController for BbrCongestionController {
             //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
             //# BBRCheckStartupDone()
             //# BBRCheckDrain()
-            self.check_startup_done();
+            self.check_startup_done(publisher);
         }
         self.check_drain_done(random_generator, ack_receive_time);
 
@@ -406,6 +408,7 @@ impl CongestionController for BbrCongestionController {
                 self.data_rate_model.bw(),
                 self.state.pacing_gain(),
                 self.full_pipe_estimator.filled_pipe(),
+                publisher,
             );
             self.pacer.set_send_quantum(self.max_datagram_size);
             self.set_cwnd(bytes_acknowledged);
@@ -413,7 +416,7 @@ impl CongestionController for BbrCongestionController {
     }
 
     #[inline]
-    fn on_packet_lost(
+    fn on_packet_lost<Pub: Publisher>(
         &mut self,
         lost_bytes: u32,
         packet_info: Self::PacketInfo,
@@ -421,6 +424,7 @@ impl CongestionController for BbrCongestionController {
         new_loss_burst: bool,
         random_generator: &mut dyn random::Generator,
         timestamp: Timestamp,
+        _publisher: &mut Pub,
     ) {
         debug_assert!(lost_bytes > 0);
 
@@ -441,7 +445,12 @@ impl CongestionController for BbrCongestionController {
     }
 
     #[inline]
-    fn on_explicit_congestion(&mut self, ce_count: u64, event_time: Timestamp) {
+    fn on_explicit_congestion<Pub: Publisher>(
+        &mut self,
+        ce_count: u64,
+        event_time: Timestamp,
+        _publisher: &mut Pub,
+    ) {
         self.bw_estimator.on_explicit_congestion(ce_count);
         self.ecn_state.on_explicit_congestion(ce_count);
         self.congestion_state.on_explicit_congestion();
@@ -463,7 +472,7 @@ impl CongestionController for BbrCongestionController {
     //# handshake, the congestion window SHOULD be set to the new initial
     //# congestion window.
     #[inline]
-    fn on_mtu_update(&mut self, max_datagram_size: u16) {
+    fn on_mtu_update<Pub: Publisher>(&mut self, max_datagram_size: u16, _publisher: &mut Pub) {
         let old_max_datagram_size = self.max_datagram_size;
         self.max_datagram_size = max_datagram_size;
 
@@ -472,7 +481,7 @@ impl CongestionController for BbrCongestionController {
     }
 
     #[inline]
-    fn on_packet_discarded(&mut self, bytes_sent: usize) {
+    fn on_packet_discarded<Pub: Publisher>(&mut self, bytes_sent: usize, _publisher: &mut Pub) {
         self.bytes_in_flight
             .try_sub(bytes_sent)
             .expect("bytes sent should not exceed u32::MAX");
@@ -978,7 +987,7 @@ impl BbrCongestionController {
 
     /// Handles when the connection resumes transmitting after an idle period
     #[inline]
-    fn handle_restart_from_idle(&mut self, now: Timestamp) {
+    fn handle_restart_from_idle<Pub: Publisher>(&mut self, now: Timestamp, publisher: &mut Pub) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.4.3
         //# BBRHandleRestartFromIdle():
         //#   if (packets_in_flight == 0 and C.app_limited)
@@ -995,6 +1004,7 @@ impl BbrCongestionController {
                     self.data_rate_model.bw(),
                     Ratio::one(),
                     self.full_pipe_estimator.filled_pipe(),
+                    publisher,
                 );
             }
         }

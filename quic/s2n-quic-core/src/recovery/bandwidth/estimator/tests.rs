@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use crate::time::{Clock, NoopClock};
+use crate::{
+    event, path,
+    recovery::congestion_controller::PathPublisher,
+    time::{Clock, NoopClock},
+};
 
 #[test]
 fn bandwidth() {
@@ -138,6 +142,8 @@ fn on_packet_sent() {
 
 #[test]
 fn app_limited() {
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let first_sent_time = NoopClock.get_time();
     let delivered_time = first_sent_time + Duration::from_secs(1);
     let mut bw_estimator = Estimator {
@@ -176,18 +182,32 @@ fn app_limited() {
     };
 
     // Acknowledge all the bytes that were inflight when the app-limited period began
-    bw_estimator.on_ack(1500, delivered_time, packet_info, delivered_time);
+    bw_estimator.on_ack(
+        1500,
+        delivered_time,
+        packet_info,
+        delivered_time,
+        &mut publisher,
+    );
     // Still app_limited, since we need bytes to be acknowledged after the app limited period
     assert_eq!(Some(1500 + 15000), bw_estimator.app_limited_delivered_bytes);
 
     // Acknowledge one more byte
-    bw_estimator.on_ack(1, delivered_time, packet_info, delivered_time);
+    bw_estimator.on_ack(
+        1,
+        delivered_time,
+        packet_info,
+        delivered_time,
+        &mut publisher,
+    );
     // Now the app limited period is over
     assert_eq!(None, bw_estimator.app_limited_delivered_bytes);
 }
 
 #[test]
 fn on_packet_ack_rate_sample() {
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let t0 = NoopClock.get_time() + Duration::from_secs(60);
     let t1 = t0 + Duration::from_secs(1);
     let t2 = t0 + Duration::from_secs(2);
@@ -207,7 +227,7 @@ fn on_packet_ack_rate_sample() {
 
     let now = t0 + Duration::from_secs(10);
     let delivered_bytes = bw_estimator.delivered_bytes;
-    bw_estimator.on_ack(1500, t0, packet_1, now);
+    bw_estimator.on_ack(1500, t0, packet_1, now, &mut publisher);
 
     assert_eq!(bw_estimator.delivered_bytes, delivered_bytes + 1500);
     assert_eq!(bw_estimator.delivered_time, Some(now));
@@ -247,7 +267,7 @@ fn on_packet_ack_rate_sample() {
     // Ack a newer packet
     let now = now + Duration::from_secs(1);
     let delivered_bytes = bw_estimator.delivered_bytes;
-    bw_estimator.on_ack(1500, t2, packet_3, now);
+    bw_estimator.on_ack(1500, t2, packet_3, now, &mut publisher);
 
     assert_eq!(bw_estimator.delivered_bytes, delivered_bytes + 1500);
     assert_eq!(bw_estimator.delivered_time, Some(now));
@@ -283,7 +303,7 @@ fn on_packet_ack_rate_sample() {
     // Ack an older packet
     let now = now + Duration::from_secs(1);
     let delivered_bytes = bw_estimator.delivered_bytes;
-    bw_estimator.on_ack(1500, t1, packet_2, now);
+    bw_estimator.on_ack(1500, t1, packet_2, now, &mut publisher);
 
     assert_eq!(bw_estimator.delivered_bytes, delivered_bytes + 1500);
     assert_eq!(bw_estimator.delivered_time, Some(now));
@@ -327,19 +347,27 @@ fn on_packet_ack_rate_sample() {
 //# by capping the delivery rate sample to be no higher than the send rate.
 #[test]
 fn on_packet_ack_implausible_ack_rate() {
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let t0 = NoopClock.get_time();
     let mut bw_estimator = Estimator::default();
 
     // A packet is sent and acknowledged 4 seconds later
     let packet_info = bw_estimator.on_packet_sent(0, Some(false), t0);
     let t4 = t0 + Duration::from_secs(4);
-    bw_estimator.on_ack(1500, t0, packet_info, t4);
+    bw_estimator.on_ack(1500, t0, packet_info, t4, &mut publisher);
 
     // A packet is sent and acknowledged 1 second later
     let t5 = t0 + Duration::from_secs(5);
     let packet_info = bw_estimator.on_packet_sent(1500, Some(false), t5);
     let now = t0 + Duration::from_secs(6);
-    bw_estimator.on_ack(1500, t0 + Duration::from_secs(5), packet_info, now);
+    bw_estimator.on_ack(
+        1500,
+        t0 + Duration::from_secs(5),
+        packet_info,
+        now,
+        &mut publisher,
+    );
 
     let send_elapsed = t5 - packet_info.first_sent_time;
     let ack_elapsed = now - packet_info.delivered_time;
@@ -387,4 +415,13 @@ fn on_explicit_congestion() {
 
     assert_eq!(8, bw_estimator.ecn_ce_count);
     assert_eq!(8, bw_estimator.rate_sample.ecn_ce_count);
+}
+
+#[test]
+fn as_bytes_per_second() {
+    let bandwidth = Bandwidth::new(10_000, Duration::from_secs(1));
+
+    assert_eq!(10_000, bandwidth.as_bytes_per_second());
+    assert_eq!(0, Bandwidth::ZERO.as_bytes_per_second());
+    assert_eq!(u64::MAX, Bandwidth::INFINITY.as_bytes_per_second());
 }

@@ -353,7 +353,7 @@ enum Frame {
     },
     StreamsBlocked {
         stream_type: StreamType,
-        stream_limit: u64
+        stream_limit: u64,
     },
     NewConnectionId,
     RetireConnectionId,
@@ -856,4 +856,28 @@ enum MtuUpdatedCause {
     ProbeAcknowledged,
     /// A blackhole was detected
     Blackhole,
+}
+
+/// A bandwidth delivery rate estimate with associated metadata
+struct RateSample {
+    /// The length of the sampling interval
+    interval: Duration,
+    /// The amount of data in bytes marked as delivered over the sampling interval
+    delivered_bytes: u64,
+    /// The amount of data in bytes marked as lost over the sampling interval
+    lost_bytes: u64,
+    /// The number of packets marked as explicit congestion experienced over the sampling interval
+    ecn_ce_count: u64,
+    /// [PacketInfo::is_app_limited] from the most recent acknowledged packet
+    is_app_limited: bool,
+    /// [PacketInfo::delivered_bytes] from the most recent acknowledged packet
+    prior_delivered_bytes: u64,
+    /// [PacketInfo::bytes_in_flight] from the most recent acknowledged packet
+    bytes_in_flight: u32,
+    /// [PacketInfo::lost_bytes] from the most recent acknowledged packet
+    prior_lost_bytes: u64,
+    /// [PacketInfo::ecn_ce_count] from the most recent acknowledged packet
+    prior_ecn_ce_count: u64,
+    /// The delivery rate for this rate sample
+    delivery_rate_bytes_per_second: u64,
 }
