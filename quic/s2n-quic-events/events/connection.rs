@@ -290,13 +290,13 @@ struct SlowStartExited {
     congestion_window: u32,
 }
 
-#[event("recovery:delivery_rate_updated")]
-/// The delivery rate has been updated
+#[event("recovery:delivery_rate_sampled")]
+/// A new delivery rate sample has been generated
 /// Note: This event is only recorded for congestion controllers that support
 ///       bandwidth estimates, such as BBR
-struct DeliveryRateUpdated {
+struct DeliveryRateSampled {
     path_id: u64,
-    bytes_per_second: u64,
+    rate_sample: RateSample,
 }
 
 #[event("recovery:pacing_rate_updated")]

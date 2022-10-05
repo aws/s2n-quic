@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{recovery::congestion_controller::Publisher, time::Timestamp};
+use crate::{event, event::IntoEvent, recovery::congestion_controller::Publisher, time::Timestamp};
 use core::{
     cmp::{max, Ordering},
     time::Duration,
@@ -181,6 +181,23 @@ impl RateSample {
     }
 }
 
+impl IntoEvent<event::builder::RateSample> for RateSample {
+    fn into_event(self) -> event::builder::RateSample {
+        event::builder::RateSample {
+            interval: self.interval.into_event(),
+            delivered_bytes: self.delivered_bytes.into_event(),
+            lost_bytes: self.lost_bytes.into_event(),
+            ecn_ce_count: self.ecn_ce_count.into_event(),
+            is_app_limited: self.is_app_limited.into_event(),
+            prior_delivered_bytes: self.prior_delivered_bytes.into_event(),
+            bytes_in_flight: self.bytes_in_flight.into_event(),
+            prior_lost_bytes: self.prior_lost_bytes.into_event(),
+            prior_ecn_ce_count: self.prior_ecn_ce_count.into_event(),
+            delivery_rate_bytes_per_second: self.delivery_rate().as_bytes_per_second().into_event(),
+        }
+    }
+}
+
 /// Bandwidth estimator as defined in [Delivery Rate Estimation](https://datatracker.ietf.org/doc/draft-cheng-iccrg-delivery-rate-estimation/)
 /// and [BBR Congestion Control](https://datatracker.ietf.org/doc/draft-cardwell-iccrg-bbr-congestion-control/).
 #[derive(Clone, Debug, Default)]
@@ -331,7 +348,7 @@ impl Estimator {
         self.rate_sample.lost_bytes = self.lost_bytes - self.rate_sample.prior_lost_bytes;
         self.rate_sample.ecn_ce_count = self.ecn_ce_count - self.rate_sample.prior_ecn_ce_count;
 
-        publisher.on_delivery_rate_updated(self.rate_sample.delivery_rate());
+        publisher.on_delivery_rate_sampled(self.rate_sample);
     }
 
     /// Called when packets are declared lost

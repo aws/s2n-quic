@@ -7,7 +7,10 @@ use crate::{
     inet, path,
     path::MINIMUM_MTU,
     random,
-    recovery::{bandwidth::Bandwidth, RttEstimator},
+    recovery::{
+        bandwidth::{Bandwidth, RateSample},
+        RttEstimator,
+    },
     time::Timestamp,
 };
 use core::fmt::Debug;
@@ -42,8 +45,8 @@ impl<'a> PathInfo<'a> {
 pub trait Publisher {
     /// Invoked when the congestion controller has exited the Slow Start phase
     fn on_slow_start_exited(&mut self, cause: SlowStartExitCause, congestion_window: u32);
-    /// Invoked when the delivery rate has been updated
-    fn on_delivery_rate_updated(&mut self, delivery_rate: Bandwidth);
+    /// Invoked when the delivery rate sample has been updated
+    fn on_delivery_rate_sampled(&mut self, rate_sample: RateSample);
     /// Invoked when the pacing rate has been updated
     fn on_pacing_rate_updated(
         &mut self,
@@ -79,11 +82,11 @@ impl<'a, Pub: event::ConnectionPublisher> Publisher for PathPublisher<'a, Pub> {
     }
 
     #[inline]
-    fn on_delivery_rate_updated(&mut self, delivery_rate: Bandwidth) {
+    fn on_delivery_rate_sampled(&mut self, rate_sample: RateSample) {
         self.publisher
-            .on_delivery_rate_updated(event::builder::DeliveryRateUpdated {
+            .on_delivery_rate_sampled(event::builder::DeliveryRateSampled {
                 path_id: self.path_id.into_event(),
-                bytes_per_second: delivery_rate.as_bytes_per_second(),
+                rate_sample: rate_sample.into_event(),
             })
     }
 
