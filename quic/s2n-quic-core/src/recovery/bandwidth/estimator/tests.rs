@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use crate::recovery::congestion_controller::PathPublisher;
 use crate::{
     event, path,
+    recovery::congestion_controller::PathPublisher,
     time::{Clock, NoopClock},
 };
 
