@@ -3,7 +3,7 @@
 
 use crate::{
     event,
-    event::{api::SocketAddress, IntoEvent},
+    event::{api::SocketAddress, builder::SlowStartExitCause, IntoEvent},
     inet, path,
     path::MINIMUM_MTU,
     random,
@@ -45,8 +45,19 @@ pub struct Publisher<'a, Pub: event::ConnectionPublisher> {
 }
 
 impl<'a, Pub: event::ConnectionPublisher> Publisher<'a, Pub> {
+    /// Constructs a new `Publisher` around the given `event::ConnectionPublisher` and `path_id`
     pub fn new(publisher: &'a mut Pub, path_id: path::Id) -> Publisher<Pub> {
         Self { publisher, path_id }
+    }
+
+    /// Invoked when the congestion controller has exited the Slow Start phase
+    pub fn on_slow_start_exited(&mut self, cause: SlowStartExitCause, congestion_window: u32) {
+        self.publisher
+            .on_slow_start_exited(event::builder::SlowStartExited {
+                path_id: self.path_id.into_event(),
+                cause,
+                congestion_window,
+            });
     }
 }
 

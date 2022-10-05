@@ -313,7 +313,7 @@ impl CongestionController for BbrCongestionController {
         rtt_estimator: &RttEstimator,
         random_generator: &mut dyn random::Generator,
         ack_receive_time: Timestamp,
-        _publisher: &mut Publisher<Pub>,
+        publisher: &mut Publisher<Pub>,
     ) {
         self.bytes_in_flight
             .try_sub(bytes_acknowledged)
@@ -372,7 +372,7 @@ impl CongestionController for BbrCongestionController {
             //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
             //# BBRCheckStartupDone()
             //# BBRCheckDrain()
-            self.check_startup_done();
+            self.check_startup_done(publisher);
         }
         self.check_drain_done(random_generator, ack_receive_time);
 

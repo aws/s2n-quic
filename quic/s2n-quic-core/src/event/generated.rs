@@ -864,12 +864,12 @@ pub mod api {
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     #[doc = " The slow start congestion controller state has been exited"]
-    pub struct SlowStartExited<'a> {
-        pub path: Path<'a>,
+    pub struct SlowStartExited {
+        pub path_id: u64,
         pub cause: SlowStartExitCause,
         pub congestion_window: u32,
     }
-    impl<'a> Event for SlowStartExited<'a> {
+    impl Event for SlowStartExited {
         const NAME: &'static str = "recovery:slow_start_exited";
     }
     #[derive(Clone, Debug)]
@@ -1939,11 +1939,11 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::SlowStartExited {
-                path,
+                path_id,
                 cause,
                 congestion_window,
             } = event;
-            tracing :: event ! (target : "slow_start_exited" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , cause = tracing :: field :: debug (cause) , congestion_window = tracing :: field :: debug (congestion_window));
+            tracing :: event ! (target : "slow_start_exited" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , cause = tracing :: field :: debug (cause) , congestion_window = tracing :: field :: debug (congestion_window));
         }
         #[inline]
         fn on_version_information(
@@ -3666,21 +3666,21 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     #[doc = " The slow start congestion controller state has been exited"]
-    pub struct SlowStartExited<'a> {
-        pub path: Path<'a>,
+    pub struct SlowStartExited {
+        pub path_id: u64,
         pub cause: SlowStartExitCause,
         pub congestion_window: u32,
     }
-    impl<'a> IntoEvent<api::SlowStartExited<'a>> for SlowStartExited<'a> {
+    impl IntoEvent<api::SlowStartExited> for SlowStartExited {
         #[inline]
-        fn into_event(self) -> api::SlowStartExited<'a> {
+        fn into_event(self) -> api::SlowStartExited {
             let SlowStartExited {
-                path,
+                path_id,
                 cause,
                 congestion_window,
             } = self;
             api::SlowStartExited {
-                path: path.into_event(),
+                path_id: path_id.into_event(),
                 cause: cause.into_event(),
                 congestion_window: congestion_window.into_event(),
             }
