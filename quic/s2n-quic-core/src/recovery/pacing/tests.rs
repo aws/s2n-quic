@@ -242,7 +242,12 @@ fn interval_change() {
 #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
 fn interval_differential_test() {
     check!()
-        .with_generator((1_000_000..u32::MAX, 1..u32::MAX, gen(), gen()))
+        .with_generator((
+            1_000_000..u32::MAX, // RTT ranges from 1ms to ~4sec
+            2400..u32::MAX, // congestion window ranges from the minimum window (2 * MINIMUM_MTU) to u32::MAX
+            MINIMUM_MTU..=9000, // max_datagram_size ranges from MINIMUM_MTU to 9000
+            gen(),
+        ))
         .cloned()
         .for_each(|(rtt, congestion_window, max_datagram_size, slow_start)| {
             let mut publisher = event::testing::Publisher::no_snapshot();
