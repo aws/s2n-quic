@@ -77,9 +77,6 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
     /// bytes in flight
     fn is_congestion_limited(&self) -> bool;
 
-    /// Returns `true` if the congestion controller is in the "Slow Start" state
-    fn is_slow_start(&self) -> bool;
-
     /// Returns `true` if the current state of the congestion controller
     /// requires a packet to be transmitted without respecting the
     /// available congestion window
@@ -235,10 +232,6 @@ pub mod testing {
                 false
             }
 
-            fn is_slow_start(&self) -> bool {
-                false
-            }
-
             fn requires_fast_retransmission(&self) -> bool {
                 false
             }
@@ -387,10 +380,6 @@ pub mod testing {
 
             fn is_congestion_limited(&self) -> bool {
                 self.requires_fast_retransmission || self.bytes_in_flight >= self.congestion_window
-            }
-
-            fn is_slow_start(&self) -> bool {
-                self.slow_start
             }
 
             fn requires_fast_retransmission(&self) -> bool {

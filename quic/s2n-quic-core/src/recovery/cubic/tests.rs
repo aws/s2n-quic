@@ -250,7 +250,7 @@ fn on_packet_sent() {
     // Round one of hybrid slow start
     cc.on_rtt_update(now, now, &rtt_estimator, &mut publisher);
 
-    assert!(cc.is_slow_start());
+    assert!(cc.state.is_slow_start());
 
     // Latest RTT is 200ms
     rtt_estimator.update_rtt(
@@ -271,7 +271,7 @@ fn on_packet_sent() {
     );
 
     assert_eq!(cc.bytes_in_flight, 2);
-    assert!(cc.is_slow_start());
+    assert!(cc.state.is_slow_start());
 
     // Round two of hybrid slow start
     for _i in 1..=8 {
@@ -283,7 +283,7 @@ fn on_packet_sent() {
         );
     }
 
-    assert!(!cc.is_slow_start());
+    assert!(!cc.state.is_slow_start());
     assert_delta!(cc.slow_start.threshold, 100_000.0, 0.001);
 }
 
@@ -740,7 +740,7 @@ fn on_packet_lost_persistent_congestion() {
 
     cc.on_packet_lost(100, (), true, false, random, now, &mut publisher);
 
-    assert!(cc.is_slow_start());
+    assert!(cc.state.is_slow_start());
     assert_eq!(cc.state, SlowStart);
     assert_delta!(cc.congestion_window, cc.cubic.minimum_window(), 0.001);
     assert_delta!(cc.cubic.w_max, 0.0, 0.001);

@@ -197,11 +197,6 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
-    fn is_slow_start(&self) -> bool {
-        matches!(self.state, SlowStart)
-    }
-
-    #[inline]
     fn requires_fast_retransmission(&self) -> bool {
         matches!(self.state, Recovery(_, RequiresTransmission))
     }
@@ -245,15 +240,13 @@ impl CongestionController for CubicCongestionController {
 
         self.time_of_last_sent_packet = Some(time_sent);
 
-        let slow_start = matches!(self.state, State::SlowStart);
-
         self.pacer.on_packet_sent(
             time_sent,
             bytes_sent,
             rtt_estimator,
             self.congestion_window(),
             self.max_datagram_size,
-            slow_start,
+            self.state.is_slow_start(),
         );
     }
 
@@ -408,7 +401,7 @@ impl CongestionController for CubicCongestionController {
 
         self.bytes_in_flight -= lost_bytes;
 
-        if matches!(self.state, State::SlowStart) && !persistent_congestion {
+        if self.state.is_slow_start() && !persistent_congestion {
             publisher
                 .on_slow_start_exited(SlowStartExitCause::PacketLoss, self.congestion_window());
         }
@@ -434,7 +427,7 @@ impl CongestionController for CubicCongestionController {
         event_time: Timestamp,
         publisher: &mut Publisher<Pub>,
     ) {
-        if matches!(self.state, State::SlowStart) {
+        if self.state.is_slow_start() {
             publisher.on_slow_start_exited(SlowStartExitCause::Ecn, self.congestion_window());
         }
 
@@ -676,7 +669,7 @@ impl CubicCongestionController {
 
         // In slow start, allow the congestion window to increase as long as half of it is
         // being used. This allows for the window to increase rapidly.
-        if matches!(self.state, SlowStart) && self.bytes_in_flight >= self.congestion_window() / 2 {
+        if self.state.is_slow_start() && self.bytes_in_flight >= self.congestion_window() / 2 {
             return false;
         }
 
