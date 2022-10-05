@@ -3,7 +3,6 @@
 
 use crate::{
     counter::{Counter, Saturating},
-    event,
     recovery::{
         bandwidth::Bandwidth, congestion_controller::Publisher, RttEstimator, MAX_BURST_PACKETS,
     },
@@ -46,7 +45,7 @@ impl Pacer {
     /// Called when each packet has been written
     #[allow(clippy::too_many_arguments)]
     #[inline]
-    pub fn on_packet_sent<Pub: event::ConnectionPublisher>(
+    pub fn on_packet_sent<Pub: Publisher>(
         &mut self,
         now: Timestamp,
         bytes_sent: usize,
@@ -54,7 +53,7 @@ impl Pacer {
         congestion_window: u32,
         max_datagram_size: u16,
         slow_start: bool,
-        publisher: &mut Publisher<Pub>,
+        publisher: &mut Pub,
     ) {
         if rtt_estimator.smoothed_rtt() < MINIMUM_PACING_RTT {
             return;
@@ -89,12 +88,12 @@ impl Pacer {
 
     // Recalculate the interval between bursts of paced packets
     #[inline]
-    fn interval<Pub: event::ConnectionPublisher>(
+    fn interval<Pub: Publisher>(
         rtt: Duration,
         congestion_window: u32,
         max_datagram_size: u16,
         slow_start: bool,
-        publisher: &mut Publisher<Pub>,
+        publisher: &mut Pub,
     ) -> Duration {
         debug_assert_ne!(congestion_window, 0);
 

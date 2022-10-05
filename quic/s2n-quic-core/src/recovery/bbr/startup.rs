@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    event,
     event::builder::SlowStartExitCause,
     recovery::{
         bbr::{BbrCongestionController, State},
@@ -41,10 +40,7 @@ impl BbrCongestionController {
 
     /// Checks if the `Startup` state is done and enters `Drain` if so
     #[inline]
-    pub(super) fn check_startup_done<Pub: event::ConnectionPublisher>(
-        &mut self,
-        publisher: &mut Publisher<Pub>,
-    ) {
+    pub(super) fn check_startup_done<Pub: Publisher>(&mut self, publisher: &mut Pub) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.1.1
         //# BBRCheckStartupDone():
         //#   BBRCheckStartupFullBandwidth()
@@ -79,9 +75,9 @@ impl BbrCongestionController {
 mod tests {
     use super::*;
     use crate::{
-        path,
+        event, path,
         path::MINIMUM_MTU,
-        recovery::{bandwidth::PacketInfo, bbr::probe_rtt},
+        recovery::{bandwidth::PacketInfo, bbr::probe_rtt, congestion_controller::PathPublisher},
         time::{Clock, NoopClock},
     };
 
@@ -109,7 +105,7 @@ mod tests {
     fn check_startup_done() {
         let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
         let mut publisher = event::testing::Publisher::snapshot();
-        let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
         // Not in startup
         bbr.state = State::ProbeRtt(probe_rtt::State::default());
@@ -137,7 +133,7 @@ mod tests {
     fn check_startup_done_filled_pipe_on_round_start() {
         let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
         let mut publisher = event::testing::Publisher::snapshot();
-        let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         let now = NoopClock.get_time();
 
         // Set ECN state to be too high, which would cause the full pipe estimator to be filled
@@ -179,7 +175,7 @@ mod tests {
     fn check_startup_done_filled_pipe_on_loss_round_start() {
         let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
         let mut publisher = event::testing::Publisher::snapshot();
-        let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         let now = NoopClock.get_time();
 
         // Set loss to be too high, which would cause the full pipe estimator to be filled

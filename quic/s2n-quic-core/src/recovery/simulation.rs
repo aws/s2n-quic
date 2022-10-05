@@ -8,7 +8,7 @@ use crate::{
     path::MINIMUM_MTU,
     random,
     recovery::{
-        congestion_controller::Publisher, CongestionController, CubicCongestionController,
+        congestion_controller::PathPublisher, CongestionController, CubicCongestionController,
         RttEstimator,
     },
     time::{Clock, NoopClock, Timestamp},
@@ -223,7 +223,7 @@ fn minimum_window<CC: CongestionController>(
     let rtt_estimator = RttEstimator::default();
     let random = &mut random::testing::Generator::default();
     let mut publisher = event::testing::Publisher::no_snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
     let packet_info = congestion_controller.on_packet_sent(
         time_zero,
@@ -299,7 +299,7 @@ fn simulate_constant_rtt<CC: CongestionController>(
     let mut rtt_estimator = RttEstimator::default();
     let random = &mut random::testing::Generator::default();
     let mut publisher = event::testing::Publisher::no_snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
     // Update the rtt with 200 ms
     rtt_estimator.update_rtt(
@@ -376,7 +376,7 @@ fn send_and_ack<CC: CongestionController>(
     let earliest_ack_receive_time = ack_receive_time - Duration::from_millis(50);
     let sending_full_cwnd = bytes as u32 == congestion_controller.congestion_window();
     let mut publisher = event::testing::Publisher::no_snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
     let mut packet_info = None;
 

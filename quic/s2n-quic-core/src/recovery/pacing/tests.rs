@@ -7,7 +7,7 @@ use crate::{
     path,
     path::MINIMUM_MTU,
     recovery::{
-        congestion_controller::Publisher,
+        congestion_controller::PathPublisher,
         pacing::{Pacer, INITIAL_INTERVAL, N, SLOW_START_N},
         RttEstimator, MAX_BURST_PACKETS,
     },
@@ -21,7 +21,7 @@ use num_traits::ToPrimitive;
 fn earliest_departure_time() {
     let mut pacer = Pacer::default();
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     assert_eq!(None, pacer.next_packet_departure_time);
 
     let now = NoopClock.get_time();
@@ -49,7 +49,7 @@ fn earliest_departure_time() {
 fn on_packet_sent_large_bytes_sent() {
     let mut pacer = Pacer::default();
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
     let now = NoopClock.get_time();
     let rtt = RttEstimator::default();
@@ -86,7 +86,7 @@ fn test_one_rtt(slow_start: bool) {
     let now = NoopClock.get_time();
     let rtt = RttEstimator::default();
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
     let cwnd = MINIMUM_MTU as u32 * 100;
     let n = if slow_start {
@@ -144,7 +144,7 @@ fn earliest_departure_time_before_now() {
     let now = NoopClock.get_time();
     let rtt = RttEstimator::default();
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
     let cwnd = MINIMUM_MTU as u32 * 100;
     loop {
@@ -251,7 +251,7 @@ fn interval_differential_test() {
         .cloned()
         .for_each(|(rtt, congestion_window, max_datagram_size, slow_start)| {
             let mut publisher = event::testing::Publisher::no_snapshot();
-            let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+            let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
             let rtt = Duration::from_nanos(rtt as _);
             let actual = Pacer::interval(
                 rtt,
@@ -319,7 +319,7 @@ fn get_interval(
     slow_start: bool,
 ) -> Duration {
     let mut publisher = event::testing::Publisher::no_snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let starting_departure_time = pacer.earliest_departure_time().unwrap_or(now);
 
     loop {

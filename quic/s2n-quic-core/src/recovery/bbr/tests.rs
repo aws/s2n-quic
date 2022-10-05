@@ -11,7 +11,7 @@ use crate::{
         bandwidth::{Bandwidth, PacketInfo, RateSample},
         bbr,
         bbr::{probe_bw::CyclePhase, probe_rtt, BbrCongestionController, State, State::ProbeRtt},
-        congestion_controller::Publisher,
+        congestion_controller::PathPublisher,
         CongestionController,
     },
     time::{Clock, NoopClock},
@@ -550,7 +550,7 @@ fn set_cwnd_filled_pipe() {
 fn set_cwnd_not_filled_pipe() {
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     assert_eq!(36_000, bbr.max_inflight());
 
@@ -851,7 +851,7 @@ fn handle_lost_packet() {
 fn handle_restart_from_idle() {
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let pacing_rate = bbr.pacer.pacing_rate();
 
@@ -1014,7 +1014,7 @@ fn on_mtu_update() {
     let mut mtu = 5000;
     let mut bbr = BbrCongestionController::new(mtu);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
     bbr.cwnd = 100_000;
 

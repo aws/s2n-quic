@@ -3,7 +3,7 @@
 
 use crate::{
     counter::Counter,
-    event, random,
+    random,
     recovery::{
         bandwidth,
         bandwidth::{Bandwidth, RateSample},
@@ -256,13 +256,13 @@ impl CongestionController for BbrCongestionController {
     }
 
     #[inline]
-    fn on_packet_sent<Pub: event::ConnectionPublisher>(
+    fn on_packet_sent<Pub: Publisher>(
         &mut self,
         time_sent: Timestamp,
         sent_bytes: usize,
         app_limited: Option<bool>,
         rtt_estimator: &RttEstimator,
-        publisher: &mut Publisher<Pub>,
+        publisher: &mut Pub,
     ) -> Self::PacketInfo {
         let prior_bytes_in_flight = *self.bytes_in_flight;
 
@@ -290,18 +290,18 @@ impl CongestionController for BbrCongestionController {
     }
 
     #[inline]
-    fn on_rtt_update<Pub: event::ConnectionPublisher>(
+    fn on_rtt_update<Pub: Publisher>(
         &mut self,
         _time_sent: Timestamp,
         _now: Timestamp,
         _rtt_estimator: &RttEstimator,
-        _publisher: &mut Publisher<Pub>,
+        _publisher: &mut Pub,
     ) {
         // BBRUpdateMinRTT() called in `on_ack`
     }
 
     #[inline]
-    fn on_ack<Pub: event::ConnectionPublisher>(
+    fn on_ack<Pub: Publisher>(
         &mut self,
         newest_acked_time_sent: Timestamp,
         bytes_acknowledged: usize,
@@ -309,7 +309,7 @@ impl CongestionController for BbrCongestionController {
         rtt_estimator: &RttEstimator,
         random_generator: &mut dyn random::Generator,
         ack_receive_time: Timestamp,
-        publisher: &mut Publisher<Pub>,
+        publisher: &mut Pub,
     ) {
         self.bytes_in_flight
             .try_sub(bytes_acknowledged)
@@ -416,7 +416,7 @@ impl CongestionController for BbrCongestionController {
     }
 
     #[inline]
-    fn on_packet_lost<Pub: event::ConnectionPublisher>(
+    fn on_packet_lost<Pub: Publisher>(
         &mut self,
         lost_bytes: u32,
         packet_info: Self::PacketInfo,
@@ -424,7 +424,7 @@ impl CongestionController for BbrCongestionController {
         new_loss_burst: bool,
         random_generator: &mut dyn random::Generator,
         timestamp: Timestamp,
-        _publisher: &mut Publisher<Pub>,
+        _publisher: &mut Pub,
     ) {
         debug_assert!(lost_bytes > 0);
 
@@ -445,11 +445,11 @@ impl CongestionController for BbrCongestionController {
     }
 
     #[inline]
-    fn on_explicit_congestion<Pub: event::ConnectionPublisher>(
+    fn on_explicit_congestion<Pub: Publisher>(
         &mut self,
         ce_count: u64,
         event_time: Timestamp,
-        _publisher: &mut Publisher<Pub>,
+        _publisher: &mut Pub,
     ) {
         self.bw_estimator.on_explicit_congestion(ce_count);
         self.ecn_state.on_explicit_congestion(ce_count);
@@ -472,11 +472,7 @@ impl CongestionController for BbrCongestionController {
     //# handshake, the congestion window SHOULD be set to the new initial
     //# congestion window.
     #[inline]
-    fn on_mtu_update<Pub: event::ConnectionPublisher>(
-        &mut self,
-        max_datagram_size: u16,
-        _publisher: &mut Publisher<Pub>,
-    ) {
+    fn on_mtu_update<Pub: Publisher>(&mut self, max_datagram_size: u16, _publisher: &mut Pub) {
         let old_max_datagram_size = self.max_datagram_size;
         self.max_datagram_size = max_datagram_size;
 
@@ -485,11 +481,7 @@ impl CongestionController for BbrCongestionController {
     }
 
     #[inline]
-    fn on_packet_discarded<Pub: event::ConnectionPublisher>(
-        &mut self,
-        bytes_sent: usize,
-        _publisher: &mut Publisher<Pub>,
-    ) {
+    fn on_packet_discarded<Pub: Publisher>(&mut self, bytes_sent: usize, _publisher: &mut Pub) {
         self.bytes_in_flight
             .try_sub(bytes_sent)
             .expect("bytes sent should not exceed u32::MAX");
@@ -995,11 +987,7 @@ impl BbrCongestionController {
 
     /// Handles when the connection resumes transmitting after an idle period
     #[inline]
-    fn handle_restart_from_idle<Pub: event::ConnectionPublisher>(
-        &mut self,
-        now: Timestamp,
-        publisher: &mut Publisher<Pub>,
-    ) {
+    fn handle_restart_from_idle<Pub: Publisher>(&mut self, now: Timestamp, publisher: &mut Pub) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.4.3
         //# BBRHandleRestartFromIdle():
         //#   if (packets_in_flight == 0 and C.app_limited)

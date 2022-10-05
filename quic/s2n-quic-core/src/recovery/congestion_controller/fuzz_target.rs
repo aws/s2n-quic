@@ -8,7 +8,7 @@ use crate::{
     path::MINIMUM_MTU,
     random,
     recovery::{
-        bbr::BbrCongestionController, congestion_controller::Publisher, CongestionController,
+        bbr::BbrCongestionController, congestion_controller::PathPublisher, CongestionController,
         CubicCongestionController, RttEstimator,
     },
     time::{testing::Clock, Clock as _, Timestamp},
@@ -104,7 +104,7 @@ impl<CC: CongestionController> Model<CC> {
 
     fn on_packet_sent(&mut self, count: u8, bytes_sent: u16, app_limited: Option<bool>) {
         let mut publisher = event::testing::Publisher::no_snapshot();
-        let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
         for _ in 0..count {
             if !self.subject.is_congestion_limited()
@@ -135,7 +135,7 @@ impl<CC: CongestionController> Model<CC> {
         rng: &mut dyn random::Generator,
     ) {
         let mut publisher = event::testing::Publisher::no_snapshot();
-        let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         let index = (index as usize).min(self.sent_packets.len().saturating_sub(1));
         let mut rtt_updated = false;
 
@@ -168,7 +168,7 @@ impl<CC: CongestionController> Model<CC> {
 
     fn on_packet_lost(&mut self, index: u8, rng: &mut dyn random::Generator) {
         let mut publisher = event::testing::Publisher::no_snapshot();
-        let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         let index = (index as usize).min(self.sent_packets.len().saturating_sub(1));
 
         // Report the packet at the random `index` as lost
@@ -190,7 +190,7 @@ impl<CC: CongestionController> Model<CC> {
 
     fn on_rtt_updated(&mut self, time_sent: Timestamp, rtt: Duration) {
         let mut publisher = event::testing::Publisher::no_snapshot();
-        let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
         self.rtt_estimator.update_rtt(
             Duration::ZERO,
@@ -209,7 +209,7 @@ impl<CC: CongestionController> Model<CC> {
 
     fn on_explicit_congestion(&mut self, ce_count: u64) {
         let mut publisher = event::testing::Publisher::no_snapshot();
-        let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         let ce_count = ce_count.min(self.sent_packets.len() as u64);
         self.subject
             .on_explicit_congestion(ce_count, self.timestamp, &mut publisher)
@@ -217,7 +217,7 @@ impl<CC: CongestionController> Model<CC> {
 
     fn on_packet_discarded(&mut self) {
         let mut publisher = event::testing::Publisher::no_snapshot();
-        let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         if let Some(sent_packet_info) = self.sent_packets.pop_front() {
             self.subject
                 .on_packet_discarded(sent_packet_info.sent_bytes as usize, &mut publisher)
@@ -226,7 +226,7 @@ impl<CC: CongestionController> Model<CC> {
 
     fn on_mtu_updated(&mut self, mtu: u16) {
         let mut publisher = event::testing::Publisher::no_snapshot();
-        let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         self.subject.on_mtu_update(mtu, &mut publisher)
     }
 

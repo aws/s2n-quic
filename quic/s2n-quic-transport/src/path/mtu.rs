@@ -212,7 +212,7 @@ impl Controller {
                 // A new MTU has been confirmed, notify the congestion controller
                 congestion_controller.on_mtu_update(
                     self.plpmtu,
-                    &mut congestion_controller::Publisher::new(publisher, path_id),
+                    &mut congestion_controller::PathPublisher::new(publisher, path_id),
                 );
 
                 publisher.on_mtu_updated(event::builder::MtuUpdated {
@@ -394,7 +394,7 @@ impl Controller {
         self.plpmtu = BASE_PLPMTU;
         congestion_controller.on_mtu_update(
             BASE_PLPMTU,
-            &mut congestion_controller::Publisher::new(publisher, path_id),
+            &mut congestion_controller::PathPublisher::new(publisher, path_id),
         );
         // Cancel any current probes
         self.state = State::SearchComplete;

@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
+use crate::recovery::congestion_controller::PathPublisher;
 use crate::{
-    path,
+    event, path,
     time::{Clock, NoopClock},
 };
 
@@ -142,7 +143,7 @@ fn on_packet_sent() {
 #[test]
 fn app_limited() {
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let first_sent_time = NoopClock.get_time();
     let delivered_time = first_sent_time + Duration::from_secs(1);
     let mut bw_estimator = Estimator {
@@ -206,7 +207,7 @@ fn app_limited() {
 #[test]
 fn on_packet_ack_rate_sample() {
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let t0 = NoopClock.get_time() + Duration::from_secs(60);
     let t1 = t0 + Duration::from_secs(1);
     let t2 = t0 + Duration::from_secs(2);
@@ -347,7 +348,7 @@ fn on_packet_ack_rate_sample() {
 #[test]
 fn on_packet_ack_implausible_ack_rate() {
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let t0 = NoopClock.get_time();
     let mut bw_estimator = Estimator::default();
 

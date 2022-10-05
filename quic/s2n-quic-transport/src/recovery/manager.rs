@@ -148,7 +148,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
         path.congestion_controller.on_packet_discarded(
             discarded_bytes,
-            &mut congestion_controller::Publisher::new(publisher, path_id),
+            &mut congestion_controller::PathPublisher::new(publisher, path_id),
         );
 
         *self = Self::new(self.space);
@@ -231,7 +231,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             congestion_controlled_bytes,
             app_limited,
             &path.rtt_estimator,
-            &mut congestion_controller::Publisher::new(publisher, path_id),
+            &mut congestion_controller::PathPublisher::new(publisher, path_id),
         );
 
         self.sent_packets.insert(
@@ -557,7 +557,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 largest_newly_acked_info.time_sent,
                 timestamp,
                 &path.rtt_estimator,
-                &mut congestion_controller::Publisher::new(
+                &mut congestion_controller::PathPublisher::new(
                     publisher,
                     largest_newly_acked_info.path_id,
                 ),
@@ -609,7 +609,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     &path.rtt_estimator,
                     random_generator,
                     timestamp,
-                    &mut congestion_controller::Publisher::new(
+                    &mut congestion_controller::PathPublisher::new(
                         publisher,
                         acked_packet_info.path_id,
                     ),
@@ -666,7 +666,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 &path.rtt_estimator,
                 random_generator,
                 timestamp,
-                &mut congestion_controller::Publisher::new(publisher, current_path_id),
+                &mut congestion_controller::PathPublisher::new(publisher, current_path_id),
             );
             self.update_pto_timer(path, timestamp, is_handshake_confirmed);
         }
@@ -706,7 +706,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 .on_explicit_congestion(
                     ce_count.as_u64(),
                     timestamp,
-                    &mut congestion_controller::Publisher::new(publisher, path_id),
+                    &mut congestion_controller::PathPublisher::new(publisher, path_id),
                 );
             let path = context.path();
             publisher.on_congestion(event::builder::Congestion {
@@ -752,7 +752,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
         path.congestion_controller.on_packet_discarded(
             discarded_bytes,
-            &mut congestion_controller::Publisher::new(publisher, path_id),
+            &mut congestion_controller::PathPublisher::new(publisher, path_id),
         );
     }
 
@@ -924,7 +924,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 //# unnecessary reduction of the sending rate.
                 path.congestion_controller.on_packet_discarded(
                     sent_info.sent_bytes as usize,
-                    &mut congestion_controller::Publisher::new(publisher, sent_info.path_id),
+                    &mut congestion_controller::PathPublisher::new(publisher, sent_info.path_id),
                 );
             } else if sent_info.sent_bytes > 0 {
                 path.congestion_controller.on_packet_lost(
@@ -934,7 +934,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     new_loss_burst,
                     random_generator,
                     now,
-                    &mut congestion_controller::Publisher::new(publisher, sent_info.path_id),
+                    &mut congestion_controller::PathPublisher::new(publisher, sent_info.path_id),
                 );
                 is_congestion_event = true;
             }

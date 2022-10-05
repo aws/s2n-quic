@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 use super::*;
 use crate::{
+    event,
     packet::number::PacketNumberSpace,
     path,
-    recovery::congestion_controller::Publisher,
+    recovery::congestion_controller::PathPublisher,
     time::{Clock, NoopClock},
 };
 use core::time::Duration;
@@ -213,7 +214,7 @@ fn minimum_window_equals_two_times_max_datagram_size() {
 fn on_packet_sent() {
     let mut cc = CubicCongestionController::new(1000);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let mut rtt_estimator = RttEstimator::default();
     let now = NoopClock.get_time();
 
@@ -291,7 +292,7 @@ fn on_packet_sent() {
 fn on_packet_sent_application_limited() {
     let mut cc = CubicCongestionController::new(1000);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let rtt_estimator = RttEstimator::default();
     let now = NoopClock.get_time();
 
@@ -345,7 +346,7 @@ fn on_packet_sent_application_limited() {
 fn on_packet_sent_none_application_limited() {
     let mut cc = CubicCongestionController::new(1000);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let rtt_estimator = RttEstimator::default();
     let now = NoopClock.get_time();
 
@@ -398,7 +399,7 @@ fn on_packet_sent_none_application_limited() {
 fn on_packet_sent_fast_retransmission() {
     let mut cc = CubicCongestionController::new(1000);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let rtt_estimator = RttEstimator::default();
     let now = NoopClock.get_time();
 
@@ -427,7 +428,7 @@ fn on_packet_sent_fast_retransmission() {
 fn congestion_avoidance_after_idle_period() {
     let mut cc = CubicCongestionController::new(1000);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let rtt_estimator = &RttEstimator::default();
     let random = &mut random::testing::Generator::default();
@@ -527,7 +528,7 @@ fn congestion_avoidance_after_fast_convergence() {
     let max_datagram_size = 1200;
     let mut cc = CubicCongestionController::new(max_datagram_size);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
     cc.bytes_in_flight = BytesInFlight::new(100);
@@ -640,7 +641,7 @@ fn congestion_avoidance_max_cwnd() {
 fn on_packet_lost() {
     let mut cc = CubicCongestionController::new(1000);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
     cc.congestion_window = 100_000.0;
@@ -681,7 +682,7 @@ fn on_packet_lost() {
 fn on_packet_lost_below_minimum_window() {
     let mut cc = CubicCongestionController::new(1000);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
     cc.congestion_window = cc.cubic.minimum_window();
@@ -705,7 +706,7 @@ fn on_packet_lost_below_minimum_window() {
 fn on_packet_lost_already_in_recovery() {
     let mut cc = CubicCongestionController::new(1000);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
     cc.congestion_window = 10000.0;
@@ -731,7 +732,7 @@ fn on_packet_lost_already_in_recovery() {
 fn on_packet_lost_persistent_congestion() {
     let mut cc = CubicCongestionController::new(1000);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
     cc.congestion_window = 10000.0;
@@ -765,7 +766,7 @@ fn on_mtu_update_increase() {
     let cwnd_in_bytes = cwnd_in_packets / mtu as f32;
     let mut cc = CubicCongestionController::new(mtu);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     cc.congestion_window = cwnd_in_packets;
 
     mtu = 10000;
@@ -790,7 +791,7 @@ fn on_mtu_update_increase() {
 fn on_packet_discarded() {
     let mut cc = CubicCongestionController::new(5000);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     cc.bytes_in_flight = BytesInFlight::new(10000);
 
     cc.on_packet_discarded(1000, &mut publisher);
@@ -816,7 +817,7 @@ fn on_packet_discarded() {
 fn on_packet_ack_limited() {
     let mut cc = CubicCongestionController::new(5000);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
     cc.congestion_window = 100_000.0;
@@ -856,7 +857,7 @@ fn on_packet_ack_limited() {
 fn on_packet_ack_timestamp_regression() {
     let mut cc = CubicCongestionController::new(5000);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time() + Duration::from_secs(1);
     let rtt_estimator = RttEstimator::default();
     let random = &mut random::testing::Generator::default();
@@ -891,7 +892,7 @@ fn on_packet_ack_timestamp_regression() {
 fn on_packet_ack_utilized_then_under_utilized() {
     let mut cc = CubicCongestionController::new(5000);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let mut rtt_estimator = RttEstimator::default();
     let random = &mut random::testing::Generator::default();
@@ -960,7 +961,7 @@ fn on_packet_ack_utilized_then_under_utilized() {
 fn on_packet_ack_congestion_avoidance_max_cwnd() {
     let mut cc = CubicCongestionController::new(5000);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let mut rtt_estimator = RttEstimator::default();
     let random = &mut random::testing::Generator::default();
@@ -988,7 +989,7 @@ fn on_packet_ack_congestion_avoidance_max_cwnd() {
 fn on_packet_ack_recovery_to_congestion_avoidance() {
     let mut cc = CubicCongestionController::new(5000);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
 
@@ -1019,7 +1020,7 @@ fn on_packet_ack_recovery_to_congestion_avoidance() {
 fn on_packet_ack_slow_start_to_congestion_avoidance() {
     let mut cc = CubicCongestionController::new(5000);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
 
@@ -1056,7 +1057,7 @@ fn on_packet_ack_slow_start_to_congestion_avoidance() {
 fn on_packet_ack_recovery() {
     let mut cc = CubicCongestionController::new(5000);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
 
@@ -1085,7 +1086,7 @@ fn on_packet_ack_congestion_avoidance() {
     let mut cc = CubicCongestionController::new(max_datagram_size);
     let mut cc2 = CubicCongestionController::new(max_datagram_size);
     let mut publisher = event::testing::Publisher::snapshot();
-    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
 

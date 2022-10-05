@@ -1121,7 +1121,7 @@ mod tests {
         let random = &mut random::testing::Generator::default();
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher =
-            congestion_controller::Publisher::new(&mut publisher, path::Id::test_id());
+            congestion_controller::PathPublisher::new(&mut publisher, path::Id::test_id());
         path.on_validated();
 
         assert_eq!(

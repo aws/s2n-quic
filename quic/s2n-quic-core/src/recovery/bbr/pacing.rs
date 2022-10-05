@@ -3,7 +3,6 @@
 
 use crate::{
     counter::{Counter, Saturating},
-    event,
     recovery::{
         bandwidth::Bandwidth,
         bbr::{BbrCongestionController, State},
@@ -48,12 +47,12 @@ impl Pacer {
 
     /// Called when each packet has been written
     #[inline]
-    pub fn on_packet_sent<Pub: event::ConnectionPublisher>(
+    pub fn on_packet_sent<Pub: Publisher>(
         &mut self,
         now: Timestamp,
         bytes_sent: usize,
         rtt: Duration,
-        publisher: &mut Publisher<Pub>,
+        publisher: &mut Pub,
     ) {
         if rtt < MINIMUM_PACING_RTT {
             return;
@@ -80,12 +79,12 @@ impl Pacer {
 
     /// Sets the pacing rate used for determining the earliest departure time
     #[inline]
-    pub(super) fn set_pacing_rate<Pub: event::ConnectionPublisher>(
+    pub(super) fn set_pacing_rate<Pub: Publisher>(
         &mut self,
         bw: Bandwidth,
         gain: Ratio<u64>,
         filled_pipe: bool,
-        publisher: &mut Publisher<Pub>,
+        publisher: &mut Pub,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.5
         //# The static discount factor of 1% used to scale BBR.bw to produce BBR.pacing_rate.
@@ -184,7 +183,7 @@ mod tests {
         recovery::{
             bandwidth::Bandwidth,
             bbr::{pacing::Pacer, State},
-            congestion_controller::Publisher,
+            congestion_controller::PathPublisher,
             pacing::INITIAL_INTERVAL,
         },
         time::{Clock, NoopClock},
@@ -233,7 +232,7 @@ mod tests {
     fn set_pacing_rate() {
         let mut pacer = Pacer::new(MINIMUM_MTU);
         let mut publisher = event::testing::Publisher::snapshot();
-        let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         let bandwidth = Bandwidth::new(1000, Duration::from_millis(1));
         pacer.set_pacing_rate(bandwidth, Ratio::new(5, 4), true, &mut publisher);
 
@@ -295,7 +294,7 @@ mod tests {
         let mut pacer = Pacer::new(MINIMUM_MTU);
         let now = NoopClock.get_time();
         let mut publisher = event::testing::Publisher::snapshot();
-        let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
         let rtt = Duration::from_millis(100);
         let bw = Bandwidth::new(100_000, rtt);

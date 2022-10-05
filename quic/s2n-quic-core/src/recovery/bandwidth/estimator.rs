@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{event, recovery::congestion_controller::Publisher, time::Timestamp};
+use crate::{recovery::congestion_controller::Publisher, time::Timestamp};
 use core::{
     cmp::{max, Ordering},
     time::Duration,
@@ -281,13 +281,13 @@ impl Estimator {
     //# rate sample based on a snapshot of connection delivery information from the time
     //# at which the packet was last transmitted.
     /// Called for each acknowledgement of one or more packets
-    pub fn on_ack<Pub: event::ConnectionPublisher>(
+    pub fn on_ack<Pub: Publisher>(
         &mut self,
         bytes_acknowledged: usize,
         newest_acked_time_sent: Timestamp,
         newest_acked_packet_info: PacketInfo,
         now: Timestamp,
-        publisher: &mut Publisher<Pub>,
+        publisher: &mut Pub,
     ) {
         self.delivered_bytes += bytes_acknowledged as u64;
         self.delivered_time = Some(now);
