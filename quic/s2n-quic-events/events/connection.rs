@@ -289,3 +289,21 @@ struct SlowStartExited {
     cause: SlowStartExitCause,
     congestion_window: u32,
 }
+
+#[event("recovery:delivery_rate_updated")]
+/// The delivery rate has been updated
+/// Note: This event is only recorded for congestion controllers that support
+///       bandwidth estimates, such as BBR
+struct DeliveryRateUpdated {
+    path_id: u64,
+    bytes_per_second: u64,
+}
+
+#[event("recovery:pacing_rate_updated")]
+/// The pacing rate has been updated
+struct PacingRateUpdated {
+    path_id: u64,
+    bytes_per_second: u64,
+    burst_size: u32,
+    pacing_gain: f32,
+}

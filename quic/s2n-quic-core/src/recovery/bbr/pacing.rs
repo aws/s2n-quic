@@ -3,9 +3,11 @@
 
 use crate::{
     counter::{Counter, Saturating},
+    event,
     recovery::{
         bandwidth::Bandwidth,
         bbr::{BbrCongestionController, State},
+        congestion_controller::Publisher,
         pacing::{INITIAL_INTERVAL, MINIMUM_PACING_RTT},
         MAX_BURST_PACKETS,
     },
@@ -46,7 +48,13 @@ impl Pacer {
 
     /// Called when each packet has been written
     #[inline]
-    pub fn on_packet_sent(&mut self, now: Timestamp, bytes_sent: usize, rtt: Duration) {
+    pub fn on_packet_sent<Pub: event::ConnectionPublisher>(
+        &mut self,
+        now: Timestamp,
+        bytes_sent: usize,
+        rtt: Duration,
+        publisher: &mut Publisher<Pub>,
+    ) {
         if rtt < MINIMUM_PACING_RTT {
             return;
         }
@@ -57,6 +65,12 @@ impl Pacer {
                     Some((next_packet_departure_time + self.interval()).max(now));
             } else {
                 self.next_packet_departure_time = Some(now + INITIAL_INTERVAL);
+                // Emit `pacing_rate_updated` event to record the initial pacing rate
+                publisher.on_pacing_rate_updated(
+                    self.pacing_rate,
+                    self.send_quantum as u32,
+                    State::Startup.pacing_gain(),
+                );
             }
             self.capacity = Counter::new(self.send_quantum as u32);
         }
@@ -66,7 +80,13 @@ impl Pacer {
 
     /// Sets the pacing rate used for determining the earliest departure time
     #[inline]
-    pub(super) fn set_pacing_rate(&mut self, bw: Bandwidth, gain: Ratio<u64>, filled_pipe: bool) {
+    pub(super) fn set_pacing_rate<Pub: event::ConnectionPublisher>(
+        &mut self,
+        bw: Bandwidth,
+        gain: Ratio<u64>,
+        filled_pipe: bool,
+        publisher: &mut Publisher<Pub>,
+    ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.5
         //# The static discount factor of 1% used to scale BBR.bw to produce BBR.pacing_rate.
         const PACING_MARGIN_PERCENT: u64 = 1;
@@ -81,6 +101,7 @@ impl Pacer {
 
         if filled_pipe || rate > self.pacing_rate {
             self.pacing_rate = rate;
+            publisher.on_pacing_rate_updated(rate, self.send_quantum as u32, gain);
         }
     }
 
@@ -158,10 +179,12 @@ impl Pacer {
 #[cfg(test)]
 mod tests {
     use crate::{
+        event, path,
         path::MINIMUM_MTU,
         recovery::{
             bandwidth::Bandwidth,
             bbr::{pacing::Pacer, State},
+            congestion_controller::Publisher,
             pacing::INITIAL_INTERVAL,
         },
         time::{Clock, NoopClock},
@@ -209,8 +232,10 @@ mod tests {
     #[test]
     fn set_pacing_rate() {
         let mut pacer = Pacer::new(MINIMUM_MTU);
+        let mut publisher = event::testing::Publisher::snapshot();
+        let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
         let bandwidth = Bandwidth::new(1000, Duration::from_millis(1));
-        pacer.set_pacing_rate(bandwidth, Ratio::new(5, 4), true);
+        pacer.set_pacing_rate(bandwidth, Ratio::new(5, 4), true, &mut publisher);
 
         // pacing rate = pacing_gain * bw * (100 - BBRPacingMarginPercent) / 100
         //             = 1.25 * 1000bytes/ms * 99/100
@@ -269,16 +294,18 @@ mod tests {
     fn test_one_rtt() {
         let mut pacer = Pacer::new(MINIMUM_MTU);
         let now = NoopClock.get_time();
+        let mut publisher = event::testing::Publisher::snapshot();
+        let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
 
         let rtt = Duration::from_millis(100);
         let bw = Bandwidth::new(100_000, rtt);
 
-        pacer.set_pacing_rate(bw, State::Startup.pacing_gain(), true);
+        pacer.set_pacing_rate(bw, State::Startup.pacing_gain(), true, &mut publisher);
 
         let bytes_to_send = pacer.pacing_rate * rtt;
 
         // Send one packet to move beyond the initial interval
-        pacer.on_packet_sent(now, MINIMUM_MTU as usize, rtt);
+        pacer.on_packet_sent(now, MINIMUM_MTU as usize, rtt, &mut publisher);
         assert_eq!(
             Some(now + INITIAL_INTERVAL),
             pacer.earliest_departure_time()
@@ -291,7 +318,7 @@ mod tests {
             assert!(pacer
                 .earliest_departure_time()
                 .map_or(true, |departure_time| departure_time < now + rtt));
-            pacer.on_packet_sent(now, MINIMUM_MTU as usize, rtt);
+            pacer.on_packet_sent(now, MINIMUM_MTU as usize, rtt, &mut publisher);
             sent_bytes += MINIMUM_MTU as u64;
         }
         assert!(pacer

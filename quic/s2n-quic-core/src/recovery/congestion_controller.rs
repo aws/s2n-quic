@@ -7,10 +7,12 @@ use crate::{
     inet, path,
     path::MINIMUM_MTU,
     random,
-    recovery::RttEstimator,
+    recovery::{bandwidth::Bandwidth, RttEstimator},
     time::Timestamp,
 };
 use core::fmt::Debug;
+use num_rational::Ratio;
+use num_traits::ToPrimitive;
 
 pub trait Endpoint: 'static + Debug + Send {
     type CongestionController: CongestionController;
@@ -58,6 +60,33 @@ impl<'a, Pub: event::ConnectionPublisher> Publisher<'a, Pub> {
                 cause,
                 congestion_window,
             });
+    }
+
+    /// Invoked when the delivery rate has been updated
+    pub fn on_delivery_rate_updated(&mut self, delivery_rate: Bandwidth) {
+        self.publisher
+            .on_delivery_rate_updated(event::builder::DeliveryRateUpdated {
+                path_id: self.path_id.into_event(),
+                bytes_per_second: delivery_rate.as_bytes_per_second(),
+            })
+    }
+
+    /// Invoked when the pacing rate has been updated
+    pub fn on_pacing_rate_updated(
+        &mut self,
+        pacing_rate: Bandwidth,
+        burst_size: u32,
+        pacing_gain: Ratio<u64>,
+    ) {
+        self.publisher
+            .on_pacing_rate_updated(event::builder::PacingRateUpdated {
+                path_id: self.path_id.into_event(),
+                bytes_per_second: pacing_rate.as_bytes_per_second(),
+                burst_size,
+                pacing_gain: pacing_gain
+                    .to_f32()
+                    .expect("pacing gain should be representable as f32"),
+            })
     }
 }
 

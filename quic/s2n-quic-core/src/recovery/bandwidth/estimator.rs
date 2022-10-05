@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::time::Timestamp;
+use crate::{event, recovery::congestion_controller::Publisher, time::Timestamp};
 use core::{
     cmp::{max, Ordering},
     time::Duration,
@@ -61,6 +61,17 @@ impl Bandwidth {
                 nanos_per_byte: interval.as_nanos() as u64 / bytes,
             }
         }
+    }
+
+    /// Represents the bandwidth as bytes per second
+    pub fn as_bytes_per_second(&self) -> u64 {
+        const ONE_SECOND_IN_NANOS: u64 = Duration::from_secs(1).as_nanos() as u64;
+
+        if *self == Bandwidth::INFINITY {
+            return u64::MAX;
+        }
+
+        ONE_SECOND_IN_NANOS / self.nanos_per_byte
     }
 }
 
@@ -270,12 +281,13 @@ impl Estimator {
     //# rate sample based on a snapshot of connection delivery information from the time
     //# at which the packet was last transmitted.
     /// Called for each acknowledgement of one or more packets
-    pub fn on_ack(
+    pub fn on_ack<Pub: event::ConnectionPublisher>(
         &mut self,
         bytes_acknowledged: usize,
         newest_acked_time_sent: Timestamp,
         newest_acked_packet_info: PacketInfo,
         now: Timestamp,
+        publisher: &mut Publisher<Pub>,
     ) {
         self.delivered_bytes += bytes_acknowledged as u64;
         self.delivered_time = Some(now);
@@ -318,6 +330,8 @@ impl Estimator {
         // so the values are up to date even when no loss or ECN CE markings are received.
         self.rate_sample.lost_bytes = self.lost_bytes - self.rate_sample.prior_lost_bytes;
         self.rate_sample.ecn_ce_count = self.ecn_ce_count - self.rate_sample.prior_ecn_ce_count;
+
+        publisher.on_delivery_rate_updated(self.rate_sample.delivery_rate());
     }
 
     /// Called when packets are declared lost

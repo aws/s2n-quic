@@ -262,7 +262,7 @@ impl CongestionController for BbrCongestionController {
         sent_bytes: usize,
         app_limited: Option<bool>,
         rtt_estimator: &RttEstimator,
-        _publisher: &mut Publisher<Pub>,
+        publisher: &mut Publisher<Pub>,
     ) -> Self::PacketInfo {
         let prior_bytes_in_flight = *self.bytes_in_flight;
 
@@ -272,13 +272,17 @@ impl CongestionController for BbrCongestionController {
             //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.2
             //# BBROnTransmit():
             //#   BBRHandleRestartFromIdle()
-            self.handle_restart_from_idle(time_sent);
+            self.handle_restart_from_idle(time_sent, publisher);
 
             self.bytes_in_flight
                 .try_add(sent_bytes)
                 .expect("sent_bytes should not exceed u32::MAX");
-            self.pacer
-                .on_packet_sent(time_sent, sent_bytes, rtt_estimator.smoothed_rtt());
+            self.pacer.on_packet_sent(
+                time_sent,
+                sent_bytes,
+                rtt_estimator.smoothed_rtt(),
+                publisher,
+            );
         }
 
         self.bw_estimator
@@ -315,6 +319,7 @@ impl CongestionController for BbrCongestionController {
             newest_acked_time_sent,
             newest_acked_packet_info,
             ack_receive_time,
+            publisher,
         );
         self.round_counter.on_ack(
             newest_acked_packet_info,
@@ -403,6 +408,7 @@ impl CongestionController for BbrCongestionController {
                 self.data_rate_model.bw(),
                 self.state.pacing_gain(),
                 self.full_pipe_estimator.filled_pipe(),
+                publisher,
             );
             self.pacer.set_send_quantum(self.max_datagram_size);
             self.set_cwnd(bytes_acknowledged);
@@ -989,7 +995,11 @@ impl BbrCongestionController {
 
     /// Handles when the connection resumes transmitting after an idle period
     #[inline]
-    fn handle_restart_from_idle(&mut self, now: Timestamp) {
+    fn handle_restart_from_idle<Pub: event::ConnectionPublisher>(
+        &mut self,
+        now: Timestamp,
+        publisher: &mut Publisher<Pub>,
+    ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.4.3
         //# BBRHandleRestartFromIdle():
         //#   if (packets_in_flight == 0 and C.app_limited)
@@ -1006,6 +1016,7 @@ impl BbrCongestionController {
                     self.data_rate_model.bw(),
                     Ratio::one(),
                     self.full_pipe_estimator.filled_pipe(),
+                    publisher,
                 );
             }
         }

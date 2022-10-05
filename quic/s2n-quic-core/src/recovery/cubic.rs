@@ -208,7 +208,7 @@ impl CongestionController for CubicCongestionController {
         bytes_sent: usize,
         app_limited: Option<bool>,
         rtt_estimator: &RttEstimator,
-        _publisher: &mut Publisher<Pub>,
+        publisher: &mut Publisher<Pub>,
     ) {
         if bytes_sent == 0 {
             // Packet was not congestion controlled
@@ -247,6 +247,7 @@ impl CongestionController for CubicCongestionController {
             self.congestion_window(),
             self.max_datagram_size,
             self.state.is_slow_start(),
+            publisher,
         );
     }
 
