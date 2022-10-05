@@ -2,10 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    event,
     packet::number::PacketNumberSpace,
+    path,
     path::MINIMUM_MTU,
     random,
-    recovery::{CongestionController, CubicCongestionController, RttEstimator},
+    recovery::{
+        congestion_controller::Publisher, CongestionController, CubicCongestionController,
+        RttEstimator,
+    },
     time::{Clock, NoopClock, Timestamp},
 };
 use core::{fmt, ops::Range, time::Duration};
@@ -217,9 +222,16 @@ fn minimum_window<CC: CongestionController>(
     let time_zero = NoopClock.get_time();
     let rtt_estimator = RttEstimator::default();
     let random = &mut random::testing::Generator::default();
+    let mut publisher = event::testing::Publisher::no_snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
 
-    let packet_info =
-        congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize, None, &rtt_estimator);
+    let packet_info = congestion_controller.on_packet_sent(
+        time_zero,
+        MINIMUM_MTU as usize,
+        None,
+        &rtt_estimator,
+        &mut publisher,
+    );
     // Experience persistent congestion to drop to the minimum window
     congestion_controller.on_packet_lost(
         MINIMUM_MTU as u32,
@@ -228,9 +240,15 @@ fn minimum_window<CC: CongestionController>(
         false,
         random,
         time_zero,
+        &mut publisher,
     );
-    let packet_info =
-        congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize, None, &rtt_estimator);
+    let packet_info = congestion_controller.on_packet_sent(
+        time_zero,
+        MINIMUM_MTU as usize,
+        None,
+        &rtt_estimator,
+        &mut publisher,
+    );
     // Lose a packet to exit slow start
     congestion_controller.on_packet_lost(
         MINIMUM_MTU as u32,
@@ -239,6 +257,7 @@ fn minimum_window<CC: CongestionController>(
         false,
         random,
         time_zero,
+        &mut publisher,
     );
 
     Simulation {
@@ -279,6 +298,8 @@ fn simulate_constant_rtt<CC: CongestionController>(
     let time_zero = NoopClock.get_time();
     let mut rtt_estimator = RttEstimator::default();
     let random = &mut random::testing::Generator::default();
+    let mut publisher = event::testing::Publisher::no_snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
 
     // Update the rtt with 200 ms
     rtt_estimator.update_rtt(
@@ -309,6 +330,7 @@ fn simulate_constant_rtt<CC: CongestionController>(
                 MINIMUM_MTU as usize,
                 None,
                 &rtt_estimator,
+                &mut publisher,
             );
             congestion_controller.on_packet_lost(
                 MINIMUM_MTU as u32,
@@ -317,6 +339,7 @@ fn simulate_constant_rtt<CC: CongestionController>(
                 false,
                 random,
                 round_start,
+                &mut publisher,
             );
             drop_index += 1;
         } else {
@@ -352,6 +375,8 @@ fn send_and_ack<CC: CongestionController>(
     // acks arriving while sending is paused by the pacer.
     let earliest_ack_receive_time = ack_receive_time - Duration::from_millis(50);
     let sending_full_cwnd = bytes as u32 == congestion_controller.congestion_window();
+    let mut publisher = event::testing::Publisher::no_snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
 
     let mut packet_info = None;
 
@@ -373,6 +398,7 @@ fn send_and_ack<CC: CongestionController>(
                 bytes_sent,
                 Some(app_limited),
                 rtt_estimator,
+                &mut publisher,
             ));
             tx_remaining -= bytes_sent;
             rx_remaining += bytes_sent;
@@ -393,6 +419,7 @@ fn send_and_ack<CC: CongestionController>(
                 rtt_estimator,
                 random,
                 now,
+                &mut publisher,
             );
             rx_remaining -= bytes_acked;
         }

@@ -3,9 +3,9 @@
 
 use crate::{
     counter::Counter,
-    random,
+    event, random,
     recovery::{
-        congestion_controller::{self, CongestionController},
+        congestion_controller::{self, CongestionController, Publisher},
         cubic::{FastRetransmission::*, State::*},
         hybrid_slow_start::HybridSlowStart,
         pacing::Pacer,
@@ -200,12 +200,13 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
-    fn on_packet_sent(
+    fn on_packet_sent<Pub: event::ConnectionPublisher>(
         &mut self,
         time_sent: Timestamp,
         bytes_sent: usize,
         app_limited: Option<bool>,
         rtt_estimator: &RttEstimator,
+        _publisher: &mut Publisher<Pub>,
     ) {
         if bytes_sent == 0 {
             // Packet was not congestion controlled
@@ -250,11 +251,12 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
-    fn on_rtt_update(
+    fn on_rtt_update<Pub: event::ConnectionPublisher>(
         &mut self,
         time_sent: Timestamp,
         now: Timestamp,
         rtt_estimator: &RttEstimator,
+        _publisher: &mut Publisher<Pub>,
     ) {
         // Update the Slow Start algorithm each time the RTT
         // estimate is updated to find the slow start threshold.
@@ -281,7 +283,7 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
-    fn on_ack(
+    fn on_ack<Pub: event::ConnectionPublisher>(
         &mut self,
         newest_acked_time_sent: Timestamp,
         bytes_acknowledged: usize,
@@ -289,6 +291,7 @@ impl CongestionController for CubicCongestionController {
         rtt_estimator: &RttEstimator,
         _random_generator: &mut dyn random::Generator,
         ack_receive_time: Timestamp,
+        _publisher: &mut Publisher<Pub>,
     ) {
         self.bytes_in_flight_hi = self.bytes_in_flight_hi.max(self.bytes_in_flight);
         self.bytes_in_flight
@@ -381,7 +384,7 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
-    fn on_packet_lost(
+    fn on_packet_lost<Pub: event::ConnectionPublisher>(
         &mut self,
         lost_bytes: u32,
         _packet_info: Self::PacketInfo,
@@ -389,6 +392,7 @@ impl CongestionController for CubicCongestionController {
         _new_loss_burst: bool,
         _random_generator: &mut dyn random::Generator,
         timestamp: Timestamp,
+        _publisher: &mut Publisher<Pub>,
     ) {
         debug_assert!(lost_bytes > 0);
 
@@ -408,7 +412,12 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
-    fn on_explicit_congestion(&mut self, _ce_count: u64, event_time: Timestamp) {
+    fn on_explicit_congestion<Pub: event::ConnectionPublisher>(
+        &mut self,
+        _ce_count: u64,
+        event_time: Timestamp,
+        _publisher: &mut Publisher<Pub>,
+    ) {
         //= https://www.rfc-editor.org/rfc/rfc9002#section-7.1
         //# If a path has been validated to support Explicit Congestion
         //# Notification (ECN) [RFC3168] [RFC8311], QUIC treats a Congestion
@@ -435,7 +444,11 @@ impl CongestionController for CubicCongestionController {
     //# handshake, the congestion window SHOULD be set to the new initial
     //# congestion window.
     #[inline]
-    fn on_mtu_update(&mut self, max_datagram_size: u16) {
+    fn on_mtu_update<Pub: event::ConnectionPublisher>(
+        &mut self,
+        max_datagram_size: u16,
+        _publisher: &mut Publisher<Pub>,
+    ) {
         let old_max_datagram_size = self.max_datagram_size;
         self.max_datagram_size = max_datagram_size;
         self.cubic.max_datagram_size = max_datagram_size;
@@ -452,7 +465,11 @@ impl CongestionController for CubicCongestionController {
     //# associated with those packets and MUST remove them from the count of
     //# bytes in flight.
     #[inline]
-    fn on_packet_discarded(&mut self, bytes_sent: usize) {
+    fn on_packet_discarded<Pub: event::ConnectionPublisher>(
+        &mut self,
+        bytes_sent: usize,
+        _publisher: &mut Publisher<Pub>,
+    ) {
         self.bytes_in_flight
             .try_sub(bytes_sent)
             .expect("bytes sent should not exceed u32::MAX");

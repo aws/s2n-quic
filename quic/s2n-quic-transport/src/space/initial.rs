@@ -87,11 +87,13 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
     ///
     /// Reset the TLS stack and recover state when the first Retry packet is processed.
     /// Also regenerate the Initial keys based on the new retry_source_connection_id.
-    pub fn on_retry_packet(
+    pub fn on_retry_packet<Pub: event::ConnectionPublisher>(
         &mut self,
         path: &mut path::Path<Config>,
+        path_id: path::Id,
         retry_source_connection_id: &PeerId,
         retry_token: &[u8],
+        publisher: &mut Pub,
     ) {
         debug_assert!(Config::ENDPOINT_TYPE.is_client());
         self.retry_token = retry_token.to_vec();
@@ -116,7 +118,8 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
 
         // Reset the recovery state; discarding any previous Initial packets that
         // might have been sent/lost.
-        self.recovery_manager.on_retry_packet(path);
+        self.recovery_manager
+            .on_retry_packet(path, path_id, publisher);
     }
 
     /// Returns true if the packet number has already been processed

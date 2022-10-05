@@ -4,12 +4,14 @@
 use crate::{
     assert_delta,
     counter::Counter,
+    event, path,
     path::MINIMUM_MTU,
     random,
     recovery::{
         bandwidth::{Bandwidth, PacketInfo, RateSample},
         bbr,
         bbr::{probe_bw::CyclePhase, probe_rtt, BbrCongestionController, State, State::ProbeRtt},
+        congestion_controller::Publisher,
         CongestionController,
     },
     time::{Clock, NoopClock},
@@ -1006,10 +1008,13 @@ fn control_update_required() {
 fn on_mtu_update() {
     let mut mtu = 5000;
     let mut bbr = BbrCongestionController::new(mtu);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
+
     bbr.cwnd = 100_000;
 
     mtu = 10000;
-    bbr.on_mtu_update(mtu);
+    bbr.on_mtu_update(mtu, &mut publisher);
 
     assert_eq!(bbr.max_datagram_size, mtu);
     assert_eq!(bbr.cwnd, 200_000);

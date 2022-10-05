@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    event,
     event::{api::SocketAddress, IntoEvent},
-    inet,
+    inet, path,
     path::MINIMUM_MTU,
     random,
     recovery::RttEstimator,
@@ -33,6 +34,19 @@ impl<'a> PathInfo<'a> {
             application_protocol: None,
             max_datagram_size: MINIMUM_MTU,
         }
+    }
+}
+
+/// Wrapper around a `ConnectionPublisher` that forwards congestion control related
+/// events to the inner publisher with the necessary context.
+pub struct Publisher<'a, Pub: event::ConnectionPublisher> {
+    publisher: &'a mut Pub,
+    path_id: path::Id,
+}
+
+impl<'a, Pub: event::ConnectionPublisher> Publisher<'a, Pub> {
+    pub fn new(publisher: &'a mut Pub, path_id: path::Id) -> Publisher<Pub> {
+        Self { publisher, path_id }
     }
 }
 
@@ -72,17 +86,24 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
     /// Note: Sent bytes may be 0 in the case the packet being sent contains only ACK frames.
     /// These pure ACK packets are not congestion-controlled to ensure congestion control
     /// does not impede congestion feedback.
-    fn on_packet_sent(
+    fn on_packet_sent<Pub: event::ConnectionPublisher>(
         &mut self,
         time_sent: Timestamp,
         sent_bytes: usize,
         app_limited: Option<bool>,
         rtt_estimator: &RttEstimator,
+        publisher: &mut Publisher<Pub>,
     ) -> Self::PacketInfo;
 
     /// Invoked each time the round trip time is updated, which is whenever the
     /// newest acknowledged packet in an ACK frame is newly acknowledged
-    fn on_rtt_update(&mut self, time_sent: Timestamp, now: Timestamp, rtt_estimator: &RttEstimator);
+    fn on_rtt_update<Pub: event::ConnectionPublisher>(
+        &mut self,
+        time_sent: Timestamp,
+        now: Timestamp,
+        rtt_estimator: &RttEstimator,
+        publisher: &mut Publisher<Pub>,
+    );
 
     /// Invoked when an acknowledgement of one or more previously unacknowledged packets is received
     ///
@@ -90,7 +111,8 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
     /// it is possible this method may be called multiple times for one acknowledgement. In either
     /// case, `newest_acked_time_sent` and `newest_acked_packet_info` represent the newest acknowledged
     /// packet contributing to `bytes_acknowledged`.
-    fn on_ack(
+    #[allow(clippy::too_many_arguments)]
+    fn on_ack<Pub: event::ConnectionPublisher>(
         &mut self,
         newest_acked_time_sent: Timestamp,
         bytes_acknowledged: usize,
@@ -98,6 +120,7 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
         rtt_estimator: &RttEstimator,
         random_generator: &mut dyn random::Generator,
         ack_receive_time: Timestamp,
+        publisher: &mut Publisher<Pub>,
     );
 
     /// Invoked when a packet is declared lost
@@ -105,7 +128,8 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
     /// `new_loss_burst` is true if the lost packet is the first in a
     /// contiguous series of lost packets. This can be used for measuring or
     /// filtering out noise from burst losses.
-    fn on_packet_lost(
+    #[allow(clippy::too_many_arguments)]
+    fn on_packet_lost<Pub: event::ConnectionPublisher>(
         &mut self,
         lost_bytes: u32,
         packet_info: Self::PacketInfo,
@@ -113,18 +137,32 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
         new_loss_burst: bool,
         random_generator: &mut dyn random::Generator,
         timestamp: Timestamp,
+        publisher: &mut Publisher<Pub>,
     );
 
     /// Invoked when the Explicit Congestion Notification counter increases.
     ///
     /// `ce_count` represents the incremental number of packets marked with the ECN CE codepoint
-    fn on_explicit_congestion(&mut self, ce_count: u64, event_time: Timestamp);
+    fn on_explicit_congestion<Pub: event::ConnectionPublisher>(
+        &mut self,
+        ce_count: u64,
+        event_time: Timestamp,
+        publisher: &mut Publisher<Pub>,
+    );
 
     /// Invoked when the path maximum transmission unit is updated.
-    fn on_mtu_update(&mut self, max_data_size: u16);
+    fn on_mtu_update<Pub: event::ConnectionPublisher>(
+        &mut self,
+        max_data_size: u16,
+        publisher: &mut Publisher<Pub>,
+    );
 
     /// Invoked for each packet discarded when a packet number space is discarded.
-    fn on_packet_discarded(&mut self, bytes_sent: usize);
+    fn on_packet_discarded<Pub: event::ConnectionPublisher>(
+        &mut self,
+        bytes_sent: usize,
+        publisher: &mut Publisher<Pub>,
+    );
 
     /// Returns the earliest time that a packet may be transmitted.
     ///
@@ -194,25 +232,27 @@ pub mod testing {
                 false
             }
 
-            fn on_packet_sent(
+            fn on_packet_sent<Pub: event::ConnectionPublisher>(
                 &mut self,
                 _time_sent: Timestamp,
                 _bytes_sent: usize,
                 _app_limited: Option<bool>,
                 _rtt_estimator: &RttEstimator,
+                _publisher: &mut Publisher<Pub>,
             ) -> PacketInfo {
                 PacketInfo(())
             }
 
-            fn on_rtt_update(
+            fn on_rtt_update<Pub: event::ConnectionPublisher>(
                 &mut self,
                 _time_sent: Timestamp,
                 _now: Timestamp,
                 _rtt_estimator: &RttEstimator,
+                _publisher: &mut Publisher<Pub>,
             ) {
             }
 
-            fn on_ack(
+            fn on_ack<Pub: event::ConnectionPublisher>(
                 &mut self,
                 _newest_acked_time_sent: Timestamp,
                 _sent_bytes: usize,
@@ -220,10 +260,11 @@ pub mod testing {
                 _rtt_estimator: &RttEstimator,
                 _random_generator: &mut dyn random::Generator,
                 _ack_receive_time: Timestamp,
+                _publisher: &mut Publisher<Pub>,
             ) {
             }
 
-            fn on_packet_lost(
+            fn on_packet_lost<Pub: event::ConnectionPublisher>(
                 &mut self,
                 _lost_bytes: u32,
                 _packet_info: Self::PacketInfo,
@@ -231,14 +272,31 @@ pub mod testing {
                 _new_loss_burst: bool,
                 _random_generator: &mut dyn random::Generator,
                 _timestamp: Timestamp,
+                _publisher: &mut Publisher<Pub>,
             ) {
             }
 
-            fn on_explicit_congestion(&mut self, _ce_count: u64, _event_time: Timestamp) {}
+            fn on_explicit_congestion<Pub: event::ConnectionPublisher>(
+                &mut self,
+                _ce_count: u64,
+                _event_time: Timestamp,
+                _publisher: &mut Publisher<Pub>,
+            ) {
+            }
 
-            fn on_mtu_update(&mut self, _max_data_size: u16) {}
+            fn on_mtu_update<Pub: event::ConnectionPublisher>(
+                &mut self,
+                _max_data_size: u16,
+                _publisher: &mut Publisher<Pub>,
+            ) {
+            }
 
-            fn on_packet_discarded(&mut self, _bytes_sent: usize) {}
+            fn on_packet_discarded<Pub: event::ConnectionPublisher>(
+                &mut self,
+                _bytes_sent: usize,
+                _publisher: &mut Publisher<Pub>,
+            ) {
+            }
 
             fn earliest_departure_time(&self) -> Option<Timestamp> {
                 None
@@ -248,6 +306,7 @@ pub mod testing {
 
     pub mod mock {
         use super::*;
+        use crate::recovery::congestion_controller;
 
         #[derive(Debug, Default)]
         pub struct Endpoint {}
@@ -327,12 +386,13 @@ pub mod testing {
                 self.requires_fast_retransmission
             }
 
-            fn on_packet_sent(
+            fn on_packet_sent<Pub: event::ConnectionPublisher>(
                 &mut self,
                 _time_sent: Timestamp,
                 bytes_sent: usize,
                 app_limited: Option<bool>,
                 _rtt_estimator: &RttEstimator,
+                _publisher: &mut Publisher<Pub>,
             ) -> PacketInfo {
                 self.bytes_in_flight += bytes_sent as u32;
                 self.requires_fast_retransmission = false;
@@ -340,16 +400,17 @@ pub mod testing {
                 PacketInfo(())
             }
 
-            fn on_rtt_update(
+            fn on_rtt_update<Pub: event::ConnectionPublisher>(
                 &mut self,
                 _time_sent: Timestamp,
                 _now: Timestamp,
                 _rtt_estimator: &RttEstimator,
+                _publisher: &mut Publisher<Pub>,
             ) {
                 self.on_rtt_update += 1
             }
 
-            fn on_ack(
+            fn on_ack<Pub: event::ConnectionPublisher>(
                 &mut self,
                 _newest_acked_time_sent: Timestamp,
                 _sent_bytes: usize,
@@ -357,11 +418,12 @@ pub mod testing {
                 _rtt_estimator: &RttEstimator,
                 _random_generator: &mut dyn random::Generator,
                 _ack_receive_time: Timestamp,
+                _publisher: &mut Publisher<Pub>,
             ) {
                 self.on_packet_ack += 1;
             }
 
-            fn on_packet_lost(
+            fn on_packet_lost<Pub: event::ConnectionPublisher>(
                 &mut self,
                 lost_bytes: u32,
                 _packet_info: Self::PacketInfo,
@@ -369,6 +431,7 @@ pub mod testing {
                 new_loss_burst: bool,
                 _random_generator: &mut dyn random::Generator,
                 _timestamp: Timestamp,
+                _publisher: &mut Publisher<Pub>,
             ) {
                 self.bytes_in_flight = self.bytes_in_flight.saturating_sub(lost_bytes);
                 self.lost_bytes += lost_bytes;
@@ -381,16 +444,29 @@ pub mod testing {
                 }
             }
 
-            fn on_explicit_congestion(&mut self, _ce_count: u64, _event_time: Timestamp) {
+            fn on_explicit_congestion<Pub: event::ConnectionPublisher>(
+                &mut self,
+                _ce_count: u64,
+                _event_time: Timestamp,
+                _publisher: &mut Publisher<Pub>,
+            ) {
                 self.congestion_events += 1;
                 self.slow_start = false;
             }
 
-            fn on_mtu_update(&mut self, _max_data_size: u16) {
+            fn on_mtu_update<Pub: event::ConnectionPublisher>(
+                &mut self,
+                _max_data_size: u16,
+                _publisher: &mut Publisher<Pub>,
+            ) {
                 self.on_mtu_update += 1;
             }
 
-            fn on_packet_discarded(&mut self, bytes_sent: usize) {
+            fn on_packet_discarded<Pub: event::ConnectionPublisher>(
+                &mut self,
+                bytes_sent: usize,
+                _publisher: &mut congestion_controller::Publisher<Pub>,
+            ) {
                 self.bytes_in_flight = self.bytes_in_flight.saturating_sub(bytes_sent as u32);
             }
 

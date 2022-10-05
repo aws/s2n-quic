@@ -135,7 +135,12 @@ impl<Config: endpoint::Config> Manager<Config> {
     ///
     /// Reset congestion controller state by discarding sent bytes and replacing recovery
     /// manager with a new instance of itself.
-    pub fn on_retry_packet(&mut self, path: &mut Path<Config>) {
+    pub fn on_retry_packet<Pub: event::ConnectionPublisher>(
+        &mut self,
+        path: &mut Path<Config>,
+        path_id: path::Id,
+        publisher: &mut Pub,
+    ) {
         debug_assert!(
             Config::ENDPOINT_TYPE.is_client(),
             "only a Client should process a Retry packet"
@@ -145,8 +150,10 @@ impl<Config: endpoint::Config> Manager<Config> {
         for (_, unacked_sent_info) in self.sent_packets.iter() {
             discarded_bytes += unacked_sent_info.sent_bytes as usize;
         }
-        path.congestion_controller
-            .on_packet_discarded(discarded_bytes);
+        path.congestion_controller.on_packet_discarded(
+            discarded_bytes,
+            &mut congestion_controller::Publisher::new(publisher, path_id),
+        );
 
         *self = Self::new(self.space);
     }
@@ -228,6 +235,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             congestion_controlled_bytes,
             app_limited,
             &path.rtt_estimator,
+            &mut congestion_controller::Publisher::new(publisher, path_id),
         );
 
         self.sent_packets.insert(
@@ -555,6 +563,10 @@ impl<Config: endpoint::Config> Manager<Config> {
                 largest_newly_acked_info.time_sent,
                 timestamp,
                 &path.rtt_estimator,
+                &mut congestion_controller::Publisher::new(
+                    publisher,
+                    largest_newly_acked_info.path_id,
+                ),
             );
             if slow_start && !path.congestion_controller.is_slow_start() {
                 let path_id = largest_newly_acked_info.path_id;
@@ -613,6 +625,10 @@ impl<Config: endpoint::Config> Manager<Config> {
                     &path.rtt_estimator,
                     random_generator,
                     timestamp,
+                    &mut congestion_controller::Publisher::new(
+                        publisher,
+                        acked_packet_info.path_id,
+                    ),
                 );
                 if slow_start && !path.congestion_controller.is_slow_start() {
                     let path_id = acked_packet_info.path_id;
@@ -676,6 +692,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 &path.rtt_estimator,
                 random_generator,
                 timestamp,
+                &mut congestion_controller::Publisher::new(publisher, current_path_id),
             );
             if slow_start && !path.congestion_controller.is_slow_start() {
                 publisher.on_slow_start_exited(event::builder::SlowStartExited {
@@ -722,7 +739,11 @@ impl<Config: endpoint::Config> Manager<Config> {
             context
                 .path_mut()
                 .congestion_controller
-                .on_explicit_congestion(ce_count.as_u64(), timestamp);
+                .on_explicit_congestion(
+                    ce_count.as_u64(),
+                    timestamp,
+                    &mut congestion_controller::Publisher::new(publisher, path_id),
+                );
             if slow_start && !context.path().congestion_controller.is_slow_start() {
                 let path = context.path();
                 publisher.on_slow_start_exited(event::builder::SlowStartExited {
@@ -773,8 +794,10 @@ impl<Config: endpoint::Config> Manager<Config> {
             );
             discarded_bytes += unacked_sent_info.sent_bytes as usize;
         }
-        path.congestion_controller
-            .on_packet_discarded(discarded_bytes);
+        path.congestion_controller.on_packet_discarded(
+            discarded_bytes,
+            &mut congestion_controller::Publisher::new(publisher, path_id),
+        );
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-A.10
@@ -943,8 +966,10 @@ impl<Config: endpoint::Config> Manager<Config> {
                 //# indication of congestion and SHOULD NOT trigger a congestion
                 //# control reaction [RFC4821] because this could result in
                 //# unnecessary reduction of the sending rate.
-                path.congestion_controller
-                    .on_packet_discarded(sent_info.sent_bytes as usize);
+                path.congestion_controller.on_packet_discarded(
+                    sent_info.sent_bytes as usize,
+                    &mut congestion_controller::Publisher::new(publisher, sent_info.path_id),
+                );
             } else if sent_info.sent_bytes > 0 {
                 let slow_start = path.congestion_controller.is_slow_start();
                 let congestion_window = path.congestion_controller.congestion_window();
@@ -955,6 +980,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     new_loss_burst,
                     random_generator,
                     now,
+                    &mut congestion_controller::Publisher::new(publisher, sent_info.path_id),
                 );
                 if slow_start && !path.congestion_controller.is_slow_start() {
                     let path_id = sent_info.path_id;

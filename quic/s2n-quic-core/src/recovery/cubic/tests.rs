@@ -3,6 +3,8 @@
 use super::*;
 use crate::{
     packet::number::PacketNumberSpace,
+    path,
+    recovery::congestion_controller::Publisher,
     time::{Clock, NoopClock},
 };
 use core::time::Duration;
@@ -210,13 +212,21 @@ fn minimum_window_equals_two_times_max_datagram_size() {
 #[test]
 fn on_packet_sent() {
     let mut cc = CubicCongestionController::new(1000);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     let mut rtt_estimator = RttEstimator::default();
     let now = NoopClock.get_time();
 
     cc.congestion_window = 100_000.0;
 
     // Last sent packet time updated to t10
-    cc.on_packet_sent(now + Duration::from_secs(10), 1, None, &rtt_estimator);
+    cc.on_packet_sent(
+        now + Duration::from_secs(10),
+        1,
+        None,
+        &rtt_estimator,
+        &mut publisher,
+    );
 
     assert_eq!(cc.bytes_in_flight, 1);
 
@@ -238,7 +248,7 @@ fn on_packet_sent() {
     //# distance networks.
 
     // Round one of hybrid slow start
-    cc.on_rtt_update(now, now, &rtt_estimator);
+    cc.on_rtt_update(now, now, &rtt_estimator, &mut publisher);
 
     assert!(cc.is_slow_start());
 
@@ -252,7 +262,13 @@ fn on_packet_sent() {
     );
 
     // Last sent packet time updated to t20
-    cc.on_packet_sent(now + Duration::from_secs(20), 1, None, &rtt_estimator);
+    cc.on_packet_sent(
+        now + Duration::from_secs(20),
+        1,
+        None,
+        &rtt_estimator,
+        &mut publisher,
+    );
 
     assert_eq!(cc.bytes_in_flight, 2);
     assert!(cc.is_slow_start());
@@ -263,6 +279,7 @@ fn on_packet_sent() {
             now + Duration::from_secs(10),
             now + Duration::from_secs(10),
             &rtt_estimator,
+            &mut publisher,
         );
     }
 
@@ -273,6 +290,8 @@ fn on_packet_sent() {
 #[test]
 fn on_packet_sent_application_limited() {
     let mut cc = CubicCongestionController::new(1000);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     let rtt_estimator = RttEstimator::default();
     let now = NoopClock.get_time();
 
@@ -281,7 +300,7 @@ fn on_packet_sent_application_limited() {
     cc.state = SlowStart;
 
     // t0: Send a packet in Slow Start
-    cc.on_packet_sent(now, 1000, Some(true), &rtt_estimator);
+    cc.on_packet_sent(now, 1000, Some(true), &rtt_estimator, &mut publisher);
 
     assert_eq!(cc.bytes_in_flight, 93_500);
     assert_eq!(cc.time_of_last_sent_packet, Some(now));
@@ -297,6 +316,7 @@ fn on_packet_sent_application_limited() {
         1000,
         Some(true),
         &rtt_estimator,
+        &mut publisher,
     );
 
     assert_eq!(cc.bytes_in_flight, 94_500);
@@ -313,6 +333,7 @@ fn on_packet_sent_application_limited() {
             1000,
             Some(true),
             &rtt_estimator,
+            &mut publisher,
         );
     }
 
@@ -323,6 +344,8 @@ fn on_packet_sent_application_limited() {
 #[test]
 fn on_packet_sent_none_application_limited() {
     let mut cc = CubicCongestionController::new(1000);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     let rtt_estimator = RttEstimator::default();
     let now = NoopClock.get_time();
 
@@ -331,7 +354,7 @@ fn on_packet_sent_none_application_limited() {
     cc.state = SlowStart;
 
     // t0: Send a packet in Slow Start
-    cc.on_packet_sent(now, 1000, None, &rtt_estimator);
+    cc.on_packet_sent(now, 1000, None, &rtt_estimator, &mut publisher);
 
     assert_eq!(cc.bytes_in_flight, 93_500);
     assert_eq!(cc.time_of_last_sent_packet, Some(now));
@@ -342,7 +365,13 @@ fn on_packet_sent_none_application_limited() {
     assert!(!cc.under_utilized);
 
     // t15: Send a packet in Congestion Avoidance
-    cc.on_packet_sent(now + Duration::from_secs(15), 1000, None, &rtt_estimator);
+    cc.on_packet_sent(
+        now + Duration::from_secs(15),
+        1000,
+        None,
+        &rtt_estimator,
+        &mut publisher,
+    );
 
     assert_eq!(cc.bytes_in_flight, 94_500);
     assert_eq!(
@@ -353,7 +382,13 @@ fn on_packet_sent_none_application_limited() {
 
     // t20: Send packets to fully utilize the congestion window
     while cc.bytes_in_flight < cc.congestion_window() {
-        cc.on_packet_sent(now + Duration::from_secs(20), 1000, None, &rtt_estimator);
+        cc.on_packet_sent(
+            now + Duration::from_secs(20),
+            1000,
+            None,
+            &rtt_estimator,
+            &mut publisher,
+        );
     }
 
     assert!(!cc.under_utilized);
@@ -362,6 +397,8 @@ fn on_packet_sent_none_application_limited() {
 #[test]
 fn on_packet_sent_fast_retransmission() {
     let mut cc = CubicCongestionController::new(1000);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     let rtt_estimator = RttEstimator::default();
     let now = NoopClock.get_time();
 
@@ -369,7 +406,13 @@ fn on_packet_sent_fast_retransmission() {
     cc.bytes_in_flight = BytesInFlight::new(99900);
     cc.state = Recovery(now, RequiresTransmission);
 
-    cc.on_packet_sent(now + Duration::from_secs(10), 100, None, &rtt_estimator);
+    cc.on_packet_sent(
+        now + Duration::from_secs(10),
+        100,
+        None,
+        &rtt_estimator,
+        &mut publisher,
+    );
 
     assert_eq!(cc.state, Recovery(now, Idle));
 }
@@ -383,6 +426,8 @@ fn on_packet_sent_fast_retransmission() {
 #[test]
 fn congestion_avoidance_after_idle_period() {
     let mut cc = CubicCongestionController::new(1000);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let rtt_estimator = &RttEstimator::default();
     let random = &mut random::testing::Generator::default();
@@ -392,7 +437,7 @@ fn congestion_avoidance_after_idle_period() {
     cc.state = SlowStart;
 
     // t0: Send a packet in Slow Start
-    cc.on_packet_sent(now, 1000, Some(true), rtt_estimator);
+    cc.on_packet_sent(now, 1000, Some(true), rtt_estimator, &mut publisher);
 
     assert_eq!(cc.bytes_in_flight, 1000);
 
@@ -406,6 +451,7 @@ fn congestion_avoidance_after_idle_period() {
         1000,
         Some(true),
         rtt_estimator,
+        &mut publisher,
     );
     assert!(cc.is_congestion_window_under_utilized());
 
@@ -419,6 +465,7 @@ fn congestion_avoidance_after_idle_period() {
         rtt_estimator,
         random,
         now + Duration::from_secs(16),
+        &mut publisher,
     );
     // Verify the app limited time is set
     assert_eq!(
@@ -439,6 +486,7 @@ fn congestion_avoidance_after_idle_period() {
             1000,
             Some(false),
             rtt_estimator,
+            &mut publisher,
         );
     }
 
@@ -452,6 +500,7 @@ fn congestion_avoidance_after_idle_period() {
         rtt_estimator,
         random,
         now + Duration::from_secs(25),
+        &mut publisher,
     );
 
     // Verify congestion avoidance start time was moved from t10 to t16 to account
@@ -477,13 +526,15 @@ fn congestion_avoidance_after_idle_period() {
 fn congestion_avoidance_after_fast_convergence() {
     let max_datagram_size = 1200;
     let mut cc = CubicCongestionController::new(max_datagram_size);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
     cc.bytes_in_flight = BytesInFlight::new(100);
     cc.congestion_window = 80_000.0;
     cc.cubic.w_last_max = bytes_to_packets(100_000.0, max_datagram_size);
 
-    cc.on_packet_lost(100, (), false, false, random, now);
+    cc.on_packet_lost(100, (), false, false, random, now, &mut publisher);
     assert_delta!(cc.congestion_window, 80_000.0 * BETA_CUBIC, 0.001);
 
     // Window max was less than the last max, so fast convergence applies
@@ -588,13 +639,23 @@ fn congestion_avoidance_max_cwnd() {
 #[test]
 fn on_packet_lost() {
     let mut cc = CubicCongestionController::new(1000);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
     cc.congestion_window = 100_000.0;
     cc.bytes_in_flight = BytesInFlight::new(100_000);
     cc.state = SlowStart;
 
-    cc.on_packet_lost(100, (), false, false, random, now + Duration::from_secs(10));
+    cc.on_packet_lost(
+        100,
+        (),
+        false,
+        false,
+        random,
+        now + Duration::from_secs(10),
+        &mut publisher,
+    );
 
     assert_eq!(cc.bytes_in_flight, 100_000u32 - 100);
     //= https://www.rfc-editor.org/rfc/rfc9002#section-7.3.1
@@ -619,13 +680,23 @@ fn on_packet_lost() {
 #[test]
 fn on_packet_lost_below_minimum_window() {
     let mut cc = CubicCongestionController::new(1000);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
     cc.congestion_window = cc.cubic.minimum_window();
     cc.bytes_in_flight = BytesInFlight::new(cc.congestion_window());
     cc.state = State::congestion_avoidance(now);
 
-    cc.on_packet_lost(100, (), false, false, random, now + Duration::from_secs(10));
+    cc.on_packet_lost(
+        100,
+        (),
+        false,
+        false,
+        random,
+        now + Duration::from_secs(10),
+        &mut publisher,
+    );
 
     assert_delta!(cc.congestion_window, cc.cubic.minimum_window(), 0.001);
 }
@@ -633,6 +704,8 @@ fn on_packet_lost_below_minimum_window() {
 #[test]
 fn on_packet_lost_already_in_recovery() {
     let mut cc = CubicCongestionController::new(1000);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
     cc.congestion_window = 10000.0;
@@ -641,8 +714,8 @@ fn on_packet_lost_already_in_recovery() {
 
     // break up on_packet_loss into two call to confirm double call
     // behavior is valid (50 + 50 = 100 lost bytes)
-    cc.on_packet_lost(50, (), false, false, random, now);
-    cc.on_packet_lost(50, (), false, false, random, now);
+    cc.on_packet_lost(50, (), false, false, random, now, &mut publisher);
+    cc.on_packet_lost(50, (), false, false, random, now, &mut publisher);
 
     // No change to the congestion window
     assert_delta!(cc.congestion_window, 10000.0, 0.001);
@@ -657,13 +730,15 @@ fn on_packet_lost_already_in_recovery() {
 #[test]
 fn on_packet_lost_persistent_congestion() {
     let mut cc = CubicCongestionController::new(1000);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
     cc.congestion_window = 10000.0;
     cc.bytes_in_flight = BytesInFlight::new(1000);
     cc.state = Recovery(now, Idle);
 
-    cc.on_packet_lost(100, (), true, false, random, now);
+    cc.on_packet_lost(100, (), true, false, random, now, &mut publisher);
 
     assert!(cc.is_slow_start());
     assert_eq!(cc.state, SlowStart);
@@ -689,10 +764,12 @@ fn on_mtu_update_increase() {
     let cwnd_in_packets = 100_000f32;
     let cwnd_in_bytes = cwnd_in_packets / mtu as f32;
     let mut cc = CubicCongestionController::new(mtu);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     cc.congestion_window = cwnd_in_packets;
 
     mtu = 10000;
-    cc.on_mtu_update(mtu);
+    cc.on_mtu_update(mtu, &mut publisher);
     assert_eq!(cc.max_datagram_size, mtu);
     assert_eq!(cc.cubic.max_datagram_size, mtu);
 
@@ -712,16 +789,18 @@ fn on_mtu_update_increase() {
 #[test]
 fn on_packet_discarded() {
     let mut cc = CubicCongestionController::new(5000);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     cc.bytes_in_flight = BytesInFlight::new(10000);
 
-    cc.on_packet_discarded(1000);
+    cc.on_packet_discarded(1000, &mut publisher);
 
     assert_eq!(cc.bytes_in_flight, 10000 - 1000);
 
     let now = NoopClock.get_time();
     cc.state = Recovery(now, FastRetransmission::RequiresTransmission);
 
-    cc.on_packet_discarded(1000);
+    cc.on_packet_discarded(1000, &mut publisher);
 
     assert_eq!(Recovery(now, FastRetransmission::Idle), cc.state);
 }
@@ -736,6 +815,8 @@ fn on_packet_discarded() {
 #[test]
 fn on_packet_ack_limited() {
     let mut cc = CubicCongestionController::new(5000);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
     cc.congestion_window = 100_000.0;
@@ -743,13 +824,29 @@ fn on_packet_ack_limited() {
     cc.under_utilized = true;
     cc.state = SlowStart;
 
-    cc.on_ack(now, 1, (), &RttEstimator::default(), random, now);
+    cc.on_ack(
+        now,
+        1,
+        (),
+        &RttEstimator::default(),
+        random,
+        now,
+        &mut publisher,
+    );
 
     assert_delta!(cc.congestion_window, 100_000.0, 0.001);
 
     cc.state = State::congestion_avoidance(now);
 
-    cc.on_ack(now, 1, (), &RttEstimator::default(), random, now);
+    cc.on_ack(
+        now,
+        1,
+        (),
+        &RttEstimator::default(),
+        random,
+        now,
+        &mut publisher,
+    );
 
     assert_delta!(cc.congestion_window, 100_000.0, 0.001);
 }
@@ -758,6 +855,8 @@ fn on_packet_ack_limited() {
 #[should_panic]
 fn on_packet_ack_timestamp_regression() {
     let mut cc = CubicCongestionController::new(5000);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time() + Duration::from_secs(1);
     let rtt_estimator = RttEstimator::default();
     let random = &mut random::testing::Generator::default();
@@ -766,7 +865,7 @@ fn on_packet_ack_timestamp_regression() {
     cc.under_utilized = true;
     cc.state = State::congestion_avoidance(now);
 
-    cc.on_ack(now, 1, (), &rtt_estimator, random, now);
+    cc.on_ack(now, 1, (), &rtt_estimator, random, now, &mut publisher);
 
     assert_eq!(
         State::CongestionAvoidance(CongestionAvoidanceTiming {
@@ -784,12 +883,15 @@ fn on_packet_ack_timestamp_regression() {
         &rtt_estimator,
         random,
         now - Duration::from_secs(1),
+        &mut publisher,
     );
 }
 
 #[test]
 fn on_packet_ack_utilized_then_under_utilized() {
     let mut cc = CubicCongestionController::new(5000);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let mut rtt_estimator = RttEstimator::default();
     let random = &mut random::testing::Generator::default();
@@ -803,8 +905,8 @@ fn on_packet_ack_utilized_then_under_utilized() {
     cc.congestion_window = 100_000.0;
     cc.state = SlowStart;
 
-    cc.on_packet_sent(now, 60_000, Some(true), &rtt_estimator);
-    cc.on_ack(now, 10_000, (), &rtt_estimator, random, now);
+    cc.on_packet_sent(now, 60_000, Some(true), &rtt_estimator, &mut publisher);
+    cc.on_ack(now, 10_000, (), &rtt_estimator, random, now, &mut publisher);
     let cwnd = cc.congestion_window();
 
     assert!(!cc.under_utilized);
@@ -819,6 +921,7 @@ fn on_packet_ack_utilized_then_under_utilized() {
         &rtt_estimator,
         random,
         now + Duration::from_millis(100),
+        &mut publisher,
     );
     assert!(cc.congestion_window() > cwnd);
 
@@ -830,6 +933,7 @@ fn on_packet_ack_utilized_then_under_utilized() {
         &rtt_estimator,
         random,
         now + Duration::from_millis(100),
+        &mut publisher,
     );
     // 60_000 is the highest bytes in flight * 2 for the slow start max_cwnd multiplier
     assert_eq!(60_000 * 2, cc.congestion_window());
@@ -838,7 +942,7 @@ fn on_packet_ack_utilized_then_under_utilized() {
 
     // Now the application has had a chance to send more data, but it didn't send enough to
     // utilize the congestion window, so the window does not grow.
-    cc.on_packet_sent(now, 1200, Some(true), &rtt_estimator);
+    cc.on_packet_sent(now, 1200, Some(true), &rtt_estimator, &mut publisher);
     assert!(cc.under_utilized);
     cc.on_ack(
         now,
@@ -847,6 +951,7 @@ fn on_packet_ack_utilized_then_under_utilized() {
         &rtt_estimator,
         random,
         now + Duration::from_millis(201),
+        &mut publisher,
     );
     assert_eq!(cc.congestion_window(), cwnd);
 }
@@ -854,6 +959,8 @@ fn on_packet_ack_utilized_then_under_utilized() {
 #[test]
 fn on_packet_ack_congestion_avoidance_max_cwnd() {
     let mut cc = CubicCongestionController::new(5000);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let mut rtt_estimator = RttEstimator::default();
     let random = &mut random::testing::Generator::default();
@@ -868,8 +975,8 @@ fn on_packet_ack_congestion_avoidance_max_cwnd() {
     cc.state = State::congestion_avoidance(now);
     cc.cubic.w_max = 100_000.0;
 
-    cc.on_packet_sent(now, 60_000, Some(false), &rtt_estimator);
-    cc.on_ack(now, 60_000, (), &rtt_estimator, random, now);
+    cc.on_packet_sent(now, 60_000, Some(false), &rtt_estimator, &mut publisher);
+    cc.on_ack(now, 60_000, (), &rtt_estimator, random, now, &mut publisher);
 
     // 60_000 is the highest bytes in flight * 1.5 for the congestion avoidance max_cwnd multiplier
     assert_eq!(90_000, cc.congestion_window());
@@ -880,6 +987,8 @@ fn on_packet_ack_congestion_avoidance_max_cwnd() {
 //= type=test
 fn on_packet_ack_recovery_to_congestion_avoidance() {
     let mut cc = CubicCongestionController::new(5000);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
 
@@ -895,6 +1004,7 @@ fn on_packet_ack_recovery_to_congestion_avoidance() {
         &RttEstimator::default(),
         random,
         now + Duration::from_millis(2),
+        &mut publisher,
     );
 
     assert_eq!(
@@ -908,6 +1018,8 @@ fn on_packet_ack_recovery_to_congestion_avoidance() {
 //= type=test
 fn on_packet_ack_slow_start_to_congestion_avoidance() {
     let mut cc = CubicCongestionController::new(5000);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
 
@@ -924,6 +1036,7 @@ fn on_packet_ack_slow_start_to_congestion_avoidance() {
         &RttEstimator::default(),
         random,
         now + Duration::from_millis(2),
+        &mut publisher,
     );
 
     assert_delta!(cc.congestion_window, 10100.0, 0.001);
@@ -942,6 +1055,8 @@ fn on_packet_ack_slow_start_to_congestion_avoidance() {
 #[test]
 fn on_packet_ack_recovery() {
     let mut cc = CubicCongestionController::new(5000);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
 
@@ -956,6 +1071,7 @@ fn on_packet_ack_recovery() {
         &RttEstimator::default(),
         random,
         now + Duration::from_millis(2),
+        &mut publisher,
     );
 
     // Congestion window stays the same in recovery
@@ -968,6 +1084,8 @@ fn on_packet_ack_congestion_avoidance() {
     let max_datagram_size = 5000;
     let mut cc = CubicCongestionController::new(max_datagram_size);
     let mut cc2 = CubicCongestionController::new(max_datagram_size);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = Publisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
     let random = &mut random::testing::Generator::default();
 
@@ -997,6 +1115,7 @@ fn on_packet_ack_congestion_avoidance() {
         &rtt_estimator,
         random,
         now + Duration::from_millis(4750),
+        &mut publisher,
     );
 
     let t = Duration::from_millis(4750) - Duration::from_millis(3300);

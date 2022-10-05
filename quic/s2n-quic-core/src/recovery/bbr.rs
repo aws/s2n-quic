@@ -3,12 +3,14 @@
 
 use crate::{
     counter::Counter,
-    random,
+    event, random,
     recovery::{
         bandwidth,
         bandwidth::{Bandwidth, RateSample},
         bbr::{pacing::Pacer, probe_bw::CyclePhase},
-        congestion_controller, CongestionController, RttEstimator,
+        congestion_controller,
+        congestion_controller::Publisher,
+        CongestionController, RttEstimator,
     },
     time::Timestamp,
 };
@@ -262,12 +264,13 @@ impl CongestionController for BbrCongestionController {
     }
 
     #[inline]
-    fn on_packet_sent(
+    fn on_packet_sent<Pub: event::ConnectionPublisher>(
         &mut self,
         time_sent: Timestamp,
         sent_bytes: usize,
         app_limited: Option<bool>,
         rtt_estimator: &RttEstimator,
+        _publisher: &mut Publisher<Pub>,
     ) -> Self::PacketInfo {
         let prior_bytes_in_flight = *self.bytes_in_flight;
 
@@ -291,17 +294,18 @@ impl CongestionController for BbrCongestionController {
     }
 
     #[inline]
-    fn on_rtt_update(
+    fn on_rtt_update<Pub: event::ConnectionPublisher>(
         &mut self,
         _time_sent: Timestamp,
         _now: Timestamp,
         _rtt_estimator: &RttEstimator,
+        _publisher: &mut Publisher<Pub>,
     ) {
         // BBRUpdateMinRTT() called in `on_ack`
     }
 
     #[inline]
-    fn on_ack(
+    fn on_ack<Pub: event::ConnectionPublisher>(
         &mut self,
         newest_acked_time_sent: Timestamp,
         bytes_acknowledged: usize,
@@ -309,6 +313,7 @@ impl CongestionController for BbrCongestionController {
         rtt_estimator: &RttEstimator,
         random_generator: &mut dyn random::Generator,
         ack_receive_time: Timestamp,
+        _publisher: &mut Publisher<Pub>,
     ) {
         self.bytes_in_flight
             .try_sub(bytes_acknowledged)
@@ -413,7 +418,7 @@ impl CongestionController for BbrCongestionController {
     }
 
     #[inline]
-    fn on_packet_lost(
+    fn on_packet_lost<Pub: event::ConnectionPublisher>(
         &mut self,
         lost_bytes: u32,
         packet_info: Self::PacketInfo,
@@ -421,6 +426,7 @@ impl CongestionController for BbrCongestionController {
         new_loss_burst: bool,
         random_generator: &mut dyn random::Generator,
         timestamp: Timestamp,
+        _publisher: &mut Publisher<Pub>,
     ) {
         debug_assert!(lost_bytes > 0);
 
@@ -441,7 +447,12 @@ impl CongestionController for BbrCongestionController {
     }
 
     #[inline]
-    fn on_explicit_congestion(&mut self, ce_count: u64, event_time: Timestamp) {
+    fn on_explicit_congestion<Pub: event::ConnectionPublisher>(
+        &mut self,
+        ce_count: u64,
+        event_time: Timestamp,
+        _publisher: &mut Publisher<Pub>,
+    ) {
         self.bw_estimator.on_explicit_congestion(ce_count);
         self.ecn_state.on_explicit_congestion(ce_count);
         self.congestion_state.on_explicit_congestion();
@@ -463,7 +474,11 @@ impl CongestionController for BbrCongestionController {
     //# handshake, the congestion window SHOULD be set to the new initial
     //# congestion window.
     #[inline]
-    fn on_mtu_update(&mut self, max_datagram_size: u16) {
+    fn on_mtu_update<Pub: event::ConnectionPublisher>(
+        &mut self,
+        max_datagram_size: u16,
+        _publisher: &mut Publisher<Pub>,
+    ) {
         let old_max_datagram_size = self.max_datagram_size;
         self.max_datagram_size = max_datagram_size;
 
@@ -472,7 +487,11 @@ impl CongestionController for BbrCongestionController {
     }
 
     #[inline]
-    fn on_packet_discarded(&mut self, bytes_sent: usize) {
+    fn on_packet_discarded<Pub: event::ConnectionPublisher>(
+        &mut self,
+        bytes_sent: usize,
+        _publisher: &mut Publisher<Pub>,
+    ) {
         self.bytes_in_flight
             .try_sub(bytes_sent)
             .expect("bytes sent should not exceed u32::MAX");
