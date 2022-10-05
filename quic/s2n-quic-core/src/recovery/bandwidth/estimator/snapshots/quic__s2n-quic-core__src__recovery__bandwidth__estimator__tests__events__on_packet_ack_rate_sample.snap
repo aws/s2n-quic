@@ -1,0 +1,7 @@
+---
+source: quic/s2n-quic-core/src/recovery/bandwidth/estimator/tests.rs
+expression: ""
+---
+DeliveryRateUpdated { path_id: 0, bytes_per_second: 20150 }
+DeliveryRateUpdated { path_id: 0, bytes_per_second: 272 }
+DeliveryRateUpdated { path_id: 0, bytes_per_second: 409 }

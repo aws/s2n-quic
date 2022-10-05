@@ -1,0 +1,5 @@
+---
+source: quic/s2n-quic-core/src/recovery/bbr/tests.rs
+expression: ""
+---
+DeliveryRateUpdated { path_id: 0, bytes_per_second: 0 }
