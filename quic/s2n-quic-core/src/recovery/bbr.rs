@@ -277,12 +277,8 @@ impl CongestionController for BbrCongestionController {
             self.bytes_in_flight
                 .try_add(sent_bytes)
                 .expect("sent_bytes should not exceed u32::MAX");
-            self.pacer.on_packet_sent(
-                time_sent,
-                sent_bytes,
-                rtt_estimator.smoothed_rtt(),
-                publisher,
-            );
+            self.pacer
+                .on_packet_sent(time_sent, sent_bytes, rtt_estimator.smoothed_rtt());
         }
 
         self.bw_estimator
@@ -294,9 +290,20 @@ impl CongestionController for BbrCongestionController {
         &mut self,
         _time_sent: Timestamp,
         _now: Timestamp,
-        _rtt_estimator: &RttEstimator,
-        _publisher: &mut Pub,
+        rtt_estimator: &RttEstimator,
+        publisher: &mut Pub,
     ) {
+        if self.data_volume_model.min_rtt().is_none() {
+            // This is the first RTT estimate, so initialize the pacing rate to
+            // override the default initialized value with a more realistic value
+            self.pacer.initialize_pacing_rate(
+                self.cwnd,
+                rtt_estimator.smoothed_rtt(),
+                self.state.pacing_gain(),
+                publisher,
+            );
+        }
+
         // BBRUpdateMinRTT() called in `on_ack`
     }
 
