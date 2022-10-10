@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::interval_set::IntervalSetError;
+use super::IntervalSetError;
 use core::{
     cmp::Ordering,
     fmt,
@@ -10,8 +10,8 @@ use core::{
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Interval<T> {
-    pub(crate) start: T,
-    pub(crate) end: T,
+    pub(super) start: T,
+    pub(super) end: T,
 }
 
 impl<T: IntervalBound> Interval<T> {
@@ -331,7 +331,7 @@ integer_bounds!(i128);
 integer_bounds!(usize);
 integer_bounds!(isize);
 
-use s2n_quic_core::{packet::number::PacketNumber, varint::VarInt};
+use crate::{packet::number::PacketNumber, varint::VarInt};
 
 impl IntervalBound for VarInt {
     #[inline]

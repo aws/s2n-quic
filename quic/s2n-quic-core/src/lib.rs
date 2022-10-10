@@ -20,6 +20,8 @@ pub mod event;
 pub mod frame;
 pub mod havoc;
 pub mod inet;
+#[cfg(feature = "alloc")]
+pub mod interval_set;
 pub mod io;
 pub mod memo;
 pub mod number;

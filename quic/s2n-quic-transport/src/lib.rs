@@ -9,7 +9,6 @@ extern crate alloc;
 
 mod ack;
 mod contexts;
-mod interval_set;
 mod processed_packet;
 mod space;
 mod sync;

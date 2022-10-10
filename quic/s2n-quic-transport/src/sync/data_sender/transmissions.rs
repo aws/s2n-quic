@@ -5,13 +5,11 @@ use super::{
     buffer::{Buffer, Viewer},
     FinState, FrameWriter, OutgoingDataFlowController, State,
 };
-use crate::{
-    contexts::{OnTransmitError, WriteContext},
-    interval_set::{Interval, IntervalSet},
-};
+use crate::contexts::{OnTransmitError, WriteContext};
 use core::{convert::TryInto, num::NonZeroU16};
 use s2n_quic_core::{
     ack,
+    interval_set::{Interval, IntervalSet},
     packet::number::{Map as PacketNumberMap, PacketNumber, PacketNumberRange},
     varint::VarInt,
 };
@@ -90,7 +88,8 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
                     let len = transmitted.len();
                     if len != interval.len() {
                         // only a part of the range was written so push back what wasn't
-                        interval.start += len;
+                        interval =
+                            (interval.start_inclusive() + len..=interval.end_inclusive()).into();
                         debug_assert!(interval.is_valid());
                         set.insert_front(interval).unwrap();
                         return Ok(has_transmitted);
@@ -144,7 +143,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
             //# Senders MUST NOT send data in excess of either limit.
             self.flow_controller
                 .acquire_flow_control_window(interval.end_exclusive())
-                .checked_sub(interval.start)
+                .checked_sub(interval.start_inclusive())
                 .ok_or(OnTransmitError::CouldNotAcquireEnoughSpace)?
                 .try_into()
                 .unwrap_or_default()
@@ -163,7 +162,12 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
         let mut view = viewer.next_view(interval, matches!(state, State::Finishing(_)));
 
         self.writer
-            .write_chunk(interval.start, &mut view, writer_context, context)
+            .write_chunk(
+                interval.start_inclusive(),
+                &mut view,
+                writer_context,
+                context,
+            )
             .map_err(|_| OnTransmitError::CouldNotAcquireEnoughSpace)?;
 
         let len = view.len();
@@ -173,7 +177,8 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
 
         debug_assert!(interval.is_valid());
 
-        self.in_flight.insert(packet_number, interval.start, len);
+        self.in_flight
+            .insert(packet_number, interval.start_inclusive(), len);
 
         // Piggyback a fin transmission if we can
         if Writer::WRITES_FIN && view.is_fin() {
