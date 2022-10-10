@@ -647,3 +647,31 @@ jobs:
           ./scripts/typos --format json | tee /tmp/typos.json | jq -rs '.[] | "::error file=\(.path),line=\(.line_num),col=\(.byte_offset)::\(.typo) should be \"" + (.corrections // [] | join("\" or \"") + "\"")'
           cat /tmp/typos.json
           ! grep -q '[^[:space:]]' /tmp/typos.json
+
+  kani:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - uses: camshaft/install@v1
+        with:
+          crate: kani-verifier
+          version: 0.11.0
+          bins: kani,cargo-kani
+
+      - name: Kani setup
+        run: cargo-kani setup
+
+      - name: Kani run
+        run: |
+          cd quic/s2n-quic-core
+          cargo kani --tests --enable-unstable --mir-linker
