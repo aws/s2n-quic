@@ -1,7 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::interval_set::{IntervalSet, RangeInclusiveIter};
 use core::{
     convert::TryInto,
     num::NonZeroUsize,
@@ -10,6 +9,7 @@ use core::{
 use s2n_quic_core::{
     ack::Settings,
     frame::ack,
+    interval_set::{IntervalSet, RangeInclusiveIter},
     packet::number::{PacketNumber, PacketNumberRange},
     varint::VarInt,
 };
@@ -58,8 +58,8 @@ impl AckRanges {
                     })?;
 
                     Err(AckRangesError::LowestRangeDropped {
-                        min: min.start,
-                        max: min.end,
+                        min: min.start_inclusive(),
+                        max: min.end_inclusive(),
                     })
                 } else {
                     // new value is smaller than min so inset it back in the front

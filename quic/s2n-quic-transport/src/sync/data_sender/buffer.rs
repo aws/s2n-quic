@@ -1,7 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::interval_set::Interval;
 use alloc::collections::VecDeque;
 use bytes::{Buf, Bytes};
 use core::{
@@ -9,7 +8,7 @@ use core::{
     fmt,
 };
 use s2n_codec::{Encoder, EncoderValue};
-use s2n_quic_core::{frame::FitError, varint::VarInt};
+use s2n_quic_core::{frame::FitError, interval_set::Interval, varint::VarInt};
 
 #[derive(Debug, Default)]
 pub struct Buffer {
@@ -226,17 +225,17 @@ impl<'a> View<'a> {
         chunk_index: &mut usize,
     ) -> Self {
         debug_assert!(
-            buffer.head <= range.start,
+            buffer.head <= range.start_inclusive(),
             "range ({:?}) is referring to a chunk that has already been released: {:?}",
             range,
             buffer.head..buffer.total_len()
         );
 
         debug_assert!(
-            *stream_offset <= range.start.as_u64(),
+            *stream_offset <= range.start_inclusive().as_u64(),
             "viewer is trying to go backwards from offset {:?} to {:?}",
             stream_offset,
-            range.start
+            range.start_inclusive()
         );
         debug_assert!(range.end_exclusive() <= buffer.total_len());
 
@@ -248,8 +247,8 @@ impl<'a> View<'a> {
             let start = *stream_offset;
             let end = start + len;
 
-            if (start..end).contains(&range.start) {
-                offset = (range.start.as_u64() - start) as usize;
+            if (start..end).contains(&range.start_inclusive()) {
+                offset = (range.start_inclusive().as_u64() - start) as usize;
                 break;
             }
 
@@ -264,7 +263,7 @@ impl<'a> View<'a> {
             chunk_index: *chunk_index,
             offset,
             len: range.len(),
-            is_fin: has_fin && range.end == (buffer.total_len() - 1),
+            is_fin: has_fin && range.end_inclusive() == (buffer.total_len() - 1),
         }
     }
 
@@ -481,8 +480,9 @@ mod tests {
     }
 
     fn check_view(buffer: &Buffer, interval: Interval<u64>, expected: &[u8]) {
-        let interval =
-            (VarInt::new(interval.start).unwrap()..=VarInt::new(interval.end).unwrap()).into();
+        let interval = (VarInt::new(interval.start_inclusive()).unwrap()
+            ..=VarInt::new(interval.end_inclusive()).unwrap())
+            .into();
         let actual: Vec<u8> = View::new(buffer, interval, false, &mut buffer.head.as_u64(), &mut 0)
             .iter::<&[u8]>()
             .flatten()
@@ -492,8 +492,9 @@ mod tests {
     }
 
     fn check_viewer(viewer: &mut Viewer, interval: Interval<u64>, expected: &[u8]) {
-        let interval =
-            (VarInt::new(interval.start).unwrap()..=VarInt::new(interval.end).unwrap()).into();
+        let interval = (VarInt::new(interval.start_inclusive()).unwrap()
+            ..=VarInt::new(interval.end_inclusive()).unwrap())
+            .into();
         let actual: Vec<u8> = viewer
             .next_view(interval, false)
             .iter::<&[u8]>()

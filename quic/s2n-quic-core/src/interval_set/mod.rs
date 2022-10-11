@@ -9,7 +9,7 @@ pub mod interval;
 mod remove;
 
 #[cfg(test)]
-mod fuzz_target;
+mod tests;
 
 use alloc::collections::vec_deque::{self, VecDeque};
 use core::{

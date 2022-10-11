@@ -3,12 +3,11 @@
 
 use crate::{
     contexts::{OnTransmitError, WriteContext},
-    interval_set::IntervalSet,
     transmission,
 };
 use bytes::Bytes;
 use core::convert::TryInto;
-use s2n_quic_core::{ack, packet::number::PacketNumber, varint::VarInt};
+use s2n_quic_core::{ack, interval_set::IntervalSet, packet::number::PacketNumber, varint::VarInt};
 
 mod buffer;
 mod traits;
@@ -441,7 +440,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
             let mut viewer = self.buffer.viewer();
 
             for interval in self.pending.intervals() {
-                if interval.start >= starting_transmission_offset {
+                if interval.start_inclusive() >= starting_transmission_offset {
                     // Don't write data we've already written to this packet
                     break;
                 }
@@ -450,7 +449,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
 
                 self.transmissions.transmit_interval(
                     &mut viewer,
-                    (interval.start..interval_end).into(),
+                    (interval.start_inclusive()..interval_end).into(),
                     &mut self.state,
                     writer_context,
                     context,
