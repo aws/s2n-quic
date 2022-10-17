@@ -1,13 +1,12 @@
 ---
-source: quic/s2n-quic-core/src/transport/parameters/mod.rs
-assertion_line: 1537
-expression: default_value
-
+source: quic/s2n-quic-core/src/transport/parameters/tests.rs
+assertion_line: 154
+expression: params
 ---
 TransportParameters {
     max_idle_timeout: MaxIdleTimeout(
         VarInt(
-            0,
+            30000,
         ),
     ),
     max_udp_payload_size: MaxUdpPayloadSize(
@@ -17,32 +16,32 @@ TransportParameters {
     ),
     initial_max_data: InitialMaxData(
         VarInt(
-            0,
+            3750000,
         ),
     ),
     initial_max_stream_data_bidi_local: InitialMaxStreamDataBidiLocal(
         VarInt(
-            0,
+            3750000,
         ),
     ),
     initial_max_stream_data_bidi_remote: InitialMaxStreamDataBidiRemote(
         VarInt(
-            0,
+            3750000,
         ),
     ),
     initial_max_stream_data_uni: InitialMaxStreamDataUni(
         VarInt(
-            0,
+            3750000,
         ),
     ),
     initial_max_streams_bidi: InitialMaxStreamsBidi(
         VarInt(
-            0,
+            100,
         ),
     ),
     initial_max_streams_uni: InitialMaxStreamsUni(
         VarInt(
-            0,
+            100,
         ),
     ),
     max_datagram_frame_size: MaxDatagramFrameSize(
@@ -64,9 +63,17 @@ TransportParameters {
             2,
         ),
     ),
-    original_destination_connection_id: None,
-    stateless_reset_token: None,
-    preferred_address: None,
+    original_destination_connection_id: DisabledParameter(
+        PhantomData,
+    ),
+    stateless_reset_token: DisabledParameter(
+        PhantomData,
+    ),
+    preferred_address: DisabledParameter(
+        PhantomData,
+    ),
     initial_source_connection_id: None,
-    retry_source_connection_id: None,
+    retry_source_connection_id: DisabledParameter(
+        PhantomData,
+    ),
 }
