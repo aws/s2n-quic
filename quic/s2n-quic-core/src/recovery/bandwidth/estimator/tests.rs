@@ -412,6 +412,25 @@ fn on_packet_loss() {
 
     assert_eq!(750, bw_estimator.lost_bytes);
     assert_eq!(750, bw_estimator.rate_sample.lost_bytes);
+
+    bw_estimator.on_app_limited(1000);
+    bw_estimator.on_loss(250);
+    assert_eq!(Some(750), bw_estimator.app_limited_delivered_bytes);
+
+    bw_estimator.on_loss(1000);
+    assert_eq!(Some(0), bw_estimator.app_limited_delivered_bytes);
+}
+
+#[test]
+fn on_packet_discarded() {
+    let mut bw_estimator = Estimator::default();
+
+    bw_estimator.on_app_limited(1000);
+    bw_estimator.on_packet_discarded(250);
+    assert_eq!(Some(750), bw_estimator.app_limited_delivered_bytes);
+
+    bw_estimator.on_packet_discarded(1000);
+    assert_eq!(Some(0), bw_estimator.app_limited_delivered_bytes);
 }
 
 #[test]
