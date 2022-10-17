@@ -250,6 +250,7 @@ impl Estimator {
     pub fn on_packet_sent(
         &mut self,
         bytes_in_flight: u32,
+        sent_bytes: usize,
         app_limited: Option<bool>,
         now: Timestamp,
     ) -> PacketInfo {
@@ -274,8 +275,8 @@ impl Estimator {
             self.delivered_time = Some(now);
         }
 
-        if app_limited.unwrap_or(false) {
-            self.on_app_limited(bytes_in_flight);
+        if app_limited.unwrap_or(true) {
+            self.on_app_limited(bytes_in_flight.saturating_add(sent_bytes as u32));
         }
 
         PacketInfo {
@@ -356,6 +357,22 @@ impl Estimator {
     pub fn on_loss(&mut self, lost_bytes: usize) {
         self.lost_bytes += lost_bytes as u64;
         self.rate_sample.lost_bytes = self.lost_bytes - self.rate_sample.prior_lost_bytes;
+
+        // Move the app-limited period earlier as the lost bytes will not be delivered
+        if let Some(ref mut app_limited_delivered_bytes) = self.app_limited_delivered_bytes {
+            *app_limited_delivered_bytes =
+                app_limited_delivered_bytes.saturating_sub(lost_bytes as u64)
+        }
+    }
+
+    /// Called when packets are discarded
+    #[inline]
+    pub fn on_packet_discarded(&mut self, bytes_sent: usize) {
+        // Move the app-limited period earlier as the discarded bytes will not be delivered
+        if let Some(ref mut app_limited_delivered_bytes) = self.app_limited_delivered_bytes {
+            *app_limited_delivered_bytes =
+                app_limited_delivered_bytes.saturating_sub(bytes_sent as u64)
+        }
     }
 
     /// Called each time explicit congestion is recorded
