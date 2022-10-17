@@ -492,6 +492,7 @@ impl CongestionController for BbrCongestionController {
         self.bytes_in_flight
             .try_sub(bytes_sent)
             .expect("bytes sent should not exceed u32::MAX");
+        self.bw_estimator.on_packet_discarded(bytes_sent);
         self.recovery_state.on_packet_discarded();
     }
 
