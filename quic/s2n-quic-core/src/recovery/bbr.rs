@@ -282,7 +282,7 @@ impl CongestionController for BbrCongestionController {
         }
 
         self.bw_estimator
-            .on_packet_sent(prior_bytes_in_flight, app_limited, time_sent)
+            .on_packet_sent(prior_bytes_in_flight, sent_bytes, app_limited, time_sent)
     }
 
     #[inline]

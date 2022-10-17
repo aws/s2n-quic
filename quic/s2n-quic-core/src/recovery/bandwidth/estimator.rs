@@ -250,6 +250,7 @@ impl Estimator {
     pub fn on_packet_sent(
         &mut self,
         bytes_in_flight: u32,
+        sent_bytes: usize,
         app_limited: Option<bool>,
         now: Timestamp,
     ) -> PacketInfo {
@@ -274,8 +275,8 @@ impl Estimator {
             self.delivered_time = Some(now);
         }
 
-        if app_limited.unwrap_or(false) {
-            self.on_app_limited(bytes_in_flight);
+        if app_limited.unwrap_or(true) {
+            self.on_app_limited(bytes_in_flight.saturating_add(sent_bytes as u32));
         }
 
         PacketInfo {
