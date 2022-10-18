@@ -18,6 +18,7 @@ mod tls;
 /// Do not change it without updating it elsewhere
 const CRASH_ERROR_MESSAGE: &str = "The s2n-quic-qns application shut down unexpectedly";
 
+#[cfg(not(target_os = "android"))]
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 

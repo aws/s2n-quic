@@ -6,8 +6,8 @@ use core::ops::Range;
 
 #[derive(Debug)]
 struct Direction {
-    loss: Range<usize>,
-    pass: Range<usize>,
+    loss: Range<u64>,
+    pass: Range<u64>,
     mode: Mode,
 }
 
@@ -15,7 +15,7 @@ impl Default for Direction {
     fn default() -> Self {
         Self {
             loss: 0..0,
-            pass: usize::MAX..usize::MAX,
+            pass: u64::MAX..u64::MAX,
             mode: Mode::Loss { remaining: 0 },
         }
     }
@@ -63,7 +63,7 @@ impl Direction {
     }
 
     #[inline]
-    fn gen_range<R: havoc::Random>(range: &Range<usize>, random: &mut R) -> usize {
+    fn gen_range<R: havoc::Random>(range: &Range<u64>, random: &mut R) -> u64 {
         if range.start == range.end {
             return range.start;
         }
@@ -74,8 +74,8 @@ impl Direction {
 
 #[derive(Debug)]
 enum Mode {
-    Loss { remaining: usize },
-    Pass { remaining: usize },
+    Loss { remaining: u64 },
+    Pass { remaining: u64 },
 }
 
 #[derive(Debug, Default)]
@@ -97,22 +97,22 @@ where
         }
     }
 
-    pub fn with_tx_pass(mut self, range: Range<usize>) -> Self {
+    pub fn with_tx_pass(mut self, range: Range<u64>) -> Self {
         self.tx.pass = range;
         self
     }
 
-    pub fn with_tx_loss(mut self, range: Range<usize>) -> Self {
+    pub fn with_tx_loss(mut self, range: Range<u64>) -> Self {
         self.tx.loss = range;
         self
     }
 
-    pub fn with_rx_pass(mut self, range: Range<usize>) -> Self {
+    pub fn with_rx_pass(mut self, range: Range<u64>) -> Self {
         self.rx.pass = range;
         self
     }
 
-    pub fn with_rx_loss(mut self, range: Range<usize>) -> Self {
+    pub fn with_rx_loss(mut self, range: Range<u64>) -> Self {
         self.rx.loss = range;
         self
     }

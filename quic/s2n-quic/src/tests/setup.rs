@@ -141,7 +141,7 @@ impl havoc::Random for Random {
         self.fill_bytes(bytes);
     }
 
-    fn gen_range(&mut self, range: std::ops::Range<usize>) -> usize {
+    fn gen_range(&mut self, range: std::ops::Range<u64>) -> u64 {
         self.inner.gen_range(range)
     }
 }
