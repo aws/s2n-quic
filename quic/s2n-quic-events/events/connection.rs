@@ -307,3 +307,10 @@ struct PacingRateUpdated {
     burst_size: u32,
     pacing_gain: f32,
 }
+
+#[event("recovery:bbr_state_changed")]
+/// The BBR state has changed
+struct BbrStateChanged {
+    path_id: u64,
+    state: BbrState,
+}

@@ -3,7 +3,10 @@
 
 use crate::{
     random,
-    recovery::bbr::{startup, BbrCongestionController, State},
+    recovery::{
+        bbr::{startup, BbrCongestionController, State},
+        congestion_controller::Publisher,
+    },
     time::Timestamp,
 };
 use num_rational::Ratio;
@@ -36,7 +39,7 @@ pub(crate) const CWND_GAIN: Ratio<u64> = startup::CWND_GAIN;
 impl BbrCongestionController {
     /// Enter the `Drain` state
     #[inline]
-    pub(super) fn enter_drain(&mut self) {
+    pub(super) fn enter_drain<Pub: Publisher>(&mut self, publisher: &mut Pub) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.2
         //# BBREnterDrain():
         //#   BBR.state = Drain
@@ -46,15 +49,16 @@ impl BbrCongestionController {
 
         // New BBR state requires updating the model
         self.try_fast_path = false;
-        self.state.transition_to(State::Drain);
+        self.state.transition_to(State::Drain, publisher);
     }
 
     /// Checks if the `Drain` state is done and enters `ProbeBw` if so
     #[inline]
-    pub(super) fn check_drain_done(
+    pub(super) fn check_drain_done<Pub: Publisher>(
         &mut self,
         random_generator: &mut dyn random::Generator,
         now: Timestamp,
+        publisher: &mut Pub,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.2
         //# BBRCheckDrain():
@@ -63,7 +67,7 @@ impl BbrCongestionController {
         if self.state.is_drain()
             && self.bytes_in_flight <= self.inflight(self.data_rate_model.bw(), Ratio::one())
         {
-            self.enter_probe_bw(false, random_generator, now);
+            self.enter_probe_bw(false, random_generator, now, publisher);
         }
     }
 }
@@ -72,9 +76,13 @@ impl BbrCongestionController {
 mod tests {
     use crate::{
         counter::Counter,
+        event, path,
         path::MINIMUM_MTU,
         random,
-        recovery::{bandwidth::RateSample, bbr::BbrCongestionController},
+        recovery::{
+            bandwidth::RateSample, bbr::BbrCongestionController,
+            congestion_controller::PathPublisher,
+        },
         time::{Clock, NoopClock},
     };
     use core::time::Duration;
@@ -82,8 +90,10 @@ mod tests {
     #[test]
     fn enter_drain() {
         let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+        let mut publisher = event::testing::Publisher::snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
-        bbr.enter_drain();
+        bbr.enter_drain(&mut publisher);
 
         assert!(bbr.state.is_drain());
         assert!(!bbr.try_fast_path);
@@ -99,16 +109,18 @@ mod tests {
         let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
         let now = NoopClock.get_time();
         let mut rng = random::testing::Generator::default();
+        let mut publisher = event::testing::Publisher::snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
         // Not in drain yet
-        bbr.check_drain_done(&mut rng, now);
+        bbr.check_drain_done(&mut rng, now, &mut publisher);
         assert!(bbr.state.is_startup());
 
-        bbr.enter_drain();
+        bbr.enter_drain(&mut publisher);
         bbr.bytes_in_flight = Counter::new(100);
 
         // bytes_in_flight > inflight
-        bbr.check_drain_done(&mut rng, now);
+        bbr.check_drain_done(&mut rng, now, &mut publisher);
         assert!(!bbr.state.is_drain());
 
         let rate_sample = RateSample {
@@ -120,7 +132,7 @@ mod tests {
         bbr.data_rate_model.bound_bw_for_model();
 
         // Now drain is done
-        bbr.check_drain_done(&mut rng, now);
+        bbr.check_drain_done(&mut rng, now, &mut publisher);
         assert!(bbr.state.is_probing_bw());
     }
 }
