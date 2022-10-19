@@ -3,7 +3,11 @@
 
 use crate::{
     event,
-    event::{api::SocketAddress, builder::SlowStartExitCause, IntoEvent},
+    event::{
+        api::SocketAddress,
+        builder::{BbrState, SlowStartExitCause},
+        IntoEvent,
+    },
     inet, path,
     path::MINIMUM_MTU,
     random,
@@ -54,6 +58,8 @@ pub trait Publisher {
         burst_size: u32,
         pacing_gain: Ratio<u64>,
     );
+    /// Invoked when the state of the BBR congestion controller changes
+    fn on_bbr_state_changed(&mut self, state: BbrState);
 }
 
 /// Wrapper around a `ConnectionPublisher` that forwards congestion control related
@@ -105,6 +111,15 @@ impl<'a, Pub: event::ConnectionPublisher> Publisher for PathPublisher<'a, Pub> {
                 pacing_gain: pacing_gain
                     .to_f32()
                     .expect("pacing gain should be representable as f32"),
+            })
+    }
+
+    #[inline]
+    fn on_bbr_state_changed(&mut self, state: BbrState) {
+        self.publisher
+            .on_bbr_state_changed(event::builder::BbrStateChanged {
+                path_id: self.path_id.into_event(),
+                state,
             })
     }
 }

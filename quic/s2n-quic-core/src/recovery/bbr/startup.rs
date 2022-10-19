@@ -24,7 +24,7 @@ pub(crate) const CWND_GAIN: Ratio<u64> = Ratio::new_raw(2, 1);
 impl BbrCongestionController {
     /// Enter the `Startup` state
     #[inline]
-    pub(super) fn enter_startup(&mut self) {
+    pub(super) fn enter_startup<Pub: Publisher>(&mut self, publisher: &mut Pub) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.1.1
         //# BBREnterStartup():
         //#   BBR.state = Startup
@@ -35,7 +35,7 @@ impl BbrCongestionController {
 
         // New BBR state requires updating the model
         self.try_fast_path = false;
-        self.state.transition_to(State::Startup);
+        self.state.transition_to(State::Startup, publisher);
     }
 
     /// Checks if the `Startup` state is done and enters `Drain` if so
@@ -66,7 +66,7 @@ impl BbrCongestionController {
 
         if self.state.is_startup() && self.full_pipe_estimator.filled_pipe() {
             publisher.on_slow_start_exited(SlowStartExitCause::Other, self.cwnd);
-            self.enter_drain();
+            self.enter_drain(publisher);
         }
     }
 }
@@ -84,11 +84,13 @@ mod tests {
     #[test]
     fn enter_startup() {
         let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+        let mut publisher = event::testing::Publisher::snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
         // Startup can only be re-entered from ProbeRtt
         bbr.state = State::ProbeRtt(probe_rtt::State::default());
 
-        bbr.enter_startup();
+        bbr.enter_startup(&mut publisher);
 
         assert!(bbr.state.is_startup());
         assert!(!bbr.try_fast_path);

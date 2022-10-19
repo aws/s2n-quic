@@ -3,11 +3,14 @@
 
 use crate::{
     counter::{Counter, Saturating},
+    event,
+    event::IntoEvent,
     random,
     recovery::{
         bandwidth::RateSample,
         bbr,
         bbr::{congestion, data_rate, data_volume, round, BbrCongestionController},
+        congestion_controller::Publisher,
         CongestionController,
     },
     time::Timestamp,
@@ -78,7 +81,7 @@ impl CyclePhase {
     }
 
     /// Transition to the given `new_phase`
-    fn transition_to(&mut self, new_phase: CyclePhase) {
+    fn transition_to<Pub: Publisher>(&mut self, new_phase: CyclePhase, publisher: &mut Pub) {
         if cfg!(debug_assertions) {
             match new_phase {
                 CyclePhase::Down => assert_eq!(*self, CyclePhase::Up),
@@ -90,7 +93,21 @@ impl CyclePhase {
             }
         }
 
+        publisher.on_bbr_state_changed(new_phase.into_event());
+
         *self = new_phase;
+    }
+}
+
+impl IntoEvent<event::builder::BbrState> for CyclePhase {
+    fn into_event(self) -> event::builder::BbrState {
+        use event::builder::BbrState;
+        match self {
+            CyclePhase::Down => BbrState::ProbeBwDown,
+            CyclePhase::Cruise => BbrState::ProbeBwCruise,
+            CyclePhase::Refill => BbrState::ProbeBwRefill,
+            CyclePhase::Up => BbrState::ProbeBwUp,
+        }
     }
 }
 
@@ -291,22 +308,24 @@ impl State {
     }
 
     /// Start the `Cruise` cycle phase
-    fn start_cruise(&mut self) {
+    fn start_cruise<Pub: Publisher>(&mut self, publisher: &mut Pub) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRStartProbeBW_CRUISE()
         //#   BBR.state = ProbeBW_CRUISE
 
-        self.cycle_phase.transition_to(CyclePhase::Cruise);
+        self.cycle_phase
+            .transition_to(CyclePhase::Cruise, publisher);
     }
 
     /// Start the `Up` cycle phase
-    fn start_up(
+    fn start_up<Pub: Publisher>(
         &mut self,
         round_counter: &mut round::Counter,
         delivered_bytes: u64,
         cwnd: u32,
         max_data_size: u16,
         now: Timestamp,
+        publisher: &mut Pub,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRStartProbeBW_UP()
@@ -319,17 +338,18 @@ impl State {
         self.ack_phase.transition_to(AckPhase::ProbeStarting);
         round_counter.set_round_end(delivered_bytes);
         self.cycle_start_timestamp = Some(now);
-        self.cycle_phase.transition_to(CyclePhase::Up);
+        self.cycle_phase.transition_to(CyclePhase::Up, publisher);
         self.raise_inflight_hi_slope(cwnd, max_data_size);
     }
 
     /// Start the `Refill` cycle phase
-    fn start_refill(
+    fn start_refill<Pub: Publisher>(
         &mut self,
         data_volume_model: &mut data_volume::Model,
         data_rate_model: &mut data_rate::Model,
         round_counter: &mut round::Counter,
         delivered_bytes: u64,
+        publisher: &mut Pub,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRStartProbeBW_REFILL()
@@ -346,17 +366,19 @@ impl State {
         self.bw_probe_up_acks = 0;
         self.ack_phase.transition_to(AckPhase::Refilling);
         round_counter.set_round_end(delivered_bytes);
-        self.cycle_phase.transition_to(CyclePhase::Refill);
+        self.cycle_phase
+            .transition_to(CyclePhase::Refill, publisher);
     }
 
     /// Start the `Down` cycle phase
-    fn start_down(
+    fn start_down<Pub: Publisher>(
         &mut self,
         congestion_state: &mut congestion::State,
         round_counter: &mut round::Counter,
         delivered_bytes: u64,
         random_generator: &mut dyn random::Generator,
         now: Timestamp,
+        publisher: &mut Pub,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRStartProbeBW_DOWN()
@@ -374,7 +396,7 @@ impl State {
         self.cycle_start_timestamp = Some(now);
         self.ack_phase.transition_to(AckPhase::ProbeStopping);
         round_counter.set_round_end(delivered_bytes);
-        self.cycle_phase.transition_to(CyclePhase::Down);
+        self.cycle_phase.transition_to(CyclePhase::Down, publisher);
     }
 
     /// Randomly determine how long to wait before probing again
@@ -416,11 +438,12 @@ impl BbrCongestionController {
     /// If `cruise_immediately` is true, `CyclePhase::Cruise` will be entered immediately
     /// after entering `CyclePhase::Down`
     #[inline]
-    pub(super) fn enter_probe_bw(
+    pub(super) fn enter_probe_bw<Pub: Publisher>(
         &mut self,
         cruise_immediately: bool,
         random_generator: &mut dyn random::Generator,
         now: Timestamp,
+        publisher: &mut Pub,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBREnterProbeBW():
@@ -433,23 +456,26 @@ impl BbrCongestionController {
             self.bw_estimator.delivered_bytes(),
             random_generator,
             now,
+            publisher,
         );
 
         if cruise_immediately {
-            state.start_cruise();
+            state.start_cruise(publisher);
         }
 
         // New BBR state requires updating the model
         self.try_fast_path = false;
-        self.state.transition_to(bbr::State::ProbeBw(state));
+        self.state
+            .transition_to(bbr::State::ProbeBw(state), publisher);
     }
 
     /// Transition the current Probe BW cycle phase if necessary
     #[inline]
-    pub(super) fn update_probe_bw_cycle_phase(
+    pub(super) fn update_probe_bw_cycle_phase<Pub: Publisher>(
         &mut self,
         random_generator: &mut dyn random::Generator,
         now: Timestamp,
+        publisher: &mut Pub,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRUpdateProbeBWCyclePhase():
@@ -515,9 +541,10 @@ impl BbrCongestionController {
                             &mut self.data_rate_model,
                             &mut self.round_counter,
                             self.bw_estimator.delivered_bytes(),
+                            publisher,
                         );
                     } else if probe_bw_state.cycle_phase == CyclePhase::Down && time_to_cruise {
-                        probe_bw_state.start_cruise();
+                        probe_bw_state.start_cruise(publisher);
                     }
                 }
                 CyclePhase::Refill => {
@@ -530,6 +557,7 @@ impl BbrCongestionController {
                             self.cwnd,
                             self.max_datagram_size,
                             now,
+                            publisher,
                         );
                     }
                 }
@@ -548,6 +576,7 @@ impl BbrCongestionController {
                             self.bw_estimator.delivered_bytes(),
                             random_generator,
                             now,
+                            publisher,
                         );
                     }
                 }
@@ -562,11 +591,12 @@ impl BbrCongestionController {
 
     /// Adapt the upper bounds lower or higher depending on the loss rate
     #[inline]
-    pub(super) fn adapt_upper_bounds(
+    pub(super) fn adapt_upper_bounds<Pub: Publisher>(
         &mut self,
         bytes_acknowledged: usize,
         random_generator: &mut dyn random::Generator,
         now: Timestamp,
+        publisher: &mut Pub,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRAdaptUpperBounds()
@@ -605,6 +635,7 @@ impl BbrCongestionController {
                     rate_sample.bytes_in_flight,
                     random_generator,
                     now,
+                    publisher,
                 );
             }
         } else {
@@ -683,12 +714,13 @@ impl BbrCongestionController {
 
     /// Called when loss indicates the current inflight amount is too high
     #[inline]
-    pub(super) fn on_inflight_too_high(
+    pub(super) fn on_inflight_too_high<Pub: Publisher>(
         &mut self,
         is_app_limited: bool,
         bytes_in_flight: u32,
         random_generator: &mut dyn random::Generator,
         now: Timestamp,
+        publisher: &mut Pub,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
         //# BBRHandleInflightTooHigh()
@@ -715,6 +747,7 @@ impl BbrCongestionController {
                     self.bw_estimator.delivered_bytes(),
                     random_generator,
                     now,
+                    publisher,
                 );
             }
         }
@@ -743,8 +776,12 @@ impl BbrCongestionController {
 mod tests {
     use super::*;
     use crate::{
+        path,
         path::MINIMUM_MTU,
-        recovery::bandwidth::{Bandwidth, PacketInfo},
+        recovery::{
+            bandwidth::{Bandwidth, PacketInfo},
+            congestion_controller::PathPublisher,
+        },
         time::{Clock, NoopClock},
     };
 
@@ -800,7 +837,11 @@ mod tests {
     fn is_time_to_probe_bw() {
         let mut state = State::new();
         let now = NoopClock.get_time();
-        state.cycle_phase.transition_to(CyclePhase::Down);
+        let mut publisher = event::testing::Publisher::snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
+        state
+            .cycle_phase
+            .transition_to(CyclePhase::Down, &mut publisher);
 
         // cycle_stamp hasn't been set yet
         assert!(!state.is_time_to_probe_bw(12000, 1200, now));
@@ -881,9 +922,13 @@ mod tests {
     #[test]
     fn start_cruise() {
         let mut state = State::new();
-        state.cycle_phase.transition_to(CyclePhase::Down);
+        let mut publisher = event::testing::Publisher::snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
+        state
+            .cycle_phase
+            .transition_to(CyclePhase::Down, &mut publisher);
 
-        state.start_cruise();
+        state.start_cruise(&mut publisher);
 
         assert_eq!(CyclePhase::Cruise, state.cycle_phase());
     }
@@ -892,6 +937,8 @@ mod tests {
     fn start_up() {
         let mut state = State::new();
         let mut round_counter = round::Counter::default();
+        let mut publisher = event::testing::Publisher::snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         let delivered_bytes = 100;
         let cwnd = 12000;
         let max_data_size = 1200;
@@ -906,6 +953,7 @@ mod tests {
             cwnd,
             max_data_size,
             now,
+            &mut publisher,
         );
 
         assert_eq!(CyclePhase::Up, state.cycle_phase());
@@ -928,6 +976,8 @@ mod tests {
         let delivered_bytes = 100;
         let mut data_volume_model = data_volume::Model::new();
         let mut data_rate_model = data_rate::Model::new();
+        let mut publisher = event::testing::Publisher::snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         data_volume_model.update_lower_bound(12000, 12000, true, false, 1.0);
         data_rate_model.update_lower_bound(Bandwidth::ZERO);
 
@@ -939,6 +989,7 @@ mod tests {
             &mut data_rate_model,
             &mut round_counter,
             delivered_bytes,
+            &mut publisher,
         );
 
         assert_eq!(CyclePhase::Refill, state.cycle_phase());
@@ -959,6 +1010,8 @@ mod tests {
         let mut state = State::new();
         let mut congestion_state = congestion::testing::test_state();
         let mut round_counter = round::Counter::default();
+        let mut publisher = event::testing::Publisher::snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         let delivered_bytes = 100;
         let now = NoopClock.get_time();
         let random = &mut random::testing::Generator::default();
@@ -971,6 +1024,7 @@ mod tests {
             delivered_bytes,
             random,
             now,
+            &mut publisher,
         );
 
         assert_eq!(CyclePhase::Down, state.cycle_phase());
@@ -1035,11 +1089,13 @@ mod tests {
     fn enter_probe_bw() {
         let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
         let mut rng = random::testing::Generator::default();
+        let mut publisher = event::testing::Publisher::snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         let now = NoopClock.get_time();
         bbr.state = bbr::State::Drain;
 
         // cruise_immediately = false
-        bbr.enter_probe_bw(false, &mut rng, now);
+        bbr.enter_probe_bw(false, &mut rng, now, &mut publisher);
 
         assert!(bbr.state.is_probing_bw());
         if let bbr::State::ProbeBw(probe_bw_state) = bbr.state {
@@ -1050,7 +1106,7 @@ mod tests {
 
         // cruise_immediately = true
         bbr.state = bbr::State::Drain;
-        bbr.enter_probe_bw(true, &mut rng, now);
+        bbr.enter_probe_bw(true, &mut rng, now, &mut publisher);
         assert!(bbr.state.is_probing_bw_cruise());
     }
 }

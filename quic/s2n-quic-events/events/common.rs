@@ -881,3 +881,14 @@ struct RateSample {
     /// The delivery rate for this rate sample
     delivery_rate_bytes_per_second: u64,
 }
+
+// The BBR congestion controller State
+enum BbrState {
+    Startup,
+    Drain,
+    ProbeBwDown,
+    ProbeBwCruise,
+    ProbeBwRefill,
+    ProbeBwUp,
+    ProbeRtt,
+}

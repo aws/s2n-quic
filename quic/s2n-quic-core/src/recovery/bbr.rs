@@ -3,6 +3,8 @@
 
 use crate::{
     counter::Counter,
+    event,
+    event::IntoEvent,
     random,
     recovery::{
         bandwidth,
@@ -173,7 +175,7 @@ impl State {
     }
 
     /// Transition to the given `new_state`
-    fn transition_to(&mut self, new_state: State) {
+    fn transition_to<Pub: Publisher>(&mut self, new_state: State, publisher: &mut Pub) {
         if cfg!(debug_assertions) {
             match &new_state {
                 // BBR is initialized in the Startup state, but may re-enter Startup after ProbeRtt
@@ -184,7 +186,24 @@ impl State {
             }
         }
 
+        if !new_state.is_probing_bw() {
+            // ProbeBw::CyclePhase emits this metric for the ProbingBw state
+            publisher.on_bbr_state_changed(new_state.into_event());
+        }
+
         *self = new_state;
+    }
+}
+
+impl IntoEvent<event::builder::BbrState> for &State {
+    fn into_event(self) -> event::builder::BbrState {
+        use event::builder::BbrState;
+        match self {
+            State::Startup => BbrState::Startup,
+            State::Drain => BbrState::Drain,
+            State::ProbeBw(probe_bw_state) => probe_bw_state.cycle_phase().into_event(),
+            State::ProbeRtt(_) => BbrState::ProbeRtt,
+        }
     }
 }
 
@@ -378,15 +397,20 @@ impl CongestionController for BbrCongestionController {
             //# BBRCheckDrain()
             self.check_startup_done(publisher);
         }
-        self.check_drain_done(random_generator, ack_receive_time);
+        self.check_drain_done(random_generator, ack_receive_time, publisher);
 
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
         //# BBRUpdateProbeBWCyclePhase()
         if self.full_pipe_estimator.filled_pipe() {
             // BBRUpdateProbeBWCyclePhase() internally calls BBRAdaptUpperBounds() if BBR.filled_pipe == true
-            self.adapt_upper_bounds(bytes_acknowledged, random_generator, ack_receive_time);
+            self.adapt_upper_bounds(
+                bytes_acknowledged,
+                random_generator,
+                ack_receive_time,
+                publisher,
+            );
             if self.state.is_probing_bw() {
-                self.update_probe_bw_cycle_phase(random_generator, ack_receive_time);
+                self.update_probe_bw_cycle_phase(random_generator, ack_receive_time, publisher);
             }
         }
 
@@ -398,7 +422,7 @@ impl CongestionController for BbrCongestionController {
         let prev_min_rtt = self.data_volume_model.min_rtt();
         self.data_volume_model
             .update_min_rtt(rtt_estimator.latest_rtt(), ack_receive_time);
-        self.check_probe_rtt(random_generator, ack_receive_time);
+        self.check_probe_rtt(random_generator, ack_receive_time, publisher);
 
         // Update control parameters if required
         if self.control_update_required(update_model, prev_min_rtt) {
@@ -431,7 +455,7 @@ impl CongestionController for BbrCongestionController {
         new_loss_burst: bool,
         random_generator: &mut dyn random::Generator,
         timestamp: Timestamp,
-        _publisher: &mut Pub,
+        publisher: &mut Pub,
     ) {
         debug_assert!(lost_bytes > 0);
 
@@ -448,7 +472,13 @@ impl CongestionController for BbrCongestionController {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.4
         //# BBRUpdateOnLoss(packet):
         //#   BBRHandleLostPacket(packet)
-        self.handle_lost_packet(lost_bytes, packet_info, random_generator, timestamp);
+        self.handle_lost_packet(
+            lost_bytes,
+            packet_info,
+            random_generator,
+            timestamp,
+            publisher,
+        );
     }
 
     #[inline]
@@ -915,12 +945,13 @@ impl BbrCongestionController {
     }
 
     #[inline]
-    fn handle_lost_packet(
+    fn handle_lost_packet<Pub: Publisher>(
         &mut self,
         lost_bytes: u32,
         packet_info: <BbrCongestionController as CongestionController>::PacketInfo,
         random_generator: &mut dyn random::Generator,
         now: Timestamp,
+        publisher: &mut Pub,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
         //# if (!BBR.bw_probe_samples)
@@ -949,6 +980,7 @@ impl BbrCongestionController {
                 inflight_hi_from_lost_packet,
                 random_generator,
                 now,
+                publisher,
             );
         }
     }

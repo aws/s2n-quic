@@ -126,6 +126,9 @@ fn inflight_hi_from_lost_packet() {
 
 #[test]
 fn pacing_cwnd_gain() {
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
+
     //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.6
     //= type=test
     //# A constant specifying the minimum gain value for calculating the pacing rate that will
@@ -156,8 +159,13 @@ fn pacing_cwnd_gain() {
 
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
     let now = NoopClock.get_time();
-    bbr.enter_drain();
-    bbr.enter_probe_bw(false, &mut random::testing::Generator::default(), now);
+    bbr.enter_drain(&mut publisher);
+    bbr.enter_probe_bw(
+        false,
+        &mut random::testing::Generator::default(),
+        now,
+        &mut publisher,
+    );
     assert!(bbr.state.is_probing_bw());
 
     // ProbeBw cwnd gain from https://www.ietf.org/archive/id/draft-cardwell-iccrg-bbr-congestion-control-02.html#section-4.6.1
@@ -761,6 +769,8 @@ fn on_enter_and_exit_fast_recovery() {
 fn handle_lost_packet() {
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
     let now = NoopClock.get_time();
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     bbr.bw_probe_samples = true;
 
     bbr.bw_estimator.on_loss(1000);
@@ -781,6 +791,7 @@ fn handle_lost_packet() {
         lost_packet,
         &mut random::testing::Generator::default(),
         now,
+        &mut publisher,
     );
 
     let inflight_hi_from_lost_packet =
@@ -823,6 +834,7 @@ fn handle_lost_packet() {
         lost_packet,
         &mut random::testing::Generator::default(),
         now,
+        &mut publisher,
     );
 
     let inflight_hi_from_lost_packet =
@@ -1029,14 +1041,26 @@ fn on_mtu_update() {
 /// ProbeBW state with the given CyclePhase
 fn enter_probe_bw_state(bbr: &mut BbrCongestionController, cycle_phase: CyclePhase) {
     let now = NoopClock.get_time();
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
     match bbr.state {
         State::Startup => {
-            bbr.enter_drain();
-            bbr.enter_probe_bw(false, &mut random::testing::Generator::default(), now);
+            bbr.enter_drain(&mut publisher);
+            bbr.enter_probe_bw(
+                false,
+                &mut random::testing::Generator::default(),
+                now,
+                &mut publisher,
+            );
         }
         State::Drain | State::ProbeRtt(_) => {
-            bbr.enter_probe_bw(false, &mut random::testing::Generator::default(), now);
+            bbr.enter_probe_bw(
+                false,
+                &mut random::testing::Generator::default(),
+                now,
+                &mut publisher,
+            );
         }
         State::ProbeBw(_) => {}
     }

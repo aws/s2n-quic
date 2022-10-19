@@ -524,6 +524,24 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub enum BbrState {
+        #[non_exhaustive]
+        Startup {},
+        #[non_exhaustive]
+        Drain {},
+        #[non_exhaustive]
+        ProbeBwDown {},
+        #[non_exhaustive]
+        ProbeBwCruise {},
+        #[non_exhaustive]
+        ProbeBwRefill {},
+        #[non_exhaustive]
+        ProbeBwUp {},
+        #[non_exhaustive]
+        ProbeRtt {},
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Application level protocol"]
     pub struct ApplicationProtocolInformation<'a> {
         pub chosen_application_protocol: &'a [u8],
@@ -920,6 +938,16 @@ pub mod api {
     }
     impl Event for PacingRateUpdated {
         const NAME: &'static str = "recovery:pacing_rate_updated";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " The BBR state has changed"]
+    pub struct BbrStateChanged {
+        pub path_id: u64,
+        pub state: BbrState,
+    }
+    impl Event for BbrStateChanged {
+        const NAME: &'static str = "recovery:bbr_state_changed";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -2023,6 +2051,17 @@ pub mod tracing {
                 pacing_gain,
             } = event;
             tracing :: event ! (target : "pacing_rate_updated" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , bytes_per_second = tracing :: field :: debug (bytes_per_second) , burst_size = tracing :: field :: debug (burst_size) , pacing_gain = tracing :: field :: debug (pacing_gain));
+        }
+        #[inline]
+        fn on_bbr_state_changed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::BbrStateChanged,
+        ) {
+            let id = context.id();
+            let api::BbrStateChanged { path_id, state } = event;
+            tracing :: event ! (target : "bbr_state_changed" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , state = tracing :: field :: debug (state));
         }
         #[inline]
         fn on_version_information(
@@ -3165,6 +3204,31 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub enum BbrState {
+        Startup,
+        Drain,
+        ProbeBwDown,
+        ProbeBwCruise,
+        ProbeBwRefill,
+        ProbeBwUp,
+        ProbeRtt,
+    }
+    impl IntoEvent<api::BbrState> for BbrState {
+        #[inline]
+        fn into_event(self) -> api::BbrState {
+            use api::BbrState::*;
+            match self {
+                Self::Startup => Startup {},
+                Self::Drain => Drain {},
+                Self::ProbeBwDown => ProbeBwDown {},
+                Self::ProbeBwCruise => ProbeBwCruise {},
+                Self::ProbeBwRefill => ProbeBwRefill {},
+                Self::ProbeBwUp => ProbeBwUp {},
+                Self::ProbeRtt => ProbeRtt {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Application level protocol"]
     pub struct ApplicationProtocolInformation<'a> {
         pub chosen_application_protocol: &'a [u8],
@@ -3861,6 +3925,22 @@ pub mod builder {
                 bytes_per_second: bytes_per_second.into_event(),
                 burst_size: burst_size.into_event(),
                 pacing_gain: pacing_gain.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " The BBR state has changed"]
+    pub struct BbrStateChanged {
+        pub path_id: u64,
+        pub state: BbrState,
+    }
+    impl IntoEvent<api::BbrStateChanged> for BbrStateChanged {
+        #[inline]
+        fn into_event(self) -> api::BbrStateChanged {
+            let BbrStateChanged { path_id, state } = self;
+            api::BbrStateChanged {
+                path_id: path_id.into_event(),
+                state: state.into_event(),
             }
         }
     }
@@ -4763,6 +4843,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `BbrStateChanged` event is triggered"]
+        #[inline]
+        fn on_bbr_state_changed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &BbrStateChanged,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `VersionInformation` event is triggered"]
         #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
@@ -5355,6 +5447,16 @@ mod traits {
             (self.1).on_pacing_rate_updated(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_bbr_state_changed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &BbrStateChanged,
+        ) {
+            (self.0).on_bbr_state_changed(&mut context.0, meta, event);
+            (self.1).on_bbr_state_changed(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
             (self.0).on_version_information(meta, event);
             (self.1).on_version_information(meta, event);
@@ -5731,6 +5833,8 @@ mod traits {
         fn on_delivery_rate_sampled(&mut self, event: builder::DeliveryRateSampled);
         #[doc = "Publishes a `PacingRateUpdated` event to the publisher's subscriber"]
         fn on_pacing_rate_updated(&mut self, event: builder::PacingRateUpdated);
+        #[doc = "Publishes a `BbrStateChanged` event to the publisher's subscriber"]
+        fn on_bbr_state_changed(&mut self, event: builder::BbrStateChanged);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
         fn quic_version(&self) -> u32;
         #[doc = r" Returns the [`Subject`] for the current publisher"]
@@ -6117,6 +6221,15 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_bbr_state_changed(&mut self, event: builder::BbrStateChanged) {
+            let event = event.into_event();
+            self.subscriber
+                .on_bbr_state_changed(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn quic_version(&self) -> u32 {
             self.quic_version
         }
@@ -6171,6 +6284,7 @@ pub mod testing {
         pub slow_start_exited: u32,
         pub delivery_rate_sampled: u32,
         pub pacing_rate_updated: u32,
+        pub bbr_state_changed: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -6247,6 +6361,7 @@ pub mod testing {
                 slow_start_exited: 0,
                 delivery_rate_sampled: 0,
                 pacing_rate_updated: 0,
+                bbr_state_changed: 0,
                 version_information: 0,
                 endpoint_packet_sent: 0,
                 endpoint_packet_received: 0,
@@ -6691,6 +6806,17 @@ pub mod testing {
                 self.output.push(format!("{:?} {:?}", meta, event));
             }
         }
+        fn on_bbr_state_changed(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::BbrStateChanged,
+        ) {
+            self.bbr_state_changed += 1;
+            if self.location.is_some() {
+                self.output.push(format!("{:?} {:?}", meta, event));
+            }
+        }
         fn on_version_information(
             &mut self,
             meta: &api::EndpointMeta,
@@ -6830,6 +6956,7 @@ pub mod testing {
         pub slow_start_exited: u32,
         pub delivery_rate_sampled: u32,
         pub pacing_rate_updated: u32,
+        pub bbr_state_changed: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -6896,6 +7023,7 @@ pub mod testing {
                 slow_start_exited: 0,
                 delivery_rate_sampled: 0,
                 pacing_rate_updated: 0,
+                bbr_state_changed: 0,
                 version_information: 0,
                 endpoint_packet_sent: 0,
                 endpoint_packet_received: 0,
@@ -7260,6 +7388,13 @@ pub mod testing {
         }
         fn on_pacing_rate_updated(&mut self, event: builder::PacingRateUpdated) {
             self.pacing_rate_updated += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                self.output.push(format!("{:?}", event));
+            }
+        }
+        fn on_bbr_state_changed(&mut self, event: builder::BbrStateChanged) {
+            self.bbr_state_changed += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 self.output.push(format!("{:?}", event));

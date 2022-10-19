@@ -6,6 +6,7 @@ use crate::{
     recovery::{
         bandwidth, bbr,
         bbr::{probe_rtt, round, BbrCongestionController},
+        congestion_controller::Publisher,
     },
     time::{Timer, Timestamp},
 };
@@ -85,10 +86,11 @@ impl State {
 impl BbrCongestionController {
     /// Check if it is time to start probing for RTT changes, and enter the ProbeRtt state if so
     #[inline]
-    pub(super) fn check_probe_rtt(
+    pub(super) fn check_probe_rtt<Pub: Publisher>(
         &mut self,
         random_generator: &mut dyn random::Generator,
         now: Timestamp,
+        publisher: &mut Pub,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.4.4
         //# BBRCheckProbeRTT()
@@ -120,7 +122,7 @@ impl BbrCongestionController {
             // New BBR state requires updating the model
             self.try_fast_path = false;
             self.state
-                .transition_to(bbr::State::ProbeRtt(State::default()));
+                .transition_to(bbr::State::ProbeRtt(State::default()), publisher);
             self.save_cwnd();
             self.round_counter
                 .set_round_end(self.bw_estimator.delivered_bytes());
@@ -138,7 +140,7 @@ impl BbrCongestionController {
             // The RFC pseudocode exits `ProbeRTT` internal to `BBRHandleProbeRTT`, whereas this
             // code checks if the `ProbeRTT` state is ready to exit here
             if probe_rtt_state.is_done(now) {
-                self.exit_probe_rtt(random_generator, now);
+                self.exit_probe_rtt(random_generator, now, publisher);
             }
         }
 
@@ -149,10 +151,11 @@ impl BbrCongestionController {
 
     /// Exits the `ProbeRtt` state
     #[inline]
-    pub(super) fn exit_probe_rtt(
+    pub(super) fn exit_probe_rtt<Pub: Publisher>(
         &mut self,
         random_generator: &mut dyn random::Generator,
         now: Timestamp,
+        publisher: &mut Pub,
     ) {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.4.4
         //# BBRCheckProbeRTTDone():
@@ -194,9 +197,9 @@ impl BbrCongestionController {
             //# is already below the estimated BDP, so the connection can proceed immediately to
             //# ProbeBW_CRUISE
             let cruise_immediately = true;
-            self.enter_probe_bw(cruise_immediately, random_generator, now);
+            self.enter_probe_bw(cruise_immediately, random_generator, now, publisher);
         } else {
-            self.enter_startup();
+            self.enter_startup(publisher);
         }
     }
 
@@ -220,10 +223,12 @@ impl BbrCongestionController {
 mod tests {
     use super::*;
     use crate::{
+        event, path,
         path::MINIMUM_MTU,
         recovery::{
             bandwidth::{Bandwidth, PacketInfo, RateSample},
             bbr::windowed_filter::PROBE_RTT_INTERVAL,
+            congestion_controller::PathPublisher,
         },
         time::{Clock, NoopClock},
     };
@@ -233,6 +238,8 @@ mod tests {
         let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
         let now = NoopClock.get_time();
         let mut rng = random::testing::Generator::default();
+        let mut publisher = event::testing::Publisher::snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         bbr.bw_estimator.set_delivered_bytes_for_test(1000);
 
         bbr.data_volume_model
@@ -243,7 +250,7 @@ mod tests {
         assert!(bbr.data_volume_model.probe_rtt_expired());
         assert!(!bbr.idle_restart);
 
-        bbr.check_probe_rtt(&mut rng, now);
+        bbr.check_probe_rtt(&mut rng, now, &mut publisher);
         assert!(bbr.state.is_probing_rtt());
         assert!(!bbr.try_fast_path);
         assert_eq!(bbr.prior_cwnd, bbr.cwnd);
@@ -255,8 +262,10 @@ mod tests {
         let mut bbr = bbr_in_probe_rtt_ready_to_exit();
         let mut rng = random::testing::Generator::default();
         let now = NoopClock.get_time();
+        let mut publisher = event::testing::Publisher::snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         bbr.idle_restart = true;
-        bbr.check_probe_rtt(&mut rng, now);
+        bbr.check_probe_rtt(&mut rng, now, &mut publisher);
         assert!(!bbr.state.is_probing_rtt());
         // No delivered bytes in the rate sample, so remain in idle restart
         assert!(bbr.idle_restart);
@@ -274,7 +283,7 @@ mod tests {
             ..Default::default()
         });
 
-        bbr.check_probe_rtt(&mut rng, now);
+        bbr.check_probe_rtt(&mut rng, now, &mut publisher);
         assert!(!bbr.state.is_probing_rtt());
         // Positive elivered bytes in the rate sample, so set idle restart to false
         assert!(!bbr.idle_restart);
@@ -290,13 +299,15 @@ mod tests {
     fn exit_probe_rtt() {
         let mut bbr = bbr_in_probe_rtt_ready_to_exit();
         let mut rng = random::testing::Generator::default();
+        let mut publisher = event::testing::Publisher::snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         let now = NoopClock.get_time();
         bbr.cwnd = 1000;
         bbr.prior_cwnd = 2000;
         bbr.data_volume_model.set_inflight_lo_for_test(100_000);
         bbr.data_rate_model
             .update_lower_bound(Bandwidth::new(1000, Duration::from_millis(1)));
-        bbr.exit_probe_rtt(&mut rng, now);
+        bbr.exit_probe_rtt(&mut rng, now, &mut publisher);
 
         // cwnd restored
         assert_eq!(2000, bbr.cwnd);
@@ -308,7 +319,7 @@ mod tests {
         // If full pipe then transition to probe bw cruise
         let mut bbr = bbr_in_probe_rtt_ready_to_exit();
         bbr.full_pipe_estimator.set_filled_pipe_for_test(true);
-        bbr.exit_probe_rtt(&mut rng, now);
+        bbr.exit_probe_rtt(&mut rng, now, &mut publisher);
         assert!(bbr.state.is_probing_bw_cruise());
 
         // Next probe rtt is scheduled
