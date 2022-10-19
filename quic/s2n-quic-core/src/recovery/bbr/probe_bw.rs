@@ -494,7 +494,7 @@ impl BbrCongestionController {
 
         let target_inflight = self.target_inflight();
         let inflight = self.inflight(self.data_rate_model.max_bw(), self.state.pacing_gain());
-        let time_to_cruise = self.is_time_to_cruise();
+        let time_to_cruise = self.is_time_to_cruise(now);
 
         if let bbr::State::ProbeBw(ref mut probe_bw_state) = self.state {
             let prior_cycle_phase = probe_bw_state.cycle_phase();
@@ -722,7 +722,18 @@ impl BbrCongestionController {
 
     /// Returns true if it is time to transition from `Down` to `Cruise`
     #[inline]
-    fn is_time_to_cruise(&self) -> bool {
+    fn is_time_to_cruise(&self, now: Timestamp) -> bool {
+        if let (bbr::State::ProbeBw(probe_bw_state), Some(min_rtt)) =
+            (&self.state, self.data_volume_model.min_rtt())
+        {
+            // Chromium and Linux TCP both limit the time spent in ProbeBW_Down to min_rtt
+            // See https://github.com/google/bbr/blob/1a45fd4faf30229a3d3116de7bfe9d2f933d3562/net/ipv4/tcp_bbr2.c#L1982-L1981
+            //  and https://source.chromium.org/chromium/chromium/src/+/main:net/third_party/quiche/src/quiche/quic/core/congestion_control/bbr2_probe_bw.cc;l=276
+            if probe_bw_state.has_elapsed_in_phase(min_rtt, now) {
+                return true;
+            }
+        }
+
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.6
         //# BBRCheckTimeToCruise())
         //#   if (inflight > BBRInflightWithHeadroom())
