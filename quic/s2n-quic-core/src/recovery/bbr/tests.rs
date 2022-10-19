@@ -11,7 +11,7 @@ use crate::{
         bandwidth::{Bandwidth, PacketInfo, RateSample},
         bbr,
         bbr::{probe_bw::CyclePhase, probe_rtt, BbrCongestionController, State, State::ProbeRtt},
-        congestion_controller::PathPublisher,
+        congestion_controller::{PathPublisher, Publisher},
         CongestionController,
     },
     time::{Clock, NoopClock},
@@ -27,25 +27,27 @@ use std::time::Duration;
 #[test]
 fn is_probing_for_bandwidth() {
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
     // States that are not explicitly accelerating to probe for bandwidth
     // ie Drain, ProbeRtt, ProbeBW_DOWN, ProbeBW_CRUISE
     assert!(!State::Drain.is_probing_for_bandwidth());
     assert!(!State::ProbeRtt(probe_rtt::State::default()).is_probing_for_bandwidth());
 
-    enter_probe_bw_state(&mut bbr, CyclePhase::Down);
+    enter_probe_bw_state(&mut bbr, CyclePhase::Down, &mut publisher);
     assert!(!bbr.state.is_probing_for_bandwidth());
 
-    enter_probe_bw_state(&mut bbr, CyclePhase::Cruise);
+    enter_probe_bw_state(&mut bbr, CyclePhase::Cruise, &mut publisher);
     assert!(!bbr.state.is_probing_for_bandwidth());
 
     // States that are explicitly accelerating to probe for bandwidth
     assert!(State::Startup.is_probing_for_bandwidth());
 
-    enter_probe_bw_state(&mut bbr, CyclePhase::Up);
+    enter_probe_bw_state(&mut bbr, CyclePhase::Up, &mut publisher);
     assert!(bbr.state.is_probing_for_bandwidth());
 
-    enter_probe_bw_state(&mut bbr, CyclePhase::Refill);
+    enter_probe_bw_state(&mut bbr, CyclePhase::Refill, &mut publisher);
     assert!(bbr.state.is_probing_for_bandwidth());
 }
 
@@ -126,6 +128,9 @@ fn inflight_hi_from_lost_packet() {
 
 #[test]
 fn pacing_cwnd_gain() {
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
+
     //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.6
     //= type=test
     //# A constant specifying the minimum gain value for calculating the pacing rate that will
@@ -156,8 +161,13 @@ fn pacing_cwnd_gain() {
 
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
     let now = NoopClock.get_time();
-    bbr.enter_drain();
-    bbr.enter_probe_bw(false, &mut random::testing::Generator::default(), now);
+    bbr.enter_drain(&mut publisher);
+    bbr.enter_probe_bw(
+        false,
+        &mut random::testing::Generator::default(),
+        now,
+        &mut publisher,
+    );
     assert!(bbr.state.is_probing_bw());
 
     // ProbeBw cwnd gain from https://www.ietf.org/archive/id/draft-cardwell-iccrg-bbr-congestion-control-02.html#section-4.6.1
@@ -395,6 +405,8 @@ fn inflight_with_headroom() {
 #[test]
 fn quantization_budget() {
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     bbr.pacer.set_send_quantum_for_test(4000);
 
     let send_quantum = bbr.pacer.send_quantum();
@@ -414,7 +426,7 @@ fn quantization_budget() {
     // offload_budget < inflight < minimum_window
     assert_eq!(4800, bbr.quantization_budget(2000));
 
-    enter_probe_bw_state(&mut bbr, CyclePhase::Up);
+    enter_probe_bw_state(&mut bbr, CyclePhase::Up, &mut publisher);
     assert!(bbr.state.is_probing_bw_up());
 
     // since probe bw up, add 2 packets to the budget
@@ -486,13 +498,15 @@ fn is_inflight_too_high() {
 #[test]
 fn bound_cwnd_for_model() {
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
-    enter_probe_bw_state(&mut bbr, CyclePhase::Down);
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
+    enter_probe_bw_state(&mut bbr, CyclePhase::Down, &mut publisher);
 
     bbr.data_volume_model.update_upper_bound(10000);
 
     assert_eq!(10000, bbr.bound_cwnd_for_model());
 
-    enter_probe_bw_state(&mut bbr, CyclePhase::Cruise);
+    enter_probe_bw_state(&mut bbr, CyclePhase::Cruise, &mut publisher);
 
     // inflight_with_headroom = .85 * 10000 = 8500
     assert_eq!(8500, bbr.bound_cwnd_for_model());
@@ -761,6 +775,8 @@ fn on_enter_and_exit_fast_recovery() {
 fn handle_lost_packet() {
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
     let now = NoopClock.get_time();
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     bbr.bw_probe_samples = true;
 
     bbr.bw_estimator.on_loss(1000);
@@ -775,12 +791,13 @@ fn handle_lost_packet() {
         is_app_limited: false,
     };
 
-    enter_probe_bw_state(&mut bbr, CyclePhase::Up);
+    enter_probe_bw_state(&mut bbr, CyclePhase::Up, &mut publisher);
     bbr.handle_lost_packet(
         1000,
         lost_packet,
         &mut random::testing::Generator::default(),
         now,
+        &mut publisher,
     );
 
     let inflight_hi_from_lost_packet =
@@ -823,6 +840,7 @@ fn handle_lost_packet() {
         lost_packet,
         &mut random::testing::Generator::default(),
         now,
+        &mut publisher,
     );
 
     let inflight_hi_from_lost_packet =
@@ -877,7 +895,7 @@ fn handle_restart_from_idle() {
     );
     assert_eq!(pacing_rate, bbr.pacer.pacing_rate());
 
-    enter_probe_bw_state(&mut bbr, CyclePhase::Down);
+    enter_probe_bw_state(&mut bbr, CyclePhase::Down, &mut publisher);
     let rate_sample = RateSample {
         delivered_bytes: 100_000,
         interval: Duration::from_millis(1),
@@ -1027,16 +1045,30 @@ fn on_mtu_update() {
 
 /// Helper method to move the given BBR congestion controller into the
 /// ProbeBW state with the given CyclePhase
-fn enter_probe_bw_state(bbr: &mut BbrCongestionController, cycle_phase: CyclePhase) {
+fn enter_probe_bw_state<Pub: Publisher>(
+    bbr: &mut BbrCongestionController,
+    cycle_phase: CyclePhase,
+    publisher: &mut Pub,
+) {
     let now = NoopClock.get_time();
 
     match bbr.state {
         State::Startup => {
-            bbr.enter_drain();
-            bbr.enter_probe_bw(false, &mut random::testing::Generator::default(), now);
+            bbr.enter_drain(publisher);
+            bbr.enter_probe_bw(
+                false,
+                &mut random::testing::Generator::default(),
+                now,
+                publisher,
+            );
         }
         State::Drain | State::ProbeRtt(_) => {
-            bbr.enter_probe_bw(false, &mut random::testing::Generator::default(), now);
+            bbr.enter_probe_bw(
+                false,
+                &mut random::testing::Generator::default(),
+                now,
+                publisher,
+            );
         }
         State::ProbeBw(_) => {}
     }

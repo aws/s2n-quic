@@ -868,16 +868,27 @@ struct RateSample {
     lost_bytes: u64,
     /// The number of packets marked as explicit congestion experienced over the sampling interval
     ecn_ce_count: u64,
-    /// [PacketInfo::is_app_limited] from the most recent acknowledged packet
+    /// PacketInfo::is_app_limited from the most recent acknowledged packet
     is_app_limited: bool,
-    /// [PacketInfo::delivered_bytes] from the most recent acknowledged packet
+    /// PacketInfo::delivered_bytes from the most recent acknowledged packet
     prior_delivered_bytes: u64,
-    /// [PacketInfo::bytes_in_flight] from the most recent acknowledged packet
+    /// PacketInfo::bytes_in_flight from the most recent acknowledged packet
     bytes_in_flight: u32,
-    /// [PacketInfo::lost_bytes] from the most recent acknowledged packet
+    /// PacketInfo::lost_bytes from the most recent acknowledged packet
     prior_lost_bytes: u64,
-    /// [PacketInfo::ecn_ce_count] from the most recent acknowledged packet
+    /// PacketInfo::ecn_ce_count from the most recent acknowledged packet
     prior_ecn_ce_count: u64,
     /// The delivery rate for this rate sample
     delivery_rate_bytes_per_second: u64,
+}
+
+// The BBR congestion controller State
+enum BbrState {
+    Startup,
+    Drain,
+    ProbeBwDown,
+    ProbeBwCruise,
+    ProbeBwRefill,
+    ProbeBwUp,
+    ProbeRtt,
 }
