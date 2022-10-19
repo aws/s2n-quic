@@ -723,11 +723,9 @@ impl BbrCongestionController {
     /// Returns true if it is time to transition from `Down` to `Cruise`
     #[inline]
     fn is_time_to_cruise(&self, now: Timestamp) -> bool {
-        if let bbr::State::ProbeBw(ref probe_bw_state) = self.state {
-            let min_rtt = self
-                .data_volume_model
-                .min_rtt()
-                .expect("at least one RTT has passed");
+        if let (bbr::State::ProbeBw(probe_bw_state), Some(min_rtt)) =
+            (&self.state, self.data_volume_model.min_rtt())
+        {
             // Chromium and Linux TCP both limit the time spent in ProbeBW_Down to min_rtt
             // See https://github.com/google/bbr/blob/1a45fd4faf30229a3d3116de7bfe9d2f933d3562/net/ipv4/tcp_bbr2.c#L1982-L1981
             //  and https://source.chromium.org/chromium/chromium/src/+/main:net/third_party/quiche/src/quiche/quic/core/congestion_control/bbr2_probe_bw.cc;l=276
