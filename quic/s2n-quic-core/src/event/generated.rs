@@ -95,15 +95,15 @@ pub mod api {
         pub lost_bytes: u64,
         #[doc = " The number of packets marked as explicit congestion experienced over the sampling interval"]
         pub ecn_ce_count: u64,
-        #[doc = " [PacketInfo::is_app_limited] from the most recent acknowledged packet"]
+        #[doc = " PacketInfo::is_app_limited from the most recent acknowledged packet"]
         pub is_app_limited: bool,
-        #[doc = " [PacketInfo::delivered_bytes] from the most recent acknowledged packet"]
+        #[doc = " PacketInfo::delivered_bytes from the most recent acknowledged packet"]
         pub prior_delivered_bytes: u64,
-        #[doc = " [PacketInfo::bytes_in_flight] from the most recent acknowledged packet"]
+        #[doc = " PacketInfo::bytes_in_flight from the most recent acknowledged packet"]
         pub bytes_in_flight: u32,
-        #[doc = " [PacketInfo::lost_bytes] from the most recent acknowledged packet"]
+        #[doc = " PacketInfo::lost_bytes from the most recent acknowledged packet"]
         pub prior_lost_bytes: u64,
-        #[doc = " [PacketInfo::ecn_ce_count] from the most recent acknowledged packet"]
+        #[doc = " PacketInfo::ecn_ce_count from the most recent acknowledged packet"]
         pub prior_ecn_ce_count: u64,
         #[doc = " The delivery rate for this rate sample"]
         pub delivery_rate_bytes_per_second: u64,
@@ -2462,15 +2462,15 @@ pub mod builder {
         pub lost_bytes: u64,
         #[doc = " The number of packets marked as explicit congestion experienced over the sampling interval"]
         pub ecn_ce_count: u64,
-        #[doc = " [PacketInfo::is_app_limited] from the most recent acknowledged packet"]
+        #[doc = " PacketInfo::is_app_limited from the most recent acknowledged packet"]
         pub is_app_limited: bool,
-        #[doc = " [PacketInfo::delivered_bytes] from the most recent acknowledged packet"]
+        #[doc = " PacketInfo::delivered_bytes from the most recent acknowledged packet"]
         pub prior_delivered_bytes: u64,
-        #[doc = " [PacketInfo::bytes_in_flight] from the most recent acknowledged packet"]
+        #[doc = " PacketInfo::bytes_in_flight from the most recent acknowledged packet"]
         pub bytes_in_flight: u32,
-        #[doc = " [PacketInfo::lost_bytes] from the most recent acknowledged packet"]
+        #[doc = " PacketInfo::lost_bytes from the most recent acknowledged packet"]
         pub prior_lost_bytes: u64,
-        #[doc = " [PacketInfo::ecn_ce_count] from the most recent acknowledged packet"]
+        #[doc = " PacketInfo::ecn_ce_count from the most recent acknowledged packet"]
         pub prior_ecn_ce_count: u64,
         #[doc = " The delivery rate for this rate sample"]
         pub delivery_rate_bytes_per_second: u64,
