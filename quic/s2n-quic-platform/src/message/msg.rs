@@ -28,19 +28,13 @@ pub struct Message(pub(crate) msghdr);
 #[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
 pub struct Handle {
     pub remote_address: RemoteAddress,
-    #[cfg(s2n_quic_platform_pktinfo)]
     pub local_address: LocalAddress,
 }
 
 impl Handle {
     #[inline]
     fn with_ancillary_data(&mut self, ancillary_data: AncillaryData) {
-        #[cfg(s2n_quic_platform_pktinfo)]
-        {
-            self.local_address = ancillary_data.local_address;
-        }
-
-        let _ = ancillary_data;
+        self.local_address = ancillary_data.local_address;
     }
 
     #[inline]
@@ -90,7 +84,6 @@ impl path::Handle for Handle {
     fn from_remote_address(remote_address: RemoteAddress) -> Self {
         Self {
             remote_address,
-            #[cfg(s2n_quic_platform_pktinfo)]
             local_address: SocketAddressV4::UNSPECIFIED.into(),
         }
     }
@@ -102,23 +95,15 @@ impl path::Handle for Handle {
 
     #[inline]
     fn local_address(&self) -> LocalAddress {
-        #[cfg(s2n_quic_platform_pktinfo)]
-        {
-            self.local_address
-        }
-
-        #[cfg(not(s2n_quic_platform_pktinfo))]
-        {
-            SocketAddressV4::UNSPECIFIED.into()
-        }
+        self.local_address
     }
 
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         let mut eq = true;
 
-        #[cfg(s2n_quic_platform_pktinfo)]
-        {
+        // only compare local addresses if the OS returns them
+        if cfg!(s2n_quic_platform_pktinfo) {
             eq &= self.local_address.eq(&other.local_address);
         }
 
@@ -570,6 +555,7 @@ impl rx::Entry for Message {
     ) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
         let mut header = Self::header(&self.0)?;
 
+        // only copy the port if we are told the IP address
         if cfg!(s2n_quic_platform_pktinfo) {
             header.path.local_address.set_port(local_address.port());
         } else {

@@ -46,7 +46,7 @@ pub mod rand {
         }
 
         #[inline]
-        fn gen_range(&mut self, range: core::ops::Range<usize>) -> usize {
+        fn gen_range(&mut self, range: core::ops::Range<u64>) -> u64 {
             gen_range(range)
         }
     }
@@ -196,6 +196,8 @@ impl<N: Network> bach::executor::Environment for Env<N> {
         while let Some(time) = self.time.advance() {
             let _ = time;
             if self.time.wake() > 0 {
+                // if a task has woken, then reset the stall count
+                self.stalled_iterations = 0;
                 break;
             }
         }

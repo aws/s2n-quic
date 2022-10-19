@@ -284,6 +284,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_pointer_width = "64")]
     fn size_of_snapshots() {
         use core::mem::size_of;
         use insta::assert_debug_snapshot;

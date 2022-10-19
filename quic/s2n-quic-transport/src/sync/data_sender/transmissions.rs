@@ -6,7 +6,7 @@ use super::{
     FinState, FrameWriter, OutgoingDataFlowController, State,
 };
 use crate::contexts::{OnTransmitError, WriteContext};
-use core::{convert::TryInto, num::NonZeroU16};
+use core::num::NonZeroU16;
 use s2n_quic_core::{
     ack,
     interval_set::{Interval, IntervalSet},
@@ -145,8 +145,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
                 .acquire_flow_control_window(interval.end_exclusive())
                 .checked_sub(interval.start_inclusive())
                 .ok_or(OnTransmitError::CouldNotAcquireEnoughSpace)?
-                .try_into()
-                .unwrap_or_default()
+                .as_u64()
         };
 
         // ensure the window is non-zero
@@ -154,8 +153,8 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
             return Err(OnTransmitError::CouldNotAcquireEnoughSpace);
         }
 
-        if window_len < interval_len {
-            interval.set_len(window_len);
+        if window_len < interval_len as u64 {
+            interval.set_len(window_len as usize);
         }
 
         let packet_number = context.packet_number();
@@ -461,8 +460,6 @@ impl TransmissionSlab {
 mod tests {
     use super::*;
     use bolero::{check, generator::*};
-    use core::mem::size_of;
-    use insta::assert_debug_snapshot;
 
     #[derive(Clone, Copy, Debug, TypeGenerator)]
     enum Operation {
@@ -520,7 +517,11 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_pointer_width = "64")]
     fn size_test() {
+        use core::mem::size_of;
+        use insta::assert_debug_snapshot;
+
         assert_debug_snapshot!(
             "transmission_entry_size",
             size_of::<TransmissionSlabEntry>()
