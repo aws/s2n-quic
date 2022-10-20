@@ -244,6 +244,9 @@ pub struct BbrCongestionController {
     pacer: Pacer,
     /// If true, we can attempt to avoid updating control parameters and/or model parameters
     try_fast_path: bool,
+    //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.1
+    //# True if the connection has fully utilized its cwnd at any point in the last packet-timed round trip.
+    cwnd_limited_in_round: bool,
 }
 
 type BytesInFlight = Counter<u32>;
@@ -337,6 +340,7 @@ impl CongestionController for BbrCongestionController {
         ack_receive_time: Timestamp,
         publisher: &mut Pub,
     ) {
+        let is_cwnd_limited = self.is_congestion_limited();
         self.bytes_in_flight
             .try_sub(bytes_acknowledged)
             .expect("bytes_acknowledged should not exceed u32::MAX");
@@ -361,6 +365,9 @@ impl CongestionController for BbrCongestionController {
         if self.round_counter.round_start() {
             self.ecn_state
                 .on_round_start(self.bw_estimator.delivered_bytes(), self.max_datagram_size);
+            self.cwnd_limited_in_round = is_cwnd_limited;
+        } else {
+            self.cwnd_limited_in_round |= is_cwnd_limited;
         }
 
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
@@ -582,6 +589,7 @@ impl BbrCongestionController {
             bw_probe_samples: false,
             pacer: Pacer::new(max_datagram_size),
             try_fast_path: false,
+            cwnd_limited_in_round: false,
         }
     }
     /// The bandwidth-delay product

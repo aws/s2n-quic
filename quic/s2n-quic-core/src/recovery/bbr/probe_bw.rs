@@ -11,7 +11,6 @@ use crate::{
         bbr,
         bbr::{congestion, data_rate, data_volume, round, BbrCongestionController},
         congestion_controller::Publisher,
-        CongestionController,
     },
     time::Timestamp,
 };
@@ -657,10 +656,9 @@ impl BbrCongestionController {
                     .update_upper_bound(rate_sample.bytes_in_flight as u64);
             }
 
-            let congestion_limited = self.is_congestion_limited();
             if let bbr::State::ProbeBw(ref mut probe_bw_state) = self.state {
                 if probe_bw_state.cycle_phase() == CyclePhase::Up
-                    && congestion_limited
+                    && self.cwnd_limited_in_round
                     && self.cwnd as u64 >= self.data_volume_model.inflight_hi()
                 {
                     // inflight_hi is being fully utilized, so probe if we can increase it
