@@ -12,7 +12,7 @@ pub use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 pub trait Random {
     fn fill(&mut self, bytes: &mut [u8]);
 
-    fn gen_range(&mut self, range: Range<usize>) -> usize;
+    fn gen_range(&mut self, range: Range<u64>) -> u64;
 
     #[inline]
     fn shuffle(&mut self, bytes: &mut [u8]) {
@@ -20,11 +20,13 @@ pub trait Random {
             return;
         }
 
-        let count = self.gen_range(0..bytes.len());
+        let len = bytes.len() as u64;
+
+        let count = self.gen_range(0..len);
         for _ in 0..count {
-            let from = self.gen_range(0..bytes.len());
-            let to = self.gen_range(0..bytes.len());
-            bytes.swap(from, to);
+            let from = self.gen_range(0..len);
+            let to = self.gen_range(0..len);
+            bytes.swap(from as usize, to as usize);
         }
     }
 
@@ -34,8 +36,9 @@ pub trait Random {
             return bytes;
         }
 
-        let len = self.gen_range(0..bytes.len());
-        let bytes = &mut bytes[..len];
+        let len = bytes.len() as u64;
+        let len = self.gen_range(0..len);
+        let bytes = &mut bytes[..len as usize];
         self.fill(bytes);
         bytes
     }
@@ -69,8 +72,8 @@ pub trait Random {
     #[inline]
     fn gen_varint(&mut self) -> varint::VarInt {
         use varint::VarInt;
-        let max = VarInt::MAX.as_u64().try_into().unwrap_or(usize::MAX);
-        let v = self.gen_range(0..max);
+        let max = VarInt::MAX.as_u64();
+        let v = self.gen_range(0..(max + 1));
         unsafe { VarInt::new_unchecked(v as _) }
     }
 }
@@ -122,10 +125,10 @@ pub trait Strategy: Sized {
 pub struct Alternate<A: Strategy, B: Strategy> {
     a: A,
     b: B,
-    min: usize,
-    max: usize,
+    min: u64,
+    max: u64,
     is_a: bool,
-    remaining: usize,
+    remaining: u64,
 }
 
 impl<A: Strategy, B: Strategy> Alternate<A, B> {
@@ -135,8 +138,8 @@ impl<A: Strategy, B: Strategy> Alternate<A, B> {
         Self {
             a,
             b,
-            min: range.start,
-            max: range.end,
+            min: range.start as _,
+            max: range.end as _,
             is_a: false,
             remaining: 0,
         }
@@ -182,16 +185,16 @@ impl<A: Strategy, B: Strategy> Strategy for AndThen<A, B> {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Repeat<S: Strategy> {
     strategy: S,
-    min: usize,
-    max: usize,
+    min: u64,
+    max: u64,
 }
 
 impl<S: Strategy> Repeat<S> {
     pub fn new(strategy: S, range: Range<usize>) -> Self {
         Self {
             strategy,
-            min: range.start,
-            max: range.end,
+            min: range.start as _,
+            max: range.end as _,
         }
     }
 }
@@ -305,10 +308,10 @@ pub struct Swap;
 impl Strategy for Swap {
     #[inline]
     fn havoc<R: Random>(&mut self, rand: &mut R, buffer: &mut EncoderBuffer) {
-        let len = buffer.len();
+        let len = buffer.len() as u64;
         if len > 0 {
-            let from = rand.gen_range(0..len);
-            let to = rand.gen_range(0..len);
+            let from = rand.gen_range(0..len) as usize;
+            let to = rand.gen_range(0..len) as usize;
             buffer.as_mut_slice().swap(from, to);
         }
     }
@@ -320,9 +323,9 @@ pub struct Truncate;
 impl Strategy for Truncate {
     #[inline]
     fn havoc<R: Random>(&mut self, rand: &mut R, buffer: &mut EncoderBuffer) {
-        let len = buffer.capacity();
+        let len = buffer.capacity() as u64;
         if len > 0 {
-            let new_len = rand.gen_range(0..len);
+            let new_len = rand.gen_range(0..len) as usize;
             buffer.set_position(new_len);
         }
     }
@@ -334,9 +337,9 @@ pub struct Mutate;
 impl Strategy for Mutate {
     #[inline]
     fn havoc<R: Random>(&mut self, rand: &mut R, buffer: &mut EncoderBuffer) {
-        let len = buffer.len();
+        let len = buffer.len() as u64;
         if len > 0 {
-            let index = rand.gen_range(0..len);
+            let index = rand.gen_range(0..len) as usize;
             let value = rand.gen_u8();
             buffer.as_mut_slice()[index] = value;
         }
@@ -353,14 +356,14 @@ impl Strategy for Disabled {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct VarInt {
-    min: usize,
-    max: usize,
+    min: u64,
+    max: u64,
 }
 
 impl VarInt {
     pub fn new(range: Range<varint::VarInt>) -> Self {
-        let min = range.start.as_u64().try_into().unwrap_or(usize::MAX);
-        let max = range.end.as_u64().try_into().unwrap_or(usize::MAX);
+        let min = range.start.as_u64();
+        let max = range.end.as_u64();
         Self { min, max }
     }
 }
@@ -391,7 +394,7 @@ impl Strategy for Frame {
         let frames: &[GenFrame<R>] = &[
             |rand, _data, cap| {
                 frame::Padding {
-                    length: rand.gen_range(1..cap),
+                    length: rand.gen_range(1..cap as _) as _,
                 }
                 .into()
             },
@@ -545,7 +548,7 @@ impl Strategy for Frame {
             },
         ];
 
-        let index = rand.gen_range(0..frames.len());
+        let index = rand.gen_range(0..frames.len() as u64) as usize;
         let mut payload = [0u8; 1500];
         let frame = frames[index](rand, &mut payload, buffer.remaining_capacity());
 
@@ -594,7 +597,7 @@ pub mod testing {
         }
 
         #[inline]
-        fn gen_range(&mut self, range: Range<usize>) -> usize {
+        fn gen_range(&mut self, range: Range<u64>) -> u64 {
             let start = range.start.min(range.end);
             let end = range.start.max(range.end);
 
@@ -607,7 +610,7 @@ pub mod testing {
                 return start;
             }
 
-            let value = self.gen_u64() as usize;
+            let value = self.gen_u64();
             start + value % variance
         }
     }

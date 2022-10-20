@@ -71,11 +71,11 @@ macro_rules! zerocopy_value_codec {
 
         impl $crate::EncoderValue for $name {
             fn encoding_size(&self) -> usize {
-                core::mem::size_of::<Self>()
+                core::mem::size_of::<$name>()
             }
 
             fn encoding_size_for_encoder<E: $crate::Encoder>(&self, _encoder: &E) -> usize {
-                core::mem::size_of::<Self>()
+                core::mem::size_of::<$name>()
             }
 
             fn encode<E: $crate::Encoder>(&self, encoder: &mut E) {
@@ -85,11 +85,11 @@ macro_rules! zerocopy_value_codec {
 
         impl<'a> $crate::EncoderValue for &'a $name {
             fn encoding_size(&self) -> usize {
-                core::mem::size_of::<Self>()
+                core::mem::size_of::<$name>()
             }
 
             fn encoding_size_for_encoder<E: $crate::Encoder>(&self, _encoder: &E) -> usize {
-                ::core::mem::size_of::<Self>()
+                ::core::mem::size_of::<$name>()
             }
 
             fn encode<E: $crate::Encoder>(&self, encoder: &mut E) {
@@ -99,11 +99,11 @@ macro_rules! zerocopy_value_codec {
 
         impl<'a> $crate::EncoderValue for &'a mut $name {
             fn encoding_size(&self) -> usize {
-                core::mem::size_of::<Self>()
+                core::mem::size_of::<$name>()
             }
 
             fn encoding_size_for_encoder<E: $crate::Encoder>(&self, _encoder: &E) -> usize {
-                ::core::mem::size_of::<Self>()
+                ::core::mem::size_of::<$name>()
             }
 
             fn encode<E: $crate::Encoder>(&self, encoder: &mut E) {

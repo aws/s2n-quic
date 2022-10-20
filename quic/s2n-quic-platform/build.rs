@@ -27,6 +27,11 @@ fn main() -> Result<(), Error> {
             supports("pktinfo");
             supports("tos");
         }
+        "android" => {
+            supports("mtu_disc");
+            supports("pktinfo");
+            supports("tos");
+        }
         _ => {
             // TODO others
         }

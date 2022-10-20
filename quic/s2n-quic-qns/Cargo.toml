@@ -17,7 +17,6 @@ cfg-if = "1"
 futures = "0.3"
 http = "0.2"
 humansize = "1"
-mimalloc = { version = "0.1", default-features = false }
 openssl-sys = { version = "0.9", features = ["vendored"] }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
 s2n-quic-h3 = { path = "../s2n-quic-h3" }
@@ -32,6 +31,10 @@ s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provid
 
 [target.'cfg(not(unix))'.dependencies]
 s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls"] }
+
+# the mimalloc build is currently broken on android
+[target.'cfg(not(target_os = "android"))'.dependencies]
+mimalloc = { version = "0.1", default-features = false }
 
 # we don't use openssl-sys directly; it's just here to pin and vendor in dev
 [package.metadata.cargo-udeps.ignore]
