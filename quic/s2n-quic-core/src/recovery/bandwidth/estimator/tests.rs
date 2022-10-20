@@ -136,7 +136,7 @@ fn on_packet_sent() {
     assert_eq!(100, packet_info.lost_bytes);
     assert_eq!(5, packet_info.ecn_ce_count);
     assert!(packet_info.is_app_limited);
-    assert_eq!(500, packet_info.bytes_in_flight);
+    assert_eq!(500 + 100, packet_info.bytes_in_flight);
     assert_eq!(
         Some(500 + 15000 + 100),
         bw_estimator.app_limited_delivered_bytes
