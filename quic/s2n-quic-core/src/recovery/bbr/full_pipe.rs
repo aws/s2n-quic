@@ -147,6 +147,9 @@ impl Estimator {
         //= type=exception
         //= reason=Chromium and Linux TCP BBRv2 both use 8 lost bursts in a round trip
         //#    *  There are at least BBRStartupFullLossCnt=3 discontiguous sequence ranges lost in that round trip.
+
+        // See https://github.com/google/bbr/blob/1a45fd4faf30229a3d3116de7bfe9d2f933d3562/net/ipv4/tcp_bbr2.c#L2325-L2329
+        // and https://source.chromium.org/chromium/chromium/src/+/main:net/third_party/quiche/src/quiche/quic/core/quic_protocol_flags_list.h;l=135;bpv=1;bpt=0
         const STARTUP_FULL_LOSS_COUNT: u8 = 8;
 
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.1.3
