@@ -45,7 +45,7 @@ const LOSS_THRESH: Ratio<u32> = Ratio::new_raw(1, 50);
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.8
 //# The default multiplicative decrease to make upon each round trip during which
 //# the connection detects packet loss (the value is 0.7)
-const BETA: Ratio<u64> = Ratio::new_raw(85, 100);
+const BETA: Ratio<u64> = Ratio::new_raw(7, 10);
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.8
 //# The multiplicative factor to apply to BBR.inflight_hi when attempting to leave free headroom in
@@ -946,6 +946,8 @@ impl BbrCongestionController {
         debug_assert!(!self.recovery_state.packet_conservation());
 
         //self.restore_cwnd();
+        self.data_volume_model.reset_lower_bound();
+        self.data_rate_model.reset_lower_bound();
 
         // Since we are exiting a recovery period, we need to make sure the model is updated
         // and the congestion window is bound appropriately
