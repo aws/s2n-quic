@@ -60,8 +60,11 @@ impl BbrCongestionController {
             // in tcp_bbr2.c/bbr2_check_loss_too_high_in_startup
             //
             // See https://github.com/google/bbr/blob/1a45fd4faf30229a3d3116de7bfe9d2f933d3562/net/ipv4/tcp_bbr2.c#L2133
-            self.full_pipe_estimator
-                .on_loss_round_start(self.bw_estimator.rate_sample(), self.max_datagram_size)
+            self.full_pipe_estimator.on_loss_round_start(
+                self.bw_estimator.rate_sample(),
+                self.congestion_state.loss_bursts_in_round(),
+                self.max_datagram_size,
+            )
         }
 
         if self.state.is_startup() && self.full_pipe_estimator.filled_pipe() {
