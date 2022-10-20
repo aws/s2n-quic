@@ -920,12 +920,12 @@ impl BbrCongestionController {
         // state is entered prior to this method being called, when packet loss is recorded.
         debug_assert!(self.recovery_state.packet_conservation());
 
-        self.save_cwnd();
+        //self.save_cwnd();
         // BBROnEnterFastRecovery() tries to allow for at least one fast retransmit packet in the
         // the congestion window. The recovery manager will already allow for this fast retransmit
         // even if we are blocked by congestion control, as long as requires_fast_retransmission()
         // returns true.
-        self.cwnd = self.bytes_in_flight();
+        //self.cwnd = self.bytes_in_flight();
     }
 
     /// Called when exiting fast recovery
@@ -945,7 +945,7 @@ impl BbrCongestionController {
         // has packet_conservation as false
         debug_assert!(!self.recovery_state.packet_conservation());
 
-        self.restore_cwnd();
+        //self.restore_cwnd();
 
         // Since we are exiting a recovery period, we need to make sure the model is updated
         // and the congestion window is bound appropriately
