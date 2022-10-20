@@ -47,6 +47,24 @@ impl Builder {
         connection
     }
 
+    pub fn scope<F: FnOnce(&mut Scope)>(&mut self, f: F) -> &mut Self {
+        let mut scope = Scope::new(self.id, self.state.clone());
+        f(&mut scope);
+
+        let threads = scope.finish();
+
+        if threads.is_empty() {
+            // no-op
+        } else if threads.len() == 1 {
+            // only a single thread was spawned, which is the same as not spawning it
+            self.ops.extend(threads.into_iter().flatten());
+        } else {
+            self.ops.push(op::Client::Scope { threads });
+        }
+
+        self
+    }
+
     pub fn checkpoint(
         &mut self,
     ) -> (
@@ -58,6 +76,33 @@ impl Builder {
 
     pub(crate) fn finish(self) -> Vec<op::Client> {
         self.ops
+    }
+}
+
+pub struct Scope {
+    id: u64,
+    state: super::State,
+    threads: Vec<Vec<op::Client>>,
+}
+
+impl Scope {
+    pub(crate) fn new(id: u64, state: super::State) -> Self {
+        Self {
+            id,
+            state,
+            threads: vec![],
+        }
+    }
+
+    pub fn spawn<F: FnOnce(&mut Builder)>(&mut self, f: F) -> &mut Self {
+        let mut builder = Builder::new(self.id, self.state.clone());
+        f(&mut builder);
+        self.threads.push(builder.finish());
+        self
+    }
+
+    pub(crate) fn finish(self) -> Vec<Vec<op::Client>> {
+        self.threads
     }
 }
 

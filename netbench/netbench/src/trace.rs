@@ -86,6 +86,13 @@ pub trait Trace {
     }
 
     #[inline(always)]
+    fn profile(&mut self, now: Timestamp, id: u64, time: Duration) {
+        let _ = now;
+        let _ = id;
+        let _ = time;
+    }
+
+    #[inline(always)]
     fn park(&mut self, now: Timestamp, id: u64) {
         let _ = now;
         let _ = id;
@@ -176,6 +183,12 @@ impl<A: Trace, B: Trace> Trace for (A, B) {
     fn trace(&mut self, now: Timestamp, id: u64) {
         self.0.trace(now, id);
         self.1.trace(now, id)
+    }
+
+    #[inline(always)]
+    fn profile(&mut self, now: Timestamp, id: u64, time: Duration) {
+        self.0.profile(now, id, time);
+        self.1.profile(now, id, time)
     }
 
     #[inline]
@@ -279,6 +292,13 @@ impl<T: Trace> Trace for Option<T> {
     fn trace(&mut self, now: Timestamp, id: u64) {
         if let Some(t) = self.as_mut() {
             t.trace(now, id);
+        }
+    }
+
+    #[inline(always)]
+    fn profile(&mut self, now: Timestamp, id: u64, time: Duration) {
+        if let Some(t) = self.as_mut() {
+            t.profile(now, id, time);
         }
     }
 
@@ -495,15 +515,28 @@ impl<O: Output> Trace for Logger<O> {
             let id = self.id;
             let scope = &self.scope;
             let verbose = self.verbose;
+            self.output
+                .log(id, scope, verbose, now, format_args!("trce[{}]", msg));
+        } else {
+            self.log(now, format_args!("trce[{}]", id));
+        }
+    }
+
+    #[inline(always)]
+    fn profile(&mut self, now: Timestamp, id: u64, time: Duration) {
+        if let Some(msg) = self.traces.get(id as usize).filter(|_| self.verbose) {
+            let id = self.id;
+            let scope = &self.scope;
+            let verbose = self.verbose;
             self.output.log(
                 id,
                 scope,
                 verbose,
                 now,
-                format_args!("trce[{}]={}", id, msg),
+                format_args!("prof[{}]={:?}", msg, time),
             );
         } else {
-            self.log(now, format_args!("trce[{}]", id));
+            self.log(now, format_args!("prof[{}]={:?}", id, time));
         }
     }
 

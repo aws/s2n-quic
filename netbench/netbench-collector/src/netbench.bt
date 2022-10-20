@@ -49,6 +49,13 @@ usdt:{{bin}}:netbench__accept
   @A=count();
 }
 
+usdt:{{bin}}:netbench__profile
+/pid==cpid/
+{
+  @p[arg1]=stats(arg2);
+  @P[arg1]=hist(arg2);
+}
+
 uprobe:{{libc}}:malloc
 /pid==cpid/
 {
@@ -124,6 +131,12 @@ i:ms:{{interval_ms}} {
 
   print(@A);
   clear(@A);
+
+  print(@p);
+  clear(@p);
+
+  print(@P);
+  clear(@P);
 
   print("===");
 }

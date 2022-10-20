@@ -17,9 +17,12 @@ pub fn run(args: &Args) -> Result<()> {
 
     let driver = &args.driver;
     let interval = args.interval;
-    let scenario = &args.scenario;
+    let scenario_path = &args.scenario;
+    let scenario = args.scenario()?;
 
-    command.env("TRACE", "disabled").env("SCENARIO", scenario);
+    command
+        .env("TRACE", "disabled")
+        .env("SCENARIO", scenario_path);
 
     let mut proc = command.spawn()?;
     let info = Proc::new(proc.id());
@@ -27,7 +30,8 @@ pub fn run(args: &Args) -> Result<()> {
     Initialize {
         pid: proc.id() as _,
         driver: driver.to_string(),
-        scenario: scenario.to_string(),
+        scenario: scenario_path.to_string(),
+        traces: scenario.traces.to_vec(),
         ..Default::default()
     }
     .print()?;

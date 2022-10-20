@@ -36,26 +36,8 @@ impl Report {
         let mut signals = vec![];
         let mut names = vec![];
         let mut scenario_names = BTreeSet::new();
-
-        // expose an option to select the view
-        signals.push(json!({
-            "name": "ui$view",
-            "value": Stat::NAMES[0],
-            "bind": {
-                "input": "select",
-                "name": "View",
-                "options": Stat::NAMES,
-            },
-        }));
-
-        // translate the view name into an index
-        signals.push(json!({
-            "name": "sig$view",
-            "value": "0",
-            "update": format!("indexof({:?},ui$view)", Stat::NAMES),
-        }));
-
         let mut stream_ids = HashMap::new();
+        let mut trace_ids = vec![];
         let mut pids = vec![];
 
         for (pid, input) in self.inputs.iter().enumerate() {
@@ -66,7 +48,10 @@ impl Report {
             let mut first = String::new();
             input.read_line(&mut first)?;
             let Initialize {
-                driver, scenario, ..
+                driver,
+                scenario,
+                traces,
+                ..
             } = serde_json::from_str(&first)?;
 
             let name = driver
@@ -108,6 +93,7 @@ impl Report {
                     accept,
                     send,
                     receive,
+                    profiles,
                 } = event?;
 
                 let x = time.as_millis() as u64;
@@ -208,6 +194,47 @@ impl Report {
                     );
                 }
 
+                for (trace_id, hist) in profiles {
+                    let trace = &traces[trace_id as usize];
+                    let trace_id = if let Some(id) = trace_ids.iter().position(|v| v == trace) {
+                        id as u64
+                    } else {
+                        let id = trace_ids.len() as u64;
+                        trace_ids.push(trace.to_string());
+                        id
+                    };
+
+                    // offset the stat id with the built-in names
+                    let stat = Stat::NAMES.len() as u64 + trace_id;
+
+                    let y = hist.stat.average();
+
+                    // convert micros to seconds
+                    let y = y / 1_000_000.0;
+
+                    stats_table.push(Row {
+                        x,
+                        y,
+                        pid,
+                        stat,
+                        stream_id: None,
+                    });
+
+                    /*
+                     // TODO figure out how to visualize multiple histograms over time
+                    for bucket in hist.buckets {
+                        profile_hist_table.push(Bucket {
+                            x,
+                            pid,
+                            trace_id,
+                            lower: bucket.lower,
+                            upper: bucket.upper,
+                            count: bucket.count,
+                        });
+                    }
+                    */
+                }
+
                 prev_x = x;
             }
         }
@@ -223,6 +250,33 @@ impl Report {
                 .then(a.stat.cmp(&b.stat))
                 .then(a.stream_id.cmp(&b.stream_id))
         });
+
+        let mut view_names = Stat::NAMES
+            .iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<_>>();
+
+        for trace in &trace_ids {
+            view_names.push(format!("trace - {trace}"));
+        }
+
+        // expose an option to select the view
+        signals.push(json!({
+            "name": "ui$view",
+            "value": &view_names[0],
+            "bind": {
+                "input": "select",
+                "name": "View",
+                "options": view_names,
+            },
+        }));
+
+        // translate the view name into an index
+        signals.push(json!({
+            "name": "sig$view",
+            "value": "0",
+            "update": format!("indexof({:?},ui$view)", view_names),
+        }));
 
         signals.push(json!({
             "name": "pids",
@@ -367,4 +421,19 @@ struct Row {
     stat: u64,
     #[serde(rename = "i", skip_serializing_if = "Option::is_none")]
     stream_id: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+struct Bucket {
+    x: u64,
+    #[serde(rename = "p")]
+    pid: u64,
+    #[serde(rename = "t")]
+    trace_id: u64,
+    #[serde(rename = "l")]
+    lower: f64,
+    #[serde(rename = "u")]
+    upper: f64,
+    #[serde(rename = "c")]
+    count: u64,
 }

@@ -61,6 +61,7 @@ impl Client {
             id: 0,
             rx_buffer: *self.opts.rx_buffer as _,
             tx_buffer: *self.opts.tx_buffer as _,
+            nagle: self.opts.nagle,
         })
     }
 }
@@ -75,6 +76,7 @@ struct ClientImpl {
     id: u64,
     rx_buffer: usize,
     tx_buffer: usize,
+    nagle: bool,
 }
 
 impl ClientImpl {
@@ -102,9 +104,15 @@ impl<'a> netbench::client::Client<'a> for ClientImpl {
         let server_name = server_name.to_string();
         let rx_buffer = self.rx_buffer;
         let tx_buffer = self.tx_buffer;
+        let nagle = self.nagle;
 
         let fut = async move {
             let conn = TcpStream::connect(addr).await?;
+
+            if !nagle {
+                let _ = conn.set_nodelay(true);
+            }
+
             let conn = io::BufStream::with_capacity(rx_buffer, tx_buffer, conn);
 
             let mut conn = connector.connect(&server_name, conn).await?;

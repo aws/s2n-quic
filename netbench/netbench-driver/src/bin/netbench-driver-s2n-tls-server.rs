@@ -46,6 +46,11 @@ impl Server {
         let mut conn_id = 0;
         loop {
             let (connection, _addr) = server.accept().await?;
+
+            if !self.opts.nagle {
+                let _ = connection.set_nodelay(true);
+            }
+
             let scenario = scenario.clone();
             let id = conn_id;
             conn_id += 1;

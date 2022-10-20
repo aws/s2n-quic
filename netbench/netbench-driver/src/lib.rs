@@ -43,6 +43,9 @@ pub struct Server {
 
     #[structopt(env = "SCENARIO")]
     pub scenario: Scenario,
+
+    #[structopt(long)]
+    pub nagle: bool,
 }
 
 impl Server {
@@ -89,6 +92,9 @@ pub struct Client {
 
     #[structopt(env = "SCENARIO")]
     pub scenario: Scenario,
+
+    #[structopt(long)]
+    pub nagle: bool,
 }
 
 impl Client {

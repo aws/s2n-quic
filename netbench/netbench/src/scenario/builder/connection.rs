@@ -51,6 +51,10 @@ impl<E: Endpoint> Builder<E> {
         }
     }
 
+    fn child_scope(&self) -> Self {
+        Self::new(self.state.clone())
+    }
+
     pub fn checkpoint<Location>(
         &self,
     ) -> (
@@ -63,6 +67,7 @@ impl<E: Endpoint> Builder<E> {
     sync!(E, Local);
     sleep!();
     trace!();
+    iterate!();
 
     pub fn scope<F: FnOnce(&mut Scope<E>)>(&mut self, f: F) -> &mut Self {
         let mut scope = Scope::new(self.state.clone());

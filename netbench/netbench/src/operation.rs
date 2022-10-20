@@ -44,8 +44,53 @@ pub enum Connection {
     Unpark { checkpoint: u64 },
     /// Emit a trace event
     Trace { trace_id: u64 },
+    /// Profiles the time it takes to perform the contained operations
+    Profile {
+        trace_id: u64,
+        operations: Vec<Connection>,
+    },
+    /// Evaluates the contained operations for the specified value
+    Iterate {
+        value: IterateValue,
+        operations: Vec<Connection>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        trace_id: Option<u64>,
+    },
     /// Perform operations concurrently
     Scope { threads: Vec<Vec<Connection>> },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum IterateValue {
+    /// Iterate for the specified duration
+    Time {
+        #[serde(with = "duration_format", rename = "amount_ms")]
+        amount: Duration,
+    },
+    /// Iterate for the specified count
+    Count { amount: u64 },
+}
+
+impl IterateValue {
+    pub(crate) fn is_zero(&self) -> bool {
+        match self {
+            Self::Time { amount } => *amount == Duration::ZERO,
+            Self::Count { amount } => *amount == 0,
+        }
+    }
+}
+
+impl From<Duration> for IterateValue {
+    fn from(amount: Duration) -> Self {
+        Self::Time { amount }
+    }
+}
+
+impl From<u64> for IterateValue {
+    fn from(amount: u64) -> Self {
+        Self::Count { amount }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Hash)]
