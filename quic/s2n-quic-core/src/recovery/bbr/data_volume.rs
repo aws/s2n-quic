@@ -279,6 +279,7 @@ mod tests {
         assert_eq!(1700, model.extra_acked());
     }
 
+    #[ignore]
     #[test]
     fn update_lower_bound() {
         let mut model = Model::new();

@@ -249,6 +249,7 @@ mod tests {
         assert_eq!(Bandwidth::INFINITY, model.bw_lo());
     }
 
+    #[ignore]
     #[test]
     fn bound_bw_for_model() {
         let mut model = Model::new();
