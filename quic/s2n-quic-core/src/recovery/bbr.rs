@@ -9,7 +9,10 @@ use crate::{
     recovery::{
         bandwidth,
         bandwidth::{Bandwidth, RateSample},
-        bbr::{pacing::Pacer, probe_bw::CyclePhase},
+        bbr::{
+            pacing::Pacer,
+            probe_bw::{CyclePhase, PROBE_BW_FULL_LOSS_COUNT},
+        },
         congestion_controller,
         congestion_controller::Publisher,
         CongestionController, RttEstimator,
@@ -23,7 +26,6 @@ use core::{
 };
 use num_rational::Ratio;
 use num_traits::{CheckedMul, Inv, One};
-use crate::recovery::bbr::probe_bw::PROBE_BW_FULL_LOSS_COUNT;
 
 mod congestion;
 mod data_rate;
