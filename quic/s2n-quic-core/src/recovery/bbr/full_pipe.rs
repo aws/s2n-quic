@@ -26,8 +26,6 @@ pub(crate) struct Estimator {
     //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.13
     //# The number of non-app-limited round trips without large increases in BBR.full_bw.
     full_bw_count: Counter<u8, Saturating>,
-    /// The number of discontiguous bursts of lost packets in the last round
-    loss_bursts: Counter<u8, Saturating>,
     /// The number of rounds where the ECN CE markings exceed ECN_THRESH
     ecn_ce_rounds: Counter<u8, Saturating>,
 }
@@ -65,13 +63,15 @@ impl Estimator {
     pub fn on_loss_round_start(
         &mut self,
         rate_sample: bandwidth::RateSample,
+        loss_bursts_in_round: u8,
         max_datagram_size: u16,
     ) {
         if self.filled_pipe {
             return;
         }
 
-        self.filled_pipe = self.excessive_inflight(rate_sample, max_datagram_size);
+        self.filled_pipe =
+            self.excessive_inflight(rate_sample, loss_bursts_in_round, max_datagram_size);
     }
 
     /// Determines if the rate of increase of bandwidth has decreased enough to estimate the
@@ -133,6 +133,7 @@ impl Estimator {
     fn excessive_inflight(
         &mut self,
         rate_sample: bandwidth::RateSample,
+        loss_bursts_in_round: u8,
         max_datagram_size: u16,
     ) -> bool {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.1.3
@@ -141,8 +142,12 @@ impl Estimator {
         //#
         //#    *  The connection has been in fast recovery for at least one full round trip.
         //#    *  The loss rate over the time scale of a single full round trip exceeds BBRLossThresh (2%).
+
+        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.1.3
+        //= type=exception
+        //= reason=Chromium and Linux TCP BBRv2 both use 8 lost bursts in a round trip
         //#    *  There are at least BBRStartupFullLossCnt=3 discontiguous sequence ranges lost in that round trip.
-        const STARTUP_FULL_LOSS_COUNT: u8 = 3;
+        const STARTUP_FULL_LOSS_COUNT: u8 = 8;
 
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.1.3
         //= type=exception
@@ -154,15 +159,12 @@ impl Estimator {
         // This is more in line with the Chromium BBRv2 implementation.
         // See: https://source.chromium.org/chromium/chromium/src/+/main:net/third_party/quiche/src/quiche/quic/core/congestion_control/bbr2_startup.cc;l=104
 
-        if BbrCongestionController::is_inflight_too_high(rate_sample, max_datagram_size)
-            && self.loss_bursts >= STARTUP_FULL_LOSS_COUNT
-        {
-            return true;
-        }
-
-        self.loss_bursts = Counter::default();
-
-        false
+        BbrCongestionController::is_inflight_too_high(
+            rate_sample,
+            max_datagram_size,
+            loss_bursts_in_round,
+            STARTUP_FULL_LOSS_COUNT,
+        )
     }
 
     /// Determines if enough consecutive rounds of explicit congestion have been encountered that we
@@ -182,18 +184,6 @@ impl Estimator {
         }
 
         self.ecn_ce_rounds >= STARTUP_FULL_ECN_COUNT
-    }
-
-    /// Called for each lost packet
-    #[inline]
-    pub fn on_packet_lost(&mut self, new_loss_burst: bool) {
-        if self.filled_pipe {
-            return;
-        }
-
-        if new_loss_burst {
-            self.loss_bursts += 1;
-        }
     }
 
     #[cfg(test)]

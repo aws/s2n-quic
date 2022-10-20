@@ -983,7 +983,7 @@ fn model_update_required() {
     assert!(!bbr.model_update_required());
 
     // loss in round
-    bbr.congestion_state.on_packet_lost(100);
+    bbr.congestion_state.on_packet_lost(100, false);
     assert!(bbr.model_update_required());
     bbr.congestion_state.reset();
     assert!(!bbr.model_update_required());
