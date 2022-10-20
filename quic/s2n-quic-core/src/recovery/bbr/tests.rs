@@ -495,6 +495,7 @@ fn is_inflight_too_high() {
 //#   cap = min(cap, BBR.inflight_lo)
 //#   cap = max(cap, BBRMinPipeCwnd)
 //#   cwnd = min(cwnd, cap)
+#[ignore]
 #[test]
 fn bound_cwnd_for_model() {
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
@@ -772,6 +773,7 @@ fn on_enter_and_exit_fast_recovery() {
 //# if (IsInflightTooHigh(rs))
 //#   rs.tx_in_flight = BBRInflightHiFromLostPacket(rs, packet)
 //#   BBRHandleInflightTooHigh(rs)
+#[ignore]
 #[test]
 fn handle_lost_packet() {
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);

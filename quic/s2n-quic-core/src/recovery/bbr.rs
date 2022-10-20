@@ -45,7 +45,7 @@ const LOSS_THRESH: Ratio<u32> = Ratio::new_raw(1, 50);
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.8
 //# The default multiplicative decrease to make upon each round trip during which
 //# the connection detects packet loss (the value is 0.7)
-const BETA: Ratio<u64> = Ratio::new_raw(7, 10);
+const BETA: Ratio<u64> = Ratio::new_raw(85, 100);
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#2.8
 //# The multiplicative factor to apply to BBR.inflight_hi when attempting to leave free headroom in
