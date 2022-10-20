@@ -275,8 +275,10 @@ impl Estimator {
             self.delivered_time = Some(now);
         }
 
+        let bytes_in_flight = bytes_in_flight.saturating_add(sent_bytes as u32);
+
         if app_limited.unwrap_or(true) {
-            self.on_app_limited(bytes_in_flight.saturating_add(sent_bytes as u32));
+            self.on_app_limited(bytes_in_flight);
         }
 
         PacketInfo {
