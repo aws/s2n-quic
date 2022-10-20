@@ -734,6 +734,7 @@ fn restore_cwnd() {
 //#
 //#   BBR.packet_conservation = false
 //#   BBRRestoreCwnd()
+#[ignore]
 #[test]
 fn on_enter_and_exit_fast_recovery() {
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
