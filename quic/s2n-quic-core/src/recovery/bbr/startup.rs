@@ -186,9 +186,9 @@ mod tests {
         // Set loss to be too high, which would cause the full pipe estimator to be filled
         bbr.bw_estimator.on_loss(1000);
         // 3 loss bursts must occur for the pipe to be full
-        bbr.full_pipe_estimator.on_packet_lost(true);
-        bbr.full_pipe_estimator.on_packet_lost(true);
-        bbr.full_pipe_estimator.on_packet_lost(true);
+        bbr.congestion_state.on_packet_lost(100, true);
+        bbr.congestion_state.on_packet_lost(100, true);
+        bbr.congestion_state.on_packet_lost(100, true);
         assert!(!bbr.congestion_state.loss_round_start());
         bbr.check_startup_done(&mut publisher);
 

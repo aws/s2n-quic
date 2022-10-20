@@ -159,6 +159,15 @@ impl Estimator {
         // This is more in line with the Chromium BBRv2 implementation.
         // See: https://source.chromium.org/chromium/chromium/src/+/main:net/third_party/quiche/src/quiche/quic/core/congestion_control/bbr2_startup.cc;l=104
 
+        if loss_bursts_in_round < STARTUP_FULL_LOSS_COUNT {
+            // is_inflight_too_high returns true when ECN CE markings exceed the threshold, even
+            // if the loss burst count is below the threshold. During startup, excessive ECN CE
+            // is separately checked over multiple rounds, so return immediately if we have
+            // not seen enough loss bursts. This follows the Linux TCP BBRv2 implementation
+            // See https://github.com/google/bbr/blob/1a45fd4faf30229a3d3116de7bfe9d2f933d3562/net/ipv4/tcp_bbr2.c#L2150
+            return false;
+        }
+
         BbrCongestionController::is_inflight_too_high(
             rate_sample,
             max_datagram_size,
@@ -253,20 +262,13 @@ mod tests {
             ..Default::default()
         };
 
-        // Only 2 loss bursts, not enough to be considered excessive loss
-        fp_estimator.on_packet_lost(true);
-        fp_estimator.on_packet_lost(true);
-
-        fp_estimator.on_loss_round_start(rate_sample, MINIMUM_MTU);
+        // Only 7 loss bursts, not enough to be considered excessive loss
+        fp_estimator.on_loss_round_start(rate_sample, 7, MINIMUM_MTU);
         // The pipe has not been filled yet since there were only 2 loss bursts
         assert!(!fp_estimator.filled_pipe());
 
         // 3 loss bursts, enough to be considered excessive loss
-        fp_estimator.on_packet_lost(true);
-        fp_estimator.on_packet_lost(true);
-        fp_estimator.on_packet_lost(true);
-
-        fp_estimator.on_loss_round_start(rate_sample, MINIMUM_MTU);
+        fp_estimator.on_loss_round_start(rate_sample, 8, MINIMUM_MTU);
         // The pipe has been filled due to loss
         assert!(fp_estimator.filled_pipe());
     }
@@ -283,23 +285,10 @@ mod tests {
             ..Default::default()
         };
 
-        // In recovery the first round
-        fp_estimator.on_loss_round_start(rate_sample, MINIMUM_MTU);
+        // Only 7 loss bursts, not enough to be considered excessive loss
+        fp_estimator.on_loss_round_start(rate_sample, 7, MINIMUM_MTU);
 
-        // Only 2 loss bursts, not enough to be considered excessive loss
-        fp_estimator.on_packet_lost(true);
-        fp_estimator.on_packet_lost(true);
-
-        fp_estimator.on_loss_round_start(rate_sample, MINIMUM_MTU);
-        // The pipe has not been filled yet since there were only 2 loss bursts
-        assert!(!fp_estimator.filled_pipe());
-
-        // 3 loss bursts, enough to be considered excessive loss
-        fp_estimator.on_packet_lost(true);
-        fp_estimator.on_packet_lost(true);
-        fp_estimator.on_packet_lost(true);
-
-        fp_estimator.on_loss_round_start(rate_sample, MINIMUM_MTU);
+        fp_estimator.on_loss_round_start(rate_sample, 8, MINIMUM_MTU);
         // The pipe has been filled due to ECN
         assert!(fp_estimator.filled_pipe());
     }
@@ -315,16 +304,8 @@ mod tests {
             lost_bytes: 2,
             ..Default::default()
         };
-
-        // In recovery the first round
-        fp_estimator.on_loss_round_start(rate_sample, MINIMUM_MTU);
-
-        // 3 loss bursts, enough to be considered excessive loss
-        fp_estimator.on_packet_lost(true);
-        fp_estimator.on_packet_lost(true);
-        fp_estimator.on_packet_lost(true);
-
-        fp_estimator.on_loss_round_start(rate_sample, MINIMUM_MTU);
+        // 8 loss bursts, enough to be considered excessive loss
+        fp_estimator.on_loss_round_start(rate_sample, 8, MINIMUM_MTU);
         // The pipe has not been filled yet since the loss rate was not high enough
         assert!(!fp_estimator.filled_pipe());
     }
