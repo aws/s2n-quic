@@ -9,7 +9,10 @@ use crate::{
     recovery::{
         bandwidth,
         bandwidth::{Bandwidth, RateSample},
-        bbr::{pacing::Pacer, probe_bw::CyclePhase},
+        bbr::{
+            pacing::Pacer,
+            probe_bw::{CyclePhase, PROBE_BW_FULL_LOSS_COUNT},
+        },
         congestion_controller,
         congestion_controller::Publisher,
         CongestionController, RttEstimator,
@@ -472,8 +475,7 @@ impl CongestionController for BbrCongestionController {
             self.on_enter_fast_recovery();
         }
         self.congestion_state
-            .on_packet_lost(self.bw_estimator.delivered_bytes());
-        self.full_pipe_estimator.on_packet_lost(new_loss_burst);
+            .on_packet_lost(self.bw_estimator.delivered_bytes(), new_loss_burst);
 
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.4
         //# BBRUpdateOnLoss(packet):
@@ -725,8 +727,18 @@ impl BbrCongestionController {
 
     /// True if the amount of loss or ECN CE markings exceed the BBR thresholds
     #[inline]
-    fn is_inflight_too_high(rate_sample: RateSample, max_datagram_size: u16) -> bool {
-        if Self::is_loss_too_high(rate_sample.lost_bytes, rate_sample.bytes_in_flight) {
+    fn is_inflight_too_high(
+        rate_sample: RateSample,
+        max_datagram_size: u16,
+        loss_bursts: u8,
+        loss_burst_limit: u8,
+    ) -> bool {
+        if Self::is_loss_too_high(
+            rate_sample.lost_bytes,
+            rate_sample.bytes_in_flight,
+            loss_bursts,
+            loss_burst_limit,
+        ) {
             return true;
         }
 
@@ -742,13 +754,20 @@ impl BbrCongestionController {
         false
     }
 
-    /// True if the amount of `lost_bytes` exceeds the BBR loss threshold
+    /// True if the amount of `lost_bytes` exceeds the BBR loss threshold and the count of loss
+    /// bursts is greater than or equal to the loss burst limit
     #[inline]
-    fn is_loss_too_high(lost_bytes: u64, bytes_inflight: u32) -> bool {
+    fn is_loss_too_high(
+        lost_bytes: u64,
+        bytes_inflight: u32,
+        loss_bursts: u8,
+        loss_burst_limit: u8,
+    ) -> bool {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
         //# IsInflightTooHigh()
         //#   return (rs.lost > rs.tx_in_flight * BBRLossThresh)
-        lost_bytes > (LOSS_THRESH * bytes_inflight).to_integer() as u64
+        loss_bursts >= loss_burst_limit
+            && lost_bytes > (LOSS_THRESH * bytes_inflight).to_integer() as u64
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
@@ -979,7 +998,12 @@ impl BbrCongestionController {
             .try_into()
             .unwrap_or(u32::MAX);
 
-        if Self::is_loss_too_high(lost_since_transmit as u64, packet_info.bytes_in_flight) {
+        if Self::is_loss_too_high(
+            lost_since_transmit as u64,
+            packet_info.bytes_in_flight,
+            self.congestion_state.loss_bursts_in_round(),
+            PROBE_BW_FULL_LOSS_COUNT,
+        ) {
             let inflight_hi_from_lost_packet =
                 Self::inflight_hi_from_lost_packet(lost_bytes, lost_since_transmit, packet_info);
             self.on_inflight_too_high(

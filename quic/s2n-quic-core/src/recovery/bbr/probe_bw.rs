@@ -23,6 +23,11 @@ const MAX_BW_PROBE_UP_ROUNDS: u8 = 30;
 /// Max number of packet-timed rounds to wait before probing for bandwidth
 const MAX_BW_PROBE_ROUNDS: u8 = 63;
 
+/// The number of discontiguous bursts of loss required before inflight_hi is lowered
+/// Value from:
+/// https://source.chromium.org/chromium/chromium/src/+/main:net/third_party/quiche/src/quiche/quic/core/quic_protocol_flags_list.h;l=139;bpv=1;bpt=0
+pub(super) const PROBE_BW_FULL_LOSS_COUNT: u8 = 2;
+
 /// Cwnd gain used in the Probe BW state
 ///
 /// This value is defined in the table in
@@ -626,7 +631,12 @@ impl BbrCongestionController {
             self.update_ack_phase(rate_sample);
         }
 
-        if Self::is_inflight_too_high(rate_sample, self.max_datagram_size) {
+        if Self::is_inflight_too_high(
+            rate_sample,
+            self.max_datagram_size,
+            self.congestion_state.loss_bursts_in_round(),
+            PROBE_BW_FULL_LOSS_COUNT,
+        ) {
             if self.bw_probe_samples {
                 // Inflight is too high and the sample is from bandwidth probing: lower inflight downward
                 self.on_inflight_too_high(

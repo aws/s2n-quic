@@ -60,8 +60,11 @@ impl BbrCongestionController {
             // in tcp_bbr2.c/bbr2_check_loss_too_high_in_startup
             //
             // See https://github.com/google/bbr/blob/1a45fd4faf30229a3d3116de7bfe9d2f933d3562/net/ipv4/tcp_bbr2.c#L2133
-            self.full_pipe_estimator
-                .on_loss_round_start(self.bw_estimator.rate_sample(), self.max_datagram_size)
+            self.full_pipe_estimator.on_loss_round_start(
+                self.bw_estimator.rate_sample(),
+                self.congestion_state.loss_bursts_in_round(),
+                self.max_datagram_size,
+            )
         }
 
         if self.state.is_startup() && self.full_pipe_estimator.filled_pipe() {
@@ -182,10 +185,11 @@ mod tests {
 
         // Set loss to be too high, which would cause the full pipe estimator to be filled
         bbr.bw_estimator.on_loss(1000);
-        // 3 loss bursts must occur for the pipe to be full
-        bbr.full_pipe_estimator.on_packet_lost(true);
-        bbr.full_pipe_estimator.on_packet_lost(true);
-        bbr.full_pipe_estimator.on_packet_lost(true);
+        bbr.bw_estimator.set_delivered_bytes_for_test(100);
+        // 8 loss bursts must occur for the pipe to be full
+        for _ in 0..8 {
+            bbr.congestion_state.on_packet_lost(100, true);
+        }
         assert!(!bbr.congestion_state.loss_round_start());
         bbr.check_startup_done(&mut publisher);
 

@@ -440,10 +440,20 @@ fn is_inflight_too_high() {
         bytes_in_flight: 100,
         ..Default::default()
     };
-    // loss rate higher than 2% threshold
+    // loss rate higher than 2% threshold and loss bursts = limit
     assert!(BbrCongestionController::is_inflight_too_high(
         rate_sample,
-        MINIMUM_MTU
+        MINIMUM_MTU,
+        2,
+        2
+    ));
+
+    // loss rate higher than 2% threshold but loss bursts < limit
+    assert!(!BbrCongestionController::is_inflight_too_high(
+        rate_sample,
+        MINIMUM_MTU,
+        1,
+        2
     ));
 
     let rate_sample = RateSample {
@@ -454,7 +464,9 @@ fn is_inflight_too_high() {
     // loss rate <= 2% threshold
     assert!(!BbrCongestionController::is_inflight_too_high(
         rate_sample,
-        MINIMUM_MTU
+        MINIMUM_MTU,
+        2,
+        2
     ));
 
     let rate_sample = RateSample {
@@ -465,7 +477,9 @@ fn is_inflight_too_high() {
     // ecn rate higher than 50% threshold
     assert!(BbrCongestionController::is_inflight_too_high(
         rate_sample,
-        MINIMUM_MTU
+        MINIMUM_MTU,
+        0,
+        2
     ));
 
     let rate_sample = RateSample {
@@ -476,7 +490,9 @@ fn is_inflight_too_high() {
     // ecn rate <= 50% threshold
     assert!(!BbrCongestionController::is_inflight_too_high(
         rate_sample,
-        MINIMUM_MTU
+        MINIMUM_MTU,
+        0,
+        2,
     ));
 }
 
@@ -792,6 +808,9 @@ fn handle_lost_packet() {
     };
 
     enter_probe_bw_state(&mut bbr, CyclePhase::Up, &mut publisher);
+    // Two lost bursts to trigger inflight being too high
+    bbr.congestion_state.on_packet_lost(500, true);
+    bbr.congestion_state.on_packet_lost(500, true);
     bbr.handle_lost_packet(
         1000,
         lost_packet,
@@ -834,6 +853,9 @@ fn handle_lost_packet() {
         .update_min_rtt(Duration::from_millis(10), now);
     bbr.data_rate_model.update_max_bw(rate_sample);
     bbr.data_rate_model.bound_bw_for_model();
+    // Two lost bursts to trigger inflight being too high
+    bbr.congestion_state.on_packet_lost(500, true);
+    bbr.congestion_state.on_packet_lost(500, true);
 
     bbr.handle_lost_packet(
         1000,
@@ -983,7 +1005,7 @@ fn model_update_required() {
     assert!(!bbr.model_update_required());
 
     // loss in round
-    bbr.congestion_state.on_packet_lost(100);
+    bbr.congestion_state.on_packet_lost(100, true);
     assert!(bbr.model_update_required());
     bbr.congestion_state.reset();
     assert!(!bbr.model_update_required());
