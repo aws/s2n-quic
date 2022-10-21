@@ -322,7 +322,7 @@ impl AckManager {
 
             // TODO support delayed ack proposal
             // https://tools.ietf.org/html/draft-iyengar-quic-delayed-ack-00
-            let packet_tolerance = 2;
+            let packet_tolerance = 10;
 
             should_activate |= self.processed_packets_since_transmission >= packet_tolerance;
 
