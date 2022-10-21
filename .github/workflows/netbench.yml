@@ -214,7 +214,7 @@ jobs:
           name: netbench-report
           path: reports
 
-      - uses: aws-actions/configure-aws-credentials@v1.6.1
+      - uses: aws-actions/configure-aws-credentials@v1.7.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -230,7 +230,7 @@ jobs:
           URL="$CDN/$TARGET/index.html"
           echo "::set-output name=URL::$URL"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
+      - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "netbench / report"
