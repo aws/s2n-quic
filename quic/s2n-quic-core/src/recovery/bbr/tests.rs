@@ -10,7 +10,7 @@ use crate::{
     recovery::{
         bandwidth::{Bandwidth, PacketInfo, RateSample},
         bbr,
-        bbr::{probe_bw::CyclePhase, probe_rtt, BbrCongestionController, State, State::ProbeRtt},
+        bbr::{probe_bw::CyclePhase, probe_rtt, BbrCongestionController, State},
         congestion_controller::{PathPublisher, Publisher},
         CongestionController,
     },
@@ -511,7 +511,6 @@ fn is_inflight_too_high() {
 //#   cap = min(cap, BBR.inflight_lo)
 //#   cap = max(cap, BBRMinPipeCwnd)
 //#   cwnd = min(cwnd, cap)
-#[ignore]
 #[test]
 fn bound_cwnd_for_model() {
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
@@ -678,36 +677,17 @@ fn set_cwnd_clamp() {
 #[test]
 fn save_cwnd() {
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
-
-    // Not in recovery
-    bbr.prior_cwnd = 1000;
-    bbr.cwnd = 2000;
-    bbr.save_cwnd();
-
-    assert_eq!(2000, bbr.prior_cwnd);
+    bbr.state = State::ProbeRtt(probe_rtt::State::default());
 
     bbr.prior_cwnd = 2000;
     bbr.cwnd = 1000;
     bbr.save_cwnd();
-    assert_eq!(1000, bbr.prior_cwnd);
-
-    // Enter probe RTT
-    bbr.state = ProbeRtt(probe_rtt::State::default());
-    assert!(bbr.state.is_probing_rtt());
-
-    bbr.prior_cwnd = 2000;
-    bbr.cwnd = 1000;
     assert_eq!(2000, bbr.prior_cwnd);
 
-    // Enter recovery
-    bbr.state = State::Startup;
-    let now = NoopClock.get_time();
-    bbr.recovery_state.on_congestion_event(now);
-    assert!(bbr.recovery_state.in_recovery());
-
-    bbr.prior_cwnd = 2000;
-    bbr.cwnd = 1000;
-    assert_eq!(2000, bbr.prior_cwnd);
+    bbr.prior_cwnd = 4000;
+    bbr.cwnd = 5000;
+    bbr.save_cwnd();
+    assert_eq!(5000, bbr.prior_cwnd);
 }
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
@@ -717,6 +697,7 @@ fn save_cwnd() {
 #[test]
 fn restore_cwnd() {
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    bbr.state = State::ProbeRtt(probe_rtt::State::default());
 
     bbr.prior_cwnd = 1000;
     bbr.cwnd = 2000;
@@ -743,42 +724,6 @@ fn restore_cwnd() {
 //#   cwnd = packets_in_flight + max(rs.newly_acked, 1)
 //#   BBR.packet_conservation = true
 
-//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
-//= type=test
-//# Upon exiting loss recovery (RTO recovery or Fast Recovery), either by repairing all
-//# losses or undoing recovery, BBR restores the best-known cwnd value we had upon entering
-//# loss recovery:
-//#
-//#   BBR.packet_conservation = false
-//#   BBRRestoreCwnd()
-#[ignore]
-#[test]
-fn on_enter_and_exit_fast_recovery() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
-    bbr.cwnd = 100_000;
-    bbr.bytes_in_flight = Counter::new(75_000);
-
-    // Enter recovery
-    let now = NoopClock.get_time();
-    bbr.recovery_state.on_congestion_event(now);
-    assert!(bbr.recovery_state.in_recovery());
-
-    bbr.on_enter_fast_recovery();
-
-    assert_eq!(75_000, bbr.congestion_window());
-
-    // Exit recovery
-    bbr.recovery_state
-        .on_ack(true, now + Duration::from_millis(1));
-    assert!(!bbr.recovery_state.in_recovery());
-    bbr.try_fast_path = true;
-
-    bbr.on_exit_fast_recovery();
-
-    assert_eq!(100_000, bbr.cwnd);
-    assert!(!bbr.try_fast_path)
-}
-
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.2
 //= type=test
 //# if (!BBR.bw_probe_samples)
@@ -789,7 +734,6 @@ fn on_enter_and_exit_fast_recovery() {
 //# if (IsInflightTooHigh(rs))
 //#   rs.tx_in_flight = BBRInflightHiFromLostPacket(rs, packet)
 //#   BBRHandleInflightTooHigh(rs)
-#[ignore]
 #[test]
 fn handle_lost_packet() {
     let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
