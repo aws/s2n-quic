@@ -703,7 +703,7 @@ const C: f32 = 0.4;
 
 //= https://www.rfc-editor.org/rfc/rfc8312#section-4.5
 //# Parameter beta_cubic SHOULD be set to 0.7.
-const BETA_CUBIC: f32 = 0.7;
+const BETA_CUBIC: f32 = 0.95;
 
 impl Cubic {
     pub fn new(max_datagram_size: u16) -> Self {
@@ -748,10 +748,9 @@ impl Cubic {
     //               [3*(1-beta_cubic)/(1+beta_cubic)] * (t/RTT) (Eq. 4)
     #[inline]
     fn w_est(&self, t: Duration, rtt: Duration) -> f32 {
-        self.w_max.mul_add(
-            BETA_CUBIC,
-            (3.0 * (1.0 - BETA_CUBIC) / (1.0 + BETA_CUBIC)) * (t.as_secs_f32() / rtt.as_secs_f32()),
-        )
+        const ALPHA: f32 = 2.76923;
+        self.w_max
+            .mul_add(BETA_CUBIC, ALPHA * (t.as_secs_f32() / rtt.as_secs_f32()))
     }
 
     //= https://www.rfc-editor.org/rfc/rfc8312#section-4.5
