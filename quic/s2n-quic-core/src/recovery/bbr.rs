@@ -965,8 +965,8 @@ impl BbrCongestionController {
 
         //self.restore_cwnd();
 
-        self.data_volume_model.reset_lower_bound();
-        self.data_rate_model.reset_lower_bound();
+        // self.data_volume_model.reset_lower_bound();
+        // self.data_rate_model.reset_lower_bound();
 
         // Since we are exiting a recovery period, we need to make sure the model is updated
         // and the congestion window is bound appropriately
