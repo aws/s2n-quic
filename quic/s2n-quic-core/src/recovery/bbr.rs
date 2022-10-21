@@ -359,13 +359,7 @@ impl CongestionController for BbrCongestionController {
             newest_acked_packet_info,
             self.bw_estimator.delivered_bytes(),
         );
-        if self
-            .recovery_state
-            .on_ack(self.round_counter.round_start(), newest_acked_time_sent)
-        {
-            // This ack caused recovery to be exited
-            self.on_exit_fast_recovery();
-        }
+        self.recovery_state.on_ack(newest_acked_time_sent);
         if self.round_counter.round_start() {
             self.ecn_state
                 .on_round_start(self.bw_estimator.delivered_bytes(), self.max_datagram_size);
@@ -470,10 +464,7 @@ impl CongestionController for BbrCongestionController {
 
         self.bytes_in_flight -= lost_bytes;
         self.bw_estimator.on_loss(lost_bytes as usize);
-        if self.recovery_state.on_congestion_event(timestamp) {
-            // this congestion event caused the connection to enter recovery
-            self.on_enter_fast_recovery();
-        }
+        self.recovery_state.on_congestion_event(timestamp);
         self.congestion_state
             .on_packet_lost(self.bw_estimator.delivered_bytes(), new_loss_burst);
 
@@ -499,9 +490,7 @@ impl CongestionController for BbrCongestionController {
         self.bw_estimator.on_explicit_congestion(ce_count);
         self.ecn_state.on_explicit_congestion(ce_count);
         self.congestion_state.on_explicit_congestion();
-        if self.recovery_state.on_congestion_event(event_time) {
-            self.on_enter_fast_recovery();
-        }
+        self.recovery_state.on_congestion_event(event_time);
     }
 
     //= https://www.rfc-editor.org/rfc/rfc8899#section-3
@@ -903,11 +892,10 @@ impl BbrCongestionController {
         //#   else
         //#     return max(BBR.prior_cwnd, cwnd)
 
-        self.prior_cwnd = if !self.recovery_state.in_recovery() && !self.state.is_probing_rtt() {
-            self.cwnd
-        } else {
-            self.prior_cwnd.max(self.cwnd)
-        }
+        // We don't save the cwnd when entering recovery, so we don't need to check the recovery state
+        debug_assert!(self.state.is_probing_rtt());
+
+        self.prior_cwnd = self.prior_cwnd.max(self.cwnd);
     }
 
     /// Restores the last-known good congestion window (the latest cwnd unmodulated by loss recovery or ProbeRTT)
@@ -917,57 +905,9 @@ impl BbrCongestionController {
         //# BBRRestoreCwnd()
         //#   cwnd = max(cwnd, BBR.prior_cwnd)
 
+        debug_assert!(self.state.is_probing_rtt());
+
         self.cwnd = self.cwnd.max(self.prior_cwnd);
-    }
-
-    /// Called when entering fast recovery
-    #[inline]
-    fn on_enter_fast_recovery(&mut self) {
-        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
-        //# Upon entering Fast Recovery, set cwnd to the number of packets still in flight
-        //# (allowing at least one for a fast retransmit):
-        //#
-        //# BBROnEnterFastRecovery():
-        //#   BBR.prior_cwnd = BBRSaveCwnd()
-        //#   cwnd = packets_in_flight + max(rs.newly_acked, 1)
-        //#   BBR.packet_conservation = true
-
-        debug_assert!(self.recovery_state.in_recovery());
-
-        // packet_conservation is true while in the state `recovery::State::Conservation`. That
-        // state is entered prior to this method being called, when packet loss is recorded.
-        debug_assert!(self.recovery_state.packet_conservation());
-
-        self.save_cwnd();
-        // BBROnEnterFastRecovery() tries to allow for at least one fast retransmit packet in the
-        // the congestion window. The recovery manager will already allow for this fast retransmit
-        // even if we are blocked by congestion control, as long as requires_fast_retransmission()
-        // returns true.
-        self.cwnd = self.bytes_in_flight();
-    }
-
-    /// Called when exiting fast recovery
-    #[inline]
-    fn on_exit_fast_recovery(&mut self) {
-        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.4.4
-        //# Upon exiting loss recovery (RTO recovery or Fast Recovery), either by repairing all
-        //# losses or undoing recovery, BBR restores the best-known cwnd value we had upon entering
-        //# loss recovery:
-        //#
-        //#   BBR.packet_conservation = false
-        //#   BBRRestoreCwnd()
-
-        debug_assert!(!self.recovery_state.in_recovery());
-
-        // When fast recovery is exited, the state changes to `recovery::State::Recovered`, which
-        // has packet_conservation as false
-        debug_assert!(!self.recovery_state.packet_conservation());
-
-        self.restore_cwnd();
-
-        // Since we are exiting a recovery period, we need to make sure the model is updated
-        // and the congestion window is bound appropriately
-        self.try_fast_path = false;
     }
 
     #[inline]
