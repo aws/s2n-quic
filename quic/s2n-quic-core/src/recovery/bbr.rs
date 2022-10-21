@@ -359,8 +359,7 @@ impl CongestionController for BbrCongestionController {
             newest_acked_packet_info,
             self.bw_estimator.delivered_bytes(),
         );
-        self.recovery_state
-            .on_ack(newest_acked_time_sent);
+        self.recovery_state.on_ack(newest_acked_time_sent);
         if self.round_counter.round_start() {
             self.ecn_state
                 .on_round_start(self.bw_estimator.delivered_bytes(), self.max_datagram_size);
