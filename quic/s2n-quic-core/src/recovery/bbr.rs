@@ -944,7 +944,7 @@ impl BbrCongestionController {
         // the congestion window. The recovery manager will already allow for this fast retransmit
         // even if we are blocked by congestion control, as long as requires_fast_retransmission()
         // returns true.
-        //self.cwnd = self.bytes_in_flight();
+        // self.cwnd = self.bytes_in_flight();
     }
 
     /// Called when exiting fast recovery
