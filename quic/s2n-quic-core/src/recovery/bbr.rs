@@ -304,6 +304,7 @@ impl CongestionController for BbrCongestionController {
                 .expect("sent_bytes should not exceed u32::MAX");
             self.pacer
                 .on_packet_sent(time_sent, sent_bytes, rtt_estimator.smoothed_rtt());
+            self.cwnd_limited_in_round |= self.is_congestion_limited();
         }
 
         self.bw_estimator
@@ -369,8 +370,6 @@ impl CongestionController for BbrCongestionController {
             self.ecn_state
                 .on_round_start(self.bw_estimator.delivered_bytes(), self.max_datagram_size);
             self.cwnd_limited_in_round = is_cwnd_limited;
-        } else {
-            self.cwnd_limited_in_round |= is_cwnd_limited;
         }
 
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.3
