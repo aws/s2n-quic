@@ -70,35 +70,34 @@ impl State {
             self.ecn_in_round = true;
         }
 
-        if self.loss_round_counter.round_start() {
+        if self.loss_round_counter.round_start() && !is_probing_for_bandwidth {
             //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
             //# When not explicitly accelerating to probe for bandwidth (Drain, ProbeRTT,
             //# ProbeBW_DOWN, ProbeBW_CRUISE), BBR responds to loss by slowing down to some extent.
-            if !is_probing_for_bandwidth {
-                //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
-                //# BBRAdaptLowerBoundsFromCongestion():
-                //#   if (BBRIsProbingBW())
-                //#     return
-                //#   if (BBR.loss_in_round())
-                //#     BBRInitLowerBounds()
-                //#     BBRLossLowerBounds()
 
-                if self.loss_in_round() {
-                    // The following update_lower_bound method combines the functionality of
-                    // BBRInitLowerBounds() and BBRLossLowerBounds()
-                    data_rate_model.update_lower_bound(self.bw_latest);
-                }
+            //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
+            //# BBRAdaptLowerBoundsFromCongestion():
+            //#   if (BBRIsProbingBW())
+            //#     return
+            //#   if (BBR.loss_in_round())
+            //#     BBRInitLowerBounds()
+            //#     BBRLossLowerBounds()
 
-                // Update inflight_lo to the lower of the ECN and the Loss based values
-                // if there is loss or ECN in the round
-                data_volume_model.update_lower_bound(
-                    cwnd,
-                    self.inflight_latest,
-                    self.loss_in_round(),
-                    self.ecn_in_round,
-                    ecn_alpha,
-                );
+            if self.loss_in_round() {
+                // The following update_lower_bound method combines the functionality of
+                // BBRInitLowerBounds() and BBRLossLowerBounds()
+                data_rate_model.update_lower_bound(self.bw_latest);
             }
+
+            // Update inflight_lo to the lower of the ECN and the Loss based values
+            // if there is loss or ECN in the round
+            data_volume_model.update_lower_bound(
+                cwnd,
+                self.inflight_latest,
+                self.loss_in_round(),
+                self.ecn_in_round,
+                ecn_alpha,
+            );
         }
     }
 
@@ -278,6 +277,7 @@ mod tests {
         let mut data_rate_model = data_rate::Model::new();
         let mut data_volume_model = data_volume::Model::new();
 
+        state.on_packet_lost(100, true);
         state.update(
             packet_info,
             rate_sample,
@@ -296,6 +296,8 @@ mod tests {
         // Since there was loss in the round, the lower bounds are updated
         assert_eq!(rate_sample.delivery_rate(), data_rate_model.bw_lo());
         assert_eq!(rate_sample.delivered_bytes, data_volume_model.inflight_lo());
+
+        state.advance(rate_sample);
         // Loss and ecn in round are reset
         assert!(!state.loss_in_round());
         assert!(!state.ecn_in_round);
@@ -310,6 +312,7 @@ mod tests {
             ..Default::default()
         };
 
+        state.on_packet_lost(500, true);
         state.update(
             packet_info,
             new_rate_sample,
@@ -350,6 +353,7 @@ mod tests {
         assert_eq!(rate_sample.delivery_rate(), data_rate_model.bw_lo());
         assert_eq!(rate_sample.delivered_bytes, data_volume_model.inflight_lo());
         // loss and ecn in round are still reset though
+        state.advance(rate_sample);
         assert!(!state.loss_in_round());
         assert!(!state.ecn_in_round);
     }
@@ -374,6 +378,9 @@ mod tests {
             ..Default::default()
         };
 
+        state.on_packet_lost(100, true);
+        state.on_packet_lost(100, true);
+        state.on_explicit_congestion();
         state.update(
             packet_info,
             rate_sample,
@@ -388,12 +395,16 @@ mod tests {
         assert!(state.loss_round_counter.round_start());
         assert_eq!(rate_sample.delivery_rate(), state.bw_latest);
         assert_eq!(rate_sample.delivered_bytes, state.inflight_latest);
+        assert_eq!(2, state.loss_bursts_in_round());
+        assert!(state.ecn_in_round);
 
         rate_sample.delivered_bytes = 500;
         state.advance(rate_sample);
 
         assert_eq!(rate_sample.delivery_rate(), state.bw_latest);
         assert_eq!(rate_sample.delivered_bytes, state.inflight_latest);
+        assert_eq!(0, state.loss_bursts_in_round());
+        assert!(!state.ecn_in_round);
     }
 
     #[test]
