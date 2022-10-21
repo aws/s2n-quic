@@ -157,7 +157,7 @@ jobs:
           URL="$CDN/$TARGET/s2n_quic/index.html"
           echo "::set-output name=URL::$URL"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
+      - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "doc / report"
@@ -376,7 +376,7 @@ jobs:
           URL="$CDN/$TARGET/index.html"
           echo "::set-output name=URL::$URL"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
+      - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "coverage / report"
@@ -451,7 +451,7 @@ jobs:
           URL="$CDN/$TARGET/index.html"
           echo "::set-output name=URL::$URL"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
+      - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "recovery-simulations / report"
@@ -500,7 +500,7 @@ jobs:
           URL="$CDN/$TARGET/index.html"
           echo "::set-output name=URL::$URL"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
+      - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "sims / report"
@@ -619,7 +619,7 @@ jobs:
           URL="$CDN/$TARGET"
           echo "::set-output name=URL::$URL"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
+      - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "timing / report"

@@ -405,7 +405,7 @@ jobs:
           URL="$CDN/$TARGET/index.html"
           echo "::set-output name=URL::$URL"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
+      - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "interop / report"
@@ -509,7 +509,7 @@ jobs:
           URL="$CDN/$TARGET/index.html"
           echo "::set-output name=URL::$URL"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
+      - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "bench / report"
@@ -693,7 +693,7 @@ jobs:
           URL="$CDN/$TARGET/index.html"
           echo "::set-output name=URL::$URL"
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.2
+      - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "perf / report"
