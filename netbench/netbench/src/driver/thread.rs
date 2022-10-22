@@ -58,6 +58,12 @@ impl<'a> Thread<'a> {
         }
     }
 
+    fn reset(&mut self, cx: &mut Context) {
+        self.index = 0;
+        self.op = None;
+        cx.waker().wake_by_ref();
+    }
+
     #[inline]
     fn on_op<T: Trace, Ch: Checkpoints>(
         &mut self,
@@ -69,7 +75,7 @@ impl<'a> Thread<'a> {
         cx: &mut Context,
     ) {
         trace.exec(now, op);
-        use op::Connection::*;
+        use op::{Connection::*, IterateValue};
         match op {
             Sleep { amount } => {
                 self.timer.sleep(now, *amount);
@@ -115,6 +121,42 @@ impl<'a> Thread<'a> {
             }
             Trace { trace_id } => {
                 trace.trace(now, *trace_id);
+            }
+            Profile {
+                trace_id,
+                operations,
+            } => {
+                self.op = Some(Op::Profile {
+                    start: now,
+                    trace_id: *trace_id,
+                    thread: Box::new(Thread::new(operations, self.owner)),
+                });
+            }
+            Iterate {
+                value,
+                operations,
+                trace_id,
+            } => {
+                let start = now;
+                let trace_id = *trace_id;
+                let thread = Box::new(Thread::new(operations, self.owner));
+
+                self.op = Some(match value {
+                    IterateValue::Count { amount } => Op::Iterate {
+                        start,
+                        count: *amount,
+                        thread,
+                        trace_id,
+                    },
+                    IterateValue::Time { amount } => {
+                        self.timer.sleep(now, *amount);
+                        Op::IterateFor {
+                            start,
+                            thread,
+                            trace_id,
+                        }
+                    }
+                });
             }
             Park { checkpoint } => {
                 trace.park(now, *checkpoint);
@@ -205,6 +247,55 @@ impl<'a> Thread<'a> {
                 ready!(checkpoints.park(*checkpoint));
                 trace.unpark(now, *checkpoint);
             }
+            Op::Iterate {
+                start,
+                count,
+                thread,
+                trace_id,
+            } => {
+                ready!(thread.poll(conn, trace, checkpoints, rates, now, cx))?;
+
+                if let Some(trace_id) = trace_id {
+                    let time = now.saturating_duration_since(*start);
+                    trace.profile(now, *trace_id, time);
+                    *start = now;
+                }
+
+                if let Some(next) = count.checked_sub(1) {
+                    if next > 0 {
+                        *count = next;
+                        thread.reset(cx);
+                        return Poll::Pending;
+                    }
+                }
+            }
+            Op::IterateFor {
+                start,
+                thread,
+                trace_id,
+            } => {
+                if let Poll::Ready(res) = thread.poll(conn, trace, checkpoints, rates, now, cx) {
+                    res?;
+                    thread.reset(cx);
+
+                    if let Some(trace_id) = trace_id {
+                        let time = now.saturating_duration_since(*start);
+                        trace.profile(now, *trace_id, time);
+                        *start = now;
+                    }
+                }
+
+                ready!(self.timer.poll(now));
+            }
+            Op::Profile {
+                trace_id,
+                start,
+                thread,
+            } => {
+                ready!(thread.poll(conn, trace, checkpoints, rates, now, cx))?;
+                let time = now.saturating_duration_since(*start);
+                trace.profile(now, *trace_id, time);
+            }
             Op::Scope { threads } => {
                 let mut all_ready = true;
                 let op_idx = self.index;
@@ -234,10 +325,16 @@ impl timer::Provider for Thread<'_> {
     #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
         self.timer.timers(query)?;
-        if let Some(Op::Scope { threads }) = &self.op {
-            for thread in threads {
-                thread.timers(query)?;
+        match &self.op {
+            Some(Op::Iterate { thread, .. })
+            | Some(Op::IterateFor { thread, .. })
+            | Some(Op::Profile { thread, .. }) => thread.timers(query)?,
+            Some(Op::Scope { threads }) => {
+                for thread in threads {
+                    thread.timers(query)?;
+                }
             }
+            _ => {}
         }
         Ok(())
     }
@@ -274,6 +371,22 @@ enum Op<'a> {
     },
     Wait {
         checkpoint: u64,
+    },
+    Iterate {
+        start: Timestamp,
+        count: u64,
+        thread: Box<Thread<'a>>,
+        trace_id: Option<u64>,
+    },
+    IterateFor {
+        start: Timestamp,
+        thread: Box<Thread<'a>>,
+        trace_id: Option<u64>,
+    },
+    Profile {
+        trace_id: u64,
+        start: Timestamp,
+        thread: Box<Thread<'a>>,
     },
     Scope {
         threads: Vec<Thread<'a>>,

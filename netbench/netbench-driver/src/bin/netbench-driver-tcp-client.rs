@@ -35,6 +35,7 @@ impl Client {
         let client = ClientImpl {
             config,
             id: 0,
+            nagle: self.opts.nagle,
             rx_buffer: *self.opts.rx_buffer as _,
             tx_buffer: *self.opts.tx_buffer as _,
         };
@@ -56,6 +57,7 @@ type Connection<'a> = netbench::Driver<'a, multiplex::Connection<Stream>>;
 struct ClientImpl {
     config: multiplex::Config,
     id: u64,
+    nagle: bool,
     rx_buffer: usize,
     tx_buffer: usize,
 }
@@ -83,9 +85,15 @@ impl<'a> netbench::client::Client<'a> for ClientImpl {
         let config = self.config.clone();
         let rx_buffer = self.rx_buffer;
         let tx_buffer = self.tx_buffer;
+        let nagle = self.nagle;
 
         let fut = async move {
             let conn = TcpStream::connect(addr).await?;
+
+            if !nagle {
+                let _ = conn.set_nodelay(true);
+            }
+
             let conn = io::BufStream::with_capacity(rx_buffer, tx_buffer, conn);
             let mut conn = Box::pin(conn);
 

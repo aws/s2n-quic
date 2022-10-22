@@ -209,3 +209,27 @@ macro_rules! try_from_value {
 
 try_from_value!(Byte, "BYTES");
 try_from_value!(Rate, "RATE");
+
+impl<T: TryFromValue> TryFromValue for Vec<T> {
+    const VALUE_NAME: &'static str = T::VALUE_NAME;
+
+    fn try_from_value(value: &Override) -> Result<Self> {
+        let mut out = vec![];
+        if let Override::String(v) = value {
+            for value in v.split(',') {
+                let value = value.trim();
+                let value = Override::String(value.to_owned());
+                out.push(T::try_from_value(&value)?);
+            }
+        }
+        Ok(out)
+    }
+
+    fn display(&self) -> String {
+        let mut out = vec![];
+        for value in self {
+            out.push(value.display());
+        }
+        out.join(",")
+    }
+}

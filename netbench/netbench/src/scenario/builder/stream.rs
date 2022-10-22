@@ -68,6 +68,7 @@ impl<Endpoint, Location> Stream<Endpoint, Location> {
     sync!(Endpoint, Location);
     sleep!();
     trace!();
+    iterate!();
 
     pub(crate) fn new(id: u64, state: connection::State) -> Self {
         Self {
@@ -77,6 +78,14 @@ impl<Endpoint, Location> Stream<Endpoint, Location> {
             endpoint: PhantomData,
             location: PhantomData,
         }
+    }
+
+    fn child_scope(&self) -> Self {
+        Self::new(self.id, self.state.clone())
+    }
+
+    fn finish_scope(self) -> Vec<op::Connection> {
+        self.ops
     }
 
     pub fn concurrently<
@@ -117,6 +126,7 @@ impl<Endpoint, Location> SendStream<Endpoint, Location> {
     sync!(Endpoint, Location);
     sleep!();
     trace!();
+    iterate!();
 
     pub(crate) fn new(id: u64, state: connection::State) -> Self {
         Self {
@@ -126,6 +136,14 @@ impl<Endpoint, Location> SendStream<Endpoint, Location> {
             endpoint: PhantomData,
             location: PhantomData,
         }
+    }
+
+    fn child_scope(&self) -> Self {
+        Self::new(self.id, self.state.clone())
+    }
+
+    fn finish_scope(self) -> Vec<op::Connection> {
+        self.ops
     }
 
     pub(crate) fn finish(mut self) -> Vec<op::Connection> {
@@ -148,6 +166,7 @@ impl<Endpoint, Location> ReceiveStream<Endpoint, Location> {
     sync!(Endpoint, Location);
     sleep!();
     trace!();
+    iterate!();
 
     pub(crate) fn new(id: u64, state: connection::State) -> Self {
         Self {
@@ -157,6 +176,14 @@ impl<Endpoint, Location> ReceiveStream<Endpoint, Location> {
             endpoint: PhantomData,
             location: PhantomData,
         }
+    }
+
+    fn child_scope(&self) -> Self {
+        Self::new(self.id, self.state.clone())
+    }
+
+    fn finish_scope(self) -> Vec<op::Connection> {
+        self.ops
     }
 
     pub(crate) fn finish(mut self) -> Vec<op::Connection> {

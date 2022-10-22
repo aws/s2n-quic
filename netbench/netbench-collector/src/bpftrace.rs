@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{procinfo::Proc, Result};
-use netbench::stats::{Initialize, Print, Stat, Stats, StreamId};
+use netbench::{
+    stats::{Bucket, Histogram, Initialize, Print, Stat, Stats, StreamId},
+    units::ByteExt as _,
+};
 use serde_json::json;
 use std::{
     collections::HashMap,
@@ -22,6 +25,8 @@ struct Report {
     current: Stats,
     send: HashMap<StreamId, Stat>,
     receive: HashMap<StreamId, Stat>,
+    profiles: HashMap<u64, Histogram>,
+    pending_profile: Option<u64>,
     proc: Option<Proc>,
 }
 
@@ -34,12 +39,23 @@ impl Report {
             current: Default::default(),
             send: Default::default(),
             receive: Default::default(),
+            profiles: Default::default(),
+            pending_profile: None,
             proc: None,
         }
     }
 
     fn push(&mut self, line: &str) {
         let line = line.trim();
+
+        if let Some(id) = self.pending_profile {
+            if let Some(bucket) = parse_hist_line(line) {
+                self.profiles.entry(id).or_default().buckets.push(bucket);
+                return;
+            } else {
+                self.pending_profile = None;
+            }
+        }
 
         if line.is_empty() {
             return;
@@ -52,6 +68,23 @@ impl Report {
 
         if let Some(count) = line.strip_prefix("@: ") {
             self.count = count.parse().unwrap();
+            return;
+        }
+
+        if let Some(trace) = line.strip_prefix("@P[") {
+            let trace = trace.trim_end_matches("]:");
+            if let Ok(trace) = trace.parse() {
+                self.pending_profile = Some(trace);
+                return;
+            }
+        }
+
+        if let Some(line) = line.strip_prefix("@p[") {
+            let (id, line) = line.split_once("]: ").unwrap();
+            let id = id.parse().unwrap();
+
+            let stat = BpfParse::parse(line).unwrap();
+            self.profiles.entry(id).or_default().stat = stat;
             return;
         }
 
@@ -159,6 +192,7 @@ impl Report {
             deallocs: current.deallocs,
             send: core::mem::take(&mut self.send),
             receive: core::mem::take(&mut self.receive),
+            profiles: core::mem::take(&mut self.profiles),
         }
     }
 }
@@ -198,6 +232,66 @@ impl BpfParse for Stat {
     }
 }
 
+fn parse_hist_line(line: &str) -> Option<Bucket> {
+    let mut parts = line.split_whitespace();
+
+    let lower = parts.next()?;
+    let upper = parts.next()?;
+    let count = parts.next()?;
+
+    let lower = lower.trim_start_matches('[');
+    let lower = lower.trim_end_matches(',');
+    let lower = parse_hist_bound(lower)?;
+
+    let upper = upper.trim_end_matches(')');
+    let upper = parse_hist_bound(upper)?;
+
+    let count = count.parse().ok()?;
+
+    Some(Bucket {
+        lower,
+        upper,
+        count,
+    })
+}
+
+fn parse_hist_bound(s: &str) -> Option<u64> {
+    // try parsing without any suffix
+    if let Ok(v) = s.parse() {
+        return Some(v);
+    }
+
+    let number_index = s
+        .char_indices()
+        .find_map(|(idx, c)| {
+            if !(c.is_numeric() || c == '.') {
+                Some(idx)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(s.len());
+
+    let mut v: f64 = s[..number_index].parse().ok()?;
+
+    let suffix = s[number_index..].trim();
+
+    v *= *match suffix {
+        "" => 1.bytes(),
+        "K" | "k" => 1.kilobytes(),
+        "Ki" | "ki" => 1.kibibytes(),
+        "M" | "m" => 1.megabytes(),
+        "Mi" | "mi" => 1.mebibytes(),
+        "G" | "g" => 1.gigabytes(),
+        "Gi" | "gi" => 1.gibibytes(),
+        "T" | "t" => 1.terabytes(),
+        "Ti" | "ti" => 1.tebibytes(),
+        _ => return None,
+    } as f64;
+
+    Some(v as u64)
+}
+
 pub fn try_run(args: &crate::Args) -> Result<Option<()>> {
     let mut command = if let Ok(bpftrace) = find_bpftrace() {
         eprintln!("collecting stats with bpftrace");
@@ -208,7 +302,8 @@ pub fn try_run(args: &crate::Args) -> Result<Option<()>> {
 
     let driver = &args.driver;
     let interval = args.interval;
-    let scenario = &args.scenario;
+    let scenario = args.scenario()?;
+    let scenario_path = &args.scenario;
 
     let program = {
         let template = handlebars::Handlebars::new();
@@ -229,7 +324,7 @@ pub fn try_run(args: &crate::Args) -> Result<Option<()>> {
         .arg("-e")
         .arg(program)
         .env("TRACE", "disabled")
-        .env("SCENARIO", scenario)
+        .env("SCENARIO", scenario_path)
         .stdout(Stdio::piped());
 
     let mut proc = command.spawn()?;
@@ -237,7 +332,8 @@ pub fn try_run(args: &crate::Args) -> Result<Option<()>> {
     Initialize {
         pid: proc.id() as _,
         driver: driver.to_string(),
-        scenario: scenario.to_string(),
+        scenario: scenario_path.to_string(),
+        traces: scenario.traces.to_vec(),
         ..Default::default()
     }
     .print()?;

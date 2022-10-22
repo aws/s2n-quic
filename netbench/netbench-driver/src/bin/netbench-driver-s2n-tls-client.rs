@@ -53,6 +53,7 @@ impl Client {
             config,
             connector,
             id: 0,
+            nagle: self.opts.nagle,
         })
     }
 
@@ -73,6 +74,7 @@ struct ClientImpl {
     config: multiplex::Config,
     connector: Arc<s2n_tls_tokio::TlsConnector<Config>>,
     id: u64,
+    nagle: bool,
 }
 
 impl ClientImpl {
@@ -97,10 +99,16 @@ impl<'a> netbench::client::Client<'a> for ClientImpl {
         let id = self.id();
         let config = self.config.clone();
         let connector = self.connector.clone();
+        let nagle = self.nagle;
         let server_name = server_name.to_string();
 
         let fut = async move {
             let conn = TcpStream::connect(addr).await?;
+
+            if !nagle {
+                let _ = conn.set_nodelay(true);
+            }
+
             let conn = connector.connect(&server_name, conn).await?;
             let conn = Box::pin(conn);
             let conn = multiplex::Connection::new(id, conn, config);
