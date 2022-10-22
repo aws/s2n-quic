@@ -7,7 +7,7 @@ use crate::{
     frame::ConnectionClose,
     varint::{VarInt, VarIntError},
 };
-use core::{convert::TryFrom, ops};
+use core::{convert::TryFrom, fmt, ops};
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-20.2
 //# The management of application error codes is left to application
@@ -18,9 +18,18 @@ use core::{convert::TryFrom, ops};
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub struct Error(VarInt);
 
-impl core::fmt::Debug for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+#[cfg(feature = "std")]
+impl std::error::Error for Error {}
+
+impl fmt::Debug for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "application::Error({})", self.0.as_u64())
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "QUIC application error code: {}", self.0.as_u64())
     }
 }
 

@@ -13,7 +13,8 @@ pub trait Provider {
     fn start(self) -> Result<Self::Endpoint, Self::Error>;
 }
 
-pub use s2n_quic_core::recovery::{bbr::Endpoint as Bbr, cubic::Endpoint as Default};
+pub use s2n_quic_core::recovery::{bbr::Endpoint as Bbr, cubic::Endpoint as Cubic};
+pub type Default = Cubic;
 
 impl_provider_utils!();
 

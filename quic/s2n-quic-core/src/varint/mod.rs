@@ -3,6 +3,7 @@
 
 use core::{
     convert::{TryFrom, TryInto},
+    fmt,
     ops::Deref,
 };
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
@@ -44,6 +45,15 @@ pub const MAX_VARINT_VALUE: u64 = 4_611_686_018_427_387_903;
 
 #[derive(Debug)]
 pub struct VarIntError;
+
+impl fmt::Display for VarIntError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "varint range exceeded")
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for VarIntError {}
 
 // https://godbolt.org/z/ToTvPD
 #[inline(always)]
@@ -110,8 +120,8 @@ fn encoding_size(x: u64) -> usize {
 #[cfg_attr(any(feature = "generator", test), derive(TypeGenerator))]
 pub struct VarInt(#[cfg_attr(any(feature = "generator", test), generator(Self::GENERATOR))] u64);
 
-impl core::fmt::Display for VarInt {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl fmt::Display for VarInt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
     }
 }
