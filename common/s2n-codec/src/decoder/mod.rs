@@ -424,6 +424,11 @@ pub enum DecoderError {
 use core::fmt;
 impl fmt::Display for DecoderError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // https://github.com/model-checking/kani/issues/1767#issuecomment-1275449305
+        if cfg!(kani) {
+            return Ok(());
+        }
+
         match self {
             Self::UnexpectedEof(len) => write!(f, "unexpected eof: {}", len),
             Self::UnexpectedBytes(len) => write!(f, "unexpected bytes: {}", len),

@@ -668,7 +668,7 @@ jobs:
       - uses: camshaft/install@v1
         with:
           crate: kani-verifier
-          version: 0.11.0
+          version: 0.13.0
           bins: kani,cargo-kani
 
       - name: Kani setup
@@ -677,4 +677,4 @@ jobs:
       - name: Kani run
         run: |
           cd quic/s2n-quic-core
-          cargo kani --tests --enable-unstable --mir-linker
+          cargo kani --tests
