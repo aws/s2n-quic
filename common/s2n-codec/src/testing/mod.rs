@@ -146,16 +146,6 @@ macro_rules! assert_codec_round_trip_sample_file {
     }};
 }
 
-#[cfg(not(kani))]
-macro_rules! ensure {
-    ($expr:expr, $message:expr $(,)?) => {
-        if !($expr) {
-            return Err($crate::testing::Error::InvariantViolation($message));
-        }
-    };
-}
-
-#[cfg(kani)]
 macro_rules! ensure {
     ($expr:expr, $message:expr $(,)?) => {
         if !($expr) {
