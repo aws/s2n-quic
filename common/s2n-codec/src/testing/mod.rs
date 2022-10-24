@@ -6,14 +6,7 @@ pub use crate::{
     EncoderBuffer, EncoderLenEstimator, EncoderValue,
 };
 
-#[derive(Clone, Debug)]
-pub struct Error(String);
-
-impl From<DecoderError> for Error {
-    fn from(err: DecoderError) -> Self {
-        Self(err.to_string())
-    }
-}
+pub type Error = DecoderError;
 
 #[macro_export]
 macro_rules! assert_codec_round_trip_value {
@@ -153,10 +146,20 @@ macro_rules! assert_codec_round_trip_sample_file {
     }};
 }
 
+#[cfg(not(kani))]
 macro_rules! ensure {
-    ($expr:expr, $message:expr $(, $format:expr)*) => {
+    ($expr:expr, $message:expr $(,)?) => {
         if !($expr) {
-            return Err(Error(format!($message $(, $format)*)));
+            return Err($crate::testing::Error::InvariantViolation($message));
+        }
+    };
+}
+
+#[cfg(kani)]
+macro_rules! ensure {
+    ($expr:expr, $message:expr $(,)?) => {
+        if !($expr) {
+            return Err($crate::testing::Error::InvariantViolation($message));
         }
     };
 }
@@ -191,9 +194,7 @@ pub fn ensure_decoding_matches<'a, T: DecoderValue<'a> + PartialEq + core::fmt::
     let (actual_value, remaining) = decode(expected_bytes)?;
     ensure!(
         expected_value == &actual_value,
-        "mut decodings do not match:\n expected: {:?}\n   actual: {:?}",
-        expected_value,
-        actual_value
+        "mut decodings do not match",
     );
     remaining.ensure_empty()?;
     Ok(())
@@ -213,9 +214,7 @@ pub fn ensure_decoding_mut_matches<'a, T: DecoderValueMut<'a> + PartialEq + core
     let (actual_value, remaining) = decode_mut(expected_bytes)?;
     ensure!(
         expected_value == &actual_value,
-        "mut decodings do not match:\n expected: {:?}\n   actual: {:?}",
-        expected_value,
-        actual_value
+        "mut decodings do not match",
     );
     remaining.ensure_empty()?;
     Ok(())
