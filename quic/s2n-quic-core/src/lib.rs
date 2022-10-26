@@ -33,8 +33,12 @@ pub mod recovery;
 pub mod slice;
 pub mod stateless_reset;
 pub mod stream;
+pub mod sync;
 pub mod time;
 pub mod token;
 pub mod transmission;
 pub mod transport;
 pub mod varint;
+
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;

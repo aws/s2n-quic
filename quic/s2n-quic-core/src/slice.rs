@@ -91,7 +91,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bolero::{check, generator::*};
+    use crate::testing::InlineVec;
+    use bolero::check;
 
     fn assert_eq_slices<A, B, T>(a: &[A], b: &[B])
     where
@@ -125,28 +126,6 @@ mod tests {
             let copied_len = vectored_copy(&from, &mut to);
             assert_eq!(copied_len, len * 2);
             assert_eq_slices(&from, &to);
-        }
-    }
-
-    #[derive(Clone, Copy, Debug, TypeGenerator)]
-    struct InlineVec<T, const LEN: usize> {
-        values: [T; LEN],
-
-        #[generator(_code = "0..LEN")]
-        len: usize,
-    }
-
-    impl<T, const LEN: usize> core::ops::Deref for InlineVec<T, LEN> {
-        type Target = [T];
-
-        fn deref(&self) -> &Self::Target {
-            &self.values[..self.len]
-        }
-    }
-
-    impl<T, const LEN: usize> core::ops::DerefMut for InlineVec<T, LEN> {
-        fn deref_mut(&mut self) -> &mut Self::Target {
-            &mut self.values[..self.len]
         }
     }
 
