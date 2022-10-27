@@ -25,7 +25,7 @@ zeroize = { version = "1", default-features = false, features = ["zeroize_derive
 [dev-dependencies]
 aes = "0.8"
 aes-gcm = "0.10"
-bolero = "0.7"
+bolero = "0.8"
 ghash = "0.5"
 hex-literal = "0.3"
 insta = { version = "1", features = ["json"] }
