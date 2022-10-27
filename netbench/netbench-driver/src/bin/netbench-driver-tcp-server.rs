@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use netbench::{multiplex, scenario, Result};
+use netbench::{multiplex, scenario, Result, Timer};
 use netbench_driver::Allocator;
 use std::{collections::HashSet, sync::Arc};
 use structopt::StructOpt;
@@ -64,6 +64,11 @@ impl Server {
             config: Option<multiplex::Config>,
             (rx_buffer, tx_buffer): (usize, usize),
         ) -> Result<()> {
+            let mut timer = netbench::timer::Tokio::default();
+
+            // TCP servers don't have a connect time
+            trace.connect(timer.now(), conn_id, Default::default());
+
             let connection = io::BufStream::with_capacity(rx_buffer, tx_buffer, connection);
             let mut connection = Box::pin(connection);
 
@@ -74,7 +79,6 @@ impl Server {
                 .ok_or("invalid connection id")?;
 
             let mut checkpoints = HashSet::new();
-            let mut timer = netbench::timer::Tokio::default();
 
             if let Some(config) = config {
                 let conn = netbench::Driver::new(

@@ -41,6 +41,7 @@ usdt:{{bin}}:netbench__connect
 /pid==cpid/
 {
   @O=count();
+  @h=stats(arg2);
 }
 
 usdt:{{bin}}:netbench__accept
@@ -137,6 +138,9 @@ i:ms:{{interval_ms}} {
 
   print(@P);
   clear(@P);
+
+  print(@h);
+  clear(@h);
 
   print("===");
 }

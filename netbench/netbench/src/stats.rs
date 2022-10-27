@@ -72,6 +72,8 @@ pub struct Stats {
     #[serde(default, skip_serializing_if = "is_default")]
     pub deallocs: Stat,
     #[serde(default, skip_serializing_if = "is_default")]
+    pub connect_time: Stat,
+    #[serde(default, skip_serializing_if = "is_default")]
     pub send: HashMap<StreamId, Stat>,
     #[serde(default, skip_serializing_if = "is_default")]
     pub receive: HashMap<StreamId, Stat>,

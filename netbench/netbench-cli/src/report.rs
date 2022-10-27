@@ -93,6 +93,7 @@ impl Report {
                     accept,
                     send,
                     receive,
+                    connect_time,
                     profiles,
                 } = event?;
 
@@ -194,6 +195,25 @@ impl Report {
                     );
                 }
 
+                {
+                    let mut y = connect_time.average();
+
+                    if !f64::is_normal(y) {
+                        y = 0.0;
+                    }
+
+                    // convert micros to seconds
+                    y /= 1_000_000.0;
+
+                    stats_table.push(Row {
+                        x,
+                        y,
+                        pid,
+                        stat: Stat::ConnectTime as _,
+                        stream_id: None,
+                    });
+                }
+
                 for (trace_id, hist) in profiles {
                     let trace = &traces[trace_id as usize];
                     let trace_id = if let Some(id) = trace_ids.iter().position(|v| v == trace) {
@@ -207,7 +227,10 @@ impl Report {
                     // offset the stat id with the built-in names
                     let stat = Stat::NAMES.len() as u64 + trace_id;
 
-                    let y = hist.stat.average();
+                    let mut y = hist.stat.average();
+                    if !f64::is_normal(y) {
+                        y = 0.0;
+                    }
 
                     // convert micros to seconds
                     let y = y / 1_000_000.0;
@@ -391,6 +414,7 @@ stat!(
         ContextSwitches = "context-switches",
         Syscalls = "syscalls",
         Connections = "connections",
+        ConnectTime = "connect-time",
         Accept = "accept (streams)",
         AllocBytes = "alloc (bytes)",
         AllocCount = "alloc (count)",

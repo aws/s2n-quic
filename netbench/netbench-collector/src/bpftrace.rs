@@ -107,6 +107,7 @@ impl Report {
         stat!("S", syscalls);
         stat!("O", connections);
         stat!("A", accept);
+        stat!("h", connect_time);
 
         macro_rules! try_map {
             ($prefix:literal, $on_value:expr) => {
@@ -190,6 +191,7 @@ impl Report {
             allocs: current.allocs,
             reallocs: current.reallocs,
             deallocs: current.deallocs,
+            connect_time: current.connect_time,
             send: core::mem::take(&mut self.send),
             receive: core::mem::take(&mut self.receive),
             profiles: core::mem::take(&mut self.profiles),
