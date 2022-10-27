@@ -37,7 +37,7 @@ futures-test = { version = "0.3", optional = true } # For testing Waker interact
 once_cell = { version = "1", optional = true }
 
 [dev-dependencies]
-bolero = "0.7"
+bolero = "0.8"
 bolero-generator = { version = "0.7", default-features = false }
 insta = { version = "1", features = ["json"] }
 futures-test = "0.3"
