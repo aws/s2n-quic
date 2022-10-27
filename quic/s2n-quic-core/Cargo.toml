@@ -20,7 +20,7 @@ checked-counters = []
 event-tracing = ["tracing"]
 
 [dependencies]
-bolero-generator = { version = "0.7", default-features = false, optional = true }
+bolero-generator = { version = "0.8", default-features = false, optional = true }
 byteorder = { version = "1", default-features = false }
 bytes = { version = "1", default-features = false }
 hex-literal = "0.3"
@@ -38,7 +38,7 @@ once_cell = { version = "1", optional = true }
 
 [dev-dependencies]
 bolero = "0.7"
-bolero-generator = { version = "0.7", default-features = false }
+bolero-generator = { version = "0.8", default-features = false }
 insta = { version = "1", features = ["json"] }
 futures-test = "0.3"
 ip_network = "0.4"
