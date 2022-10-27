@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use netbench::{multiplex, scenario, Result};
+use netbench::{duplex, multiplex, scenario, Driver, Result};
 use netbench_driver::Allocator;
 use s2n_tls::{
     config::{Builder, Config},
@@ -37,11 +37,11 @@ impl Server {
         let server = self.server().await?;
 
         let trace = self.opts.trace();
+        let config = self.opts.multiplex();
+
         let acceptor = TlsAcceptor::new(self.config()?.build()?);
         let acceptor: s2n_tls_tokio::TlsAcceptor<Config> = acceptor;
         let acceptor = Arc::new(acceptor);
-
-        let config = netbench::multiplex::Config::default();
 
         let mut conn_id = 0;
         loop {
@@ -72,7 +72,7 @@ impl Server {
             conn_id: u64,
             scenario: Arc<scenario::Server>,
             mut trace: impl netbench::Trace,
-            config: multiplex::Config,
+            config: Option<multiplex::Config>,
         ) -> Result<()> {
             let connection = acceptor.accept(connection).await?;
             let server_name = connection
@@ -83,15 +83,18 @@ impl Server {
 
             let connection = Box::pin(connection);
 
-            let conn = netbench::Driver::new(
-                scenario,
-                netbench::multiplex::Connection::new(conn_id, connection, config),
-            );
-
             let mut checkpoints = HashSet::new();
             let mut timer = netbench::timer::Tokio::default();
 
-            conn.run(&mut trace, &mut checkpoints, &mut timer).await?;
+            if let Some(config) = config {
+                let conn = multiplex::Connection::new(conn_id, connection, config);
+                let conn = Driver::new(scenario, conn);
+                conn.run(&mut trace, &mut checkpoints, &mut timer).await?;
+            } else {
+                let conn = duplex::Connection::new(conn_id, connection);
+                let conn = Driver::new(scenario, conn);
+                conn.run(&mut trace, &mut checkpoints, &mut timer).await?;
+            }
 
             Ok(())
         }

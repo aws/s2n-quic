@@ -3,7 +3,7 @@
 
 use netbench::{
     client::{self, AddressMap},
-    scenario, trace,
+    multiplex, scenario, trace,
     units::Byte,
     Error, Result,
 };
@@ -46,6 +46,12 @@ pub struct Server {
 
     #[structopt(long)]
     pub nagle: bool,
+
+    /// Forces multiplex mode for the driver
+    ///
+    /// Without this, the requirement is inferred based on the scenario
+    #[structopt(long, env = "MULTIPLEX")]
+    multiplex: Option<Option<bool>>,
 }
 
 impl Server {
@@ -64,6 +70,16 @@ impl Server {
 
     pub fn trace(&self) -> impl trace::Trace + Clone {
         traces(&self.trace[..], self.verbose, &self.scenario.traces)
+    }
+
+    pub fn multiplex(&self) -> Option<multiplex::Config> {
+        // TODO infer this based on the scenario requirements
+        if is_multiplex_enabled(self.multiplex) {
+            // TODO load this from the scenario configuration
+            Some(multiplex::Config::default())
+        } else {
+            None
+        }
     }
 }
 
@@ -95,6 +111,12 @@ pub struct Client {
 
     #[structopt(long)]
     pub nagle: bool,
+
+    /// Forces multiplex mode for the driver
+    ///
+    /// Without this, the requirement is inferred based on the scenario
+    #[structopt(long, env = "MULTIPLEX")]
+    multiplex: Option<Option<bool>>,
 }
 
 impl Client {
@@ -120,6 +142,24 @@ impl Client {
 
     pub fn trace(&self) -> impl trace::Trace + Clone {
         traces(&self.trace[..], self.verbose, &self.scenario.traces)
+    }
+
+    pub fn multiplex(&self) -> Option<multiplex::Config> {
+        // TODO infer this based on the scenario requirements
+        if is_multiplex_enabled(self.multiplex) {
+            // TODO load this from the scenario configuration
+            Some(multiplex::Config::default())
+        } else {
+            None
+        }
+    }
+}
+
+fn is_multiplex_enabled(opt: Option<Option<bool>>) -> bool {
+    match opt {
+        Some(Some(v)) => v,
+        Some(None) => true,
+        None => false,
     }
 }
 
