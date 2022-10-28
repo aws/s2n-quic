@@ -658,23 +658,8 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
-        id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
-
-      - uses: camshaft/install@v1
-        with:
-          crate: kani-verifier
-          version: 0.13.0
-          bins: kani,cargo-kani
-
-      - name: Kani setup
-        run: cargo-kani setup
-
       - name: Kani run
-        run: |
-          cd quic/s2n-quic-core
-          cargo kani --tests
+        uses: model-checking/kani-github-action@v0.13
+        with:
+          working-directory: quic/s2n-quic-core
+          args: --tests
