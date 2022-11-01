@@ -164,52 +164,11 @@ jobs:
           status: "success"
           url: "${{ steps.s3.outputs.URL }}"
 
-  docdiff:
-    runs-on: ubuntu-latest
-    needs: env
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          submodules: true
-
-      - uses: actions-rs/toolchain@v1.0.7
-        id: toolchain
-        with:
-          # pin to a specific version so we don't get breakage in the generated html
-          toolchain: ${{ needs.env.outputs.msrv }}
-          profile: minimal
-          override: true
-
-      - uses: camshaft/rust-cache@v1
-
-      - name: Clean up cache
-        run: |
-          rm -f target/release/docdiff
-          rm -f common/docdiff/target/release/docdiff
-
-      - name: Cache docdiff
-        uses: actions/cache@v3.0.3
-        continue-on-error: true
-        with:
-          path: target/release/docdiff
-          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('common/docdiff/**') }}
-
-      - name: Build docdiff
-        working-directory: common/docdiff
-        run: |
-          if [ ! -f ../../target/release/docdiff ]; then
-            mkdir -p ../../target/release
-            cargo build --release
-            cp target/release/docdiff ../../target/release/docdiff
-          fi
-
-      - name: Run docdiff
-        run: ./target/release/docdiff s2n-quic
-
   test:
     runs-on: ${{ matrix.os }}
     needs: env
     strategy:
+      fail-fast: false
       matrix:
         rust: ${{ fromJson(needs.env.outputs.rust-versions) }}
         os: [ubuntu-latest, macOS-latest, windows-latest]
@@ -663,3 +622,60 @@ jobs:
         with:
           working-directory: quic/s2n-quic-core
           args: --tests
+
+  dhat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - uses: camshaft/rust-cache@v1
+
+      - name: Run cargo build
+        working-directory: tools/memory-report
+        run: cargo build --release
+
+      - name: Run server
+        working-directory: tools/memory-report
+        run: ./target/release/memory-report server &
+
+      - name: Run client
+        working-directory: tools/memory-report
+        run: ./target/release/memory-report client > report.tsv
+
+      - name: Prepare artifacts
+        working-directory: tools/memory-report
+        run: |
+          mkdir -p target/report
+          mv report.tsv target/report/
+          mv dhat-heap.json target/report/
+
+      - uses: aws-actions/configure-aws-credentials@v1.7.0
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-1
+
+      - name: Upload to S3
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+        id: s3
+        working-directory: tools/memory-report
+        run: |
+          TARGET="${{ github.sha }}/dhat"
+          aws s3 sync target/report "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          URL="$CDN/dhat/dh_view.html?url=/$TARGET/dhat-heap.json"
+          echo "::set-output name=URL::$URL"
+
+      - uses: ouzi-dev/commit-status-updater@v2.0.1
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+        with:
+          name: "dhat / report"
+          status: "success"
+          url: "${{ steps.s3.outputs.URL }}"
