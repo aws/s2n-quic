@@ -15,7 +15,7 @@ static DATA: Bytes = {
     const INNER: [u8; DATA_LEN] = {
         let mut data = [0; DATA_LEN];
         let mut idx = 0;
-        while idx < data.len() {
+        while idx < DATA_LEN {
             data[idx] = idx as u8;
             idx += 1;
         }
