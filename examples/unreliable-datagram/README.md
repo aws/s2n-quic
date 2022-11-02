@@ -8,17 +8,14 @@ This folder contains an example of sending and receiving an 'unreliable datagram
 
 # Set-up
 
-Currently the unreliable datagram functionality is disabled by default as it is still in development. It can be enabled by passing a few compiler flags:
-
+Currently the unreliable datagram functionality is disabled by default as it is still in development. It can be enabled by passing a compiler flag:
 ```sh
-export RUSTFLAGS=`--cfg s2n_quic_unstable --cfg unstable-provider-datagram`
+export RUSTFLAGS=`--cfg s2n_quic_unstable`
 ```
-
-You can also add a `.cargo/config.toml` to the project (as done in this example):
-
+and adding this line to your Cargo.toml file:
 ```toml
-[build]
-rustflags=['--cfg', 's2n_quic_unstable', '--cfg', 'unstable-provider-datagram']
+[dependencies]
+s2n-quic = { version = "1", features = ["unstable-provider-datagram"]}
 ```
 
 ## Running the Example
