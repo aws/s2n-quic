@@ -10,7 +10,7 @@ This folder contains an example of sending and receiving an 'unreliable datagram
 
 Currently the unreliable datagram functionality is disabled by default as it is still in development. It can be enabled by passing a compiler flag:
 ```sh
-export RUSTFLAGS=`--cfg s2n_quic_unstable`
+export RUSTFLAGS="--cfg s2n_quic_unstable"
 ```
 and adding this line to your Cargo.toml file:
 ```toml
