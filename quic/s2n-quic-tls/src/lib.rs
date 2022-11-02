@@ -40,6 +40,13 @@ impl<T: FnMut(ConnectionContext) -> Config + Send + 'static> ConfigLoader for T 
     }
 }
 
+impl ConfigLoader for Box<dyn ConfigLoader> {
+    #[inline]
+    fn load(&mut self, cx: ConnectionContext) -> Config {
+        (**self).load(cx)
+    }
+}
+
 mod callback;
 mod keylog;
 mod params;

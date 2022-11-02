@@ -12,11 +12,16 @@ use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls, endpoint};
 #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
 use s2n_tls::callbacks::ClientHelloCallback;
-use s2n_tls::{callbacks::VerifyHostNameCallback, config, enums::ClientAuthType, error::Error};
+use s2n_tls::{
+    callbacks::VerifyHostNameCallback,
+    config::{self, Config},
+    enums::ClientAuthType,
+    error::Error,
+};
 use std::sync::Arc;
 
-pub struct Server {
-    loader: Box<dyn crate::ConfigLoader>,
+pub struct Server<L: ConfigLoader = Config> {
+    loader: L,
     #[allow(dead_code)] // we need to hold on to the handle to ensure it is cleaned up correctly
     keylog: Option<KeyLogHandle>,
     params: Params,
@@ -26,7 +31,9 @@ impl Server {
     pub fn builder() -> Builder {
         Builder::default()
     }
+}
 
+impl<L: ConfigLoader> Server<L> {
     /// Creates a [`Server`] from a [`ConfigLoader`]
     ///
     /// The caller is responsible for building the `Config`
@@ -34,9 +41,9 @@ impl Server {
     /// * setting a security policy that supports TLS 1.3
     /// * enabling QUIC support
     /// * setting at least one application protocol
-    pub fn from_loader<L: ConfigLoader>(loader: L) -> Self {
+    pub fn from_loader(loader: L) -> Self {
         Self {
-            loader: Box::new(loader),
+            loader,
             keylog: None,
             params: Default::default(),
         }
@@ -51,7 +58,7 @@ impl Default for Server {
     }
 }
 
-impl ConfigLoader for Server {
+impl<L: ConfigLoader> ConfigLoader for Server<L> {
     #[inline]
     fn load(&mut self, cx: crate::ConnectionContext) -> s2n_tls::config::Config {
         self.loader.load(cx)
@@ -194,14 +201,14 @@ impl Builder {
 
     pub fn build(self) -> Result<Server, Error> {
         Ok(Server {
-            loader: Box::new(self.config.build()?),
+            loader: self.config.build()?,
             keylog: self.keylog,
             params: Default::default(),
         })
     }
 }
 
-impl tls::Endpoint for Server {
+impl<L: ConfigLoader> tls::Endpoint for Server<L> {
     type Session = Session;
 
     fn new_server_session<Params: EncoderValue>(&mut self, params: &Params) -> Self::Session {

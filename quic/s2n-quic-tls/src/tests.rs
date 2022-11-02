@@ -319,3 +319,20 @@ fn run<S: Endpoint, C: Endpoint>(
 ) {
     run_result(server, client, client_hello_cb_done).unwrap();
 }
+
+#[test]
+fn config_loader() {
+    use crate::{ConfigLoader, Server};
+
+    let server = Server::default();
+
+    // make sure the loader can be a static type
+    let server: Server<Server> = Server::from_loader(server);
+
+    // make sure the loader can be a dynamic type
+    let server: Box<dyn ConfigLoader> = Box::new(server);
+    let mut server: Server<Box<dyn ConfigLoader>> = Server::from_loader(server);
+
+    // make sure the server can actually create a session
+    let _ = server.new_server_session(&1);
+}
