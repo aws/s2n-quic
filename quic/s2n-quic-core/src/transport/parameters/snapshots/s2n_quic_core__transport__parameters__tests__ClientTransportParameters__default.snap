@@ -1,6 +1,5 @@
 ---
 source: quic/s2n-quic-core/src/transport/parameters/tests.rs
-assertion_line: 55
 expression: default_value
 ---
 TransportParameters {
@@ -63,17 +62,9 @@ TransportParameters {
             2,
         ),
     ),
-    original_destination_connection_id: DisabledParameter(
-        PhantomData,
-    ),
-    stateless_reset_token: DisabledParameter(
-        PhantomData,
-    ),
-    preferred_address: DisabledParameter(
-        PhantomData,
-    ),
+    original_destination_connection_id: DisabledParameter,
+    stateless_reset_token: DisabledParameter,
+    preferred_address: DisabledParameter,
     initial_source_connection_id: None,
-    retry_source_connection_id: DisabledParameter(
-        PhantomData,
-    ),
+    retry_source_connection_id: DisabledParameter,
 }

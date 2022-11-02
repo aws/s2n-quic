@@ -2,11 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{TransportParameter, TransportParameterId, TransportParameterValidator};
-use core::marker::PhantomData;
+use core::{fmt, marker::PhantomData};
 
 /// Struct for marking a field as disabled for a given endpoint type
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct DisabledParameter<T>(PhantomData<T>);
+
+impl<T> fmt::Debug for DisabledParameter<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "DisabledParameter")
+    }
+}
 
 impl<T> Default for DisabledParameter<T> {
     fn default() -> Self {
