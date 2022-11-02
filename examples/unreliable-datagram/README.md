@@ -1,6 +1,6 @@
 # Unreliable Datagram
 
-This folder contains an example of sending and receiving an 'unreliable datagram' in `s2n-quic`. An 'unreliable datagram' is data that is not retransmitted upon packet loss, and is defined in https://datatracker.ietf.org/doc/rfc9221. This is in contrast to 'stream data' which is retransmitted during packet loss. Stream data is the preferred method of sending application data, as it comes with support for features like flow control and packet retransmission. Additionally, unreliable datagram users are responsible for making sure their datagrams fit into the packet space given, as packet fragmentation/assembly is not allowed. A common use-case for unreliable datagrams is video or audio streaming, where individual datagrams are small and some loss is acceptable.
+This folder contains an example of sending and receiving an 'unreliable datagram' in `s2n-quic`. An 'unreliable datagram' is data that is not retransmitted upon packet loss, and is defined in https://datatracker.ietf.org/doc/rfc9221. This is in contrast to 'stream data' which is retransmitted during packet loss. Stream data is the preferred method of sending application data, as it comes with support for features like flow control and packet retransmission. Users have the option of sending both stream data and datagram data, only datagram data, or only stream data. The default sending functionality will alternate between draining the stream queue and draining the datagram queue. Datagrams will be sent in place of stream data if the stream data queue is empty, and vice versa. Additionally, unreliable datagram users are responsible for making sure their datagrams fit into the packet space given, as packet fragmentation/assembly is not allowed. A common use-case for unreliable datagrams is video or audio streaming, where individual datagrams are small and some loss is acceptable.
 
 # Default Datagram Implementation
 
@@ -8,17 +8,14 @@ This folder contains an example of sending and receiving an 'unreliable datagram
 
 # Set-up
 
-Currently the unreliable datagram functionality is disabled by default as it is still in development. It can be enabled by passing a few compiler flags:
-
+Currently the unreliable datagram functionality is disabled by default as it is still in development. It can be enabled by passing a compiler flag:
 ```sh
-export RUSTFLAGS=`--cfg s2n_quic_unstable --cfg unstable-provider-datagram`
+export RUSTFLAGS="--cfg s2n_quic_unstable"
 ```
-
-You can also add a `.cargo/config.toml` to the project (as done in this example):
-
+and adding this line to your Cargo.toml file:
 ```toml
-[build]
-rustflags=['--cfg', 's2n_quic_unstable', '--cfg', 'unstable-provider-datagram']
+[dependencies]
+s2n-quic = { version = "1", features = ["unstable-provider-datagram"]}
 ```
 
 ## Running the Example
