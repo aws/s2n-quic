@@ -6,6 +6,7 @@ use crate::{
     keylog::KeyLogHandle,
     params::Params,
     session::Session,
+    ConfigLoader,
 };
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls, endpoint};
@@ -19,8 +20,8 @@ use s2n_tls::{
 };
 use std::sync::Arc;
 
-pub struct Server {
-    config: Config,
+pub struct Server<L: ConfigLoader = Config> {
+    loader: L,
     #[allow(dead_code)] // we need to hold on to the handle to ensure it is cleaned up correctly
     keylog: Option<KeyLogHandle>,
     params: Params,
@@ -32,11 +33,35 @@ impl Server {
     }
 }
 
+impl<L: ConfigLoader> Server<L> {
+    /// Creates a [`Server`] from a [`ConfigLoader`]
+    ///
+    /// The caller is responsible for building the `Config`
+    /// correctly for QUIC settings. This includes:
+    /// * setting a security policy that supports TLS 1.3
+    /// * enabling QUIC support
+    /// * setting at least one application protocol
+    pub fn from_loader(loader: L) -> Self {
+        Self {
+            loader,
+            keylog: None,
+            params: Default::default(),
+        }
+    }
+}
+
 impl Default for Server {
     fn default() -> Self {
         Self::builder()
             .build()
             .expect("could not create a default server")
+    }
+}
+
+impl<L: ConfigLoader> ConfigLoader for Server<L> {
+    #[inline]
+    fn load(&mut self, cx: crate::ConnectionContext) -> s2n_tls::config::Config {
+        self.loader.load(cx)
     }
 }
 
@@ -176,18 +201,20 @@ impl Builder {
 
     pub fn build(self) -> Result<Server, Error> {
         Ok(Server {
-            config: self.config.build()?,
+            loader: self.config.build()?,
             keylog: self.keylog,
             params: Default::default(),
         })
     }
 }
 
-impl tls::Endpoint for Server {
+impl<L: ConfigLoader> tls::Endpoint for Server<L> {
     type Session = Session;
 
     fn new_server_session<Params: EncoderValue>(&mut self, params: &Params) -> Self::Session {
-        let config = self.config.clone();
+        let config = self
+            .loader
+            .load(crate::ConnectionContext { server_name: None });
         self.params.with(params, |params| {
             Session::new(endpoint::Type::Server, config, params, None).unwrap()
         })
