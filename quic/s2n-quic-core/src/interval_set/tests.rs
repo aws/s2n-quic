@@ -73,6 +73,7 @@ macro_rules! assert_set_eq {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
 fn interval_set_test() {
     check!().with_type().for_each(
         |(initial_ops, union_ops, difference_ops, intersection_ops)| {
@@ -100,6 +101,7 @@ fn interval_set_test() {
 
 #[test]
 #[cfg_attr(kani, kani::proof, kani::unwind(2))]
+#[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
 fn interval_set_inset_range_test() {
     // Generate valid ranges (lb <= ub)
     let gen = gen::<(i32, i32, i32)>().filter_gen(|(a, b, _c)| a <= b);
