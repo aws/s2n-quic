@@ -5,7 +5,6 @@ notice = "deny"
 yanked = "deny"
 ignore = [
     "RUSTSEC-2021-0139", # criterion, structopt, and tracing-subscriber (test dependencies) use ansi_term
-    "RUSTSEC-2022-0041", # bolero (a test dependency) needs to update its libtest-mimic dependency
 ]
 
 [bans]
@@ -21,6 +20,13 @@ skip-tree = [
     { name = "bolero" },
     { name = "criterion" },
     { name = "insta" },
+
+    # Ignore duplicate dependencies in private s2n-quic crates
+    { name = "s2n-quic-bench" },
+    { name = "s2n-quic-events" },
+    { name = "s2n-quic-h3" },
+    { name = "s2n-quic-qns" },
+    { name = "s2n-quic-sim" },
 ]
 
 [sources]
