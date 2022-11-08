@@ -28,7 +28,7 @@ impl Hasher {
     pub fn finish(self) -> Id {
         use sha2::Digest;
         let hash = self.hash.finalize();
-        let out = base64::encode_config(&hash, base64::URL_SAFE_NO_PAD);
+        let out = base64::encode_config(hash, base64::URL_SAFE_NO_PAD);
         // '_' is not allowed in DNS names
         let out = out.replace('_', "-");
         Id(out)
