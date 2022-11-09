@@ -3,8 +3,11 @@
 
 //! Provides unreliable datagram support
 
-pub use s2n_quic_core::datagram::default;
-use s2n_quic_core::datagram::{traits::Endpoint, Disabled};
+use s2n_quic_core::datagram::Disabled;
+pub use s2n_quic_core::datagram::{
+    default,
+    traits::{ConnectionInfo, Endpoint, Packet, PreConnectionInfo, Receiver, Sender, WriteError},
+};
 
 pub trait Provider {
     type Endpoint: Endpoint;
