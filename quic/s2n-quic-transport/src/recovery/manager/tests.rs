@@ -69,7 +69,7 @@ fn one_second_pto_when_no_previous_rtt_available() {
     );
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9002#section-A.5
+//= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.5
 //= type=test
 #[test]
 fn on_packet_sent() {
@@ -328,7 +328,7 @@ fn on_packet_sent_across_multiple_paths() {
     assert_eq!(Some(expected_pto), manager.pto.timer.next_expiration());
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9002#section-A.7
+//= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.7
 //= type=test
 #[test]
 fn on_ack_frame() {
@@ -1365,7 +1365,7 @@ fn rtt_update_when_receiving_ack_from_multiple_paths() {
     assert_eq!(second_path.congestion_controller.on_rtt_update, 0);
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9002#section-A.10
+//= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.10
 //= type=test
 #[test]
 fn detect_and_remove_lost_packets() {

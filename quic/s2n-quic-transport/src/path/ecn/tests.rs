@@ -437,7 +437,7 @@ fn validate_ecn_decrease() {
     assert!(matches!(controller.state, State::Failed(_)));
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#section-A.4
+//= https://www.rfc-editor.org/rfc/rfc9000#appendix-A.4
 //= type=test
 //# From the "unknown" state, successful validation of the ECN counts in an ACK frame
 //# (see Section 13.4.2.1) causes the ECN state for the path to become "capable",

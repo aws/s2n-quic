@@ -33,7 +33,7 @@ mod tests {
     use ring::hkdf;
     use s2n_quic_core::crypto::Key;
 
-    //= https://www.rfc-editor.org/rfc/rfc9001#section-A.5
+    //= https://www.rfc-editor.org/rfc/rfc9001#appendix-A.5
     //# In this example, TLS produces an application write secret from which
     //# a server uses HKDF-Expand-Label to produce four values: a key, an IV,
     //# a header protection key, and the secret that will be used after keys

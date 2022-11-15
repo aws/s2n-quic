@@ -7,9 +7,9 @@ use crate::{
 };
 use core::convert::TryInto;
 
-//= https://www.rfc-editor.org/rfc/rfc9002#section-A.1
+//= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.1
 
-//= https://www.rfc-editor.org/rfc/rfc9002#section-A.1.1
+//= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.1.1
 
 #[cfg(feature = "alloc")]
 pub type SentPackets<PacketInfo> = crate::packet::number::Map<SentPacketInfo<PacketInfo>>;

@@ -30,11 +30,11 @@ pub struct Manager<Config: endpoint::Config> {
     // The packet space for this recovery manager
     space: PacketNumberSpace,
 
-    //= https://www.rfc-editor.org/rfc/rfc9002#section-A.3
+    //= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.3
     //# The largest packet number acknowledged in the packet number space so far.
     largest_acked_packet: Option<PacketNumber>,
 
-    //= https://www.rfc-editor.org/rfc/rfc9002#section-A.3
+    //= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.3
     //# An association of packet numbers in a packet number space to information about them.
     //  These are packets that are pending acknowledgement.
     sent_packets: SentPackets<<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController as congestion_controller::CongestionController>::PacketInfo>,
@@ -50,7 +50,7 @@ pub struct Manager<Config: endpoint::Config> {
     //# tail packets or acknowledgments.
     pto: Pto,
 
-    //= https://www.rfc-editor.org/rfc/rfc9002#section-A.3
+    //= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.3
     //# The time the most recent ack-eliciting packet was sent.
     time_of_last_ack_eliciting_packet: Option<Timestamp>,
 
@@ -195,7 +195,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         publisher.on_recovery_metrics(recovery_event!(path_id, path));
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9002#section-A.5
+    //= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.5
     //# After a packet is sent, information about the packet is stored.
     #[allow(clippy::too_many_arguments)]
     pub fn on_packet_sent<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
@@ -725,7 +725,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         matches!(self.pto.state, PtoState::RequiresTransmission(_))
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9002#section-B.9
+    //= https://www.rfc-editor.org/rfc/rfc9002#appendix-B.9
     //# When Initial or Handshake keys are discarded, packets sent in that
     //# space no longer count toward bytes in flight.
     /// Clears bytes in flight for sent packets.
@@ -756,7 +756,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         );
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9002#section-A.10
+    //= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.10
     //# DetectAndRemoveLostPackets is called every time an ACK is received or the time threshold
     //# loss detection timer expires. This function operates on the sent_packets for that packet
     //# number space and returns a list of packets newly detected as lost.
@@ -1150,7 +1150,7 @@ impl Pto {
                 //# has Handshake keys, otherwise it MUST send an Initial packet in a
                 //# UDP datagram with a payload of at least 1200 bytes.
 
-                //= https://www.rfc-editor.org/rfc/rfc9002#section-A.9
+                //= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.9
                 //# // Client sends an anti-deadlock packet: Initial is padded
                 //# // to earn more anti-amplification credit,
                 //# // a Handshake packet proves address ownership.

@@ -95,7 +95,7 @@ fn derive_truncation_range(
 //# bit more than the base-2 logarithm of the number of contiguous
 //# unacknowledged packet numbers, including the new packet.
 
-//= https://www.rfc-editor.org/rfc/rfc9000#section-A.2
+//= https://www.rfc-editor.org/rfc/rfc9000#appendix-A.2
 //# For example, if an endpoint has received an acknowledgment for packet
 //# 0xabe8b3 and is sending a packet with a number of 0xac5c02, there are
 //# 29,519 (0x734f) outstanding packet numbers.  In order to represent at
@@ -159,7 +159,7 @@ fn packet_decoding_example_test() {
     );
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#section-A.3
+//= https://www.rfc-editor.org/rfc/rfc9000#appendix-A.3
 //# DecodePacketNumber(largest_pn, truncated_pn, pn_nbits):
 //#   expected_pn  = largest_pn + 1
 //#   pn_win       = 1 << pn_nbits

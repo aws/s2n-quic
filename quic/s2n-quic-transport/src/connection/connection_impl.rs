@@ -1147,7 +1147,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     .on_datagram_received(rtt, datagram.timestamp);
             }
         } else if unblocked {
-            //= https://www.rfc-editor.org/rfc/rfc9002#section-A.6
+            //= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.6
             //# When a server is blocked by anti-amplification limits, receiving a
             //# datagram unblocks it, even if none of the packets in the datagram are
             //# successfully processed.  In such a case, the PTO timer will need to

@@ -3,7 +3,7 @@
 
 use hex_literal::hex;
 
-//= https://www.rfc-editor.org/rfc/rfc9001#section-A.1
+//= https://www.rfc-editor.org/rfc/rfc9001#appendix-A.1
 //# The labels generated during the execution of the HKDF-Expand-Label
 //# function (that is, HkdfLabel.label) and part of the value given to
 //# the HKDF-Expand function in order to produce its output are:
@@ -12,22 +12,22 @@ use hex_literal::hex;
 
 pub const CLIENT_IN: [u8; 19] = hex!("00200f746c73313320636c69656e7420696e00");
 
-//= https://www.rfc-editor.org/rfc/rfc9001#section-A.1
+//= https://www.rfc-editor.org/rfc/rfc9001#appendix-A.1
 //# server in:  00200f746c7331332073657276657220696e00
 
 pub const SERVER_IN: [u8; 19] = hex!("00200f746c7331332073657276657220696e00");
 
-//= https://www.rfc-editor.org/rfc/rfc9001#section-A.1
+//= https://www.rfc-editor.org/rfc/rfc9001#appendix-A.1
 //# quic key:  00100e746c7331332071756963206b657900
 
 pub const QUIC_KEY_16: [u8; 18] = hex!("00100e746c7331332071756963206b657900");
 
-//= https://www.rfc-editor.org/rfc/rfc9001#section-A.1
+//= https://www.rfc-editor.org/rfc/rfc9001#appendix-A.1
 //# quic iv:  000c0d746c733133207175696320697600
 
 pub const QUIC_IV_12: [u8; 17] = hex!("000c0d746c733133207175696320697600");
 
-//= https://www.rfc-editor.org/rfc/rfc9001#section-A.1
+//= https://www.rfc-editor.org/rfc/rfc9001#appendix-A.1
 //# quic hp:  00100d746c733133207175696320687000
 
 pub const QUIC_HP_16: [u8; 17] = hex!("00100d746c733133207175696320687000");

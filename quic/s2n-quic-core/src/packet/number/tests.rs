@@ -113,7 +113,7 @@ fn rfc_decoder(largest_pn: u64, truncated_pn: u64, pn_nbits: usize) -> u64 {
         };
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#section-A.3
+    //= https://www.rfc-editor.org/rfc/rfc9000#appendix-A.3
     //= type=test
     //# DecodePacketNumber(largest_pn, truncated_pn, pn_nbits):
     //#   expected_pn  = largest_pn + 1
