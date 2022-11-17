@@ -38,7 +38,7 @@ pub mod example {
     );
     pub const PACKET_LEN: usize = 36;
 
-    //= https://www.rfc-editor.org/rfc/rfc9001#section-A.4
+    //= https://www.rfc-editor.org/rfc/rfc9001#appendix-A.4
     //# This shows a Retry packet that might be sent in response to the
     //# Initial packet in Appendix A.2.  The integrity check includes the
     //# client-chosen connection ID value of 0x8394c8f03e515708, but that
@@ -65,7 +65,7 @@ pub mod example {
     // The Retry Packet should have this as the source connection ID
     pub const SCID: [u8; 8] = hex!("f067a5502a4262b5");
 
-    //= https://www.rfc-editor.org/rfc/rfc9001#section-A
+    //= https://www.rfc-editor.org/rfc/rfc9001#appendix-A
     //# These packets use an 8-byte client-chosen Destination Connection ID
     //# of 0x8394c8f03e515708.
 

@@ -132,7 +132,7 @@ impl Controller {
         }
 
         match self.state {
-            //= https://www.rfc-editor.org/rfc/rfc9000#section-A.4
+            //= https://www.rfc-editor.org/rfc/rfc9000#appendix-A.4
             //# On paths with a "testing" or "capable" state, the endpoint
             //# sends packets with an ECT marking -- ECT(0) by default;
             //# otherwise, the endpoint sends unmarked packets.
@@ -257,7 +257,7 @@ impl Controller {
             return ValidationOutcome::Failed;
         };
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#section-A.4
+        //= https://www.rfc-editor.org/rfc/rfc9000#appendix-A.4
         //# From the "unknown" state, successful validation of the ECN counts in an ACK frame
         //# (see Section 13.4.2.1) causes the ECN state for the path to become "capable",
         //# unless no marked packet has been acknowledged.

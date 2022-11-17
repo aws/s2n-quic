@@ -42,13 +42,13 @@ pub const INITIAL_CLIENT_LABEL: [u8; 9] = *b"client in";
 
 pub const INITIAL_SERVER_LABEL: [u8; 9] = *b"server in";
 
-//= https://www.rfc-editor.org/rfc/rfc9001#section-A
+//= https://www.rfc-editor.org/rfc/rfc9001#appendix-A
 //# These packets use an 8-byte client-chosen Destination Connection ID
 //# of 0x8394c8f03e515708.
 
 pub const EXAMPLE_DCID: [u8; 8] = hex!("8394c8f03e515708");
 
-//= https://www.rfc-editor.org/rfc/rfc9001#section-A.1
+//= https://www.rfc-editor.org/rfc/rfc9001#appendix-A.1
 //# client_initial_secret
 //#     = HKDF-Expand-Label(initial_secret, "client in", "", 32)
 //#     = c00cf151ca5be075ed0ebfb5c80323c4
@@ -61,7 +61,7 @@ pub const EXAMPLE_CLIENT_INITIAL_SECRET: [u8; 32] = hex!(
     "
 );
 
-//= https://www.rfc-editor.org/rfc/rfc9001#section-A.1
+//= https://www.rfc-editor.org/rfc/rfc9001#appendix-A.1
 //# server_initial_secret
 //#     = HKDF-Expand-Label(initial_secret, "server in", "", 32)
 //#     = 3c199828fd139efd216c155ad844cc81
@@ -74,7 +74,7 @@ pub const EXAMPLE_SERVER_INITIAL_SECRET: [u8; 32] = hex!(
     "
 );
 
-//= https://www.rfc-editor.org/rfc/rfc9001#section-A.2
+//= https://www.rfc-editor.org/rfc/rfc9001#appendix-A.2
 //# The client sends an Initial packet.  The unprotected payload of this
 //# packet contains the following CRYPTO frame, plus enough PADDING
 //# frames to make an 1162-byte payload:
@@ -88,7 +88,7 @@ pub const EXAMPLE_SERVER_INITIAL_SECRET: [u8; 32] = hex!(
 //# 3900320408ffffffffffffffff050480 00ffff07048000ffff08011001048000
 //# 75300901100f088394c8f03e51570806 048000ffff
 
-/// Example payload from <https://www.rfc-editor.org/rfc/rfc9001#section-A.2>
+/// Example payload from <https://www.rfc-editor.org/rfc/rfc9001#appendix-A.2>
 pub const EXAMPLE_CLIENT_INITIAL_PAYLOAD: [u8; 245] = hex!(
     "
    060040f1010000ed0303ebf8fa56f129 39b9584a3896472ec40bb863cfd3e868
@@ -102,7 +102,7 @@ pub const EXAMPLE_CLIENT_INITIAL_PAYLOAD: [u8; 245] = hex!(
     "
 );
 
-//= https://www.rfc-editor.org/rfc/rfc9001#section-A.2
+//= https://www.rfc-editor.org/rfc/rfc9001#appendix-A.2
 //# The unprotected header indicates a length of 1182 bytes: the 4-byte
 //# packet number, 1162 bytes of frames, and the 16-byte authentication
 //# tag.  The header includes the connection ID and a packet number of 2:
@@ -112,7 +112,7 @@ pub const EXAMPLE_CLIENT_INITIAL_PAYLOAD: [u8; 245] = hex!(
 pub const EXAMPLE_CLIENT_INITIAL_HEADER: [u8; 22] =
     hex!("c300000001088394c8f03e5157080000449e00000002");
 
-//= https://www.rfc-editor.org/rfc/rfc9001#section-A.2
+//= https://www.rfc-editor.org/rfc/rfc9001#appendix-A.2
 //# Protecting the payload produces output that is sampled for header
 //# protection.  Because the header uses a 4-byte packet number encoding,
 //# the first 16 bytes of the protected payload is sampled and then
@@ -139,7 +139,7 @@ fn client_initial_protection_test() {
     header_protection_test_helper(mask, &unprotected_header, &protected_header, packet_tag);
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9001#section-A.2
+//= https://www.rfc-editor.org/rfc/rfc9001#appendix-A.2
 //# The resulting protected packet is:
 //#
 //# c000000001088394c8f03e5157080000 449e7b9aec34d1b1c98dd7689fb8ec11
@@ -181,7 +181,7 @@ fn client_initial_protection_test() {
 //# 7e78bfe706ca4cf5e9c5453e9f7cfd2b 8b4c8d169a44e55c88d4a9a7f9474241
 //# e221af44860018ab0856972e194cd934
 
-/// <https://www.rfc-editor.org/rfc/rfc9001#section-A.2>
+/// <https://www.rfc-editor.org/rfc/rfc9001#appendix-A.2>
 pub const EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET: [u8; 1200] = hex!(
     "
    c000000001088394c8f03e5157080000 449e7b9aec34d1b1c98dd7689fb8ec11
@@ -225,7 +225,7 @@ pub const EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET: [u8; 1200] = hex!(
     "
 );
 
-//= https://www.rfc-editor.org/rfc/rfc9001#section-A.3
+//= https://www.rfc-editor.org/rfc/rfc9001#appendix-A.3
 //# The server sends the following payload in response, including an ACK
 //# frame, a CRYPTO frame, and no PADDING frames:
 //#
@@ -235,7 +235,7 @@ pub const EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET: [u8; 1200] = hex!(
 //# 020304
 //#
 
-/// Example payload from <https://www.rfc-editor.org/rfc/rfc9001#section-A.3>
+/// Example payload from <https://www.rfc-editor.org/rfc/rfc9001#appendix-A.3>
 pub const EXAMPLE_SERVER_INITIAL_PAYLOAD: [u8; 99] = hex!(
     "
    02000000000600405a020000560303ee fce7f7b37ba1d1632e96677825ddf739
@@ -245,7 +245,7 @@ pub const EXAMPLE_SERVER_INITIAL_PAYLOAD: [u8; 99] = hex!(
     "
 );
 
-//= https://www.rfc-editor.org/rfc/rfc9001#section-A.3
+//= https://www.rfc-editor.org/rfc/rfc9001#appendix-A.3
 //# The header from the server includes a new connection ID and a 2-byte
 //# packet number encoding for a packet number of 1:
 //#
@@ -254,7 +254,7 @@ pub const EXAMPLE_SERVER_INITIAL_PAYLOAD: [u8; 99] = hex!(
 pub const EXAMPLE_SERVER_INITIAL_HEADER: [u8; 20] =
     hex!("c1000000010008f067a5502a4262b50040750001");
 
-//= https://www.rfc-editor.org/rfc/rfc9001#section-A.3
+//= https://www.rfc-editor.org/rfc/rfc9001#appendix-A.3
 //# As a result, after protection, the header protection sample is taken
 //# starting from the third protected byte:
 //#
@@ -273,7 +273,7 @@ fn server_initial_protection_test() {
     header_protection_test_helper(mask, &unprotected_header, &protected_header, packet_tag);
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9001#section-A.3
+//= https://www.rfc-editor.org/rfc/rfc9001#appendix-A.3
 //# The final protected packet is then:
 //#
 //# cf000000010008f067a5502a4262b500 4075c0d95a482cd0991cd25b0aac406a
@@ -283,7 +283,7 @@ fn server_initial_protection_test() {
 //# 2158407dd074ee
 
 /// Example protected packet from
-/// <https://www.rfc-editor.org/rfc/rfc9001#section-A.3>
+/// <https://www.rfc-editor.org/rfc/rfc9001#appendix-A.3>
 pub const EXAMPLE_SERVER_INITIAL_PROTECTED_PACKET: [u8; 135] = hex!(
     "
    cf000000010008f067a5502a4262b500 4075c0d95a482cd0991cd25b0aac406a

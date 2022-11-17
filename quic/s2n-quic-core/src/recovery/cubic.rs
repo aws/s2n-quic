@@ -152,7 +152,7 @@ pub struct CubicCongestionController {
     max_datagram_size: u16,
     congestion_window: f32,
     state: State,
-    //= https://www.rfc-editor.org/rfc/rfc9002#section-B.2
+    //= https://www.rfc-editor.org/rfc/rfc9002#appendix-B.2
     //# The sum of the size in bytes of all sent packets
     //# that contain at least one ack-eliciting or PADDING frame and have
     //# not been acknowledged or declared lost.  The size does not include
