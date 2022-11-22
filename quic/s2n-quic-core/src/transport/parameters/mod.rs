@@ -1448,7 +1448,6 @@ impl<
         }
 
         load!(max_idle_timeout, max_idle_timeout);
-        load!(max_ack_delay, max_ack_delay);
         load!(data_window, initial_max_data);
         load!(
             bidirectional_local_data_window,
