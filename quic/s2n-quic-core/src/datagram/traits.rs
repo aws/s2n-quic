@@ -60,10 +60,25 @@ impl Default for PreConnectionInfo {
     }
 }
 
+/// ReceiveContext contains information about the connection.
+#[non_exhaustive]
+#[derive(Debug)]
+pub struct ReceiveContext<'a> {
+    /// This is the current connection path this datagram was received on.
+    pub path: crate::event::api::Path<'a>,
+}
+
+impl<'a> ReceiveContext<'a> {
+    #[doc(hidden)]
+    pub fn new(path: crate::event::api::Path<'a>) -> Self {
+        ReceiveContext { path }
+    }
+}
+
 /// Allows users to configure the behavior of receiving datagrams.
 pub trait Receiver: 'static + Send {
     /// A callback that gives users direct access to datagrams as they are read off a packet
-    fn on_datagram(&mut self, datagram: &[u8]);
+    fn on_datagram(&mut self, context: &ReceiveContext<'_>, datagram: &[u8]);
 
     /// A callback used to notify the application in the case of a connection error
     fn on_connection_error(&mut self, error: connection::Error);

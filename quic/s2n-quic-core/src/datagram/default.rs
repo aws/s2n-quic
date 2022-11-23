@@ -5,7 +5,7 @@
 
 use crate::{
     connection,
-    datagram::{ConnectionInfo, Packet, PreConnectionInfo},
+    datagram::{ConnectionInfo, Packet, PreConnectionInfo, ReceiveContext},
     transport::parameters::MaxDatagramFrameSize,
 };
 use alloc::collections::VecDeque;
@@ -160,7 +160,7 @@ impl Receiver {
 }
 
 impl super::Receiver for Receiver {
-    fn on_datagram(&mut self, datagram: &[u8]) {
+    fn on_datagram(&mut self, _: &ReceiveContext, datagram: &[u8]) {
         if datagram.len() as u64 > self.max_datagram_frame_size {
             return;
         }
@@ -777,6 +777,25 @@ mod tests {
         assert!(!default_sender.queue.is_empty());
     }
 
+    fn fake_receive_context() -> crate::datagram::ReceiveContext<'static> {
+        crate::datagram::ReceiveContext {
+            path: crate::event::api::Path {
+                local_addr: crate::event::api::SocketAddress::IpV4 {
+                    ip: &[0; 4],
+                    port: 0,
+                },
+                local_cid: crate::event::api::ConnectionId { bytes: &[] },
+                remote_addr: crate::event::api::SocketAddress::IpV4 {
+                    ip: &[0; 4],
+                    port: 0,
+                },
+                remote_cid: crate::event::api::ConnectionId { bytes: &[] },
+                id: 0,
+                is_active: true,
+            },
+        }
+    }
+
     #[test]
     fn on_datagram() {
         // Create a receiver with limited capacity
@@ -789,10 +808,11 @@ mod tests {
         let datagram_0 = vec![1, 2, 3];
         let datagram_1 = vec![4, 5, 6];
         let datagram_2 = vec![7, 8, 9];
-        crate::datagram::Receiver::on_datagram(&mut receiver, &datagram_0);
-        crate::datagram::Receiver::on_datagram(&mut receiver, &datagram_1);
+        let ctx = fake_receive_context();
+        crate::datagram::Receiver::on_datagram(&mut receiver, &ctx, &datagram_0);
+        crate::datagram::Receiver::on_datagram(&mut receiver, &ctx, &datagram_1);
         // Datagram queue will be forced to drop a datagram to receive the newest one
-        crate::datagram::Receiver::on_datagram(&mut receiver, &datagram_2);
+        crate::datagram::Receiver::on_datagram(&mut receiver, &ctx, &datagram_2);
 
         // Oldest datagram has been dropped
         assert_eq!(receiver.queue.pop_front().unwrap(), datagram_1);
@@ -801,7 +821,7 @@ mod tests {
 
         // Datagram sent by peer is larger than max_datagram_frame_size
         let datagram_3 = vec![10, 11, 12, 13, 14, 15];
-        crate::datagram::Receiver::on_datagram(&mut receiver, &datagram_3);
+        crate::datagram::Receiver::on_datagram(&mut receiver, &ctx, &datagram_3);
         // Queue is empty as datagram was not accepted
         assert!(receiver.queue.pop_front().is_none());
     }
@@ -840,9 +860,10 @@ mod tests {
         let datagram_0 = vec![1, 2, 3];
         let datagram_1 = vec![4, 5, 6];
         let datagram_2 = vec![7, 8, 9];
-        crate::datagram::Receiver::on_datagram(&mut receiver, &datagram_0);
-        crate::datagram::Receiver::on_datagram(&mut receiver, &datagram_1);
-        crate::datagram::Receiver::on_datagram(&mut receiver, &datagram_2);
+        let ctx = fake_receive_context();
+        crate::datagram::Receiver::on_datagram(&mut receiver, &ctx, &datagram_0);
+        crate::datagram::Receiver::on_datagram(&mut receiver, &ctx, &datagram_1);
+        crate::datagram::Receiver::on_datagram(&mut receiver, &ctx, &datagram_2);
 
         // Waker was called
         assert_eq!(wake_count, 1);

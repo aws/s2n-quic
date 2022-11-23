@@ -12,7 +12,7 @@ use crate::{
 use core::task::Poll;
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{
-    datagram::{Endpoint, Receiver, Sender, WriteError},
+    datagram::{Endpoint, ReceiveContext, Receiver, Sender, WriteError},
     frame::{self, datagram::DatagramRef},
     query,
     varint::VarInt,
@@ -59,8 +59,13 @@ impl<Config: endpoint::Config> Manager<Config> {
 
     // A callback that allows users to access datagrams directly after they are
     // received.
-    pub fn on_datagram_frame(&mut self, datagram: DatagramRef) {
-        self.receiver.on_datagram(datagram.data);
+    pub fn on_datagram_frame(
+        &mut self,
+        path: s2n_quic_core::event::api::Path<'_>,
+        datagram: DatagramRef,
+    ) {
+        let context = ReceiveContext::new(path);
+        self.receiver.on_datagram(&context, datagram.data);
     }
 
     pub fn datagram_mut(&mut self, query: &mut dyn query::QueryMut) -> Poll<()> {
