@@ -389,7 +389,7 @@ macro_rules! impl_handle_api {
         ///     );
         /// ```
         pub fn datagram_mut<Query, ProviderType, Outcome>(
-            &mut self,
+            &self,
             query: Query,
         ) -> core::result::Result<Outcome, s2n_quic_core::query::Error>
         where
