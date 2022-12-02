@@ -752,8 +752,12 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         Ok(())
     }
 
-    fn handle_datagram_frame(&mut self, frame: DatagramRef) -> Result<(), transport::Error> {
-        self.datagram_manager.on_datagram_frame(frame);
+    fn handle_datagram_frame(
+        &mut self,
+        path: s2n_quic_core::event::api::Path<'_>,
+        frame: DatagramRef,
+    ) -> Result<(), transport::Error> {
+        self.datagram_manager.on_datagram_frame(path, frame);
         Ok(())
     }
 

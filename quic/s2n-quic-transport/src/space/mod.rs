@@ -623,7 +623,11 @@ pub trait PacketSpace<Config: endpoint::Config> {
             .with_frame_type(frame.tag().into()))
     }
 
-    fn handle_datagram_frame(&mut self, frame: DatagramRef) -> Result<(), transport::Error> {
+    fn handle_datagram_frame(
+        &mut self,
+        _path: s2n_quic_core::event::api::Path<'_>,
+        frame: DatagramRef,
+    ) -> Result<(), transport::Error> {
         Err(transport::Error::PROTOCOL_VIOLATION
             .with_reason(Self::INVALID_FRAME_ERROR)
             .with_frame_type(frame.tag().into()))
@@ -772,7 +776,11 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 }
                 Frame::Datagram(frame) => {
                     let on_error = on_frame_processed!(frame);
-                    self.handle_datagram_frame(frame.into()).map_err(on_error)?;
+                    self.handle_datagram_frame(
+                        path_event!(path, path_id).into_event(),
+                        frame.into(),
+                    )
+                    .map_err(on_error)?;
                 }
                 Frame::DataBlocked(frame) => {
                     let on_error = on_frame_processed!(frame);

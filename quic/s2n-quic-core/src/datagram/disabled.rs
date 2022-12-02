@@ -1,7 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::datagram::{ConnectionInfo, Endpoint, Packet, PreConnectionInfo, Receiver, Sender};
+use crate::datagram::{
+    ConnectionInfo, Endpoint, Packet, PreConnectionInfo, ReceiveContext, Receiver, Sender,
+};
 
 #[derive(Debug, Default)]
 pub struct Disabled(());
@@ -34,7 +36,7 @@ impl Sender for DisabledSender {
 }
 
 impl Receiver for DisabledReceiver {
-    fn on_datagram(&mut self, _datagram: &[u8]) {}
+    fn on_datagram(&mut self, _: &ReceiveContext<'_>, _: &[u8]) {}
 
     fn on_connection_error(&mut self, _error: crate::connection::Error) {}
 }
