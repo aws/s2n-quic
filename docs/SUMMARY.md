@@ -12,3 +12,4 @@
 - [Introduction](dev-guide.md)
 - [Setup](dev-guide/setup.md)
 - [Continuous Integration](ci.md)
+- [Kani](dev-guide/kani.md)
