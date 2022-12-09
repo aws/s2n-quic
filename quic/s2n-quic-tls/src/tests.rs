@@ -16,7 +16,10 @@ use s2n_quic_core::{
 };
 #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
 use s2n_tls::{callbacks::ClientHelloCallback, connection::Connection};
-use s2n_tls::{callbacks::VerifyHostNameCallback, error::Error};
+use s2n_tls::{
+    callbacks::{ConnectionFuture, VerifyHostNameCallback},
+    error::Error,
+};
 use std::sync::Arc;
 
 pub struct MyClientHelloHandler {
@@ -35,10 +38,29 @@ impl MyClientHelloHandler {
 
 #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
 impl ClientHelloCallback for MyClientHelloHandler {
-    fn poll_client_hello(
+    fn on_client_hello(
         &self,
         _connection: &mut Connection,
-    ) -> core::task::Poll<Result<(), Error>> {
+    ) -> Result<Option<std::pin::Pin<Box<dyn s2n_tls::callbacks::ConnectionFuture>>>, Error> {
+        let fut = MyConnectionFuture {
+            done: self.done.clone(),
+            wait_counter: self.wait_counter.clone(),
+        };
+        Ok(Some(Box::pin(fut)))
+    }
+}
+
+struct MyConnectionFuture {
+    done: Arc<AtomicBool>,
+    wait_counter: Arc<AtomicU8>,
+}
+
+impl ConnectionFuture for MyConnectionFuture {
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        _connection: &mut Connection,
+        _ctx: &mut core::task::Context,
+    ) -> Poll<Result<(), Error>> {
         if self.wait_counter.fetch_sub(1, Ordering::SeqCst) == 0 {
             self.done.store(true, Ordering::SeqCst);
             return Poll::Ready(Ok(()));
