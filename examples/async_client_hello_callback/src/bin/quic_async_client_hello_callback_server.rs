@@ -83,13 +83,9 @@ impl ClientHelloCallback for MyAsyncCertLoaderCHCallback {
                 // sleep(async tokio task which doesn't block thread) to mimic delay
                 tokio::time::sleep(Duration::from_secs(5)).await;
 
-                let mut config = Config::builder();
-                config
-                    .load_pem(cert.as_bytes(), key.as_bytes())?
-                    .enable_quic()?
-                    .set_security_policy(&s2n_tls::security::DEFAULT_TLS13)?
-                    .set_application_protocol_preference([b"h3"])?;
-                config.build()
+                s2n_quic::provider::tls::s2n_tls::Server::builder()
+                    .with_certificate(cert, key)?
+                    .into_config()
             });
             fut.await.map(|config| config.clone())
         };

@@ -206,6 +206,11 @@ impl Builder {
             params: Default::default(),
         })
     }
+
+    /// Returns the underlying [`Config`](s2n_tls::config::Config).
+    pub fn into_config(self) -> Result<Config, Error> {
+        self.config.build()
+    }
 }
 
 impl<L: ConfigLoader> tls::Endpoint for Server<L> {
