@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use moka::sync::Cache;
+use rand::{distributions::WeightedIndex, prelude::*};
 use s2n_quic::{
     provider::tls::s2n_tls::{ClientHelloCallback, Connection},
     Server,
@@ -27,20 +28,29 @@ pub static KEY_PEM_PATH: &str = concat!(
 
 type Sni = String;
 
-struct MyAsyncCertLoaderCHCallback {
+// A Config cache associated with a Sni.
+//
+// Implements ClientHelloCallback, loading the certificates asynchronously,
+// and caching the s2n_tls::config::Config for subsequent calls with the
+// same Sni.
+//
+// An Sni (server name indicator), indicates which hostname the client is
+// attempting to connect to. Some deployments could require configuring the
+// s2n_tls::config::Config based on the Sni (certificate).
+struct ConfigCache {
     cache: Cache<Sni, Arc<OnceCell<Config>>>,
 }
 
-impl MyAsyncCertLoaderCHCallback {
+impl ConfigCache {
     fn new() -> Self {
-        MyAsyncCertLoaderCHCallback {
-            // store Configs for up to 100 unique SNIs
+        ConfigCache {
+            // store Config for up to 100 unique Snis
             cache: Cache::new(100),
         }
     }
 }
 
-impl ClientHelloCallback for MyAsyncCertLoaderCHCallback {
+impl ClientHelloCallback for ConfigCache {
     fn on_client_hello(
         &self,
         connection: &mut Connection,
@@ -54,18 +64,28 @@ impl ClientHelloCallback for MyAsyncCertLoaderCHCallback {
             .cache
             .get_with(sni.clone(), || Arc::new(OnceCell::new()));
         if let Some(config) = once_cell_config.get() {
+            eprintln!("Config already cached for Sni: {}", sni);
             connection.set_config(config.clone())?;
             // return `None` if the Config is already in the cache
             return Ok(None);
         }
 
+        // simulate failure 75% of times and success 25% of the times
+        let choices = [true, false];
+        let weights = [3, 1];
+        let dist = WeightedIndex::new(&weights).unwrap();
+        let mut rng = thread_rng();
+
         let fut = async move {
             let fut = once_cell_config.get_or_try_init(|| async {
-                let fail = rand::random();
-                eprintln!("simulating network failure. failed: {}", fail);
-                if fail {
+                let simulated_network_call_failed = choices[dist.sample(&mut rng)];
+
+                if simulated_network_call_failed {
+                    eprintln!("simulated network call failed");
                     return Err(S2nError::application(Box::new(CustomError)));
                 }
+
+                eprintln!("resolving certificate for Sni: {}", sni);
 
                 // load the cert and key file asynchronously.
                 let (cert, key) = {
@@ -81,7 +101,7 @@ impl ClientHelloCallback for MyAsyncCertLoaderCHCallback {
                 };
 
                 // sleep(async tokio task which doesn't block thread) to mimic delay
-                tokio::time::sleep(Duration::from_secs(5)).await;
+                tokio::time::sleep(Duration::from_secs(3)).await;
 
                 s2n_quic::provider::tls::s2n_tls::Server::builder()
                     .with_certificate(cert, key)?
@@ -99,7 +119,7 @@ impl ClientHelloCallback for MyAsyncCertLoaderCHCallback {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
-        .with_client_hello_handler(MyAsyncCertLoaderCHCallback::new())?
+        .with_client_hello_handler(ConfigCache::new())?
         .build()?;
 
     let mut server = Server::builder()
