@@ -65,6 +65,12 @@ impl<L: ConfigLoader> ConfigLoader for Server<L> {
     }
 }
 
+impl<L: ConfigLoader> From<Server<L>> for Config {
+    fn from(mut server: Server<L>) -> Self {
+        server.load(crate::ConnectionContext { server_name: None })
+    }
+}
+
 pub struct Builder {
     config: config::Builder,
     keylog: Option<KeyLogHandle>,
@@ -205,11 +211,6 @@ impl Builder {
             keylog: self.keylog,
             params: Default::default(),
         })
-    }
-
-    /// Returns the underlying [`Config`](s2n_tls::config::Config).
-    pub fn into_config(self) -> Result<Config, Error> {
-        self.config.build()
     }
 }
 

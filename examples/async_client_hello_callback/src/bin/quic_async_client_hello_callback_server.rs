@@ -4,13 +4,15 @@
 use moka::sync::Cache;
 use rand::{distributions::WeightedIndex, prelude::*};
 use s2n_quic::{
-    provider::tls::s2n_tls::{ClientHelloCallback, Connection},
+    provider::tls::s2n_tls::{
+        s2n_tls::{
+            callbacks::{ConfigResolver, ConnectionFuture},
+            config::Config,
+            error::Error as S2nError,
+        },
+        ClientHelloCallback, Connection,
+    },
     Server,
-};
-use s2n_tls::{
-    callbacks::{ConfigResolver, ConnectionFuture},
-    config::Config,
-    error::Error as S2nError,
 };
 use std::{error::Error, fmt::Display, pin::Pin, sync::Arc, time::Duration};
 use tokio::{fs, sync::OnceCell};
@@ -28,15 +30,15 @@ pub static KEY_PEM_PATH: &str = concat!(
 
 type Sni = String;
 
-// A Config cache associated with a Sni.
+// A Config cache associated with as SNI (server name indication).
 //
 // Implements ClientHelloCallback, loading the certificates asynchronously,
 // and caching the s2n_tls::config::Config for subsequent calls with the
-// same Sni.
+// same SNI.
 //
-// An Sni (server name indicator), indicates which hostname the client is
-// attempting to connect to. Some deployments could require configuring the
-// s2n_tls::config::Config based on the Sni (certificate).
+// An SNI, indicates which hostname the client is attempting to connect to.
+// Some deployments could require configuring the s2n_tls::config::Config
+// based on the SNI (certificate).
 struct ConfigCache {
     cache: Cache<Sni, Arc<OnceCell<Config>>>,
 }
@@ -44,7 +46,7 @@ struct ConfigCache {
 impl ConfigCache {
     fn new() -> Self {
         ConfigCache {
-            // store Config for up to 100 unique Snis
+            // store Config for up to 100 unique SNI
             cache: Cache::new(100),
         }
     }
@@ -64,7 +66,7 @@ impl ClientHelloCallback for ConfigCache {
             .cache
             .get_with(sni.clone(), || Arc::new(OnceCell::new()));
         if let Some(config) = once_cell_config.get() {
-            eprintln!("Config already cached for Sni: {}", sni);
+            eprintln!("Config already cached for SNI: {}", sni);
             connection.set_config(config.clone())?;
             // return `None` if the Config is already in the cache
             return Ok(None);
@@ -85,7 +87,7 @@ impl ClientHelloCallback for ConfigCache {
                     return Err(S2nError::application(Box::new(CustomError)));
                 }
 
-                eprintln!("resolving certificate for Sni: {}", sni);
+                eprintln!("resolving certificate for SNI: {}", sni);
 
                 // load the cert and key file asynchronously.
                 let (cert, key) = {
@@ -103,9 +105,11 @@ impl ClientHelloCallback for ConfigCache {
                 // sleep(async tokio task which doesn't block thread) to mimic delay
                 tokio::time::sleep(Duration::from_secs(3)).await;
 
-                s2n_quic::provider::tls::s2n_tls::Server::builder()
+                let config = s2n_quic::provider::tls::s2n_tls::Server::builder()
                     .with_certificate(cert, key)?
-                    .into_config()
+                    .build()
+                    .map(|s| s.into());
+                config
             });
             fut.await.map(|config| config.clone())
         };
