@@ -107,9 +107,9 @@ impl ClientHelloCallback for ConfigCache {
 
                 let config = s2n_quic::provider::tls::s2n_tls::Server::builder()
                     .with_certificate(cert, key)?
-                    .build()
-                    .map(|s| s.into());
-                config
+                    .build()?
+                    .into();
+                Ok(config)
             });
             fut.await.map(|config| config.clone())
         };
