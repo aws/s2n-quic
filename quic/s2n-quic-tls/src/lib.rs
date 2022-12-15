@@ -62,7 +62,7 @@ pub use server::Server;
 // Re-export the `ClientHelloHandler` and `Connection` to make it easier for users
 // to consume. This depends on experimental behavior in s2n-tls.
 #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
-pub use s2n_tls::{callbacks::ClientHelloCallback, connection::Connection};
+pub use s2n_tls::{self, callbacks::ClientHelloCallback, connection::Connection};
 
 #[cfg(test)]
 mod tests;
