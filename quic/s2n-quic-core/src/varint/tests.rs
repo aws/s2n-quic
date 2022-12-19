@@ -4,22 +4,29 @@
 use super::*;
 use crate::varint::VarInt;
 use bolero::check;
-use s2n_codec::{assert_codec_round_trip_bytes, assert_codec_round_trip_value};
+use core::mem::size_of;
+use s2n_codec::{
+    assert_codec_round_trip_bytes, assert_codec_round_trip_value, DecoderBuffer, EncoderBuffer,
+};
 
 #[test]
 #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
-fn round_trip() {
+fn round_trip_bytes_test() {
     check!().for_each(|input| {
-        for value in assert_codec_round_trip_bytes!(VarInt, input) {
-            let _ = value.checked_add(value);
-            let _ = value.checked_sub(value);
-            let _ = value.checked_mul(value);
-            let _ = value.checked_div(value);
-            let _ = value.saturating_add(value);
-            let _ = value.saturating_sub(value);
-            let _ = value.saturating_mul(value);
-        }
+        assert_codec_round_trip_bytes!(VarInt, input);
     });
+}
+
+#[test]
+#[cfg_attr(kani, kani::proof, kani::unwind(10))]
+fn round_trip_values_test() {
+    check!().with_type().cloned().for_each(|v| {
+        if let Ok(v) = VarInt::new(v) {
+            assert_codec_round_trip_value!(VarInt, v);
+        } else {
+            assert!(v > MAX_VARINT_VALUE);
+        }
+    })
 }
 
 #[test]
@@ -182,4 +189,131 @@ fn eight_byte_sequence_test() {
             assert_eq!(&byte_sequence[..], &actual_bytes[..]);
         },
     );
+}
+
+fn test_update(initial: VarInt, expected: VarInt, encoder: &mut EncoderBuffer) {
+    encoder.set_position(0);
+    initial.encode_updated(expected, encoder);
+    let decoder = DecoderBuffer::new(encoder.as_mut_slice());
+    let (actual, _) = decoder.decode::<VarInt>().unwrap();
+    assert_eq!(expected, actual);
+}
+
+#[test]
+fn encode_updated_test() {
+    let mut buffer = [0u8; size_of::<VarInt>()];
+    let mut encoder = EncoderBuffer::new(&mut buffer);
+    let initial = VarInt::from_u16(1 << 14);
+    encoder.encode(&initial);
+
+    test_update(initial, VarInt::from_u32(0), &mut encoder);
+    test_update(initial, VarInt::from_u32(1 << 14), &mut encoder);
+    test_update(initial, VarInt::from_u32(1 << 29), &mut encoder);
+}
+
+#[test]
+#[should_panic]
+fn encode_updated_invalid_test() {
+    let mut buffer = [0u8; size_of::<VarInt>()];
+    let mut encoder = EncoderBuffer::new(&mut buffer);
+    let initial = VarInt::from_u16(1 << 14);
+    encoder.encode(&initial);
+
+    test_update(initial, VarInt::from_u32(1 << 30), &mut encoder);
+}
+
+#[test]
+#[cfg_attr(kani, kani::proof, kani::unwind(5))]
+fn table_differential_test() {
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-16
+    //= type=test
+    //# This means that integers are encoded on 1, 2, 4, or 8 bytes and can
+    //# encode 6-, 14-, 30-, or 62-bit values, respectively.  Table 4
+    //# summarizes the encoding properties.
+    //#
+    //#        +======+========+=============+=======================+
+    //#        | 2MSB | Length | Usable Bits | Range                 |
+    //#        +======+========+=============+=======================+
+    //#        | 00   | 1      | 6           | 0-63                  |
+    //#        +------+--------+-------------+-----------------------+
+    //#        | 01   | 2      | 14          | 0-16383               |
+    //#        +------+--------+-------------+-----------------------+
+    //#        | 10   | 4      | 30          | 0-1073741823          |
+    //#        +------+--------+-------------+-----------------------+
+    //#        | 11   | 8      | 62          | 0-4611686018427387903 |
+    //#        +------+--------+-------------+-----------------------+
+
+    check!()
+        .with_generator(0..=MAX_VARINT_VALUE)
+        .cloned()
+        .for_each(|v| {
+            let actual = read_table(v);
+
+            // make sure the encoding_size function matches the table
+            assert_eq!(actual.1, encoding_size(v));
+
+            // write the table from the RFC in a non-optimized format and make sure the
+            // actual results match
+            #[allow(clippy::match_overlapping_arm)]
+            let expected = match v {
+                0..=63 => (0b00, 1, 6),
+                0..=16383 => (0b01, 2, 14),
+                0..=1073741823 => (0b10, 4, 30),
+                0..=4611686018427387903 => (0b11, 8, 62),
+                _ => unreachable!(),
+            };
+
+            assert_eq!(actual, expected);
+        })
+}
+
+#[test]
+#[cfg_attr(kani, kani::proof, kani::unwind(5))]
+fn checked_ops_test() {
+    check!().with_type().cloned().for_each(|(a, b)| {
+        if let (Ok(a_v), Ok(b_v)) = (VarInt::new(a), VarInt::new(b)) {
+            // compares checked operations against the underlying u64 operations
+            macro_rules! checked {
+                ($checked:ident, $op:tt) => {{
+                    if let Some(res) = a_v.$checked(b_v) {
+                        // make sure the behavior matches that of u64
+                        assert_eq!(Some(res.as_u64()), a.$checked(b));
+
+                        // make sure the normal operation works as well
+                        assert_eq!(res, a_v $op b_v);
+                    } else {
+                        // make sure the behavior matches that of u64
+                        let expected = a.$checked(b).and_then(|v| VarInt::new(v).ok());
+                        assert!(expected.is_none());
+                    }
+                }};
+            }
+
+            checked!(checked_add, +);
+            checked!(checked_sub, -);
+
+            // kani currently spins for a really long time to handle these checks
+            #[cfg(any(not(kani), kani_slow))]
+            checked!(checked_mul, *);
+            #[cfg(any(not(kani), kani_slow))]
+            checked!(checked_div, /);
+
+            // compares saturating operations against the underlying u64 operations
+            macro_rules! saturating {
+                ($name:ident) => {{
+                    let actual = a_v.$name(b_v);
+                    let expected = VarInt::new(a.$name(b)).unwrap_or(VarInt::MAX);
+                    assert_eq!(actual, expected);
+                }};
+            }
+
+            saturating!(saturating_add);
+
+            // kani currently spins for a really long time to handle these checks
+            #[cfg(any(not(kani), kani_slow))]
+            saturating!(saturating_sub);
+            #[cfg(any(not(kani), kani_slow))]
+            saturating!(saturating_mul);
+        }
+    })
 }

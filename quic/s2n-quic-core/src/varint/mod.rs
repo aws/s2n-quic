@@ -335,44 +335,6 @@ decoder_value!(
     }
 );
 
-#[cfg(test)]
-mod encoder_tests {
-    use super::*;
-    use core::mem::size_of;
-    use s2n_codec::{DecoderBuffer, EncoderBuffer};
-
-    fn test_update(initial: VarInt, expected: VarInt, encoder: &mut EncoderBuffer) {
-        encoder.set_position(0);
-        initial.encode_updated(expected, encoder);
-        let decoder = DecoderBuffer::new(encoder.as_mut_slice());
-        let (actual, _) = decoder.decode::<VarInt>().unwrap();
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn encode_updated_test() {
-        let mut buffer = [0u8; size_of::<VarInt>()];
-        let mut encoder = EncoderBuffer::new(&mut buffer);
-        let initial = VarInt::from_u16(1 << 14);
-        encoder.encode(&initial);
-
-        test_update(initial, VarInt::from_u32(0), &mut encoder);
-        test_update(initial, VarInt::from_u32(1 << 14), &mut encoder);
-        test_update(initial, VarInt::from_u32(1 << 29), &mut encoder);
-    }
-
-    #[test]
-    #[should_panic]
-    fn encode_updated_invalid_test() {
-        let mut buffer = [0u8; size_of::<VarInt>()];
-        let mut encoder = EncoderBuffer::new(&mut buffer);
-        let initial = VarInt::from_u16(1 << 14);
-        encoder.encode(&initial);
-
-        test_update(initial, VarInt::from_u32(1 << 30), &mut encoder);
-    }
-}
-
 impl AsRef<u64> for VarInt {
     #[inline]
     fn as_ref(&self) -> &u64 {
