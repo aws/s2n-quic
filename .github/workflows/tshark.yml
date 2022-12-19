@@ -18,11 +18,19 @@ on:
     # Running this every day makes sure the static dependencies are up to date
     - cron: '0 17 * * *'
 
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'wireshark version'
+        required: true
+        default: '3.7.1'
+        type: string
+
 jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      WIRESHARK_VERSION: "4.0.2"
+      WIRESHARK_VERSION: ${{ inputs.version || '3.7.1' }}
     steps:
       - uses: actions/checkout@v2
 
