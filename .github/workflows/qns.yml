@@ -19,7 +19,7 @@ env:
   # This should be updated when updating wesleyrosenblum/quic-network-simulator
   NETWORK_SIMULATOR_REF: sha256:20abe0bed8c0e39e1d8750507b24295f7c978bdd7e05fa6f3a5afed4b76dc191
   IPERF_ENDPOINT_REF: sha256:cb50cc8019d45d9cad5faecbe46a3c21dd5e871949819a5175423755a9045106
-  WIRESHARK_VERSION: 3.6.6
+  WIRESHARK_VERSION: 4.0.2
   CDN: https://dnglbrstg7yg.cloudfront.net
   LOG_URL: logs/latest/SERVER_CLIENT/TEST/index.html
   H3_SPEC_VERSION: v0.1.8
@@ -150,45 +150,9 @@ jobs:
           name: quinn
           path: quinn/
 
-  tshark:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Cache
-        id: cache
-        uses: actions/cache@v3.0.3
-        continue-on-error: true
-        with:
-          path: tshark
-          key: wireshark-${{ env.WIRESHARK_VERSION }}
-
-      - name: Install dependencies
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          sudo apt-get -o Acquire::Retries=3 update
-          sudo apt-get -o Acquire::Retries=3 install -y cmake libglib2.0-dev libc-ares-dev libgcrypt20-dev flex bison byacc libpcap-dev ninja-build
-
-      - name: Build tshark
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          wget https://www.wireshark.org/download/src/all-versions/wireshark-${{ env.WIRESHARK_VERSION }}.tar.xz
-          tar xf wireshark-${{ env.WIRESHARK_VERSION }}.tar.xz
-          cd wireshark-${{ env.WIRESHARK_VERSION }}
-          cmake -GNinja -DBUILD_wireshark=0 -DBUILD_qtshark=0 -DBUILD_editcap=0 -DBUILD_capinfos=0 -DBUILD_text2pcap=0 -DBUILD_rawshark=0 -DBUILD_sdjournal=0 -DBUILD_sshdump=0 -DBUILD_ciscodump=0 -DENABLE_STATIC=1 -DENABLE_PLUGINS=0 -DENABLE_LIBXML2=0 -DUSE_STATIC=1 -DENABLE_GNUTLS=1 .
-          ninja
-          cp run/tshark ..
-
-      - name: Tshark version
-        run: ./tshark -v
-
-      - name: Upload
-        uses: actions/upload-artifact@v3
-        with:
-          name: tshark
-          path: tshark
-
   interop:
     runs-on: ubuntu-latest
-    needs: [env, s2n-quic-qns, tshark]
+    needs: [env, s2n-quic-qns]
     strategy:
       matrix: ${{ fromJson(needs.env.outputs.matrix) }}
     steps:
@@ -239,14 +203,9 @@ jobs:
         with:
           python-version: 3.7
 
-      - name: Download tshark
-        uses: actions/download-artifact@v3
-        with:
-          name: tshark
-          path: .
-
       - name: Install tshark
         run: |
+          wget https://dnglbrstg7yg.cloudfront.net/tshark/v$WIRESHARK_VERSION/tshark
           chmod +x tshark
           sudo mv tshark /usr/bin
           /usr/bin/tshark -v
@@ -420,7 +379,7 @@ jobs:
 
   bench:
     runs-on: ubuntu-latest
-    needs: [env, s2n-quic-qns, tshark]
+    needs: [env, s2n-quic-qns]
     steps:
       - uses: actions/checkout@v3
         with:
@@ -434,14 +393,9 @@ jobs:
 
       - uses: camshaft/rust-cache@v1
 
-      - name: Download tshark
-        uses: actions/download-artifact@v3
-        with:
-          name: tshark
-          path: .
-
       - name: Install tshark
         run: |
+          wget https://dnglbrstg7yg.cloudfront.net/tshark/v$WIRESHARK_VERSION/tshark
           chmod +x tshark
           sudo mv tshark /usr/bin
           /usr/bin/tshark -v
