@@ -66,7 +66,7 @@ jobs:
           echo "::set-output name=matrix::$MATRIX"
 
   s2n-quic-qns:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
         mode: ["debug", "release"]
@@ -378,7 +378,7 @@ jobs:
             web/logs/latest/result.json
 
   bench:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     needs: [env, s2n-quic-qns]
     steps:
       - uses: actions/checkout@v3
@@ -475,7 +475,7 @@ jobs:
           ! grep -Rq 'The s2n-quic-qns application shut down unexpectedly' target/benchmark/results
 
   h3spec:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     needs: [s2n-quic-qns]
     strategy:
       matrix:
@@ -533,7 +533,7 @@ jobs:
             --skip "MUST send no_application_protocol TLS alert if no application protocols are supported [TLS 8.1]" \
 
   perf:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     needs: [quinn, s2n-quic-qns]
     strategy:
       matrix:
